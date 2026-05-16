@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ollama-mesh Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter','sans-serif'],
+            mono: ['JetBrains Mono','monospace'],
+          },
+          colors: {
+            mesh: { bg:'#0a0a0a', card:'#111111', border:'#222222', accent:'#10b981' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family:'Inter',sans-serif; }
+    .font-mono { font-family:'JetBrains Mono',monospace; }
+    .dark body { background:#0a0a0a; color:#e5e7eb; }
+    .light body { background:#f3f4f6; color:#111827; }
+    ::-webkit-scrollbar { width:6px; height:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    .dark ::-webkit-scrollbar-thumb { background:#333; border-radius:3px; }
+    .light ::-webkit-scrollbar-thumb { background:#ccc; border-radius:3px; }
+    .vram-bar { transition:width .5s ease-out; }
+    @keyframes rowPulse { 0%{background:rgba(16,185,129,.1)} 100%{background:transparent} }
+    .row-pulse { animation:rowPulse 1s ease-out; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+    .animate-fade { animation:fadeIn .3s ease-out; }
+    .dark .recharts-cartesian-grid line { stroke:#222; }
+    .dark .recharts-text { fill:#9ca3af; }
+    .light .recharts-cartesian-grid line { stroke:#e5e7eb; }
+    .light .recharts-text { fill:#6b7280; }
+  </style>
+</head>
+<body class="dark antialiased">
+  <div id="root"><div class="flex h-screen items-center justify-center text-sm dark:text-gray-500 text-gray-500">Loading ollama-mesh...</div></div>
+  <script type="module">
+    import React, { useState, useEffect, useCallback, createContext, useContext } from 'https://esm.sh/react@18.2.0';
+    import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
+    import htm from 'https://esm.sh/htm@3.1.1';
+    import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'https://esm.sh/recharts@2.10.3?deps=react@18.2.0,react-dom@18.2.0';
+    const html = htm.bind(React.createElement);
+
+    /* ===================== DATA ===================== */
+    const MODELS = ['llama3.2:8b','codellama:13b','deepseek-r1:7b','nomic-embed-text'];
+    const INIT_NODES = [
+      {id:'gpu-0',name:'RTX 4090 #0',port:11434,gpu:'RTX 4090',vramTotal:24,vramUsed:18.4,cpu:34,temp:62,health:'healthy',uptime:'14d 3h',models:[{name:'llama3.2:8b',vram:8.2,warm:true},{name:'nomic-embed-text',vram:0.5,warm:true}],requests:5},
+      {id:'gpu-1',name:'RTX 4090 #1',port:11435,gpu:'RTX 4090',vramTotal:24,vramUsed:13.9,cpu:28,temp:58,health:'healthy',uptime:'8d 12h',models:[{name:'llama3.2:8b',vram:8.2,warm:true},{name:'deepseek-r1:7b',vram:5.1,warm:true}],requests:6},
+      {id:'gpu-2',name:'V100',port:11436,gpu:'V100',vramTotal:32,vramUsed:12.2,cpu:45,temp:71,health:'degraded',uptime:'3d 6h',models:[{name:'codellama:13b',vram:11.5,warm:false}],requests:3}
+    ];
+    const INIT_KEYS = [
+      {id:'k1',name:'anirudh-dev',key:'sk-mesh-2f8a9c1d4e5b',created:'2024-01-15',requestsToday:1240,requestsMonth:28400,rateLimit:1000,status:'active',models:['llama3.2:8b','codellama:13b','nomic-embed-text']},
+      {id:'k2',name:'team-shared',key:'sk-mesh-9a3b7c2d8e1f',created:'2024-02-01',requestsToday:8400,requestsMonth:156000,rateLimit:5000,status:'active',models:['all']},
+      {id:'k3',name:'agent-runner',key:'sk-mesh-4d5e6f7a8b9c',created:'2024-03-10',requestsToday:3200,requestsMonth:89000,rateLimit:2000,status:'rate-limited',models:['llama3.2:8b','nomic-embed-text']},
+      {id:'k4',name:'ci-pipeline',key:'sk-mesh-1a2b3c4d5e6f',created:'2024-03-20',requestsToday:450,requestsMonth:12000,rateLimit:500,status:'active',models:['nomic-embed-text']}
+    ];
+    const INIT_RULES = [
+      {id:'r1',priority:1,condition:'llama3.2:8b',target:'any',strategy:'warm-first'},
+      {id:'r2',priority:2,condition:'codellama:13b',target:'gpu-1',strategy:'least-conn'},
+      {id:'r3',priority:3,condition:'deepseek-r1:*',target:'any',strategy:'round-robin'},
+      {id:'r4',priority:4,condition:'nomic-embed-text',target:'any',strategy:'warm-first'}
+    ];
+    const INIT_LIVE = [
+      {id:'req-1',apiKey:'sk-team-01',model:'llama3.2:8b',node:'GPU 0',status:'warm',latency:210},
+      {id:'req-2',apiKey:'sk-anirudh',model:'codellama:13b',node:'GPU 1',status:'warm',latency:340},
+      {id:'req-3',apiKey:'sk-team-03',model:'llama3.2:8b',node:'GPU 1',status:'warm',latency:290},
+      {id:'req-4',apiKey:'sk-team-02',model:'deepseek-r1',node:'GPU 1',status:'loading',latency:null},
+      {id:'req-5',apiKey:'sk-agent-1',model:'nomic-embed',node:'GPU 0',status:'warm',latency:42}
+    ];
+
+    function gen24h(){ const d=[]; for(let i=23;i>=0;i--){ const h=new Date(); h.setHours(h.getHours()-i); d.push({time:h.getHours()+':00',requests:Math.floor(Math.random()*400)+100,lat0:Math.floor(Math.random()*200)+150,lat1:Math.floor(Math.random()*250)+180,lat2:Math.floor(Math.random()*300)+200});} return d;}
+    function genSpark(){ return Array.from({length:60},(_,i)=>({time:i,val:Math.floor(Math.random()*40)+60+Math.sin(i/10)*20})); }
+    const TOKENS = [{name:'team-shared',tokens:145000},{name:'agent-runner',tokens:89000},{name:'anirudh-dev',tokens:28400},{name:'ci-pipeline',tokens:12000}];
+    const NODEDIST = [{name:'RTX 4090 #0',value:35},{name:'RTX 4090 #1',value:42},{name:'V100',value:23}];
+
+    /* ===================== HELPERS ===================== */
+    const fmt = n=>n?.toLocaleString()??'-';
+    const ms = v=>v?`${v}ms`:'—';
+    const mask = k=>k.slice(0,7)+'****-****';
+    const CTX = createContext();
+
+    const Dot = ({status})=>{
+      const map={healthy:'bg-emerald-500',active:'bg-emerald-500',warm:'bg-emerald-500',degraded:'bg-amber-500','rate-limited':'bg-amber-500',down:'bg-red-500',suspended:'bg-red-500',loading:'bg-blue-500',cold:'bg-gray-500'};
+      return html`<span class="inline-block w-2 h-2 rounded-full ${map[status]||'bg-gray-500'} ${status==='loading'?'animate-pulse':''}" />`;
+    };
+
+    const Badge = ({variant,children})=>{
+      const v={warm:'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',cold:'bg-gray-500/10 text-gray-400 border-gray-500/20',accent:'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',warn:'bg-amber-500/10 text-amber-400 border-amber-500/20',danger:'bg-red-500/10 text-red-400 border-red-500/20',def:'dark:bg-mesh-card bg-gray-100 dark:text-gray-300 text-gray-700 dark:border-mesh-border border-gray-200'};
+      return html`<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium border ${v[variant]||v.def}">${children}</span>`;
+    };
+
+    /* ===================== ICONS ===================== */
+    const Ico = ({s=20,p,cls=""})=>html`<svg xmlns="http://www.w3.org/2000/svg" width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class=${cls}>${p}</svg>`;
+    const I = {
+      Dashboard:()=>Ico({p:[html`<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>`]}),
+      Cpu:()=>Ico({p:[html`<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5"/><path d="M6 8v5"/><path d="M9 17h6"/><path d="M6 12h12"/><rect x="6" y="6" width="12" height="12" rx="2"/>`]}),
+      Key:()=>Ico({p:[html`<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>`]}),
+      Route:()=>Ico({p:[html`<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>`]}),
+      BarChart:()=>Ico({p:[html`<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>`]}),
+      Settings:()=>Ico({p:[html`<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>`]}),
+      Activity:()=>Ico({p:[html`<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>`]}),
+      Eye:()=>Ico({p:[html`<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>`]}),
+      EyeOff:()=>Ico({p:[html`<path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7c.78 0 1.53-.09 2.24-.26"/><path d="M2 2l20 20"/>`]}),
+      Copy:()=>Ico({p:[html`<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`]}),
+      Plus:()=>Ico({p:[html`<path d="M5 12h14"/><path d="M12 5v14"/>`]}),
+      Trash:()=>Ico({p:[html`<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>`]}),
+      X:()=>Ico({p:[html`<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`]}),
+      Check:()=>Ico({p:[html`<path d="M20 6 9 17l-5-5"/>`]}),
+      ArrowRight:()=>Ico({p:[html`<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>`]}),
+      Search:()=>Ico({p:[html`<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>`]}),
+      Download:()=>Ico({p:[html`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10 12 15 17 10"/><path d="M12 15V3"/>`]}),
+      Moon:()=>Ico({p:[html`<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>`]}),
+      Sun:()=>Ico({p:[html`<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>`]}),
+      Alert:()=>Ico({p:[html`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>`]}),
+      Layers:()=>Ico({p:[html`<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>`]}),
+      Terminal:()=>Ico({p:[html`<polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/>`]}),
+      Shield:()=>Ico({p:[html`<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>`]}),
+      Server:()=>Ico({p:[html`<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/>`]}),
+      Thermometer:()=>Ico({p:[html`<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>`]}),
+      Clock:()=>Ico({p:[html`<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>`]}),
+      Zap:()=>Ico({p:[html`<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`]}),
+      More:()=>Ico({p:[html`<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>`]}),
+    };
+
+    /* ===================== SHARED ===================== */
+    const Search = ({val,onChange,ph})=>html`
+      <div class="relative">
+        <div class="absolute left-3 top-1/2 -translate-y-1/2 dark:text-gray-600 text-gray-400"><I.Search /></div>
+        <input type="text" value=${val} onChange=${e=>onChange(e.target.value)} placeholder=${ph}
+          class="w-full pl-9 pr-4 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white dark:text-gray-300 text-gray-700 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 font-mono" />
+      </div>`;
+
+    const Modal = ({open,close,title,children})=>{
+      if(!open) return null;
+      return html`
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick=${close} />
+          <div class="relative dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 shadow-2xl w-full max-w-lg animate-fade">
+            <div class="flex items-center justify-between p-4 border-b dark:border-mesh-border border-gray-200">
+              <h3 class="text-sm font-semibold">${title}</h3>
+              <button onClick=${close} class="p-1 rounded hover:dark:bg-white/5 hover:bg-gray-100"><I.X /></button>
+            </div>
+            <div class="p-4">${children}</div>
+          </div>
+        </div>`;
+    };
+
+    const Confirm = ({open,close,onConfirm,title,msg})=>html`
+      <${Modal} open=${open} close=${close} title=${title}>
+        <div class="space-y-4">
+          <p class="text-sm dark:text-gray-400 text-gray-600">${msg}</p>
+          <div class="flex justify-end gap-2">
+            <button onClick=${close} class="px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 hover:dark:bg-white/5 hover:bg-gray-50">Cancel</button>
+            <button onClick=${onConfirm} class="px-3 py-2 text-sm rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20">Confirm</button>
+          </div>
+        </div>
+      <//>`;
+
+    /* ===================== SIDEBAR / TOPBAR ===================== */
+    const Sidebar = ({page,setPage,collapsed,setCollapsed})=>{
+      const items=[{id:'dashboard',label:'Dashboard',ic:I.Dashboard},{id:'gpu-nodes',label:'GPU nodes',ic:I.Cpu},{id:'routing',label:'Routing',ic:I.Route},{id:'api-keys',label:'API keys',ic:I.Key},{id:'metrics',label:'Metrics',ic:I.BarChart},{id:'settings',label:'Settings',ic:I.Settings}];
+      return html`
+        <aside class="${collapsed?'w-16':'w-60'} flex-shrink-0 border-r dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white transition-all duration-200 flex flex-col h-screen sticky top-0">
+          <div class="h-14 flex items-center px-4 border-b dark:border-mesh-border border-gray-200">
+            <button onClick=${()=>setCollapsed(!collapsed)} class="p-1 rounded hover:dark:bg-white/5 hover:bg-black/5"><I.Layers /></button>
+            ${!collapsed && html`<span class="ml-3 font-semibold text-sm tracking-tight">ollama-mesh</span>`}
+          </div>
+          <nav class="flex-1 py-4 px-2 space-y-1">
+            ${items.map(it=>html`
+              <button key=${it.id} onClick=${()=>setPage(it.id)}
+                class="w-full flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${page===it.id?'dark:bg-white/5 bg-gray-100 dark:text-emerald-400 text-emerald-600':'dark:text-gray-400 text-gray-600 hover:dark:bg-white/5 hover:bg-gray-50'}">
+                <${it.ic} /> ${!collapsed && html`<span class="ml-3">${it.label}</span>`}
+              </button>
+            `)}
+          </nav>
+          <div class="p-4 border-t dark:border-mesh-border border-gray-200">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center"><span class="text-xs font-mono font-semibold text-emerald-400">A</span></div>
+              ${!collapsed && html`<div class="flex-1 min-w-0"><div class="text-sm font-medium truncate">admin</div><div class="text-xs dark:text-gray-500 text-gray-500">Operator</div></div>`}
+            </div>
+          </div>
+        </aside>`;
+    };
+
+    const TopBar = ({theme,toggle})=>{
+      const {gpuNodes}=useContext(CTX);
+      const total=gpuNodes.reduce((a,b)=>a+b.requests,0);
+      return html`
+        <header class="h-14 border-b dark:border-mesh-border border-gray-200 flex items-center justify-between px-6 dark:bg-[#0a0a0a] bg-white">
+          <div class="flex items-center gap-4">
+            <h1 class="text-sm font-mono font-semibold tracking-tight">ollama-mesh <span class="dark:text-gray-500 text-gray-400 font-normal">v0.1.0</span></h1>
+          </div>
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 text-xs"><Dot status="healthy" /><span class="dark:text-gray-400 text-gray-600">proxy online</span><span class="font-mono dark:text-gray-300 text-gray-700">:11434</span></div>
+            <div class="h-4 w-px dark:bg-mesh-border bg-gray-300" />
+            <div class="flex items-center gap-2 text-xs dark:text-gray-400 text-gray-600"><I.Activity /><span class="font-mono">${total} active</span></div>
+            <button onClick=${toggle} class="p-2 rounded-md hover:dark:bg-white/5 hover:bg-gray-100 transition-colors">${theme==='dark'?html`<I.Sun />`:html`<I.Moon />`}</button>
+          </div>
+        </header>`;
+    };
+
+    const MCard = ({title,value,sub,subColor,icon:Icon})=>html`
+      <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-4 animate-fade">
+        <div class="flex items-start justify-between">
+          <div><div class="text-xs dark:text-gray-500 text-gray-500 uppercase tracking-wider font-medium mb-1">${title}</div><div class="text-2xl font-mono font-semibold">${value}</div></div>
+          ${Icon&&html`<div class="dark:text-gray-600 text-gray-400"><${Icon} /></div>`}
+        </div>
+        <div class="mt-2 text-xs font-mono ${subColor}">${sub}</div>
+      </div>`;
+
+    /* ===================== DASHBOARD ===================== */
+    const Arch = ()=>html`
+      <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-6">
+        <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">Architecture</h3>
+        <div class="flex items-center justify-between gap-2 overflow-x-auto pb-2">
+          ${[
+            {l:'clients',s:'CLI / IDE / agents',ic:I.Terminal},
+            {l:'auth layer',s:'API key verify',ic:I.Shield},
+            {l:'LiteLLM',s:'optional API layer',ic:I.Layers,d:true},
+            {l:'mesh router',s:'/api/ps aware',ic:I.Route},
+            {l:'GPU nodes',s:'ollama instances',ic:I.Cpu}
+          ].map((step,i,arr)=>html`
+            <${React.Fragment} key=${step.l}>
+              <div class="flex flex-col items-center gap-2 min-w-[100px] ${step.d?'opacity-60':''}">
+                <div class="w-12 h-12 rounded-lg border-2 flex items-center justify-center dark:bg-[#0a0a0a] bg-gray-50 ${step.d?'border-dashed dark:border-gray-700 border-gray-300':'dark:border-mesh-border border-gray-200'}"><${step.ic} /></div>
+                <div class="text-center"><div class="text-xs font-medium">${step.l}</div><div class="text-[10px] dark:text-gray-500 text-gray-500 font-mono">${step.s}</div></div>
+              </div>
+              ${i<arr.length-1&&html`<div class="flex items-center dark:text-gray-600 text-gray-400"><I.ArrowRight /></div>`}
+            <//>
+          `)}
+        </div>
+      </div>`;
+
+    const GpuPanel = ()=>{
+      const {gpuNodes}=useContext(CTX);
+      return html`
+        <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-4">
+          <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">GPU Nodes — VRAM State</h3>
+          <div class="space-y-4">
+            ${gpuNodes.map(n=>html`
+              <div key=${n.id} class="space-y-2">
+                <div class="flex items-center justify-between text-sm">
+                  <div class="flex items-center gap-2"><span class="font-mono font-semibold">${n.name}</span><span class="text-xs dark:text-gray-500 text-gray-500 font-mono">:${n.port} · ${n.requests} reqs</span></div>
+                  <span class="text-xs font-mono dark:text-gray-400 text-gray-600">${n.vramUsed.toFixed(1)} / ${n.vramTotal} GB</span>
+                </div>
+                <div class="h-2 rounded-full dark:bg-[#0a0a0a] bg-gray-100 overflow-hidden"><div class="h-full rounded-full vram-bar bg-emerald-500" style=${{width:(n.vramUsed/n.vramTotal*100)+'%'}} /></div>
+                <div class="flex flex-wrap gap-1.5">${n.models.map(m=>html`<${Badge} key=${m.name} variant=${m.warm?'warm':'cold'}>${m.name}<//>`)}</div>
+              </div>
+            `)}
+          </div>
+        </div>`;
+    };
+
+    const LiveTable = ()=>{
+      const {liveRequests}=useContext(CTX);
+      return html`
+        <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500">Live Requests — Cache-Aware Routing</h3>
+            <div class="flex items-center gap-1.5 text-xs dark:text-gray-500 text-gray-500"><div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Auto-refresh 2s</div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead><tr class="border-b dark:border-mesh-border border-gray-200">
+                <th class="text-left py-2 px-3 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">API Key</th>
+                <th class="text-left py-2 px-3 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Model</th>
+                <th class="text-left py-2 px-3 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Routed To</th>
+                <th class="text-left py-2 px-3 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Status</th>
+                <th class="text-right py-2 px-3 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Latency</th>
+              </tr></thead>
+              <tbody>
+                ${liveRequests.map((req,i)=>html`
+                  <tr key=${req.id} class="border-b dark:border-mesh-border/50 border-gray-100 ${i===0?'row-pulse':''} hover:dark:bg-white/[0.02] hover:bg-gray-50/50">
+                    <td class="py-2.5 px-3 font-mono text-xs">${req.apiKey}</td>
+                    <td class="py-2.5 px-3 font-mono text-xs">${req.model}</td>
+                    <td class="py-2.5 px-3 font-mono text-xs dark:text-gray-400 text-gray-600">${req.node}</td>
+                    <td class="py-2.5 px-3"><div class="flex items-center gap-1.5"><Dot status=${req.status} /><span class="text-xs font-mono ${req.status==='warm'?'text-emerald-400':req.status==='loading'?'text-amber-400':'text-gray-400'}">${req.status}</span></div></td>
+                    <td class="py-2.5 px-3 text-right font-mono text-xs">${ms(req.latency)}</td>
+                  </tr>
+                `)}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    };
+
+    const KeySummary = ()=>{
+      const {apiKeys}=useContext(CTX);
+      return html`
+        <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-4">
+          <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">API Keys</h3>
+          <div class="space-y-3">
+            ${apiKeys.slice(0,3).map(k=>html`
+              <div key=${k.id} class="flex items-center justify-between">
+                <div class="flex items-center gap-2"><span class="text-sm font-mono">${k.name}</span><${Badge} variant=${k.status==='active'?'warm':k.status==='rate-limited'?'warn':'danger'}>${k.status}<//></div>
+                <span class="text-xs font-mono dark:text-gray-500 text-gray-500">${fmt(k.requestsToday)} req/day</span>
+              </div>
+            `)}
+          </div>
+        </div>`;
+    };
+
+    const PromBar = ()=>html`
+      <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-3 flex items-center justify-between">
+        <div class="flex items-center gap-2 text-xs"><I.Activity /><span class="dark:text-gray-400 text-gray-600">Prometheus <span class="font-mono">/metrics</span> endpoint active — connect your Grafana dashboard at port 9090</span></div>
+        <${Badge} variant="accent">exportable<//>
+      </div>`;
+
+    const Dashboard = ()=>{
+      const {gpuNodes,liveRequests}=useContext(CTX);
+      const avg = liveRequests.filter(r=>r.latency).reduce((a,b)=>a+b.latency,0)/Math.max(1,liveRequests.filter(r=>r.latency).length);
+      const total = gpuNodes.reduce((a,b)=>a+b.requests,0);
+      return html`
+        <div class="space-y-6 animate-fade">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <${MCard} title="Active Requests" value=${total} sub="across ${gpuNodes.length} nodes" subColor="text-emerald-500" />
+            <${MCard} title="Avg Latency" value=${Math.round(avg)+'ms'} sub="p99: "+Math.round(avg*1.5)+"ms" subColor="text-gray-500" />
+            <${MCard} title="Tokens / min" value="4.2k" sub="+12% vs last hr" subColor="text-emerald-500" />
+            <${MCard} title="Cold Starts" value="2" sub="model reloads today" subColor="text-amber-500" />
+          </div>
+          <${Arch} />
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-1 space-y-6"><${GpuPanel} /><${KeySummary} /></div>
+            <div class="lg:col-span-2 space-y-6"><${LiveTable} /><${PromBar} /></div>
+          </div>
+        </div>`;
+    };
+
+    /* ===================== GPU NODES ===================== */
+    const GpuNodes = ()=>{
+      const {gpuNodes}=useContext(CTX);
+      const [filter,setFilter]=useState('');
+      const filtered=gpuNodes.filter(n=>n.name.toLowerCase().includes(filter.toLowerCase())||n.gpu.toLowerCase().includes(filter.toLowerCase()));
+      const hc=h=>h==='healthy'?'text-emerald-400':h==='degraded'?'text-amber-400':'text-red-400';
+      return html`
+        <div class="space-y-6 animate-fade">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">GPU Nodes</h2>
+            <button class="flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"><I.Plus /> Add Node</button>
+          </div>
+          <${Search} val=${filter} onChange=${setFilter} ph="Filter nodes..." />
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            ${filtered.map(n=>html`
+              <div key=${n.id} class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-5">
+                <div class="flex items-start justify-between mb-4">
+                  <div>
+                    <div class="flex items-center gap-2 mb-1">
+                      <h3 class="font-mono font-semibold text-sm">${n.name}</h3><Dot status=${n.health} /><span class="text-xs font-mono ${hc(n.health)}">${n.health}</span>
+                    </div>
+                    <div class="text-xs dark:text-gray-500 text-gray-500 font-mono">${n.gpu} · :${n.port} · uptime ${n.uptime}</div>
+                  </div>
+                  <button class="p-1.5 rounded hover:dark:bg-white/5 hover:bg-gray-100 dark:text-gray-500 text-gray-400"><I.Trash /></button>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <div class="text-xs dark:text-gray-500 text-gray-500 mb-1">VRAM</div>
+                    <div class="text-sm font-mono">${n.vramUsed.toFixed(1)} / ${n.vramTotal} GB</div>
+                    <div class="h-1.5 rounded-full dark:bg-[#0a0a0a] bg-gray-100 mt-1.5 overflow-hidden"><div class="h-full rounded-full vram-bar bg-emerald-500" style=${{width:(n.vramUsed/n.vramTotal*100)+'%'}} /></div>
+                  </div>
+                  <div>
+                    <div class="text-xs dark:text-gray-500 text-gray-500 mb-1">CPU / Temp</div>
+                    <div class="text-sm font-mono">${n.cpu}% · ${n.temp}°C</div>
+                    <div class="h-1.5 rounded-full dark:bg-[#0a0a0a] bg-gray-100 mt-1.5 overflow-hidden"><div class="h-full rounded-full vram-bar ${n.cpu>40?'bg-amber-500':'bg-emerald-500'}" style=${{width:n.cpu+'%'}} /></div>
+                  </div>
+                </div>
+                <div class="mb-4">
+                  <div class="text-xs dark:text-gray-500 text-gray-500 mb-2">Loaded Models</div>
+                  <div class="flex flex-wrap gap-2">
+                    ${n.models.map(m=>html`
+                      <div key=${m.name} class="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono border ${m.warm?'bg-emerald-500/10 text-emerald-400 border-emerald-500/20':'bg-gray-500/10 text-gray-400 border-gray-500/20'}">
+                        <Dot status=${m.warm?'warm':'cold'} />${m.name} <span class="dark:text-gray-500 text-gray-500">(${m.vram}GB)</span>
+                      </div>
+                    `)}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-xs dark:text-gray-500 text-gray-500 mb-2">Health (60 min)</div>
+                  <div class="h-16"><${ResponsiveContainer} width="100%" height="100%"><${AreaChart} data=${genSpark()}><defs><linearGradient id="g${n.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity="0.3"/><stop offset="95%" stopColor="#10b981" stopOpacity="0"/></linearGradient></defs><${Area} type="monotone" dataKey="val" stroke="#10b981" strokeWidth="1.5" fill="url(#g${n.id})" /><//><//></div>
+                </div>
+              </div>
+            `)}
+          </div>
+        </div>`;
+    };
+
+    /* ===================== API KEYS ===================== */
+    const ApiKeys = ()=>{
+      const {apiKeys,setApiKeys}=useContext(CTX);
+      const [filter,setFilter]=useState('');
+      const [vis,setVis]=useState(new Set());
+      const [open,setOpen]=useState(false);
+      const [revoke,setRevoke]=useState(null);
+      const [form,setForm]=useState({name:'',rateLimit:1000,models:[],expiry:''});
+      const [err,setErr]=useState('');
+      const filtered=apiKeys.filter(k=>k.name.toLowerCase().includes(filter.toLowerCase())||k.key.toLowerCase().includes(filter.toLowerCase()));
+
+      const toggleV=id=>{const n=new Set(vis);n.has(id)?n.delete(id):n.add(id);setVis(n);};
+      const copy=k=>navigator.clipboard.writeText(k);
+      const create=()=>{
+        if(!form.name.trim()){setErr('Name is required');return;}
+        const key={id:'k'+Date.now(),name:form.name,key:'sk-mesh-'+Math.random().toString(36).slice(2,14),created:new Date().toISOString().split('T')[0],requestsToday:0,requestsMonth:0,rateLimit:parseInt(form.rateLimit)||1000,status:'active',models:form.models.length?form.models:['all']};
+        setApiKeys([...apiKeys,key]);setOpen(false);setForm({name:'',rateLimit:1000,models:[],expiry:''});setErr('');
+      };
+      const doRevoke=()=>{setApiKeys(apiKeys.map(k=>k.id===revoke?{...k,status:'suspended'}:k));setRevoke(null);};
+
+      return html`
+        <div class="space-y-6 animate-fade">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">API Keys</h2>
+            <button onClick=${()=>setOpen(true)} class="flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"><I.Plus /> Create Key</button>
+          </div>
+          <${Search} val=${filter} onChange=${setFilter} ph="Search keys..." />
+          <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead><tr class="border-b dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-gray-50">
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Key Name</th>
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Key Value</th>
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Created</th>
+                  <th class="text-right py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Today</th>
+                  <th class="text-right py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Month</th>
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Rate Limit</th>
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Status</th>
+                  <th class="text-right py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Actions</th>
+                </tr></thead>
+                <tbody>
+                  ${filtered.map(k=>html`
+                    <tr key=${k.id} class="border-b dark:border-mesh-border/50 border-gray-100 hover:dark:bg-white/[0.02] hover:bg-gray-50/50">
+                      <td class="py-3 px-4 font-mono text-sm">${k.name}</td>
+                      <td class="py-3 px-4">
+                        <div class="flex items-center gap-2">
+                          <span class="font-mono text-xs dark:text-gray-400 text-gray-600">${vis.has(k.id)?k.key:mask(k.key)}</span>
+                          <button onClick=${()=>toggleV(k.id)} class="p-1 rounded hover:dark:bg-white/5 hover:bg-gray-100 dark:text-gray-500 text-gray-400">${vis.has(k.id)?html`<I.EyeOff />`:html`<I.Eye />`}</button>
+                          <button onClick=${()=>copy(k.key)} class="p-1 rounded hover:dark:bg-white/5 hover:bg-gray-100 dark:text-gray-500 text-gray-400"><I.Copy /></button>
+                        </div>
+                      </td>
+                      <td class="py-3 px-4 text-xs dark:text-gray-500 text-gray-500">${k.created}</td>
+                      <td class="py-3 px-4 text-right font-mono text-xs">${fmt(k.requestsToday)}</td>
+                      <td class="py-3 px-4 text-right font-mono text-xs">${fmt(k.requestsMonth)}</td>
+                      <td class="py-3 px-4 font-mono text-xs">${k.rateLimit}/hr</td>
+                      <td class="py-3 px-4"><${Badge} variant=${k.status==='active'?'warm':k.status==='rate-limited'?'warn':'danger'}>${k.status}<//></td>
+                      <td class="py-3 px-4 text-right"><button onClick=${()=>setRevoke(k.id)} class="p-1.5 rounded hover:bg-red-500/10 text-gray-400 hover:text-red-400 transition-colors" title="Revoke"><I.Trash /></button></td>
+                    </tr>
+                  `)}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <${Modal} open=${open} close=${()=>{setOpen(false);setErr('');}} title="Create API Key">
+            <div class="space-y-4">
+              ${err&&html`<div class="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2"><I.Alert /> ${err}</div>`}
+              <div><label class="block text-xs font-medium mb-1.5">Key Name</label><input type="text" value=${form.name} onChange=${e=>setForm({...form,name:e.target.value})} placeholder="e.g. production-runner" class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white focus:outline-none focus:border-emerald-500/50 font-mono" /></div>
+              <div><label class="block text-xs font-medium mb-1.5">Rate Limit (requests/hour)</label><input type="number" value=${form.rateLimit} onChange=${e=>setForm({...form,rateLimit:e.target.value})} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white focus:outline-none focus:border-emerald-500/50 font-mono" /></div>
+              <div>
+                <label class="block text-xs font-medium mb-1.5">Allowed Models</label>
+                <div class="flex flex-wrap gap-2">
+                  ${['all',...MODELS].map(m=>html`
+                    <button key=${m} onClick=${()=>{const mods=form.models.includes(m)?form.models.filter(x=>x!==m):[...form.models,m];setForm({...form,models:mods.filter(x=>x!=='all'||mods.length===1)});}}
+                      class="px-2 py-1 rounded text-xs font-mono border transition-colors ${form.models.includes(m)||(m==='all'&&form.models.length===0)?'bg-emerald-500/10 text-emerald-400 border-emerald-500/20':'dark:border-mesh-border border-gray-200 dark:text-gray-400 text-gray-600'}">
+                      ${m}
+                    </button>
+                  `)}
+                </div>
+              </div>
+              <div><label class="block text-xs font-medium mb-1.5">Expiry (optional)</label><input type="date" value=${form.expiry} onChange=${e=>setForm({...form,expiry:e.target.value})} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white focus:outline-none focus:border-emerald-500/50 font-mono" /></div>
+              <div class="flex justify-end gap-2 pt-2">
+                <button onClick=${()=>{setOpen(false);setErr('');}} class="px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 hover:dark:bg-white/5 hover:bg-gray-50">Cancel</button>
+                <button onClick=${create} class="px-3 py-2 text-sm rounded-md bg-emerald-500 text-white hover:bg-emerald-600 font-medium">Create Key</button>
+              </div>
+            </div>
+          <//>
+          <${Confirm} open=${!!revoke} close=${()=>setRevoke(null)} onConfirm=${doRevoke} title="Revoke API Key" msg="This will immediately suspend the key. All in-flight requests will complete, but new requests will be rejected. This action cannot be undone." />
+        </div>`;
+    };
+
+    /* ===================== ROUTING ===================== */
+    const Routing = ()=>{
+      const {routingRules}=useContext(CTX);
+      const [liteLLM,setLiteLLM]=useState(true);
+      const [poll,setPoll]=useState(2000);
+      const [filter,setFilter]=useState('');
+      const filtered=routingRules.filter(r=>r.condition.toLowerCase().includes(filter.toLowerCase()));
+      const Tgl = ({label,checked,onChange})=>html`
+        <div class="flex items-center justify-between py-3">
+          <span class="text-sm dark:text-gray-300 text-gray-700">${label}</span>
+          <button onClick=${onChange} class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${checked?'bg-emerald-500':'dark:bg-gray-700 bg-gray-300'}">
+            <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${checked?'translate-x-5':'translate-x-1'}" />
+          </button>
+        </div>`;
+
+      return html`
+        <div class="space-y-6 animate-fade">
+          <h2 class="text-lg font-semibold">Routing</h2>
+          <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-6">
+            <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-6">Routing Logic</h3>
+            <div class="flex flex-col items-center gap-4">
+              <div class="flex items-center gap-4 w-full max-w-4xl">
+                <div class="flex-1 dark:bg-[#0a0a0a] bg-gray-50 rounded-lg border dark:border-mesh-border border-gray-200 p-4 text-center"><div class="text-sm font-medium mb-1">Request comes in</div><div class="text-xs dark:text-gray-500 text-gray-500 font-mono">POST /api/chat</div></div>
+                <I.ArrowRight />
+                <div class="flex-1 dark:bg-[#0a0a0a] bg-gray-50 rounded-lg border dark:border-mesh-border border-gray-200 p-4 text-center"><div class="text-sm font-medium mb-1">Check model</div><div class="text-xs dark:text-gray-500 text-gray-500 font-mono">model=llama3.2:8b</div></div>
+              </div>
+              <div class="flex items-center gap-4 w-full max-w-4xl">
+                <div class="flex-1 dark:bg-[#0a0a0a] bg-gray-50 rounded-lg border dark:border-mesh-border border-gray-200 p-4">
+                  <div class="text-sm font-medium mb-3 text-center">Is model warm on any node?</div>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="dark:bg-emerald-500/5 bg-emerald-50 rounded border dark:border-emerald-500/20 border-emerald-200 p-3 text-center"><div class="text-xs font-medium text-emerald-400 mb-1">YES</div><div class="text-xs dark:text-gray-400 text-gray-600">Route to warm node</div></div>
+                    <div class="dark:bg-gray-500/5 bg-gray-50 rounded border dark:border-gray-500/20 border-gray-200 p-3 text-center"><div class="text-xs font-medium dark:text-gray-400 text-gray-600 mb-1">NO</div><div class="text-xs dark:text-gray-400 text-gray-600">Route to least-connections</div></div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-4 w-full max-w-4xl">
+                <div class="flex-1 dark:bg-[#0a0a0a] bg-gray-50 rounded-lg border dark:border-mesh-border border-gray-200 p-4 text-center">
+                  <div class="text-sm font-medium mb-1">LiteLLM Middleware</div>
+                  <div class="flex items-center justify-center gap-2 mt-2">
+                    <button onClick=${()=>setLiteLLM(!liteLLM)} class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${liteLLM?'bg-emerald-500':'dark:bg-gray-700 bg-gray-300'}">
+                      <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${liteLLM?'translate-x-5':'translate-x-1'}" />
+                    </button>
+                    <span class="text-xs font-mono dark:text-gray-400 text-gray-600">${liteLLM?'enabled':'disabled'}</span>
+                  </div>
+                </div>
+                <I.ArrowRight />
+                <div class="flex-1 dark:bg-[#0a0a0a] bg-gray-50 rounded-lg border dark:border-mesh-border border-gray-200 p-4 text-center"><div class="text-sm font-medium mb-1">Mesh Router</div><div class="text-xs dark:text-gray-500 text-gray-500 font-mono">GPU-aware dispatch</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-4">
+              <div class="flex items-center justify-between mb-4"><h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500">LiteLLM Integration</h3><${Badge} variant=${liteLLM?'accent':'cold'}>${liteLLM?'active':'bypass'}<//></div>
+              <${Tgl} label="Middleware" checked=${liteLLM} onChange=${()=>setLiteLLM(!liteLLM)} />
+              ${liteLLM&&html`<div class="mt-3"><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">Endpoint URL</label><input type="text" defaultValue="http://localhost:4000" class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white font-mono focus:outline-none focus:border-emerald-500/50" /></div>`}
+            </div>
+            <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-4">
+              <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">Polling</h3>
+              <div><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">/api/ps interval (ms)</label><input type="number" value=${poll} onChange=${e=>setPoll(parseInt(e.target.value)||2000)} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white font-mono focus:outline-none focus:border-emerald-500/50" /></div>
+              <div class="text-xs dark:text-gray-500 text-gray-500 mt-2">Current: <span class="font-mono text-emerald-400">${poll}ms</span> · Next poll in <span class="font-mono">${(poll/1000).toFixed(1)}s</span></div>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <div class="flex items-center justify-between"><h3 class="text-sm font-semibold">Routing Rules</h3><${Search} val=${filter} onChange=${setFilter} ph="Filter rules..." /></div>
+            <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 overflow-hidden">
+              <table class="w-full text-sm">
+                <thead><tr class="border-b dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-gray-50">
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Priority</th>
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Condition</th>
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Target Node</th>
+                  <th class="text-left py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Strategy</th>
+                  <th class="text-right py-3 px-4 text-xs font-medium dark:text-gray-500 text-gray-500 uppercase">Actions</th>
+                </tr></thead>
+                <tbody>
+                  ${filtered.map(r=>html`
+                    <tr key=${r.id} class="border-b dark:border-mesh-border/50 border-gray-100 hover:dark:bg-white/[0.02] hover:bg-gray-50/50">
+                      <td class="py-3 px-4 font-mono text-xs">${r.priority}</td>
+                      <td class="py-3 px-4 font-mono text-xs">${r.condition}</td>
+                      <td class="py-3 px-4 font-mono text-xs dark:text-gray-400 text-gray-600">${r.target}</td>
+                      <td class="py-3 px-4"><${Badge} variant="accent">${r.strategy}<//></td>
+                      <td class="py-3 px-4 text-right"><button class="p-1.5 rounded hover:dark:bg-white/5 hover:bg-gray-100 dark:text-gray-500 text-gray-400"><I.More /></button></td>
+                    </tr>
+                  `)}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    };
+
+    /* ===================== METRICS ===================== */
+    const Metrics = ()=>{
+      const [d24]=useState(gen24h);
+      const [td]=useState(TOKENS);
+      const [nd]=useState(NODEDIST);
+      const COLORS=['#10b981','#3b82f6','#f59e0b'];
+      const exportCSV=(data,filename)=>{const h=Object.keys(data[0]).join(',');const r=data.map(row=>Object.values(row).join(','));const csv=[h,...r].join('\n');const b=new Blob([csv],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=filename;a.click();};
+      const CCard = ({title,children,onExport})=>html`
+        <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500">${title}</h3>
+            <button onClick=${onExport} class="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-mono border dark:border-mesh-border border-gray-200 hover:dark:bg-white/5 hover:bg-gray-50 transition-colors"><I.Download /> CSV</button>
+          </div>
+          <div class="h-64">${children}</div>
+        </div>`;
+      return html`
+        <div class="space-y-6 animate-fade">
+          <div class="flex items-center justify-between"><h2 class="text-lg font-semibold">Metrics</h2><div class="text-xs dark:text-gray-500 text-gray-500 font-mono">Last 24 hours · Auto-refreshed</div></div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <${CCard} title="Requests per Minute" onExport=${()=>exportCSV(d24,'requests.csv')}>
+              <${ResponsiveContainer} width="100%" height="100%"><${AreaChart} data=${d24}>
+                <defs><linearGradient id="rg" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity="0.3"/><stop offset="95%" stopColor="#10b981" stopOpacity="0"/></linearGradient></defs>
+                <${CartesianGrid} strokeDasharray="3 3" /><${XAxis} dataKey="time" tick=${{fontSize:12,fontFamily:'JetBrains Mono'}} /><${YAxis} tick=${{fontSize:12,fontFamily:'JetBrains Mono'}} />
+                <${Tooltip} contentStyle=${{backgroundColor:'#111',border:'1px solid #222',borderRadius:'6px',fontSize:'12px',fontFamily:'JetBrains Mono'}} />
+                <${Area} type="monotone" dataKey="requests" stroke="#10b981" strokeWidth="2" fill="url(#rg)" />
+              <//><//>
+            <//>
+            <${CCard} title="Token Usage per API Key" onExport=${()=>exportCSV(td,'tokens.csv')}>
+              <${ResponsiveContainer} width="100%" height="100%"><${BarChart} data=${td} layout="vertical">
+                <${CartesianGrid} strokeDasharray="3 3" /><${XAxis} type="number" tick=${{fontSize:12,fontFamily:'JetBrains Mono'}} /><${YAxis} dataKey="name" type="category" width="100" tick=${{fontSize:12,fontFamily:'JetBrains Mono'}} />
+                <${Tooltip} contentStyle=${{backgroundColor:'#111',border:'1px solid #222',borderRadius:'6px',fontSize:'12px',fontFamily:'JetBrains Mono'}} />
+                <${Bar} dataKey="tokens" fill="#3b82f6" radius=${[0,4,4,0]} />
+              <//><//>
+            <//>
+            <${CCard} title="Avg Latency per GPU Node" onExport=${()=>exportCSV(d24,'latency.csv')}>
+              <${ResponsiveContainer} width="100%" height="100%"><${LineChart} data=${d24}>
+                <${CartesianGrid} strokeDasharray="3 3" /><${XAxis} dataKey="time" tick=${{fontSize:12,fontFamily:'JetBrains Mono'}} /><${YAxis} unit="ms" tick=${{fontSize:12,fontFamily:'JetBrains Mono'}} />
+                <${Tooltip} contentStyle=${{backgroundColor:'#111',border:'1px solid #222',borderRadius:'6px',fontSize:'12px',fontFamily:'JetBrains Mono'}} />
+                <${Legend} wrapperStyle=${{fontSize:'12px',fontFamily:'JetBrains Mono'}} />
+                <${Line} type="monotone" dataKey="lat0" name="RTX 4090 #0" stroke="#10b981" strokeWidth="2" dot=${false} />
+                <${Line} type="monotone" dataKey="lat1" name="RTX 4090 #1" stroke="#3b82f6" strokeWidth="2" dot=${false} />
+                <${Line} type="monotone" dataKey="lat2" name="V100" stroke="#f59e0b" strokeWidth="2" dot=${false} />
+              <//><//>
+            <//>
+            <${CCard} title="Request Distribution" onExport=${()=>exportCSV(nd,'distribution.csv')}>
+              <${ResponsiveContainer} width="100%" height="100%"><${PieChart}>
+                <${Pie} data=${nd} cx="50%" cy="50%" innerRadius="60" outerRadius="80" paddingAngle="5" dataKey="value">
+                  ${nd.map((e,i)=>html`<${Cell} key=${i} fill=${COLORS[i%COLORS.length]} />`)}
+                <//>
+                <${Tooltip} contentStyle=${{backgroundColor:'#111',border:'1px solid #222',borderRadius:'6px',fontSize:'12px',fontFamily:'JetBrains Mono'}} />
+                <${Legend} wrapperStyle=${{fontSize:'12px',fontFamily:'JetBrains Mono'}} />
+              <//><//>
+            <//>
+          </div>
+        </div>`;
+    };
+
+    /* ===================== SETTINGS ===================== */
+    const Settings = ()=>{
+      const [cfg,setCfg]=useState({proxyPort:11434,authMode:'api_key',liteLLM:true,liteLLMUrl:'http://localhost:4000',pollInterval:2000,prometheus:true,prometheusPort:9090,logLevel:'info'});
+      const yaml=`proxy:
+  port: ${cfg.proxyPort}
+  auth_mode: ${cfg.authMode}
+  log_level: ${cfg.logLevel}
+
+mesh:
+  poll_interval_ms: ${cfg.pollInterval}
+  nodes:
+    - name: RTX 4090 #0
+      port: 11434
+      gpu: RTX 4090
+      vram_total: 24
+    - name: RTX 4090 #1
+      port: 11435
+      gpu: RTX 4090
+      vram_total: 24
+    - name: V100
+      port: 11436
+      gpu: V100
+      vram_total: 32
+
+middleware:
+  litellm:
+    enabled: ${cfg.liteLLM}
+    url: "${cfg.liteLLMUrl}"
+
+observability:
+  prometheus:
+    enabled: ${cfg.prometheus}
+    port: ${cfg.prometheusPort}
+    path: /metrics`;
+      const Tgl = ({label,checked,onChange})=>html`
+        <div class="flex items-center justify-between py-3">
+          <span class="text-sm dark:text-gray-300 text-gray-700">${label}</span>
+          <button onClick=${onChange} class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${checked?'bg-emerald-500':'dark:bg-gray-700 bg-gray-300'}">
+            <span class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${checked?'translate-x-5':'translate-x-1'}" />
+          </button>
+        </div>`;
+      return html`
+        <div class="space-y-6 animate-fade max-w-4xl">
+          <h2 class="text-lg font-semibold">Settings</h2>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="space-y-6">
+              <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-5">
+                <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">Proxy</h3>
+                <div class="space-y-4">
+                  <div><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">Proxy Port</label><input type="number" value=${cfg.proxyPort} onChange=${e=>setCfg({...cfg,proxyPort:e.target.value})} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white font-mono focus:outline-none focus:border-emerald-500/50" /></div>
+                  <div><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">Auth Mode</label><div class="flex gap-2">${['api_key','no_auth'].map(m=>html`<button key=${m} onClick=${()=>setCfg({...cfg,authMode:m})} class="flex-1 px-3 py-2 rounded-md text-sm font-mono border transition-colors ${cfg.authMode===m?'bg-emerald-500/10 text-emerald-400 border-emerald-500/20':'dark:border-mesh-border border-gray-200 dark:text-gray-400 text-gray-600'}">${m}</button>`)}</div></div>
+                </div>
+              </div>
+              <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-5">
+                <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">Middleware</h3>
+                <${Tgl} label="LiteLLM Integration" checked=${cfg.liteLLM} onChange=${()=>setCfg({...cfg,liteLLM:!cfg.liteLLM})} />
+                ${cfg.liteLLM&&html`<div class="mt-3"><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">Endpoint URL</label><input type="text" value=${cfg.liteLLMUrl} onChange=${e=>setCfg({...cfg,liteLLMUrl:e.target.value})} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white font-mono focus:outline-none focus:border-emerald-500/50" /></div>`}
+              </div>
+              <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-5">
+                <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">Polling</h3>
+                <div><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">/api/ps interval (ms)</label><input type="number" value=${cfg.pollInterval} onChange=${e=>setCfg({...cfg,pollInterval:e.target.value})} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white font-mono focus:outline-none focus:border-emerald-500/50" /></div>
+              </div>
+            </div>
+            <div class="space-y-6">
+              <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-5">
+                <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">Observability</h3>
+                <${Tgl} label="Prometheus Metrics" checked=${cfg.prometheus} onChange=${()=>setCfg({...cfg,prometheus:!cfg.prometheus})} />
+                ${cfg.prometheus&&html`<div class="mt-3"><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">Metrics Port</label><input type="number" value=${cfg.prometheusPort} onChange=${e=>setCfg({...cfg,prometheusPort:e.target.value})} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white font-mono focus:outline-none focus:border-emerald-500/50" /></div>`}
+              </div>
+              <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-5">
+                <h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500 mb-4">Logging</h3>
+                <div><label class="block text-xs dark:text-gray-500 text-gray-500 mb-1.5">Log Level</label><select value=${cfg.logLevel} onChange=${e=>setCfg({...cfg,logLevel:e.target.value})} class="w-full px-3 py-2 text-sm rounded-md border dark:border-mesh-border border-gray-200 dark:bg-[#0a0a0a] bg-white font-mono focus:outline-none focus:border-emerald-500/50">${['debug','info','warn','error'].map(l=>html`<option key=${l} value=${l}>${l}</option>`)}</select></div>
+              </div>
+              <div class="dark:bg-mesh-card bg-white rounded-lg border dark:border-mesh-border border-gray-200 p-5">
+                <div class="flex items-center justify-between mb-4"><h3 class="text-xs font-semibold uppercase tracking-wider dark:text-gray-400 text-gray-500">Config Preview</h3><${Badge} variant="accent">read-only<//></div>
+                <pre class="text-xs font-mono dark:bg-[#0a0a0a] bg-gray-50 rounded-md p-4 overflow-x-auto border dark:border-mesh-border border-gray-200 dark:text-gray-300 text-gray-700">${yaml}</pre>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    };
+
+    /* ===================== APP ===================== */
+    const App = ()=>{
+      const [theme,setTheme]=useState('dark');
+      const [page,setPage]=useState('dashboard');
+      const [collapsed,setCollapsed]=useState(false);
+      const [gpuNodes,setGpuNodes]=useState(INIT_NODES);
+      const [apiKeys,setApiKeys]=useState(INIT_KEYS);
+      const [routingRules,setRoutingRules]=useState(INIT_RULES);
+      const [liveRequests,setLiveRequests]=useState(INIT_LIVE);
+
+      useEffect(()=>{
+        const iv=setInterval(()=>{
+          setLiveRequests(prev=>{
+            const keys=['sk-team-01','sk-anirudh','sk-team-03','sk-team-02','sk-agent-1','sk-ci-1','sk-prod-1'];
+            const models=MODELS;
+            const nodes=['GPU 0','GPU 1','GPU 2'];
+            const st=['warm','warm','warm','loading'];
+            const req={id:'req-'+Date.now(),apiKey:keys[Math.floor(Math.random()*keys.length)],model:models[Math.floor(Math.random()*models.length)],node:nodes[Math.floor(Math.random()*nodes.length)],status:st[Math.floor(Math.random()*st.length)],latency:Math.random()>0.2?Math.floor(Math.random()*400)+50:null};
+            setGpuNodes(ns=>ns.map(n=>n.name.includes(req.node.split(' ')[1])?{...n,requests:Math.max(0,n.requests+(Math.random()>0.5?1:-1))}:n));
+            return[req,...prev].slice(0,12);
+          });
+        },2000);
+        return()=>clearInterval(iv);
+      },[]);
+
+      const toggleTheme=()=>{
+        const t=theme==='dark'?'light':'dark';
+        setTheme(t);
+        document.documentElement.classList.remove('dark','light');
+        document.documentElement.classList.add(t);
+        document.body.classList.remove('dark','light');
+        document.body.classList.add(t);
+      };
+
+      const pages={dashboard:Dashboard,'gpu-nodes':GpuNodes,'api-keys':ApiKeys,routing:Routing,metrics:Metrics,settings:Settings};
+      const Page=pages[page]||Dashboard;
+
+      return html`
+        <${CTX.Provider} value=${{gpuNodes,setGpuNodes,apiKeys,setApiKeys,routingRules,setRoutingRules,liveRequests}}>
+          <div class="flex h-screen overflow-hidden">
+            <${Sidebar} page=${page} setPage=${setPage} collapsed=${collapsed} setCollapsed=${setCollapsed} />
+            <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+              <${TopBar} theme=${theme} toggle=${toggleTheme} />
+              <main class="flex-1 overflow-y-auto p-6"><${Page} /></main>
+            </div>
+          </div>
+        <//>`;
+    };
+
+    const root=ReactDOM.createRoot(document.getElementById('root'));
+    root.render(html`<${App} />`);
+  </script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+proxy:
+  port: 11434
+  log_level: info
+
+auth:
+  enabled: true
+  keys:
+    - name: anirudh-dev
+      key: sk-mesh-abc123
+      rate_limit: 1000
+      models:
+        - llama3.2:8b
+        - codellama:13b
+    - name: team-shared
+      key: sk-mesh-xyz789
+      rate_limit: 5000
+      models: []
+    - name: agent-runner
+      key: sk-mesh-agent001
+      rate_limit: 500
+      expires_at: "2027-01-01"
+
+nodes:
+  - name: gpu-0
+    url: http://localhost:11435
+    gpu_model: "NVIDIA RTX 4090 24GB"
+  - name: gpu-1
+    url: http://localhost:11436
+    gpu_model: "NVIDIA RTX 4090 24GB"
+
+routing:
+  strategy: warm-first
+  poll_interval_ms: 2000
+  fallback: least-connections
+
+metrics:
+  enabled: true
+  port: 9090
+
+litellm:
+  enabled: false
+  url: http://localhost:4000

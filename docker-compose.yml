@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  ollama-mesh:
+    build: .
+    ports:
+      - "11434:11434"
+      - "9090:9090"
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/root/config.yaml
+    environment:
+      - CONFIG_PATH=/root/config.yaml
+    depends_on:
+      - ollama-0
+      - ollama-1
+    networks:
+      - mesh
+
+  ollama-0:
+    image: ollama/ollama:latest
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama-0-data:/root/.ollama
+    networks:
+      - mesh
+
+  ollama-1:
+    image: ollama/ollama:latest
+    ports:
+      - "11436:11434"
+    volumes:
+      - ollama-1-data:/root/.ollama
+    networks:
+      - mesh
+
+volumes:
+  ollama-0-data:
+  ollama-1-data:
+
+networks:
+  mesh:
+    driver: bridge

@@ -1,0 +1,372 @@
+import { useState, useEffect } from 'react';
+import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay } from 'lucide-react';
+import { Badge } from '../components/Badge';
+import { defaultSettings, configFileYAML } from '../lib/mockData';
+import { fetchSettings, updateSettings } from '../lib/api';
+import type { Settings } from '../types';
+import { useDemoMode } from '../hooks/useDemoMode';
+
+export function SettingsPage() {
+  const { demoMode, setDemoMode } = useDemoMode();
+  const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!demoMode) {
+      fetchSettings()
+        .then(data => {
+          // Map backend config to UI settings format
+          setSettings({
+            proxyPort: data.proxy?.port || 11434,
+            authMode: data.auth?.enabled ? 'api-key' : 'no-auth',
+            liteLLMEnabled: data.litellm?.enabled || false,
+            liteLLMEndpoint: data.litellm?.url || '',
+            pollingInterval: data.routing?.poll_interval_ms || 2000,
+            prometheusEnabled: data.metrics?.enabled || false,
+            prometheusPort: data.metrics?.port || 9090,
+            logLevel: data.proxy?.log_level || 'info'
+          });
+          setError(null);
+        })
+        .catch(err => {
+          setError(err.message || 'Failed to load settings');
+        });
+    } else {
+      setSettings(defaultSettings);
+      setError(null);
+    }
+  }, [demoMode]);
+
+  const handleSave = async () => {
+    if (demoMode) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
+
+    try {
+      // Map UI settings to backend config format
+      const payload = {
+        proxy: { port: settings.proxyPort, log_level: settings.logLevel },
+        auth: { enabled: settings.authMode === 'api-key' },
+        routing: { poll_interval_ms: settings.pollingInterval },
+        metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
+        litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint }
+      };
+      
+      await updateSettings(payload);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save settings');
+    }
+  };
+
+  const copyConfig = async () => {
+    await navigator.clipboard.writeText(configFileYAML);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Configure proxy settings, authentication, and integrations
+          </p>
+        </div>
+        <button
+          onClick={handleSave}
+          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
+        >
+          {saved ? (
+            <>
+              <Check className="w-4 h-4" />
+              Saved
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              Save Changes
+            </>
+          )}
+        </button>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
+          {error}
+        </div>
+      )}
+
+      {/* Demo Mode Toggle */}
+      <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-500/10 rounded-lg">
+              <MonitorPlay className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Demo Mode</h3>
+              <p className="text-xs font-medium text-muted-foreground">Use mock data for testing UI without a real backend</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setDemoMode(!demoMode)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              demoMode ? 'bg-amber-500' : 'bg-muted-foreground/30'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                demoMode ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+        {/* Proxy Settings */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Terminal className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Proxy Configuration</h3>
+              <p className="text-xs font-medium text-muted-foreground">Core proxy server settings</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Proxy Port
+              </label>
+              <input
+                type="number"
+                value={settings.proxyPort}
+                onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">
+                Authentication Mode
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30 cursor-pointer hover:border-primary/40 transition-colors">
+                  <input
+                    type="radio"
+                    name="authMode"
+                    checked={settings.authMode === 'api-key'}
+                    onChange={() => setSettings({ ...settings, authMode: 'api-key' })}
+                    className="accent-primary"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">API Key Authentication</p>
+                    <p className="text-xs text-muted-foreground">Require valid API key for all requests</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30 cursor-pointer hover:border-primary/40 transition-colors">
+                  <input
+                    type="radio"
+                    name="authMode"
+                    checked={settings.authMode === 'no-auth'}
+                    onChange={() => setSettings({ ...settings, authMode: 'no-auth' })}
+                    className="accent-primary"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">No Authentication</p>
+                    <p className="text-xs text-muted-foreground">Allow all requests (development only)</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* LiteLLM Integration */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-blue-500/10 rounded-lg">
+              <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">LiteLLM Integration</h3>
+              <p className="text-xs font-medium text-muted-foreground">Middleware layer configuration</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable LiteLLM</p>
+                <p className="text-xs text-muted-foreground">Route requests through LiteLLM proxy</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, liteLLMEnabled: !settings.liteLLMEnabled })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.liteLLMEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.liteLLMEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {settings.liteLLMEnabled && (
+              <div className="animate-fade-in">
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                  LiteLLM Endpoint URL
+                </label>
+                <input
+                  type="text"
+                  value={settings.liteLLMEndpoint}
+                  onChange={(e) => setSettings({ ...settings, liteLLMEndpoint: e.target.value })}
+                  placeholder="http://localhost:4000"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                /api/ps Polling Interval
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="1000"
+                  max="10000"
+                  step="500"
+                  value={settings.pollingInterval}
+                  onChange={(e) => setSettings({ ...settings, pollingInterval: parseInt(e.target.value) })}
+                  className="flex-1 accent-primary"
+                />
+                <code className="font-mono text-sm font-medium text-primary min-w-[80px]">
+                  {settings.pollingInterval}ms
+                </code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Observability */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-purple-500/10 rounded-lg">
+              <Activity className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Observability</h3>
+              <p className="text-xs font-medium text-muted-foreground">Metrics and logging configuration</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Prometheus Metrics</p>
+                <p className="text-xs text-muted-foreground">Export metrics in Prometheus format</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, prometheusEnabled: !settings.prometheusEnabled })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.prometheusEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.prometheusEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {settings.prometheusEnabled && (
+              <div className="animate-fade-in">
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                  Prometheus Port
+                </label>
+                <input
+                  type="number"
+                  value={settings.prometheusPort}
+                  onChange={(e) => setSettings({ ...settings, prometheusPort: parseInt(e.target.value) })}
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Log Level
+              </label>
+              <select
+                value={settings.logLevel}
+                onChange={(e) => setSettings({ ...settings, logLevel: e.target.value as any })}
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              >
+                <option value="debug">Debug</option>
+                <option value="info">Info</option>
+                <option value="warn">Warning</option>
+                <option value="error">Error</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Config File Preview */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-secondary rounded-lg">
+                <FileText className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Configuration File</h3>
+                <p className="text-xs font-medium text-muted-foreground">Current configuration in YAML format</p>
+              </div>
+            </div>
+            <button
+              onClick={copyConfig}
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="relative">
+            <pre className="font-mono text-sm bg-secondary/30 border border-border rounded-lg p-4 overflow-x-auto text-foreground/80 leading-relaxed">
+              <code>{configFileYAML}</code>
+            </pre>
+            <Badge variant="muted" size="sm" className="absolute top-3 right-3 shadow-sm bg-background">
+              Read-only
+            </Badge>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

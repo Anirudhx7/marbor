@@ -1,0 +1,6 @@
+ollama-mesh
+ollama-mesh.exe
+ui/node_modules/
+internal/admin/web/dist/
+*.exe
+config.yaml
