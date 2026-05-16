@@ -36,9 +36,10 @@ type KeyConfig struct {
 }
 
 type NodeConfig struct {
-	Name     string `yaml:"name" json:"name"`
-	URL      string `yaml:"url" json:"url"`
-	GPUModel string `yaml:"gpu_model" json:"gpu_model"`
+	Name        string `yaml:"name" json:"name"`
+	URL         string `yaml:"url" json:"url"`
+	GPUModel    string `yaml:"gpu_model" json:"gpu_model"`
+	NvidiaIndex int    `yaml:"nvidia_index" json:"nvidia_index"`
 }
 
 type RoutingRule struct {

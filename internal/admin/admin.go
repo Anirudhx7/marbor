@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,8 +45,9 @@ type nodeResp struct {
 	Name          string             `json:"name"`
 	Port          int                `json:"port"`
 	GPUModel      string             `json:"gpuModel"`
-	VRAMTotal     int                `json:"vramTotal"`
-	VRAMUsed      float64            `json:"vramUsed"`
+	VRAMTotalMB   int64              `json:"vramTotalMB"`
+	VRAMUsedMB    int64              `json:"vramUsedMB"`
+	PowerDrawW    float64            `json:"powerDrawW"`
 	CPUPercent    float64            `json:"cpuPercent"`
 	Temperature   *float64           `json:"temperature"`
 	Health        string             `json:"health"`
@@ -147,7 +150,8 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
-		if !strings.Contains(authHeader, s.adminToken) {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != s.adminToken {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error":"unauthorized"}`))
@@ -162,9 +166,9 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	out := make([]nodeResp, len(nodes))
 	for i, n := range nodes {
 		n.RLock()
-		port := 11434 + i // derive from index for demo; in production parse from URL
-		if i == 2 {
-			port = 11436
+		port := 0
+		if u, err := url.Parse(n.URL); err == nil {
+			port, _ = strconv.Atoi(u.Port())
 		}
 		health := "healthy"
 		if !n.Healthy {
@@ -182,12 +186,13 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out[i] = nodeResp{
-			ID:            fmt.Sprintf("gpu-%d", i),
-			Name:          n.Name,
-			Port:          port,
-			GPUModel:      n.GPUModel,
-			VRAMTotal:     24, // TODO: read from node info
-			VRAMUsed:      float64(len(n.LoadedModels))*4.0 + 2.0, // rough mock
+			ID:          fmt.Sprintf("gpu-%d", i),
+			Name:        n.Name,
+			Port:        port,
+			GPUModel:    n.GPUModel,
+			VRAMTotalMB: n.VRAMTotalMB,
+			VRAMUsedMB:  n.VRAMUsedMB,
+			PowerDrawW:  n.PowerDrawW,
 			CPUPercent:    n.CPUPercent,
 			Temperature:   n.Temperature,
 			Health:        health,
@@ -206,21 +211,24 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 	out := make([]keyResp, 0, len(s.cfg.Auth.Keys))
 	for i, k := range s.cfg.Auth.Keys {
 		status := "active"
-		today, month, models, expires, rateLimit, ok := 0, 0, []string(nil), "", k.RateLimit, false
+		today, month, models, expires, rateLimit, createdAt, ok := 0, 0, []string(nil), "", k.RateLimit, time.Time{}, false
 		if s.auth != nil {
-			today, month, models, expires, rateLimit, ok = s.auth.KeyStats(k.Name)
+			today, month, models, expires, rateLimit, createdAt, ok = s.auth.KeyStats(k.Name)
 		}
 		if !ok {
-			// Fallback to config values if auth middleware not available
 			models = k.Models
 			expires = k.ExpiresAt
 			rateLimit = k.RateLimit
+		}
+		created := ""
+		if !createdAt.IsZero() {
+			created = createdAt.Format(time.RFC3339)
 		}
 		out = append(out, keyResp{
 			ID:                fmt.Sprintf("key-%d", i+1),
 			Name:              k.Name,
 			Key:               k.Key,
-			Created:           "2024-01-15", // TODO: track creation time
+			Created:           created,
 			RequestsToday:     today,
 			RequestsThisMonth: month,
 			RateLimit:         rateLimit,

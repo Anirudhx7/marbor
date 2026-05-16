@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -16,13 +15,15 @@ import (
 )
 
 type ModelInfo struct {
-	Name string `json:"name"`
+	Name     string `json:"name"`
+	SizeVRAM int64  `json:"sizeVram"`
 }
 
 type NodeState struct {
 	Name          string
 	URL           string
 	GPUModel      string
+	NvidiaIndex   int
 	LoadedModels  []ModelInfo
 	ActiveConns   int32
 	Healthy       bool
@@ -30,6 +31,9 @@ type NodeState struct {
 	Failures      int
 	CPUPercent    float64
 	Temperature   *float64
+	VRAMTotalMB   int64
+	VRAMUsedMB    int64
+	PowerDrawW    float64
 	Uptime        string
 	HealthHistory []float64
 	FirstSeenAt   time.Time
@@ -54,6 +58,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig) *Router {
 			Name:        n.Name,
 			URL:         n.URL,
 			GPUModel:    n.GPUModel,
+			NvidiaIndex: n.NvidiaIndex,
 			Healthy:     true,
 			FirstSeenAt: time.Now(),
 		}
@@ -176,27 +181,22 @@ func (r *Router) pollNode(n *NodeState) {
 		return
 	}
 
-	// Mock CPU / temp (replace with nvidia-smi integration in production)
-	cpu := 30.0 + rand.Float64()*20.0
-	var temp *float64
-	if n.GPUModel != "" {
-		t := 55.0 + rand.Float64()*15.0
-		temp = &t
-	}
+	gpu, hasGPU := queryGPU(n.NvidiaIndex)
 
 	n.mu.Lock()
 	n.LoadedModels = ps.Models
 	n.Healthy = true
 	n.Failures = 0
 	n.LastPollAt = time.Now()
-	n.CPUPercent = cpu
-	if temp != nil {
-		n.Temperature = temp
-	}
 	n.Uptime = formatUptime(time.Since(n.FirstSeenAt))
-	// Health history: 60-point sparkline
-	healthScore := 85.0 + rand.Float64()*15.0
-	n.HealthHistory = append(n.HealthHistory, healthScore)
+	if hasGPU {
+		n.VRAMTotalMB = gpu.VRAMTotalMB
+		n.VRAMUsedMB = gpu.VRAMUsedMB
+		n.PowerDrawW = gpu.PowerDrawW
+		temp := gpu.TempCelsius
+		n.Temperature = &temp
+	}
+	n.HealthHistory = append(n.HealthHistory, 100.0)
 	if len(n.HealthHistory) > 60 {
 		n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
 	}
@@ -220,7 +220,7 @@ func (r *Router) markFailure(n *NodeState) {
 		n.Healthy = false
 		metrics.NodeHealthy(n.Name, 0)
 	}
-	healthScore := rand.Float64() * 10.0 // near-zero health on failure
+	healthScore := 0.0
 	n.HealthHistory = append(n.HealthHistory, healthScore)
 	if len(n.HealthHistory) > 60 {
 		n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
@@ -294,6 +294,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		Name:        n.Name,
 		URL:         n.URL,
 		GPUModel:    n.GPUModel,
+		NvidiaIndex: n.NvidiaIndex,
 		Healthy:     true,
 		FirstSeenAt: time.Now(),
 	}

@@ -255,14 +255,14 @@ export function Dashboard() {
               </div>
               
               <div className="mb-4">
-                <VramBar used={node.vramUsed} total={node.vramTotal} size="sm" />
+                <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} size="sm" />
               </div>
               
               <div className="flex flex-wrap gap-1.5">
                 {node.loadedModels.map((model) => (
-                  <Badge 
-                    key={model.name} 
-                    variant={model.status === 'warm' ? 'success' : 'muted'}
+                  <Badge
+                    key={model.name}
+                    variant="success"
                     size="sm"
                   >
                     {model.name}

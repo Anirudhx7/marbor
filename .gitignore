@@ -4,3 +4,4 @@ ui/node_modules/
 internal/admin/web/dist/
 *.exe
 config.yaml
+CLAUDE.md

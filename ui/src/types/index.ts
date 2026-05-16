@@ -3,8 +3,9 @@ export interface GPUNode {
   name: string;
   gpuModel: string;
   port: number;
-  vramTotal: number;
-  vramUsed: number;
+  vramTotalMB: number;
+  vramUsedMB: number;
+  powerDrawW: number;
   cpuPercent: number;
   temperature: number | null;
   health: 'healthy' | 'degraded' | 'down';
@@ -15,8 +16,7 @@ export interface GPUNode {
 
 export interface LoadedModel {
   name: string;
-  vramUsed: number;
-  status: 'warm' | 'cold';
+  sizeVram: number;
 }
 
 export interface LiveRequest {

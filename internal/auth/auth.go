@@ -15,6 +15,7 @@ type contextKey string
 const KeyNameContextKey contextKey = "key_name"
 
 type Middleware struct {
+	mu      sync.RWMutex
 	enabled bool
 	keys    map[string]*keyState
 	byName  map[string]*keyState
@@ -28,6 +29,7 @@ type keyState struct {
 	counter   *keyCounter
 	models    []string
 	expiresAt string
+	createdAt time.Time
 }
 
 type keyCounter struct {
@@ -116,6 +118,7 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 				counter:   &keyCounter{lastReset: time.Now()},
 				models:    k.Models,
 				expiresAt: k.ExpiresAt,
+				createdAt: time.Now(),
 			}
 			m.keys[k.Key] = ks
 			m.byName[k.Name] = ks
@@ -133,12 +136,17 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 		counter:   &keyCounter{lastReset: time.Now()},
 		models:    k.Models,
 		expiresAt: k.ExpiresAt,
+		createdAt: time.Now(),
 	}
+	m.mu.Lock()
 	m.keys[k.Key] = ks
 	m.byName[k.Name] = ks
+	m.mu.Unlock()
 }
 
 func (m *Middleware) RevokeKey(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	ks, ok := m.byName[name]
 	if !ok {
 		return
@@ -168,7 +176,9 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			return
 		}
 		token := parts[1]
+		m.mu.RLock()
 		ks, ok := m.keys[token]
+		m.mu.RUnlock()
 		if !ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -192,16 +202,20 @@ func KeyNameFromContext(ctx context.Context) string {
 	return v
 }
 
-func (m *Middleware) KeyStats(name string) (today, month int, models []string, expiresAt string, rateLimit int, ok bool) {
+func (m *Middleware) KeyStats(name string) (today, month int, models []string, expiresAt string, rateLimit int, createdAt time.Time, ok bool) {
+	m.mu.RLock()
 	ks, ok := m.byName[name]
+	m.mu.RUnlock()
 	if !ok {
-		return 0, 0, nil, "", 0, false
+		return 0, 0, nil, "", 0, time.Time{}, false
 	}
 	today, month = ks.counter.stats()
-	return today, month, ks.models, ks.expiresAt, ks.rateLimit, true
+	return today, month, ks.models, ks.expiresAt, ks.rateLimit, ks.createdAt, true
 }
 
 func (m *Middleware) AllKeyNames() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	out := make([]string, 0, len(m.byName))
 	for name := range m.byName {
 		out = append(out, name)

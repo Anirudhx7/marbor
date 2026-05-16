@@ -68,7 +68,7 @@ function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) 
 
       {/* VRAM */}
       <div className="mb-4">
-        <VramBar used={node.vramUsed} total={node.vramTotal} />
+        <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} />
       </div>
 
       {/* Health History */}
@@ -99,14 +99,14 @@ function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) 
         <p className="text-xs font-medium text-muted-foreground mb-2">Loaded Models</p>
         <div className="flex flex-wrap gap-1.5">
           {node.loadedModels.map((model) => (
-            <Badge 
+            <Badge
               key={model.name}
-              variant={model.status === 'warm' ? 'success' : 'muted'}
+              variant="success"
               size="sm"
             >
               {model.name}
               <span className="ml-1.5 opacity-70 font-mono">
-                {model.vramUsed.toFixed(1)}GB
+                {(model.sizeVram / 1024 / 1024 / 1024).toFixed(1)}GB
               </span>
             </Badge>
           ))}
@@ -184,8 +184,9 @@ export function GPUNodes() {
         name: newNode.name,
         gpuModel: newNode.gpuModel || 'Unknown GPU',
         port: parseInt(newNode.port),
-        vramTotal: 24,
-        vramUsed: 0,
+        vramTotalMB: 0,
+        vramUsedMB: 0,
+        powerDrawW: 0,
         cpuPercent: 0,
         temperature: null,
         health: 'healthy',
