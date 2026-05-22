@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
+	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
@@ -50,9 +51,20 @@ func main() {
 	defer cancel()
 	go r.Start(ctx)
 
+	auditLog, err := audit.New(func() string {
+		if cfg.Audit.Enabled {
+			return cfg.Audit.Path
+		}
+		return ""
+	}())
+	if err != nil {
+		log.Fatalf("audit log: %v", err)
+	}
+	defer auditLog.Close()
+
 	adminSrv := admin.NewServer(r, authMw, *cfg)
 
-	proxyHandler := proxy.NewHandler(r, adminSrv)
+	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	wrapped := authMw.Handler(proxyHandler)
 
 	proxySrv := &http.Server{

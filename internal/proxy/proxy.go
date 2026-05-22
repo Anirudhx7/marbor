@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
+	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
@@ -20,15 +23,24 @@ import (
 type Handler struct {
 	router *router.Router
 	admin  *admin.Server
+	audit  *audit.Logger
 }
 
-func NewHandler(r *router.Router, a *admin.Server) *Handler {
-	return &Handler{router: r, admin: a}
+func NewHandler(r *router.Router, a *admin.Server, al *audit.Logger) *Handler {
+	return &Handler{router: r, admin: a, audit: al}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	keyName := auth.KeyNameFromContext(r.Context())
+
+	// Generate request ID for tracing
+	var requestID string
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err == nil {
+		requestID = hex.EncodeToString(b)
+	}
+	w.Header().Set("X-Request-ID", requestID)
 
 	var body []byte
 	if r.Body != nil {
@@ -48,7 +60,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if node == nil {
 		cloud := h.router.RouteCloud()
 		if cloud != nil {
-			h.proxyToCloud(w, r, body, modelName, keyName, start, cloud)
+			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, cloud)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -117,9 +129,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.admin.LogRequest(keyName, modelName, node.Name, status, latencyMs)
 		h.admin.TrackLocalRequest()
 	}
+	if h.audit != nil {
+		h.audit.Log(audit.Entry{
+			Time:      time.Now(),
+			RequestID: requestID,
+			KeyName:   keyName,
+			Model:     modelName,
+			Node:      node.Name,
+			Status:    status,
+			LatencyMs: latencyMs,
+			Cloud:     false,
+		})
+	}
 }
 
-func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName string, start time.Time, cloud *config.CloudProvider) {
+func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, cloud *config.CloudProvider) {
 	path := translateCloudPath(r.URL.Path)
 
 	outBody := body
@@ -168,6 +192,18 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		latencyMs := int(time.Since(start).Milliseconds())
 		h.admin.LogRequest(keyName, modelName, nodeName, "cloud", latencyMs)
 		h.admin.TrackCloudCost(cloud.CostPer1KTokens)
+	}
+	if h.audit != nil {
+		h.audit.Log(audit.Entry{
+			Time:      time.Now(),
+			RequestID: requestID,
+			KeyName:   keyName,
+			Model:     modelName,
+			Node:      nodeName,
+			Status:    "cloud",
+			LatencyMs: int(time.Since(start).Milliseconds()),
+			Cloud:     true,
+		})
 	}
 }
 

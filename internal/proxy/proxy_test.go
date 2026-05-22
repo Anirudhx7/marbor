@@ -23,7 +23,7 @@ func TestProxyNoHealthyNodes(t *testing.T) {
 		n.Unlock()
 	}
 	a := admin.NewServer(r, nil, config.Config{})
-	h := NewHandler(r, a)
+	h := NewHandler(r, a, nil)
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"llama3.2:8b"}`)))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -105,7 +105,7 @@ func TestProxyFallsBackToCloud(t *testing.T) {
 	}
 
 	a := admin.NewServer(r, nil, config.Config{})
-	h := NewHandler(r, a)
+	h := NewHandler(r, a, nil)
 	req := httptest.NewRequest("POST", "/api/chat", bytes.NewReader([]byte(`{"model":"llama3.2:8b","messages":[]}`)))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -132,7 +132,7 @@ func TestProxyNoFallbackWhenCloudDisabled(t *testing.T) {
 	}
 
 	a := admin.NewServer(r, nil, config.Config{})
-	h := NewHandler(r, a)
+	h := NewHandler(r, a, nil)
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"llama3.2:8b"}`)))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -151,7 +151,7 @@ func TestProxyExtractAndRoute(t *testing.T) {
 	r.Nodes()[0].Unlock()
 
 	a := admin.NewServer(r, nil, config.Config{})
-	h := NewHandler(r, a)
+	h := NewHandler(r, a, nil)
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"llama3.2:8b"}`)))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

@@ -17,6 +17,12 @@ type Config struct {
 	LiteLLM        LiteLLMConfig   `yaml:"litellm"`
 	CloudProviders []CloudProvider `yaml:"cloud_providers" json:"cloud_providers"`
 	Docker         DockerConfig    `yaml:"docker" json:"docker"`
+	Audit          AuditConfig     `yaml:"audit" json:"audit"`
+}
+
+type AuditConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Path    string `yaml:"path" json:"path"`
 }
 
 type DockerConfig struct {
@@ -156,6 +162,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Docker.PollIntervalMs == 0 {
 		c.Docker.PollIntervalMs = 30000
+	}
+
+	if c.Audit.Path == "" {
+		c.Audit.Path = "audit.log"
 	}
 
 	if c.LiteLLM.Enabled && c.LiteLLM.URL == "" {
