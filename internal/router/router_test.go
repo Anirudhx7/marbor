@@ -14,7 +14,7 @@ func TestRouteWarmFirst(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "RTX 4090"},
 		{Name: "gpu-1", URL: "http://localhost:2", GPUModel: "RTX 4090"},
-	})
+	}, nil)
 	r.nodes[0].mu.Lock()
 	r.nodes[0].LoadedModels = []ModelInfo{{Name: "llama3.2:8b"}}
 	r.nodes[0].Healthy = true
@@ -54,7 +54,7 @@ func TestExtractModelName(t *testing.T) {
 func TestAllUnhealthy(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "V100"},
-	})
+	}, nil)
 	r.nodes[0].mu.Lock()
 	r.nodes[0].Healthy = false
 	r.nodes[0].mu.Unlock()
@@ -68,7 +68,7 @@ func TestWarmFirstPicksLeastConns(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "RTX 4090"},
 		{Name: "gpu-1", URL: "http://localhost:2", GPUModel: "RTX 4090"},
-	})
+	}, nil)
 	model := []ModelInfo{{Name: "llama3.2:8b"}}
 	r.nodes[0].mu.Lock()
 	r.nodes[0].LoadedModels = model
@@ -111,7 +111,7 @@ func TestPollNodeWithMockServer(t *testing.T) {
 
 	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: srv.URL, GPUModel: "RTX 4090"},
-	})
+	}, nil)
 
 	r.pollNode(r.nodes[0])
 
@@ -143,7 +143,7 @@ func TestPollNodeMarksUnhealthyOnFailure(t *testing.T) {
 
 	r := New(config.RoutingConfig{PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: srv.URL},
-	})
+	}, nil)
 
 	// 3 failures needed to mark unhealthy
 	r.pollNode(r.nodes[0])
@@ -163,6 +163,63 @@ func TestPollNodeMarksUnhealthyOnFailure(t *testing.T) {
 	}
 }
 
+func TestRouteCloudNilWhenNoProviders(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	if got := r.RouteCloud(); got != nil {
+		t.Errorf("RouteCloud() = %v, want nil when no providers", got)
+	}
+}
+
+func TestRouteCloudNilWhenDisabled(t *testing.T) {
+	clouds := []config.CloudProvider{
+		{Name: "openai", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-test", Enabled: false},
+	}
+	r := New(config.RoutingConfig{}, []config.NodeConfig{}, clouds)
+	if got := r.RouteCloud(); got != nil {
+		t.Errorf("RouteCloud() = %v, want nil when provider disabled", got)
+	}
+}
+
+func TestRouteCloudReturnsFirstEnabled(t *testing.T) {
+	clouds := []config.CloudProvider{
+		{Name: "disabled-one", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-a", Enabled: false},
+		{Name: "enabled-one", Provider: "anthropic", BaseURL: "https://api.anthropic.com", APIKey: "sk-b", Enabled: true},
+		{Name: "enabled-two", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-c", Enabled: true},
+	}
+	r := New(config.RoutingConfig{}, []config.NodeConfig{}, clouds)
+	got := r.RouteCloud()
+	if got == nil {
+		t.Fatal("RouteCloud() = nil, want first enabled provider")
+	}
+	if got.Name != "enabled-one" {
+		t.Errorf("RouteCloud().Name = %q, want enabled-one", got.Name)
+	}
+}
+
+func TestRouteCloudFallsBackWhenAllNodesUnhealthy(t *testing.T) {
+	clouds := []config.CloudProvider{
+		{Name: "openai", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-test", Enabled: true},
+	}
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "V100"},
+	}, clouds)
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = false
+	r.nodes[0].mu.Unlock()
+
+	node, _ := r.Route("llama3.2:8b")
+	if node != nil {
+		t.Error("Route() should return nil when all nodes unhealthy")
+	}
+	cloud := r.RouteCloud()
+	if cloud == nil {
+		t.Fatal("RouteCloud() = nil, want enabled provider as fallback")
+	}
+	if cloud.Name != "openai" {
+		t.Errorf("RouteCloud().Name = %q, want openai", cloud.Name)
+	}
+}
+
 func TestPollNodeUptime(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{"models": []interface{}{}})
@@ -171,7 +228,7 @@ func TestPollNodeUptime(t *testing.T) {
 
 	r := New(config.RoutingConfig{PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: srv.URL},
-	})
+	}, nil)
 	r.nodes[0].FirstSeenAt = time.Now().Add(-2 * time.Hour)
 
 	r.pollNode(r.nodes[0])

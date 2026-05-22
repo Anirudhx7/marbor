@@ -40,3 +40,22 @@ metrics:
 litellm:
   enabled: false
   url: http://localhost:4000
+
+# Cloud fallback: when all local Ollama nodes are busy or down,
+# requests fall back to these providers in order.
+# Set enabled: false to disable without removing the config.
+cloud_providers:
+  - name: openai-fallback
+    provider: openai
+    base_url: https://api.openai.com
+    api_key: sk-...
+    default_model: gpt-4o-mini
+    cost_per_1k_tokens: 0.00015
+    enabled: false
+  - name: anthropic-fallback
+    provider: anthropic
+    base_url: https://api.anthropic.com
+    api_key: sk-ant-...
+    default_model: claude-haiku-4-5-20251001
+    cost_per_1k_tokens: 0.00025
+    enabled: false

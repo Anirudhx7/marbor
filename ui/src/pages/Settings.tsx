@@ -1,17 +1,33 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay } from 'lucide-react';
+import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud } from 'lucide-react';
 import { Badge } from '../components/Badge';
-import { defaultSettings, configFileYAML } from '../lib/mockData';
-import { fetchSettings, updateSettings } from '../lib/api';
-import type { Settings } from '../types';
+import { StatusDot } from '../components/StatusDot';
+import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
+import { fetchSettings, updateSettings, getCloudProviders } from '../lib/api';
+import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
 export function SettingsPage() {
   const { demoMode, setDemoMode } = useDemoMode();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>(demoMode ? mockCloudProviders : []);
+  const [cloudLoading, setCloudLoading] = useState(!demoMode);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (demoMode) {
+      setCloudProviders(mockCloudProviders);
+      setCloudLoading(false);
+      return;
+    }
+    setCloudLoading(true);
+    getCloudProviders()
+      .then(data => setCloudProviders(data || []))
+      .catch(() => setCloudProviders([]))
+      .finally(() => setCloudLoading(false));
+  }, [demoMode]);
 
   useEffect(() => {
     if (!demoMode) {
@@ -325,6 +341,51 @@ export function SettingsPage() {
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Cloud Providers */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-sky-500/10 rounded-lg">
+              <Cloud className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Cloud Providers</h3>
+              <p className="text-xs font-medium text-muted-foreground">Fallback cloud endpoints - configure in config.yaml</p>
+            </div>
+          </div>
+
+          {cloudLoading ? (
+            <div className="space-y-3">
+              {[1, 2].map(i => (
+                <div key={i} className="h-14 bg-secondary/30 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : cloudProviders.length === 0 ? (
+            <div className="py-8 text-center text-sm font-medium text-muted-foreground">
+              No cloud providers configured
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {cloudProviders.map(provider => (
+                <div key={provider.name} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                  <div className="flex items-center gap-3">
+                    <StatusDot status={provider.enabled ? 'online' : 'offline'} size="sm" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{provider.name}</p>
+                      <p className="text-xs font-medium text-muted-foreground">{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
+                    </div>
+                  </div>
+                  <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
+                    {provider.provider}
+                  </Badge>
+                </div>
+              ))}
+              <p className="text-xs font-medium text-muted-foreground pt-1">
+                To add or remove providers, edit config.yaml and restart.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Config File Preview */}

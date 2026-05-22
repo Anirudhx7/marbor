@@ -22,12 +22,15 @@ import (
 var webFS embed.FS
 
 type Server struct {
-	router     *router.Router
-	auth       *auth.Middleware
-	cfg        config.Config
-	adminToken string
-	mu         sync.RWMutex
-	requests   []RequestLog
+	router       *router.Router
+	auth         *auth.Middleware
+	cfg          config.Config
+	adminToken   string
+	mu           sync.RWMutex
+	requests     []RequestLog
+	localCount   int64   // atomic - requests served by local nodes
+	cloudCount   int64   // atomic - requests forwarded to cloud
+	cloudSpentUSD float64 // protected by mu
 }
 
 type RequestLog struct {
@@ -104,6 +107,8 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
 	mux.HandleFunc("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
+	mux.HandleFunc("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
+	mux.HandleFunc("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
 
 	if sub, err := fs.Sub(webFS, "web/dist"); err == nil {
 		mux.Handle("/assets/", s.noCache(http.FileServer(http.FS(sub))))
@@ -383,4 +388,63 @@ func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int) {
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
 	}
+}
+
+func (s *Server) TrackLocalRequest() {
+	atomic.AddInt64(&s.localCount, 1)
+}
+
+func (s *Server) TrackCloudCost(costPer1KTokens float64) {
+	atomic.AddInt64(&s.cloudCount, 1)
+	// Estimate 500 tokens per request as baseline for cost calculation
+	cost := costPer1KTokens * 500.0 / 1000.0
+	s.mu.Lock()
+	s.cloudSpentUSD += cost
+	s.mu.Unlock()
+}
+
+func (s *Server) handleSavings(w http.ResponseWriter, r *http.Request) {
+	local := atomic.LoadInt64(&s.localCount)
+	cloud := atomic.LoadInt64(&s.cloudCount)
+	s.mu.RLock()
+	cloudSpent := s.cloudSpentUSD
+	s.mu.RUnlock()
+
+	// Savings = what local requests would have cost at reference cloud rate
+	// Using $0.002 per 1K tokens with 500 token average per request
+	const refCostPer1K = 0.002
+	savedUSD := float64(local) * refCostPer1K * 500.0 / 1000.0
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"local_requests":   local,
+		"cloud_requests":   cloud,
+		"cloud_spent_usd":  cloudSpent,
+		"saved_usd":        savedUSD,
+		"total_requests":   local + cloud,
+	})
+}
+
+func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
+	type providerResp struct {
+		Name            string  `json:"name"`
+		Provider        string  `json:"provider"`
+		BaseURL         string  `json:"base_url"`
+		DefaultModel    string  `json:"default_model"`
+		CostPer1KTokens float64 `json:"cost_per_1k_tokens"`
+		Enabled         bool    `json:"enabled"`
+	}
+	out := make([]providerResp, 0, len(s.cfg.CloudProviders))
+	for _, cp := range s.cfg.CloudProviders {
+		out = append(out, providerResp{
+			Name:            cp.Name,
+			Provider:        cp.Provider,
+			BaseURL:         cp.BaseURL,
+			DefaultModel:    cp.DefaultModel,
+			CostPer1KTokens: cp.CostPer1KTokens,
+			Enabled:         cp.Enabled,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }

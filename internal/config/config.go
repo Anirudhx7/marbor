@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	Proxy   ProxyConfig   `yaml:"proxy"`
-	Auth    AuthConfig    `yaml:"auth"`
-	Nodes   []NodeConfig  `yaml:"nodes"`
-	Routing RoutingConfig `yaml:"routing"`
-	Metrics MetricsConfig `yaml:"metrics"`
-	LiteLLM LiteLLMConfig `yaml:"litellm"`
+	Proxy          ProxyConfig     `yaml:"proxy"`
+	Auth           AuthConfig      `yaml:"auth"`
+	Nodes          []NodeConfig    `yaml:"nodes"`
+	Routing        RoutingConfig   `yaml:"routing"`
+	Metrics        MetricsConfig   `yaml:"metrics"`
+	LiteLLM        LiteLLMConfig   `yaml:"litellm"`
+	CloudProviders []CloudProvider `yaml:"cloud_providers" json:"cloud_providers"`
 }
 
 type ProxyConfig struct {
@@ -66,6 +67,16 @@ type MetricsConfig struct {
 type LiteLLMConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
 	URL     string `yaml:"url" json:"url"`
+}
+
+type CloudProvider struct {
+	Name            string  `yaml:"name" json:"name"`
+	Provider        string  `yaml:"provider" json:"provider"` // openai, anthropic, groq, together
+	BaseURL         string  `yaml:"base_url" json:"base_url"`
+	APIKey          string  `yaml:"api_key" json:"api_key"`
+	DefaultModel    string  `yaml:"default_model" json:"default_model"`
+	CostPer1KTokens float64 `yaml:"cost_per_1k_tokens" json:"cost_per_1k_tokens"`
+	Enabled         bool    `yaml:"enabled" json:"enabled"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -135,6 +146,12 @@ func (c *Config) Validate() error {
 
 	if c.LiteLLM.Enabled && c.LiteLLM.URL == "" {
 		return fmt.Errorf("litellm URL required when enabled")
+	}
+
+	for i, cp := range c.CloudProviders {
+		if cp.Enabled && (cp.BaseURL == "" || cp.APIKey == "") {
+			return fmt.Errorf("cloud provider %d (%s) requires base_url and api_key when enabled", i, cp.Name)
+		}
 	}
 
 	return nil

@@ -41,7 +41,7 @@ func main() {
 
 	authMw := auth.NewMiddleware(cfg.Auth)
 
-	r := router.New(cfg.Routing, cfg.Nodes)
+	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go r.Start(ctx)

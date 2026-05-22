@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings } from '../types';
+import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider } from '../types';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -242,6 +242,33 @@ export const defaultSettings: Settings = {
   prometheusPort: 9090,
   logLevel: 'info',
 };
+
+export const mockSavings: Savings = {
+  local_requests: 342567,
+  cloud_requests: 12453,
+  cloud_spent_usd: 48.72,
+  saved_usd: 284.15,
+  total_requests: 355020,
+};
+
+export const mockCloudProviders: CloudProvider[] = [
+  {
+    name: 'openai-gpt4o',
+    provider: 'openai',
+    base_url: 'https://api.openai.com/v1',
+    default_model: 'gpt-4o',
+    cost_per_1k_tokens: 0.005,
+    enabled: true,
+  },
+  {
+    name: 'anthropic-claude',
+    provider: 'anthropic',
+    base_url: 'https://api.anthropic.com/v1',
+    default_model: 'claude-3-5-sonnet-20241022',
+    cost_per_1k_tokens: 0.003,
+    enabled: false,
+  },
+];
 
 export const configFileYAML = `# Ollama-Mesh Configuration
 # Generated: ${new Date().toISOString()}

@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider } from '../types';
 
 const BASE = '/admin';
 
@@ -116,6 +116,18 @@ export async function setRoutingStrategy(strategy: string) {
 export async function fetchSettings() {
   const res = await fetch(`${BASE}/settings`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch settings');
+  return res.json();
+}
+
+export async function getSavings(): Promise<Savings> {
+  const res = await fetch(`${BASE}/metrics/savings`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch savings');
+  return res.json();
+}
+
+export async function getCloudProviders(): Promise<CloudProvider[]> {
+  const res = await fetch(`${BASE}/cloud/providers`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch cloud providers');
   return res.json();
 }
 

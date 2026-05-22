@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  Clock, 
-  Zap, 
+import {
+  Activity,
+  Clock,
+  Zap,
   Server,
   ArrowRight,
   Shield,
@@ -10,15 +10,16 @@ import {
   Database,
   CheckCircle,
   AlertCircle,
-  XCircle
+  XCircle,
+  DollarSign
 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
 import { useLiveRequests } from '../hooks/useLiveRequests';
-import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, fetchSummary } from '../lib/api';
-import { GPUNode } from '../types';
+import { mockGPUNodes, mockSavings } from '../lib/mockData';
+import { fetchNodes, fetchSummary, getSavings } from '../lib/api';
+import { GPUNode, Savings } from '../types';
 
 interface MetricCardProps {
   title: string;
@@ -52,6 +53,58 @@ function MetricCard({ title, value, unit, icon, trend, trendUp }: MetricCardProp
           <span className="text-muted-foreground">vs last hour</span>
         </div>
       )}
+    </div>
+  );
+}
+
+interface SavingsCardProps {
+  savings: Savings | null;
+  loading: boolean;
+}
+
+function SavingsCard({ savings, loading }: SavingsCardProps) {
+  const localPct = savings && savings.total_requests > 0
+    ? Math.round((savings.local_requests / savings.total_requests) * 100)
+    : 0;
+  const cloudPct = 100 - localPct;
+
+  return (
+    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs Cloud</p>
+          <div className="flex items-baseline gap-1">
+            {loading ? (
+              <span className="text-2xl font-bold text-foreground animate-pulse">--</span>
+            ) : savings ? (
+              <span className="text-2xl font-bold text-success">
+                ${savings.saved_usd.toFixed(2)}
+              </span>
+            ) : (
+              <span className="text-2xl font-bold text-muted-foreground">--</span>
+            )}
+          </div>
+          {savings && !loading ? (
+            <p className="text-xs font-medium text-muted-foreground mt-0.5">
+              {savings.local_requests.toLocaleString()} local / {savings.cloud_requests.toLocaleString()} cloud
+            </p>
+          ) : (
+            <p className="text-xs font-medium text-muted-foreground mt-0.5">local / cloud requests</p>
+          )}
+        </div>
+        <div className="p-2 bg-success/10 rounded-lg text-success">
+          <DollarSign className="w-5 h-5" />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-xs font-medium">
+        <span className="text-success">
+          Local {loading || !savings ? '--' : `${localPct}%`}
+        </span>
+        <span className="text-muted-foreground">/</span>
+        <span className="text-amber-500">
+          Cloud {loading || !savings ? '--' : `${cloudPct}%`}
+        </span>
+      </div>
     </div>
   );
 }
@@ -108,6 +161,8 @@ export function Dashboard() {
     tokensPerMin: 0,
     coldStarts: 0
   });
+  const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
+  const [savingsLoading, setSavingsLoading] = useState(!demoMode);
   const [isLive, setIsLive] = useState(!demoMode);
   const [error, setError] = useState<string | null>(null);
   const [prometheusStatus] = useState('connected');
@@ -117,6 +172,8 @@ export function Dashboard() {
     const loadData = async () => {
       if (demoMode) {
         setNodes(mockGPUNodes);
+        setSavings(mockSavings);
+        setSavingsLoading(false);
         setIsLive(false);
         setError(null);
         return;
@@ -138,6 +195,24 @@ export function Dashboard() {
     };
     loadData();
     const interval = setInterval(loadData, 10000);
+    return () => clearInterval(interval);
+  }, [demoMode]);
+
+  useEffect(() => {
+    const loadSavings = async () => {
+      if (demoMode) return;
+      setSavingsLoading(true);
+      try {
+        const data = await getSavings();
+        setSavings(data);
+      } catch {
+        setSavings(null);
+      } finally {
+        setSavingsLoading(false);
+      }
+    };
+    loadSavings();
+    const interval = setInterval(loadSavings, 5000);
     return () => clearInterval(interval);
   }, [demoMode]);
 
@@ -182,7 +257,7 @@ export function Dashboard() {
       )}
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           title="Active Requests"
           value={displayActive.toString()}
@@ -213,6 +288,7 @@ export function Dashboard() {
           trend="5.2%"
           trendUp={false}
         />
+        <SavingsCard savings={savings} loading={savingsLoading} />
       </div>
 
       <ArchitectureDiagram />

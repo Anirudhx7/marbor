@@ -49,9 +49,10 @@ type Router struct {
 	mu         sync.RWMutex
 	roundRobin uint32
 	rules      []config.RoutingRule
+	clouds     []config.CloudProvider
 }
 
-func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig) *Router {
+func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
 	nodes := make([]*NodeState, len(nodesCfg))
 	for i, n := range nodesCfg {
 		nodes[i] = &NodeState{
@@ -63,6 +64,8 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig) *Router {
 			FirstSeenAt: time.Now(),
 		}
 	}
+	cloudsCopy := make([]config.CloudProvider, len(clouds))
+	copy(cloudsCopy, clouds)
 	return &Router{
 		nodes:    nodes,
 		strategy: cfg.Strategy,
@@ -70,6 +73,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig) *Router {
 		interval: time.Duration(cfg.PollIntervalMs) * time.Millisecond,
 		client:   &http.Client{Timeout: 5 * time.Second},
 		rules:    cfg.Rules,
+		clouds:   cloudsCopy,
 	}
 }
 
@@ -111,6 +115,25 @@ func (r *Router) SetStrategy(strategy string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.strategy = strategy
+}
+
+// RouteCloud returns the first enabled cloud provider as fallback when no local nodes are available.
+func (r *Router) RouteCloud() *config.CloudProvider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for i := range r.clouds {
+		if r.clouds[i].Enabled {
+			return &r.clouds[i]
+		}
+	}
+	return nil
+}
+
+func (r *Router) SetClouds(providers []config.CloudProvider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.clouds = make([]config.CloudProvider, len(providers))
+	copy(r.clouds, providers)
 }
 
 func (n *NodeState) Lock() {

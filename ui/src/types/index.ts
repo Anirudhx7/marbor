@@ -81,3 +81,20 @@ export interface Settings {
   prometheusPort: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
 }
+
+export interface Savings {
+  local_requests: number;
+  cloud_requests: number;
+  cloud_spent_usd: number;
+  saved_usd: number;
+  total_requests: number;
+}
+
+export interface CloudProvider {
+  name: string;
+  provider: string;
+  base_url: string;
+  default_model: string;
+  cost_per_1k_tokens: number;
+  enabled: boolean;
+}
