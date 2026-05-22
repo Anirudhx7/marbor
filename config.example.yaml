@@ -41,6 +41,13 @@ litellm:
   enabled: false
   url: http://localhost:4000
 
+# Docker auto-discovery: automatically detects running ollama/ollama containers
+# and registers them as nodes. Zero-config for Docker Compose setups.
+docker:
+  enabled: false
+  socket: /var/run/docker.sock
+  poll_interval_ms: 30000
+
 # Cloud fallback: when all local Ollama nodes are busy or down,
 # requests fall back to these providers in order.
 # Set enabled: false to disable without removing the config.

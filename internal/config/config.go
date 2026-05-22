@@ -16,6 +16,13 @@ type Config struct {
 	Metrics        MetricsConfig   `yaml:"metrics"`
 	LiteLLM        LiteLLMConfig   `yaml:"litellm"`
 	CloudProviders []CloudProvider `yaml:"cloud_providers" json:"cloud_providers"`
+	Docker         DockerConfig    `yaml:"docker" json:"docker"`
+}
+
+type DockerConfig struct {
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Socket         string `yaml:"socket" json:"socket"`
+	PollIntervalMs int    `yaml:"poll_interval_ms" json:"poll_interval_ms"`
 }
 
 type ProxyConfig struct {
@@ -142,6 +149,13 @@ func (c *Config) Validate() error {
 		if _, err := url.Parse(n.URL); err != nil {
 			return fmt.Errorf("invalid node URL %s: %w", n.URL, err)
 		}
+	}
+
+	if c.Docker.Socket == "" {
+		c.Docker.Socket = "/var/run/docker.sock"
+	}
+	if c.Docker.PollIntervalMs == 0 {
+		c.Docker.PollIntervalMs = 30000
 	}
 
 	if c.LiteLLM.Enabled && c.LiteLLM.URL == "" {

@@ -41,15 +41,17 @@ type NodeState struct {
 }
 
 type Router struct {
-	nodes      []*NodeState
-	strategy   string
-	fallback   string
-	interval   time.Duration
-	client     *http.Client
-	mu         sync.RWMutex
-	roundRobin uint32
-	rules      []config.RoutingRule
-	clouds     []config.CloudProvider
+	nodes         []*NodeState
+	strategy      string
+	fallback      string
+	interval      time.Duration
+	client        *http.Client
+	mu            sync.RWMutex
+	roundRobin    uint32
+	rules         []config.RoutingRule
+	clouds        []config.CloudProvider
+	dockerCfg     config.DockerConfig
+	discoveredURLs map[string]struct{} // URLs added via Docker discovery
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -67,14 +69,21 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	cloudsCopy := make([]config.CloudProvider, len(clouds))
 	copy(cloudsCopy, clouds)
 	return &Router{
-		nodes:    nodes,
-		strategy: cfg.Strategy,
-		fallback: cfg.Fallback,
-		interval: time.Duration(cfg.PollIntervalMs) * time.Millisecond,
-		client:   &http.Client{Timeout: 5 * time.Second},
-		rules:    cfg.Rules,
-		clouds:   cloudsCopy,
+		nodes:          nodes,
+		strategy:       cfg.Strategy,
+		fallback:       cfg.Fallback,
+		interval:       time.Duration(cfg.PollIntervalMs) * time.Millisecond,
+		client:         &http.Client{Timeout: 5 * time.Second},
+		rules:          cfg.Rules,
+		clouds:         cloudsCopy,
+		discoveredURLs: make(map[string]struct{}),
 	}
+}
+
+func (r *Router) SetDockerConfig(cfg config.DockerConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.dockerCfg = cfg
 }
 
 func (r *Router) Rules() []config.RoutingRule {
@@ -154,14 +163,56 @@ func (n *NodeState) RUnlock() {
 
 func (r *Router) Start(ctx context.Context) {
 	r.pollAll()
+	r.discoverAndAddDockerNodes()
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
+
+	dockerInterval := 30 * time.Second
+	r.mu.RLock()
+	if r.dockerCfg.PollIntervalMs > 0 {
+		dockerInterval = time.Duration(r.dockerCfg.PollIntervalMs) * time.Millisecond
+	}
+	r.mu.RUnlock()
+	dockerTicker := time.NewTicker(dockerInterval)
+	defer dockerTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			r.pollAll()
+		case <-dockerTicker.C:
+			r.discoverAndAddDockerNodes()
+		}
+	}
+}
+
+// discoverAndAddDockerNodes queries the Docker socket and adds any new
+// Ollama containers as nodes. Already-known URLs are skipped.
+func (r *Router) discoverAndAddDockerNodes() {
+	r.mu.RLock()
+	enabled := r.dockerCfg.Enabled
+	socket := r.dockerCfg.Socket
+	r.mu.RUnlock()
+	if !enabled {
+		return
+	}
+
+	found, err := discoverDockerNodes(socket)
+	if err != nil {
+		// Docker not available or socket missing — log silently, don't crash.
+		return
+	}
+	for _, n := range found {
+		r.mu.Lock()
+		_, exists := r.discoveredURLs[n.URL]
+		if !exists {
+			r.discoveredURLs[n.URL] = struct{}{}
+		}
+		r.mu.Unlock()
+		if !exists {
+			r.AddNode(n)
 		}
 	}
 }

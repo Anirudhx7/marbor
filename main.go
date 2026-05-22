@@ -42,6 +42,10 @@ func main() {
 	authMw := auth.NewMiddleware(cfg.Auth)
 
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
+	r.SetDockerConfig(cfg.Docker)
+	if cfg.Docker.Enabled {
+		log.Printf("Docker auto-discovery enabled (socket: %s)", cfg.Docker.Socket)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go r.Start(ctx)

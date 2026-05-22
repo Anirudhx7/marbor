@@ -88,27 +88,36 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server 
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /admin/nodes", s.cors(s.adminAuth(s.handleNodes)))
-	mux.HandleFunc("POST /admin/nodes", s.cors(s.adminAuth(s.handleAddNode)))
-	mux.HandleFunc("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
 
-	mux.HandleFunc("GET /admin/keys", s.cors(s.adminAuth(s.handleKeys)))
-	mux.HandleFunc("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
-	mux.HandleFunc("DELETE /admin/keys/{name}", s.cors(s.adminAuth(s.handleRevokeKey)))
+	// reg registers a route on both /admin/X and /admin/v1/X for backward compat.
+	reg := func(pattern string, h http.HandlerFunc) {
+		mux.HandleFunc(pattern, h)
+		// "GET /admin/foo" -> "GET /admin/v1/foo"
+		v1 := strings.Replace(pattern, "/admin/", "/admin/v1/", 1)
+		mux.HandleFunc(v1, h)
+	}
 
-	mux.HandleFunc("GET /admin/routing/rules", s.cors(s.adminAuth(s.handleRoutingRules)))
-	mux.HandleFunc("POST /admin/routing/rules", s.cors(s.adminAuth(s.handleAddRoutingRule)))
-	mux.HandleFunc("DELETE /admin/routing/rules/{id}", s.cors(s.adminAuth(s.handleRemoveRoutingRule)))
-	mux.HandleFunc("PUT /admin/routing/rules/{id}/toggle", s.cors(s.adminAuth(s.handleToggleRoutingRule)))
-	mux.HandleFunc("PUT /admin/routing/strategy", s.cors(s.adminAuth(s.handleSetRoutingStrategy)))
+	reg("GET /admin/nodes", s.cors(s.adminAuth(s.handleNodes)))
+	reg("POST /admin/nodes", s.cors(s.adminAuth(s.handleAddNode)))
+	reg("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
 
-	mux.HandleFunc("GET /admin/settings", s.cors(s.adminAuth(s.handleSettings)))
-	mux.HandleFunc("PUT /admin/settings", s.cors(s.adminAuth(s.handleUpdateSettings)))
+	reg("GET /admin/keys", s.cors(s.adminAuth(s.handleKeys)))
+	reg("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
+	reg("DELETE /admin/keys/{name}", s.cors(s.adminAuth(s.handleRevokeKey)))
 
-	mux.HandleFunc("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
-	mux.HandleFunc("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
-	mux.HandleFunc("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
-	mux.HandleFunc("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
+	reg("GET /admin/routing/rules", s.cors(s.adminAuth(s.handleRoutingRules)))
+	reg("POST /admin/routing/rules", s.cors(s.adminAuth(s.handleAddRoutingRule)))
+	reg("DELETE /admin/routing/rules/{id}", s.cors(s.adminAuth(s.handleRemoveRoutingRule)))
+	reg("PUT /admin/routing/rules/{id}/toggle", s.cors(s.adminAuth(s.handleToggleRoutingRule)))
+	reg("PUT /admin/routing/strategy", s.cors(s.adminAuth(s.handleSetRoutingStrategy)))
+
+	reg("GET /admin/settings", s.cors(s.adminAuth(s.handleSettings)))
+	reg("PUT /admin/settings", s.cors(s.adminAuth(s.handleUpdateSettings)))
+
+	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
+	reg("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
+	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
+	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
 
 	if sub, err := fs.Sub(webFS, "web/dist"); err == nil {
 		mux.Handle("/assets/", s.noCache(http.FileServer(http.FS(sub))))
