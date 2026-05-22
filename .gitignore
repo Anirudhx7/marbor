@@ -5,3 +5,24 @@ internal/admin/web/dist/
 *.exe
 config.yaml
 CLAUDE.md
+
+# Audit logs
+*.log
+audit.log
+
+# Environment files
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/

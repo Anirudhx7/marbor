@@ -22,15 +22,16 @@ import (
 var webFS embed.FS
 
 type Server struct {
-	router       *router.Router
-	auth         *auth.Middleware
-	cfg          config.Config
-	adminToken   string
-	mu           sync.RWMutex
-	requests     []RequestLog
-	localCount   int64   // atomic - requests served by local nodes
-	cloudCount   int64   // atomic - requests forwarded to cloud
+	router        *router.Router
+	auth          *auth.Middleware
+	cfg           config.Config
+	adminToken    string
+	mu            sync.RWMutex
+	requests      []RequestLog
+	localCount    int64   // atomic - requests served by local nodes
+	cloudCount    int64   // atomic - requests forwarded to cloud
 	cloudSpentUSD float64 // protected by mu
+	startTime     time.Time
 }
 
 type RequestLog struct {
@@ -83,6 +84,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server 
 		auth:       a,
 		cfg:        cfg,
 		adminToken: token,
+		startTime:  time.Now(),
 	}
 }
 
@@ -118,6 +120,9 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
 	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
 	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
+
+	// Health check — no auth required. Used by load balancers and Docker healthchecks.
+	mux.HandleFunc("GET /health", s.handleHealth)
 
 	if sub, err := fs.Sub(webFS, "web/dist"); err == nil {
 		mux.Handle("/assets/", s.noCache(http.FileServer(http.FS(sub))))
@@ -456,4 +461,40 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
+}
+
+// handleHealth is an unauthenticated endpoint for load balancers and Docker healthchecks.
+// Returns 200 OK with node health summary and server uptime.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	nodes := s.router.Nodes()
+	total := len(nodes)
+	healthy := 0
+	for _, n := range nodes {
+		n.RLock()
+		if n.Healthy {
+			healthy++
+		}
+		n.RUnlock()
+	}
+
+	uptimeSecs := int(time.Since(s.startTime).Seconds())
+
+	status := "ok"
+	if total > 0 && healthy == 0 {
+		status = "degraded"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if status == "degraded" {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":         status,
+		"version":        "0.1.0",
+		"uptime_seconds": uptimeSecs,
+		"nodes": map[string]int{
+			"total":   total,
+			"healthy": healthy,
+		},
+	})
 }

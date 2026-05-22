@@ -16,6 +16,12 @@ services:
       - ollama-1
     networks:
       - mesh
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   ollama-0:
     image: ollama/ollama:latest

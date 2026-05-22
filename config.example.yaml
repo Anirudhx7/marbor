@@ -66,3 +66,10 @@ cloud_providers:
     default_model: claude-haiku-4-5-20251001
     cost_per_1k_tokens: 0.00025
     enabled: false
+
+# Audit logging: append-only JSON-lines file of all proxy requests.
+# Records: timestamp, request_id, key_name, model, node, status, latency_ms, cloud.
+# Never logs API key values or request bodies.
+audit:
+  enabled: false
+  path: audit.log
