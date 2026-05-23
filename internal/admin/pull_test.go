@@ -12,7 +12,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
-func newTestServer(t *testing.T, nodes []config.NodeConfig) *Server {
+func newPullTestServer(t *testing.T, nodes []config.NodeConfig) *Server {
 	t.Helper()
 	cfg := config.Config{
 		Auth: config.AuthConfig{
@@ -23,12 +23,10 @@ func newTestServer(t *testing.T, nodes []config.NodeConfig) *Server {
 		},
 	}
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, nodes, nil)
-	s := NewServer(r, nil, cfg)
-	return s
+	return NewServer(r, nil, cfg)
 }
 
 func TestHandleNodePull_Success(t *testing.T) {
-	// Start a mock Ollama server that accepts /api/pull
 	var receivedBody []byte
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/pull" || r.Method != http.MethodPost {
@@ -46,7 +44,7 @@ func TestHandleNodePull_Success(t *testing.T) {
 	}))
 	defer mockOllama.Close()
 
-	s := newTestServer(t, []config.NodeConfig{
+	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: mockOllama.URL},
 	})
 
@@ -54,7 +52,6 @@ func TestHandleNodePull_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer test-token")
 	req.Header.Set("Content-Type", "application/json")
-	// Simulate Go 1.22 ServeMux path value
 	req.SetPathValue("name", "gpu-0")
 
 	w := httptest.NewRecorder()
@@ -79,7 +76,6 @@ func TestHandleNodePull_Success(t *testing.T) {
 		t.Errorf("expected model=llama3:8b, got %v", resp["model"])
 	}
 
-	// Verify correct payload forwarded to Ollama
 	var forwarded map[string]interface{}
 	if err := json.Unmarshal(receivedBody, &forwarded); err != nil {
 		t.Fatalf("unmarshal forwarded body: %v", err)
@@ -93,7 +89,7 @@ func TestHandleNodePull_Success(t *testing.T) {
 }
 
 func TestHandleNodePull_NodeNotFound(t *testing.T) {
-	s := newTestServer(t, []config.NodeConfig{
+	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	})
 
@@ -113,7 +109,7 @@ func TestHandleNodePull_NodeNotFound(t *testing.T) {
 }
 
 func TestHandleNodePull_MissingModel(t *testing.T) {
-	s := newTestServer(t, []config.NodeConfig{
+	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	})
 
@@ -133,7 +129,7 @@ func TestHandleNodePull_MissingModel(t *testing.T) {
 }
 
 func TestHandleNodePull_MethodNotAllowed(t *testing.T) {
-	s := newTestServer(t, []config.NodeConfig{
+	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	})
 
@@ -144,7 +140,6 @@ func TestHandleNodePull_MethodNotAllowed(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 
-	// Go 1.22 ServeMux will return 405 before our handler for wrong method on exact pattern
 	res := w.Result()
 	if res.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", res.StatusCode)
