@@ -18,6 +18,14 @@ type Config struct {
 	CloudProviders []CloudProvider `yaml:"cloud_providers" json:"cloud_providers"`
 	Docker         DockerConfig    `yaml:"docker" json:"docker"`
 	Audit          AuditConfig     `yaml:"audit" json:"audit"`
+	Webhook        WebhookConfig   `yaml:"webhook" json:"webhook"`
+}
+
+type WebhookConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	URL     string `yaml:"url" json:"url"`
+	// Secret is used to compute an HMAC-SHA256 signature sent as X-Ollama-Mesh-Signature.
+	Secret string `yaml:"secret" json:"secret"`
 }
 
 type AuditConfig struct {

@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog } from '../types';
+import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry } from '../types';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -332,6 +332,23 @@ export const mockCloudProviders: CloudProvider[] = [
     cost_per_1k_tokens: 0.003,
     enabled: false,
   },
+];
+
+const now = Date.now();
+const mins = (n: number) => new Date(now - n * 60000).toISOString();
+const secs = (n: number) => new Date(now - n * 1000).toISOString();
+
+export const mockRequests: RequestEntry[] = [
+  { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Production API',  model: 'llama3.1:70b',   node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false },
+  { id: 'req-b2c3d4e5f6a1', time: secs(31),  key_name: 'Development API', model: 'mistral:7b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false },
+  { id: 'req-c3d4e5f6a1b2', time: secs(55),  key_name: 'Production API',  model: 'gpt-4o',         node: '',            status: 200, latency_ms: 312,  cloud: true  },
+  { id: 'req-d4e5f6a1b2c3', time: mins(2),   key_name: 'CI/CD Pipeline',  model: 'llama3.2:3b',   node: 'gpu-node-03', status: 200, latency_ms: 21,   cloud: false },
+  { id: 'req-e5f6a1b2c3d4', time: mins(3),   key_name: 'Production API',  model: 'mixtral:8x7b',  node: 'gpu-node-01', status: 200, latency_ms: 67,   cloud: false },
+  { id: 'req-f6a1b2c3d4e5', time: mins(5),   key_name: 'Development API', model: 'qwen2.5:14b',   node: 'gpu-node-02', status: 429, latency_ms: 3,    cloud: false },
+  { id: 'req-a7b8c9d0e1f2', time: mins(7),   key_name: 'Production API',  model: 'gemma2:9b',     node: 'gpu-node-03', status: 200, latency_ms: 55,   cloud: false },
+  { id: 'req-b8c9d0e1f2a7', time: mins(9),   key_name: 'CI/CD Pipeline',  model: 'claude-3-5-sonnet-20241022', node: '', status: 200, latency_ms: 487, cloud: true },
+  { id: 'req-c9d0e1f2a7b8', time: mins(12),  key_name: 'Production API',  model: 'phi3:medium',   node: 'gpu-node-04', status: 500, latency_ms: 1204, cloud: false },
+  { id: 'req-d0e1f2a7b8c9', time: mins(15),  key_name: 'Development API', model: 'llama3.1:8b',   node: 'gpu-node-02', status: 200, latency_ms: 33,   cloud: false },
 ];
 
 export const configFileYAML = `# Ollama-Mesh Configuration

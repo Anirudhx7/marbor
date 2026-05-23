@@ -1,11 +1,17 @@
 package router
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,17 +47,21 @@ type NodeState struct {
 }
 
 type Router struct {
-	nodes         []*NodeState
-	strategy      string
-	fallback      string
-	interval      time.Duration
-	client        *http.Client
-	mu            sync.RWMutex
-	roundRobin    uint32
-	rules         []config.RoutingRule
-	clouds        []config.CloudProvider
-	dockerCfg     config.DockerConfig
+	nodes          []*NodeState
+	strategy       string
+	fallback       string
+	interval       time.Duration
+	client         *http.Client
+	mu             sync.RWMutex
+	roundRobin     uint32
+	rules          []config.RoutingRule
+	clouds         []config.CloudProvider
+	dockerCfg      config.DockerConfig
+	webhookCfg     config.WebhookConfig
 	discoveredURLs map[string]struct{} // URLs added via Docker discovery
+	// prevHealthy tracks the last known health state per node name for
+	// transition detection (healthy -> unhealthy and back).
+	prevHealthy map[string]bool
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -68,6 +78,10 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	}
 	cloudsCopy := make([]config.CloudProvider, len(clouds))
 	copy(cloudsCopy, clouds)
+	prev := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		prev[n.Name] = true // assume healthy at start
+	}
 	return &Router{
 		nodes:          nodes,
 		strategy:       cfg.Strategy,
@@ -77,6 +91,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		rules:          cfg.Rules,
 		clouds:         cloudsCopy,
 		discoveredURLs: make(map[string]struct{}),
+		prevHealthy:    prev,
 	}
 }
 
@@ -84,6 +99,58 @@ func (r *Router) SetDockerConfig(cfg config.DockerConfig) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.dockerCfg = cfg
+}
+
+func (r *Router) SetWebhookConfig(cfg config.WebhookConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.webhookCfg = cfg
+}
+
+// fireWebhook sends a node-state-change notification to the configured webhook
+// URL in a goroutine. Errors are logged but never propagate to the caller.
+func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
+	r.mu.RLock()
+	cfg := r.webhookCfg
+	r.mu.RUnlock()
+	if !cfg.Enabled || cfg.URL == "" {
+		return
+	}
+	go func() {
+		payload := map[string]string{
+			"event": event,
+			"node":  nodeName,
+			"url":   nodeURL,
+			"time":  time.Now().UTC().Format(time.RFC3339),
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("webhook: marshal payload: %v", err)
+			return
+		}
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, cfg.URL, bytes.NewReader(body))
+		if err != nil {
+			log.Printf("webhook: create request: %v", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if cfg.Secret != "" {
+			mac := hmac.New(sha256.New, []byte(cfg.Secret))
+			mac.Write(body)
+			sig := hex.EncodeToString(mac.Sum(nil))
+			req.Header.Set("X-Ollama-Mesh-Signature", fmt.Sprintf("sha256=%s", sig))
+		}
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("webhook: post %s: %v", strings.TrimRight(cfg.URL, "/"), err)
+			return
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			log.Printf("webhook: server returned %d for event %s", resp.StatusCode, event)
+		}
+	}()
 }
 
 func (r *Router) Rules() []config.RoutingRule {
@@ -274,8 +341,24 @@ func (r *Router) pollNode(n *NodeState) {
 	if len(n.HealthHistory) > 60 {
 		n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
 	}
+	nodeName := n.Name
+	nodeURL := n.URL
 	n.mu.Unlock()
 	metrics.NodeHealthy(n.Name, 1)
+
+	// Fire webhook on recovery (unhealthy -> healthy transition).
+	r.mu.Lock()
+	prev, seen := r.prevHealthy[nodeName]
+	if seen && !prev {
+		r.prevHealthy[nodeName] = true
+		r.mu.Unlock()
+		r.fireWebhook("node_up", nodeName, nodeURL)
+	} else {
+		if !seen {
+			r.prevHealthy[nodeName] = true
+		}
+		r.mu.Unlock()
+	}
 }
 
 func formatUptime(d time.Duration) string {
@@ -290,8 +373,12 @@ func formatUptime(d time.Duration) string {
 func (r *Router) markFailure(n *NodeState) {
 	n.mu.Lock()
 	n.Failures++
-	if n.Failures >= 3 {
+	becameUnhealthy := false
+	if n.Failures >= 3 && n.Healthy {
 		n.Healthy = false
+		becameUnhealthy = true
+		metrics.NodeHealthy(n.Name, 0)
+	} else if n.Failures >= 3 {
 		metrics.NodeHealthy(n.Name, 0)
 	}
 	healthScore := 0.0
@@ -299,7 +386,17 @@ func (r *Router) markFailure(n *NodeState) {
 	if len(n.HealthHistory) > 60 {
 		n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
 	}
+	nodeName := n.Name
+	nodeURL := n.URL
 	n.mu.Unlock()
+
+	if becameUnhealthy {
+		// Fire webhook on node_down transition.
+		r.mu.Lock()
+		r.prevHealthy[nodeName] = false
+		r.mu.Unlock()
+		r.fireWebhook("node_down", nodeName, nodeURL)
+	}
 }
 
 func (r *Router) Route(modelName string) (*NodeState, bool) {

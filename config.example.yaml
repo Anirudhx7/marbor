@@ -67,6 +67,14 @@ cloud_providers:
     cost_per_1k_tokens: 0.00025
     enabled: false
 
+# Webhook notifications: POST JSON to a URL when a node transitions
+# between healthy and unhealthy states. Useful for Slack, PagerDuty, etc.
+# If secret is set, each request includes X-Ollama-Mesh-Signature: sha256=<hmac>.
+webhook:
+  enabled: false
+  url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  secret: ""  # optional HMAC secret
+
 # Audit logging: append-only JSON-lines file of all proxy requests.
 # Records: timestamp, request_id, key_name, model, node, status, latency_ms, cloud.
 # Never logs API key values or request bodies.

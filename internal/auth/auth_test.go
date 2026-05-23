@@ -72,6 +72,39 @@ func TestRateLimit(t *testing.T) {
 	}
 }
 
+func TestRateLimitHeaders(t *testing.T) {
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: true,
+		Keys: []config.KeyConfig{
+			{Name: "header-test", Key: "sk-hdr", RateLimit: 100},
+		},
+	})
+	handler := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer sk-hdr")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if rec.Header().Get("X-RateLimit-Limit") == "" {
+		t.Error("missing X-RateLimit-Limit header")
+	}
+	if rec.Header().Get("X-RateLimit-Remaining") == "" {
+		t.Error("missing X-RateLimit-Remaining header")
+	}
+	if rec.Header().Get("X-RateLimit-Reset") == "" {
+		t.Error("missing X-RateLimit-Reset header")
+	}
+	if rec.Header().Get("X-RateLimit-Limit") != "100" {
+		t.Errorf("X-RateLimit-Limit = %s, want 100", rec.Header().Get("X-RateLimit-Limit"))
+	}
+}
+
 func TestKeyStats(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
 		Enabled: true,

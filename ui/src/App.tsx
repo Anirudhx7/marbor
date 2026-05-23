@@ -9,6 +9,7 @@ import { Metrics } from './pages/Metrics';
 import { SettingsPage } from './pages/Settings';
 import { Analytics } from './pages/Analytics';
 import { Models } from './pages/Models';
+import { Requests } from './pages/Requests';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/models" element={<Models />} />
+                <Route path="/requests" element={<Requests />} />
               </Routes>
             </div>
           </main>

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -85,6 +86,29 @@ func newTokenBucket(ratePerHour int) *tokenBucket {
 		lastRefill: time.Now(),
 		rate:       rate,
 	}
+}
+
+// snapshot returns the current token count, capacity, and approximate Unix
+// timestamp when the bucket will be fully refilled. Callers must not hold tb.mu.
+func (tb *tokenBucket) snapshot() (remaining float64, capacity float64, resetAt int64) {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	now := time.Now()
+	elapsed := now.Sub(tb.lastRefill).Seconds()
+	current := tb.tokens + elapsed*tb.rate
+	if current > tb.capacity {
+		current = tb.capacity
+	}
+	// Seconds until full = (capacity - current) / rate
+	var secsUntilFull float64
+	if tb.rate > 0 {
+		secsUntilFull = (tb.capacity - current) / tb.rate
+	}
+	if secsUntilFull < 0 {
+		secsUntilFull = 0
+	}
+	reset := now.Add(time.Duration(secsUntilFull * float64(time.Second))).Unix()
+	return current, tb.capacity, reset
 }
 
 func (tb *tokenBucket) allow() bool {
@@ -191,6 +215,11 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			w.Write([]byte(`{"error":"rate limit exceeded"}`))
 			return
 		}
+		// Expose rate-limit state to callers.
+		remaining, capacity, resetAt := ks.limiter.snapshot()
+		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", int64(capacity)))
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", int64(remaining)))
+		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt))
 		ks.counter.increment()
 		ctx := context.WithValue(r.Context(), KeyNameContextKey, ks.name)
 		next.ServeHTTP(w, r.WithContext(ctx))

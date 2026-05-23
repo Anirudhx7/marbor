@@ -118,3 +118,14 @@ export interface CloudProvider {
   cost_per_1k_tokens: number;
   enabled: boolean;
 }
+
+export interface RequestEntry {
+  id: string;
+  time: string;
+  key_name: string;
+  model: string;
+  node: string;
+  status: number;
+  latency_ms: number;
+  cloud: boolean;
+}

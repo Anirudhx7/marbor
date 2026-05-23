@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry } from '../types';
 
 const BASE = '/admin';
 
@@ -134,6 +134,12 @@ export async function getCloudProviders(): Promise<CloudProvider[]> {
 export async function fetchModels(): Promise<ModelCatalog> {
   const res = await fetch(`${BASE}/models`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch models');
+  return res.json();
+}
+
+export async function getRequests(): Promise<RequestEntry[]> {
+  const res = await fetch(`${BASE}/requests`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch requests');
   return res.json();
 }
 
