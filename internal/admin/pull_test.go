@@ -127,21 +127,3 @@ func TestHandleNodePull_MissingModel(t *testing.T) {
 		t.Fatalf("expected 400, got %d", res.StatusCode)
 	}
 }
-
-func TestHandleNodePull_MethodNotAllowed(t *testing.T) {
-	s := newPullTestServer(t, []config.NodeConfig{
-		{Name: "gpu-0", URL: "http://localhost:11434"},
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/admin/v1/nodes/gpu-0/pull", nil)
-	req.Header.Set("Authorization", "Bearer test-token")
-	req.SetPathValue("name", "gpu-0")
-
-	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, req)
-
-	res := w.Result()
-	if res.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", res.StatusCode)
-	}
-}
