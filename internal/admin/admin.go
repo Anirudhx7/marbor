@@ -679,6 +679,64 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAudit queries the audit log with optional filters.
+// GET /admin/v1/audit?limit=100&model=llama3&key=prod&cloud=true&since=2026-05-23T00:00:00Z
+func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	limit := 100
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if n < 1 {
+				n = 1
+			}
+			if n > 1000 {
+				n = 1000
+			}
+			limit = n
+		} else {
+			http.Error(w, `{"error":"invalid limit"}`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	opts := audit.QueryOptions{
+		Limit: limit,
+		Model: q.Get("model"),
+		Key:   q.Get("key"),
+	}
+
+	if v := q.Get("cloud"); v != "" {
+		b := v == "true"
+		opts.Cloud = &b
+	}
+
+	if v := q.Get("since"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			http.Error(w, `{"error":"invalid since: use RFC3339"}`, http.StatusBadRequest)
+			return
+		}
+		opts.Since = t
+	}
+
+	entries, err := s.auditLog.Query(opts)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	if entries == nil {
+		entries = []audit.Entry{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"entries":   entries,
+		"total":     len(entries),
+		"truncated": len(entries) == limit,
+	})
+}
+
 // handleAnalyticsExport serves analytics data as CSV or JSON.
 // Query params: format=csv|json (default json), type=hourly|models (default hourly).
 func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
