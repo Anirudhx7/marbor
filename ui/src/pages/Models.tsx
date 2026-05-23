@@ -4,7 +4,7 @@ import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
 import { mockModelCatalog } from '../lib/mockData';
-import { fetchModels } from '../lib/api';
+import { fetchModels, pullModel } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry } from '../types';
 
@@ -29,8 +29,43 @@ function SkeletonCard() {
   );
 }
 
-function ModelCard({ model }: { model: ModelEntry }) {
+type PullStatus = 'idle' | 'pulling' | 'success' | 'error';
+
+function ModelCard({ model, demoMode }: { model: ModelEntry; demoMode: boolean }) {
   const isWarm = model.warm_count > 0;
+  const [pullInput, setPullInput] = useState('');
+  const [pullStatus, setPullStatus] = useState<PullStatus>('idle');
+  const [pullError, setPullError] = useState('');
+
+  // Pick the first healthy node for pull target, fall back to any node
+  const targetNode = model.nodes.find((n) => n.healthy) ?? model.nodes[0];
+
+  const handlePull = async () => {
+    const trimmed = pullInput.trim();
+    if (!trimmed) return;
+    setPullStatus('pulling');
+    setPullError('');
+    try {
+      if (demoMode) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+      } else {
+        await pullModel(targetNode.name, trimmed);
+      }
+      setPullStatus('success');
+      setPullInput('');
+    } catch (e: unknown) {
+      setPullStatus('error');
+      setPullError(e instanceof Error ? e.message : 'Pull failed');
+    } finally {
+      setTimeout(() => {
+        setPullStatus('idle');
+        setPullError('');
+      }, 3000);
+    }
+  };
+
+  const isPulling = pullStatus === 'pulling';
+  const pullDisabled = isPulling || !pullInput.trim() || !targetNode;
 
   return (
     <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors ${
@@ -75,6 +110,39 @@ function ModelCard({ model }: { model: ModelEntry }) {
             </span>
           ))}
         </div>
+
+        {/* Pull section */}
+        {targetNode && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              Pull to {targetNode.name}
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={pullInput}
+                onChange={(e) => setPullInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !pullDisabled && handlePull()}
+                placeholder="model:tag"
+                disabled={isPulling}
+                className="flex-1 px-2 py-1 text-xs bg-secondary border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              />
+              <button
+                onClick={handlePull}
+                disabled={pullDisabled}
+                className="px-3 py-1 text-xs font-medium bg-secondary border border-border rounded-md text-foreground hover:bg-primary/10 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {isPulling ? 'Pulling...' : 'Pull'}
+              </button>
+            </div>
+            {pullStatus === 'success' && (
+              <p className="mt-1.5 text-xs text-success font-medium">Pulled!</p>
+            )}
+            {pullStatus === 'error' && (
+              <p className="mt-1.5 text-xs text-destructive font-medium">{pullError}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -171,7 +239,7 @@ export function Models() {
       ) : filteredModels.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredModels.map((model) => (
-            <ModelCard key={model.name} model={model} />
+            <ModelCard key={model.name} model={model} demoMode={demoMode} />
           ))}
         </div>
       ) : (

@@ -152,3 +152,12 @@ export async function updateSettings(data: any) {
   if (!res.ok) throw new Error('Failed to update settings');
 }
 
+export async function pullModel(nodeName: string, model: string): Promise<void> {
+  const res = await fetch(`${BASE}/v1/nodes/${encodeURIComponent(nodeName)}/pull`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  });
+  if (!res.ok) throw new Error(`Pull failed: ${res.statusText}`);
+}
+

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -124,6 +125,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
 	reg("GET /admin/analytics", s.cors(s.adminAuth(s.handleAnalytics)))
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
+	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -575,6 +577,95 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		"total_models":  len(entries),
 		"total_nodes":   len(nodes),
 		"healthy_nodes": totalHealthy,
+	})
+}
+
+// handleNodePull triggers a model pull on a specific node via POST /api/pull.
+// Accepts: {"model": "llama3:8b"}
+// Returns 200 {"ok":true,"node":"...","model":"..."} on success.
+func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte(`{"error":"method not allowed"}`))
+		return
+	}
+
+	// Go 1.22+ ServeMux populates PathValue from the {name} wildcard.
+	// Manual parse covers the /admin/v1/ variant registered via strings.Replace.
+	nodeName := r.PathValue("name")
+	if nodeName == "" {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		for i, p := range parts {
+			if p == "nodes" && i+2 < len(parts) && parts[i+2] == "pull" {
+				nodeName = parts[i+1]
+				break
+			}
+		}
+	}
+
+	var body struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"missing or invalid model field"}`))
+		return
+	}
+
+	urls := s.router.NodeURLs()
+	nodeURL, ok := urls[nodeName]
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, `{"error":"node %q not found"}`, nodeName)
+		return
+	}
+
+	pullBody, err := json.Marshal(map[string]interface{}{
+		"model":  body.Model,
+		"stream": false,
+	})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `{"error":"marshal error: %s"}`, err.Error())
+		return
+	}
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, nodeURL+"/api/pull", bytes.NewReader(pullBody))
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `{"error":"pull node %s: %s"}`, nodeName, err.Error())
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, `{"error":"pull node %s: %s"}`, nodeName, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, `{"error":"pull node %s: upstream returned %d"}`, nodeName, resp.StatusCode)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":    true,
+		"node":  nodeName,
+		"model": body.Model,
 	})
 }
 

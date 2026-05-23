@@ -495,6 +495,17 @@ func (r *Router) Nodes() []*NodeState {
 	return out
 }
 
+// NodeURLs returns a map of node name to URL for all configured nodes.
+func (r *Router) NodeURLs() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	m := make(map[string]string, len(r.nodes))
+	for _, s := range r.nodes {
+		m[s.Name] = s.URL
+	}
+	return m
+}
+
 func (r *Router) IncrConn(node *NodeState) {
 	if node != nil {
 		v := atomic.AddInt32(&node.ActiveConns, 1)
