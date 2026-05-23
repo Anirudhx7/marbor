@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider } from '../types';
+import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog } from '../types';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -249,6 +249,70 @@ export const mockSavings: Savings = {
   cloud_spent_usd: 48.72,
   saved_usd: 284.15,
   total_requests: 355020,
+};
+
+export const mockModelCatalog: ModelCatalog = {
+  total_models: 6,
+  total_nodes: 4,
+  healthy_nodes: 3,
+  models: [
+    {
+      name: 'llama3.1:8b',
+      size_vram: Math.round(16.2 * 1024 * 1024 * 1024),
+      warm_count: 2,
+      total_nodes: 3,
+      nodes: [
+        { name: 'gpu-node-01', healthy: true },
+        { name: 'gpu-node-02', healthy: true },
+      ],
+    },
+    {
+      name: 'mistral:7b',
+      size_vram: Math.round(14.8 * 1024 * 1024 * 1024),
+      warm_count: 2,
+      total_nodes: 3,
+      nodes: [
+        { name: 'gpu-node-02', healthy: true },
+        { name: 'gpu-node-03', healthy: true },
+      ],
+    },
+    {
+      name: 'llama3.1:70b',
+      size_vram: Math.round(40.2 * 1024 * 1024 * 1024),
+      warm_count: 1,
+      total_nodes: 3,
+      nodes: [
+        { name: 'gpu-node-01', healthy: true },
+      ],
+    },
+    {
+      name: 'codellama:13b',
+      size_vram: Math.round(26.5 * 1024 * 1024 * 1024),
+      warm_count: 1,
+      total_nodes: 3,
+      nodes: [
+        { name: 'gpu-node-02', healthy: true },
+      ],
+    },
+    {
+      name: 'gemma2:9b',
+      size_vram: Math.round(14.1 * 1024 * 1024 * 1024),
+      warm_count: 1,
+      total_nodes: 3,
+      nodes: [
+        { name: 'gpu-node-03', healthy: true },
+      ],
+    },
+    {
+      name: 'phi3:medium',
+      size_vram: Math.round(4.2 * 1024 * 1024 * 1024),
+      warm_count: 0,
+      total_nodes: 3,
+      nodes: [
+        { name: 'gpu-node-04', healthy: false },
+      ],
+    },
+  ],
 };
 
 export const mockCloudProviders: CloudProvider[] = [

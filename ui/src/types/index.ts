@@ -90,6 +90,26 @@ export interface Savings {
   total_requests: number;
 }
 
+export interface ModelNode {
+  name: string;
+  healthy: boolean;
+}
+
+export interface ModelEntry {
+  name: string;
+  size_vram: number;
+  nodes: ModelNode[];
+  warm_count: number;
+  total_nodes: number;
+}
+
+export interface ModelCatalog {
+  models: ModelEntry[];
+  total_models: number;
+  total_nodes: number;
+  healthy_nodes: number;
+}
+
 export interface CloudProvider {
   name: string;
   provider: string;

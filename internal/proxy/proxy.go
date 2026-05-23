@@ -127,7 +127,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.admin != nil {
 		h.admin.LogRequest(keyName, modelName, node.Name, status, latencyMs)
-		h.admin.TrackLocalRequest()
+		h.admin.TrackLocalRequestModel(modelName)
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
@@ -191,7 +191,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
 		h.admin.LogRequest(keyName, modelName, nodeName, "cloud", latencyMs)
-		h.admin.TrackCloudCost(cloud.CostPer1KTokens)
+		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens)
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{

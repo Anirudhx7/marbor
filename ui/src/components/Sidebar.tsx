@@ -1,20 +1,24 @@
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Cpu, 
-  Key, 
-  Route, 
-  BarChart3, 
+import {
+  LayoutDashboard,
+  Cpu,
+  Key,
+  Route,
+  BarChart3,
   Settings,
   Server,
   Moon,
-  Sun
+  Sun,
+  TrendingUp,
+  Package
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/gpu-nodes', label: 'GPU Nodes', icon: Cpu },
+  { path: '/models', label: 'Models', icon: Package },
+  { path: '/analytics', label: 'Analytics', icon: TrendingUp },
   { path: '/api-keys', label: 'API Keys', icon: Key },
   { path: '/routing', label: 'Routing', icon: Route },
   { path: '/metrics', label: 'Metrics', icon: BarChart3 },
@@ -34,7 +38,7 @@ export function Sidebar() {
           </div>
           <div className="flex flex-col">
             <span className="font-semibold text-foreground text-sm tracking-tight">Ollama Mesh</span>
-            <span className="text-[10px] font-medium text-muted-foreground leading-none">v0.1.0</span>
+            <span className="text-[10px] font-medium text-muted-foreground leading-none">v0.2.0</span>
           </div>
         </div>
       </div>

@@ -32,6 +32,7 @@ type Server struct {
 	cloudCount    int64   // atomic - requests forwarded to cloud
 	cloudSpentUSD float64 // protected by mu
 	startTime     time.Time
+	analytics     *analyticsStore
 }
 
 type RequestLog struct {
@@ -85,6 +86,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server 
 		cfg:        cfg,
 		adminToken: token,
 		startTime:  time.Now(),
+		analytics:  newAnalyticsStore(),
 	}
 }
 
@@ -120,6 +122,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
 	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
 	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
+	reg("GET /admin/analytics", s.cors(s.adminAuth(s.handleAnalytics)))
+	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -417,6 +421,47 @@ func (s *Server) TrackCloudCost(costPer1KTokens float64) {
 	s.mu.Unlock()
 }
 
+// TrackLocalRequestModel tracks a local request with model-level granularity.
+// Call this alongside TrackLocalRequest() when the model name is available.
+func (s *Server) TrackLocalRequestModel(model string) {
+	atomic.AddInt64(&s.localCount, 1)
+	s.analytics.recordLocal(model)
+}
+
+// TrackCloudCostModel tracks a cloud request with model-level granularity.
+// Call this alongside TrackCloudCost() when the model name is available.
+func (s *Server) TrackCloudCostModel(model string, costPer1K float64) {
+	atomic.AddInt64(&s.cloudCount, 1)
+	cost := costPer1K * 500.0 / 1000.0
+	s.mu.Lock()
+	s.cloudSpentUSD += cost
+	s.mu.Unlock()
+	s.analytics.recordCloud(model, costPer1K)
+}
+
+func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
+	hourly := s.analytics.last24hBuckets()
+	models := s.analytics.topModels()
+
+	local := atomic.LoadInt64(&s.localCount)
+	cloud := atomic.LoadInt64(&s.cloudCount)
+	s.mu.RLock()
+	cloudSpent := s.cloudSpentUSD
+	s.mu.RUnlock()
+	const refCostPer1K = 0.002
+	savedUSD := float64(local) * refCostPer1K * 500.0 / 1000.0
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"hourly":           hourly,
+		"by_model":         models,
+		"total_saved_usd":  savedUSD,
+		"total_spent_usd":  cloudSpent,
+		"local_requests":   local,
+		"cloud_requests":   cloud,
+	})
+}
+
 func (s *Server) handleSavings(w http.ResponseWriter, r *http.Request) {
 	local := atomic.LoadInt64(&s.localCount)
 	cloud := atomic.LoadInt64(&s.cloudCount)
@@ -461,6 +506,76 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
+}
+
+func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	type nodeInfo struct {
+		Name    string `json:"name"`
+		Healthy bool   `json:"healthy"`
+	}
+	type modelEntry struct {
+		Name       string     `json:"name"`
+		SizeVRAM   int64      `json:"size_vram"`
+		Nodes      []nodeInfo `json:"nodes"`
+		WarmCount  int        `json:"warm_count"`
+		TotalNodes int        `json:"total_nodes"`
+	}
+
+	nodes := s.router.Nodes()
+	modelMap := make(map[string]*modelEntry)
+
+	for _, n := range nodes {
+		n.RLock()
+		for _, m := range n.LoadedModels {
+			if modelMap[m.Name] == nil {
+				modelMap[m.Name] = &modelEntry{
+					Name:     m.Name,
+					SizeVRAM: m.SizeVRAM,
+				}
+			}
+			modelMap[m.Name].Nodes = append(modelMap[m.Name].Nodes, nodeInfo{
+				Name:    n.Name,
+				Healthy: n.Healthy,
+			})
+			if n.Healthy {
+				modelMap[m.Name].WarmCount++
+			}
+		}
+		n.RUnlock()
+	}
+
+	totalHealthy := 0
+	for _, n := range nodes {
+		n.RLock()
+		if n.Healthy {
+			totalHealthy++
+		}
+		n.RUnlock()
+	}
+
+	entries := make([]modelEntry, 0, len(modelMap))
+	for _, v := range modelMap {
+		v.TotalNodes = totalHealthy
+		entries = append(entries, *v)
+	}
+
+	// Sort by warm_count desc, then name asc
+	for i := 0; i < len(entries); i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[j].WarmCount > entries[i].WarmCount ||
+				(entries[j].WarmCount == entries[i].WarmCount && entries[j].Name < entries[i].Name) {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"models":        entries,
+		"total_models":  len(entries),
+		"total_nodes":   len(nodes),
+		"healthy_nodes": totalHealthy,
+	})
 }
 
 // handleHealth is an unauthenticated endpoint for load balancers and Docker healthchecks.

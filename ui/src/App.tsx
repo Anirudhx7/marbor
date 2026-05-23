@@ -7,6 +7,8 @@ import { APIKeys } from './pages/APIKeys';
 import { Routing } from './pages/Routing';
 import { Metrics } from './pages/Metrics';
 import { SettingsPage } from './pages/Settings';
+import { Analytics } from './pages/Analytics';
+import { Models } from './pages/Models';
 
 function App() {
   return (
@@ -23,6 +25,8 @@ function App() {
                 <Route path="/routing" element={<Routing />} />
                 <Route path="/metrics" element={<Metrics />} />
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/models" element={<Models />} />
               </Routes>
             </div>
           </main>
