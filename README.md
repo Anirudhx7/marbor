@@ -8,6 +8,19 @@
 
 ---
 
+## What's New in v0.2.0
+
+- Analytics page: 24-hour local vs cloud chart, savings stats, per-model breakdown
+- Model catalog: see which models are warm across all nodes, with VRAM usage
+- Request log: live feed of all requests with filter and status indicators
+- Rate limit headers: X-RateLimit-Limit/Remaining/Reset on every response
+- Webhook alerts: node_down/node_up events signed with HMAC-SHA256
+- Audit logging: append-only JSON-lines with request IDs
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
+---
+
 ## Why
 
 - You have multiple Ollama nodes but no way to load balance them
@@ -28,6 +41,11 @@
 | Real nvidia-smi metrics | Actual VRAM usage, temperature, and power draw per node - not fake numbers. |
 | API key management | Per-key rate limits, model allow-lists, and key expiry. |
 | Prometheus metrics | 7 metrics exposed at `:9090`. Grafana dashboard included. |
+| Analytics dashboard | 24-hour area chart, savings stats, per-model breakdown. |
+| Model catalog | Cross-node VRAM view with warm status and search. |
+| Request log | Live feed with 3-second polling, filter, and status badges. |
+| Webhook alerts | node_down/node_up events with HMAC-SHA256 signatures. |
+| Rate limit headers | X-RateLimit-Limit/Remaining/Reset on every response. |
 | Zero dependencies | Single Go binary. Runs anywhere. No Python, no Node, no runtime. |
 
 ---
@@ -240,7 +258,8 @@ Import `grafana/ollama-mesh.json` into Grafana and point the Prometheus datasour
 
 - [x] Phase 1: Trustworthy - real nvidia-smi GPU metrics, no fake data, mutex-safe auth
 - [x] Phase 2: Hybrid routing - cloud fallback, savings tracking, Docker auto-discovery
-- [ ] Phase 3: Enterprise - SSO, RBAC, audit logs
+- [x] v0.2.0: Analytics, model catalog, request log, webhooks, rate limit headers
+- [ ] Phase 3: Enterprise - SSO, RBAC, audit log export, Helm chart
 - [ ] Phase 4: Managed cloud - metered token hosting
 
 ---
