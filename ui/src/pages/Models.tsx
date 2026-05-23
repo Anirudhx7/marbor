@@ -86,7 +86,7 @@ function ModelCard({ model, demoMode }: { model: ModelEntry; demoMode: boolean }
             </p>
           </div>
         </div>
-        <Badge variant={isWarm ? 'success' : 'default'} size="sm">
+        <Badge variant={isWarm ? 'success' : 'muted'} size="sm">
           {isWarm ? `${model.warm_count} warm` : 'cold'}
         </Badge>
       </div>

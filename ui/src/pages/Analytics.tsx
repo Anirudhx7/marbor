@@ -13,7 +13,7 @@ import {
 import { getAnalytics } from '../lib/api';
 import { mockAnalytics } from '../lib/mockData';
 import { useDemoMode } from '../hooks/useDemoMode';
-import type { Analytics, HourlyBucket } from '../types';
+import type { Analytics, HourlyBucket, ModelStat } from '../types';
 
 function formatHourLabel(hour: string): string {
   // "2026-05-23T14" -> "14:00"
@@ -183,9 +183,9 @@ export function Analytics() {
                   borderRadius: '8px',
                   fontSize: '12px',
                 }}
-                formatter={(value: number, name: string) => [
-                  value.toLocaleString(),
-                  name,
+                formatter={(value, name) => [
+                  typeof value === 'number' ? value.toLocaleString() : String(value),
+                  String(name),
                 ]}
               />
               <Legend
@@ -243,7 +243,7 @@ export function Analytics() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {data.by_model.slice(0, 10).map((m) => {
+                {data.by_model.slice(0, 10).map((m: ModelStat) => {
                   const total = m.local + m.cloud;
                   const pct = total > 0 ? Math.round((m.local / total) * 100) : 0;
                   return (

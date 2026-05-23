@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics } from '../types';
 
 const BASE = '/admin';
 
@@ -150,6 +150,12 @@ export async function updateSettings(data: any) {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Failed to update settings');
+}
+
+export async function getAnalytics(): Promise<Analytics> {
+  const res = await fetch(`${BASE}/analytics`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch analytics');
+  return res.json();
 }
 
 export async function pullModel(nodeName: string, model: string): Promise<void> {

@@ -129,3 +129,27 @@ export interface RequestEntry {
   latency_ms: number;
   cloud: boolean;
 }
+
+export interface HourlyBucket {
+  hour: string;
+  local: number;
+  cloud: number;
+  saved_usd: number;
+  spent_usd: number;
+}
+
+export interface ModelStat {
+  model: string;
+  local: number;
+  cloud: number;
+  saved_usd: number;
+}
+
+export interface Analytics {
+  local_requests: number;
+  cloud_requests: number;
+  total_saved_usd: number;
+  total_spent_usd: number;
+  hourly: HourlyBucket[];
+  by_model: ModelStat[];
+}

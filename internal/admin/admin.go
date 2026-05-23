@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"embed"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
@@ -34,6 +36,12 @@ type Server struct {
 	cloudSpentUSD float64 // protected by mu
 	startTime     time.Time
 	analytics     *analyticsStore
+	auditLog      *audit.Logger
+}
+
+// SetAuditLogger wires the audit logger into the admin server for query access.
+func (s *Server) SetAuditLogger(al *audit.Logger) {
+	s.auditLog = al
 }
 
 type RequestLog struct {
@@ -124,8 +132,10 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
 	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
 	reg("GET /admin/analytics", s.cors(s.adminAuth(s.handleAnalytics)))
+	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
 	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
+	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -667,6 +677,75 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		"node":  nodeName,
 		"model": body.Model,
 	})
+}
+
+// handleAnalyticsExport serves analytics data as CSV or JSON.
+// Query params: format=csv|json (default json), type=hourly|models (default hourly).
+func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+	exportType := r.URL.Query().Get("type")
+	if exportType == "" {
+		exportType = "hourly"
+	}
+
+	today := time.Now().UTC().Format("2006-01-02")
+
+	if format == "csv" {
+		switch exportType {
+		case "models":
+			w.Header().Set("Content-Type", "text/csv")
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="ollama-mesh-models-%s.csv"`, today))
+			cw := csv.NewWriter(w)
+			_ = cw.Write([]string{"model", "local_requests", "cloud_requests", "local_pct", "saved_usd"})
+			for _, m := range s.analytics.topModels() {
+				total := m.Local + m.Cloud
+				pct := int64(0)
+				if total > 0 {
+					pct = m.Local * 100 / total
+				}
+				_ = cw.Write([]string{
+					m.Model,
+					strconv.FormatInt(m.Local, 10),
+					strconv.FormatInt(m.Cloud, 10),
+					strconv.FormatInt(pct, 10),
+					strconv.FormatFloat(m.SavedUSD, 'f', 6, 64),
+				})
+			}
+			cw.Flush()
+		default: // hourly
+			w.Header().Set("Content-Type", "text/csv")
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="ollama-mesh-analytics-%s.csv"`, today))
+			cw := csv.NewWriter(w)
+			_ = cw.Write([]string{"hour", "local_requests", "cloud_requests", "saved_usd", "spent_usd"})
+			for _, b := range s.analytics.last24hBuckets() {
+				_ = cw.Write([]string{
+					b.Hour,
+					strconv.FormatInt(b.Local, 10),
+					strconv.FormatInt(b.Cloud, 10),
+					strconv.FormatFloat(b.SavedUSD, 'f', 6, 64),
+					strconv.FormatFloat(b.SpentUSD, 'f', 6, 64),
+				})
+			}
+			cw.Flush()
+		}
+		return
+	}
+
+	// JSON output
+	w.Header().Set("Content-Type", "application/json")
+	switch exportType {
+	case "models":
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"by_model": s.analytics.topModels(),
+		})
+	default: // hourly
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"hourly": s.analytics.last24hBuckets(),
+		})
+	}
 }
 
 // handleHealth is an unauthenticated endpoint for load balancers and Docker healthchecks.

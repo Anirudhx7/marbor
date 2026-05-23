@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry } from '../types';
+import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics } from '../types';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -350,6 +350,36 @@ export const mockRequests: RequestEntry[] = [
   { id: 'req-c9d0e1f2a7b8', time: mins(12),  key_name: 'Production API',  model: 'phi3:medium',   node: 'gpu-node-04', status: 500, latency_ms: 1204, cloud: false },
   { id: 'req-d0e1f2a7b8c9', time: mins(15),  key_name: 'Development API', model: 'llama3.1:8b',   node: 'gpu-node-02', status: 200, latency_ms: 33,   cloud: false },
 ];
+
+function makeHourKey(hoursAgo: number): string {
+  const d = new Date(Date.now() - hoursAgo * 3600000);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  return `${y}-${mo}-${day}T${h}`;
+}
+
+export const mockAnalytics: Analytics = {
+  local_requests: 342567,
+  cloud_requests: 12453,
+  total_saved_usd: 284.15,
+  total_spent_usd: 48.72,
+  hourly: Array.from({ length: 24 }, (_, i) => ({
+    hour: makeHourKey(23 - i),
+    local: Math.floor(12000 + Math.sin(i / 3) * 3000 + Math.random() * 1000),
+    cloud: Math.floor(400 + Math.cos(i / 4) * 200 + Math.random() * 100),
+    saved_usd: parseFloat((10 + Math.sin(i / 3) * 3 + Math.random()).toFixed(4)),
+    spent_usd: parseFloat((1.8 + Math.random() * 0.5).toFixed(4)),
+  })),
+  by_model: [
+    { model: 'llama3.1:70b',  local: 120450, cloud: 2340, saved_usd: 100.20 },
+    { model: 'mistral:7b',    local: 98320,  cloud: 4120, saved_usd: 82.10 },
+    { model: 'llama3.1:8b',   local: 75640,  cloud: 3210, saved_usd: 63.40 },
+    { model: 'codellama:13b', local: 30210,  cloud: 1890, saved_usd: 25.30 },
+    { model: 'gemma2:9b',     local: 17947,  cloud: 893,  saved_usd: 13.15 },
+  ],
+};
 
 export const configFileYAML = `# Ollama-Mesh Configuration
 # Generated: ${new Date().toISOString()}
