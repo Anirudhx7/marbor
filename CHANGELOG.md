@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.1] - 2026-06-11
+
+### Added
+- Zero-config first run: `./ollama-mesh` auto-detects localhost:11434, generates crypto/rand API keys, starts on :11435, prints one curl example
+- `savings.reference_cost_per_1k` config field: controls the $/1K token rate used for saved_usd calculation (default $0.002)
+- `docs/SAVINGS-MATH.md`: formula, null semantics, restart reset, and known limitations documented
+- `CloudModel` field in audit log entries: records cloud model used when default_model rewrites the request
+
+### Fixed
+- Savings math uses real parsed token counts (eval_count + prompt_eval_count for Ollama, usage.total_tokens for OpenAI); no more hardcoded 500-token estimate
+- saved_usd and cloud_spent_usd return JSON null (shows "—" in UI) when requests exist but no token data was parseable
+- Mid-stream abort (upstream node death) now records status=aborted in metrics, admin log, and audit instead of silently vanishing
+- Cloud model rewriting visible in request log as "original -> cloud_model" for observability
+
+### Tests
+- Streaming integration tests: unbuffered delivery (R2 verified), token tracking from NDJSON tail, mid-stream node death records aborted, SSE passthrough
+- Admin savings tests: custom reference rate flows to handleSavings and hourly analytics buckets
+- Config tests: default rate applied via Validate(), custom rate loaded from YAML
+- Proxy tests: cloud model mapping visible in live request log and audit entry
+
 ## [0.2.0] - 2026-05-23
 
 ### Added
