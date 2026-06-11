@@ -33,6 +33,8 @@ type Server struct {
 	requests      []RequestLog
 	localCount    int64   // atomic - requests served by local nodes
 	cloudCount    int64   // atomic - requests forwarded to cloud
+	localTokens   int64   // atomic - real token counts parsed from local node responses
+	cloudTokens   int64   // atomic - real token counts parsed from cloud responses
 	cloudSpentUSD float64 // protected by mu
 	startTime     time.Time
 	analytics     *analyticsStore
@@ -211,15 +213,9 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		} else if n.Failures > 0 {
 			health = "degraded"
 		}
+		// Empty history stays empty ([] in JSON) — the UI renders a "no data" state.
 		hist := make([]float64, len(n.HealthHistory))
 		copy(hist, n.HealthHistory)
-		if len(hist) == 0 {
-			// Generate fake 60-point history if empty
-			hist = make([]float64, 60)
-			for j := range hist {
-				hist[j] = 60.0 + float64(j%30)
-			}
-		}
 		out[i] = nodeResp{
 			ID:          fmt.Sprintf("gpu-%d", i),
 			Name:        n.Name,
@@ -420,35 +416,27 @@ func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int) {
 	}
 }
 
-func (s *Server) TrackLocalRequest() {
-	atomic.AddInt64(&s.localCount, 1)
-}
-
-func (s *Server) TrackCloudCost(costPer1KTokens float64) {
-	atomic.AddInt64(&s.cloudCount, 1)
-	// Estimate 500 tokens per request as baseline for cost calculation
-	cost := costPer1KTokens * 500.0 / 1000.0
-	s.mu.Lock()
-	s.cloudSpentUSD += cost
-	s.mu.Unlock()
-}
-
 // TrackLocalRequestModel tracks a local request with model-level granularity.
-// Call this alongside TrackLocalRequest() when the model name is available.
-func (s *Server) TrackLocalRequestModel(model string) {
+// tokens is the real token count parsed from the response (eval_count +
+// prompt_eval_count); 0 means the count was unavailable and contributes
+// nothing to savings.
+func (s *Server) TrackLocalRequestModel(model string, tokens int64) {
 	atomic.AddInt64(&s.localCount, 1)
-	s.analytics.recordLocal(model)
+	atomic.AddInt64(&s.localTokens, tokens)
+	s.analytics.recordLocal(model, tokens)
 }
 
 // TrackCloudCostModel tracks a cloud request with model-level granularity.
-// Call this alongside TrackCloudCost() when the model name is available.
-func (s *Server) TrackCloudCostModel(model string, costPer1K float64) {
+// tokens is the real token count parsed from the provider response; 0 means
+// the count was unavailable and no cost is recorded for the request.
+func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int64) {
 	atomic.AddInt64(&s.cloudCount, 1)
-	cost := costPer1K * 500.0 / 1000.0
+	atomic.AddInt64(&s.cloudTokens, tokens)
+	cost := costPer1K * float64(tokens) / 1000.0
 	s.mu.Lock()
 	s.cloudSpentUSD += cost
 	s.mu.Unlock()
-	s.analytics.recordCloud(model, costPer1K)
+	s.analytics.recordCloud(model, costPer1K, tokens)
 }
 
 func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
@@ -457,11 +445,7 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 
 	local := atomic.LoadInt64(&s.localCount)
 	cloud := atomic.LoadInt64(&s.cloudCount)
-	s.mu.RLock()
-	cloudSpent := s.cloudSpentUSD
-	s.mu.RUnlock()
-	const refCostPer1K = 0.002
-	savedUSD := float64(local) * refCostPer1K * 500.0 / 1000.0
+	savedUSD, cloudSpent := s.savingsUSD()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -474,17 +458,35 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleSavings(w http.ResponseWriter, r *http.Request) {
+// savingsUSD computes savings and cloud spend from real parsed token counts.
+// Returns nil (JSON null) for a figure when requests exist but no token data
+// was ever parsed — the UI renders that as "—" instead of a fabricated number.
+func (s *Server) savingsUSD() (saved, spent interface{}) {
 	local := atomic.LoadInt64(&s.localCount)
 	cloud := atomic.LoadInt64(&s.cloudCount)
+	localTok := atomic.LoadInt64(&s.localTokens)
+	cloudTok := atomic.LoadInt64(&s.cloudTokens)
 	s.mu.RLock()
 	cloudSpent := s.cloudSpentUSD
 	s.mu.RUnlock()
 
-	// Savings = what local requests would have cost at reference cloud rate
-	// Using $0.002 per 1K tokens with 500 token average per request
+	// Savings = what local tokens would have cost at the reference cloud rate.
 	const refCostPer1K = 0.002
-	savedUSD := float64(local) * refCostPer1K * 500.0 / 1000.0
+	saved = float64(localTok) / 1000.0 * refCostPer1K
+	if local > 0 && localTok == 0 {
+		saved = nil
+	}
+	spent = cloudSpent
+	if cloud > 0 && cloudTok == 0 {
+		spent = nil
+	}
+	return saved, spent
+}
+
+func (s *Server) handleSavings(w http.ResponseWriter, r *http.Request) {
+	local := atomic.LoadInt64(&s.localCount)
+	cloud := atomic.LoadInt64(&s.cloudCount)
+	savedUSD, cloudSpent := s.savingsUSD()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

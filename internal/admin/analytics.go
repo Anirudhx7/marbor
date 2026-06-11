@@ -37,10 +37,12 @@ func newAnalyticsStore() *analyticsStore {
 	}
 }
 
-func (a *analyticsStore) recordLocal(model string) {
+// recordLocal records a local request. tokens is the real token count parsed
+// from the response; 0 contributes nothing to savings.
+func (a *analyticsStore) recordLocal(model string, tokens int64) {
 	key := time.Now().UTC().Format("2006-01-02T15")
 	const refCostPer1K = 0.002
-	saved := refCostPer1K * 500.0 / 1000.0
+	saved := refCostPer1K * float64(tokens) / 1000.0
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -58,9 +60,11 @@ func (a *analyticsStore) recordLocal(model string) {
 	a.byModel[model].SavedUSD += saved
 }
 
-func (a *analyticsStore) recordCloud(model string, costPer1K float64) {
+// recordCloud records a cloud request. tokens is the real token count parsed
+// from the provider response; 0 contributes nothing to spend.
+func (a *analyticsStore) recordCloud(model string, costPer1K float64, tokens int64) {
 	key := time.Now().UTC().Format("2006-01-02T15")
-	spent := costPer1K * 500.0 / 1000.0
+	spent := costPer1K * float64(tokens) / 1000.0
 
 	a.mu.Lock()
 	defer a.mu.Unlock()

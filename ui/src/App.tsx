@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
+import { useDemoMode } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './pages/Dashboard';
 import { GPUNodes } from './pages/GPUNodes';
@@ -11,6 +12,16 @@ import { Analytics } from './pages/Analytics';
 import { Models } from './pages/Models';
 import { Requests } from './pages/Requests';
 
+function DemoBanner() {
+  const { demoMode } = useDemoMode();
+  if (!demoMode) return null;
+  return (
+    <div className="bg-amber-500 text-black text-sm font-medium text-center py-1.5 px-4">
+      Demo mode — all data shown is mock data, not your cluster. Disable it in Settings.
+    </div>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -18,6 +29,7 @@ function App() {
         <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
           <Sidebar />
           <main className="ml-64 min-h-screen">
+            <DemoBanner />
             <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
               <Routes>
                 <Route path="/" element={<Dashboard />} />

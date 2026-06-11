@@ -78,7 +78,7 @@ function SavingsCard({ savings, loading }: SavingsCardProps) {
               <span className="text-2xl font-bold text-foreground animate-pulse">--</span>
             ) : savings ? (
               <span className="text-2xl font-bold text-success">
-                ${savings.saved_usd.toFixed(2)}
+                {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '—'}
               </span>
             ) : (
               <span className="text-2xl font-bold text-muted-foreground">--</span>
@@ -114,11 +114,11 @@ function ArchitectureDiagram() {
     { icon: <Layers className="w-5 h-5" />, label: 'Clients', sublabel: 'API Requests' },
     { icon: <Shield className="w-5 h-5" />, label: 'Auth Layer', sublabel: 'API Key Validation' },
     { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
-    { icon: <Database className="w-5 h-5" />, label: 'LiteLLM', sublabel: 'Optional', dashed: true },
-    { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
-    { icon: <Server className="w-5 h-5" />, label: 'Mesh Router', sublabel: 'Load Balancer' },
+    { icon: <Server className="w-5 h-5" />, label: 'Mesh Router', sublabel: 'Warm-First Balancer' },
     { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
     { icon: <Zap className="w-5 h-5" />, label: 'GPU Nodes', sublabel: 'Ollama Instances' },
+    { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
+    { icon: <Database className="w-5 h-5" />, label: 'Cloud Fallback', sublabel: 'Optional', dashed: true },
   ];
 
   return (

@@ -85,8 +85,9 @@ export interface Settings {
 export interface Savings {
   local_requests: number;
   cloud_requests: number;
-  cloud_spent_usd: number;
-  saved_usd: number;
+  // null = requests happened but no real token counts could be parsed yet
+  cloud_spent_usd: number | null;
+  saved_usd: number | null;
   total_requests: number;
 }
 
@@ -148,8 +149,9 @@ export interface ModelStat {
 export interface Analytics {
   local_requests: number;
   cloud_requests: number;
-  total_saved_usd: number;
-  total_spent_usd: number;
+  // null = requests happened but no real token counts could be parsed yet
+  total_saved_usd: number | null;
+  total_spent_usd: number | null;
   hourly: HourlyBucket[];
   by_model: ModelStat[];
 }

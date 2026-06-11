@@ -127,7 +127,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.admin != nil {
 		h.admin.LogRequest(keyName, modelName, node.Name, status, latencyMs)
-		h.admin.TrackLocalRequestModel(modelName)
+		h.admin.TrackLocalRequestModel(modelName, rec.tokenCount())
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
@@ -191,7 +191,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
 		h.admin.LogRequest(keyName, modelName, nodeName, "cloud", latencyMs)
-		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens)
+		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, rec.tokenCount())
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
@@ -240,6 +240,55 @@ func rewriteModelField(body []byte, model string) []byte {
 type statusRecorder struct {
 	http.ResponseWriter
 	statusCode int
+	tail       []byte // last tailMax bytes written, for token-count parsing
+}
+
+// tailMax bounds the retained response tail. Token counts live in the final
+// JSON object (Ollama NDJSON) or final SSE chunk (OpenAI), so a small tail
+// is enough. Writes still pass straight through — streaming is not buffered.
+const tailMax = 8192
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(b)
+	if n > 0 {
+		r.tail = append(r.tail, b[:n]...)
+		if len(r.tail) > tailMax {
+			r.tail = r.tail[len(r.tail)-tailMax:]
+		}
+	}
+	return n, err
+}
+
+// tokenCount parses real token usage from the response tail. It scans lines
+// from the end looking for Ollama's final object (eval_count +
+// prompt_eval_count) or an OpenAI-style usage block (total_tokens).
+// Returns 0 when no count is present — callers treat 0 as "unknown".
+func (r *statusRecorder) tokenCount() int64 {
+	lines := bytes.Split(r.tail, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		line = bytes.TrimPrefix(line, []byte("data: ")) // SSE framing
+		if len(line) == 0 || line[0] != '{' {
+			continue
+		}
+		var t struct {
+			EvalCount       int64 `json:"eval_count"`
+			PromptEvalCount int64 `json:"prompt_eval_count"`
+			Usage           struct {
+				TotalTokens int64 `json:"total_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal(line, &t); err != nil {
+			continue
+		}
+		if n := t.EvalCount + t.PromptEvalCount; n > 0 {
+			return n
+		}
+		if t.Usage.TotalTokens > 0 {
+			return t.Usage.TotalTokens
+		}
+	}
+	return 0
 }
 
 func (r *statusRecorder) Flush() {

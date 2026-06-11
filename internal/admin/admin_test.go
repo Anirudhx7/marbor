@@ -17,57 +17,69 @@ func newTestServer() *Server {
 	return NewServer(r, nil, config.Config{})
 }
 
-func TestTrackLocalRequest(t *testing.T) {
+func TestTrackLocalRequestModel(t *testing.T) {
 	s := newTestServer()
 
-	s.TrackLocalRequest()
-	s.TrackLocalRequest()
-	s.TrackLocalRequest()
+	s.TrackLocalRequestModel("llama3", 100)
+	s.TrackLocalRequestModel("llama3", 200)
+	s.TrackLocalRequestModel("llama3", 0) // token count unavailable
 
-	got := atomic.LoadInt64(&s.localCount)
-	if got != 3 {
+	if got := atomic.LoadInt64(&s.localCount); got != 3 {
 		t.Errorf("localCount = %d, want 3", got)
+	}
+	if got := atomic.LoadInt64(&s.localTokens); got != 300 {
+		t.Errorf("localTokens = %d, want 300", got)
 	}
 }
 
-func TestTrackCloudCost(t *testing.T) {
+func TestTrackCloudCostModel(t *testing.T) {
 	s := newTestServer()
 
-	s.TrackCloudCost(0.002)
-	s.TrackCloudCost(0.002)
+	s.TrackCloudCostModel("gpt-4o", 0.002, 1000)
+	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
 
-	gotCount := atomic.LoadInt64(&s.cloudCount)
-	if gotCount != 2 {
+	if gotCount := atomic.LoadInt64(&s.cloudCount); gotCount != 2 {
 		t.Errorf("cloudCount = %d, want 2", gotCount)
 	}
 
-	// Each call: 0.002 * 500 / 1000 = 0.001 USD. Two calls = 0.002 USD.
+	// 0.002 * 1000/1000 + 0.002 * 500/1000 = 0.003 USD
 	s.mu.RLock()
 	gotSpent := s.cloudSpentUSD
 	s.mu.RUnlock()
 
-	wantSpent := 0.002 * 500.0 / 1000.0 * 2
+	wantSpent := 0.002*1000.0/1000.0 + 0.002*500.0/1000.0
 	if gotSpent != wantSpent {
 		t.Errorf("cloudSpentUSD = %f, want %f", gotSpent, wantSpent)
+	}
+}
+
+func TestTrackCloudCostModelUnknownTokensAddsNoCost(t *testing.T) {
+	s := newTestServer()
+
+	s.TrackCloudCostModel("gpt-4o", 0.002, 0)
+
+	s.mu.RLock()
+	gotSpent := s.cloudSpentUSD
+	s.mu.RUnlock()
+	if gotSpent != 0 {
+		t.Errorf("cloudSpentUSD = %f, want 0 (no fabricated cost)", gotSpent)
 	}
 }
 
 func TestHandleSavings(t *testing.T) {
 	s := newTestServer()
 
-	// 3 local, 2 cloud at $0.002/1K tokens
-	s.TrackLocalRequest()
-	s.TrackLocalRequest()
-	s.TrackLocalRequest()
-	s.TrackCloudCost(0.002)
-	s.TrackCloudCost(0.002)
+	// 3 local requests totaling 1500 tokens, 2 cloud at $0.002/1K tokens
+	s.TrackLocalRequestModel("llama3", 500)
+	s.TrackLocalRequestModel("llama3", 500)
+	s.TrackLocalRequestModel("llama3", 500)
+	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
+	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
 
-	// Build a request with a valid admin token (default "admin" when auth disabled)
 	req := httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil)
 	req.Header.Set("Authorization", "Bearer admin")
 	rec := httptest.NewRecorder()
 
-	// Call handleSavings directly (bypassing mux/auth middleware)
 	s.handleSavings(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -83,7 +95,6 @@ func TestHandleSavings(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	// Validate required fields exist
 	for _, field := range []string{"local_requests", "cloud_requests", "cloud_spent_usd", "saved_usd"} {
 		if _, ok := resp[field]; !ok {
 			t.Errorf("response missing field %q", field)
@@ -97,15 +108,38 @@ func TestHandleSavings(t *testing.T) {
 		t.Errorf("cloud_requests = %v, want 2", got)
 	}
 
-	// cloud_spent_usd: 2 * (0.002 * 500 / 1000) = 0.002
+	// cloud_spent_usd: 2 * (0.002 * 500/1000) = 0.002
 	wantSpent := 0.002 * 500.0 / 1000.0 * 2
 	if got := resp["cloud_spent_usd"].(float64); got != wantSpent {
 		t.Errorf("cloud_spent_usd = %v, want %v", got, wantSpent)
 	}
 
-	// saved_usd: 3 * 0.002 * 500 / 1000 = 0.003
-	wantSaved := 3.0 * 0.002 * 500.0 / 1000.0
+	// saved_usd: 1500 tokens * $0.002/1K = 0.003
+	wantSaved := 1500.0 / 1000.0 * 0.002
 	if got := resp["saved_usd"].(float64); got != wantSaved {
 		t.Errorf("saved_usd = %v, want %v", got, wantSaved)
+	}
+}
+
+func TestHandleSavingsNullWhenNoTokenData(t *testing.T) {
+	s := newTestServer()
+
+	// Requests happened but no token counts could be parsed.
+	s.TrackLocalRequestModel("llama3", 0)
+	s.TrackCloudCostModel("gpt-4o", 0.002, 0)
+
+	rec := httptest.NewRecorder()
+	s.handleSavings(rec, httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil))
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if v, ok := resp["saved_usd"]; !ok || v != nil {
+		t.Errorf("saved_usd = %v, want null when no token data", v)
+	}
+	if v, ok := resp["cloud_spent_usd"]; !ok || v != nil {
+		t.Errorf("cloud_spent_usd = %v, want null when no token data", v)
 	}
 }

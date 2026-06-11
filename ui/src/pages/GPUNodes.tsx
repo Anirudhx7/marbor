@@ -78,10 +78,16 @@ function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) 
           <span className="text-xs font-medium">Health (60m)</span>
         </div>
         <div className="flex items-center gap-2">
-          <Sparkline data={node.healthHistory} width={100} height={24} />
-          <span className={`text-xs font-mono font-medium ${healthColor}`}>
-            {Math.round(node.healthHistory[node.healthHistory.length - 1])}%
-          </span>
+          {node.healthHistory.length > 0 ? (
+            <>
+              <Sparkline data={node.healthHistory} width={100} height={24} />
+              <span className={`text-xs font-mono font-medium ${healthColor}`}>
+                {Math.round(node.healthHistory[node.healthHistory.length - 1])}%
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-muted-foreground">no data yet</span>
+          )}
         </div>
       </div>
 
