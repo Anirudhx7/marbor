@@ -1,10 +1,14 @@
 <!-- generated-by: gsd-doc-writer -->
 # ollama-mesh
 
-**GPU-aware Ollama load balancer with cloud fallback. Route to warm VRAM first, fall back to OpenAI/Anthropic when busy.**
+**Warm-model-aware load balancer with cloud overflow for Ollama. Route to the node that already has the model loaded, overflow to OpenAI/Anthropic when local capacity runs out - never see "Ollama busy" again.**
 
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+![ollama-mesh dashboard](docs/screenshots/dashboard.png)
+*Dashboard in demo mode - run `make dev-ui` and toggle demo in Settings to explore it without a cluster.*
 
 ---
 
@@ -23,10 +27,25 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## Why
 
-- You have multiple Ollama nodes but no way to load balance them
-- Models cold-start on every new node - 30 second delays kill UX
-- When your GPU cluster is full, requests just fail with no fallback
-- You have no visibility into which GPU is serving what, or what it's costing you
+- Your Ollama box is busy or down and requests just fail - ollama-mesh overflows them to OpenAI/Anthropic automatically, so clients never see an error
+- Models cold-start on every new node - 30 second delays kill UX. Warm-first routing sends requests to the node that already has the model in VRAM
+- You have no visibility into what's being served locally vs in the cloud, or what it's costing you
+
+Works with a single Ollama node plus a cloud fallback key. Scales to multiple nodes when you add them.
+
+---
+
+## Who is this for?
+
+- **Self-hosters** running apps or agents against one Ollama box: get cloud overflow, API keys, and a dashboard.
+- **Platform engineers** with on-prem GPUs and a team to serve: per-key auth, rate limits, cost visibility, Prometheus/Grafana.
+- **Multi-GPU homelabs**: warm-first routing across nodes, no more cold-start roulette.
+
+Not for you if you're one person chatting with one box occasionally - you don't need a proxy.
+
+**"Isn't this just LiteLLM?"** No - LiteLLM routes between clouds and treats Ollama as a dumb URL. ollama-mesh treats your GPU as the preferred resource and the cloud as the overflow valve, and it knows which node already has the model in VRAM. One static Go binary, no Python stack. Full comparison and use cases: [docs/USE-CASES.md](docs/USE-CASES.md).
+
+Existing clients keep working: ollama-mesh speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints, so both `ollama` clients and OpenAI SDKs can point at it unchanged.
 
 ---
 
@@ -36,9 +55,9 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
 |---------|--------|
 | Warm-first routing | Routes to the node that already has the model in VRAM. Eliminates cold starts. |
 | Cloud fallback | When all GPUs are busy or down, automatically routes to OpenAI or Anthropic. |
-| Savings tracking | Shows exactly how much you saved vs pure cloud this month. |
+| Savings tracking | Savings computed from real token counts parsed from responses (Ollama `eval_count`, cloud `usage`). Shows "—" when no token data exists - never a fabricated number. |
 | Docker auto-discovery | Detects `ollama/ollama` containers automatically from the Docker socket. Zero config. |
-| Real nvidia-smi metrics | Actual VRAM usage, temperature, and power draw per node - not fake numbers. |
+| Local GPU metrics | Real VRAM, temperature, and power draw via nvidia-smi on the mesh host. Note: remote node GPUs are not visible yet - per-node telemetry is on the roadmap. |
 | API key management | Per-key rate limits, model allow-lists, and key expiry. |
 | Prometheus metrics | 7 metrics exposed at `:9090`. Grafana dashboard included. |
 | Analytics dashboard | 24-hour area chart, savings stats, per-model breakdown. |
@@ -52,13 +71,19 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
 ## Quick Start
 
-**Binary (Linux/macOS):**
+**Binary:**
 ```bash
+# Linux (amd64)
 curl -Lo ollama-mesh https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
+# macOS (Apple Silicon)
+curl -Lo ollama-mesh https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-darwin-arm64
+
 chmod +x ollama-mesh
-cp config.example.yaml config.yaml
+curl -Lo config.yaml https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/config.example.yaml
 ./ollama-mesh
 ```
+
+All builds (Linux/macOS/Windows, amd64/arm64) and `checksums.txt` are on the [releases page](https://github.com/Anirudhx7/ollama-mesh/releases/latest).
 
 **Docker Compose:**
 ```bash
@@ -250,7 +275,7 @@ services:
 
 ## Grafana
 
-Import `grafana/ollama-mesh.json` into Grafana and point the Prometheus datasource at `:9090`. The dashboard shows VRAM utilization per node, request throughput, latency percentiles, and cloud fallback rate.
+Import `grafana/ollama-mesh.json` into Grafana and point the Prometheus datasource at `:9090`. The dashboard shows mesh-host VRAM utilization, request throughput, latency percentiles, and cloud fallback rate.
 
 ---
 

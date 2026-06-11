@@ -1,6 +1,6 @@
 # ollama-mesh Grafana Dashboard
 
-One-click Grafana dashboard for GPU-aware Ollama proxy metrics: requests, latency percentiles, warm vs cold routing ratio, and per-node active connections.
+One-click Grafana dashboard for ollama-mesh proxy metrics: requests, latency percentiles, warm vs cold routing ratio, and per-node active connections.
 
 ## Prerequisites
 

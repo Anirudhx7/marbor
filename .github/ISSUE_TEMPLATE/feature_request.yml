@@ -1,0 +1,20 @@
+name: Feature request
+description: Something ollama-mesh should do but doesn't
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you hitting?
+      description: Describe the pain, not the solution. "When X happens, I have to Y."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you want to happen?
+  - type: input
+    id: setup
+    attributes:
+      label: Your setup
+      placeholder: "e.g. 3 Ollama nodes, 200 req/day, Anthropic fallback"

@@ -11,7 +11,7 @@ Goal: Make the dashboard show real data. No fake numbers anywhere.
 - [x] Add mutex protection to auth rate limit maps - was a race condition
 - [x] Fix API key creation timestamp - real value, not hardcoded date
 - [x] Fix UI auth prompt - asks for token, no longer falls back silently to "admin"
-- [x] nvidia-smi integration - shell exec, XML parse, VRAM total/used, temperature, power draw per node
+- [x] nvidia-smi integration - shell exec, XML parse, VRAM total/used, temperature, power draw (mesh host only; remote node GPUs not yet visible)
 - [x] Router tests - warm-first logic, model loaded vs not loaded
 - [x] Integration tests - mock Ollama HTTP server, routing decision verification
 
