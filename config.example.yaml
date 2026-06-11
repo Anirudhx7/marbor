@@ -75,6 +75,12 @@ webhook:
   url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
   secret: ""  # optional HMAC secret
 
+# Savings calculation: locally-served tokens are valued at this reference
+# cloud rate (USD per 1K tokens) to compute the "saved vs pure cloud" figure.
+# Pick the rate of the cloud model you would otherwise use. Default: 0.002.
+savings:
+  reference_cost_per_1k: 0.002
+
 # Audit logging: append-only JSON-lines file of all proxy requests.
 # Records: timestamp, request_id, key_name, model, node, status, latency_ms, cloud.
 # Never logs API key values or request bodies.

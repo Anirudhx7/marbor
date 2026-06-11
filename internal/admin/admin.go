@@ -36,6 +36,7 @@ type Server struct {
 	localTokens   int64   // atomic - real token counts parsed from local node responses
 	cloudTokens   int64   // atomic - real token counts parsed from cloud responses
 	cloudSpentUSD float64 // protected by mu
+	refCostPer1K  float64 // reference cloud rate used to value local tokens (immutable after construction)
 	startTime     time.Time
 	analytics     *analyticsStore
 	auditLog      *audit.Logger
@@ -88,16 +89,25 @@ type keyResp struct {
 
 func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server {
 	token := "admin"
-	if cfg.Auth.Enabled && len(cfg.Auth.Keys) > 0 {
+	if cfg.Auth.AdminToken != "" {
+		token = cfg.Auth.AdminToken
+	} else if cfg.Auth.Enabled && len(cfg.Auth.Keys) > 0 {
 		token = cfg.Auth.Keys[0].Key
 	}
+	// Mirror config.Validate()'s default so servers constructed from a zero
+	// config (tests, embedded use) still value local tokens at a real rate.
+	refRate := cfg.Savings.ReferenceCostPer1K
+	if refRate <= 0 {
+		refRate = 0.002
+	}
 	return &Server{
-		router:     r,
-		auth:       a,
-		cfg:        cfg,
-		adminToken: token,
-		startTime:  time.Now(),
-		analytics:  newAnalyticsStore(),
+		router:       r,
+		auth:         a,
+		cfg:          cfg,
+		adminToken:   token,
+		refCostPer1K: refRate,
+		startTime:    time.Now(),
+		analytics:    newAnalyticsStore(refRate),
 	}
 }
 
@@ -426,6 +436,14 @@ func (s *Server) TrackLocalRequestModel(model string, tokens int64) {
 	s.analytics.recordLocal(model, tokens)
 }
 
+// LocalTokens returns the running total of real tokens served by local nodes.
+// Exported only so integration tests in internal/proxy can verify that
+// streamed responses produce real token counts; the value is otherwise
+// exposed solely through the savings endpoint.
+func (s *Server) LocalTokens() int64 {
+	return atomic.LoadInt64(&s.localTokens)
+}
+
 // TrackCloudCostModel tracks a cloud request with model-level granularity.
 // tokens is the real token count parsed from the provider response; 0 means
 // the count was unavailable and no cost is recorded for the request.
@@ -470,9 +488,9 @@ func (s *Server) savingsUSD() (saved, spent interface{}) {
 	cloudSpent := s.cloudSpentUSD
 	s.mu.RUnlock()
 
-	// Savings = what local tokens would have cost at the reference cloud rate.
-	const refCostPer1K = 0.002
-	saved = float64(localTok) / 1000.0 * refCostPer1K
+	// Savings = what local tokens would have cost at the reference cloud rate
+	// (savings.reference_cost_per_1k in config, default 0.002).
+	saved = float64(localTok) / 1000.0 * s.refCostPer1K
 	if local > 0 && localTok == 0 {
 		saved = nil
 	}

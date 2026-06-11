@@ -121,6 +121,37 @@ func TestHandleSavings(t *testing.T) {
 	}
 }
 
+func TestHandleSavingsCustomReferenceRate(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	cfg := config.Config{Savings: config.SavingsConfig{ReferenceCostPer1K: 0.01}}
+	s := NewServer(r, nil, cfg)
+
+	s.TrackLocalRequestModel("llama3", 1500)
+
+	rec := httptest.NewRecorder()
+	s.handleSavings(rec, httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil))
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// saved_usd: 1500 tokens / 1000 * $0.01 = 0.015
+	wantSaved := 1500.0 / 1000.0 * 0.01
+	if got := resp["saved_usd"].(float64); got != wantSaved {
+		t.Errorf("saved_usd = %v, want %v (custom reference rate must flow from config)", got, wantSaved)
+	}
+
+	// The hourly analytics buckets must use the same configured rate.
+	var bucketSaved float64
+	for _, b := range s.analytics.last24hBuckets() {
+		bucketSaved += b.SavedUSD
+	}
+	if bucketSaved != wantSaved {
+		t.Errorf("analytics SavedUSD = %v, want %v (analyticsStore must use configured rate)", bucketSaved, wantSaved)
+	}
+}
+
 func TestHandleSavingsNullWhenNoTokenData(t *testing.T) {
 	s := newTestServer()
 

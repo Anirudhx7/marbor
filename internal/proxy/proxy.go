@@ -107,10 +107,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rec := &statusRecorder{ResponseWriter: w}
-	proxy.ServeHTTP(rec, r)
+	aborted := serveAndRecoverAbort(proxy, rec, r)
 
 	duration := time.Since(start).Seconds()
-	metrics.RequestsTotal(keyName, modelName, node.Name, rec.Status())
+	metricStatus := rec.Status()
+	if aborted {
+		metricStatus = "aborted"
+	}
+	metrics.RequestsTotal(keyName, modelName, node.Name, metricStatus)
 	metrics.RequestDuration(modelName, node.Name, duration)
 
 	// Log to admin live requests
@@ -120,6 +124,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if rec.statusCode >= 500 {
 		status = "error"
+	}
+	if aborted {
+		status = "aborted"
 	}
 	latencyMs := int(time.Since(start).Milliseconds())
 	if rec.statusCode >= 500 {
@@ -143,12 +150,41 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// serveAndRecoverAbort runs the reverse proxy and absorbs http.ErrAbortHandler,
+// which httputil.ReverseProxy panics with when the upstream dies mid-stream.
+// Without this, the net/http server recovers the panic above us and every
+// post-proxy step (metrics, admin log, audit) is silently skipped. Returns
+// true when the stream was aborted. The panic is intentionally not re-raised:
+// the partial body has already been written, the connection cannot be reused
+// either way, and swallowing it lets the request be recorded as "aborted".
+// Any other panic value is re-raised untouched.
+func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r *http.Request) (aborted bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			if p == http.ErrAbortHandler {
+				aborted = true
+				return
+			}
+			panic(p)
+		}
+	}()
+	proxy.ServeHTTP(w, r)
+	return false
+}
+
 func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, cloud *config.CloudProvider) {
 	path := translateCloudPath(r.URL.Path)
 
 	outBody := body
+	// loggedModel makes model rewriting visible: "<original> -> <cloud model>"
+	// in the request log when the cloud provider's default_model replaced the
+	// client's requested model, plain "<original>" otherwise.
+	loggedModel := modelName
+	cloudModel := ""
 	if cloud.DefaultModel != "" && len(body) > 0 {
 		outBody = rewriteModelField(body, cloud.DefaultModel)
+		cloudModel = cloud.DefaultModel
+		loggedModel = modelName + " -> " + cloud.DefaultModel
 	}
 
 	targetURL, err := url.Parse(cloud.BaseURL)
@@ -181,28 +217,35 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 
 	rec := &statusRecorder{ResponseWriter: w}
-	proxy.ServeHTTP(rec, r)
+	aborted := serveAndRecoverAbort(proxy, rec, r)
 
 	duration := time.Since(start).Seconds()
 	nodeName := "cloud:" + cloud.Name
-	metrics.RequestsTotal(keyName, modelName, nodeName, rec.Status())
+	status := "cloud"
+	metricStatus := rec.Status()
+	if aborted {
+		status = "aborted"
+		metricStatus = "aborted"
+	}
+	metrics.RequestsTotal(keyName, modelName, nodeName, metricStatus)
 	metrics.RequestDuration(modelName, nodeName, duration)
 
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
-		h.admin.LogRequest(keyName, modelName, nodeName, "cloud", latencyMs)
+		h.admin.LogRequest(keyName, loggedModel, nodeName, status, latencyMs)
 		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, rec.tokenCount())
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
-			Time:      time.Now(),
-			RequestID: requestID,
-			KeyName:   keyName,
-			Model:     modelName,
-			Node:      nodeName,
-			Status:    "cloud",
-			LatencyMs: int(time.Since(start).Milliseconds()),
-			Cloud:     true,
+			Time:       time.Now(),
+			RequestID:  requestID,
+			KeyName:    keyName,
+			Model:      modelName,
+			Node:       nodeName,
+			Status:     status,
+			LatencyMs:  int(time.Since(start).Milliseconds()),
+			Cloud:      true,
+			CloudModel: cloudModel,
 		})
 	}
 }

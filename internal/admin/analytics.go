@@ -25,15 +25,17 @@ type ModelStat struct {
 // analyticsStore holds in-memory hourly buckets and per-model stats.
 // All reads/writes protected by mu.
 type analyticsStore struct {
-	mu      sync.RWMutex
-	hourly  map[string]*HourlyBucket // key = "2006-01-02T15"
-	byModel map[string]*ModelStat
+	mu           sync.RWMutex
+	refCostPer1K float64 // reference cloud rate for valuing local tokens (immutable)
+	hourly       map[string]*HourlyBucket // key = "2006-01-02T15"
+	byModel      map[string]*ModelStat
 }
 
-func newAnalyticsStore() *analyticsStore {
+func newAnalyticsStore(refCostPer1K float64) *analyticsStore {
 	return &analyticsStore{
-		hourly:  make(map[string]*HourlyBucket),
-		byModel: make(map[string]*ModelStat),
+		refCostPer1K: refCostPer1K,
+		hourly:       make(map[string]*HourlyBucket),
+		byModel:      make(map[string]*ModelStat),
 	}
 }
 
@@ -41,8 +43,7 @@ func newAnalyticsStore() *analyticsStore {
 // from the response; 0 contributes nothing to savings.
 func (a *analyticsStore) recordLocal(model string, tokens int64) {
 	key := time.Now().UTC().Format("2006-01-02T15")
-	const refCostPer1K = 0.002
-	saved := refCostPer1K * float64(tokens) / 1000.0
+	saved := a.refCostPer1K * float64(tokens) / 1000.0
 
 	a.mu.Lock()
 	defer a.mu.Unlock()

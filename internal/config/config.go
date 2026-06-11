@@ -19,6 +19,15 @@ type Config struct {
 	Docker         DockerConfig    `yaml:"docker" json:"docker"`
 	Audit          AuditConfig     `yaml:"audit" json:"audit"`
 	Webhook        WebhookConfig   `yaml:"webhook" json:"webhook"`
+	Savings        SavingsConfig   `yaml:"savings" json:"savings"`
+}
+
+// SavingsConfig controls how locally-served tokens are valued in the
+// dashboard savings calculation.
+type SavingsConfig struct {
+	// ReferenceCostPer1K is the cloud rate (USD per 1K tokens) used to value
+	// tokens served by local nodes. Defaults to 0.002 when unset.
+	ReferenceCostPer1K float64 `yaml:"reference_cost_per_1k" json:"reference_cost_per_1k"`
 }
 
 type WebhookConfig struct {
@@ -47,6 +56,10 @@ type ProxyConfig struct {
 type AuthConfig struct {
 	Enabled bool        `yaml:"enabled"`
 	Keys    []KeyConfig `yaml:"keys"`
+	// AdminToken is the bearer token for the admin dashboard API.
+	// Optional: when empty, the first auth key (or "admin") is used,
+	// preserving pre-first-run behavior.
+	AdminToken string `yaml:"admin_token,omitempty" json:"-"`
 }
 
 type KeyConfig struct {
@@ -174,6 +187,10 @@ func (c *Config) Validate() error {
 
 	if c.Audit.Path == "" {
 		c.Audit.Path = "audit.log"
+	}
+
+	if c.Savings.ReferenceCostPer1K <= 0 {
+		c.Savings.ReferenceCostPer1K = 0.002
 	}
 
 	if c.LiteLLM.Enabled && c.LiteLLM.URL == "" {

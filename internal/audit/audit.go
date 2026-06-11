@@ -23,6 +23,10 @@ type Entry struct {
 	Status    string    `json:"status"`
 	LatencyMs int       `json:"latency_ms"`
 	Cloud     bool      `json:"cloud"`
+	// CloudModel is the model the request was rewritten to when a cloud
+	// provider's default_model replaced the client's requested model.
+	// Empty for local requests and cloud requests that kept the original model.
+	CloudModel string `json:"cloud_model,omitempty"`
 }
 
 // Logger writes audit entries to a file in JSON-lines format.

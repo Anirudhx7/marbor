@@ -76,6 +76,35 @@ nodes:
 	}
 }
 
+func TestSavingsReferenceRateDefault(t *testing.T) {
+	var cfg Config
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if cfg.Savings.ReferenceCostPer1K != 0.002 {
+		t.Errorf("default reference_cost_per_1k = %v, want 0.002", cfg.Savings.ReferenceCostPer1K)
+	}
+}
+
+func TestSavingsReferenceRateFromYAML(t *testing.T) {
+	yaml := `
+savings:
+  reference_cost_per_1k: 0.01
+`
+	tmp, _ := os.CreateTemp("", "config-*.yaml")
+	tmp.WriteString(yaml)
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+
+	cfg, err := LoadConfig(tmp.Name())
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Savings.ReferenceCostPer1K != 0.01 {
+		t.Errorf("reference_cost_per_1k = %v, want 0.01", cfg.Savings.ReferenceCostPer1K)
+	}
+}
+
 func TestDuplicateKeyName(t *testing.T) {
 	yaml := `
 auth:
