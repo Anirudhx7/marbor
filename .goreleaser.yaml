@@ -1,0 +1,58 @@
+version: 2
+
+project_name: ollama-mesh
+
+# The UI is embedded into the binary via go:embed, so it must be built first.
+before:
+  hooks:
+    - npm --prefix ui ci
+    - npm --prefix ui run build
+
+builds:
+  - id: ollama-mesh
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+
+# Raw binaries (not tarballs) so the README one-liner works:
+# curl -Lo ollama-mesh .../releases/latest/download/ollama-mesh-linux-amd64
+archives:
+  - formats: ['binary']
+    name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
+
+checksum:
+  name_template: 'checksums.txt'
+
+dockers:
+  - image_templates:
+      - ghcr.io/anirudhx7/ollama-mesh:{{ .Version }}
+      - ghcr.io/anirudhx7/ollama-mesh:latest
+    dockerfile: Dockerfile.goreleaser
+    goarch: amd64
+    build_flag_templates:
+      - --platform=linux/amd64
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+
+release:
+  github:
+    owner: Anirudhx7
+    name: ollama-mesh
