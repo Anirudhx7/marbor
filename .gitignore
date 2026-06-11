@@ -26,3 +26,6 @@ Thumbs.db
 
 # Build artifacts
 dist/
+
+# Internal development files - never commit
+.local/
