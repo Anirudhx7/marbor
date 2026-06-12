@@ -271,7 +271,6 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 	out := make([]keyResp, 0, len(s.cfg.Auth.Keys))
 	for i, k := range s.cfg.Auth.Keys {
-		status := "active"
 		today, month, models, expires, rateLimit, createdAt, ok := 0, 0, []string(nil), "", k.RateLimit, time.Time{}, false
 		if s.auth != nil {
 			today, month, models, expires, rateLimit, createdAt, ok = s.auth.KeyStats(k.Name)
@@ -281,6 +280,17 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			expires = k.ExpiresAt
 			rateLimit = k.RateLimit
 		}
+
+		// Determine status: revoked if not present in auth, expired if past expiresAt, else active.
+		status := "active"
+		if s.auth != nil && !ok {
+			status = "revoked"
+		} else if expires != "" {
+			if t, err := time.Parse(time.RFC3339, expires); err == nil && time.Now().After(t) {
+				status = "expired"
+			}
+		}
+
 		created := ""
 		if !createdAt.IsZero() {
 			created = createdAt.Format(time.RFC3339)

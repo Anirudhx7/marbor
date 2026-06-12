@@ -61,11 +61,13 @@ func (c *keyCounter) stats() (today, month int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now()
-	if now.Day() != c.lastReset.Day() || now.Month() != c.lastReset.Month() || now.Year() != c.lastReset.Year() {
-		return 0, c.month
-	}
+	// Check month/year change FIRST — if the month rolled over, both counters are stale.
 	if now.Month() != c.lastReset.Month() || now.Year() != c.lastReset.Year() {
 		return 0, 0
+	}
+	// Day changed within the same month — only today is stale.
+	if now.Day() != c.lastReset.Day() {
+		return 0, c.month
 	}
 	return c.today, c.month
 }

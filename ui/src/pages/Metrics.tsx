@@ -459,7 +459,7 @@ export function Metrics() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Prometheus scrape endpoint</p>
                   <code className="block bg-secondary text-xs px-3 py-2 rounded-lg border border-border font-mono break-all">
-                    http://your-host:9090/metrics
+                    {`http://${window.location.hostname}:9090/metrics`}
                   </code>
                 </div>
                 <div>
