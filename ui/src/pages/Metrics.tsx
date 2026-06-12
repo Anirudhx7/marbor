@@ -125,22 +125,27 @@ export function Metrics() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    if (demoMode) {
-      setAnalytics(mockAnalytics);
-      setLoading(false);
-      return;
-    }
-    getAnalytics()
-      .then(data => {
-        setAnalytics(data);
+    const load = () => {
+      if (demoMode) {
+        setAnalytics(mockAnalytics);
         setLoading(false);
-      })
-      .catch(err => {
-        setError(err instanceof Error ? err.message : 'Failed to load analytics');
-        setLoading(false);
-      });
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      getAnalytics()
+        .then(data => {
+          setAnalytics(data);
+          setLoading(false);
+        })
+        .catch(err => {
+          setError(err instanceof Error ? err.message : 'Failed to load analytics');
+          setLoading(false);
+        });
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
   }, [demoMode]);
 
   const hourlyData = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({

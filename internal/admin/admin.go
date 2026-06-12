@@ -2,8 +2,10 @@ package admin
 
 import (
 	"bytes"
+	"crypto/rand"
 	"embed"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -29,6 +31,8 @@ type Server struct {
 	auth          *auth.Middleware
 	cfg           config.Config
 	adminToken    string
+	version       string
+	configPath    string
 	mu            sync.RWMutex
 	requests      []RequestLog
 	localCount    int64   // atomic - requests served by local nodes
@@ -40,6 +44,17 @@ type Server struct {
 	startTime     time.Time
 	analytics     *analyticsStore
 	auditLog      *audit.Logger
+}
+
+// SetVersion sets the version string reported by /health.
+// Call this from main with the ldflags-injected version before serving.
+func (s *Server) SetVersion(v string) {
+	s.version = v
+}
+
+// SetConfigPath sets the path used by handleUpdateSettings to persist config.
+func (s *Server) SetConfigPath(p string) {
+	s.configPath = p
 }
 
 // SetAuditLogger wires the audit logger into the admin server for query access.
@@ -67,7 +82,6 @@ type nodeResp struct {
 	VRAMTotalMB   int64              `json:"vramTotalMB"`
 	VRAMUsedMB    int64              `json:"vramUsedMB"`
 	PowerDrawW    float64            `json:"powerDrawW"`
-	CPUPercent    float64            `json:"cpuPercent"`
 	Temperature   *float64           `json:"temperature"`
 	Health        string             `json:"health"`
 	Uptime        string             `json:"uptime"`
@@ -107,6 +121,8 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server 
 		auth:         a,
 		cfg:          cfg,
 		adminToken:   token,
+		version:      "dev",
+		configPath:   "config.yaml",
 		refCostPer1K: refRate,
 		startTime:    time.Now(),
 		analytics:    newAnalyticsStore(refRate),
@@ -232,14 +248,13 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		hist := make([]float64, len(n.HealthHistory))
 		copy(hist, n.HealthHistory)
 		out[i] = nodeResp{
-			ID:          fmt.Sprintf("gpu-%d", i),
-			Name:        n.Name,
-			Port:        port,
-			GPUModel:    n.GPUModel,
-			VRAMTotalMB: n.VRAMTotalMB,
-			VRAMUsedMB:  n.VRAMUsedMB,
-			PowerDrawW:  n.PowerDrawW,
-			CPUPercent:    n.CPUPercent,
+			ID:            fmt.Sprintf("gpu-%d", i),
+			Name:          n.Name,
+			Port:          port,
+			GPUModel:      n.GPUModel,
+			VRAMTotalMB:   n.VRAMTotalMB,
+			VRAMUsedMB:    n.VRAMUsedMB,
+			PowerDrawW:    n.PowerDrawW,
 			Temperature:   n.Temperature,
 			Health:        health,
 			Uptime:        n.Uptime,
@@ -330,6 +345,13 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// generateAPIKey creates a cryptographically random API key of the form sk-<name>-<48 hex chars>.
+func generateAPIKey(name string) string {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	return "sk-" + name + "-" + hex.EncodeToString(b)
+}
+
 func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	var k config.KeyConfig
 	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
@@ -337,7 +359,7 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if k.Key == "" {
-		k.Key = fmt.Sprintf("sk-%s-%d", k.Name, time.Now().UnixNano())
+		k.Key = generateAPIKey(k.Name)
 	}
 	if s.auth != nil {
 		s.auth.AddKey(k)
@@ -433,7 +455,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	s.cfg = incoming
 	cfg := s.cfg
 	s.mu.Unlock()
-	if err := config.SaveConfig("config.yaml", cfg); err != nil {
+	if err := config.SaveConfig(s.configPath, cfg); err != nil {
 		http.Error(w, fmt.Sprintf("failed to save config: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -504,12 +526,13 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"hourly":           hourly,
-		"by_model":         models,
-		"total_saved_usd":  savedUSD,
-		"total_spent_usd":  cloudSpent,
-		"local_requests":   local,
-		"cloud_requests":   cloud,
+		"hourly":          hourly,
+		"by_model":        models,
+		"total_saved_usd": savedUSD,
+		"total_spent_usd": cloudSpent,
+		"local_requests":  local,
+		"cloud_requests":  cloud,
+		"since":           s.startTime.Format(time.RFC3339),
 	})
 }
 
@@ -545,11 +568,12 @@ func (s *Server) handleSavings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"local_requests":   local,
-		"cloud_requests":   cloud,
-		"cloud_spent_usd":  cloudSpent,
-		"saved_usd":        savedUSD,
-		"total_requests":   local + cloud,
+		"local_requests":  local,
+		"cloud_requests":  cloud,
+		"cloud_spent_usd": cloudSpent,
+		"saved_usd":       savedUSD,
+		"total_requests":  local + cloud,
+		"since":           s.startTime.Format(time.RFC3339),
 	})
 }
 
@@ -1022,7 +1046,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":         status,
-		"version":        "0.2.1",
+		"version":        s.version,
 		"proxy_port":     proxyPort,
 		"uptime_seconds": uptimeSecs,
 		"nodes": map[string]int{

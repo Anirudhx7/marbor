@@ -103,19 +103,25 @@ export function Routing() {
     }
 
     try {
-      const [rulesData, nodesData, strategy] = await Promise.all([
+      const [rulesData, nodesData] = await Promise.all([
         fetchRoutingRules(),
         fetchNodes(),
-        fetchRoutingStrategy().catch(() => 'warm-first'),
       ]);
       setRules(rulesData || []);
       setAvailableNodes(nodesData || []);
-      setCurrentStrategyState(strategy);
       setError(null);
+      // Fetch strategy separately so failure is visible to the user
+      try {
+        const strategy = await fetchRoutingStrategy();
+        setCurrentStrategyState(strategy);
+      } catch {
+        setCurrentStrategyState('');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to connect to backend');
       setRules([]);
       setAvailableNodes([]);
+      setCurrentStrategyState('');
     } finally {
       setLoading(false);
     }
@@ -257,6 +263,12 @@ export function Routing() {
           </button>
         ))}
       </div>
+
+      {!demoMode && !loading && currentStrategy === '' && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-600 dark:text-amber-400 text-sm font-medium">
+          Could not read strategy from backend - no strategy is currently selected
+        </div>
+      )}
 
       {/* Advanced Rules Header */}
       <div className="flex items-center justify-between pt-6">

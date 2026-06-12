@@ -21,6 +21,10 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
+// Version is set at build time via ldflags: -X main.Version=v0.x.y
+// Defaults to "dev" for local/untagged builds.
+var Version = "dev"
+
 // printFirstRunBanner prints the zero-config first-run summary to stdout.
 func printFirstRunBanner(fr *config.FirstRunResult, cfgPath string, saved bool) {
 	line := "================================================================"
@@ -82,7 +86,7 @@ func main() {
 		printFirstRunBanner(fr, cfgPath, saved)
 	}
 
-	log.Printf("ollama-mesh v0.1.0 starting...")
+	log.Printf("ollama-mesh %s starting...", Version)
 	log.Printf("Proxy port      : %d", cfg.Proxy.Port)
 	log.Printf("Auth enabled    : %t", cfg.Auth.Enabled)
 	log.Printf("Metrics port    : %d", cfg.Metrics.Port)
@@ -116,6 +120,8 @@ func main() {
 
 	adminSrv := admin.NewServer(r, authMw, *cfg)
 	adminSrv.SetAuditLogger(auditLog)
+	adminSrv.SetVersion(Version)
+	adminSrv.SetConfigPath(cfgPath)
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	wrapped := authMw.Handler(proxyHandler)

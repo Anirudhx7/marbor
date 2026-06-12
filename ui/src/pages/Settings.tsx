@@ -20,39 +20,31 @@ export function SettingsPage() {
     if (demoMode) {
       setCloudProviders(mockCloudProviders);
       setCloudLoading(false);
+      setSettings(defaultSettings);
+      setError(null);
       return;
     }
     setCloudLoading(true);
-    getCloudProviders()
-      .then(data => setCloudProviders(data || []))
-      .catch(() => setCloudProviders([]))
-      .finally(() => setCloudLoading(false));
-  }, [demoMode]);
-
-  useEffect(() => {
-    if (!demoMode) {
-      fetchSettings()
-        .then(data => {
-          // Map backend config to UI settings format
-          setSettings({
-            proxyPort: data.proxy?.port || 11434,
-            authMode: data.auth?.enabled ? 'api-key' : 'no-auth',
-            liteLLMEnabled: data.litellm?.enabled || false,
-            liteLLMEndpoint: data.litellm?.url || '',
-            pollingInterval: data.routing?.poll_interval_ms || 2000,
-            prometheusEnabled: data.metrics?.enabled || false,
-            prometheusPort: data.metrics?.port || 9090,
-            logLevel: data.proxy?.log_level || 'info'
-          });
-          setError(null);
-        })
-        .catch(err => {
-          setError(err.message || 'Failed to load settings');
+    Promise.all([fetchSettings(), getCloudProviders()])
+      .then(([settingsData, providersData]) => {
+        setSettings({
+          proxyPort: settingsData.proxy?.port || 11434,
+          authMode: settingsData.auth?.enabled ? 'api-key' : 'no-auth',
+          liteLLMEnabled: settingsData.litellm?.enabled || false,
+          liteLLMEndpoint: settingsData.litellm?.url || '',
+          pollingInterval: settingsData.routing?.poll_interval_ms || 2000,
+          prometheusEnabled: settingsData.metrics?.enabled || false,
+          prometheusPort: settingsData.metrics?.port || 9090,
+          logLevel: settingsData.proxy?.log_level || 'info',
         });
-    } else {
-      setSettings(defaultSettings);
-      setError(null);
-    }
+        setCloudProviders(providersData || []);
+        setError(null);
+      })
+      .catch(err => {
+        setError(err.message || 'Failed to load settings');
+        setCloudProviders([]);
+      })
+      .finally(() => setCloudLoading(false));
   }, [demoMode]);
 
   const handleSave = async () => {

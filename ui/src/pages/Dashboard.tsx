@@ -224,7 +224,7 @@ export function Dashboard() {
   const displayActive = isLive ? summary.activeRequests : activeFromRequests;
   const displayLatency = isLive ? summary.avgLatency : 0;
   const displayTokens = isLive ? summary.tokensPerMin : "--";
-  const displayColdStarts = isLive ? summary.coldStarts : 18;
+  const displayColdStarts = isLive ? summary.coldStarts : '--';
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -310,39 +310,45 @@ export function Dashboard() {
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {(isLive ? nodes : mockGPUNodes).map((node) => (
-            <div key={node.id} className="bg-secondary/50 rounded-xl p-5 border border-border hover:border-primary/40 transition-colors">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <StatusDot status={node.health} size="sm" />
-                    <span className="font-semibold text-foreground text-sm">{node.name}</span>
-                  </div>
-                  <p className="text-xs font-medium text-muted-foreground mt-1">{node.gpuModel}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block">Port</span>
-                  <p className="text-sm text-foreground font-mono font-medium">{node.port}</p>
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} size="sm" />
-              </div>
-              
-              <div className="flex flex-wrap gap-1.5">
-                {node.loadedModels.map((model) => (
-                  <Badge
-                    key={model.name}
-                    variant="success"
-                    size="sm"
-                  >
-                    {model.name}
-                  </Badge>
-                ))}
-              </div>
+          {nodes.length === 0 && !demoMode ? (
+            <div className="col-span-2 py-10 text-center text-sm text-muted-foreground">
+              {isLive ? 'No nodes connected.' : 'No nodes available - backend disconnected'}
             </div>
-          ))}
+          ) : (
+            nodes.map((node) => (
+              <div key={node.id} className="bg-secondary/50 rounded-xl p-5 border border-border hover:border-primary/40 transition-colors">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <StatusDot status={node.health} size="sm" />
+                      <span className="font-semibold text-foreground text-sm">{node.name}</span>
+                    </div>
+                    <p className="text-xs font-medium text-muted-foreground mt-1">{node.gpuModel}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block">Port</span>
+                    <p className="text-sm text-foreground font-mono font-medium">{node.port}</p>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} size="sm" />
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {node.loadedModels.map((model) => (
+                    <Badge
+                      key={model.name}
+                      variant="success"
+                      size="sm"
+                    >
+                      {model.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

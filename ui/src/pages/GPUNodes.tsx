@@ -264,54 +264,32 @@ export function GPUNodes() {
   );
 
   const handleAddNode = async () => {
-    if (!newNode.name || !newNode.host) return;
-    
+    if (!newNode.name || !newNode.host || !isLive) return;
+
     const nodeData = {
       name: newNode.name,
       url: `http://${newNode.host}:${newNode.port}`,
       gpu_model: newNode.gpuModel || 'Unknown GPU',
     };
 
-    if (isLive) {
-      try {
-        await addNode(nodeData);
-        loadNodes();
-      } catch (e) {
-        console.error('Failed to add node');
-      }
-    } else {
-      const node: GPUNode = {
-        id: `node-${nodes.length + 1}`,
-        name: newNode.name,
-        gpuModel: newNode.gpuModel || 'Unknown GPU',
-        port: parseInt(newNode.port),
-        vramTotalMB: 0,
-        vramUsedMB: 0,
-        powerDrawW: 0,
-        cpuPercent: 0,
-        temperature: null,
-        health: 'healthy',
-        uptime: '0m',
-        loadedModels: [],
-        healthHistory: Array(60).fill(100),
-      };
-      setNodes([...nodes, node]);
+    try {
+      await addNode(nodeData);
+      await loadNodes();
+    } catch (e) {
+      console.error('Failed to add node');
     }
-    
+
     setIsAddModalOpen(false);
     setNewNode({ name: '', host: '', port: '11434', gpuModel: '' });
   };
 
   const handleRemoveNode = async (name: string) => {
-    if (isLive) {
-      try {
-        await removeNode(name);
-        loadNodes();
-      } catch (e) {
-        console.error('Failed to remove node');
-      }
-    } else {
-      setNodes(nodes.filter(n => n.name !== name));
+    if (!isLive) return;
+    try {
+      await removeNode(name);
+      await loadNodes();
+    } catch (e) {
+      console.error('Failed to remove node');
     }
   };
 
@@ -334,7 +312,9 @@ export function GPUNodes() {
           </div>
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
+            disabled={!isLive}
+            title={!isLive ? 'Backend disconnected' : undefined}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Add Node

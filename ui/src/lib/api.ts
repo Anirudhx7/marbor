@@ -46,13 +46,14 @@ export async function fetchSummary() {
   };
 }
 
-export async function createKey(data: any) {
+export async function createKey(data: any): Promise<{ key: string }> {
   const res = await fetch(`${BASE}/keys`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Failed to create key');
+  return res.json();
 }
 
 export async function revokeKey(name: string) {
@@ -122,7 +123,7 @@ export async function setRoutingStrategy(strategy: string) {
 
 export async function fetchRoutingStrategy(): Promise<string> {
   const res = await fetch(`${BASE}/routing/strategy`, { headers: authHeaders() });
-  if (!res.ok) return 'warm-first';
+  if (!res.ok) throw new Error('Failed to fetch routing strategy');
   const data = await res.json();
   return data.strategy ?? 'warm-first';
 }

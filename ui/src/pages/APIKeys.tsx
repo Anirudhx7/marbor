@@ -41,7 +41,9 @@ export function APIKeys() {
   const [keyToRevoke, setKeyToRevoke] = useState<APIKey | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
+  const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
   const [newKeyForm, setNewKeyForm] = useState({
     name: '',
     rateLimit: '1000',
@@ -71,6 +73,8 @@ export function APIKeys() {
 
   useEffect(() => {
     loadKeys();
+    const interval = setInterval(loadKeys, 30000);
+    return () => clearInterval(interval);
   }, [demoMode]);
 
   const filteredKeys = keys.filter(key =>
@@ -94,52 +98,63 @@ export function APIKeys() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const dismissNewKey = () => {
+    setNewlyCreatedKey(null);
+    if (newKeyDismissTimer) clearTimeout(newKeyDismissTimer);
+  };
+
   const handleCreateKey = async () => {
     const errors: string[] = [];
     if (!newKeyForm.name.trim()) {
       errors.push('Name is required');
     }
-    
+
     if (errors.length > 0) {
       setFormErrors(errors);
       return;
     }
 
+    if (demoMode) {
+      // Demo mode: fabricate a key locally for UI preview only
+      const demoKey: APIKey = {
+        id: `key-${Date.now()}`,
+        name: newKeyForm.name,
+        key: `sk-demo-${newKeyForm.name.toLowerCase().replace(/\s+/g, '-')}-preview`,
+        created: new Date().toISOString().split('T')[0],
+        requestsToday: 0,
+        requestsThisMonth: 0,
+        rateLimit: parseInt(newKeyForm.rateLimit),
+        status: 'active',
+        allowedModels: newKeyForm.allowedModels.length > 0 ? newKeyForm.allowedModels : ['all'],
+        expiresAt: newKeyForm.expiresAt || null,
+      };
+      setKeys([demoKey, ...keys]);
+      setIsCreateModalOpen(false);
+      setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
+      setFormErrors([]);
+      return;
+    }
+
     const newKeyData = {
       name: newKeyForm.name,
-      key: `sk-${newKeyForm.name.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).substring(2, 10)}`,
       rate_limit: parseInt(newKeyForm.rateLimit),
       models: newKeyForm.allowedModels,
       expires_at: newKeyForm.expiresAt || "",
     };
 
-    if (isLive) {
-      try {
-        await createKey(newKeyData);
-        loadKeys();
-      } catch (e) {
-        setFormErrors(['Failed to create key on server']);
-        return;
-      }
-    } else {
-      const demoKey: APIKey = {
-        id: `key-${Date.now()}`,
-        name: newKeyForm.name,
-        key: newKeyData.key,
-        created: new Date().toISOString().split('T')[0],
-        requestsToday: 0,
-        requestsThisMonth: 0,
-        rateLimit: newKeyData.rate_limit,
-        status: 'active',
-        allowedModels: newKeyData.models.length > 0 ? newKeyData.models : ['all'],
-        expiresAt: newKeyData.expires_at || null,
-      };
-      setKeys([demoKey, ...keys]);
+    try {
+      const result = await createKey(newKeyData);
+      await loadKeys();
+      setIsCreateModalOpen(false);
+      setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
+      setFormErrors([]);
+      // Show the generated key for 30 seconds
+      setNewlyCreatedKey(result.key);
+      const timer = setTimeout(() => setNewlyCreatedKey(null), 30000);
+      setNewKeyDismissTimer(timer);
+    } catch (e) {
+      setFormErrors(['Failed to create key on server']);
     }
-
-    setIsCreateModalOpen(false);
-    setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
-    setFormErrors([]);
   };
 
   const handleRevokeKey = async () => {
@@ -197,6 +212,35 @@ export function APIKeys() {
       {error && !demoMode && (
         <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
           {error}
+        </div>
+      )}
+
+      {newlyCreatedKey && (
+        <div className="p-4 bg-success/10 border border-success/30 rounded-xl">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-success mb-2">Key created - copy now, it won't be shown again</p>
+              <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                {newlyCreatedKey}
+              </code>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => copyToClipboard(newlyCreatedKey, '__new__')}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                {copiedId === '__new__' ? 'Copied!' : 'Copy'}
+              </button>
+              <button
+                onClick={dismissNewKey}
+                className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
