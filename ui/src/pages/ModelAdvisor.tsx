@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Package, Download, Check, Server, Loader2 } from 'lucide-react';
+import { Package, Download, Check, Server, Loader2, Cpu, HardDrive } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
-import { fetchModelCatalog, pullModel } from '../lib/api';
+import { fetchModelCatalog, pullModel, fetchSystemInfo, SystemInfo } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
 import type {
   ModelCatalogResponse,
@@ -59,7 +59,13 @@ function FitBadge({ fit }: { fit: FitStatus }) {
   );
 }
 
+// Pick the highest-quality variant that fits the node's actual VRAM.
+// Priority: green (recommended first) > green > yellow (recommended first) > yellow > catalog recommended > first.
 function recommendedVariant(model: CatalogModelFit): CatalogVariantFit {
+  const greens = model.variants.filter((v) => v.fit === 'green');
+  if (greens.length > 0) return greens.find((v) => v.recommended) ?? greens[0];
+  const yellows = model.variants.filter((v) => v.fit === 'yellow');
+  if (yellows.length > 0) return yellows.find((v) => v.recommended) ?? yellows[0];
   return model.variants.find((v) => v.recommended) ?? model.variants[0];
 }
 
@@ -118,13 +124,23 @@ function ModelCard({
         ))}
       </div>
 
-      <div className="flex items-center justify-between text-xs text-muted-foreground border-t border-border pt-3 mb-3">
-        <span>
-          {rec.quantization} · <span className="font-mono text-foreground">{mbToGB(rec.vram_est_mb)}</span> VRAM
-        </span>
-        <FitBadge fit={rec.fit} />
+      {/* All variants with fit badges */}
+      <div className="border-t border-border pt-3 mb-3 space-y-1.5">
+        {model.variants.map((v) => (
+          <div key={v.tag} className={`flex items-center justify-between text-xs rounded px-2 py-1 ${v.tag === rec.tag ? 'bg-primary/8 border border-primary/20' : 'bg-secondary/50'}`}>
+            <div className="flex items-center gap-1.5 min-w-0">
+              {v.tag === rec.tag && <span className="text-[9px] font-bold text-primary uppercase tracking-wide shrink-0">Best</span>}
+              <span className="font-mono text-foreground truncate">{v.quantization}</span>
+              <span className="text-muted-foreground shrink-0">{mbToGB(v.vram_est_mb)} VRAM</span>
+            </div>
+            <FitBadge fit={v.fit} />
+          </div>
+        ))}
       </div>
 
+      {rec.fit === 'red' && (
+        <p className="text-xs text-destructive mb-2 font-medium">Requires more VRAM than available - no variant fits your hardware.</p>
+      )}
       {pullError && <p className="text-xs text-destructive mb-2">{pullError}</p>}
 
       <div className="flex items-center justify-between gap-2">
@@ -137,9 +153,9 @@ function ModelCard({
         )}
         <button
           onClick={handlePull}
-          disabled={!isLive || !nodeName || pulling || alreadyDownloaded}
+          disabled={!isLive || !nodeName || pulling || alreadyDownloaded || rec.fit === 'red'}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-medium rounded-lg transition-colors"
-          title={!isLive ? 'Connect to backend to pull models' : !nodeName ? 'No node selected' : ''}
+          title={rec.fit === 'red' ? 'No variant fits your available VRAM' : !isLive ? 'Connect to backend to pull models' : !nodeName ? 'No node selected' : ''}
         >
           {pulling ? (
             <>
@@ -163,6 +179,7 @@ export function ModelAdvisor() {
   const [error, setError] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('all');
@@ -177,10 +194,12 @@ export function ModelAdvisor() {
     }
     setLoading(true);
     try {
-      const resp = await fetchModelCatalog();
+      const [resp, sys] = await Promise.all([fetchModelCatalog(), fetchSystemInfo().catch(() => null)]);
+      setSysInfo(sys);
       setData(resp);
       setIsLive(true);
       setError(null);
+      setFitFilter('fits'); // default to showing only runnable models when hardware is known
       if (resp.nodes.length > 0) {
         setSelectedNode((prev) =>
           prev && resp.nodes.some((n) => n.name === prev) ? prev : resp.nodes[0].name
@@ -295,12 +314,15 @@ export function ModelAdvisor() {
           )}
 
           <div className="bg-card border border-border rounded-xl p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-foreground">{activeNode.name}</span>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Your Hardware</span>
+                <h3 className="font-semibold text-foreground mt-0.5">{activeNode.name}</h3>
+              </div>
               <span className="text-xs text-muted-foreground">
-                Source:{' '}
+                VRAM source:{' '}
                 <span
-                  className={`px-1.5 py-0.5 rounded ${
+                  className={`px-1.5 py-0.5 rounded font-medium ${
                     activeNode.vram_source === 'nvidia-smi'
                       ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                       : activeNode.vram_source === 'inferred'
@@ -318,14 +340,44 @@ export function ModelAdvisor() {
                   used={(activeNode.vram_total_bytes - activeNode.vram_free_bytes) / (1024 * 1024 * 1024)}
                   total={activeNode.vram_total_bytes / (1024 * 1024 * 1024)}
                 />
-                <p className="text-xs text-muted-foreground mt-2">
-                  {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)}
-                </p>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs text-muted-foreground">
+                    {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
+                  </p>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-green-600 dark:text-green-400 font-medium">
+                      {activeNode.models.filter((m) => recommendedVariant(m).fit === 'green' || recommendedVariant(m).fit === 'yellow').length} models fit
+                    </span>
+                    <span className="text-destructive font-medium">
+                      {activeNode.models.filter((m) => recommendedVariant(m).fit === 'red').length} too large
+                    </span>
+                  </div>
+                </div>
               </>
             ) : (
               <p className="text-xs text-muted-foreground">
-                VRAM totals unavailable on this node (nvidia-smi only reads the mesh host). Fit shown as "Unknown".
+                VRAM totals unavailable - nvidia-smi reads the mesh host only. Fit shown as "unknown".
               </p>
+            )}
+            {sysInfo && (
+              <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span className="text-foreground font-medium">{sysInfo.cpu_cores} CPU cores</span>
+                  <span className="text-muted-foreground">({sysInfo.arch})</span>
+                </span>
+                {sysInfo.ram_total_mb > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <HardDrive className="w-3.5 h-3.5" />
+                    <span className="text-foreground font-medium">{(sysInfo.ram_free_mb / 1024).toFixed(1)} GB RAM free</span>
+                    <span className="text-muted-foreground">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB total</span>
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5">
+                  <Server className="w-3.5 h-3.5" />
+                  <span>{sysInfo.os}</span>
+                </span>
+              </div>
             )}
           </div>
 

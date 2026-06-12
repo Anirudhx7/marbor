@@ -18,7 +18,7 @@ import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
 import { useLiveRequests } from '../hooks/useLiveRequests';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
-import { fetchNodes, fetchSummary, getSavings } from '../lib/api';
+import { fetchNodes, fetchSummary, getSavings, fetchHealth } from '../lib/api';
 import { GPUNode, Savings } from '../types';
 
 interface MetricCardProps {
@@ -167,6 +167,15 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [prometheusStatus] = useState('connected');
   const [grafanaStatus] = useState('connected');
+  const [proxyPort, setProxyPort] = useState(11434);
+  const [version, setVersion] = useState('0.2.1');
+
+  useEffect(() => {
+    fetchHealth().then(h => {
+      if (h.proxy_port) setProxyPort(h.proxy_port);
+      if (h.version) setVersion(h.version);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
@@ -234,11 +243,11 @@ export function Dashboard() {
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Port:</span>
-              <span className="text-foreground font-medium font-mono">11434</span>
+              <span className="text-foreground font-medium font-mono">{proxyPort}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Version:</span>
-              <Badge variant="muted" size="sm">v0.1.0</Badge>
+              <Badge variant="muted" size="sm">v{version}</Badge>
             </div>
             <div className="flex items-center gap-2 px-3 border-l border-border">
               <div className={`w-2 h-2 rounded-full ${isLive || requestsLive ? 'bg-success' : 'bg-amber-500'}`} />

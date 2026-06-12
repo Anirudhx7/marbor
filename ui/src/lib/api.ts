@@ -2,6 +2,12 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, Req
 
 const BASE = '/admin';
 
+export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {
+  const res = await fetch('/health');
+  if (!res.ok) throw new Error('health check failed');
+  return res.json();
+}
+
 function getAdminToken(): string {
   let token = localStorage.getItem('adminToken');
   if (!token) {
@@ -182,6 +188,30 @@ export async function fetchModelFit(): Promise<ModelFitResponse> {
 export async function fetchModelCatalog(): Promise<ModelCatalogResponse> {
   const res = await fetch(`${BASE}/v1/models/catalog`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch model catalog');
+  return res.json();
+}
+
+export interface SystemInfo {
+  cpu_cores: number;
+  os: string;
+  arch: string;
+  ram_total_mb: number;
+  ram_free_mb: number;
+  gpus: Array<{
+    name: string;
+    url: string;
+    vram_total_mb: number;
+    vram_free_mb: number;
+    vram_source: string;
+    temperature_c: number | null;
+    power_draw_w: number | null;
+    healthy: boolean;
+  }>;
+}
+
+export async function fetchSystemInfo(): Promise<SystemInfo> {
+  const res = await fetch(`${BASE}/system-info`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch system info');
   return res.json();
 }
 

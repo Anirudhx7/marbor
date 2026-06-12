@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bufio"
 	"bytes"
 	"embed"
 	"encoding/csv"
@@ -9,6 +10,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -152,6 +155,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
+	reg("GET /admin/system-info", s.cors(s.adminAuth(s.handleSystemInfo)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -983,11 +987,90 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":         status,
-		"version":        "0.1.0",
+		"version":        "0.2.1",
+		"proxy_port":     s.cfg.Proxy.Port,
 		"uptime_seconds": uptimeSecs,
 		"nodes": map[string]int{
 			"total":   total,
 			"healthy": healthy,
 		},
+	})
+}
+
+// readMemInfoKB reads a specific field from /proc/meminfo (Linux only).
+func readMemInfoKB(field string) int64 {
+	f, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, field) {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				v, _ := strconv.ParseInt(parts[1], 10, 64)
+				return v
+			}
+		}
+	}
+	return 0
+}
+
+func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+	nodes := s.router.Nodes()
+
+	type nodeVRAM struct {
+		Name         string `json:"name"`
+		URL          string `json:"url"`
+		VramTotalMB  int64  `json:"vram_total_mb"`
+		VramFreeMB   int64  `json:"vram_free_mb"`
+		VramSource   string `json:"vram_source"`
+		TemperatureC *int   `json:"temperature_c"`
+		PowerDrawW   *int   `json:"power_draw_w"`
+		Healthy      bool   `json:"healthy"`
+	}
+
+	gpus := make([]nodeVRAM, 0, len(nodes))
+	for _, n := range nodes {
+		n.RLock()
+		gpu := nodeVRAM{
+			Name:    n.Name,
+			URL:     n.URL,
+			Healthy: n.Healthy,
+		}
+		if n.VRAMTotalMB > 0 {
+			gpu.VramTotalMB = n.VRAMTotalMB
+			gpu.VramFreeMB = n.VRAMTotalMB - n.VRAMUsedMB
+			gpu.VramSource = "nvidia-smi"
+			if n.Temperature != nil && *n.Temperature > 0 {
+				t := int(*n.Temperature)
+				gpu.TemperatureC = &t
+			}
+			if n.PowerDrawW > 0 {
+				p := int(n.PowerDrawW)
+				gpu.PowerDrawW = &p
+			}
+		} else {
+			gpu.VramFreeMB = -1
+			gpu.VramTotalMB = 0
+			gpu.VramSource = "unknown"
+		}
+		n.RUnlock()
+		gpus = append(gpus, gpu)
+	}
+
+	totalRAMKB := readMemInfoKB("MemTotal:")
+	freeRAMKB := readMemInfoKB("MemAvailable:")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"cpu_cores":    runtime.NumCPU(),
+		"os":           runtime.GOOS,
+		"arch":         runtime.GOARCH,
+		"ram_total_mb": totalRAMKB / 1024,
+		"ram_free_mb":  freeRAMKB / 1024,
+		"gpus":         gpus,
 	})
 }
