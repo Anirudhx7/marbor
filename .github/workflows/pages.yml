@@ -41,6 +41,9 @@ jobs:
           VITE_FORCE_DEMO: 'true'
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
 
+      - name: Create 404.html for SPA routing
+        run: cp ui/dist/index.html ui/dist/404.html
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
