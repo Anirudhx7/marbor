@@ -36,7 +36,13 @@ export async function fetchLiveRequests(): Promise<LiveRequest[]> {
 export async function fetchSummary() {
   const res = await fetch(`${BASE}/metrics/summary`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch summary');
-  return res.json();
+  const d = await res.json();
+  return {
+    activeRequests: d.active_requests ?? 0,
+    avgLatency: d.avg_latency ?? 0,
+    tokensPerMin: d.tokens_per_min ?? 0,
+    coldStarts: d.cold_starts ?? 0,
+  };
 }
 
 export async function createKey(data: any) {
