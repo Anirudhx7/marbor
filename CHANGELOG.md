@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- `make demo`: spins up mock Ollama servers in-process, sends real traffic, shows a populated dashboard in <60s with no Ollama install required
+- VRAM fit indicator: GPU Nodes page shows green/yellow/red badges for each downloaded model per node based on available VRAM
+- Tokens and tok/s columns in live request log
+
+### Changed
+- Zero-config first run promoted to top-level Quick Start path in README
+- Savings reference rate is now configurable via `savings.reference_cost_per_1k` (see v0.2.1)
+
+---
+
 ## [0.2.1] - 2026-06-11
 
 ### Added

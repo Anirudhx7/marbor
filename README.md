@@ -8,18 +8,20 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ![ollama-mesh dashboard](docs/screenshots/dashboard.png)
-*Dashboard in demo mode - run `make dev-ui` and toggle demo in Settings to explore it without a cluster.*
+*Dashboard showing live request log with Tokens and tok/s columns, VRAM fit badges on GPU Nodes, and savings computed from real token counts.*
 
 ---
 
-## What's New in v0.2.0
+## What's New in v0.2.1
 
-- Analytics page: 24-hour local vs cloud chart, savings stats, per-model breakdown
-- Model catalog: see which models are warm across all nodes, with VRAM usage
-- Request log: live feed of all requests with filter and status indicators
-- Rate limit headers: X-RateLimit-Limit/Remaining/Reset on every response
-- Webhook alerts: node_down/node_up events signed with HMAC-SHA256
-- Audit logging: append-only JSON-lines with request IDs
+- **Zero-config first run**: `./ollama-mesh` with no config.yaml auto-detects localhost:11434, generates API keys, and prints one curl example to get started
+- **`make demo`**: spins up mock Ollama servers in-process, sends real traffic, shows a fully populated dashboard in under 60 seconds - no Ollama install required
+- **VRAM fit badges**: GPU Nodes page shows green/yellow/red fit indicators for each downloaded model per node
+- **Tokens/sec in request log**: live request table now shows Tokens and tok/s columns
+- **Real savings math**: saved_usd is computed from actual parsed token counts (eval_count + prompt_eval_count). Shows "—" when token data is unavailable - never a fabricated number
+- **Cloud model rewriting visible**: request log shows "llama3 -> gpt-4o-mini" when cloud default_model is applied
+- **Mid-stream abort logging**: aborted requests appear in metrics, admin log, and audit log with status="aborted"
+- **Configurable savings reference rate**: `savings.reference_cost_per_1k` in config.yaml
 
 See [CHANGELOG.md](CHANGELOG.md) for the full list.
 
@@ -55,7 +57,10 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 |---------|--------|
 | Warm-first routing | Routes to the node that already has the model in VRAM. Eliminates cold starts. |
 | Cloud fallback | When all GPUs are busy or down, automatically routes to OpenAI or Anthropic. |
-| Savings tracking | Savings computed from real token counts parsed from responses (Ollama `eval_count`, cloud `usage`). Shows "—" when no token data exists - never a fabricated number. |
+| Savings tracking | Savings computed from real token counts parsed from responses (Ollama `eval_count`, cloud `usage`). Shows "—" when no token data exists - never a fabricated number. Configurable reference rate via `savings.reference_cost_per_1k`. |
+| VRAM fit indicator | GPU Nodes page shows green/yellow/red fit badges for each downloaded model per node based on available VRAM. |
+| Tokens/sec in request log | Live request table shows Tokens and tok/s columns per request. |
+| Cloud model rewriting | Request log shows "original -> cloud_model" when cloud default_model is applied - full observability into what was actually sent. |
 | Docker auto-discovery | Detects `ollama/ollama` containers automatically from the Docker socket. Zero config. |
 | Local GPU metrics | Real VRAM, temperature, and power draw via nvidia-smi on the mesh host. Note: remote node GPUs are not visible yet - per-node telemetry is on the roadmap. |
 | API key management | Per-key rate limits, model allow-lists, and key expiry. |
@@ -65,11 +70,30 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 | Request log | Live feed with 3-second polling, filter, and status badges. |
 | Webhook alerts | node_down/node_up events with HMAC-SHA256 signatures. |
 | Rate limit headers | X-RateLimit-Limit/Remaining/Reset on every response. |
+| Mid-stream abort logging | Aborted requests recorded in metrics, admin log, and audit log with status="aborted". |
 | Zero dependencies | Single Go binary. Runs anywhere. No Python, no Node, no runtime. |
 
 ---
 
 ## Quick Start
+
+**Try it in 60 seconds (no Ollama needed):**
+```bash
+git clone https://github.com/Anirudhx7/ollama-mesh
+cd ollama-mesh
+make demo
+```
+`make demo` spins up mock Ollama servers in-process, sends real traffic through the mesh, and opens a fully populated dashboard at `http://localhost:8080`. No Ollama install, no config file, no setup.
+
+---
+
+**Zero-config run (Ollama already running):**
+```bash
+./ollama-mesh
+```
+If no `config.yaml` exists, ollama-mesh auto-detects `localhost:11434`, generates API keys, and prints a curl example. Config file is optional.
+
+---
 
 **Binary:**
 ```bash
@@ -79,7 +103,6 @@ curl -Lo ollama-mesh https://github.com/Anirudhx7/ollama-mesh/releases/latest/do
 curl -Lo ollama-mesh https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-darwin-arm64
 
 chmod +x ollama-mesh
-curl -Lo config.yaml https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/config.example.yaml
 ./ollama-mesh
 ```
 
@@ -284,6 +307,7 @@ Import `grafana/ollama-mesh.json` into Grafana and point the Prometheus datasour
 - [x] Phase 1: Trustworthy - real nvidia-smi GPU metrics, no fake data, mutex-safe auth
 - [x] Phase 2: Hybrid routing - cloud fallback, savings tracking, Docker auto-discovery
 - [x] v0.2.0: Analytics, model catalog, request log, webhooks, rate limit headers
+- [x] v0.2.1: Zero-config first run, `make demo`, VRAM fit badges, tokens/sec, real savings math
 - [ ] Phase 3: Enterprise - SSO, RBAC, audit log export, Helm chart
 - [ ] Phase 4: Managed cloud - metered token hosting
 

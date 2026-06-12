@@ -14,6 +14,8 @@ Goal: Make the dashboard show real data. No fake numbers anywhere.
 - [x] nvidia-smi integration - shell exec, XML parse, VRAM total/used, temperature, power draw (mesh host only; remote node GPUs not yet visible)
 - [x] Router tests - warm-first logic, model loaded vs not loaded
 - [x] Integration tests - mock Ollama HTTP server, routing decision verification
+- [x] Zero-config first run - auto-detects localhost:11434, generates API keys, no config.yaml required
+- [x] Streaming integration tests - unbuffered delivery, token tracking, mid-stream node death, SSE passthrough
 
 ## Phase 2 - Hybrid Routing (complete)
 
@@ -41,6 +43,24 @@ Goal: Full visibility into what the mesh is doing.
 - [x] GET /health endpoint - unauthenticated, for load balancers and uptime monitors
 - [x] X-Request-ID header on all proxy responses
 
+## v0.2.1 - UX and Observability Polish (complete)
+
+Goal: Lower the barrier to first run; make every number in the dashboard trustworthy.
+
+- [x] Real savings math - saved_usd from actual parsed token counts (eval_count + prompt_eval_count); shows null/"—" when unavailable
+- [x] Mid-stream abort logging - aborted requests recorded in metrics, admin log, and audit with status="aborted"
+- [x] Cloud model rewriting visible in request log - "original -> cloud_model" when default_model is applied
+- [x] tokens/sec column in live request log
+- [x] VRAM fit indicator - green/yellow/red badges per model per node on GPU Nodes page
+- [x] `make demo` - mock Ollama servers in-process, populated dashboard in <60s, no Ollama required
+- [x] Configurable savings reference rate - `savings.reference_cost_per_1k` in config.yaml
+
+## Next (planned)
+
+- [ ] Model Advisor page - model catalog with VRAM fit per node, recommend which node to pull a model onto
+- [ ] SQLite analytics persistence - survives restarts; deferred until retention semantics are defined
+- [ ] Remote node GPU telemetry - sidecar agent for nvidia-smi on non-mesh nodes
+
 ## Phase 3 - Enterprise (planned)
 
 Goal: Make it sellable to platform teams at 50-500 person companies.
@@ -49,8 +69,6 @@ Goal: Make it sellable to platform teams at 50-500 person companies.
 - [ ] RBAC - per-key model allow-lists enforced at the proxy layer
 - [ ] Audit log export - CSV/JSON download via admin API
 - [ ] Multi-tenant namespacing
-- [ ] Persistent analytics - 7-day SQLite store, survives restarts
-- [ ] Model pre-warming API - POST /admin/v1/nodes/{name}/pull
 - [ ] Alert manager integration - PagerDuty, OpsGenie
 - [ ] Helm chart for Kubernetes deployment
 
