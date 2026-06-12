@@ -46,6 +46,18 @@ type NodeState struct {
 	mu            sync.RWMutex
 }
 
+// TagsCache holds a cached result from /api/tags for a single node.
+type TagsCache struct {
+	Models    []TagModel
+	FetchedAt time.Time
+}
+
+// TagModel represents one model entry from /api/tags.
+type TagModel struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"` // bytes on disk
+}
+
 type Router struct {
 	nodes          []*NodeState
 	strategy       string
@@ -62,6 +74,9 @@ type Router struct {
 	// prevHealthy tracks the last known health state per node name for
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
+	// tagsCache caches /api/tags results per node URL for 30 seconds.
+	tagsCache map[string]*TagsCache
+	tagsMu    sync.Mutex
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -92,6 +107,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		clouds:         cloudsCopy,
 		discoveredURLs: make(map[string]struct{}),
 		prevHealthy:    prev,
+		tagsCache:      make(map[string]*TagsCache),
 	}
 }
 
@@ -532,4 +548,52 @@ func ExtractModelName(body []byte) string {
 		return req.Model
 	}
 	return ""
+}
+
+// FetchModelTags fetches /api/tags from a node and returns the list of
+// downloaded models with their disk sizes. Results are cached for 30 seconds
+// to avoid hammering nodes on every dashboard refresh.
+func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
+	const cacheTTL = 30 * time.Second
+
+	r.tagsMu.Lock()
+	cached, ok := r.tagsCache[nodeURL]
+	if ok && time.Since(cached.FetchedAt) < cacheTTL {
+		models := make([]TagModel, len(cached.Models))
+		copy(models, cached.Models)
+		r.tagsMu.Unlock()
+		return models, nil
+	}
+	r.tagsMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", nodeURL+"/api/tags", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch tags from %s: %w", nodeURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tags %s: status %d", nodeURL, resp.StatusCode)
+	}
+
+	var tagsResp struct {
+		Models []TagModel `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
+		return nil, fmt.Errorf("decode tags: %w", err)
+	}
+
+	r.tagsMu.Lock()
+	r.tagsCache[nodeURL] = &TagsCache{
+		Models:    tagsResp.Models,
+		FetchedAt: time.Now(),
+	}
+	r.tagsMu.Unlock()
+
+	return tagsResp.Models, nil
 }
