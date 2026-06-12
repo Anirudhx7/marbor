@@ -10,6 +10,7 @@ import { Metrics } from './pages/Metrics';
 import { SettingsPage } from './pages/Settings';
 import { Analytics } from './pages/Analytics';
 import { Models } from './pages/Models';
+import { ModelAdvisor } from './pages/ModelAdvisor';
 import { Requests } from './pages/Requests';
 
 function DemoBanner() {
@@ -40,6 +41,7 @@ function App() {
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/models" element={<Models />} />
+                <Route path="/model-advisor" element={<ModelAdvisor />} />
                 <Route path="/requests" element={<Requests />} />
               </Routes>
             </div>

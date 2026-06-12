@@ -1,0 +1,380 @@
+package admin
+
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
+)
+
+// CatalogModel is a curated, popular Ollama model baked into the binary.
+type CatalogModel struct {
+	Name        string         `json:"name"`         // e.g. "llama3.2:3b"
+	DisplayName string         `json:"display_name"` // e.g. "Llama 3.2 3B"
+	Description string         `json:"description"`
+	ParamCount  string         `json:"param_count"` // "3B", "8B", "70B"
+	Categories  []string       `json:"categories"`  // ["chat", "coding", "reasoning"]
+	Variants    []ModelVariant `json:"variants"`    // different quant options
+	Popular     bool           `json:"popular"`
+	Rank        int            `json:"rank"` // lower = more popular
+}
+
+// ModelVariant is a specific quantization of a catalog model.
+type ModelVariant struct {
+	Tag          string `json:"tag"`          // "llama3.2:3b-instruct-q4_K_M"
+	Quantization string `json:"quantization"` // "Q4_K_M"
+	VRAMEstMB    int64  `json:"vram_est_mb"`  // estimated VRAM in MB
+	SizeMB       int64  `json:"size_mb"`      // download size in MB
+	Recommended  bool   `json:"recommended"`  // best quality/size tradeoff
+}
+
+// catalogModels is the static, hardcoded catalog of popular Ollama models.
+// VRAM estimates are approximate, in MB, derived from published quant sizes
+// plus typical KV-cache/runtime overhead.
+var catalogModels = []CatalogModel{
+	{
+		Name: "llama3.2:3b", DisplayName: "Llama 3.2 3B", ParamCount: "3B",
+		Description: "Compact Meta model. Fast, capable general-purpose chat that runs on modest GPUs.",
+		Categories:  []string{"chat", "fast"}, Popular: true, Rank: 1,
+		Variants: []ModelVariant{
+			{Tag: "llama3.2:3b", Quantization: "Q4_K_M", VRAMEstMB: 2048, SizeMB: 2000, Recommended: true},
+			{Tag: "llama3.2:3b-instruct-q8_0", Quantization: "Q8_0", VRAMEstMB: 3174, SizeMB: 3100},
+		},
+	},
+	{
+		Name: "llama3.2:1b", DisplayName: "Llama 3.2 1B", ParamCount: "1B",
+		Description: "Smallest Llama 3.2. Edge and CPU-friendly, ideal for low-latency tasks.",
+		Categories:  []string{"chat", "fast", "edge"}, Popular: true, Rank: 8,
+		Variants: []ModelVariant{
+			{Tag: "llama3.2:1b", Quantization: "Q4_K_M", VRAMEstMB: 1024, SizeMB: 1300, Recommended: true},
+		},
+	},
+	{
+		Name: "llama3.1:8b", DisplayName: "Llama 3.1 8B", ParamCount: "8B",
+		Description: "The workhorse. Strong general chat and coding, fits most consumer GPUs.",
+		Categories:  []string{"chat", "coding"}, Popular: true, Rank: 2,
+		Variants: []ModelVariant{
+			{Tag: "llama3.1:8b", Quantization: "Q4_K_M", VRAMEstMB: 4813, SizeMB: 4700, Recommended: true},
+			{Tag: "llama3.1:8b-instruct-q8_0", Quantization: "Q8_0", VRAMEstMB: 8704, SizeMB: 8500},
+			{Tag: "llama3.1:8b-instruct-fp16", Quantization: "F16", VRAMEstMB: 16384, SizeMB: 16000},
+		},
+	},
+	{
+		Name: "llama3.1:70b", DisplayName: "Llama 3.1 70B", ParamCount: "70B",
+		Description: "Large Llama 3.1. Frontier-class reasoning, needs serious VRAM.",
+		Categories:  []string{"chat", "reasoning"}, Popular: true, Rank: 12,
+		Variants: []ModelVariant{
+			{Tag: "llama3.1:70b", Quantization: "Q4_K_M", VRAMEstMB: 40960, SizeMB: 40000, Recommended: true},
+			{Tag: "llama3.1:70b-instruct-q8_0", Quantization: "Q8_0", VRAMEstMB: 76800, SizeMB: 75000},
+		},
+	},
+	{
+		Name: "llama3.3:70b", DisplayName: "Llama 3.3 70B", ParamCount: "70B",
+		Description: "Latest 70B Llama with 405B-class quality at a fraction of the cost.",
+		Categories:  []string{"chat", "reasoning"}, Popular: true, Rank: 5,
+		Variants: []ModelVariant{
+			{Tag: "llama3.3:70b", Quantization: "Q4_K_M", VRAMEstMB: 40960, SizeMB: 42000, Recommended: true},
+		},
+	},
+	{
+		Name: "mistral:7b", DisplayName: "Mistral 7B", ParamCount: "7B",
+		Description: "Efficient European model. Solid chat and coding for its size.",
+		Categories:  []string{"chat", "coding"}, Popular: true, Rank: 6,
+		Variants: []ModelVariant{
+			{Tag: "mistral:7b", Quantization: "Q4_K_M", VRAMEstMB: 4198, SizeMB: 4100, Recommended: true},
+			{Tag: "mistral:7b-instruct-q8_0", Quantization: "Q8_0", VRAMEstMB: 7885, SizeMB: 7700},
+		},
+	},
+	{
+		Name: "mixtral:8x7b", DisplayName: "Mixtral 8x7B", ParamCount: "47B",
+		Description: "Sparse mixture-of-experts. Big-model quality with faster inference.",
+		Categories:  []string{"chat", "reasoning"}, Popular: true, Rank: 15,
+		Variants: []ModelVariant{
+			{Tag: "mixtral:8x7b", Quantization: "Q4_K_M", VRAMEstMB: 26624, SizeMB: 26000, Recommended: true},
+		},
+	},
+	{
+		Name: "qwen2.5:7b", DisplayName: "Qwen 2.5 7B", ParamCount: "7B",
+		Description: "Alibaba's strong multilingual model. Excellent coding and chat.",
+		Categories:  []string{"chat", "coding"}, Popular: true, Rank: 3,
+		Variants: []ModelVariant{
+			{Tag: "qwen2.5:7b", Quantization: "Q4_K_M", VRAMEstMB: 4813, SizeMB: 4700, Recommended: true},
+			{Tag: "qwen2.5:7b-instruct-q8_0", Quantization: "Q8_0", VRAMEstMB: 8192, SizeMB: 8000},
+		},
+	},
+	{
+		Name: "qwen2.5:14b", DisplayName: "Qwen 2.5 14B", ParamCount: "14B",
+		Description: "Mid-size Qwen 2.5. Better reasoning than 7B, still single-GPU friendly.",
+		Categories:  []string{"chat", "coding"}, Popular: true, Rank: 9,
+		Variants: []ModelVariant{
+			{Tag: "qwen2.5:14b", Quantization: "Q4_K_M", VRAMEstMB: 9216, SizeMB: 9000, Recommended: true},
+		},
+	},
+	{
+		Name: "qwen2.5:72b", DisplayName: "Qwen 2.5 72B", ParamCount: "72B",
+		Description: "Flagship Qwen 2.5. Top-tier reasoning and multilingual performance.",
+		Categories:  []string{"chat", "reasoning"}, Popular: true, Rank: 16,
+		Variants: []ModelVariant{
+			{Tag: "qwen2.5:72b", Quantization: "Q4_K_M", VRAMEstMB: 44032, SizeMB: 43000, Recommended: true},
+		},
+	},
+	{
+		Name: "qwen2.5-coder:7b", DisplayName: "Qwen 2.5 Coder 7B", ParamCount: "7B",
+		Description: "Code-specialized Qwen. Strong fill-in-the-middle and repo-level coding.",
+		Categories:  []string{"coding"}, Popular: true, Rank: 4,
+		Variants: []ModelVariant{
+			{Tag: "qwen2.5-coder:7b", Quantization: "Q4_K_M", VRAMEstMB: 4813, SizeMB: 4700, Recommended: true},
+		},
+	},
+	{
+		Name: "qwen2.5-coder:32b", DisplayName: "Qwen 2.5 Coder 32B", ParamCount: "32B",
+		Description: "Largest Qwen coder. GPT-4-class coding ability when it fits in VRAM.",
+		Categories:  []string{"coding"}, Popular: true, Rank: 10,
+		Variants: []ModelVariant{
+			{Tag: "qwen2.5-coder:32b", Quantization: "Q4_K_M", VRAMEstMB: 19456, SizeMB: 19000, Recommended: true},
+		},
+	},
+	{
+		Name: "deepseek-r1:7b", DisplayName: "DeepSeek-R1 7B", ParamCount: "7B",
+		Description: "Distilled reasoning model. Shows its chain of thought before answering.",
+		Categories:  []string{"reasoning"}, Popular: true, Rank: 7,
+		Variants: []ModelVariant{
+			{Tag: "deepseek-r1:7b", Quantization: "Q4_K_M", VRAMEstMB: 4813, SizeMB: 4700, Recommended: true},
+		},
+	},
+	{
+		Name: "deepseek-r1:14b", DisplayName: "DeepSeek-R1 14B", ParamCount: "14B",
+		Description: "Mid-size R1 distill. Stronger multi-step reasoning than 7B.",
+		Categories:  []string{"reasoning"}, Popular: true, Rank: 11,
+		Variants: []ModelVariant{
+			{Tag: "deepseek-r1:14b", Quantization: "Q4_K_M", VRAMEstMB: 9216, SizeMB: 9000, Recommended: true},
+		},
+	},
+	{
+		Name: "deepseek-r1:32b", DisplayName: "DeepSeek-R1 32B", ParamCount: "32B",
+		Description: "Large R1 distill. Excellent math and reasoning on a single big GPU.",
+		Categories:  []string{"reasoning"}, Popular: true, Rank: 13,
+		Variants: []ModelVariant{
+			{Tag: "deepseek-r1:32b", Quantization: "Q4_K_M", VRAMEstMB: 19456, SizeMB: 19000, Recommended: true},
+		},
+	},
+	{
+		Name: "deepseek-r1:70b", DisplayName: "DeepSeek-R1 70B", ParamCount: "70B",
+		Description: "Flagship R1 distill. Frontier reasoning, needs datacenter-class VRAM.",
+		Categories:  []string{"reasoning"}, Popular: true, Rank: 17,
+		Variants: []ModelVariant{
+			{Tag: "deepseek-r1:70b", Quantization: "Q4_K_M", VRAMEstMB: 43008, SizeMB: 42000, Recommended: true},
+		},
+	},
+	{
+		Name: "phi4:14b", DisplayName: "Phi-4 14B", ParamCount: "14B",
+		Description: "Microsoft's data-efficient model. Punches above its weight on reasoning.",
+		Categories:  []string{"chat", "coding"}, Popular: true, Rank: 14,
+		Variants: []ModelVariant{
+			{Tag: "phi4:14b", Quantization: "Q4_K_M", VRAMEstMB: 9114, SizeMB: 8900, Recommended: true},
+		},
+	},
+	{
+		Name: "phi3.5:3.8b", DisplayName: "Phi-3.5 3.8B", ParamCount: "3.8B",
+		Description: "Small Microsoft model with a long context window. Great for edge deploys.",
+		Categories:  []string{"chat", "edge"}, Popular: false, Rank: 20,
+		Variants: []ModelVariant{
+			{Tag: "phi3.5:3.8b", Quantization: "Q4_K_M", VRAMEstMB: 2253, SizeMB: 2200, Recommended: true},
+		},
+	},
+	{
+		Name: "gemma2:9b", DisplayName: "Gemma 2 9B", ParamCount: "9B",
+		Description: "Google's open model. Polished, safe general-purpose chat.",
+		Categories:  []string{"chat"}, Popular: true, Rank: 18,
+		Variants: []ModelVariant{
+			{Tag: "gemma2:9b", Quantization: "Q4_K_M", VRAMEstMB: 5530, SizeMB: 5400, Recommended: true},
+		},
+	},
+	{
+		Name: "gemma2:27b", DisplayName: "Gemma 2 27B", ParamCount: "27B",
+		Description: "Larger Gemma 2. Stronger reasoning and knowledge on a single GPU.",
+		Categories:  []string{"chat", "reasoning"}, Popular: false, Rank: 19,
+		Variants: []ModelVariant{
+			{Tag: "gemma2:27b", Quantization: "Q4_K_M", VRAMEstMB: 16384, SizeMB: 16000, Recommended: true},
+		},
+	},
+	{
+		Name: "codellama:7b", DisplayName: "Code Llama 7B", ParamCount: "7B",
+		Description: "Meta's code model. Reliable autocompletion and code generation.",
+		Categories:  []string{"coding"}, Popular: false, Rank: 21,
+		Variants: []ModelVariant{
+			{Tag: "codellama:7b", Quantization: "Q4_K_M", VRAMEstMB: 3891, SizeMB: 3800, Recommended: true},
+		},
+	},
+	{
+		Name: "codellama:13b", DisplayName: "Code Llama 13B", ParamCount: "13B",
+		Description: "Larger Code Llama. Better at complex, multi-file coding tasks.",
+		Categories:  []string{"coding"}, Popular: false, Rank: 22,
+		Variants: []ModelVariant{
+			{Tag: "codellama:13b", Quantization: "Q4_K_M", VRAMEstMB: 7578, SizeMB: 7400, Recommended: true},
+		},
+	},
+	{
+		Name: "nomic-embed-text", DisplayName: "Nomic Embed Text", ParamCount: "137M",
+		Description: "High-quality text embeddings. Tiny footprint, great for RAG.",
+		Categories:  []string{"embedding"}, Popular: true, Rank: 23,
+		Variants: []ModelVariant{
+			{Tag: "nomic-embed-text", Quantization: "F16", VRAMEstMB: 274, SizeMB: 274, Recommended: true},
+		},
+	},
+	{
+		Name: "mxbai-embed-large", DisplayName: "MixedBread Embed Large", ParamCount: "335M",
+		Description: "Larger embedding model. Top-tier retrieval accuracy for RAG pipelines.",
+		Categories:  []string{"embedding"}, Popular: false, Rank: 24,
+		Variants: []ModelVariant{
+			{Tag: "mxbai-embed-large", Quantization: "F16", VRAMEstMB: 670, SizeMB: 670, Recommended: true},
+		},
+	},
+	{
+		Name: "llava:7b", DisplayName: "LLaVA 7B", ParamCount: "7B",
+		Description: "Vision-language model. Describe images, answer questions about them.",
+		Categories:  []string{"vision", "multimodal"}, Popular: true, Rank: 25,
+		Variants: []ModelVariant{
+			{Tag: "llava:7b", Quantization: "Q4_K_M", VRAMEstMB: 4608, SizeMB: 4500, Recommended: true},
+		},
+	},
+}
+
+// catalogVariantFit is a variant decorated with per-node fit classification.
+type catalogVariantFit struct {
+	ModelVariant
+	Fit string `json:"fit"` // green / yellow / red / unknown
+}
+
+// catalogModelFit is a catalog model decorated for one node: per-variant fit
+// plus whether the model is already downloaded on that node.
+type catalogModelFit struct {
+	CatalogModel
+	Variants   []catalogVariantFit `json:"variants"`
+	Downloaded bool                `json:"downloaded"`
+}
+
+// catalogNodeEntry holds the fit results for a single node.
+type catalogNodeEntry struct {
+	Name           string            `json:"name"`
+	URL            string            `json:"url"`
+	VRAMFreeBytes  int64             `json:"vram_free_bytes"`
+	VRAMTotalBytes int64             `json:"vram_total_bytes"`
+	VRAMSource     string            `json:"vram_source"`
+	Models         []catalogModelFit `json:"models"`
+}
+
+// classifyFit returns the fit color for an estimated VRAM requirement (in bytes)
+// against the free VRAM (in bytes). It mirrors handleModelFit's thresholds.
+func classifyFit(vramEstBytes, vramFreeBytes int64, vramSource string) string {
+	if vramSource == "unknown" || vramSource == "inferred" {
+		return "unknown"
+	}
+	switch {
+	case vramEstBytes <= int64(float64(vramFreeBytes)*0.85):
+		return "green"
+	case vramEstBytes <= vramFreeBytes:
+		return "yellow"
+	default:
+		return "red"
+	}
+}
+
+// handleModelCatalog serves the curated model catalog with per-node fit status.
+// GET /admin/models/catalog (also /admin/v1/models/catalog)
+//
+// The catalog itself is static data compiled into the binary. For each node we
+// reuse the same VRAM accounting as handleModelFit: nvidia-smi total minus the
+// VRAM reported loaded by the last /api/ps poll. Each catalog variant is then
+// classified green/yellow/red/unknown against that node's free VRAM. We also
+// cross-reference /api/tags (cached in the router) to flag models already on disk.
+func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
+	nodes := s.router.Nodes()
+	nodeEntries := make([]catalogNodeEntry, 0, len(nodes))
+
+	for _, n := range nodes {
+		n.RLock()
+		nodeURL := n.URL
+		nodeName := n.Name
+		vramTotalMB := n.VRAMTotalMB
+		vramUsedMBFromPS := int64(0)
+		for _, m := range n.LoadedModels {
+			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
+		}
+		n.RUnlock()
+
+		var vramFreeBytes int64
+		var vramTotalBytes int64
+		vramSource := "unknown"
+		if vramTotalMB > 0 {
+			vramTotalBytes = vramTotalMB * 1024 * 1024
+			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
+			vramFreeBytes = vramTotalBytes - vramUsedBytes
+			if vramFreeBytes < 0 {
+				vramFreeBytes = 0
+			}
+			vramSource = "nvidia-smi"
+		} else if vramUsedMBFromPS > 0 {
+			vramSource = "inferred"
+		}
+
+		// Build a set of downloaded model names/tags from /api/tags (cached 30s).
+		downloaded := make(map[string]bool)
+		if tagModels, err := s.router.FetchModelTags(nodeURL); err == nil {
+			for _, tm := range tagModels {
+				downloaded[tm.Name] = true
+			}
+		}
+
+		models := make([]catalogModelFit, 0, len(catalogModels))
+		for _, cm := range catalogModels {
+			variants := make([]catalogVariantFit, 0, len(cm.Variants))
+			for _, v := range cm.Variants {
+				estBytes := v.VRAMEstMB * 1024 * 1024
+				variants = append(variants, catalogVariantFit{
+					ModelVariant: v,
+					Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
+				})
+			}
+			models = append(models, catalogModelFit{
+				CatalogModel: cm,
+				Variants:     variants,
+				Downloaded:   isDownloaded(cm, downloaded),
+			})
+		}
+
+		nodeEntries = append(nodeEntries, catalogNodeEntry{
+			Name:           nodeName,
+			URL:            nodeURL,
+			VRAMFreeBytes:  vramFreeBytes,
+			VRAMTotalBytes: vramTotalBytes,
+			VRAMSource:     vramSource,
+			Models:         models,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"catalog": catalogModels,
+		"nodes":   nodeEntries,
+	})
+}
+
+// isDownloaded reports whether any of a catalog model's tags (or its base name)
+// appears in the node's downloaded set. Ollama tags often carry an implicit
+// ":latest", so we match on the base name and on each variant tag.
+func isDownloaded(cm CatalogModel, downloaded map[string]bool) bool {
+	if downloaded[cm.Name] || downloaded[cm.Name+":latest"] {
+		return true
+	}
+	for _, v := range cm.Variants {
+		if downloaded[v.Tag] || downloaded[v.Tag+":latest"] {
+			return true
+		}
+		// Match base name before any quant suffix (e.g. "llama3.1:8b" from
+		// a downloaded "llama3.1:8b-instruct-q4_K_M").
+		if base, _, ok := strings.Cut(v.Tag, "-"); ok && downloaded[base] {
+			return true
+		}
+	}
+	return false
+}

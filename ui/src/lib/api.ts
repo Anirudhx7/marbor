@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse } from '../types';
 
 const BASE = '/admin';
 
@@ -170,6 +170,12 @@ export async function pullModel(nodeName: string, model: string): Promise<void> 
 export async function fetchModelFit(): Promise<ModelFitResponse> {
   const res = await fetch(`${BASE}/nodes/model-fit`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch model fit data');
+  return res.json();
+}
+
+export async function fetchModelCatalog(): Promise<ModelCatalogResponse> {
+  const res = await fetch(`${BASE}/v1/models/catalog`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch model catalog');
   return res.json();
 }
 

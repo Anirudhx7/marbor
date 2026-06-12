@@ -180,3 +180,47 @@ export interface NodeFit {
 export interface ModelFitResponse {
   nodes: NodeFit[];
 }
+
+export interface ModelVariant {
+  tag: string;
+  quantization: string;
+  vram_est_mb: number;
+  size_mb: number;
+  recommended: boolean;
+}
+
+export interface CatalogModel {
+  name: string;
+  display_name: string;
+  description: string;
+  param_count: string;
+  categories: string[];
+  variants: ModelVariant[];
+  popular: boolean;
+  rank: number;
+}
+
+// A variant decorated with its per-node fit classification.
+export interface CatalogVariantFit extends ModelVariant {
+  fit: FitStatus;
+}
+
+// A catalog model decorated for a specific node.
+export interface CatalogModelFit extends CatalogModel {
+  variants: CatalogVariantFit[];
+  downloaded: boolean;
+}
+
+export interface CatalogNodeEntry {
+  name: string;
+  url: string;
+  vram_free_bytes: number;
+  vram_total_bytes: number;
+  vram_source: 'nvidia-smi' | 'inferred' | 'unknown';
+  models: CatalogModelFit[];
+}
+
+export interface ModelCatalogResponse {
+  catalog: CatalogModel[];
+  nodes: CatalogNodeEntry[];
+}

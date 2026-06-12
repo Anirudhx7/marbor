@@ -11,6 +11,7 @@ import {
   Sun,
   TrendingUp,
   Package,
+  Compass,
   Activity
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
@@ -19,6 +20,7 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/gpu-nodes', label: 'GPU Nodes', icon: Cpu },
   { path: '/models', label: 'Models', icon: Package },
+  { path: '/model-advisor', label: 'Model Advisor', icon: Compass },
   { path: '/analytics', label: 'Analytics', icon: TrendingUp },
   { path: '/requests', label: 'Requests', icon: Activity },
   { path: '/api-keys', label: 'API Keys', icon: Key },
