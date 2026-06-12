@@ -292,6 +292,25 @@ export function ModelAdvisor() {
         </div>
       )}
 
+      {/* Mesh host system info — shown once, not per node */}
+      {!demoMode && sysInfo && (
+        <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
+          <span className="flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-foreground font-medium">{sysInfo.cpu_cores} cores</span>
+            <span className="text-muted-foreground">{sysInfo.arch} · {sysInfo.os}</span>
+          </span>
+          {sysInfo.ram_total_mb > 0 && (
+            <span className="flex items-center gap-1.5">
+              <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-foreground font-medium">{(sysInfo.ram_free_mb / 1024).toFixed(1)} GB free</span>
+              <span className="text-muted-foreground">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB RAM</span>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Node tabs + VRAM */}
       {!demoMode && activeNode && (
         <>
@@ -316,7 +335,7 @@ export function ModelAdvisor() {
           <div className="bg-card border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Your Hardware</span>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GPU Node</span>
                 <h3 className="font-semibold text-foreground mt-0.5">{activeNode.name}</h3>
               </div>
               <span className="text-xs text-muted-foreground">
@@ -358,26 +377,6 @@ export function ModelAdvisor() {
               <p className="text-xs text-muted-foreground">
                 VRAM totals unavailable - nvidia-smi reads the mesh host only. Fit shown as "unknown".
               </p>
-            )}
-            {sysInfo && (
-              <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5" />
-                  <span className="text-foreground font-medium">{sysInfo.cpu_cores} CPU cores</span>
-                  <span className="text-muted-foreground">({sysInfo.arch})</span>
-                </span>
-                {sysInfo.ram_total_mb > 0 && (
-                  <span className="flex items-center gap-1.5">
-                    <HardDrive className="w-3.5 h-3.5" />
-                    <span className="text-foreground font-medium">{(sysInfo.ram_free_mb / 1024).toFixed(1)} GB RAM free</span>
-                    <span className="text-muted-foreground">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB total</span>
-                  </span>
-                )}
-                <span className="flex items-center gap-1.5">
-                  <Server className="w-3.5 h-3.5" />
-                  <span>{sysInfo.os}</span>
-                </span>
-              </div>
             )}
           </div>
 
