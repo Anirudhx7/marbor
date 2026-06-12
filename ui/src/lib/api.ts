@@ -3,6 +3,7 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, Req
 const BASE = '/admin';
 
 function getAdminToken(): string {
+  if (import.meta.env.VITE_FORCE_DEMO === 'true') return 'demo';
   let token = localStorage.getItem('adminToken');
   if (!token) {
     token = window.prompt('Enter admin token:') ?? '';

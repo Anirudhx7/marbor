@@ -1,4 +1,5 @@
-import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics } from '../types';
+import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse } from '../types';
+import type { SystemInfo } from './api';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -440,3 +441,149 @@ observability:
     format: json
     output: stdout
 `;
+
+// Mock system info: single RTX 3070 node, 16 GB RAM, 8 cores
+export const mockSystemInfo: SystemInfo = {
+  cpu_cores: 8,
+  os: 'linux',
+  arch: 'x86_64',
+  ram_total_mb: 16384,
+  ram_free_mb: 8192,
+  gpus: [
+    {
+      name: 'NVIDIA RTX 3070',
+      url: 'http://localhost:11434',
+      vram_total_mb: 8192,
+      vram_free_mb: 3200,
+      vram_source: 'nvidia-smi',
+      temperature_c: 62,
+      power_draw_w: 145,
+      healthy: true,
+    },
+  ],
+};
+
+// Mock ModelCatalogResponse for ModelAdvisor demo mode
+export const mockModelCatalogResponse: ModelCatalogResponse = {
+  catalog: [
+    {
+      name: 'llama3.2:3b',
+      display_name: 'Llama 3.2 3B',
+      description: 'Meta\'s compact Llama 3.2 model, great for everyday tasks.',
+      param_count: '3B',
+      categories: ['chat', 'general'],
+      popular: true,
+      rank: 1,
+      variants: [
+        { tag: 'llama3.2:3b', quantization: 'Q4_K_M', vram_est_mb: 2200, size_mb: 1800, recommended: true },
+        { tag: 'llama3.2:3b-fp16', quantization: 'F16', vram_est_mb: 6400, size_mb: 6200, recommended: false },
+      ],
+    },
+    {
+      name: 'mistral:7b',
+      display_name: 'Mistral 7B',
+      description: 'Fast and capable 7B model from Mistral AI.',
+      param_count: '7B',
+      categories: ['chat', 'coding', 'general'],
+      popular: true,
+      rank: 2,
+      variants: [
+        { tag: 'mistral:7b', quantization: 'Q4_K_M', vram_est_mb: 4800, size_mb: 4100, recommended: true },
+        { tag: 'mistral:7b-fp16', quantization: 'F16', vram_est_mb: 14400, size_mb: 14000, recommended: false },
+      ],
+    },
+    {
+      name: 'qwen2.5:7b',
+      display_name: 'Qwen 2.5 7B',
+      description: 'Alibaba\'s Qwen 2.5 model with strong coding and reasoning.',
+      param_count: '7B',
+      categories: ['chat', 'coding'],
+      popular: true,
+      rank: 3,
+      variants: [
+        { tag: 'qwen2.5:7b', quantization: 'Q4_K_M', vram_est_mb: 5100, size_mb: 4400, recommended: true },
+        { tag: 'qwen2.5:7b-fp16', quantization: 'F16', vram_est_mb: 15000, size_mb: 14500, recommended: false },
+      ],
+    },
+    {
+      name: 'gemma2:9b',
+      display_name: 'Gemma 2 9B',
+      description: 'Google\'s Gemma 2 model, strong at instruction following.',
+      param_count: '9B',
+      categories: ['chat', 'general'],
+      popular: false,
+      rank: 4,
+      variants: [
+        { tag: 'gemma2:9b', quantization: 'Q4_K_M', vram_est_mb: 6200, size_mb: 5400, recommended: true },
+        { tag: 'gemma2:9b-fp16', quantization: 'F16', vram_est_mb: 18000, size_mb: 17500, recommended: false },
+      ],
+    },
+  ],
+  nodes: [
+    {
+      name: 'localhost',
+      url: 'http://localhost:11434',
+      vram_free_bytes: 3200 * 1024 * 1024,
+      vram_total_bytes: 8192 * 1024 * 1024,
+      vram_source: 'nvidia-smi',
+      models: [
+        {
+          name: 'llama3.2:3b',
+          display_name: 'Llama 3.2 3B',
+          description: 'Meta\'s compact Llama 3.2 model, great for everyday tasks.',
+          param_count: '3B',
+          categories: ['chat', 'general'],
+          popular: true,
+          rank: 1,
+          downloaded: false,
+          variants: [
+            { tag: 'llama3.2:3b', quantization: 'Q4_K_M', vram_est_mb: 2200, size_mb: 1800, recommended: true, fit: 'green' },
+            { tag: 'llama3.2:3b-fp16', quantization: 'F16', vram_est_mb: 6400, size_mb: 6200, recommended: false, fit: 'red' },
+          ],
+        },
+        {
+          name: 'mistral:7b',
+          display_name: 'Mistral 7B',
+          description: 'Fast and capable 7B model from Mistral AI.',
+          param_count: '7B',
+          categories: ['chat', 'coding', 'general'],
+          popular: true,
+          rank: 2,
+          downloaded: true,
+          variants: [
+            { tag: 'mistral:7b', quantization: 'Q4_K_M', vram_est_mb: 4800, size_mb: 4100, recommended: true, fit: 'yellow' },
+            { tag: 'mistral:7b-fp16', quantization: 'F16', vram_est_mb: 14400, size_mb: 14000, recommended: false, fit: 'red' },
+          ],
+        },
+        {
+          name: 'qwen2.5:7b',
+          display_name: 'Qwen 2.5 7B',
+          description: 'Alibaba\'s Qwen 2.5 model with strong coding and reasoning.',
+          param_count: '7B',
+          categories: ['chat', 'coding'],
+          popular: true,
+          rank: 3,
+          downloaded: false,
+          variants: [
+            { tag: 'qwen2.5:7b', quantization: 'Q4_K_M', vram_est_mb: 5100, size_mb: 4400, recommended: true, fit: 'yellow' },
+            { tag: 'qwen2.5:7b-fp16', quantization: 'F16', vram_est_mb: 15000, size_mb: 14500, recommended: false, fit: 'red' },
+          ],
+        },
+        {
+          name: 'gemma2:9b',
+          display_name: 'Gemma 2 9B',
+          description: 'Google\'s Gemma 2 model, strong at instruction following.',
+          param_count: '9B',
+          categories: ['chat', 'general'],
+          popular: false,
+          rank: 4,
+          downloaded: false,
+          variants: [
+            { tag: 'gemma2:9b', quantization: 'Q4_K_M', vram_est_mb: 6200, size_mb: 5400, recommended: true, fit: 'red' },
+            { tag: 'gemma2:9b-fp16', quantization: 'F16', vram_est_mb: 18000, size_mb: 17500, recommended: false, fit: 'red' },
+          ],
+        },
+      ],
+    },
+  ],
+};

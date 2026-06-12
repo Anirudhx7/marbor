@@ -4,6 +4,7 @@ import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
 import { fetchModelCatalog, pullModel, fetchSystemInfo, SystemInfo } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
+import { mockModelCatalogResponse, mockSystemInfo } from '../lib/mockData';
 import type {
   ModelCatalogResponse,
   CatalogNodeEntry,
@@ -187,6 +188,9 @@ export function ModelAdvisor() {
 
   const loadCatalog = async () => {
     if (demoMode) {
+      setData(mockModelCatalogResponse);
+      setSysInfo(mockSystemInfo);
+      setSelectedNode(mockModelCatalogResponse.nodes[0]?.name ?? null);
       setLoading(false);
       setIsLive(false);
       setError(null);
@@ -268,7 +272,7 @@ export function ModelAdvisor() {
 
       {demoMode && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm">
-          Model Advisor uses live VRAM data from your nodes. Disable demo mode in Settings to see real fit results.
+          Demo mode - showing simulated NVIDIA RTX 3070 (8 GB VRAM). Connect a real node to see live fit results.
         </div>
       )}
 
@@ -285,7 +289,7 @@ export function ModelAdvisor() {
       )}
 
       {/* No nodes */}
-      {!demoMode && !loading && !error && data && data.nodes.length === 0 && (
+      {!loading && !error && data && data.nodes.length === 0 && (
         <div className="text-center py-16">
           <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
           <p className="text-muted-foreground">No nodes available. Add a GPU node to see model fit.</p>
@@ -293,7 +297,7 @@ export function ModelAdvisor() {
       )}
 
       {/* Mesh host system info — shown once, not per node */}
-      {!demoMode && sysInfo && (
+      {sysInfo && (
         <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
           <span className="flex items-center gap-1.5">
@@ -312,7 +316,7 @@ export function ModelAdvisor() {
       )}
 
       {/* Node tabs + VRAM */}
-      {!demoMode && activeNode && (
+      {activeNode && (
         <>
           {data && data.nodes.length > 1 && (
             <div className="flex flex-wrap gap-2">
