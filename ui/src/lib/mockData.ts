@@ -361,24 +361,27 @@ function makeHourKey(hoursAgo: number): string {
   return `${y}-${mo}-${day}T${h}`;
 }
 
+// Deterministic hourly pattern: base traffic + spikes at hours 9-11 and 14-16 UTC
+// 24 entries, index 0 = 23h ago, index 23 = current hour
+const _hourlyLocal = [8, 6, 5, 5, 7, 10, 18, 28, 38, 40, 37, 32, 28, 30, 36, 38, 34, 28, 22, 18, 14, 12, 10, 9];
+const _hourlyCloud = [0, 0, 0, 0, 0,  0,  1,  1,  2,  2,  1,  1,  1,  1,  2,  2,  1,  1,  1,  0,  0,  0,  0, 0];
+
 export const mockAnalytics: Analytics = {
-  local_requests: 342567,
-  cloud_requests: 12453,
-  total_saved_usd: 284.15,
-  total_spent_usd: 48.72,
+  local_requests: 831,
+  cloud_requests: 16,
+  total_saved_usd: 4.1557,
+  total_spent_usd: 0.0048,
   hourly: Array.from({ length: 24 }, (_, i) => ({
     hour: makeHourKey(23 - i),
-    local: Math.floor(12000 + Math.sin(i / 3) * 3000 + Math.random() * 1000),
-    cloud: Math.floor(400 + Math.cos(i / 4) * 200 + Math.random() * 100),
-    saved_usd: parseFloat((10 + Math.sin(i / 3) * 3 + Math.random()).toFixed(4)),
-    spent_usd: parseFloat((1.8 + Math.random() * 0.5).toFixed(4)),
+    local: _hourlyLocal[i],
+    cloud: _hourlyCloud[i],
+    saved_usd: parseFloat((_hourlyLocal[i] * 0.005).toFixed(4)),
+    spent_usd: parseFloat((_hourlyCloud[i] * 0.003).toFixed(4)),
   })),
   by_model: [
-    { model: 'llama3.1:70b',  local: 120450, cloud: 2340, saved_usd: 100.20 },
-    { model: 'mistral:7b',    local: 98320,  cloud: 4120, saved_usd: 82.10 },
-    { model: 'llama3.1:8b',   local: 75640,  cloud: 3210, saved_usd: 63.40 },
-    { model: 'codellama:13b', local: 30210,  cloud: 1890, saved_usd: 25.30 },
-    { model: 'gemma2:9b',     local: 17947,  cloud: 893,  saved_usd: 13.15 },
+    { model: 'llama3.2:3b', local: 374, cloud: 7,  saved_usd: 1.870 },
+    { model: 'mistral:7b',  local: 266, cloud: 5,  saved_usd: 1.330 },
+    { model: 'qwen2.5:7b',  local: 191, cloud: 4,  saved_usd: 0.955 },
   ],
 };
 

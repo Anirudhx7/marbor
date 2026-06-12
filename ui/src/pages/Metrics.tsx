@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Download, BarChart3, ExternalLink } from 'lucide-react';
+import { Download, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -15,24 +15,18 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import {
-  generateRequestsPerMinuteData,
-  generateTokenUsageData,
-  generateNodeLatencyData,
-  generateRequestDistributionData,
-} from '../lib/mockData';
+import { mockAnalytics } from '../lib/mockData';
 import { getAnalytics } from '../lib/api';
-import type { Analytics } from '../types';
+import type { Analytics, HourlyBucket, ModelStat } from '../types';
+import { useDemoMode } from '../hooks/useDemoMode';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
 
-function exportToCSV(data: any[], filename: string) {
+function exportToCSV(data: Record<string, unknown>[], filename: string) {
   if (data.length === 0) return;
-  
   const headers = Object.keys(data[0]).join(',');
   const rows = data.map(row => Object.values(row).join(','));
   const csv = [headers, ...rows].join('\n');
-  
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -68,12 +62,19 @@ function ChartCard({ title, children, onExport }: ChartCardProps) {
   );
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipPayloadEntry {
+  color: string;
+  name: string;
+  dataKey: string;
+  value: number;
+}
+
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadEntry[]; label?: string }) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-card border border-border rounded-lg p-3 shadow-xl">
         {label && <p className="text-xs text-muted-foreground mb-1">{label}</p>}
-        {payload.map((entry: any, index: number) => (
+        {payload.map((entry, index) => (
           <p key={index} className="text-sm" style={{ color: entry.color }}>
             <span className="font-medium">{entry.name || entry.dataKey}:</span>{' '}
             <span className="font-mono">{entry.value?.toLocaleString()}</span>
@@ -85,21 +86,91 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-import { useDemoMode } from '../hooks/useDemoMode';
+function formatHour(hour: string): string {
+  const parts = hour.split('T');
+  if (parts.length === 2) return `${parts[1]}:00`;
+  return hour;
+}
+
+function EmptyChart({ message }: { message: string }) {
+  return (
+    <div className="flex items-center justify-center h-full text-sm text-muted-foreground text-center px-4">
+      {message}
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-card border border-border rounded-xl p-4 h-20" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-card border border-border rounded-xl p-5 h-80" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function Metrics() {
   const { demoMode } = useDemoMode();
-
-  const [requestsData] = useState(() => demoMode ? generateRequestsPerMinuteData() : []);
-  const [tokenUsageData] = useState(() => demoMode ? generateTokenUsageData() : []);
-  const [latencyData] = useState(() => demoMode ? generateNodeLatencyData() : []);
-  const [distributionData] = useState(() => demoMode ? generateRequestDistributionData() : []);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
-    if (demoMode) return;
-    getAnalytics().then(setAnalytics).catch(() => setAnalytics(null));
+    setLoading(true);
+    setError(null);
+    if (demoMode) {
+      setAnalytics(mockAnalytics);
+      setLoading(false);
+      return;
+    }
+    getAnalytics()
+      .then(data => {
+        setAnalytics(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err instanceof Error ? err.message : 'Failed to load analytics');
+        setLoading(false);
+      });
   }, [demoMode]);
+
+  const hourlyData = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({
+    hour: formatHour(b.hour),
+    Local: b.local,
+    Cloud: b.cloud,
+  }));
+
+  const modelRequestData = (analytics?.by_model ?? []).map((m: ModelStat) => ({
+    model: m.model,
+    Local: m.local,
+    Cloud: m.cloud,
+  }));
+
+  const modelPieData = (analytics?.by_model ?? []).map((m: ModelStat) => ({
+    name: m.model,
+    requests: m.local + m.cloud,
+  }));
+
+  const savingsData = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({
+    hour: formatHour(b.hour),
+    'Saved ($)': b.saved_usd,
+    'Spent ($)': b.spent_usd,
+  }));
+
+  const totalRequests = analytics ? analytics.local_requests + analytics.cloud_requests : null;
+  const localPct =
+    totalRequests && totalRequests > 0
+      ? ((analytics!.local_requests / totalRequests) * 100).toFixed(1)
+      : null;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -111,277 +182,297 @@ export function Metrics() {
         </p>
       </div>
 
-      {!demoMode && (
-        <div className="p-4 bg-secondary border border-border shadow-sm rounded-xl flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Live Metrics Require Grafana</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Historical chart data is not stored in the proxy. Configure Prometheus to scrape <code className="bg-background px-1 py-0.5 rounded border border-border">/metrics</code> and view dashboards in Grafana.
-            </p>
-          </div>
+      {loading && <LoadingSkeleton />}
+
+      {!loading && error && (
+        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-xl">
+          <p className="text-sm font-semibold text-destructive">Failed to load analytics</p>
+          <p className="text-xs text-muted-foreground mt-1">{error}</p>
         </div>
       )}
 
-      {/* Grafana CTA (live mode only) */}
-      {!demoMode && (
-        <div className="p-5 bg-card border border-border shadow-sm rounded-xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <BarChart3 className="w-5 h-5 text-primary" />
+      {!loading && !error && analytics && (
+        <>
+          {/* Summary Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-card border border-border shadow-sm rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <BarChart3 className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Total Requests</p>
+                  <p className="text-xl font-bold text-foreground font-mono">
+                    {totalRequests != null ? totalRequests.toLocaleString() : '—'}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Charts available in Grafana</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Import the dashboard from <code className="bg-secondary px-1 py-0.5 rounded border border-border">/grafana/ollama-mesh.json</code> to visualize time-series data.
-              </p>
+
+            <div className="bg-card border border-border shadow-sm rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/10 rounded-lg">
+                  <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Local Routing</p>
+                  <p className="text-xl font-bold text-foreground font-mono">
+                    {localPct != null ? `${localPct}%` : '—'}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-          <a
-            href="/grafana/ollama-mesh.json"
-            download
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors whitespace-nowrap"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            Download JSON
-          </a>
-        </div>
-      )}
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Requests Per Minute */}
-        <ChartCard
-          title="Requests Per Minute (Last 24 Hours)"
-          onExport={() => exportToCSV(requestsData, 'requests-per-minute.csv')}
-        >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={requestsData}>
-                <defs>
-                  <linearGradient id="requestsGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
-                <XAxis 
-                  dataKey="timestamp" 
-                  stroke="currentColor" 
-                  className="text-muted-foreground"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis 
-                  stroke="currentColor" 
-                  className="text-muted-foreground"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value: number) => value.toLocaleString()}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  name="Requests"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={false}
-                  fillOpacity={1}
-                  fill="url(#requestsGradient)"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-
-        {/* Token Usage Per API Key */}
-        <ChartCard
-          title="Token Usage by API Key (Top 10)"
-          onExport={() => exportToCSV(tokenUsageData, 'token-usage.csv')}
-        >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={tokenUsageData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" horizontal={true} vertical={false} />
-                <XAxis 
-                  type="number" 
-                  stroke="currentColor" 
-                  className="text-muted-foreground"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value: number) => `${(value / 1000000).toFixed(1)}M`}
-                />
-                <YAxis 
-                  type="category" 
-                  dataKey="keyName" 
-                  stroke="currentColor" 
-                  className="text-muted-foreground"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  width={100}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="tokens" name="Tokens" radius={[0, 4, 4, 0]}>
-                  {tokenUsageData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-
-        {/* Average Latency */}
-        <ChartCard
-          title="Average Latency Per Node (Last 24 Hours)"
-          onExport={() => exportToCSV(latencyData, 'latency-data.csv')}
-        >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={latencyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
-                <XAxis 
-                  dataKey="timestamp" 
-                  stroke="currentColor" 
-                  className="text-muted-foreground"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis 
-                  stroke="currentColor" 
-                  className="text-muted-foreground"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value: number) => `${value}ms`}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  name="Latency"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-
-        {/* Request Distribution */}
-        <ChartCard
-          title="Request Distribution Across GPU Nodes"
-          onExport={() => exportToCSV(distributionData, 'request-distribution.csv')}
-        >
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={distributionData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="requests"
-                  nameKey="nodeName"
-                >
-                  {distributionData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  verticalAlign="middle" 
-                  align="right" 
-                  layout="vertical"
-                  iconType="circle"
-                  wrapperStyle={{ fontSize: '11px', color: 'currentColor' }}
-                  className="text-muted-foreground"
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartCard>
-      </div>
-
-      {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card border border-border shadow-sm rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <BarChart3 className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Total Requests</p>
-              <p className="text-xl font-bold text-foreground font-mono">
-                {demoMode
-                  ? '116,708'
-                  : analytics
-                    ? (analytics.local_requests + analytics.cloud_requests).toLocaleString()
-                    : '—'}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-card border border-border shadow-sm rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 rounded-lg">
-              <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Total Spend</p>
-              <p className="text-xl font-bold text-foreground font-mono">
-                {demoMode
-                  ? '4.2M'
-                  : analytics
-                    ? analytics.total_spent_usd != null
+            <div className="bg-card border border-border shadow-sm rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-500/10 rounded-lg">
+                  <BarChart3 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Cloud Spend</p>
+                  <p className="text-xl font-bold text-foreground font-mono">
+                    {analytics.total_spent_usd != null
                       ? `$${analytics.total_spent_usd.toFixed(4)}`
-                      : '—'
-                    : '—'}
-              </p>
+                      : '—'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-card border border-border shadow-sm rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/10 rounded-lg">
+                  <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Estimated Savings</p>
+                  <p className="text-xl font-bold text-foreground font-mono">
+                    {analytics.total_saved_usd != null
+                      ? `$${analytics.total_saved_usd.toFixed(4)}`
+                      : '—'}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="bg-card border border-border shadow-sm rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500/10 rounded-lg">
-              <BarChart3 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Avg Response Time</p>
-              <p className="text-xl font-bold text-foreground font-mono">
-                {demoMode ? '45ms' : '—'}
-              </p>
-            </div>
+
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Requests Per Hour */}
+            <ChartCard
+              title="Requests Per Hour (Last 24h)"
+              onExport={() =>
+                exportToCSV(
+                  hourlyData as unknown as Record<string, unknown>[],
+                  'requests-hourly.csv'
+                )
+              }
+            >
+              <div className="h-64">
+                {hourlyData.length === 0 ? (
+                  <EmptyChart message="No data yet - requests will appear here as traffic flows through the proxy." />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={hourlyData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
+                      <XAxis
+                        dataKey="hour"
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        allowDecimals={false}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                      <Line type="monotone" dataKey="Local" stroke="#10b981" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="Cloud" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </ChartCard>
+
+            {/* Requests by Model */}
+            <ChartCard
+              title="Requests by Model"
+              onExport={() =>
+                exportToCSV(
+                  modelRequestData as unknown as Record<string, unknown>[],
+                  'requests-by-model.csv'
+                )
+              }
+            >
+              <div className="h-64">
+                {modelRequestData.length === 0 ? (
+                  <EmptyChart message="No model traffic recorded yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={modelRequestData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" horizontal={false} />
+                      <XAxis
+                        type="number"
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        allowDecimals={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="model"
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        width={100}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                      <Bar dataKey="Local" fill="#10b981" radius={[0, 4, 4, 0]} stackId="a" />
+                      <Bar dataKey="Cloud" fill="#3b82f6" radius={[0, 4, 4, 0]} stackId="a" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </ChartCard>
+
+            {/* Request Distribution Pie */}
+            <ChartCard
+              title="Request Distribution by Model"
+              onExport={() =>
+                exportToCSV(
+                  modelPieData as unknown as Record<string, unknown>[],
+                  'request-distribution.csv'
+                )
+              }
+            >
+              <div className="h-64">
+                {modelPieData.length === 0 ? (
+                  <EmptyChart message="No model traffic recorded yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={modelPieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="requests"
+                        nameKey="name"
+                      >
+                        {modelPieData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend
+                        verticalAlign="middle"
+                        align="right"
+                        layout="vertical"
+                        iconType="circle"
+                        wrapperStyle={{ fontSize: '11px' }}
+                        className="text-muted-foreground"
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </ChartCard>
+
+            {/* Savings vs Spend */}
+            <ChartCard
+              title="Savings vs Spend per Hour (Last 24h)"
+              onExport={() =>
+                exportToCSV(
+                  savingsData as unknown as Record<string, unknown>[],
+                  'savings-per-hour.csv'
+                )
+              }
+            >
+              <div className="h-64">
+                {savingsData.length === 0 ? (
+                  <EmptyChart message="No data yet." />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={savingsData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border" vertical={false} />
+                      <XAxis
+                        dataKey="hour"
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v: number) => `$${v.toFixed(2)}`}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                      <Bar dataKey="Saved ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Spent ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </ChartCard>
           </div>
-        </div>
-        <div className="bg-card border border-border shadow-sm rounded-xl p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-500/10 rounded-lg">
-              <BarChart3 className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Cloud Requests</p>
-              <p className="text-xl font-bold text-foreground font-mono">
-                {demoMode
-                  ? '0.02%'
-                  : analytics
-                    ? analytics.cloud_requests.toLocaleString()
-                    : '—'}
-              </p>
-            </div>
+
+          {/* Advanced monitoring - collapsible */}
+          <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between p-4 text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
+              onClick={() => setAdvancedOpen(v => !v)}
+            >
+              <span>Advanced monitoring</span>
+              {advancedOpen
+                ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            </button>
+            {advancedOpen && (
+              <div className="px-4 pb-4 space-y-3 border-t border-border pt-4">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Prometheus scrape endpoint</p>
+                  <code className="block bg-secondary text-xs px-3 py-2 rounded-lg border border-border font-mono break-all">
+                    http://your-host:9090/metrics
+                  </code>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Grafana dashboard</p>
+                  <a
+                    href="/grafana/ollama-mesh.json"
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download ollama-mesh.json
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
