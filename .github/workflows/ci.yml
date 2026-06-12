@@ -29,5 +29,11 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build demo mode (GitHub Pages regression check)
+        working-directory: ./ui
+        run: npm run build
+        env:
+          VITE_FORCE_DEMO: 'true'
+
       - name: Run Go Tests
         run: go test ./...
