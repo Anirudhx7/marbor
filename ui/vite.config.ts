@@ -9,5 +9,13 @@ export default defineConfig({
   build: {
     outDir: '../internal/admin/web/dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['recharts'],
+        },
+      },
+    },
   }
 })

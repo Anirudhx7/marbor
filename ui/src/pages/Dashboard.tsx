@@ -397,6 +397,13 @@ export function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
+              {requests.length === 0 && requestsLive && (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">
+                    No requests yet. Send a request to your proxy endpoint to see live traffic here.
+                  </td>
+                </tr>
+              )}
               {requests.map((req) => (
                 <tr 
                   key={req.id} 
