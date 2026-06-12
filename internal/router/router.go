@@ -58,6 +58,13 @@ type TagModel struct {
 	Size int64  `json:"size"` // bytes on disk
 }
 
+// tagsInflightEntry represents an in-progress /api/tags fetch.
+type tagsInflightEntry struct {
+	done   chan struct{}
+	models []TagModel
+	err    error
+}
+
 type Router struct {
 	nodes          []*NodeState
 	strategy       string
@@ -75,8 +82,10 @@ type Router struct {
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
 	// tagsCache caches /api/tags results per node URL for 30 seconds.
-	tagsCache map[string]*TagsCache
-	tagsMu    sync.Mutex
+	tagsCache    map[string]*TagsCache
+	tagsMu       sync.Mutex
+	// tagsInflight prevents concurrent fetches to the same node URL (cache stampede).
+	tagsInflight map[string]*tagsInflightEntry
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -108,6 +117,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		discoveredURLs: make(map[string]struct{}),
 		prevHealthy:    prev,
 		tagsCache:      make(map[string]*TagsCache),
+		tagsInflight:   make(map[string]*tagsInflightEntry),
 	}
 }
 
@@ -207,6 +217,13 @@ func (r *Router) SetStrategy(strategy string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.strategy = strategy
+}
+
+// Strategy returns the current routing strategy.
+func (r *Router) Strategy() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.strategy
 }
 
 // RouteCloud returns the first enabled cloud provider as fallback when no local nodes are available.
@@ -419,6 +436,8 @@ func (r *Router) Route(modelName string) (*NodeState, bool) {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
+	strategy := r.strategy
+	fallback := r.fallback
 	r.mu.RUnlock()
 
 	var healthy []*NodeState
@@ -434,7 +453,7 @@ func (r *Router) Route(modelName string) (*NodeState, bool) {
 		return nil, false
 	}
 
-	if modelName != "" && r.strategy == "warm-first" {
+	if modelName != "" && strategy == "warm-first" {
 		var warm []*NodeState
 		for _, n := range healthy {
 			n.mu.RLock()
@@ -453,10 +472,10 @@ func (r *Router) Route(modelName string) (*NodeState, bool) {
 		metrics.CacheMiss()
 	}
 
-	if r.fallback == "least-connections" || r.fallback == "" {
+	if fallback == "least-connections" || fallback == "" {
 		return pickLeastConns(healthy), false
 	}
-	if r.fallback == "round-robin" {
+	if fallback == "round-robin" {
 		idx := atomic.AddUint32(&r.roundRobin, 1) % uint32(len(healthy))
 		return healthy[idx], false
 	}
@@ -553,47 +572,88 @@ func ExtractModelName(body []byte) string {
 // FetchModelTags fetches /api/tags from a node and returns the list of
 // downloaded models with their disk sizes. Results are cached for 30 seconds
 // to avoid hammering nodes on every dashboard refresh.
+// Concurrent callers for the same nodeURL share a single in-flight request
+// (singleflight pattern) to prevent cache stampedes.
 func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 	const cacheTTL = 30 * time.Second
 
 	r.tagsMu.Lock()
-	cached, ok := r.tagsCache[nodeURL]
-	if ok && time.Since(cached.FetchedAt) < cacheTTL {
+	// Serve from cache if fresh.
+	if cached, ok := r.tagsCache[nodeURL]; ok && time.Since(cached.FetchedAt) < cacheTTL {
 		models := make([]TagModel, len(cached.Models))
 		copy(models, cached.Models)
 		r.tagsMu.Unlock()
 		return models, nil
 	}
+	// Deduplicate concurrent fetches to the same node.
+	if inflight, ok := r.tagsInflight[nodeURL]; ok {
+		r.tagsMu.Unlock()
+		<-inflight.done
+		if inflight.err != nil {
+			return nil, inflight.err
+		}
+		models := make([]TagModel, len(inflight.models))
+		copy(models, inflight.models)
+		return models, nil
+	}
+	entry := &tagsInflightEntry{done: make(chan struct{})}
+	r.tagsInflight[nodeURL] = entry
 	r.tagsMu.Unlock()
 
+	// This goroutine is the sole fetcher; all others wait on entry.done.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", nodeURL+"/api/tags", nil)
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+		entry.err = fmt.Errorf("build request: %w", err)
+		r.tagsMu.Lock()
+		delete(r.tagsInflight, nodeURL)
+		r.tagsMu.Unlock()
+		close(entry.done)
+		return nil, entry.err
 	}
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch tags from %s: %w", nodeURL, err)
+		entry.err = fmt.Errorf("fetch tags from %s: %w", nodeURL, err)
+		r.tagsMu.Lock()
+		delete(r.tagsInflight, nodeURL)
+		r.tagsMu.Unlock()
+		close(entry.done)
+		return nil, entry.err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tags %s: status %d", nodeURL, resp.StatusCode)
+		entry.err = fmt.Errorf("tags %s: status %d", nodeURL, resp.StatusCode)
+		r.tagsMu.Lock()
+		delete(r.tagsInflight, nodeURL)
+		r.tagsMu.Unlock()
+		close(entry.done)
+		return nil, entry.err
 	}
 
 	var tagsResp struct {
 		Models []TagModel `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
-		return nil, fmt.Errorf("decode tags: %w", err)
+		entry.err = fmt.Errorf("decode tags: %w", err)
+		r.tagsMu.Lock()
+		delete(r.tagsInflight, nodeURL)
+		r.tagsMu.Unlock()
+		close(entry.done)
+		return nil, entry.err
 	}
 
+	entry.models = tagsResp.Models
 	r.tagsMu.Lock()
 	r.tagsCache[nodeURL] = &TagsCache{
 		Models:    tagsResp.Models,
 		FetchedAt: time.Now(),
 	}
+	delete(r.tagsInflight, nodeURL)
 	r.tagsMu.Unlock()
+	close(entry.done)
 
-	return tagsResp.Models, nil
+	models := make([]TagModel, len(tagsResp.Models))
+	copy(models, tagsResp.Models)
+	return models, nil
 }

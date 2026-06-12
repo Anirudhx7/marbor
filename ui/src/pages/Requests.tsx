@@ -39,6 +39,7 @@ export function Requests() {
   const { demoMode: isDemoMode } = useDemoMode();
   const [entries, setEntries] = useState<RequestEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
 
   useEffect(() => {
@@ -55,10 +56,14 @@ export function Requests() {
         const data = await getRequests();
         if (!cancelled) {
           setEntries(data);
+          setFetchError(null);
           setLoading(false);
         }
-      } catch {
-        if (!cancelled) setLoading(false);
+      } catch (err: any) {
+        if (!cancelled) {
+          setFetchError(err.message || 'Failed to load requests');
+          setLoading(false);
+        }
       }
     }
 
@@ -140,6 +145,12 @@ export function Requests() {
           </div>
         ))}
       </div>
+
+      {fetchError && (
+        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
+          {fetchError}
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">

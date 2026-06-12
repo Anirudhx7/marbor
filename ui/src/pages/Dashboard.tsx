@@ -8,9 +8,6 @@ import {
   Shield,
   Layers,
   Database,
-  CheckCircle,
-  AlertCircle,
-  XCircle,
   DollarSign
 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
@@ -165,10 +162,8 @@ export function Dashboard() {
   const [savingsLoading, setSavingsLoading] = useState(!demoMode);
   const [isLive, setIsLive] = useState(!demoMode);
   const [error, setError] = useState<string | null>(null);
-  const [prometheusStatus] = useState('connected');
-  const [grafanaStatus] = useState('connected');
-  const [proxyPort, setProxyPort] = useState(11434);
-  const [version, setVersion] = useState('0.2.1');
+  const [proxyPort, setProxyPort] = useState<number>(11434);
+  const [version, setVersion] = useState<string>('');
 
   useEffect(() => {
     fetchHealth().then(h => {
@@ -227,8 +222,8 @@ export function Dashboard() {
 
   const activeFromRequests = requests.filter(r => r.status === 'loading').length;
   const displayActive = isLive ? summary.activeRequests : activeFromRequests;
-  const displayLatency = isLive ? summary.avgLatency : 45;
-  const displayTokens = isLive ? summary.tokensPerMin : "24.5K";
+  const displayLatency = isLive ? summary.avgLatency : 0;
+  const displayTokens = isLive ? summary.tokensPerMin : "--";
   const displayColdStarts = isLive ? summary.coldStarts : 18;
 
   return (
@@ -247,7 +242,7 @@ export function Dashboard() {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Version:</span>
-              <Badge variant="muted" size="sm">v{version}</Badge>
+              <Badge variant="muted" size="sm">{version ? `v${version}` : `v${__APP_VERSION__}`}</Badge>
             </div>
             <div className="flex items-center gap-2 px-3 border-l border-border">
               <div className={`w-2 h-2 rounded-full ${isLive || requestsLive ? 'bg-success' : 'bg-amber-500'}`} />
@@ -271,31 +266,23 @@ export function Dashboard() {
           title="Active Requests"
           value={displayActive.toString()}
           icon={<Activity className="w-5 h-5" />}
-          trend="12.4%"
-          trendUp={false}
         />
         <MetricCard
           title="Avg Latency"
-          value={displayLatency.toString()}
-          unit="ms"
+          value={isLive ? displayLatency.toString() : '--'}
+          unit={isLive ? 'ms' : undefined}
           icon={<Clock className="w-5 h-5" />}
-          trend="8.1%"
-          trendUp={true}
         />
         <MetricCard
           title="Tokens/min"
           value={displayTokens.toString()}
           icon={<Zap className="w-5 h-5" />}
-          trend="23.5%"
-          trendUp={true}
         />
         <MetricCard
           title="Cold Starts"
           value={displayColdStarts.toString()}
           unit="events"
           icon={<Server className="w-5 h-5" />}
-          trend="5.2%"
-          trendUp={false}
         />
         <SavingsCard savings={savings} loading={savingsLoading} />
       </div>
@@ -356,26 +343,6 @@ export function Dashboard() {
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Prometheus Status Bar */}
-      <div className="flex items-center justify-between px-6 py-4 bg-card border border-border rounded-xl shadow-sm">
-        <div className="flex items-center gap-10">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="w-4 h-4 text-primary" />
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-foreground">Prometheus Database</span>
-              <span className="text-xs text-muted-foreground font-mono">Connected @ :9090/metrics</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 border-l border-border pl-10">
-            <CheckCircle className="w-4 h-4 text-primary" />
-            <div className="flex flex-col">
-              <span className="text-sm font-medium text-foreground">Grafana Dashboards</span>
-              <span className="text-xs text-muted-foreground">Tunnel established</span>
-            </div>
-          </div>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Download, BarChart3 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, BarChart3, ExternalLink } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -21,6 +21,8 @@ import {
   generateNodeLatencyData,
   generateRequestDistributionData,
 } from '../lib/mockData';
+import { getAnalytics } from '../lib/api';
+import type { Analytics } from '../types';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
 
@@ -87,11 +89,17 @@ import { useDemoMode } from '../hooks/useDemoMode';
 
 export function Metrics() {
   const { demoMode } = useDemoMode();
-  
+
   const [requestsData] = useState(() => demoMode ? generateRequestsPerMinuteData() : []);
   const [tokenUsageData] = useState(() => demoMode ? generateTokenUsageData() : []);
   const [latencyData] = useState(() => demoMode ? generateNodeLatencyData() : []);
   const [distributionData] = useState(() => demoMode ? generateRequestDistributionData() : []);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+
+  useEffect(() => {
+    if (demoMode) return;
+    getAnalytics().then(setAnalytics).catch(() => setAnalytics(null));
+  }, [demoMode]);
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -111,6 +119,31 @@ export function Metrics() {
               Historical chart data is not stored in the proxy. Configure Prometheus to scrape <code className="bg-background px-1 py-0.5 rounded border border-border">/metrics</code> and view dashboards in Grafana.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Grafana CTA (live mode only) */}
+      {!demoMode && (
+        <div className="p-5 bg-card border border-border shadow-sm rounded-xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <BarChart3 className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Charts available in Grafana</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Import the dashboard from <code className="bg-secondary px-1 py-0.5 rounded border border-border">/grafana/ollama-mesh.json</code> to visualize time-series data.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/grafana/ollama-mesh.json"
+            download
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors whitespace-nowrap"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Download JSON
+          </a>
         </div>
       )}
 
@@ -288,8 +321,14 @@ export function Metrics() {
               <BarChart3 className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Total Requests (24h)</p>
-              <p className="text-xl font-bold text-foreground font-mono">116,708</p>
+              <p className="text-xs font-medium text-muted-foreground">Total Requests</p>
+              <p className="text-xl font-bold text-foreground font-mono">
+                {demoMode
+                  ? '116,708'
+                  : analytics
+                    ? (analytics.local_requests + analytics.cloud_requests).toLocaleString()
+                    : '—'}
+              </p>
             </div>
           </div>
         </div>
@@ -299,8 +338,16 @@ export function Metrics() {
               <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Total Tokens (24h)</p>
-              <p className="text-xl font-bold text-foreground font-mono">4.2M</p>
+              <p className="text-xs font-medium text-muted-foreground">Total Spend</p>
+              <p className="text-xl font-bold text-foreground font-mono">
+                {demoMode
+                  ? '4.2M'
+                  : analytics
+                    ? analytics.total_spent_usd != null
+                      ? `$${analytics.total_spent_usd.toFixed(4)}`
+                      : '—'
+                    : '—'}
+              </p>
             </div>
           </div>
         </div>
@@ -311,7 +358,9 @@ export function Metrics() {
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground">Avg Response Time</p>
-              <p className="text-xl font-bold text-foreground font-mono">45ms</p>
+              <p className="text-xl font-bold text-foreground font-mono">
+                {demoMode ? '45ms' : '—'}
+              </p>
             </div>
           </div>
         </div>
@@ -321,8 +370,14 @@ export function Metrics() {
               <BarChart3 className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Error Rate</p>
-              <p className="text-xl font-bold text-foreground font-mono">0.02%</p>
+              <p className="text-xs font-medium text-muted-foreground">Cloud Requests</p>
+              <p className="text-xl font-bold text-foreground font-mono">
+                {demoMode
+                  ? '0.02%'
+                  : analytics
+                    ? analytics.cloud_requests.toLocaleString()
+                    : '—'}
+              </p>
             </div>
           </div>
         </div>

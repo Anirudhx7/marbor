@@ -13,13 +13,14 @@ import {
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { mockGPUNodes } from '../lib/mockData';
-import { 
-  fetchRoutingRules, 
-  addRoutingRule, 
-  removeRoutingRule, 
-  toggleRoutingRule, 
+import {
+  fetchRoutingRules,
+  addRoutingRule,
+  removeRoutingRule,
+  toggleRoutingRule,
   setRoutingStrategy,
-  fetchNodes 
+  fetchRoutingStrategy,
+  fetchNodes
 } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
 
@@ -74,9 +75,10 @@ const MOCK_RULES: RoutingRule[] = [
 
 export function Routing() {
   const { demoMode } = useDemoMode();
-  const [currentStrategy, setCurrentStrategyState] = useState('warm-first');
+  const [currentStrategy, setCurrentStrategyState] = useState('');
   const [rules, setRules] = useState<RoutingRule[]>(demoMode ? MOCK_RULES : []);
-  const [availableNodes, setAvailableNodes] = useState<any[]>(mockGPUNodes);
+  const [availableNodes, setAvailableNodes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<RoutingRule | null>(null);
@@ -94,22 +96,28 @@ export function Routing() {
     if (demoMode) {
       setRules(MOCK_RULES);
       setAvailableNodes(mockGPUNodes);
+      setCurrentStrategyState('warm-first');
       setError(null);
+      setLoading(false);
       return;
     }
-    
+
     try {
-      const [rulesData, nodesData] = await Promise.all([
+      const [rulesData, nodesData, strategy] = await Promise.all([
         fetchRoutingRules(),
-        fetchNodes()
+        fetchNodes(),
+        fetchRoutingStrategy().catch(() => 'warm-first'),
       ]);
       setRules(rulesData || []);
       setAvailableNodes(nodesData || []);
+      setCurrentStrategyState(strategy);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to connect to backend');
       setRules([]);
       setAvailableNodes([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -326,7 +334,14 @@ export function Routing() {
                   </td>
                 </tr>
               ))}
-              {rules.length === 0 && (
+              {loading && rules.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                    Loading...
+                  </td>
+                </tr>
+              )}
+              {!loading && rules.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                     No override rules configured.

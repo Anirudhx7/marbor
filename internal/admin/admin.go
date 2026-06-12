@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"bufio"
 	"bytes"
 	"embed"
 	"encoding/csv"
@@ -10,8 +9,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -139,6 +136,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/routing/rules", s.cors(s.adminAuth(s.handleAddRoutingRule)))
 	reg("DELETE /admin/routing/rules/{id}", s.cors(s.adminAuth(s.handleRemoveRoutingRule)))
 	reg("PUT /admin/routing/rules/{id}/toggle", s.cors(s.adminAuth(s.handleToggleRoutingRule)))
+	reg("GET /admin/routing/strategy", s.cors(s.adminAuth(s.handleGetRoutingStrategy)))
 	reg("PUT /admin/routing/strategy", s.cors(s.adminAuth(s.handleSetRoutingStrategy)))
 
 	reg("GET /admin/settings", s.cors(s.adminAuth(s.handleSettings)))
@@ -155,7 +153,6 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
-	reg("GET /admin/system-info", s.cors(s.adminAuth(s.handleSystemInfo)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -385,6 +382,12 @@ func (s *Server) handleToggleRoutingRule(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleGetRoutingStrategy(w http.ResponseWriter, r *http.Request) {
+	strategy := s.router.Strategy()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"strategy": strategy})
+}
+
 func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Strategy string `json:"strategy"`
@@ -398,19 +401,39 @@ func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	cfg := s.cfg
+	s.mu.RUnlock()
+	// Mask sensitive fields before returning to the client.
+	for i := range cfg.CloudProviders {
+		if cfg.CloudProviders[i].APIKey != "" {
+			cfg.CloudProviders[i].APIKey = "***"
+		}
+	}
+	cfg.Auth.AdminToken = ""
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.cfg)
+	json.NewEncoder(w).Encode(cfg)
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	var cfg config.Config
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	var incoming config.Config
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.cfg = cfg
-	// Save to config.yaml
-	if err := config.SaveConfig("config.yaml", s.cfg); err != nil {
+	s.mu.Lock()
+	// Preserve fields the UI doesn't send to avoid silently zeroing them.
+	if len(incoming.CloudProviders) == 0 {
+		incoming.CloudProviders = s.cfg.CloudProviders
+	}
+	if len(incoming.Auth.Keys) == 0 {
+		incoming.Auth.Keys = s.cfg.Auth.Keys
+	}
+	incoming.Auth.AdminToken = s.cfg.Auth.AdminToken
+	s.cfg = incoming
+	cfg := s.cfg
+	s.mu.Unlock()
+	if err := config.SaveConfig("config.yaml", cfg); err != nil {
 		http.Error(w, fmt.Sprintf("failed to save config: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -539,9 +562,10 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 		CostPer1KTokens float64 `json:"cost_per_1k_tokens"`
 		Enabled         bool    `json:"enabled"`
 	}
-	out := make([]providerResp, 0, len(s.cfg.CloudProviders))
+	s.mu.RLock()
+	providers := make([]providerResp, 0, len(s.cfg.CloudProviders))
 	for _, cp := range s.cfg.CloudProviders {
-		out = append(out, providerResp{
+		providers = append(providers, providerResp{
 			Name:            cp.Name,
 			Provider:        cp.Provider,
 			BaseURL:         cp.BaseURL,
@@ -550,8 +574,9 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 			Enabled:         cp.Enabled,
 		})
 	}
+	s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(out)
+	json.NewEncoder(w).Encode(providers)
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -716,6 +741,12 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 // handleAudit queries the audit log with optional filters.
 // GET /admin/v1/audit?limit=100&model=llama3&key=prod&cloud=true&since=2026-05-23T00:00:00Z
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
+	if s.auditLog == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "audit log not configured"})
+		return
+	}
 	q := r.URL.Query()
 
 	limit := 100
@@ -981,6 +1012,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		status = "degraded"
 	}
 
+	s.mu.RLock()
+	proxyPort := s.cfg.Proxy.Port
+	s.mu.RUnlock()
+
 	w.Header().Set("Content-Type", "application/json")
 	if status == "degraded" {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -988,89 +1023,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":         status,
 		"version":        "0.2.1",
-		"proxy_port":     s.cfg.Proxy.Port,
+		"proxy_port":     proxyPort,
 		"uptime_seconds": uptimeSecs,
 		"nodes": map[string]int{
 			"total":   total,
 			"healthy": healthy,
 		},
-	})
-}
-
-// readMemInfoKB reads a specific field from /proc/meminfo (Linux only).
-func readMemInfoKB(field string) int64 {
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 0
-	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, field) {
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				v, _ := strconv.ParseInt(parts[1], 10, 64)
-				return v
-			}
-		}
-	}
-	return 0
-}
-
-func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
-	nodes := s.router.Nodes()
-
-	type nodeVRAM struct {
-		Name         string `json:"name"`
-		URL          string `json:"url"`
-		VramTotalMB  int64  `json:"vram_total_mb"`
-		VramFreeMB   int64  `json:"vram_free_mb"`
-		VramSource   string `json:"vram_source"`
-		TemperatureC *int   `json:"temperature_c"`
-		PowerDrawW   *int   `json:"power_draw_w"`
-		Healthy      bool   `json:"healthy"`
-	}
-
-	gpus := make([]nodeVRAM, 0, len(nodes))
-	for _, n := range nodes {
-		n.RLock()
-		gpu := nodeVRAM{
-			Name:    n.Name,
-			URL:     n.URL,
-			Healthy: n.Healthy,
-		}
-		if n.VRAMTotalMB > 0 {
-			gpu.VramTotalMB = n.VRAMTotalMB
-			gpu.VramFreeMB = n.VRAMTotalMB - n.VRAMUsedMB
-			gpu.VramSource = "nvidia-smi"
-			if n.Temperature != nil && *n.Temperature > 0 {
-				t := int(*n.Temperature)
-				gpu.TemperatureC = &t
-			}
-			if n.PowerDrawW > 0 {
-				p := int(n.PowerDrawW)
-				gpu.PowerDrawW = &p
-			}
-		} else {
-			gpu.VramFreeMB = -1
-			gpu.VramTotalMB = 0
-			gpu.VramSource = "unknown"
-		}
-		n.RUnlock()
-		gpus = append(gpus, gpu)
-	}
-
-	totalRAMKB := readMemInfoKB("MemTotal:")
-	freeRAMKB := readMemInfoKB("MemAvailable:")
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"cpu_cores":    runtime.NumCPU(),
-		"os":           runtime.GOOS,
-		"arch":         runtime.GOARCH,
-		"ram_total_mb": totalRAMKB / 1024,
-		"ram_free_mb":  freeRAMKB / 1024,
-		"gpus":         gpus,
 	})
 }

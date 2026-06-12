@@ -42,7 +42,7 @@ export function Sidebar() {
           </div>
           <div className="flex flex-col">
             <span className="font-semibold text-foreground text-sm tracking-tight">Ollama Mesh</span>
-            <span className="text-[10px] font-medium text-muted-foreground leading-none">v0.2.1</span>
+            <span className="text-[10px] font-medium text-muted-foreground leading-none">v{__APP_VERSION__}</span>
           </div>
         </div>
       </div>

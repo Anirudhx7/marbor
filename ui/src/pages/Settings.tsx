@@ -81,8 +81,31 @@ export function SettingsPage() {
     }
   };
 
+  const buildYAML = (): string => {
+    if (demoMode) return configFileYAML;
+    return [
+      `proxy:`,
+      `  port: ${settings.proxyPort}`,
+      `  log_level: ${settings.logLevel}`,
+      ``,
+      `auth:`,
+      `  enabled: ${settings.authMode === 'api-key'}`,
+      ``,
+      `routing:`,
+      `  poll_interval_ms: ${settings.pollingInterval}`,
+      ``,
+      `metrics:`,
+      `  enabled: ${settings.prometheusEnabled}`,
+      `  port: ${settings.prometheusPort}`,
+      ``,
+      `litellm:`,
+      `  enabled: ${settings.liteLLMEnabled}`,
+      settings.liteLLMEnabled ? `  url: ${settings.liteLLMEndpoint}` : null,
+    ].filter(line => line !== null).join('\n');
+  };
+
   const copyConfig = async () => {
-    await navigator.clipboard.writeText(configFileYAML);
+    await navigator.clipboard.writeText(buildYAML());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -396,8 +419,10 @@ export function SettingsPage() {
                 <FileText className="w-5 h-5 text-muted-foreground" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Configuration File</h3>
-                <p className="text-xs font-medium text-muted-foreground">Current configuration in YAML format</p>
+                <h3 className="text-sm font-semibold text-foreground">{demoMode ? 'Config Template' : 'Current Configuration'}</h3>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {demoMode ? 'Reference configuration template' : 'Based on current settings above'}
+                </p>
               </div>
             </div>
             <button
@@ -420,7 +445,7 @@ export function SettingsPage() {
 
           <div className="relative">
             <pre className="font-mono text-sm bg-secondary/30 border border-border rounded-lg p-4 overflow-x-auto text-foreground/80 leading-relaxed">
-              <code>{configFileYAML}</code>
+              <code>{buildYAML()}</code>
             </pre>
             <Badge variant="muted" size="sm" className="absolute top-3 right-3 shadow-sm bg-background">
               Read-only

@@ -115,6 +115,7 @@ func main() {
 	defer auditLog.Close()
 
 	adminSrv := admin.NewServer(r, authMw, *cfg)
+	adminSrv.SetAuditLogger(auditLog)
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	wrapped := authMw.Handler(proxyHandler)

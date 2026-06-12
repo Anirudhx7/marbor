@@ -2,12 +2,6 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, Req
 
 const BASE = '/admin';
 
-export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {
-  const res = await fetch('/health');
-  if (!res.ok) throw new Error('health check failed');
-  return res.json();
-}
-
 function getAdminToken(): string {
   let token = localStorage.getItem('adminToken');
   if (!token) {
@@ -125,6 +119,13 @@ export async function setRoutingStrategy(strategy: string) {
   if (!res.ok) throw new Error('Failed to set routing strategy');
 }
 
+export async function fetchRoutingStrategy(): Promise<string> {
+  const res = await fetch(`${BASE}/routing/strategy`, { headers: authHeaders() });
+  if (!res.ok) return 'warm-first';
+  const data = await res.json();
+  return data.strategy ?? 'warm-first';
+}
+
 export async function fetchSettings() {
   const res = await fetch(`${BASE}/settings`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch settings');
@@ -188,6 +189,12 @@ export async function fetchModelFit(): Promise<ModelFitResponse> {
 export async function fetchModelCatalog(): Promise<ModelCatalogResponse> {
   const res = await fetch(`${BASE}/v1/models/catalog`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch model catalog');
+  return res.json();
+}
+
+export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {
+  const res = await fetch('/health');
+  if (!res.ok) throw new Error('health check failed');
   return res.json();
 }
 
