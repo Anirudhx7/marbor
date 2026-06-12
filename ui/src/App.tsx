@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
-import { useDemoMode } from './hooks/useDemoMode';
+import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
+import { DemoBanner } from './components/DemoBanner';
 import { Dashboard } from './pages/Dashboard';
 import { GPUNodes } from './pages/GPUNodes';
 import { APIKeys } from './pages/APIKeys';
@@ -13,20 +14,12 @@ import { Models } from './pages/Models';
 import { ModelAdvisor } from './pages/ModelAdvisor';
 import { Requests } from './pages/Requests';
 
-function DemoBanner() {
-  const { demoMode } = useDemoMode();
-  if (!demoMode) return null;
-  return (
-    <div className="bg-amber-500 text-black text-sm font-medium text-center py-1.5 px-4">
-      Demo mode — all data shown is mock data, not your cluster. Disable it in Settings.
-    </div>
-  );
-}
+const basename = forcedDemo ? '/ollama-mesh' : '/';
 
 function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={basename}>
         <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
           <Sidebar />
           <main className="ml-64 min-h-screen">
