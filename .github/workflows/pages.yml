@@ -30,9 +30,9 @@ jobs:
         run: npm ci
         working-directory: ui
 
-      - name: Get version from git tag
+      - name: Get version
         id: version
-        run: echo "version=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')" >> $GITHUB_OUTPUT
+        run: echo "version=$(node -p "require('./ui/package.json').version")" >> $GITHUB_OUTPUT
 
       - name: Build
         run: npm run build
