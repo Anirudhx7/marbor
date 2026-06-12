@@ -5,7 +5,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /mockollama ./cmd/mockollama
 
-FROM gcr.io/distroless/static:nonroot
+FROM alpine:latest
+RUN apk --no-cache add wget
 COPY --from=builder /mockollama /mockollama
 EXPOSE 11434
 ENTRYPOINT ["/mockollama"]

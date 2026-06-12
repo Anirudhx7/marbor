@@ -12,10 +12,11 @@ services:
     ports:
       - "11435:11434"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/ || exit 1"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:11434/"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+      start_period: 5s
 
   ollama-node-b:
     build:
@@ -30,10 +31,11 @@ services:
     ports:
       - "11436:11434"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:11434/ || exit 1"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:11434/"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+      start_period: 5s
 
   mesh:
     build:
@@ -45,7 +47,7 @@ services:
       ollama-node-b:
         condition: service_healthy
     environment:
-      OLLAMA_MESH_CONFIG: /config.yaml
+      CONFIG_PATH: /config.yaml
     volumes:
       - ./config.demo.yaml:/config.yaml:ro
     ports:
@@ -57,3 +59,4 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 10s

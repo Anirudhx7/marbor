@@ -11,6 +11,5 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/ollama-mesh .
-COPY config.yaml .
 EXPOSE 11434 9090 8080
 CMD ["./ollama-mesh"]

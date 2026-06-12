@@ -24,7 +24,7 @@ demo: demo-build ## Spin up demo stack, send 20 real requests, show dashboard UR
 	@echo "Starting demo stack (mock Ollama nodes + mesh)..."
 	docker compose -f docker-compose.demo.yml up -d
 	@echo "Waiting for mesh to be ready..."
-	@sleep 8
+	docker compose -f docker-compose.demo.yml wait mesh || true
 	@echo "Sending demo traffic (20 requests)..."
 	PROXY_URL=http://localhost:11434 API_KEY=demo-api-key REQUEST_COUNT=20 go run ./cmd/demotraffic
 	@echo ""
