@@ -391,6 +391,8 @@ export function Dashboard() {
                 <th className="px-6 py-3 text-left font-medium">Model</th>
                 <th className="px-6 py-3 text-left font-medium">Routed To</th>
                 <th className="px-6 py-3 text-left font-medium">Status</th>
+                <th className="px-6 py-3 text-right font-medium">Tokens</th>
+                <th className="px-6 py-3 text-right font-medium">tok/s</th>
                 <th className="px-6 py-3 text-right font-medium">Latency</th>
               </tr>
             </thead>
@@ -415,6 +417,12 @@ export function Dashboard() {
                     <Badge variant={req.status === 'warm' ? 'success' : 'warning'} size="sm">
                       {req.status === 'warm' ? 'Warm' : 'Loading'}
                     </Badge>
+                  </td>
+                  <td className="px-6 py-3 text-right font-mono text-muted-foreground">
+                    {req.tokens > 0 ? req.tokens : '—'}
+                  </td>
+                  <td className="px-6 py-3 text-right font-mono text-muted-foreground">
+                    {req.tokensPerSec > 0 ? req.tokensPerSec.toFixed(1) : '—'}
                   </td>
                   <td className="px-6 py-3 text-right font-medium font-mono">
                     <span className={req.latency > 1000 ? 'text-amber-500' : 'text-primary'}>

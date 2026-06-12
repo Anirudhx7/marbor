@@ -48,13 +48,15 @@ func (s *Server) SetAuditLogger(al *audit.Logger) {
 }
 
 type RequestLog struct {
-	ID        string    `json:"id"`
-	ApiKey    string    `json:"apiKey"`
-	Model     string    `json:"model"`
-	Node      string    `json:"node"`
-	Status    string    `json:"status"`
-	Latency   int       `json:"latency"`
-	Time      time.Time `json:"time"`
+	ID           string    `json:"id"`
+	ApiKey       string    `json:"apiKey"`
+	Model        string    `json:"model"`
+	Node         string    `json:"routedTo"`
+	Status       string    `json:"status"`
+	Latency      int       `json:"latency"`
+	Tokens       int64     `json:"tokens"`
+	TokensPerSec float64   `json:"tokensPerSec"`
+	Time         time.Time `json:"time"`
 }
 
 type nodeResp struct {
@@ -148,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
 	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
+	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -409,17 +412,23 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int) {
+func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int, tokens int64) {
+	var tps float64
+	if tokens > 0 && latencyMs > 0 {
+		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests = append(s.requests, RequestLog{
-		ID:      fmt.Sprintf("req-%d", time.Now().UnixNano()),
-		ApiKey:  apiKey,
-		Model:   model,
-		Node:    node,
-		Status:  status,
-		Latency: latencyMs,
-		Time:    time.Now(),
+		ID:           fmt.Sprintf("req-%d", time.Now().UnixNano()),
+		ApiKey:       apiKey,
+		Model:        model,
+		Node:         node,
+		Status:       status,
+		Latency:      latencyMs,
+		Tokens:       tokens,
+		TokensPerSec: tps,
+		Time:         time.Now(),
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
@@ -824,6 +833,126 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 			"hourly": s.analytics.last24hBuckets(),
 		})
 	}
+}
+
+// handleModelFit computes per-model VRAM fit status for every node.
+// GET /admin/nodes/model-fit (also /admin/v1/nodes/model-fit)
+//
+// For each node it fetches /api/tags (with 30s cache in the router) to get all
+// downloaded models and their disk sizes, combines that with the VRAM state
+// from the last /api/ps poll, and classifies each model as:
+//
+//	green   - fits comfortably (model*1.15 <= free_vram*0.85)
+//	yellow  - tight fit      (model*1.15 <= free_vram)
+//	red     - won't fit      (model*1.15 > free_vram)
+//	unknown - can't determine free VRAM
+func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
+	type modelFitEntry struct {
+		Name             string `json:"name"`
+		SizeBytes        int64  `json:"size_bytes"`
+		VRAMEstimateBytes int64 `json:"vram_estimate_bytes"`
+		Fit              string `json:"fit"`
+		Loaded           bool   `json:"loaded"`
+	}
+	type nodeFitEntry struct {
+		Name          string          `json:"name"`
+		URL           string          `json:"url"`
+		VRAMFreeBytes int64           `json:"vram_free_bytes"`
+		VRAMTotalBytes int64          `json:"vram_total_bytes"`
+		VRAMSource    string          `json:"vram_source"`
+		Models        []modelFitEntry `json:"models"`
+	}
+
+	nodes := s.router.Nodes()
+	result := make([]nodeFitEntry, 0, len(nodes))
+
+	for _, n := range nodes {
+		n.RLock()
+		nodeURL := n.URL
+		nodeName := n.Name
+		vramTotalMB := n.VRAMTotalMB
+		vramUsedMBFromPS := int64(0)
+		loadedSet := make(map[string]bool)
+		for _, m := range n.LoadedModels {
+			loadedSet[m.Name] = true
+			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
+		}
+		n.RUnlock()
+
+		// Determine free VRAM and source label.
+		var vramFreeBytes int64
+		var vramTotalBytes int64
+		vramSource := "unknown"
+
+		if vramTotalMB > 0 {
+			// nvidia-smi data is available on this host.
+			vramTotalBytes = vramTotalMB * 1024 * 1024
+			// Use nvidia-smi total minus what /api/ps says is loaded.
+			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
+			vramFreeBytes = vramTotalBytes - vramUsedBytes
+			if vramFreeBytes < 0 {
+				vramFreeBytes = 0
+			}
+			vramSource = "nvidia-smi"
+		} else if vramUsedMBFromPS > 0 {
+			// No nvidia-smi but we have ps data — use loaded model VRAM as lower bound.
+			vramTotalBytes = 0
+			vramFreeBytes = 0
+			vramSource = "inferred"
+		}
+
+		// Fetch downloaded models from /api/tags (cached 30s in router).
+		tagModels, err := s.router.FetchModelTags(nodeURL)
+		if err != nil {
+			// Node unreachable — emit an empty entry so the UI still shows the node.
+			result = append(result, nodeFitEntry{
+				Name:           nodeName,
+				URL:            nodeURL,
+				VRAMFreeBytes:  vramFreeBytes,
+				VRAMTotalBytes: vramTotalBytes,
+				VRAMSource:     vramSource,
+				Models:         []modelFitEntry{},
+			})
+			continue
+		}
+
+		models := make([]modelFitEntry, 0, len(tagModels))
+		for _, tm := range tagModels {
+			estimate := int64(float64(tm.Size) * 1.15)
+			fit := "unknown"
+			if vramSource != "unknown" && vramSource != "inferred" {
+				switch {
+				case estimate <= int64(float64(vramFreeBytes)*0.85):
+					fit = "green"
+				case estimate <= vramFreeBytes:
+					fit = "yellow"
+				default:
+					fit = "red"
+				}
+			}
+			models = append(models, modelFitEntry{
+				Name:              tm.Name,
+				SizeBytes:         tm.Size,
+				VRAMEstimateBytes: estimate,
+				Fit:               fit,
+				Loaded:            loadedSet[tm.Name],
+			})
+		}
+
+		result = append(result, nodeFitEntry{
+			Name:           nodeName,
+			URL:            nodeURL,
+			VRAMFreeBytes:  vramFreeBytes,
+			VRAMTotalBytes: vramTotalBytes,
+			VRAMSource:     vramSource,
+			Models:         models,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"nodes": result,
+	})
 }
 
 // handleHealth is an unauthenticated endpoint for load balancers and Docker healthchecks.

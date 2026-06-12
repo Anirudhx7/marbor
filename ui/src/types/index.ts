@@ -26,6 +26,8 @@ export interface LiveRequest {
   routedTo: string;
   status: 'warm' | 'loading';
   latency: number;
+  tokens: number;
+  tokensPerSec: number;
   timestamp: string | Date;
 }
 
@@ -154,4 +156,27 @@ export interface Analytics {
   total_spent_usd: number | null;
   hourly: HourlyBucket[];
   by_model: ModelStat[];
+}
+
+export type FitStatus = 'green' | 'yellow' | 'red' | 'unknown';
+
+export interface ModelFit {
+  name: string;
+  size_bytes: number;
+  vram_estimate_bytes: number;
+  fit: FitStatus;
+  loaded: boolean;
+}
+
+export interface NodeFit {
+  name: string;
+  url: string;
+  vram_free_bytes: number;
+  vram_total_bytes: number;
+  vram_source: 'nvidia-smi' | 'inferred' | 'unknown';
+  models: ModelFit[];
+}
+
+export interface ModelFitResponse {
+  nodes: NodeFit[];
 }

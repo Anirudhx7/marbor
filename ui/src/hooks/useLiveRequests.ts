@@ -40,6 +40,8 @@ function generateRequest(): LiveRequest {
     routedTo: NODES[Math.floor(Math.random() * NODES.length)],
     status: isWarm ? 'warm' : 'loading',
     latency: isWarm ? Math.floor(Math.random() * 150) + 20 : Math.floor(Math.random() * 3000) + 2000,
+    tokens: 0,
+    tokensPerSec: 0,
     timestamp: new Date(),
   };
 }

@@ -133,8 +133,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		latencyMs = 0 // error requests show as instant fail in UI
 	}
 	if h.admin != nil {
-		h.admin.LogRequest(keyName, modelName, node.Name, status, latencyMs)
-		h.admin.TrackLocalRequestModel(modelName, rec.tokenCount())
+		tokens := rec.tokenCount()
+		h.admin.LogRequest(keyName, modelName, node.Name, status, latencyMs, tokens)
+		h.admin.TrackLocalRequestModel(modelName, tokens)
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
@@ -232,8 +233,9 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
-		h.admin.LogRequest(keyName, loggedModel, nodeName, status, latencyMs)
-		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, rec.tokenCount())
+		tokens := rec.tokenCount()
+		h.admin.LogRequest(keyName, loggedModel, nodeName, status, latencyMs, tokens)
+		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
