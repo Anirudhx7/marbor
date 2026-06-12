@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse } from '../types';
 
 const BASE = '/admin';
 
@@ -165,5 +165,11 @@ export async function pullModel(nodeName: string, model: string): Promise<void> 
     body: JSON.stringify({ model }),
   });
   if (!res.ok) throw new Error(`Pull failed: ${res.statusText}`);
+}
+
+export async function fetchModelFit(): Promise<ModelFitResponse> {
+  const res = await fetch(`${BASE}/nodes/model-fit`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch model fit data');
+  return res.json();
 }
 

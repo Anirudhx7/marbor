@@ -7,8 +7,77 @@ import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode } from '../lib/api';
-import type { GPUNode } from '../types';
+import { fetchNodes, addNode, removeNode, fetchModelFit } from '../lib/api';
+import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const gb = bytes / (1024 * 1024 * 1024);
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(0)} MB`;
+}
+
+function FitBadge({ fit }: { fit: FitStatus }) {
+  const styles: Record<FitStatus, string> = {
+    green:   'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
+    yellow:  'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
+    red:     'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30',
+    unknown: 'bg-secondary text-muted-foreground border border-border',
+  };
+  const labels: Record<FitStatus, string> = {
+    green:   'Fits',
+    yellow:  'Tight',
+    red:     "Won't Fit",
+    unknown: 'Unknown',
+  };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[fit]}`}>
+      {labels[fit]}
+    </span>
+  );
+}
+
+function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
+  if (nodeFit.models.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground py-2">No downloaded models found on this node.</p>
+    );
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Model</th>
+            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Size</th>
+            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Est. VRAM</th>
+            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Fit</th>
+            <th className="text-left text-xs font-medium text-muted-foreground pb-2">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {nodeFit.models.map((m) => (
+            <tr key={m.name} className="border-b border-border/50 last:border-0">
+              <td className="py-2 pr-4 font-mono text-xs text-foreground">{m.name}</td>
+              <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.size_bytes)}</td>
+              <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.vram_estimate_bytes)}</td>
+              <td className="py-2 pr-4"><FitBadge fit={m.fit} /></td>
+              <td className="py-2">
+                {m.loaded && (
+                  <span className="inline-flex items-center gap-1 text-xs text-primary font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
+                    In VRAM
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) => void }) {
   const healthColor = {
@@ -137,6 +206,9 @@ export function GPUNodes() {
     port: '11434',
     gpuModel: '',
   });
+  const [modelFit, setModelFit] = useState<ModelFitResponse | null>(null);
+  const [modelFitError, setModelFitError] = useState<string | null>(null);
+  const [modelFitLoading, setModelFitLoading] = useState(false);
 
   const loadNodes = async () => {
     if (demoMode) {
@@ -157,10 +229,33 @@ export function GPUNodes() {
     }
   };
 
+  const loadModelFit = async () => {
+    if (demoMode) return;
+    setModelFitLoading(true);
+    try {
+      const data = await fetchModelFit();
+      setModelFit(data);
+      setModelFitError(null);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to fetch model fit data';
+      setModelFitError(msg);
+    } finally {
+      setModelFitLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadNodes();
     const interval = setInterval(loadNodes, 10000);
     return () => clearInterval(interval);
+  }, [demoMode]);
+
+  useEffect(() => {
+    if (!demoMode) {
+      loadModelFit();
+      const interval = setInterval(loadModelFit, 30000);
+      return () => clearInterval(interval);
+    }
   }, [demoMode]);
 
   const filteredNodes = nodes.filter(node =>
@@ -273,6 +368,61 @@ export function GPUNodes() {
         <div className="text-center py-12">
           <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
           <p className="text-muted-foreground">No GPU nodes found matching your search.</p>
+        </div>
+      )}
+
+      {/* Model Fit Section */}
+      {!demoMode && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Model Fit</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">Will each downloaded model fit in available VRAM?</p>
+            </div>
+            {modelFitLoading && (
+              <span className="text-xs text-muted-foreground animate-pulse">Checking...</span>
+            )}
+          </div>
+
+          {modelFitError && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm">
+              {modelFitError}
+            </div>
+          )}
+
+          {modelFit && modelFit.nodes.map((nodeFit) => (
+            <div key={nodeFit.name} className="bg-card border border-border rounded-xl p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <span className="font-semibold text-foreground">{nodeFit.name}</span>
+                  <span className="ml-2 text-xs text-muted-foreground font-mono">{nodeFit.url}</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {nodeFit.vram_source !== 'unknown' && nodeFit.vram_total_bytes > 0 && (
+                    <span>
+                      Free: <span className="font-mono text-foreground">{formatBytes(nodeFit.vram_free_bytes)}</span>
+                      {' / '}
+                      <span className="font-mono text-foreground">{formatBytes(nodeFit.vram_total_bytes)}</span>
+                    </span>
+                  )}
+                  <span className={`px-1.5 py-0.5 rounded text-xs ${
+                    nodeFit.vram_source === 'nvidia-smi'
+                      ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                      : nodeFit.vram_source === 'inferred'
+                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                      : 'bg-secondary text-muted-foreground'
+                  }`}>
+                    {nodeFit.vram_source}
+                  </span>
+                </div>
+              </div>
+              <ModelFitTable nodeFit={nodeFit} />
+            </div>
+          ))}
+
+          {modelFit && modelFit.nodes.length === 0 && !modelFitLoading && (
+            <div className="text-center py-8 text-muted-foreground text-sm">No nodes available for model fit analysis.</div>
+          )}
         </div>
       )}
 
