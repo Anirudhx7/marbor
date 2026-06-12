@@ -78,12 +78,21 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 ## Quick Start
 
 **Try it in 60 seconds (no Ollama needed):**
+
+Requirements: Docker Desktop + Go 1.22+
+
 ```bash
 git clone https://github.com/Anirudhx7/ollama-mesh
 cd ollama-mesh
 make demo
 ```
-`make demo` spins up mock Ollama servers in-process, sends real traffic through the mesh, and opens a fully populated dashboard at `http://localhost:8080`. No Ollama install, no config file, no setup.
+
+`make demo` does three things:
+1. Builds and starts two mock Ollama nodes (node-a with llama3.2:3b + qwen2.5:7b warm, node-b with mistral:7b warm) and the mesh proxy - all in Docker.
+2. Sends 20 real HTTP requests through the proxy covering all three models, populating the request log and analytics.
+3. Prints the dashboard URL with credentials.
+
+Open `http://localhost:8080` with token `demo-admin-token` to see the populated dashboard. Use `make demo-down` to stop everything.
 
 ---
 

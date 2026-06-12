@@ -1,0 +1,36 @@
+proxy:
+  port: 11434
+  log_level: info
+
+admin:
+  port: 8080
+  token: demo-admin-token
+
+metrics:
+  enabled: true
+  port: 9090
+
+nodes:
+  - name: node-a
+    url: http://ollama-node-a:11434
+  - name: node-b
+    url: http://ollama-node-b:11434
+
+auth:
+  enabled: true
+  keys:
+    - name: demo-key
+      key: demo-api-key
+      rate_limit: 1000
+
+routing:
+  strategy: warm-first
+  poll_interval_ms: 2000
+  fallback: least-connections
+
+savings:
+  reference_cost_per_1k: 0.002
+
+audit:
+  enabled: false
+  path: audit.log
