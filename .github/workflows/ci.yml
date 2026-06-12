@@ -34,6 +34,7 @@ jobs:
         run: npm run build
         env:
           VITE_FORCE_DEMO: 'true'
+          VITE_APP_VERSION: ${{ github.ref_name }}
 
       - name: Run Go Tests
         run: go test ./...

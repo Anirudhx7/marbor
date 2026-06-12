@@ -7,13 +7,14 @@ import { resolve } from 'path'
 const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
 
 const isPages = process.env.VITE_FORCE_DEMO === 'true';
+const appVersion = process.env.VITE_APP_VERSION || pkg.version;
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: isPages ? '/ollama-mesh/' : './',
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   build: {
     outDir: isPages ? 'dist' : '../internal/admin/web/dist',

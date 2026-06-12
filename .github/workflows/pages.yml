@@ -30,11 +30,16 @@ jobs:
         run: npm ci
         working-directory: ui
 
+      - name: Get version from git tag
+        id: version
+        run: echo "version=$(git describe --tags --abbrev=0 2>/dev/null || echo 'dev')" >> $GITHUB_OUTPUT
+
       - name: Build
         run: npm run build
         working-directory: ui
         env:
           VITE_FORCE_DEMO: 'true'
+          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
