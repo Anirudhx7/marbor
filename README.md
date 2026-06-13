@@ -57,6 +57,10 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 |---------|--------|
 | Warm-first routing | Routes to the node that already has the model in VRAM. Eliminates cold starts. |
 | Cloud fallback | When all GPUs are busy or down, automatically routes to OpenAI or Anthropic. |
+| Automatic retry/failover | If an upstream node fails before responding, the request is retried on another healthy node (up to `routing.max_retries`), then cloud, then 502. A dead node never surfaces as a client error. |
+| OpenAI-compatible `/v1/models` | Serves a `GET /v1/models` list aggregated from your nodes, so OpenAI SDKs that probe it on startup work against the mesh. |
+| Per-key model allow-lists | A key with a `models:` list can only call those models; anything else is rejected with 403. Enforced at the proxy. |
+| Per-key quotas + usage | Hard `daily_limit`/`monthly_limit` per key (429 when exceeded), plus per-key token totals and estimated cost on the API Keys page. |
 | Savings tracking | Savings computed from real token counts parsed from responses (Ollama `eval_count`, cloud `usage`). Shows "—" when no token data exists - never a fabricated number. Configurable reference rate via `savings.reference_cost_per_1k`. |
 | VRAM fit indicator | GPU Nodes page shows green/yellow/red fit badges for each downloaded model per node based on available VRAM. |
 | Tokens/sec in request log | Live request table shows Tokens and tok/s columns per request. |

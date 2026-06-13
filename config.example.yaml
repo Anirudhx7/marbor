@@ -18,6 +18,10 @@ auth:
     - name: team-shared
       key: sk-mesh-xyz789
       rate_limit: 5000
+      # Optional hard quotas (0 or omitted = unlimited). The Nth request in the
+      # period succeeds; the next returns 429. Separate from rate_limit (per hour).
+      daily_limit: 50000
+      monthly_limit: 1000000
       models: []
     - name: agent-runner
       key: sk-mesh-agent001
@@ -36,6 +40,12 @@ routing:
   strategy: warm-first
   poll_interval_ms: 2000
   fallback: least-connections
+  # When an upstream node fails before sending any response bytes, retry up to
+  # this many alternate healthy nodes (then cloud fallback, then 502).
+  max_retries: 2
+  # Max wait for an upstream node to send response headers before giving up and
+  # trying the next node. Covers the header phase only, not the streaming body.
+  upstream_timeout_ms: 120000
 
 metrics:
   enabled: true
