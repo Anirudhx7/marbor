@@ -4,7 +4,6 @@ proxy:
 
 admin:
   port: 8080
-  token: demo-admin-token
 
 metrics:
   enabled: true
@@ -18,6 +17,9 @@ nodes:
 
 auth:
   enabled: true
+  # Admin dashboard token. Kept separate from API keys so dashboard access
+  # is not granted to every API-key holder.
+  admin_token: demo-admin-token
   keys:
     - name: demo-key
       key: demo-api-key

@@ -4,6 +4,10 @@ proxy:
 
 auth:
   enabled: true
+  # Bearer token for the admin dashboard + /admin API. Set this explicitly:
+  # if left blank, the admin token silently falls back to your first API key,
+  # which would grant dashboard access to every API-key holder.
+  admin_token: sk-admin-change-me
   keys:
     - name: anirudh-dev
       key: sk-mesh-abc123

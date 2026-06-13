@@ -20,13 +20,11 @@ dev-ui:
 demo-build: ## Build demo Docker images (mockollama nodes + mesh)
 	docker compose -f docker-compose.demo.yml build
 
-demo: demo-build ## Spin up demo stack, send 20 real requests, show dashboard URL
+demo: demo-build ## Spin up demo stack, send 20 real requests, show dashboard URL (Docker only, no Go needed)
 	@echo "Starting demo stack (mock Ollama nodes + mesh)..."
-	docker compose -f docker-compose.demo.yml up -d
-	@echo "Waiting for mesh to be ready..."
-	docker compose -f docker-compose.demo.yml wait mesh || true
-	@echo "Sending demo traffic (20 requests)..."
-	PROXY_URL=http://localhost:11434 API_KEY=demo-api-key REQUEST_COUNT=20 go run ./cmd/demotraffic
+	docker compose -f docker-compose.demo.yml up -d ollama-node-a ollama-node-b mesh
+	@echo "Sending demo traffic (20 requests, runs in Docker - no local Go needed)..."
+	docker compose -f docker-compose.demo.yml run --rm demotraffic
 	@echo ""
 	@echo "Dashboard: http://localhost:8080  (token: demo-admin-token)"
 	@echo "Proxy:     http://localhost:11434 (key:   demo-api-key)"

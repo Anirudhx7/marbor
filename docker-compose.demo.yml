@@ -60,3 +60,18 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+
+  # Runs the 20-request demo load inside Docker so the demo needs only Docker,
+  # never a local Go toolchain. Started on demand via `docker compose run`.
+  demotraffic:
+    build:
+      context: .
+      dockerfile: Dockerfile.demotraffic
+    depends_on:
+      mesh:
+        condition: service_healthy
+    environment:
+      PROXY_URL: http://mesh:11434
+      API_KEY: demo-api-key
+      REQUEST_COUNT: "20"
+    restart: "no"
