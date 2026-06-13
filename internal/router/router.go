@@ -85,7 +85,9 @@ type Router struct {
 	tagsCache    map[string]*TagsCache
 	tagsMu       sync.Mutex
 	// tagsInflight prevents concurrent fetches to the same node URL (cache stampede).
-	tagsInflight map[string]*tagsInflightEntry
+	tagsInflight    map[string]*tagsInflightEntry
+	upstreamTimeout time.Duration // ResponseHeaderTimeout for upstream Transport
+	maxRetries      int           // max alternate nodes to try on upstream failure
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -106,18 +108,28 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	for _, n := range nodes {
 		prev[n.Name] = true // assume healthy at start
 	}
+	upstreamTimeout := time.Duration(cfg.UpstreamTimeoutMs) * time.Millisecond
+	if upstreamTimeout <= 0 {
+		upstreamTimeout = 120 * time.Second
+	}
+	maxRetries := cfg.MaxRetries
+	if maxRetries <= 0 {
+		maxRetries = 2
+	}
 	return &Router{
-		nodes:          nodes,
-		strategy:       cfg.Strategy,
-		fallback:       cfg.Fallback,
-		interval:       time.Duration(cfg.PollIntervalMs) * time.Millisecond,
-		client:         &http.Client{Timeout: 5 * time.Second},
-		rules:          cfg.Rules,
-		clouds:         cloudsCopy,
-		discoveredURLs: make(map[string]struct{}),
-		prevHealthy:    prev,
-		tagsCache:      make(map[string]*TagsCache),
-		tagsInflight:   make(map[string]*tagsInflightEntry),
+		nodes:           nodes,
+		strategy:        cfg.Strategy,
+		fallback:        cfg.Fallback,
+		interval:        time.Duration(cfg.PollIntervalMs) * time.Millisecond,
+		client:          &http.Client{Timeout: 5 * time.Second},
+		rules:           cfg.Rules,
+		clouds:          cloudsCopy,
+		discoveredURLs:  make(map[string]struct{}),
+		prevHealthy:     prev,
+		tagsCache:       make(map[string]*TagsCache),
+		tagsInflight:    make(map[string]*tagsInflightEntry),
+		upstreamTimeout: upstreamTimeout,
+		maxRetries:      maxRetries,
 	}
 }
 
@@ -539,6 +551,71 @@ func (r *Router) NodeURLs() map[string]string {
 		m[s.Name] = s.URL
 	}
 	return m
+}
+
+// UpstreamTimeout returns the configured upstream response-header timeout.
+// Used by proxy.go to set Transport.ResponseHeaderTimeout without changing
+// NewHandler's signature.
+func (r *Router) UpstreamTimeout() time.Duration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	// RoutingConfig is not stored on Router directly; read from the nodes
+	// slice is not applicable. We store the timeout in a field set during New.
+	return r.upstreamTimeout
+}
+
+// MaxRetries returns the configured maximum number of alternate nodes to try
+// on upstream failure before falling back to cloud or returning 502.
+func (r *Router) MaxRetries() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.maxRetries
+}
+
+// RouteExcluding picks the best healthy node for modelName, excluding any
+// node whose URL appears in the exclude map. Used by the retry loop in
+// proxy.go to avoid re-selecting an already-failed node.
+func (r *Router) RouteExcluding(modelName string, exclude map[string]bool) (*NodeState, bool) {
+	r.mu.RLock()
+	nodes := make([]*NodeState, len(r.nodes))
+	copy(nodes, r.nodes)
+	strategy := r.strategy
+	r.mu.RUnlock()
+
+	var healthy []*NodeState
+	for _, n := range nodes {
+		if exclude[n.URL] {
+			continue
+		}
+		n.mu.RLock()
+		isHealthy := n.Healthy
+		n.mu.RUnlock()
+		if isHealthy {
+			healthy = append(healthy, n)
+		}
+	}
+	if len(healthy) == 0 {
+		return nil, false
+	}
+
+	if modelName != "" && strategy == "warm-first" {
+		var warm []*NodeState
+		for _, n := range healthy {
+			n.mu.RLock()
+			for _, m := range n.LoadedModels {
+				if m.Name == modelName {
+					warm = append(warm, n)
+					break
+				}
+			}
+			n.mu.RUnlock()
+		}
+		if len(warm) > 0 {
+			return pickLeastConns(warm), true
+		}
+	}
+
+	return pickLeastConns(healthy), false
 }
 
 func (r *Router) IncrConn(node *NodeState) {

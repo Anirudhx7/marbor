@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
@@ -41,6 +42,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		requestID = hex.EncodeToString(b)
 	}
 	w.Header().Set("X-Request-ID", requestID)
+
+	// Feature 3: intercept GET /v1/models and return aggregated OpenAI-schema list.
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+		h.serveModels(w)
+		return
+	}
 
 	var body []byte
 	if r.Body != nil {
@@ -90,43 +97,104 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.router.IncrConn(node)
-	defer h.router.DecrConn(node)
 
 	targetURL, err := url.Parse(node.URL)
 	if err != nil {
+		h.router.DecrConn(node)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"invalid node URL"}`))
 		return
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	proxy.Director = func(req *http.Request) {
-		req.URL.Scheme = targetURL.Scheme
-		req.URL.Host = targetURL.Host
-		req.URL.Path = r.URL.Path
-		req.URL.RawQuery = r.URL.RawQuery
-		req.Host = targetURL.Host
-		req.Header.Del("Authorization")
-		for k, v := range r.Header {
-			if k != "Authorization" {
-				req.Header[k] = v
+	// Feature 2: custom transport with ResponseHeaderTimeout so a node that
+	// accepts the connection but hangs (model load stall, GPU OOM) does not
+	// block the client or leak goroutines. This covers only the wait for
+	// response headers - NOT the streaming body - so R2 (no buffering) is safe.
+	transport := &http.Transport{
+		ResponseHeaderTimeout: h.router.UpstreamTimeout(),
+	}
+
+	// Feature 1: retry/failover loop. The ErrorHandler fires only when the
+	// upstream failed before sending any response bytes, so retrying a
+	// different node is safe and does not violate R2.
+	tried := map[string]bool{node.URL: true}
+	maxRetries := h.router.MaxRetries()
+
+	var (
+		rec     *statusRecorder
+		aborted bool
+	)
+
+	for attempt := 0; ; attempt++ {
+		proxy := buildLocalProxy(targetURL, body, r, transport)
+
+		// retryNode is set inside the ErrorHandler closure when a retry is
+		// needed. Using a pointer-to-pointer lets the closure write through to
+		// a variable in this stack frame without heap allocation overhead.
+		var nextNode *router.NodeState
+		var retryErr error
+
+		// origReq is captured here so proxyToCloud receives the original
+		// client request, not the modified upstream request that ErrorHandler
+		// receives after Director has mutated it.
+		origReq := r
+		proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, e error) {
+			// Upstream failed before writing any bytes - safe to retry.
+			h.router.DecrConn(node)
+			tried[node.URL] = true
+
+			if attempt < maxRetries {
+				alt, _ := h.router.RouteExcluding(modelName, tried)
+				if alt != nil {
+					nextNode = alt
+					retryErr = e
+					return
+				}
 			}
+			// No alternate nodes - try cloud fallback.
+			cloud := h.router.RouteCloud()
+			if cloud != nil {
+				// Signal cloud path via sentinel before calling proxyToCloud,
+				// which writes the response. The outer loop checks this after
+				// serveAndRecoverAbort returns.
+				retryErr = errCloudHandled
+				h.proxyToCloud(rw, origReq, body, modelName, keyName, requestID, start, cloud)
+				return
+			}
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusBadGateway)
+			fmt.Fprintf(rw, `{"error":"upstream error: %s"}`, e.Error())
 		}
-		if len(body) > 0 {
-			req.Body = io.NopCloser(bytes.NewReader(body))
-			req.ContentLength = int64(len(body))
+
+		rec = &statusRecorder{ResponseWriter: w}
+		aborted = serveAndRecoverAbort(proxy, rec, r)
+
+		if retryErr == errCloudHandled {
+			// Cloud path handled the response and did its own logging.
+			return
 		}
-	}
 
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		fmt.Fprintf(w, `{"error":"upstream error: %s"}`, err.Error())
-	}
+		if nextNode != nil {
+			// Switch to the alternate node and retry.
+			node = nextNode
+			h.router.IncrConn(node)
+			targetURL, err = url.Parse(node.URL)
+			if err != nil {
+				h.router.DecrConn(node)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`{"error":"invalid node URL"}`))
+				return
+			}
+			warm = false // retried node may not have model warm
+			continue
+		}
 
-	rec := &statusRecorder{ResponseWriter: w}
-	aborted := serveAndRecoverAbort(proxy, rec, r)
+		// Success or terminal failure - exit retry loop.
+		h.router.DecrConn(node)
+		break
+	}
 
 	duration := time.Since(start).Seconds()
 	metricStatus := rec.Status()
@@ -169,6 +237,86 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 }
+
+// errCloudHandled is a sentinel used inside the ErrorHandler closure to signal
+// that the cloud fallback path has already written the response.
+var errCloudHandled = fmt.Errorf("cloud handled")
+
+// buildLocalProxy constructs a reverse proxy for the given node URL.
+// It is extracted so the retry loop can rebuild it cleanly for each attempt.
+func buildLocalProxy(targetURL *url.URL, body []byte, orig *http.Request, transport *http.Transport) *httputil.ReverseProxy {
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy.Transport = transport
+	proxy.Director = func(req *http.Request) {
+		req.URL.Scheme = targetURL.Scheme
+		req.URL.Host = targetURL.Host
+		req.URL.Path = orig.URL.Path
+		req.URL.RawQuery = orig.URL.RawQuery
+		req.Host = targetURL.Host
+		req.Header = make(http.Header)
+		for k, v := range orig.Header {
+			if k != "Authorization" {
+				req.Header[k] = v
+			}
+		}
+		if len(body) > 0 {
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			req.ContentLength = int64(len(body))
+		}
+	}
+	return proxy
+}
+
+// serveModels handles GET /v1/models by returning an OpenAI-schema list of
+// models currently loaded across all healthy nodes. Only models actually
+// reported by /api/ps are included - no fabricated entries.
+func (h *Handler) serveModels(w http.ResponseWriter) {
+	seen := make(map[string]struct{})
+	for _, n := range h.router.Nodes() {
+		n.RLock()
+		healthy := n.Healthy
+		models := n.LoadedModels
+		n.RUnlock()
+		if !healthy {
+			continue
+		}
+		for _, m := range models {
+			seen[m.Name] = struct{}{}
+		}
+	}
+
+	// Stable sort for deterministic output.
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	type modelEntry struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		OwnedBy string `json:"owned_by"`
+	}
+	type response struct {
+		Object string       `json:"object"`
+		Data   []modelEntry `json:"data"`
+	}
+
+	data := make([]modelEntry, 0, len(names))
+	for _, name := range names {
+		data = append(data, modelEntry{
+			ID:      name,
+			Object:  "model",
+			OwnedBy: "ollama-mesh",
+		})
+	}
+
+	out, _ := json.Marshal(response{Object: "list", Data: data})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(out)
+}
+
 
 // serveAndRecoverAbort runs the reverse proxy and absorbs http.ErrAbortHandler,
 // which httputil.ReverseProxy panics with when the upstream dies mid-stream.
