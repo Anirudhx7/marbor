@@ -91,16 +91,18 @@ type nodeResp struct {
 }
 
 type keyResp struct {
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	Key              string   `json:"key"`
-	Created          string   `json:"created"`
-	RequestsToday    int      `json:"requestsToday"`
-	RequestsThisMonth int     `json:"requestsThisMonth"`
-	RateLimit        int      `json:"rateLimit"`
-	Status           string   `json:"status"`
-	AllowedModels    []string `json:"allowedModels"`
-	ExpiresAt        string   `json:"expiresAt,omitempty"`
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Key               string   `json:"key"`
+	Created           string   `json:"created"`
+	RequestsToday     int      `json:"requestsToday"`
+	RequestsThisMonth int      `json:"requestsThisMonth"`
+	TokensThisMonth   int64    `json:"tokensThisMonth"`
+	EstimatedCostUsd  float64  `json:"estimatedCostUsd"`
+	RateLimit         int      `json:"rateLimit"`
+	Status            string   `json:"status"`
+	AllowedModels     []string `json:"allowedModels"`
+	ExpiresAt         string   `json:"expiresAt,omitempty"`
 }
 
 func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server {
@@ -272,9 +274,13 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 	out := make([]keyResp, 0, len(s.cfg.Auth.Keys))
 	for i, k := range s.cfg.Auth.Keys {
 		today, month, models, expires, rateLimit, createdAt, ok := 0, 0, []string(nil), "", k.RateLimit, time.Time{}, false
+		var tokensMonth int64
 		if s.auth != nil {
-			today, month, models, expires, rateLimit, createdAt, ok = s.auth.KeyStats(k.Name)
+			today, month, tokensMonth, models, expires, rateLimit, createdAt, ok = s.auth.KeyStats(k.Name)
 		}
+		// Estimated cost values this month's tokens at the configured reference
+		// rate. It is an estimate, not a billed amount.
+		estimatedCost := float64(tokensMonth) / 1000.0 * s.refCostPer1K
 		if !ok {
 			models = k.Models
 			expires = k.ExpiresAt
@@ -302,6 +308,8 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			Created:           created,
 			RequestsToday:     today,
 			RequestsThisMonth: month,
+			TokensThisMonth:   tokensMonth,
+			EstimatedCostUsd:  estimatedCost,
 			RateLimit:         rateLimit,
 			Status:            status,
 			AllowedModels:     models,
@@ -476,6 +484,10 @@ func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int, t
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
+	}
+	// Attribute token usage to the calling key for per-key analytics + cost.
+	if s.auth != nil {
+		s.auth.AddKeyTokens(apiKey, tokens)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

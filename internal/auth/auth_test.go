@@ -121,7 +121,7 @@ func TestKeyStats(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	today, month, models, _, _, _, ok := mw.KeyStats("counter")
+	today, month, _, models, _, _, _, ok := mw.KeyStats("counter")
 	if !ok {
 		t.Fatal("expected key to exist")
 	}
