@@ -56,6 +56,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	modelName := router.ExtractModelName(body)
+
+	// Enforce per-key model allow-list. An empty list means no restriction.
+	if allowed := auth.AllowedModelsFromContext(r.Context()); len(allowed) > 0 {
+		permitted := false
+		for _, m := range allowed {
+			if m == modelName {
+				permitted = true
+				break
+			}
+		}
+		if !permitted {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprintf(w, `{"error":"model %q not allowed for this api key"}`, modelName)
+			metrics.RequestsTotal(keyName, modelName, "none", "403")
+			return
+		}
+	}
+
 	node, warm := h.router.Route(modelName)
 	if node == nil {
 		cloud := h.router.RouteCloud()

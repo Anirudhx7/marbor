@@ -15,6 +15,10 @@ type contextKey string
 
 const KeyNameContextKey contextKey = "key_name"
 
+// AllowedModelsContextKey carries the calling key's allowed-models list so the
+// proxy can enforce per-key model restrictions after extracting the model name.
+const AllowedModelsContextKey contextKey = "allowed_models"
+
 type Middleware struct {
 	mu      sync.RWMutex
 	enabled bool
@@ -224,12 +228,20 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt))
 		ks.counter.increment()
 		ctx := context.WithValue(r.Context(), KeyNameContextKey, ks.name)
+		ctx = context.WithValue(ctx, AllowedModelsContextKey, ks.models)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func KeyNameFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(KeyNameContextKey).(string)
+	return v
+}
+
+// AllowedModelsFromContext returns the calling key's allowed-models list.
+// An empty/nil slice means no restriction (all models allowed).
+func AllowedModelsFromContext(ctx context.Context) []string {
+	v, _ := ctx.Value(AllowedModelsContextKey).([]string)
 	return v
 }
 

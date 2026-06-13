@@ -63,11 +63,15 @@ type AuthConfig struct {
 }
 
 type KeyConfig struct {
-	Name       string   `yaml:"name" json:"name"`
-	Key        string   `yaml:"key" json:"key"`
-	RateLimit  int      `yaml:"rate_limit" json:"rateLimit"`
-	Models     []string `yaml:"models,omitempty" json:"models,omitempty"`
-	ExpiresAt  string   `yaml:"expires_at,omitempty" json:"expiresAt,omitempty"`
+	Name      string   `yaml:"name" json:"name"`
+	Key       string   `yaml:"key" json:"key"`
+	RateLimit int      `yaml:"rate_limit" json:"rateLimit"`
+	Models    []string `yaml:"models,omitempty" json:"models,omitempty"`
+	ExpiresAt string   `yaml:"expires_at,omitempty" json:"expiresAt,omitempty"`
+	// DailyLimit and MonthlyLimit are hard request quotas per key for the
+	// current day/month. 0 means unlimited. Exceeding either returns 429.
+	DailyLimit   int `yaml:"daily_limit,omitempty" json:"dailyLimit,omitempty"`
+	MonthlyLimit int `yaml:"monthly_limit,omitempty" json:"monthlyLimit,omitempty"`
 }
 
 type NodeConfig struct {
@@ -91,6 +95,13 @@ type RoutingConfig struct {
 	PollIntervalMs int           `yaml:"poll_interval_ms" json:"poll_interval_ms"`
 	Fallback       string        `yaml:"fallback" json:"fallback"`
 	Rules          []RoutingRule `yaml:"rules" json:"rules"`
+	// UpstreamTimeoutMs bounds how long the proxy waits for an upstream node
+	// to send response headers before giving up and trying the next node.
+	// Covers the header phase only, never the streaming body. Defaults to 120000.
+	UpstreamTimeoutMs int `yaml:"upstream_timeout_ms" json:"upstream_timeout_ms"`
+	// MaxRetries is how many alternate healthy nodes the proxy will try when an
+	// upstream fails before any response bytes are sent. Defaults to 2.
+	MaxRetries int `yaml:"max_retries" json:"max_retries"`
 }
 
 type MetricsConfig struct {
@@ -151,6 +162,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Routing.Fallback == "" {
 		c.Routing.Fallback = "least-connections"
+	}
+	if c.Routing.UpstreamTimeoutMs == 0 {
+		c.Routing.UpstreamTimeoutMs = 120000
+	}
+	if c.Routing.MaxRetries == 0 {
+		c.Routing.MaxRetries = 2
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
