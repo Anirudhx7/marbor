@@ -60,6 +60,10 @@ type AuthConfig struct {
 	// Optional: when empty, the first auth key (or "admin") is used,
 	// preserving pre-first-run behavior.
 	AdminToken string `yaml:"admin_token,omitempty" json:"-"`
+	// StatePath is where per-key usage counters are persisted so quotas and
+	// usage survive restarts. Defaults to "usage-state.json". Set to "-" to
+	// disable persistence.
+	StatePath string `yaml:"state_path,omitempty" json:"-"`
 }
 
 type KeyConfig struct {
@@ -171,6 +175,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
+	}
+
+	if c.Auth.StatePath == "" {
+		c.Auth.StatePath = "usage-state.json"
 	}
 
 	if c.Auth.Enabled {

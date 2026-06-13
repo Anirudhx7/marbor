@@ -98,6 +98,15 @@ func main() {
 
 	authMw := auth.NewMiddleware(cfg.Auth)
 
+	// Per-key usage/quota counters persist across restarts. "-" disables.
+	statePath := cfg.Auth.StatePath
+	if statePath == "-" {
+		statePath = ""
+	}
+	if err := authMw.LoadState(statePath); err != nil {
+		log.Printf("WARNING: could not load usage state from %s: %v", statePath, err)
+	}
+
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
 	r.SetDockerConfig(cfg.Docker)
 	if cfg.Docker.Enabled {
@@ -106,6 +115,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go r.Start(ctx)
+
+	// Periodically flush usage counters so a restart preserves quota/usage
+	// state (crash loses at most one interval).
+	if statePath != "" {
+		go func() {
+			t := time.NewTicker(30 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					if err := authMw.SaveState(statePath); err != nil {
+						log.Printf("WARNING: usage state flush failed: %v", err)
+					}
+				}
+			}
+		}()
+	}
 
 	auditLog, err := audit.New(func() string {
 		if cfg.Audit.Enabled {
@@ -190,5 +218,12 @@ func main() {
 		log.Printf("Admin shutdown error: %v", err)
 	}
 	cancel()
+
+	// Final flush so the just-served requests are not lost on restart.
+	if statePath != "" {
+		if err := authMw.SaveState(statePath); err != nil {
+			log.Printf("WARNING: final usage state flush failed: %v", err)
+		}
+	}
 	log.Println("Shutdown complete")
 }

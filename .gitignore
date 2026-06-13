@@ -29,3 +29,7 @@ dist/
 
 # Internal development files - never commit
 .local/
+
+# Runtime per-key usage/quota state
+usage-state.json
+usage-state.json.tmp

@@ -8,6 +8,10 @@ auth:
   # if left blank, the admin token silently falls back to your first API key,
   # which would grant dashboard access to every API-key holder.
   admin_token: sk-admin-change-me
+  # Per-key usage/quota counters are persisted here so they survive restarts
+  # (a restart would otherwise reset quotas). Defaults to usage-state.json.
+  # Set to "-" to disable persistence.
+  state_path: usage-state.json
   keys:
     - name: anirudh-dev
       key: sk-mesh-abc123
