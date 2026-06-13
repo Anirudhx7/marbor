@@ -123,6 +123,8 @@ export function APIKeys() {
         created: new Date().toISOString().split('T')[0],
         requestsToday: 0,
         requestsThisMonth: 0,
+        tokensThisMonth: 0,
+        estimatedCostUsd: 0,
         rateLimit: parseInt(newKeyForm.rateLimit),
         status: 'active',
         allowedModels: newKeyForm.allowedModels.length > 0 ? newKeyForm.allowedModels : ['all'],
@@ -263,6 +265,7 @@ export function APIKeys() {
                 <th className="px-6 py-3 text-left font-medium">Key Value</th>
                 <th className="px-6 py-3 text-left font-medium">Created</th>
                 <th className="px-6 py-3 text-left font-medium">Requests</th>
+                <th className="px-6 py-3 text-left font-medium">Usage (mo)</th>
                 <th className="px-6 py-3 text-left font-medium">Rate Limit</th>
                 <th className="px-6 py-3 text-left font-medium">Status</th>
                 <th className="px-6 py-3 text-right font-medium">Actions</th>
@@ -315,6 +318,16 @@ export function APIKeys() {
                       </span>
                       <span className="text-xs font-mono text-muted-foreground">
                         {formatNumber(key.requestsThisMonth)} <span className="font-sans">this month</span>
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="font-mono text-foreground font-medium">
+                        {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '—'} <span className="text-muted-foreground text-xs font-sans">tokens</span>
+                      </span>
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {key.estimatedCostUsd > 0 ? `~$${key.estimatedCostUsd.toFixed(2)}` : '—'} <span className="font-sans">est.</span>
                       </span>
                     </div>
                   </td>

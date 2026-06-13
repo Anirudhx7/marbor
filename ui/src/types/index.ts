@@ -38,6 +38,8 @@ export interface APIKey {
   created: string;
   requestsToday: number;
   requestsThisMonth: number;
+  tokensThisMonth: number;
+  estimatedCostUsd: number;
   rateLimit: number;
   status: 'active' | 'suspended' | 'rate-limited';
   allowedModels: string[];
