@@ -364,6 +364,17 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	// When the original client path is Ollama-native (/api/chat or
+	// /api/generate) wrap the transport to translate the OpenAI response back
+	// into Ollama NDJSON. For /v1/... paths the cloud response passes through
+	// unchanged (current behavior preserved).
+	if isOllamaPath(r.URL.Path) {
+		proxy.Transport = &translatingTransport{
+			inner:       http.DefaultTransport,
+			origPath:    r.URL.Path,
+			clientModel: modelName,
+		}
+	}
 	proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = targetURL.Scheme
 		req.URL.Host = targetURL.Host
