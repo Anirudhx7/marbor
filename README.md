@@ -15,7 +15,7 @@
 ## What's New in v0.2.1
 
 - **Zero-config first run**: `./ollama-mesh` with no config.yaml auto-detects localhost:11434, generates API keys, and prints one curl example to get started
-- **`make demo`**: spins up mock Ollama servers in-process, sends real traffic, shows a fully populated dashboard in under 60 seconds - no Ollama install required
+- **`make demo`**: spins up mock Ollama servers in Docker, sends real traffic, shows a fully populated dashboard in under 60 seconds - Docker only, no Ollama or Go install required
 - **VRAM fit badges**: GPU Nodes page shows green/yellow/red fit indicators for each downloaded model per node
 - **Tokens/sec in request log**: live request table now shows Tokens and tok/s columns
 - **Real savings math**: saved_usd is computed from actual parsed token counts (eval_count + prompt_eval_count). Shows "—" when token data is unavailable - never a fabricated number
