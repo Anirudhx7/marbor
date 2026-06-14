@@ -39,7 +39,7 @@ Goal: Full visibility into what the mesh is doing.
 - [x] Rate limit response headers - X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset on every response
 - [x] Webhook notifications - node_down and node_up events with HMAC-SHA256 signatures
 - [x] Audit logging - append-only JSON-lines file with crypto/rand request IDs
-- [x] Prometheus metrics - 7 metrics on :9090/metrics
+- [x] Prometheus metrics - 10 metrics on :9090/metrics
 - [x] GET /health endpoint - unauthenticated, for load balancers and uptime monitors
 - [x] X-Request-ID header on all proxy responses
 

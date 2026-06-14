@@ -68,7 +68,7 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 | Docker auto-discovery | Detects `ollama/ollama` containers automatically from the Docker socket. Zero config. |
 | Local GPU metrics | Real VRAM, temperature, and power draw via nvidia-smi on the mesh host. Note: remote node GPUs are not visible yet - per-node telemetry is on the roadmap. |
 | API key management | Per-key rate limits, model allow-lists, and key expiry. |
-| Prometheus metrics | 7 metrics exposed at `:9090`. Grafana dashboard included. |
+| Prometheus metrics | 10 metrics at `:9090` (requests, latency, tokens, retries, cloud fallbacks, quota rejections, node health). Grafana dashboard included. |
 | Analytics dashboard | 24-hour area chart, savings stats, per-model breakdown. |
 | Model catalog | Cross-node VRAM view with warm status and search. |
 | Request log | Live feed with 3-second polling, filter, and status badges. |
@@ -344,7 +344,7 @@ The table below is intentionally honest. "partial" means the feature exists but 
 | **Savings vs pure-cloud tracking** | ✓ real parsed token math, shows "—" when unknown | ✗ | ✗ | ✗ | ✗ |
 | **Embedded dashboard** | ✓ React UI in the binary | partial (separate UI) | ✓ desktop GUI | ✗ | ✗ |
 | **Single binary, zero runtime deps** | ✓ | ✗ requires Python + deps | ✗ requires Electron | ✓ | ✓ |
-| **Prometheus metrics** | ✓ 7 metrics, Grafana dashboard included | ✓ | ✗ | ✗ | partial |
+| **Prometheus metrics** | ✓ 10 metrics, Grafana dashboard included | ✓ | ✗ | ✗ | partial |
 | **Audit log** | ✓ append-only JSON-lines | partial | ✗ | ✗ | partial |
 
 ### Use ollama-mesh when...

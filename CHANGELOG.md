@@ -7,13 +7,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
-- `make demo`: spins up mock Ollama servers in-process, sends real traffic, shows a populated dashboard in <60s with no Ollama install required
-- VRAM fit indicator: GPU Nodes page shows green/yellow/red badges for each downloaded model per node based on available VRAM
-- Tokens and tok/s columns in live request log
+- Per-key usage and hard quotas (`daily_limit` / `monthly_limit`) that persist across restarts via an atomic JSON state file (`auth.state_path`, default `usage-state.json`, `-` to disable). A restart no longer resets quotas or usage.
+- Per-key model allow-lists enforced at the proxy: requests for a model outside a key's list return `403`.
+- `GET /v1/models` returns an aggregated OpenAI-schema list of models across all healthy nodes.
+- Cloud-overflow response translation: OpenAI/Anthropic responses are translated back to Ollama's NDJSON shape on the native (`/api/*`) path, including SSE-to-NDJSON streaming.
+- Upstream retry/failover: a node that fails before sending any bytes is retried on an alternate node (`routing.max_retries`), then cloud, then 502 - never violates streaming.
+- `routing.upstream_timeout_ms`: bounds the wait for upstream response headers (header phase only, not the stream body).
+- CLI flags: `--version`, `--config <path>`, `--validate` (validate config and exit), and `--help`.
+- 3 new Prometheus metrics (10 total): `ollamamesh_retries_total`, `ollamamesh_cloud_fallbacks_total`, `ollamamesh_quota_rejections_total`.
+- `make demo`: spins up mock Ollama servers in-process, sends real traffic, shows a populated dashboard in <60s with no Ollama install required.
+- VRAM fit indicator: GPU Nodes page shows green/yellow/red badges for each downloaded model per node based on available VRAM.
+- Tokens and tok/s columns in live request log.
+- `docs/PRODUCTION.md`, `docs/INTEGRATIONS.md`, and an honest "How It Compares" table in the README.
 
 ### Changed
-- Zero-config first run promoted to top-level Quick Start path in README
-- Savings reference rate is now configurable via `savings.reference_cost_per_1k` (see v0.2.1)
+- Zero-config first run promoted to top-level Quick Start path in README.
+- Savings reference rate is now configurable via `savings.reference_cost_per_1k` (see v0.2.1).
+
+### Security
+- Admin token comparison is now constant-time (`crypto/subtle.ConstantTimeCompare`) to remove a timing side channel.
+- Request bodies are capped at 32 MiB (`413` over the limit) to bound a memory-exhaustion DoS vector.
+
+### CI
+- CI now runs `go vet`, a `gofmt` gate, `go test -race`, and `govulncheck`.
 
 ---
 
