@@ -39,14 +39,35 @@ func newAnalyticsStore(refCostPer1K float64) *analyticsStore {
 	}
 }
 
+// hourlyRetention bounds how long hourly buckets are kept. The dashboard only
+// reads the last 24h; 48h gives margin while keeping the map from growing
+// without bound on a long-lived process.
+const hourlyRetention = 48 * time.Hour
+
+// pruneHourlyLocked deletes hourly buckets older than the retention window.
+// Caller must hold a.mu. cutoff is "now" in UTC.
+func (a *analyticsStore) pruneHourlyLocked(now time.Time) {
+	if len(a.hourly) <= 48 {
+		return
+	}
+	for key, b := range a.hourly {
+		t, err := time.Parse("2006-01-02T15", b.Hour)
+		if err != nil || now.Sub(t) > hourlyRetention {
+			delete(a.hourly, key)
+		}
+	}
+}
+
 // recordLocal records a local request. tokens is the real token count parsed
 // from the response; 0 contributes nothing to savings.
 func (a *analyticsStore) recordLocal(model string, tokens int64) {
-	key := time.Now().UTC().Format("2006-01-02T15")
+	now := time.Now().UTC()
+	key := now.Format("2006-01-02T15")
 	saved := a.refCostPer1K * float64(tokens) / 1000.0
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.pruneHourlyLocked(now)
 
 	if a.hourly[key] == nil {
 		a.hourly[key] = &HourlyBucket{Hour: key}
@@ -64,11 +85,13 @@ func (a *analyticsStore) recordLocal(model string, tokens int64) {
 // recordCloud records a cloud request. tokens is the real token count parsed
 // from the provider response; 0 contributes nothing to spend.
 func (a *analyticsStore) recordCloud(model string, costPer1K float64, tokens int64) {
-	key := time.Now().UTC().Format("2006-01-02T15")
+	now := time.Now().UTC()
+	key := now.Format("2006-01-02T15")
 	spent := costPer1K * float64(tokens) / 1000.0
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.pruneHourlyLocked(now)
 
 	if a.hourly[key] == nil {
 		a.hourly[key] = &HourlyBucket{Hour: key}

@@ -207,9 +207,18 @@ func (s *Server) noCache(next http.Handler) http.Handler {
 
 func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		s.mu.RLock()
+		origin := s.cfg.Admin.CORSOrigin
+		s.mu.RUnlock()
+		// Default (empty origin): emit no CORS headers so the mutating admin API
+		// is only callable same-origin (the embedded dashboard). A wildcard on an
+		// authed, mutating API is a CSRF/exfil footgun, so it is opt-in only.
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			w.Header().Set("Vary", "Origin")
+		}
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
