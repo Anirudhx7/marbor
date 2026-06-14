@@ -1,6 +1,20 @@
 proxy:
   port: 11434
   log_level: info
+  # Structured JSON access log (one line per request) on stdout. Default true.
+  # Logs key NAME (never the key value), model, node, status, latency, request id.
+  access_log: true
+
+# Admin dashboard + REST API listener.
+admin:
+  # Listen address. Default ":8080" (all interfaces) for Docker port mapping.
+  # For a hardened single-host deploy, use "127.0.0.1:8080" so the dashboard is
+  # not reachable from the network (access it via SSH tunnel or a reverse proxy).
+  bind_address: ":8080"
+  # Access-Control-Allow-Origin for the admin API. Empty (default) sends no CORS
+  # headers, so the API is only callable same-origin (the embedded dashboard).
+  # Set a specific origin only if you serve a separate front-end. Avoid "*".
+  cors_origin: ""
 
 auth:
   enabled: true

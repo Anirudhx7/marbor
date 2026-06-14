@@ -186,14 +186,20 @@ func main() {
 	adminSrv.SetConfigPath(cfgPath)
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
-	wrapped := authMw.Handler(proxyHandler)
+	accessEnabled := cfg.Proxy.AccessLog == nil || *cfg.Proxy.AccessLog
+	proxyHandler.SetAccessLogger(proxy.NewAccessLogger(os.Stdout, accessEnabled))
+	log.Printf("Access log     : %t (stdout, JSON lines)", accessEnabled)
+	// RecoverMiddleware is the outermost wrapper so a handler panic returns a
+	// clean 500 and increments a metric instead of an ugly connection drop.
+	wrapped := proxy.RecoverMiddleware(authMw.Handler(proxyHandler))
 
 	proxySrv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Proxy.Port),
-		Handler:      wrapped,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 300 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              fmt.Sprintf(":%d", cfg.Proxy.Port),
+		Handler:           wrapped,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      300 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	var metricsSrv *http.Server
@@ -201,8 +207,12 @@ func main() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 		metricsSrv = &http.Server{
-			Addr:    fmt.Sprintf(":%d", cfg.Metrics.Port),
-			Handler: mux,
+			Addr:              fmt.Sprintf(":%d", cfg.Metrics.Port),
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
 		}
 		go func() {
 			log.Printf("Metrics server listening on :%d/metrics", cfg.Metrics.Port)
@@ -213,13 +223,14 @@ func main() {
 	}
 
 	adminHttpSrv := &http.Server{
-		Addr:         ":8080",
-		Handler:      adminSrv.Handler(),
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		Addr:              cfg.Admin.BindAddress,
+		Handler:           proxy.RecoverMiddleware(adminSrv.Handler()),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      30 * time.Second,
 	}
 	go func() {
-		log.Printf("Admin dashboard available at http://localhost:8080")
+		log.Printf("Admin dashboard listening on %s", cfg.Admin.BindAddress)
 		if err := adminHttpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Admin server error: %v", err)
 		}

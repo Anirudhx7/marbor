@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	Proxy          ProxyConfig     `yaml:"proxy"`
+	Admin          AdminConfig     `yaml:"admin" json:"admin"`
 	Auth           AuthConfig      `yaml:"auth"`
 	Nodes          []NodeConfig    `yaml:"nodes"`
 	Routing        RoutingConfig   `yaml:"routing"`
@@ -51,6 +52,23 @@ type DockerConfig struct {
 type ProxyConfig struct {
 	Port     int    `yaml:"port"`
 	LogLevel string `yaml:"log_level"`
+	// AccessLog enables a structured JSON access-log line on stdout per request.
+	// Defaults to true (enabled) when unset. Set to false to silence it.
+	AccessLog *bool `yaml:"access_log,omitempty" json:"access_log,omitempty"`
+}
+
+// AdminConfig controls the admin dashboard/API listener.
+type AdminConfig struct {
+	// BindAddress is the listen address for the admin server. Defaults to
+	// ":8080" (all interfaces) for backward compatibility and Docker port
+	// mapping. For a hardened single-host deploy, set "127.0.0.1:8080" so the
+	// dashboard is not reachable from the network.
+	BindAddress string `yaml:"bind_address,omitempty" json:"bind_address,omitempty"`
+	// CORSOrigin is the value sent in Access-Control-Allow-Origin on admin API
+	// responses. Empty (default) sends no CORS headers, so the API is only
+	// callable same-origin (the embedded dashboard). Set a specific origin to
+	// allow a separate front-end; "*" is allowed but not recommended.
+	CORSOrigin string `yaml:"cors_origin,omitempty" json:"cors_origin,omitempty"`
 }
 
 type AuthConfig struct {
@@ -158,6 +176,13 @@ func (c *Config) Validate() error {
 	if c.Proxy.LogLevel == "" {
 		c.Proxy.LogLevel = "info"
 	}
+	if c.Proxy.AccessLog == nil {
+		enabled := true
+		c.Proxy.AccessLog = &enabled
+	}
+	if c.Admin.BindAddress == "" {
+		c.Admin.BindAddress = ":8080"
+	}
 	if c.Routing.Strategy == "" {
 		c.Routing.Strategy = "warm-first"
 	}
@@ -198,8 +223,14 @@ func (c *Config) Validate() error {
 		if n.Name == "" || n.URL == "" {
 			return fmt.Errorf("node %d must have name and url", i)
 		}
-		if _, err := url.Parse(n.URL); err != nil {
+		u, err := url.Parse(n.URL)
+		if err != nil {
 			return fmt.Errorf("invalid node URL %s: %w", n.URL, err)
+		}
+		// url.Parse is lenient (it accepts "garbage"); fail fast at boot on a
+		// URL that is not a usable http(s) endpoint instead of 500ing later.
+		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("node %d (%s) URL must be http(s) with a host: %s", i, n.Name, n.URL)
 		}
 	}
 
@@ -223,8 +254,14 @@ func (c *Config) Validate() error {
 	}
 
 	for i, cp := range c.CloudProviders {
-		if cp.Enabled && (cp.BaseURL == "" || cp.APIKey == "") {
-			return fmt.Errorf("cloud provider %d (%s) requires base_url and api_key when enabled", i, cp.Name)
+		if cp.Enabled {
+			if cp.BaseURL == "" || cp.APIKey == "" {
+				return fmt.Errorf("cloud provider %d (%s) requires base_url and api_key when enabled", i, cp.Name)
+			}
+			u, err := url.Parse(cp.BaseURL)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return fmt.Errorf("cloud provider %d (%s) base_url must be http(s) with a host: %s", i, cp.Name, cp.BaseURL)
+			}
 		}
 	}
 

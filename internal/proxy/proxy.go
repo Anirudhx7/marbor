@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -30,10 +31,20 @@ type Handler struct {
 	router *router.Router
 	admin  *admin.Server
 	audit  *audit.Logger
+	access *AccessLogger
 }
 
 func NewHandler(r *router.Router, a *admin.Server, al *audit.Logger) *Handler {
-	return &Handler{router: r, admin: a, audit: al}
+	// access defaults to a no-op logger; main wires a real one via SetAccessLogger.
+	return &Handler{router: r, admin: a, audit: al, access: NewAccessLogger(nil, false)}
+}
+
+// SetAccessLogger installs the structured access logger. Passing nil keeps the
+// existing no-op logger so callers never have to nil-check.
+func (h *Handler) SetAccessLogger(l *AccessLogger) {
+	if l != nil {
+		h.access = l
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -159,6 +170,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.router.DecrConn(node)
 			tried[node.URL] = true
 
+			// If the client already disconnected, do not burn an alternate node
+			// or a cloud call on a request nobody is waiting for.
+			if origReq.Context().Err() != nil {
+				retryErr = origReq.Context().Err()
+				return
+			}
+
 			if attempt < maxRetries {
 				alt, _ := h.router.RouteExcluding(modelName, tried)
 				if alt != nil {
@@ -178,9 +196,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.proxyToCloud(rw, origReq, body, modelName, keyName, requestID, start, cloud)
 				return
 			}
+			// Log detail server-side; return a generic message so upstream
+			// topology never leaks to the client.
+			log.Printf("upstream error (node=%s request_id=%s): %v", node.Name, requestID, e)
 			rw.Header().Set("Content-Type", "application/json")
 			rw.WriteHeader(http.StatusBadGateway)
-			fmt.Fprintf(rw, `{"error":"upstream error: %s"}`, e.Error())
+			rw.Write([]byte(`{"error":"upstream unavailable"}`))
 		}
 
 		rec = &statusRecorder{ResponseWriter: w}
@@ -252,6 +273,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Cloud:     false,
 		})
 	}
+	h.access.Log(AccessLogEntry{
+		TimeUnixMs: time.Now().UnixMilli(),
+		RequestID:  requestID,
+		KeyName:    keyName,
+		Model:      modelName,
+		Node:       node.Name,
+		Status:     rec.statusCode,
+		LatencyMs:  int64(time.Since(start).Milliseconds()),
+		Cloud:      false,
+	})
 }
 
 // errCloudHandled is a sentinel used inside the ErrorHandler closure to signal
@@ -406,9 +437,12 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		}
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		// Log the detailed error server-side, but never leak upstream topology
+		// (hostnames, ports, dial/TLS details) to the client.
+		log.Printf("cloud upstream error (provider=%s request_id=%s): %v", cloud.Name, requestID, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		fmt.Fprintf(w, `{"error":"cloud upstream error: %s"}`, err.Error())
+		w.Write([]byte(`{"error":"upstream unavailable"}`))
 	}
 
 	rec := &statusRecorder{ResponseWriter: w}
@@ -444,6 +478,16 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			CloudModel: cloudModel,
 		})
 	}
+	h.access.Log(AccessLogEntry{
+		TimeUnixMs: time.Now().UnixMilli(),
+		RequestID:  requestID,
+		KeyName:    keyName,
+		Model:      loggedModel,
+		Node:       nodeName,
+		Status:     rec.statusCode,
+		LatencyMs:  int64(time.Since(start).Milliseconds()),
+		Cloud:      true,
+	})
 }
 
 func translateCloudPath(ollamaPath string) string {

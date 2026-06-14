@@ -56,6 +56,11 @@ var (
 		Name: "ollamamesh_quota_rejections_total",
 		Help: "Requests rejected with 429 because a per-key daily or monthly quota was exhausted",
 	}, []string{"key_name", "period"})
+
+	panicsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ollamamesh_panics_total",
+		Help: "Handler panics recovered by the recovery middleware (a non-zero rate is a bug to investigate)",
+	})
 )
 
 func RequestsTotal(key, model, node, status string) {
@@ -101,4 +106,9 @@ func CloudFallback(provider string) {
 // "daily" or "monthly".
 func QuotaRejection(key, period string) {
 	quotaRejectionsTotal.WithLabelValues(key, period).Inc()
+}
+
+// Panic records a recovered handler panic.
+func Panic() {
+	panicsTotal.Inc()
 }
