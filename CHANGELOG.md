@@ -14,7 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Upstream retry/failover: a node that fails before sending any bytes is retried on an alternate node (`routing.max_retries`), then cloud, then 502 - never violates streaming.
 - `routing.upstream_timeout_ms`: bounds the wait for upstream response headers (header phase only, not the stream body).
 - CLI flags: `--version`, `--config <path>`, `--validate` (validate config and exit), and `--help`.
-- 3 new Prometheus metrics (10 total): `ollamamesh_retries_total`, `ollamamesh_cloud_fallbacks_total`, `ollamamesh_quota_rejections_total`.
+- 4 new Prometheus metrics (11 total): `ollamamesh_retries_total`, `ollamamesh_cloud_fallbacks_total`, `ollamamesh_quota_rejections_total`, `ollamamesh_panics_total`.
+- Structured JSON access log on stdout, one line per request (`proxy.access_log`, default on). Logs key name (never the value), model, node, status, latency, request id.
+- Configurable admin listener: `admin.bind_address` (default `:8080`; set `127.0.0.1:8080` to keep the dashboard off the network) and `admin.cors_origin`.
 - `make demo`: spins up mock Ollama servers in-process, sends real traffic, shows a populated dashboard in <60s with no Ollama install required.
 - VRAM fit indicator: GPU Nodes page shows green/yellow/red badges for each downloaded model per node based on available VRAM.
 - Tokens and tok/s columns in live request log.
@@ -27,6 +29,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Security
 - Admin token comparison is now constant-time (`crypto/subtle.ConstantTimeCompare`) to remove a timing side channel.
 - Request bodies are capped at 32 MiB (`413` over the limit) to bound a memory-exhaustion DoS vector.
+- Admin API no longer sends a wildcard `Access-Control-Allow-Origin: *`. CORS is off by default (same-origin only) and opt-in via `admin.cors_origin`, closing a CSRF/exfil surface on the mutating admin API.
+- `ReadHeaderTimeout` set on the proxy, admin, and metrics servers (metrics server previously had no timeouts) to close a Slowloris DoS vector.
+- Upstream/cloud error responses no longer leak the raw error (hostnames, ports, dial/TLS details) to the client; they return a generic `502 upstream unavailable` and log the detail server-side.
+- Panic-recovery middleware returns a clean `500` and increments `ollamamesh_panics_total` instead of dropping the connection. It re-raises `http.ErrAbortHandler` so streaming aborts are unaffected (R2).
+- Usage-state persistence now `fsync`s the temp file and parent directory before the atomic rename, closing a power-loss window that could reset quota counters.
+- Config validation rejects non-`http(s)` node and cloud `base_url` values at boot instead of failing per-request later.
+
+### Performance
+- Hourly analytics buckets are pruned to a 48h window, bounding memory growth on long-lived processes.
 
 ### CI
 - CI now runs `go vet`, a `gofmt` gate, `go test -race`, and `govulncheck`.
