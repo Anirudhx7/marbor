@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/subtle"
 	"embed"
 	"encoding/csv"
 	"encoding/hex"
@@ -221,7 +222,9 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token != s.adminToken {
+		// Constant-time compare so a timing side channel cannot reveal the
+		// admin token byte-by-byte. Length is part of the comparison.
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.adminToken)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error":"unauthorized"}`))
