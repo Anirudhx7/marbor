@@ -326,6 +326,46 @@ Import `grafana/ollama-mesh.json` into Grafana and point the Prometheus datasour
 
 ---
 
+## How It Compares
+
+The table below is intentionally honest. "partial" means the feature exists but with meaningful limitations.
+
+| | ollama-mesh | LiteLLM | LM Studio server | Raw Ollama | nginx upstream |
+|---|---|---|---|---|---|
+| **Language / deploy** | Go, single static binary | Python, pip/Docker | Electron desktop app | Go binary | C, system package |
+| **Auth (Bearer keys)** | ✓ per-key, enforced at proxy | ✓ virtual keys | ✗ none | ✗ none | ✗ none |
+| **Per-key rate limits** | ✓ per-hour token bucket | ✓ | ✗ | ✗ | ✗ |
+| **Per-key daily/monthly quotas** | ✓ persisted across restarts | ✓ | ✗ | ✗ | ✗ |
+| **Per-key model allow-lists** | ✓ enforced, 403 on violation | partial (budget-based) | ✗ | ✗ | ✗ |
+| **Per-key token + cost attribution** | ✓ real parsed counts, saved across restarts | ✓ | ✗ | ✗ | ✗ |
+| **Warm-model routing (VRAM-aware)** | ✓ polls /api/ps every 2s, routes to warm node | ✗ treats Ollama as a dumb URL | ✗ single machine | ✗ no routing layer | ✗ no routing intelligence |
+| **GPU telemetry (VRAM / temp / power)** | partial - mesh host only via nvidia-smi; remote node GPUs not visible yet | ✗ | ✗ | ✗ | ✗ |
+| **Cloud overflow (consent-first)** | ✓ off by default; OpenAI + Anthropic | ✓ broad provider support | ✗ | ✗ | ✗ |
+| **Savings vs pure-cloud tracking** | ✓ real parsed token math, shows "—" when unknown | ✗ | ✗ | ✗ | ✗ |
+| **Embedded dashboard** | ✓ React UI in the binary | partial (separate UI) | ✓ desktop GUI | ✗ | ✗ |
+| **Single binary, zero runtime deps** | ✓ | ✗ requires Python + deps | ✗ requires Electron | ✓ | ✓ |
+| **Prometheus metrics** | ✓ 7 metrics, Grafana dashboard included | ✓ | ✗ | ✗ | partial |
+| **Audit log** | ✓ append-only JSON-lines | partial | ✗ | ✗ | partial |
+
+### Use ollama-mesh when...
+
+- You have one or more Ollama nodes and want auth, per-key rate limits, and a usage dashboard without standing up a Python service.
+- You want GPU-warm-first routing: send requests to the node that already has the model loaded, not a random node that has to cold-load it.
+- You want cloud overflow that is off by default and explicit in your config - not a default that quietly bills you.
+- You need a single static binary that ops teams can drop onto a VM and manage like any other Go service.
+
+### Use LiteLLM instead when...
+
+- You need to route across many cloud providers (Bedrock, Vertex, Cohere, etc.) and don't have on-prem Ollama nodes.
+- You are already invested in the LiteLLM ecosystem (proxy + Python SDK + teams dashboard) and don't need GPU-aware routing.
+- You are fine with the Python operational footprint.
+
+### Use LM Studio when...
+
+- You are a developer on a single machine and want a GUI to browse, download, and chat with models. It is not an ops/team tool and ships no auth by design.
+
+---
+
 ## Contributing
 
 PRs welcome. Run `go test ./...` before submitting.
