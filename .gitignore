@@ -33,3 +33,12 @@ dist/
 # Runtime per-key usage/quota state
 usage-state.json
 usage-state.json.tmp
+
+# Stray go build outputs (use make/-o, never bare `go build ./cmd/...`)
+/demotraffic
+/mockollama
+/demo
+nul
+
+# Claude Code local working dirs
+.claude/
