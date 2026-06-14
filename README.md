@@ -83,7 +83,7 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 
 **Try it in 60 seconds (no Ollama needed):**
 
-Requirements: Docker Desktop + Go 1.22+
+Requirements: Docker Desktop + Go 1.25+
 
 ```bash
 git clone https://github.com/Anirudhx7/ollama-mesh
