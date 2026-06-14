@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-14
+
 ### Added
 - Per-key usage and hard quotas (`daily_limit` / `monthly_limit`) that persist across restarts via an atomic JSON state file (`auth.state_path`, default `usage-state.json`, `-` to disable). A restart no longer resets quotas or usage.
 - Per-key model allow-lists enforced at the proxy: requests for a model outside a key's list return `403`.
