@@ -66,11 +66,11 @@ func TestHandleModelFit_HappyPath(t *testing.T) {
 
 	var resp struct {
 		Nodes []struct {
-			Name        string `json:"name"`
-			VRAMSource  string `json:"vram_source"`
-			VRAMFree    int64  `json:"vram_free_bytes"`
-			VRAMTotal   int64  `json:"vram_total_bytes"`
-			Models      []struct {
+			Name       string `json:"name"`
+			VRAMSource string `json:"vram_source"`
+			VRAMFree   int64  `json:"vram_free_bytes"`
+			VRAMTotal  int64  `json:"vram_total_bytes"`
+			Models     []struct {
 				Name   string `json:"name"`
 				Fit    string `json:"fit"`
 				Loaded bool   `json:"loaded"`

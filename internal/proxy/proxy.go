@@ -317,7 +317,6 @@ func (h *Handler) serveModels(w http.ResponseWriter) {
 	w.Write(out)
 }
 
-
 // serveAndRecoverAbort runs the reverse proxy and absorbs http.ErrAbortHandler,
 // which httputil.ReverseProxy panics with when the upstream dies mid-stream.
 // Without this, the net/http server recovers the panic above us and every

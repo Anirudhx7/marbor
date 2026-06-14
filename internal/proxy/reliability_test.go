@@ -145,7 +145,7 @@ func TestV1ModelsEndpoint(t *testing.T) {
 	nodes[1].Lock()
 	nodes[1].Healthy = true
 	nodes[1].LoadedModels = []router.ModelInfo{
-		{Name: "mistral"},     // duplicate - should appear once
+		{Name: "mistral"}, // duplicate - should appear once
 		{Name: "codellama"},
 	}
 	nodes[1].Unlock()

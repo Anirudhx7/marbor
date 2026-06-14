@@ -33,8 +33,8 @@ func isOllamaPath(path string) bool {
 // Ollama-native requests, replaces the response body with an Ollama NDJSON
 // stream translated from the OpenAI SSE (or JSON) response.
 type translatingTransport struct {
-	inner      http.RoundTripper
-	origPath   string // the client's original request path (e.g. /api/chat)
+	inner       http.RoundTripper
+	origPath    string // the client's original request path (e.g. /api/chat)
 	clientModel string // model name the client asked for (echoed back in NDJSON)
 }
 
@@ -228,11 +228,11 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 // ------------------------------------------------------------------
 
 type ollamaChatLine struct {
-	Model   string          `json:"model"`
-	Message *ollamaMessage  `json:"message,omitempty"`
-	Done    bool            `json:"done"`
-	EvalCount       int64   `json:"eval_count,omitempty"`
-	PromptEvalCount int64   `json:"prompt_eval_count,omitempty"`
+	Model           string         `json:"model"`
+	Message         *ollamaMessage `json:"message,omitempty"`
+	Done            bool           `json:"done"`
+	EvalCount       int64          `json:"eval_count,omitempty"`
+	PromptEvalCount int64          `json:"prompt_eval_count,omitempty"`
 }
 
 type ollamaMessage struct {
@@ -241,17 +241,17 @@ type ollamaMessage struct {
 }
 
 type ollamaGenerateLine struct {
-	Model    string `json:"model"`
-	Response string `json:"response,omitempty"`
-	Done     bool   `json:"done"`
-	EvalCount       int64 `json:"eval_count,omitempty"`
-	PromptEvalCount int64 `json:"prompt_eval_count,omitempty"`
+	Model           string `json:"model"`
+	Response        string `json:"response,omitempty"`
+	Done            bool   `json:"done"`
+	EvalCount       int64  `json:"eval_count,omitempty"`
+	PromptEvalCount int64  `json:"prompt_eval_count,omitempty"`
 }
 
 func buildChatNDJSON(model, content string, done bool, evalCount, promptEvalCount int64) []byte {
 	line := ollamaChatLine{
-		Model: model,
-		Done:  done,
+		Model:           model,
+		Done:            done,
 		EvalCount:       evalCount,
 		PromptEvalCount: promptEvalCount,
 	}
@@ -264,9 +264,9 @@ func buildChatNDJSON(model, content string, done bool, evalCount, promptEvalCoun
 
 func buildGenerateNDJSON(model, response string, done bool, evalCount, promptEvalCount int64) []byte {
 	line := ollamaGenerateLine{
-		Model:    model,
-		Response: response,
-		Done:     done,
+		Model:           model,
+		Response:        response,
+		Done:            done,
 		EvalCount:       evalCount,
 		PromptEvalCount: promptEvalCount,
 	}

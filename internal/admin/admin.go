@@ -930,19 +930,19 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 //	unknown - can't determine free VRAM
 func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 	type modelFitEntry struct {
-		Name             string `json:"name"`
-		SizeBytes        int64  `json:"size_bytes"`
-		VRAMEstimateBytes int64 `json:"vram_estimate_bytes"`
-		Fit              string `json:"fit"`
-		Loaded           bool   `json:"loaded"`
+		Name              string `json:"name"`
+		SizeBytes         int64  `json:"size_bytes"`
+		VRAMEstimateBytes int64  `json:"vram_estimate_bytes"`
+		Fit               string `json:"fit"`
+		Loaded            bool   `json:"loaded"`
 	}
 	type nodeFitEntry struct {
-		Name          string          `json:"name"`
-		URL           string          `json:"url"`
-		VRAMFreeBytes int64           `json:"vram_free_bytes"`
-		VRAMTotalBytes int64          `json:"vram_total_bytes"`
-		VRAMSource    string          `json:"vram_source"`
-		Models        []modelFitEntry `json:"models"`
+		Name           string          `json:"name"`
+		URL            string          `json:"url"`
+		VRAMFreeBytes  int64           `json:"vram_free_bytes"`
+		VRAMTotalBytes int64           `json:"vram_total_bytes"`
+		VRAMSource     string          `json:"vram_source"`
+		Models         []modelFitEntry `json:"models"`
 	}
 
 	nodes := s.router.Nodes()

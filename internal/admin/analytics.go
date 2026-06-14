@@ -26,7 +26,7 @@ type ModelStat struct {
 // All reads/writes protected by mu.
 type analyticsStore struct {
 	mu           sync.RWMutex
-	refCostPer1K float64 // reference cloud rate for valuing local tokens (immutable)
+	refCostPer1K float64                  // reference cloud rate for valuing local tokens (immutable)
 	hourly       map[string]*HourlyBucket // key = "2006-01-02T15"
 	byModel      map[string]*ModelStat
 }

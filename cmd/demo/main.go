@@ -88,12 +88,12 @@ func (m *mockOllamaServer) shutdown(ctx context.Context) {
 // handlePS responds to GET /api/ps with the warm model pre-loaded.
 func (m *mockOllamaServer) handlePS(w http.ResponseWriter, r *http.Request) {
 	type modelEntry struct {
-		Name      string `json:"name"`
-		Size      int64  `json:"size"`
-		Digest    string `json:"digest"`
+		Name      string   `json:"name"`
+		Size      int64    `json:"size"`
+		Digest    string   `json:"digest"`
 		Details   struct{} `json:"details"`
-		ExpiresAt string `json:"expires_at"`
-		SizeVRAM  int64  `json:"size_vram"`
+		ExpiresAt string   `json:"expires_at"`
+		SizeVRAM  int64    `json:"size_vram"`
 	}
 	resp := struct {
 		Models []modelEntry `json:"models"`
@@ -138,13 +138,13 @@ func writeNDJSON(w http.ResponseWriter, model, content string, evalCount, prompt
 
 	// Chunk 2: done with token counts so admin.Server can parse savings.
 	_ = enc.Encode(map[string]interface{}{
-		"model":            model,
-		"created_at":       "2026-01-01T00:00:00Z",
-		"message":          map[string]string{"role": "assistant", "content": ""},
-		"done":             true,
-		"eval_count":       evalCount,
+		"model":             model,
+		"created_at":        "2026-01-01T00:00:00Z",
+		"message":           map[string]string{"role": "assistant", "content": ""},
+		"done":              true,
+		"eval_count":        evalCount,
 		"prompt_eval_count": promptEvalCount,
-		"total_duration":   500000000,
+		"total_duration":    500000000,
 	})
 	if flusher != nil {
 		flusher.Flush()
@@ -188,13 +188,13 @@ func (m *mockOllamaServer) handleGenerate(w http.ResponseWriter, r *http.Request
 		flusher.Flush()
 	}
 	_ = enc.Encode(map[string]interface{}{
-		"model":            model,
-		"created_at":       "2026-01-01T00:00:00Z",
-		"response":         "",
-		"done":             true,
-		"eval_count":       35,
+		"model":             model,
+		"created_at":        "2026-01-01T00:00:00Z",
+		"response":          "",
+		"done":              true,
+		"eval_count":        35,
 		"prompt_eval_count": 12,
-		"total_duration":   400000000,
+		"total_duration":    400000000,
 	})
 	if flusher != nil {
 		flusher.Flush()

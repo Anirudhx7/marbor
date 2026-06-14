@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	spineTestModel  = "llama3.2:8b"
-	spineTestKeyVal = "sk-spine-test-key-001"
+	spineTestModel   = "llama3.2:8b"
+	spineTestKeyVal  = "sk-spine-test-key-001"
 	spineTestKeyName = "spine-test"
 )
 
@@ -38,11 +38,11 @@ const spineNDJSON = `{"model":"llama3.2:8b","response":"Hello","done":false}
 
 // buildSpineStack constructs the full handler chain used by every Spine sub-test:
 //
-//   mockOllama  -- responds with spineNDJSON
-//   router      -- one node (pointing at mockOllama), pre-seeded as warm for spineTestModel
-//   adminSrv    -- real admin.Server for request log inspection
-//   authMW      -- auth enabled with one valid key (spineTestKeyVal)
-//   handler     -- the composed http.Handler: authMW.Handler(proxyHandler)
+//	mockOllama  -- responds with spineNDJSON
+//	router      -- one node (pointing at mockOllama), pre-seeded as warm for spineTestModel
+//	adminSrv    -- real admin.Server for request log inspection
+//	authMW      -- auth enabled with one valid key (spineTestKeyVal)
+//	handler     -- the composed http.Handler: authMW.Handler(proxyHandler)
 //
 // The node is set warm directly (no polling) so the test never depends on
 // background poll timing.

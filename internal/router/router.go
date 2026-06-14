@@ -82,8 +82,8 @@ type Router struct {
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
 	// tagsCache caches /api/tags results per node URL for 30 seconds.
-	tagsCache    map[string]*TagsCache
-	tagsMu       sync.Mutex
+	tagsCache map[string]*TagsCache
+	tagsMu    sync.Mutex
 	// tagsInflight prevents concurrent fetches to the same node URL (cache stampede).
 	tagsInflight    map[string]*tagsInflightEntry
 	upstreamTimeout time.Duration // ResponseHeaderTimeout for upstream Transport
