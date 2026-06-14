@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -62,10 +63,43 @@ func printFirstRunBanner(fr *config.FirstRunResult, cfgPath string, saved bool) 
 }
 
 func main() {
-	cfgPath := os.Getenv("CONFIG_PATH")
+	var (
+		showVersion  = flag.Bool("version", false, "print version and exit")
+		cfgFlag      = flag.String("config", "", "path to config file (overrides CONFIG_PATH env; default config.yaml)")
+		validateOnly = flag.Bool("validate", false, "load and validate the config file, then exit (0 = valid, 1 = invalid)")
+	)
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "ollama-mesh %s - warm-model-aware load balancer with cloud overflow for Ollama\n\n", Version)
+		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh [flags]\n\nFlags:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nWith no config file present, the first run auto-detects local Ollama,\ngenerates keys, and writes config.yaml.\n")
+	}
+	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("ollama-mesh %s\n", Version)
+		return
+	}
+
+	cfgPath := *cfgFlag
+	if cfgPath == "" {
+		cfgPath = os.Getenv("CONFIG_PATH")
+	}
 	if cfgPath == "" {
 		cfgPath = "config.yaml"
 	}
+
+	// --validate: load and validate the existing config, report, and exit.
+	// It never triggers first-run generation - it only checks what is there.
+	if *validateOnly {
+		if _, vErr := config.LoadConfig(cfgPath); vErr != nil {
+			fmt.Fprintf(os.Stderr, "config %s: INVALID: %v\n", cfgPath, vErr)
+			os.Exit(1)
+		}
+		fmt.Printf("config %s: OK\n", cfgPath)
+		return
+	}
+
 	cfg, err := config.LoadConfig(cfgPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
