@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 )
 
 type contextKey string
@@ -262,12 +263,14 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		if ks.dailyLimit > 0 || ks.monthlyLimit > 0 {
 			today, month, _ := ks.counter.stats()
 			if ks.dailyLimit > 0 && today > ks.dailyLimit {
+				metrics.QuotaRejection(ks.name, "daily")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
 				w.Write([]byte(`{"error":"daily quota exceeded"}`))
 				return
 			}
 			if ks.monthlyLimit > 0 && month > ks.monthlyLimit {
+				metrics.QuotaRejection(ks.name, "monthly")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
 				w.Write([]byte(`{"error":"monthly quota exceeded"}`))

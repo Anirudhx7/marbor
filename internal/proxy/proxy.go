@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,10 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
+
+// maxRequestBodyBytes bounds how much of a request body the proxy will buffer
+// before extracting the model name. Caps a memory-exhaustion DoS vector.
+const maxRequestBodyBytes = 32 << 20 // 32 MiB
 
 type Handler struct {
 	router *router.Router
@@ -52,11 +57,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body []byte
 	if r.Body != nil {
 		var err error
-		body, err = io.ReadAll(r.Body)
+		// Bound per-request memory: a single client cannot force the proxy to
+		// buffer an unbounded body. 32 MiB is generous for prompts and
+		// base64-encoded images while still capping a DoS vector.
+		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 		if err != nil {
+			status := http.StatusBadRequest
+			msg := `{"error":"read body"}`
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				status = http.StatusRequestEntityTooLarge
+				msg = `{"error":"request body exceeds 32MiB limit"}`
+			}
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"read body"}`))
+			w.WriteHeader(status)
+			w.Write([]byte(msg))
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
@@ -147,6 +162,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if attempt < maxRetries {
 				alt, _ := h.router.RouteExcluding(modelName, tried)
 				if alt != nil {
+					metrics.Retry(node.Name)
 					nextNode = alt
 					retryErr = e
 					return
@@ -340,6 +356,7 @@ func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r
 }
 
 func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, cloud *config.CloudProvider) {
+	metrics.CloudFallback(cloud.Name)
 	path := translateCloudPath(r.URL.Path)
 
 	outBody := body

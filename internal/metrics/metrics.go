@@ -41,6 +41,21 @@ var (
 		Name: "ollamamesh_tokens_total",
 		Help: "Total tokens processed (best-effort from Ollama responses)",
 	}, []string{"key_name", "node"})
+
+	retriesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollamamesh_retries_total",
+		Help: "Upstream failover retries (a node failed before sending bytes and another was tried)",
+	}, []string{"node"})
+
+	cloudFallbacksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollamamesh_cloud_fallbacks_total",
+		Help: "Requests that overflowed to a cloud provider because no local node could serve them",
+	}, []string{"provider"})
+
+	quotaRejectionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollamamesh_quota_rejections_total",
+		Help: "Requests rejected with 429 because a per-key daily or monthly quota was exhausted",
+	}, []string{"key_name", "period"})
 )
 
 func RequestsTotal(key, model, node, status string) {
@@ -69,4 +84,21 @@ func CacheMiss() {
 
 func TokensTotal(key, node string, count float64) {
 	tokensTotal.WithLabelValues(key, node).Add(count)
+}
+
+// Retry records that an upstream node failed before any response bytes and the
+// proxy moved on to another node.
+func Retry(node string) {
+	retriesTotal.WithLabelValues(node).Inc()
+}
+
+// CloudFallback records a request overflowing to the named cloud provider.
+func CloudFallback(provider string) {
+	cloudFallbacksTotal.WithLabelValues(provider).Inc()
+}
+
+// QuotaRejection records a 429 caused by an exhausted per-key quota. period is
+// "daily" or "monthly".
+func QuotaRejection(key, period string) {
+	quotaRejectionsTotal.WithLabelValues(key, period).Inc()
 }
