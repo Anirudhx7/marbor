@@ -1,7 +1,7 @@
 <!-- generated-by: gsd-doc-writer -->
 # ollama-mesh
 
-**Warm-model-aware load balancer with cloud overflow for Ollama. Route to the node that already has the model loaded, overflow to OpenAI/Anthropic when local capacity runs out - never see "Ollama busy" again.**
+**Zero cold starts for your Ollama fleet.** One endpoint for all your LLM traffic: every request goes to the GPU node that already holds the model warm in VRAM, with cloud overflow only when you allow it. Local first, cloud second, with receipts.
 
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
@@ -12,18 +12,16 @@
 
 ---
 
-## What's New in v0.2.1
+## LiteLLM treats Ollama like an API. ollama-mesh treats it like a cluster.
 
-- **Zero-config first run**: `./ollama-mesh` with no config.yaml auto-detects localhost:11434, generates API keys, and prints one curl example to get started
-- **`make demo`**: spins up mock Ollama servers in Docker, sends real traffic, shows a fully populated dashboard in under 60 seconds - Docker only, no Ollama or Go install required
-- **VRAM fit badges**: GPU Nodes page shows green/yellow/red fit indicators for each downloaded model per node
-- **Tokens/sec in request log**: live request table now shows Tokens and tok/s columns
-- **Real savings math**: saved_usd is computed from actual parsed token counts (eval_count + prompt_eval_count). Shows "—" when token data is unavailable - never a fabricated number
-- **Cloud model rewriting visible**: request log shows "llama3 -> gpt-4o-mini" when cloud default_model is applied
-- **Mid-stream abort logging**: aborted requests appear in metrics, admin log, and audit log with status="aborted"
-- **Configurable savings reference rate**: `savings.reference_cost_per_1k` in config.yaml
+It polls each node's GPU state every 2 seconds and sends every request to whichever box already has the model warm in VRAM - so you stop paying the 30-second cold-start tax on each call. When the cluster is saturated or down, it overflows to OpenAI/Anthropic (off by default, consent-first). One static Go binary. No Python, no runtime.
 
-See [CHANGELOG.md](CHANGELOG.md) for the full list.
+```bash
+# See it live in 60 seconds - no Ollama, no Go install, just Docker:
+git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh && make demo
+```
+
+> **Benchmark:** a reproducible warm-vs-cold time-to-first-token harness lives in [`bench/`](bench/). Headline numbers are measured on real GPU hardware and published as measurements, never estimates. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 

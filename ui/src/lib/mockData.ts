@@ -199,16 +199,18 @@ export const mockRoutingRules: RoutingRule[] = [
   },
 ];
 
+// Deterministic so the demo chart is stable across refreshes (no Math.random
+// sawtooth - same honesty standard the real product holds itself to). A diurnal
+// base plus a fixed harmonic gives believable shape without jumping each render.
 export const generateRequestsPerMinuteData = (): MetricData[] => {
   const data: MetricData[] = [];
   const now = new Date();
   for (let i = 1440; i >= 0; i -= 5) {
     const time = new Date(now.getTime() - i * 60000);
-    const baseValue = 50 + Math.sin(i / 100) * 30;
-    const randomVariation = Math.random() * 40 - 20;
+    const value = 50 + Math.sin(i / 100) * 30 + Math.sin(i / 13) * 12;
     data.push({
       timestamp: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      value: Math.max(0, Math.floor(baseValue + randomVariation)),
+      value: Math.max(0, Math.floor(value)),
     });
   }
   return data;
@@ -227,14 +229,17 @@ export const generateTokenUsageData = (): TokenUsageData[] => [
   { keyName: 'Demo Account', tokens: 45678 },
 ];
 
+// Deterministic latency series (see generateRequestsPerMinuteData) - stable
+// ~45-70ms shape, no per-render random jitter.
 export const generateNodeLatencyData = (): MetricData[] => {
   const data: MetricData[] = [];
   const now = new Date();
   for (let i = 1440; i >= 0; i -= 10) {
     const time = new Date(now.getTime() - i * 60000);
+    const value = 52 + Math.sin(i / 60) * 12 + Math.sin(i / 7) * 6;
     data.push({
       timestamp: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      value: Math.floor(45 + Math.random() * 30),
+      value: Math.floor(value),
     });
   }
   return data;
