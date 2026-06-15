@@ -88,6 +88,10 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 		defer pw.Close()
 
 		scanner := bufio.NewScanner(src)
+		// Default Scanner caps a line at 64KB; a large SSE data: frame (big delta
+		// or a usage/reasoning block) would exceed it and silently truncate the
+		// translated stream. Allow up to 4MB per line.
+		scanner.Buffer(make([]byte, 0, 64*1024), 4<<20)
 
 		var (
 			completionTokens int64

@@ -160,6 +160,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// a variable in this stack frame without heap allocation overhead.
 		var nextNode *router.NodeState
 		var retryErr error
+		// errHandled is set when ErrorHandler fired and already released this
+		// node's connection slot, so the post-loop DecrConn must not run again
+		// (a double decrement skews least-connections toward the failed node).
+		var errHandled bool
 
 		// origReq is captured here so proxyToCloud receives the original
 		// client request, not the modified upstream request that ErrorHandler
@@ -168,6 +172,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, e error) {
 			// Upstream failed before writing any bytes - safe to retry.
 			h.router.DecrConn(node)
+			errHandled = true
 			tried[node.URL] = true
 
 			// If the client already disconnected, do not burn an alternate node
@@ -228,8 +233,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Success or terminal failure - exit retry loop.
-		h.router.DecrConn(node)
+		// Success or terminal failure - exit retry loop. Skip the decrement if
+		// ErrorHandler already released this node's slot.
+		if !errHandled {
+			h.router.DecrConn(node)
+		}
 		break
 	}
 

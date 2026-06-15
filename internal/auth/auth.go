@@ -246,6 +246,15 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			w.Write([]byte(`{"error":"invalid api key"}`))
 			return
 		}
+		// Enforce key expiry before consuming any rate-limit/quota budget. The
+		// expires_at field was loaded and surfaced in the UI but never checked, so
+		// expired keys authenticated forever.
+		if keyExpired(ks.expiresAt, time.Now()) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"api key expired"}`))
+			return
+		}
 		if !ks.limiter.allow() {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -281,6 +290,23 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, AllowedModelsContextKey, ks.models)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// keyExpired reports whether an API key's expires_at has passed. Empty means no
+// expiry. Accepts a date ("2006-01-02", valid through the end of that day) or a
+// full RFC3339 timestamp. An unparseable value is treated as non-expiring so a
+// config typo never silently locks out a working key (it is validated at load).
+func keyExpired(expiresAt string, now time.Time) bool {
+	if expiresAt == "" {
+		return false
+	}
+	if t, err := time.Parse("2006-01-02", expiresAt); err == nil {
+		return now.After(t.Add(24 * time.Hour))
+	}
+	if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
+		return now.After(t)
+	}
+	return false
 }
 
 func KeyNameFromContext(ctx context.Context) string {
