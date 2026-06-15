@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-16
+
 ### Added
 - Cluster-wide remote-node VRAM telemetry. Each node reports a VRAM source (`nvidia`, `declared`, `api`, or `none`) so the dashboard is honest about where the number came from: `nvidia-smi` is read only for local nodes, remote nodes fall back to a declared `vram_total_mb` (new optional per-node config field) or the VRAM derived from Ollama's `/api/ps` (`size_vram`), and show `none` when nothing is known.
 
