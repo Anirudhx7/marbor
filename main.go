@@ -186,6 +186,7 @@ func main() {
 	adminSrv.SetConfigPath(cfgPath)
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
+	proxyHandler.SetAuth(authMw)
 	accessEnabled := cfg.Proxy.AccessLog == nil || *cfg.Proxy.AccessLog
 	proxyHandler.SetAccessLogger(proxy.NewAccessLogger(os.Stdout, accessEnabled))
 	log.Printf("Access log     : %t (stdout, JSON lines)", accessEnabled)

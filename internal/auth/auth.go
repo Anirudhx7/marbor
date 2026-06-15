@@ -89,6 +89,19 @@ func (c *keyCounter) incrementAndStats() (today, month int) {
 	return c.today, c.month
 }
 
+// decrement reverses one increment(), used to refund a request that was
+// rejected by policy before it reached a node. Clamps at zero.
+func (c *keyCounter) decrement() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.today > 0 {
+		c.today--
+	}
+	if c.month > 0 {
+		c.month--
+	}
+}
+
 // addTokens accumulates token usage for the current day and month.
 func (c *keyCounter) addTokens(n int64) {
 	if n <= 0 {
@@ -157,6 +170,17 @@ func (tb *tokenBucket) snapshot() (remaining float64, capacity float64, resetAt 
 	}
 	reset := now.Add(time.Duration(secsUntilFull * float64(time.Second))).Unix()
 	return current, tb.capacity, reset
+}
+
+// refund returns one token to the bucket (capped at capacity), reversing an
+// allow() for a request that was rejected by policy before reaching a node.
+func (tb *tokenBucket) refund() {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	tb.tokens++
+	if tb.tokens > tb.capacity {
+		tb.tokens = tb.capacity
+	}
 }
 
 func (tb *tokenBucket) allow() bool {
@@ -229,6 +253,24 @@ func (m *Middleware) RevokeKey(name string) {
 	}
 	delete(m.keys, ks.key)
 	delete(m.byName, name)
+}
+
+// Refund restores one request's rate-limit token and quota count for a key,
+// used when the proxy rejects the request by policy (model allow-list) before
+// it reaches a node, so a disallowed request never burns the key's budget.
+// No-op for an unknown key name (e.g. auth disabled).
+func (m *Middleware) Refund(name string) {
+	if name == "" {
+		return
+	}
+	m.mu.RLock()
+	ks, ok := m.byName[name]
+	m.mu.RUnlock()
+	if !ok {
+		return
+	}
+	ks.limiter.refund()
+	ks.counter.decrement()
 }
 
 func (m *Middleware) Handler(next http.Handler) http.Handler {

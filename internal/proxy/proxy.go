@@ -32,11 +32,19 @@ type Handler struct {
 	admin  *admin.Server
 	audit  *audit.Logger
 	access *AccessLogger
+	auth   *auth.Middleware
 }
 
 func NewHandler(r *router.Router, a *admin.Server, al *audit.Logger) *Handler {
 	// access defaults to a no-op logger; main wires a real one via SetAccessLogger.
 	return &Handler{router: r, admin: a, audit: al, access: NewAccessLogger(nil, false)}
+}
+
+// SetAuth wires the auth middleware so the proxy can refund a key's rate-limit
+// and quota budget when a request is rejected by policy (model allow-list)
+// before ever reaching a node. Optional; nil keeps refunds disabled.
+func (h *Handler) SetAuth(m *auth.Middleware) {
+	h.auth = m
 }
 
 // SetAccessLogger installs the structured access logger. Passing nil keeps the
@@ -100,6 +108,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !permitted {
+			// The request is rejected by policy before reaching any node, so
+			// refund the rate-limit token and quota count auth consumed - a
+			// disallowed model must not burn the key's budget.
+			if h.auth != nil {
+				h.auth.Refund(keyName)
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintf(w, `{"error":"model %q not allowed for this api key"}`, modelName)
