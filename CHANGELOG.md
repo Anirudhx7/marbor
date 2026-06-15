@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Cluster-wide remote-node VRAM telemetry. Each node reports a VRAM source (`nvidia`, `declared`, `api`, or `none`) so the dashboard is honest about where the number came from: `nvidia-smi` is read only for local nodes, remote nodes fall back to a declared `vram_total_mb` (new optional per-node config field) or the VRAM derived from Ollama's `/api/ps` (`size_vram`), and show `none` when nothing is known.
+
+### Fixed
+- API key expiry is now enforced. A key past `expires_at` (date `2006-01-02`, valid through end of day, or RFC3339) is rejected before rate-limiting; unparseable values are treated as non-expiring.
+- Allow-list rejections (`403`) no longer consume a key's rate-limit/quota budget - the token is refunded, so a blocked model never exhausts a key into a `429`.
+- Cloud overflow with `stream: false` now returns a single Ollama JSON object (not an NDJSON stream), matching native Ollama semantics.
+- Several concurrency and correctness fixes: double connection-decrement on pre-byte proxy errors, two data races (`handleSummary`/`handleKeys` reading node and key state without the lock), a quota check-then-increment TOCTOU, and SSE response truncation on the cloud-translation path.
+- Prometheus `model` label is now bounded (cap 256 distinct values, overflow folded to `other`, empty to `unknown`) to prevent client-controlled label cardinality blowup.
+
 ## [0.3.0] - 2026-06-14
 
 ### Added
