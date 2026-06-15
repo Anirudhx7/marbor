@@ -101,9 +101,11 @@ func TestPollNodeWithMockServer(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		// Ollama's /api/ps sends size_vram (snake_case). Using the real key guards
+		// the decode-tag bug where the field was silently dropped to 0.
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"models": []map[string]interface{}{
-				{"name": "llama3.2:8b", "sizeVram": 4294967296},
+				{"name": "llama3.2:8b", "size_vram": 4294967296},
 			},
 		})
 	}))
@@ -128,10 +130,77 @@ func TestPollNodeWithMockServer(t *testing.T) {
 		t.Errorf("model = %s, want llama3.2:8b", r.nodes[0].LoadedModels[0].Name)
 	}
 	if r.nodes[0].LoadedModels[0].SizeVRAM != 4294967296 {
-		t.Errorf("SizeVRAM = %d, want 4294967296", r.nodes[0].LoadedModels[0].SizeVRAM)
+		t.Errorf("SizeVRAM = %d, want 4294967296 (size_vram must decode)", r.nodes[0].LoadedModels[0].SizeVRAM)
+	}
+	// With no nvidia-smi available (CI), used-VRAM is derived from /api/ps:
+	// 4294967296 bytes / 1MiB = 4096 MB. This is the real cross-cluster signal.
+	if r.nodes[0].VRAMUsedMB != 4096 {
+		t.Errorf("VRAMUsedMB = %d, want 4096 (summed from /api/ps size_vram)", r.nodes[0].VRAMUsedMB)
 	}
 	if r.nodes[0].LastPollAt.IsZero() {
 		t.Error("expected LastPollAt to be set")
+	}
+}
+
+// TestRemoteNodeVRAMTelemetry verifies the agentless cross-cluster telemetry:
+// a remote node (non-localhost URL, so nvidia-smi is never attributed to it)
+// reports real used-VRAM summed from its own /api/ps, an operator-declared total,
+// and the honest "declared" source label.
+func TestRemoteNodeVRAMTelemetry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ps" {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"models": []map[string]interface{}{
+				{"name": "llama3.2:8b", "size_vram": 4294967296}, // 4096 MB
+				{"name": "mistral:7b", "size_vram": 4294967296},  // 4096 MB
+			},
+		})
+	}))
+	defer srv.Close()
+
+	// The test/CI environment (golang container) has no nvidia-smi, so queryGPU
+	// returns hasGPU=false and the declared-total branch is exercised regardless of
+	// the localhost test-server URL. isLocalNode's remote-vs-local logic is covered
+	// independently by TestIsLocalNode.
+	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-remote", URL: srv.URL, GPUModel: "A10G", VRAMTotalMB: 24576},
+	}, nil)
+
+	r.pollNode(r.nodes[0])
+
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+
+	// Two models at 4096 MB each => 8192 MB used, summed from /api/ps.
+	if r.nodes[0].VRAMUsedMB != 8192 {
+		t.Errorf("VRAMUsedMB = %d, want 8192", r.nodes[0].VRAMUsedMB)
+	}
+	// Declared total is surfaced (CI has no nvidia-smi, so the declared branch wins).
+	if r.nodes[0].VRAMTotalMB != 24576 {
+		t.Errorf("VRAMTotalMB = %d, want 24576 (operator-declared)", r.nodes[0].VRAMTotalMB)
+	}
+	if r.nodes[0].VRAMSource != "declared" {
+		t.Errorf("VRAMSource = %q, want \"declared\"", r.nodes[0].VRAMSource)
+	}
+}
+
+func TestIsLocalNode(t *testing.T) {
+	cases := map[string]bool{
+		"http://localhost:11434":  true,
+		"http://127.0.0.1:11434":  true,
+		"http://[::1]:11434":      true,
+		"http://0.0.0.0:11434":    true,
+		"http://10.0.1.10:11434":  false,
+		"http://gpu-remote:11434": false,
+		"http://example.com":      false,
+	}
+	for url, want := range cases {
+		if got := isLocalNode(url); got != want {
+			t.Errorf("isLocalNode(%q) = %v, want %v", url, got, want)
+		}
 	}
 }
 

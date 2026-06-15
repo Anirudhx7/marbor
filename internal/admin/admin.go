@@ -76,12 +76,15 @@ type RequestLog struct {
 }
 
 type nodeResp struct {
-	ID            string             `json:"id"`
-	Name          string             `json:"name"`
-	Port          int                `json:"port"`
-	GPUModel      string             `json:"gpuModel"`
-	VRAMTotalMB   int64              `json:"vramTotalMB"`
-	VRAMUsedMB    int64              `json:"vramUsedMB"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Port        int    `json:"port"`
+	GPUModel    string `json:"gpuModel"`
+	VRAMTotalMB int64  `json:"vramTotalMB"`
+	VRAMUsedMB  int64  `json:"vramUsedMB"`
+	// VRAMSource: "nvidia" (live local nvidia-smi), "api" (summed from the node's
+	// own /api/ps size_vram, total unknown), "declared" (total from config), "none".
+	VRAMSource    string             `json:"vramSource"`
 	PowerDrawW    float64            `json:"powerDrawW"`
 	Temperature   *float64           `json:"temperature"`
 	Health        string             `json:"health"`
@@ -268,6 +271,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			GPUModel:      n.GPUModel,
 			VRAMTotalMB:   n.VRAMTotalMB,
 			VRAMUsedMB:    n.VRAMUsedMB,
+			VRAMSource:    n.VRAMSource,
 			PowerDrawW:    n.PowerDrawW,
 			Temperature:   n.Temperature,
 			Health:        health,

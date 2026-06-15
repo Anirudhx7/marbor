@@ -137,7 +137,7 @@ function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) 
 
       {/* VRAM */}
       <div className="mb-4">
-        <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} />
+        <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} source={node.vramSource} />
       </div>
 
       {/* Health History */}

@@ -5,6 +5,10 @@ export interface GPUNode {
   port: number;
   vramTotalMB: number;
   vramUsedMB: number;
+  // How VRAM figures were obtained, so the UI never presents a guess as a
+  // measurement: nvidia = live local nvidia-smi; api = summed from the node's own
+  // /api/ps (real, total unknown); declared = total from config; none = no data.
+  vramSource: 'nvidia' | 'api' | 'declared' | 'none';
   powerDrawW: number;
   cpuPercent: number;
   temperature: number | null;

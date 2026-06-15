@@ -11,6 +11,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,19 +27,26 @@ type ModelInfo struct {
 }
 
 type NodeState struct {
-	Name          string
-	URL           string
-	GPUModel      string
-	NvidiaIndex   int
-	LoadedModels  []ModelInfo
-	ActiveConns   int32
-	Healthy       bool
-	LastPollAt    time.Time
-	Failures      int
-	CPUPercent    float64
-	Temperature   *float64
-	VRAMTotalMB   int64
-	VRAMUsedMB    int64
+	Name         string
+	URL          string
+	GPUModel     string
+	NvidiaIndex  int
+	LoadedModels []ModelInfo
+	ActiveConns  int32
+	Healthy      bool
+	LastPollAt   time.Time
+	Failures     int
+	CPUPercent   float64
+	Temperature  *float64
+	VRAMTotalMB  int64
+	VRAMUsedMB   int64
+	// VRAMTotalMBConfig is the operator-declared total VRAM (config vram_total_mb),
+	// used for remote nodes nvidia-smi cannot reach. 0 = not declared.
+	VRAMTotalMBConfig int64
+	// VRAMSource records how VRAM figures were obtained, so the UI never presents
+	// a guess as a measurement: "nvidia" (local nvidia-smi), "api" (summed from the
+	// node's own /api/ps size_vram), "declared" (total from config), "none".
+	VRAMSource    string
 	PowerDrawW    float64
 	Uptime        string
 	HealthHistory []float64
@@ -94,12 +102,13 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	nodes := make([]*NodeState, len(nodesCfg))
 	for i, n := range nodesCfg {
 		nodes[i] = &NodeState{
-			Name:        n.Name,
-			URL:         n.URL,
-			GPUModel:    n.GPUModel,
-			NvidiaIndex: n.NvidiaIndex,
-			Healthy:     true,
-			FirstSeenAt: time.Now(),
+			Name:              n.Name,
+			URL:               n.URL,
+			GPUModel:          n.GPUModel,
+			NvidiaIndex:       n.NvidiaIndex,
+			VRAMTotalMBConfig: n.VRAMTotalMB,
+			Healthy:           true,
+			FirstSeenAt:       time.Now(),
 		}
 	}
 	cloudsCopy := make([]config.CloudProvider, len(clouds))
@@ -359,28 +368,69 @@ func (r *Router) pollNode(n *NodeState) {
 		r.markFailure(n)
 		return
 	}
+	// Decode /api/ps. Ollama sends size_vram (snake_case) per loaded model; map it
+	// into ModelInfo, which serializes as sizeVram for the admin API. The earlier
+	// single-struct approach used the sizeVram tag for decode too, so Ollama's
+	// size_vram was silently dropped and per-node used-VRAM was always 0.
 	var ps struct {
-		Models []ModelInfo `json:"models"`
+		Models []struct {
+			Name     string `json:"name"`
+			SizeVRAM int64  `json:"size_vram"`
+		} `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
 		r.markFailure(n)
 		return
 	}
+	models := make([]ModelInfo, len(ps.Models))
+	var psUsedBytes int64
+	for i, m := range ps.Models {
+		models[i] = ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAM}
+		psUsedBytes += m.SizeVRAM
+	}
+	psUsedMB := psUsedBytes / (1024 * 1024)
 
-	gpu, hasGPU := queryGPU(n.NvidiaIndex)
+	// nvidia-smi only describes GPUs on the mesh host itself. Attribute it only to
+	// co-located (localhost) nodes; remote nodes derive real used-VRAM from their
+	// own /api/ps and total from operator-declared config.
+	var gpu GPUStats
+	hasGPU := false
+	if isLocalNode(n.URL) {
+		gpu, hasGPU = queryGPU(n.NvidiaIndex)
+	}
 
 	n.mu.Lock()
-	n.LoadedModels = ps.Models
+	n.LoadedModels = models
 	n.Healthy = true
 	n.Failures = 0
 	n.LastPollAt = time.Now()
 	n.Uptime = formatUptime(time.Since(n.FirstSeenAt))
-	if hasGPU {
+	switch {
+	case hasGPU:
+		// Richest source: live local nvidia-smi (total, used, temp, power).
 		n.VRAMTotalMB = gpu.VRAMTotalMB
 		n.VRAMUsedMB = gpu.VRAMUsedMB
 		n.PowerDrawW = gpu.PowerDrawW
 		temp := gpu.TempCelsius
 		n.Temperature = &temp
+		n.VRAMSource = "nvidia"
+	default:
+		// Remote node (or no local GPU): used-VRAM is real, summed from the node's
+		// own /api/ps. Total is operator-declared if present. Temp/power unknown.
+		n.VRAMUsedMB = psUsedMB
+		n.PowerDrawW = 0
+		n.Temperature = nil
+		if n.VRAMTotalMBConfig > 0 {
+			n.VRAMTotalMB = n.VRAMTotalMBConfig
+			n.VRAMSource = "declared"
+		} else {
+			n.VRAMTotalMB = 0
+			if psUsedMB > 0 {
+				n.VRAMSource = "api"
+			} else {
+				n.VRAMSource = "none"
+			}
+		}
 	}
 	n.HealthHistory = append(n.HealthHistory, 100.0)
 	if len(n.HealthHistory) > 60 {
@@ -404,6 +454,21 @@ func (r *Router) pollNode(n *NodeState) {
 		}
 		r.mu.Unlock()
 	}
+}
+
+// isLocalNode reports whether a node URL points at the mesh host itself, so that
+// local nvidia-smi telemetry may be attributed to it. Remote nodes must not be
+// given the mesh host's GPU stats.
+func isLocalNode(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
+		return true
+	}
+	return false
 }
 
 func formatUptime(d time.Duration) string {

@@ -101,6 +101,11 @@ type NodeConfig struct {
 	URL         string `yaml:"url" json:"url"`
 	GPUModel    string `yaml:"gpu_model" json:"gpu_model"`
 	NvidiaIndex int    `yaml:"nvidia_index" json:"nvidia_index"`
+	// VRAMTotalMB optionally declares this node's total GPU VRAM in MB. Used to
+	// compute headroom for remote nodes where nvidia-smi cannot reach (nvidia-smi
+	// only sees the mesh host). Operator-declared, surfaced as "declared", never
+	// presented as a live measurement. 0 = unknown (UI shows capacity as "—").
+	VRAMTotalMB int64 `yaml:"vram_total_mb" json:"vram_total_mb"`
 }
 
 type RoutingRule struct {

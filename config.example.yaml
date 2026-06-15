@@ -53,6 +53,14 @@ nodes:
   - name: gpu-1
     url: http://localhost:11436
     gpu_model: "NVIDIA RTX 4090 24GB"
+  # Remote node example. nvidia-smi runs on the mesh host only, so a remote
+  # node's used-VRAM is derived from its own /api/ps (real, live). Declaring
+  # vram_total_mb lets the dashboard show headroom; omit it and capacity shows
+  # as "—". The value is operator-declared, never presented as a measurement.
+  - name: gpu-remote
+    url: http://10.0.1.10:11434
+    gpu_model: "NVIDIA A10G 24GB"
+    vram_total_mb: 24576
 
 routing:
   strategy: warm-first

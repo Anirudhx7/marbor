@@ -66,7 +66,7 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 | Tokens/sec in request log | Live request table shows Tokens and tok/s columns per request. |
 | Cloud model rewriting | Request log shows "original -> cloud_model" when cloud default_model is applied - full observability into what was actually sent. |
 | Docker auto-discovery | Detects `ollama/ollama` containers automatically from the Docker socket. Zero config. |
-| Local GPU metrics | Real VRAM, temperature, and power draw via nvidia-smi on the mesh host. Note: remote node GPUs are not visible yet - per-node telemetry is on the roadmap. |
+| Cluster VRAM telemetry | Per-node used-VRAM is live across the whole cluster, summed from each node's own `/api/ps` (no agent needed). Total capacity comes from nvidia-smi on the mesh host, or a per-node `vram_total_mb` you declare for remote nodes (shown as "—" if unknown). Temperature and power are mesh-host only. Every figure is labelled with its source (nvidia / api / declared) so nothing is presented as a measurement it isn't. |
 | API key management | Per-key rate limits, model allow-lists, and key expiry. |
 | Prometheus metrics | 11 metrics at `:9090` (requests, latency, tokens, retries, cloud fallbacks, quota rejections, panics, node health). Grafana dashboard included. |
 | Analytics dashboard | 24-hour area chart, savings stats, per-model breakdown. |
@@ -339,7 +339,7 @@ The table below is intentionally honest. "partial" means the feature exists but 
 | **Per-key model allow-lists** | ✓ enforced, 403 on violation | partial (budget-based) | ✗ | ✗ | ✗ |
 | **Per-key token + cost attribution** | ✓ real parsed counts, saved across restarts | ✓ | ✗ | ✗ | ✗ |
 | **Warm-model routing (VRAM-aware)** | ✓ polls /api/ps every 2s, routes to warm node | ✗ treats Ollama as a dumb URL | ✗ single machine | ✗ no routing layer | ✗ no routing intelligence |
-| **GPU telemetry (VRAM / temp / power)** | partial - mesh host only via nvidia-smi; remote node GPUs not visible yet | ✗ | ✗ | ✗ | ✗ |
+| **GPU telemetry (VRAM / temp / power)** | cluster-wide used-VRAM (live, from each node's /api/ps); capacity via nvidia-smi (mesh host) or declared per remote node; temp/power mesh-host only; source-labelled | ✗ | ✗ | ✗ | ✗ |
 | **Cloud overflow (consent-first)** | ✓ off by default; OpenAI + Anthropic | ✓ broad provider support | ✗ | ✗ | ✗ |
 | **Savings vs pure-cloud tracking** | ✓ real parsed token math, shows "—" when unknown | ✗ | ✗ | ✗ | ✗ |
 | **Embedded dashboard** | ✓ React UI in the binary | partial (separate UI) | ✓ desktop GUI | ✗ | ✗ |
