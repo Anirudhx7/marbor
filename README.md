@@ -106,18 +106,31 @@ If no `config.yaml` exists, ollama-mesh auto-detects `localhost:11434`, generate
 
 ---
 
+**Supported platforms** (one static binary per target, plus a Docker image):
+
+| Platform | Architecture | Asset | Typical hardware |
+|----------|-------------|-------|------------------|
+| macOS | Apple Silicon | `ollama-mesh-darwin-arm64` | **Mac mini / MacBook M1-M4**, Mac Studio |
+| macOS | Intel | `ollama-mesh-darwin-amd64` | Intel Macs |
+| Linux | amd64 | `ollama-mesh-linux-amd64` | most servers, x86 GPU boxes |
+| Linux | arm64 | `ollama-mesh-linux-arm64` | ARM servers, Raspberry Pi |
+| Windows | amd64 | `ollama-mesh-windows-amd64.exe` | Windows |
+| Docker | multi-arch | `ghcr.io/anirudhx7/ollama-mesh` | any container host |
+
 **Binary:**
 ```bash
 # Linux (amd64)
 curl -Lo ollama-mesh https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
-# macOS (Apple Silicon)
+# macOS (Apple Silicon - Mac mini / M-series)
 curl -Lo ollama-mesh https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-darwin-arm64
 
 chmod +x ollama-mesh
 ./ollama-mesh
 ```
 
-All builds (Linux/macOS/Windows, amd64/arm64) and `checksums.txt` are on the [releases page](https://github.com/Anirudhx7/ollama-mesh/releases/latest).
+> **macOS Gatekeeper:** binaries are not yet Apple-notarized, so first launch may say *"cannot be opened because the developer cannot be verified."* Clear the quarantine flag once: `xattr -d com.apple.quarantine ollama-mesh` (or right-click the binary in Finder → Open).
+
+All builds and `checksums.txt` are on the [releases page](https://github.com/Anirudhx7/ollama-mesh/releases/latest).
 
 **Docker Compose:**
 ```bash
