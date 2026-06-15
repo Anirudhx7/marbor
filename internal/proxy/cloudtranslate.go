@@ -33,9 +33,23 @@ func isOllamaPath(path string) bool {
 // Ollama-native requests, replaces the response body with an Ollama NDJSON
 // stream translated from the OpenAI SSE (or JSON) response.
 type translatingTransport struct {
-	inner       http.RoundTripper
-	origPath    string // the client's original request path (e.g. /api/chat)
-	clientModel string // model name the client asked for (echoed back in NDJSON)
+	inner        http.RoundTripper
+	origPath     string // the client's original request path (e.g. /api/chat)
+	clientModel  string // model name the client asked for (echoed back in NDJSON)
+	clientStream bool   // whether the client requested a streamed response
+}
+
+// clientWantsStream reports the Ollama request's stream preference. Ollama
+// defaults to streaming when the field is absent, so a missing/!bool value is
+// treated as true.
+func clientWantsStream(body []byte) bool {
+	var b struct {
+		Stream *bool `json:"stream"`
+	}
+	if err := json.Unmarshal(body, &b); err != nil || b.Stream == nil {
+		return true
+	}
+	return *b.Stream
 }
 
 func (t *translatingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -49,6 +63,17 @@ func (t *translatingTransport) RoundTrip(req *http.Request) (*http.Response, err
 
 	ct := resp.Header.Get("Content-Type")
 	isSSE := strings.Contains(ct, "text/event-stream")
+
+	// Non-streaming client: Ollama returns a SINGLE JSON object for stream:false,
+	// not NDJSON. Emit one object and keep application/json so the client parses
+	// it correctly. (Streaming is the common path and is handled below.)
+	if !t.clientStream && !isSSE {
+		resp.Body = translateJSONToSingleOllama(resp.Body, t.origPath, t.clientModel)
+		resp.Header.Set("Content-Type", "application/json")
+		resp.ContentLength = -1
+		resp.Header.Del("Content-Length")
+		return resp, nil
+	}
 
 	// Detect streaming from Content-Type. If the cloud did not send SSE but
 	// we expected it (body is event-stream), fall through to the JSON path.
@@ -225,6 +250,51 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 	}
 
 	return io.NopCloser(&buf)
+}
+
+// translateJSONToSingleOllama reads a single OpenAI non-streaming response and
+// emits ONE Ollama JSON object (done:true, full content + usage) - what an
+// Ollama client expects when it requested stream:false. Unparseable bodies are
+// passed through raw so nothing is silently lost.
+func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string) io.ReadCloser {
+	defer src.Close()
+	raw, err := io.ReadAll(src)
+	if err != nil {
+		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
+	}
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			Text string `json:"text"`
+		} `json:"choices"`
+		Usage struct {
+			CompletionTokens int64 `json:"completion_tokens"`
+			PromptTokens     int64 `json:"prompt_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil || len(resp.Choices) == 0 {
+		return io.NopCloser(bytes.NewReader(raw))
+	}
+	content := resp.Choices[0].Message.Content
+	if content == "" {
+		content = resp.Choices[0].Text
+	}
+	var line []byte
+	if origPath == "/api/chat" {
+		obj := ollamaChatLine{
+			Model:           clientModel,
+			Message:         &ollamaMessage{Role: "assistant", Content: content},
+			Done:            true,
+			EvalCount:       resp.Usage.CompletionTokens,
+			PromptEvalCount: resp.Usage.PromptTokens,
+		}
+		line, _ = json.Marshal(obj)
+	} else {
+		line = buildGenerateNDJSON(clientModel, content, true, resp.Usage.CompletionTokens, resp.Usage.PromptTokens)
+	}
+	return io.NopCloser(bytes.NewReader(line))
 }
 
 // ------------------------------------------------------------------

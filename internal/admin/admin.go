@@ -287,8 +287,14 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
-	out := make([]keyResp, 0, len(s.cfg.Auth.Keys))
-	for i, k := range s.cfg.Auth.Keys {
+	// Snapshot the keys slice under lock; handleUpdateSettings replaces s.cfg
+	// concurrently. The backing array is never mutated in place, so a header
+	// copy is sufficient.
+	s.mu.RLock()
+	keys := s.cfg.Auth.Keys
+	s.mu.RUnlock()
+	out := make([]keyResp, 0, len(keys))
+	for i, k := range keys {
 		today, month, models, expires, rateLimit, createdAt, ok := 0, 0, []string(nil), "", k.RateLimit, time.Time{}, false
 		var tokensMonth int64
 		if s.auth != nil {
@@ -308,7 +314,15 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 		if s.auth != nil && !ok {
 			status = "revoked"
 		} else if expires != "" {
-			if t, err := time.Parse(time.RFC3339, expires); err == nil && time.Now().After(t) {
+			// Match auth.keyExpired: accept a date (valid through end of day) or
+			// RFC3339, so date-only expiries are labelled correctly (auth already
+			// rejects them; this keeps the UI status in sync).
+			now := time.Now()
+			if t, err := time.Parse("2006-01-02", expires); err == nil {
+				if now.After(t.Add(24 * time.Hour)) {
+					status = "expired"
+				}
+			} else if t, err := time.Parse(time.RFC3339, expires); err == nil && now.After(t) {
 				status = "expired"
 			}
 		}
@@ -350,7 +364,10 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	totalConns := int32(0)
 	online := 0
 	for _, n := range nodes {
-		if n.Healthy {
+		n.RLock()
+		healthy := n.Healthy
+		n.RUnlock()
+		if healthy {
 			online++
 		}
 		totalConns += atomic.LoadInt32(&n.ActiveConns)

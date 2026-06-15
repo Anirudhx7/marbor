@@ -74,6 +74,21 @@ func (c *keyCounter) increment() {
 	c.month++
 }
 
+// incrementAndStats bumps the request counters and returns the post-increment
+// day/month counts atomically, so the quota check is a single critical section
+// (increment() followed by a separate stats() was a TOCTOU that could miscount
+// near the limit under concurrent requests).
+func (c *keyCounter) incrementAndStats() (today, month int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	c.resetLocked(now)
+	c.lastReset = now
+	c.today++
+	c.month++
+	return c.today, c.month
+}
+
 // addTokens accumulates token usage for the current day and month.
 func (c *keyCounter) addTokens(n int64) {
 	if n <= 0 {
@@ -266,11 +281,11 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", int64(capacity)))
 		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", int64(remaining)))
 		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt))
-		ks.counter.increment()
 		// Enforce hard daily/monthly request quotas (0 = unlimited). The Nth
 		// allowed request is the limit; the next one is rejected with 429.
+		// Increment and read counts atomically to avoid a near-limit TOCTOU.
+		today, month := ks.counter.incrementAndStats()
 		if ks.dailyLimit > 0 || ks.monthlyLimit > 0 {
-			today, month, _ := ks.counter.stats()
 			if ks.dailyLimit > 0 && today > ks.dailyLimit {
 				metrics.QuotaRejection(ks.name, "daily")
 				w.Header().Set("Content-Type", "application/json")

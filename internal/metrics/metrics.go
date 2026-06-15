@@ -1,9 +1,38 @@
 package metrics
 
 import (
+	"sync"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+// maxModelLabels caps how many distinct model label values the metrics carry.
+// Model names come from client request bodies and are otherwise unbounded, which
+// would explode Prometheus time-series memory. Past the cap, unseen models
+// collapse to "other".
+const maxModelLabels = 256
+
+var (
+	modelLabelMu sync.Mutex
+	seenModels   = make(map[string]struct{})
+)
+
+func boundModel(model string) string {
+	if model == "" {
+		return "unknown"
+	}
+	modelLabelMu.Lock()
+	defer modelLabelMu.Unlock()
+	if _, ok := seenModels[model]; ok {
+		return model
+	}
+	if len(seenModels) >= maxModelLabels {
+		return "other"
+	}
+	seenModels[model] = struct{}{}
+	return model
+}
 
 var (
 	requestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -64,11 +93,11 @@ var (
 )
 
 func RequestsTotal(key, model, node, status string) {
-	requestsTotal.WithLabelValues(key, model, node, status).Inc()
+	requestsTotal.WithLabelValues(key, boundModel(model), node, status).Inc()
 }
 
 func RequestDuration(model, node string, seconds float64) {
-	requestDuration.WithLabelValues(model, node).Observe(seconds)
+	requestDuration.WithLabelValues(boundModel(model), node).Observe(seconds)
 }
 
 func ActiveConnections(node string, count float64) {

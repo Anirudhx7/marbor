@@ -425,9 +425,10 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	// unchanged (current behavior preserved).
 	if isOllamaPath(r.URL.Path) {
 		proxy.Transport = &translatingTransport{
-			inner:       http.DefaultTransport,
-			origPath:    r.URL.Path,
-			clientModel: modelName,
+			inner:        http.DefaultTransport,
+			origPath:     r.URL.Path,
+			clientModel:  modelName,
+			clientStream: clientWantsStream(body),
 		}
 	}
 	proxy.Director = func(req *http.Request) {
