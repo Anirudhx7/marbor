@@ -13,6 +13,8 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
@@ -33,11 +35,69 @@ type Handler struct {
 	audit  *audit.Logger
 	access *AccessLogger
 	auth   *auth.Middleware
+	// allowManagement bypasses the default-deny management-endpoint guard when
+	// true (single-tenant homelab escape hatch). Default false: destructive
+	// Ollama management paths (/api/delete, /api/pull, ...) are blocked so an
+	// inference-only key cannot mutate models on backend GPU nodes.
+	allowManagement bool
+
+	// cloudTransportOnce guards lazy construction of cloudTransport, a single
+	// shared *http.Transport for the cloud-fallback path. It clones
+	// http.DefaultTransport (keeping its connection-pool defaults) and sets
+	// ResponseHeaderTimeout from routing.upstream_timeout_ms so a hung cloud
+	// provider cannot leak goroutines/connections. ResponseHeaderTimeout bounds
+	// only the wait for response headers, never the streaming body, so R2 holds.
+	cloudTransportOnce sync.Once
+	cloudTransport     *http.Transport
+}
+
+// cloudRoundTripper returns the shared cloud transport, constructing it once.
+// ResponseHeaderTimeout is derived from the router's upstream timeout; no
+// overall client Timeout is set (that would kill long streaming responses).
+func (h *Handler) cloudRoundTripper() *http.Transport {
+	h.cloudTransportOnce.Do(func() {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.ResponseHeaderTimeout = h.router.UpstreamTimeout()
+		h.cloudTransport = t
+	})
+	return h.cloudTransport
 }
 
 func NewHandler(r *router.Router, a *admin.Server, al *audit.Logger) *Handler {
 	// access defaults to a no-op logger; main wires a real one via SetAccessLogger.
 	return &Handler{router: r, admin: a, audit: al, access: NewAccessLogger(nil, false)}
+}
+
+// blockedManagementPaths is the default-deny set of Ollama model-management /
+// mutation endpoints. They must not be reachable through the multi-tenant
+// proxy: any authenticated key could otherwise delete models, fill disk via
+// pull, or push/create/copy on a shared backend node. Read-only inventory
+// (/api/tags, /v1/models) and inference (/api/generate, /api/chat, ...) are
+// intentionally absent and therefore always allowed.
+var blockedManagementPaths = map[string]struct{}{
+	"/api/delete": {},
+	"/api/pull":   {},
+	"/api/push":   {},
+	"/api/create": {},
+	"/api/copy":   {},
+	"/api/blobs":  {},
+}
+
+// isBlockedManagementPath reports whether path is a destructive Ollama
+// management endpoint. Exact match for the listed paths plus a prefix match
+// for "/api/blobs/" (blob upload/check by digest).
+func isBlockedManagementPath(path string) bool {
+	if _, ok := blockedManagementPaths[path]; ok {
+		return true
+	}
+	return strings.HasPrefix(path, "/api/blobs/")
+}
+
+// SetAllowManagementEndpoints toggles the management-endpoint guard. Pass true
+// only for single-tenant deployments where the caller is trusted to manage
+// models on backend nodes. Default (false) blocks them.
+func (h *Handler) SetAllowManagementEndpoints(allow bool) {
+	h.allowManagement = allow
 }
 
 // SetAuth wires the auth middleware so the proxy can refund a key's rate-limit
@@ -66,6 +126,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		requestID = hex.EncodeToString(b)
 	}
 	w.Header().Set("X-Request-ID", requestID)
+
+	// Default-deny management-endpoint guard. Destructive Ollama management
+	// paths (/api/delete, /api/pull, /api/push, /api/create, /api/copy,
+	// /api/blobs[/...]) are blocked before any routing/forwarding so an
+	// authenticated inference key cannot mutate models on shared backend nodes.
+	// Overridable per-deploy via routing.allow_management_endpoints (single-
+	// tenant homelab escape hatch). Read-only inventory and inference paths are
+	// unaffected.
+	if !h.allowManagement && isBlockedManagementPath(r.URL.Path) {
+		log.Printf("blocked management endpoint (key=%s path=%s request_id=%s)", keyName, r.URL.Path, requestID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"endpoint not permitted through the mesh proxy"}`))
+		metrics.RequestsTotal(keyName, "", "none", "403")
+		return
+	}
 
 	// Feature 3: intercept GET /v1/models and return aggregated OpenAI-schema list.
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
@@ -433,13 +509,19 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	// Bound the cloud header phase with a dedicated transport (shared, built
+	// once) so a hung provider does not leak goroutines/connections. Only the
+	// header wait is bounded - the streaming body is untouched, so R2 holds.
+	cloudTransport := h.cloudRoundTripper()
+	proxy.Transport = cloudTransport
 	// When the original client path is Ollama-native (/api/chat or
 	// /api/generate) wrap the transport to translate the OpenAI response back
 	// into Ollama NDJSON. For /v1/... paths the cloud response passes through
-	// unchanged (current behavior preserved).
+	// unchanged (current behavior preserved). The translating wrapper delegates
+	// to the same timeout-bounded transport via its inner round-tripper.
 	if isOllamaPath(r.URL.Path) {
 		proxy.Transport = &translatingTransport{
-			inner:        http.DefaultTransport,
+			inner:        cloudTransport,
 			origPath:     r.URL.Path,
 			clientModel:  modelName,
 			clientStream: clientWantsStream(body),
