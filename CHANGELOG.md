@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-17
+
+### Security
+- Config file is now written `0600` (owner-only) and an existing file is chmod-ed back to `0600` on every save. It previously used `0644` and re-widened on every dashboard "Save Settings", exposing all API keys, the admin token, and cloud-provider keys in plaintext to any local user.
+- The admin server no longer falls back to the literal token `admin` when no `admin_token` is set. It generates a `crypto/rand` token and logs it once at startup, closing a LAN-takeover path (guessable token + all-interfaces admin bind).
+- `GET /admin/keys` no longer returns proxy keys in plaintext. It returns a masked prefix; the full key is shown only once at creation. The dashboard's reveal/copy-from-list controls were removed accordingly.
+- Cloud-fallback now uses a dedicated transport with `ResponseHeaderTimeout` (from `routing.upstream_timeout_ms`) instead of `http.DefaultTransport`, so a hung provider can no longer leak goroutines/connections. No overall client timeout is set, so streaming is preserved.
+
+### Added
+- `routing.allow_management_endpoints` (default `false`).
+
+### Changed
+- **Behavior change:** the proxy now rejects Ollama model-management endpoints (`/api/delete`, `/api/pull`, `/api/push`, `/api/create`, `/api/copy`, `/api/blobs`) with `403` by default. Any authenticated key could previously delete or pull models on a backend node. Set `routing.allow_management_endpoints: true` to restore the old behavior for single-tenant deployments. Inference and read-only inventory paths (`/api/generate`, `/api/chat`, `/api/tags`, `/v1/*`, ...) are unaffected.
+
 ## [0.4.0] - 2026-06-16
 
 ### Added
