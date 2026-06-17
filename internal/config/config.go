@@ -129,6 +129,14 @@ type RoutingConfig struct {
 	// MaxRetries is how many alternate healthy nodes the proxy will try when an
 	// upstream fails before any response bytes are sent. Defaults to 2.
 	MaxRetries int `yaml:"max_retries" json:"max_retries"`
+	// AllowManagementEndpoints, when true, lets clients reach Ollama's
+	// destructive model-management endpoints (/api/delete, /api/pull, /api/push,
+	// /api/create, /api/copy, /api/blobs) through the proxy. Default false
+	// (zero-value): those paths are blocked with 403 so an inference key in a
+	// multi-tenant deployment cannot mutate models on shared backend nodes. Set
+	// true only for single-tenant homelab use. No Validate() default needed -
+	// false is the safe zero value.
+	AllowManagementEndpoints bool `yaml:"allow_management_endpoints" json:"allow_management_endpoints"`
 }
 
 type MetricsConfig struct {
@@ -171,7 +179,15 @@ func SaveConfig(path string, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	// os.WriteFile won't chmod an existing file to the new mode, so enforce
+	// 0600 explicitly to prevent re-widening when the file pre-exists at 0644.
+	if err := os.Chmod(path, 0600); err != nil {
+		return fmt.Errorf("chmod config: %w", err)
+	}
+	return nil
 }
 
 func (c *Config) Validate() error {

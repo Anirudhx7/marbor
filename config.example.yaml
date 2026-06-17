@@ -72,6 +72,13 @@ routing:
   # Max wait for an upstream node to send response headers before giving up and
   # trying the next node. Covers the header phase only, not the streaming body.
   upstream_timeout_ms: 120000
+  # Destructive Ollama management endpoints (/api/delete, /api/pull, /api/push,
+  # /api/create, /api/copy, /api/blobs) are BLOCKED with 403 by default so an
+  # inference-only API key cannot mutate models on shared backend GPU nodes.
+  # Set true only for single-tenant homelab use where the caller is trusted to
+  # manage models. Read-only inventory (/api/tags, /v1/models) and inference
+  # (/api/generate, /api/chat, /api/embed) are always allowed.
+  allow_management_endpoints: false
 
 metrics:
   enabled: true
