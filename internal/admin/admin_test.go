@@ -77,7 +77,7 @@ func TestHandleSavings(t *testing.T) {
 	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil)
-	req.Header.Set("Authorization", "Bearer admin")
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	rec := httptest.NewRecorder()
 
 	s.handleSavings(rec, req)
@@ -172,5 +172,26 @@ func TestHandleSavingsNullWhenNoTokenData(t *testing.T) {
 	}
 	if v, ok := resp["cloud_spent_usd"]; !ok || v != nil {
 		t.Errorf("cloud_spent_usd = %v, want null when no token data", v)
+	}
+}
+
+// TestNewServerGeneratesRandomAdminToken verifies that a server built from an
+// empty config (no admin_token, no auth keys) gets a non-empty, randomly
+// generated token instead of the old guessable "admin" literal.
+func TestNewServerGeneratesRandomAdminToken(t *testing.T) {
+	s := newTestServer()
+	tok := s.AdminToken()
+	if tok == "" {
+		t.Fatal("AdminToken is empty; expected a generated token")
+	}
+	if tok == "admin" {
+		t.Fatal(`AdminToken is the guessable literal "admin"; expected a random token`)
+	}
+	if len(tok) < 32 {
+		t.Errorf("AdminToken length = %d, want >= 32 (32 random bytes hex-encoded)", len(tok))
+	}
+	// A second server must get a different token (proves randomness, not a constant).
+	if other := newTestServer().AdminToken(); other == tok {
+		t.Error("two servers produced identical admin tokens; expected random per-server tokens")
 	}
 }

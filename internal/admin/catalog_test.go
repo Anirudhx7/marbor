@@ -50,7 +50,7 @@ func TestHandleModelCatalog_HappyPath(t *testing.T) {
 	s := newModelFitTestServer(ollama.URL)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
-	req.Header.Set("Authorization", "Bearer admin")
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 
@@ -105,7 +105,7 @@ func TestHandleModelCatalog_Downloaded(t *testing.T) {
 	s := newModelFitTestServer(ollama.URL)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
-	req.Header.Set("Authorization", "Bearer admin")
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 
@@ -131,7 +131,7 @@ func TestHandleModelCatalog_V1Route(t *testing.T) {
 	s := newModelFitTestServer(ollama.URL)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/v1/models/catalog", nil)
-	req.Header.Set("Authorization", "Bearer admin")
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 

@@ -55,7 +55,7 @@ func TestHandleModelFit_HappyPath(t *testing.T) {
 	s := newModelFitTestServer(ollama.URL)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/nodes/model-fit", nil)
-	req.Header.Set("Authorization", "Bearer admin")
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	w := httptest.NewRecorder()
 
 	s.Handler().ServeHTTP(w, req)
@@ -121,7 +121,7 @@ func TestHandleModelFit_NodeUnreachable(t *testing.T) {
 	s := newModelFitTestServer("http://127.0.0.1:1")
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/nodes/model-fit", nil)
-	req.Header.Set("Authorization", "Bearer admin")
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	w := httptest.NewRecorder()
 
 	s.Handler().ServeHTTP(w, req)
@@ -153,7 +153,7 @@ func TestHandleModelFit_V1Route(t *testing.T) {
 	s := newModelFitTestServer(ollama.URL)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/v1/nodes/model-fit", nil)
-	req.Header.Set("Authorization", "Bearer admin")
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	w := httptest.NewRecorder()
 
 	s.Handler().ServeHTTP(w, req)

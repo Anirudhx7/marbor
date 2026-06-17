@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Copy, Eye, EyeOff, Trash2, Key } from 'lucide-react';
+import { Plus, Copy, Trash2, Key } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { SearchInput } from '../components/SearchInput';
@@ -35,7 +35,6 @@ export function APIKeys() {
   const [keys, setKeys] = useState<APIKey[]>(demoMode ? mockAPIKeys : []);
   const [isLive, setIsLive] = useState(!demoMode);
   const [searchQuery, setSearchQuery] = useState('');
-  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
   const [keyToRevoke, setKeyToRevoke] = useState<APIKey | null>(null);
@@ -81,16 +80,6 @@ export function APIKeys() {
     key.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     key.key.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const toggleKeyVisibility = (id: string) => {
-    const newVisible = new Set(visibleKeys);
-    if (newVisible.has(id)) {
-      newVisible.delete(id);
-    } else {
-      newVisible.add(id);
-    }
-    setVisibleKeys(newVisible);
-  };
 
   const copyToClipboard = async (key: string, id: string) => {
     await navigator.clipboard.writeText(key);
@@ -283,30 +272,12 @@ export function APIKeys() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <code className="font-mono text-sm text-muted-foreground">
-                        {visibleKeys.has(key.id) ? key.key : maskKey(key.key)}
-                      </code>
-                      <button
-                        onClick={() => toggleKeyVisibility(key.id)}
-                        className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {visibleKeys.has(key.id) ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => copyToClipboard(key.key, key.id)}
-                        className="p-1 text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                      {copiedId === key.id && (
-                        <span className="text-xs font-medium text-primary">Copied!</span>
-                      )}
-                    </div>
+                    {/* The list never carries the full secret. Live keys arrive
+                        already masked from the API; demo keys are full, so mask
+                        them client-side. There is nothing to reveal or copy. */}
+                    <code className="font-mono text-sm text-muted-foreground">
+                      {isLive ? key.key : maskKey(key.key)}
+                    </code>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-sm text-muted-foreground">{key.created}</span>

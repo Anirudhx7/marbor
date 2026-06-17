@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -110,11 +111,19 @@ type keyResp struct {
 }
 
 func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server {
-	token := "admin"
-	if cfg.Auth.AdminToken != "" {
+	// Precedence: explicit AdminToken wins; then the first auth key when auth is
+	// enabled; otherwise generate a cryptographically-random token. The admin API
+	// binds all interfaces by default, so a constant fallback (e.g. "admin") is a
+	// LAN-takeover footgun — never fall back to a guessable literal.
+	var token string
+	switch {
+	case cfg.Auth.AdminToken != "":
 		token = cfg.Auth.AdminToken
-	} else if cfg.Auth.Enabled && len(cfg.Auth.Keys) > 0 {
+	case cfg.Auth.Enabled && len(cfg.Auth.Keys) > 0:
 		token = cfg.Auth.Keys[0].Key
+	default:
+		token = generateAdminToken()
+		log.Printf("admin: no admin_token configured; generated a random one for this run: %s", token)
 	}
 	// Mirror config.Validate()'s default so servers constructed from a zero
 	// config (tests, embedded use) still value local tokens at a real rate.
@@ -332,9 +341,11 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			created = createdAt.Format(time.RFC3339)
 		}
 		out = append(out, keyResp{
-			ID:                fmt.Sprintf("key-%d", i+1),
-			Name:              k.Name,
-			Key:               k.Key,
+			ID:   fmt.Sprintf("key-%d", i+1),
+			Name: k.Name,
+			// Never re-serve the full secret. The plaintext key is shown once at
+			// creation (handleAddKey); the list only carries a masked preview.
+			Key:               maskKey(k.Key),
 			Created:           created,
 			RequestsToday:     today,
 			RequestsThisMonth: month,
@@ -401,6 +412,33 @@ func generateAPIKey(name string) string {
 	b := make([]byte, 24)
 	_, _ = rand.Read(b)
 	return "sk-" + name + "-" + hex.EncodeToString(b)
+}
+
+// generateAdminToken returns a cryptographically-random 64-char hex token
+// (32 bytes). A failing CSPRNG at startup is unrecoverable for security, so we
+// fail closed via log.Fatalf rather than serve a weak/empty token.
+func generateAdminToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("admin: failed to generate admin token from crypto/rand: %v", err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// AdminToken returns the bearer token the admin API authenticates against.
+// Exposed for tests and callers that need to authenticate against a server
+// whose token was auto-generated; harmless to expose since the token must be
+// presented as a bearer credential anyway.
+func (s *Server) AdminToken() string { return s.adminToken }
+
+// maskKey returns a non-reversible preview of an API key so the list endpoint
+// never re-serves the full secret. Format: first 7 chars + "…" + last 4
+// (e.g. "sk-prod…a1b2"). Returns "" when the key is too short to mask safely.
+func maskKey(k string) string {
+	if len(k) < 12 {
+		return ""
+	}
+	return k[:7] + "…" + k[len(k)-4:]
 }
 
 func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {

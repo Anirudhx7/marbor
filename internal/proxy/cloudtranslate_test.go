@@ -274,7 +274,7 @@ func TestCloudFallbackTokenCountNonZero(t *testing.T) {
 	// Read token count from the live requests log (Tokens field on RequestLog).
 	reqRec := httptest.NewRecorder()
 	liveReq := httptest.NewRequest(http.MethodGet, "/admin/requests/live", nil)
-	liveReq.Header.Set("Authorization", "Bearer admin")
+	liveReq.Header.Set("Authorization", "Bearer "+a.AdminToken())
 	a.Handler().ServeHTTP(reqRec, liveReq)
 	if reqRec.Code != http.StatusOK {
 		t.Fatalf("live requests status = %d", reqRec.Code)
