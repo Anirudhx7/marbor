@@ -55,11 +55,17 @@ Goal: Lower the barrier to first run; make every number in the dashboard trustwo
 - [x] `make demo` - mock Ollama servers in-process, populated dashboard in <60s, no Ollama required
 - [x] Configurable savings reference rate - `savings.reference_cost_per_1k` in config.yaml
 
-## Next (planned)
+## Next (planned, north-star order)
 
+- [ ] **Warm-vs-cold benchmark** - reproducible first-token latency comparison (warm model in VRAM vs cold load); 30-second side-by-side screen recording; this is the proof point that sells the product
+- [ ] **Gate coverage: security regression tests** - one regression test per security invariant (constant-time compare, auth closed, cloud off, body cap, SSRF, etc.); gate can't be gamed by accident
+- [ ] **KV-cache / context affinity** - sticky session routing for stateful workloads; same conversation → same node → faster inference from cached KV context
+- [ ] **HA story / kill the proxy SPOF** - active/passive or DNS round-robin with health-check failover; single mesh node going down should not drop all traffic
+- [ ] **VRAM-aware placement** - auto-rebalance model loads across heterogeneous fleets; route new requests to the node with the most free VRAM for the requested model
 - [ ] Model Advisor page - model catalog with VRAM fit per node, recommend which node to pull a model onto
 - [ ] SQLite analytics persistence - survives restarts; deferred until retention semantics are defined
-- [ ] Remote node GPU telemetry - sidecar agent for nvidia-smi on non-mesh nodes
+- [ ] Remote node GPU telemetry - sidecar agent for nvidia-smi on non-mesh nodes (needs operator confirmation of real user demand before building)
+- [ ] Multi-node backend docs for Open WebUI / Continue / LibreChat
 
 ## Phase 3 - Enterprise (planned)
 
