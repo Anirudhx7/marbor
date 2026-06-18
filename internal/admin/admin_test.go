@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
@@ -172,6 +174,128 @@ func TestHandleSavingsNullWhenNoTokenData(t *testing.T) {
 	}
 	if v, ok := resp["cloud_spent_usd"]; !ok || v != nil {
 		t.Errorf("cloud_spent_usd = %v, want null when no token data", v)
+	}
+}
+
+// TestAdmin_SettingsExcludesSecrets verifies that GET /admin/settings never
+// returns the admin token value or cloud provider API keys in the response body.
+func TestAdmin_SettingsExcludesSecrets(t *testing.T) {
+	adminToken := "super-secret-admin-token-xyz"
+	cloudAPIKey := "sk-openai-should-not-appear"
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	cfg := config.Config{
+		Auth: config.AuthConfig{
+			AdminToken: adminToken,
+		},
+		CloudProviders: []config.CloudProvider{
+			{
+				Name:    "openai",
+				APIKey:  cloudAPIKey,
+				Enabled: true,
+			},
+		},
+	}
+	s := NewServer(r, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	s.handleSettings(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, adminToken) {
+		t.Errorf("/admin/settings response contains admin token %q; it must be excluded", adminToken)
+	}
+	if strings.Contains(body, cloudAPIKey) {
+		t.Errorf("/admin/settings response contains cloud API key %q; it must be masked", cloudAPIKey)
+	}
+}
+
+// TestAdmin_KeysNeverPlaintext verifies that GET /admin/v1/keys never returns
+// the full plaintext API key value; only a masked preview is allowed.
+func TestAdmin_KeysNeverPlaintext(t *testing.T) {
+	const fullKey = "sk-prod-abcdef1234567890abcdef1234567890abcdef12"
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	cfg := config.Config{
+		Auth: config.AuthConfig{
+			Enabled: true,
+			Keys: []config.KeyConfig{
+				{Name: "prod", Key: fullKey, RateLimit: 100},
+			},
+		},
+	}
+	a := auth.NewMiddleware(cfg.Auth)
+	s := NewServer(r, a, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/v1/keys", nil)
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, fullKey) {
+		t.Errorf("/admin/v1/keys response contains full plaintext key %q; only masked preview is permitted", fullKey)
+	}
+
+	// Confirm the response actually contains a key entry (so this is not a vacuous test).
+	var keys []keyResp
+	if err := json.NewDecoder(strings.NewReader(body)).Decode(&keys); err != nil {
+		t.Fatalf("decode keys response: %v", err)
+	}
+	if len(keys) == 0 {
+		t.Fatal("keys response is empty; expected at least one key entry")
+	}
+	// The masked preview must be non-empty so callers can identify the key.
+	if keys[0].Key == "" {
+		t.Error("key.Key is empty; expected a masked preview (e.g. sk-prod…1234)")
+	}
+}
+
+// TestAdmin_AddKeyResponseContainsPlaintext verifies that POST /admin/keys
+// (the creation endpoint) returns the full key once — this is the only time it
+// appears in an API response.
+func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	cfg := config.Config{}
+	a := auth.NewMiddleware(cfg.Auth)
+	s := NewServer(r, a, cfg)
+
+	body := bytes.NewReader([]byte(`{"name":"newkey","rate_limit":100}`))
+	req := httptest.NewRequest(http.MethodPost, "/admin/keys", body)
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
+	}
+
+	var k config.KeyConfig
+	if err := json.NewDecoder(rec.Body).Decode(&k); err != nil {
+		t.Fatalf("decode add-key response: %v", err)
+	}
+	if k.Key == "" {
+		t.Error("add-key response is missing the plaintext key; it should be returned once at creation")
+	}
+	// Now verify that a subsequent GET /admin/keys does NOT contain this key.
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/keys", nil)
+	req2.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	rec2 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec2, req2)
+
+	if strings.Contains(rec2.Body.String(), k.Key) {
+		t.Errorf("GET /admin/keys contains plaintext key %q after creation; only masked preview permitted", k.Key)
 	}
 }
 

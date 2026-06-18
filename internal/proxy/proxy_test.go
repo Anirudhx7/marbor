@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
@@ -277,6 +278,119 @@ func TestCloudModelNotRewrittenLogsPlainModel(t *testing.T) {
 	}
 	if audits[0].CloudModel != "" {
 		t.Errorf("audit cloud_model = %q, want empty when no rewrite", audits[0].CloudModel)
+	}
+}
+
+// TestProxy_AuthHeaderStripped verifies that the Authorization header sent by
+// the client is never forwarded to the upstream Ollama node.
+func TestProxy_AuthHeaderStripped(t *testing.T) {
+	var gotAuthHeader string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"llama3","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+	}, nil)
+	r.Nodes()[0].Lock()
+	r.Nodes()[0].Healthy = true
+	r.Nodes()[0].Unlock()
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"llama3"}`)))
+	req.Header.Set("Authorization", "Bearer client-secret-key")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotAuthHeader != "" {
+		t.Errorf("upstream received Authorization header %q; want it stripped", gotAuthHeader)
+	}
+}
+
+// TestProxy_BodyCapEnforced verifies that a request body exceeding 32 MiB is
+// rejected with 413 and never forwarded to upstream.
+func TestProxy_BodyCapEnforced(t *testing.T) {
+	var upstreamCalled int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.StoreInt32(&upstreamCalled, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+	}, nil)
+	r.Nodes()[0].Lock()
+	r.Nodes()[0].Healthy = true
+	r.Nodes()[0].Unlock()
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	// Build a body 1 byte over the 32 MiB cap.
+	oversized := make([]byte, 32*1024*1024+1)
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader(oversized))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413 for oversized body", rec.Code)
+	}
+	if atomic.LoadInt32(&upstreamCalled) != 0 {
+		t.Error("upstream was called despite oversized body; should have been rejected before forwarding")
+	}
+}
+
+// TestProxy_ManagementEndpointsBlocked verifies that each Ollama management
+// endpoint returns 403 Forbidden by default when proxied through the mesh.
+func TestProxy_ManagementEndpointsBlocked(t *testing.T) {
+	var upstreamCalled int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.StoreInt32(&upstreamCalled, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+	}, nil)
+	r.Nodes()[0].Lock()
+	r.Nodes()[0].Healthy = true
+	r.Nodes()[0].Unlock()
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+	// allowManagement defaults to false - management endpoints must be blocked.
+
+	managementPaths := []string{
+		"/api/delete",
+		"/api/pull",
+		"/api/push",
+		"/api/copy",
+		"/api/create",
+		"/api/blobs",
+		"/api/blobs/sha256:abc123",
+	}
+
+	for _, path := range managementPaths {
+		t.Run(path, func(t *testing.T) {
+			atomic.StoreInt32(&upstreamCalled, 0)
+			req := httptest.NewRequest("POST", path, bytes.NewReader([]byte(`{"model":"llama3"}`)))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("path %s: status = %d, want 403", path, rec.Code)
+			}
+			if atomic.LoadInt32(&upstreamCalled) != 0 {
+				t.Errorf("path %s: upstream was called; management endpoint should be blocked before forwarding", path)
+			}
+		})
 	}
 }
 
