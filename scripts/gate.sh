@@ -20,9 +20,21 @@ gorun() {
 fail() { echo ""; echo "GATE RED: $*" >&2; exit 1; }
 
 echo "=== [1/5] UI: npm ci + build ==="
-# Call node directly — avoids all Windows PATH/cmd.exe/npx resolution issues.
-# lib/tsc.js and bin/vite.js are stable published paths for both packages.
-(cd ui && npm ci && node node_modules/typescript/lib/tsc.js -b && node node_modules/vite/bin/vite.js build) || fail "UI build failed"
+if command -v powershell.exe &>/dev/null; then
+  # Windows: cmd rd /s /q handles deep node_modules trees reliably;
+  # Remove-Item -ErrorAction SilentlyContinue silently fails on ENOTEMPTY.
+  powershell.exe -NonInteractive -NoProfile -Command "
+    cmd /c 'if exist ui\node_modules rd /s /q ui\node_modules'
+    Set-Location ui
+    npm ci; if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+    node node_modules\typescript\lib\tsc.js -b; if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+    node node_modules\vite\bin\vite.js build; exit \$LASTEXITCODE
+  " || fail "UI build failed"
+else
+  # Linux/macOS (CI): standard approach works fine.
+  rm -rf ui/node_modules 2>/dev/null || true
+  (cd ui && npm ci && node node_modules/typescript/lib/tsc.js -b && node node_modules/vite/bin/vite.js build) || fail "UI build failed"
+fi
 
 echo "=== [2/5] Go: vet ==="
 gorun go vet ./... || fail "go vet failed"

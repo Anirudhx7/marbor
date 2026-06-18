@@ -1,4 +1,4 @@
-.PHONY: all build ui backend clean test dev demo demo-build demo-down
+.PHONY: all build ui backend clean test dev demo demo-build demo-down bench
 
 all: ui backend
 
@@ -31,6 +31,10 @@ demo: demo-build ## Spin up demo stack, send 20 real requests, show dashboard UR
 
 demo-down: ## Stop and remove demo stack
 	docker compose -f docker-compose.demo.yml down -v
+
+bench: ## Warm-vs-cold first-token latency benchmark. Pass BENCH_ARGS to override flags.
+	## Example: make bench BENCH_ARGS="-endpoint http://localhost:11434 -model llama3 -runs 5"
+	go run ./cmd/bench $(BENCH_ARGS)
 
 clean:
 	rm -f ollama-mesh
