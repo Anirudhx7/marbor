@@ -201,26 +201,26 @@ func (tb *tokenBucket) allow() bool {
 }
 
 func NewMiddleware(cfg config.AuthConfig) *Middleware {
-	m := &Middleware{enabled: cfg.Enabled}
-	if cfg.Enabled {
-		m.keys = make(map[string]*keyState)
-		m.byName = make(map[string]*keyState)
-		for _, k := range cfg.Keys {
-			ks := &keyState{
-				name:         k.Name,
-				key:          k.Key,
-				rateLimit:    k.RateLimit,
-				limiter:      newTokenBucket(k.RateLimit),
-				counter:      &keyCounter{lastReset: time.Now()},
-				models:       k.Models,
-				expiresAt:    k.ExpiresAt,
-				createdAt:    time.Now(),
-				dailyLimit:   k.DailyLimit,
-				monthlyLimit: k.MonthlyLimit,
-			}
-			m.keys[k.Key] = ks
-			m.byName[k.Name] = ks
+	m := &Middleware{
+		enabled: cfg.Enabled,
+		keys:    make(map[string]*keyState),
+		byName:  make(map[string]*keyState),
+	}
+	for _, k := range cfg.Keys {
+		ks := &keyState{
+			name:         k.Name,
+			key:          k.Key,
+			rateLimit:    k.RateLimit,
+			limiter:      newTokenBucket(k.RateLimit),
+			counter:      &keyCounter{lastReset: time.Now()},
+			models:       k.Models,
+			expiresAt:    k.ExpiresAt,
+			createdAt:    time.Now(),
+			dailyLimit:   k.DailyLimit,
+			monthlyLimit: k.MonthlyLimit,
 		}
+		m.keys[k.Key] = ks
+		m.byName[k.Name] = ks
 	}
 	return m
 }
