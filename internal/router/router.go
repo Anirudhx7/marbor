@@ -164,14 +164,12 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	if nvidiaPollInterval <= 0 {
 		nvidiaPollInterval = 30 * time.Second
 	}
+	// Queue config: 0 means disabled (immediate fallthrough to cloud/503).
+	// config.Validate() sets the production defaults (30s, depth 100).
+	// Tests that construct RoutingConfig{} directly bypass Validate() and get
+	// no queue, which is correct — they test 503/cloud paths, not queuing.
 	queueTimeout := time.Duration(cfg.QueueTimeoutMs) * time.Millisecond
-	if queueTimeout <= 0 {
-		queueTimeout = 30 * time.Second
-	}
 	queueMaxDepth := cfg.QueueMaxDepth
-	if queueMaxDepth <= 0 {
-		queueMaxDepth = 100
-	}
 	return &Router{
 		nodes:              nodes,
 		strategy:           cfg.Strategy,
@@ -973,6 +971,13 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (
 	// Fast path: immediate route.
 	if node, warm := r.Route(modelName, sessionID); node != nil {
 		return node, warm
+	}
+
+	// Queue disabled (timeout or depth == 0): fall through immediately.
+	// config.Validate() sets the production defaults; callers that bypass
+	// Validate() (unit tests, zero-config New()) get no queue.
+	if r.queueTimeout <= 0 || r.queueMaxDepth <= 0 {
+		return nil, false
 	}
 
 	// Claim a queue slot atomically. Reject if already at capacity.

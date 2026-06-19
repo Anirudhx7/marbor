@@ -24,7 +24,7 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -s -w
+      - -s -w -X main.Version={{.Version}}
 
 # Raw binaries (not tarballs) so the README one-liner works:
 # curl -Lo ollama-mesh .../releases/latest/download/ollama-mesh-linux-amd64
