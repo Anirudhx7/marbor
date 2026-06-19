@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func TestRouteWarmFirst(t *testing.T) {
 	r.nodes[1].Healthy = true
 	r.nodes[1].mu.Unlock()
 
-	node, warm := r.Route("llama3.2:8b")
+	node, warm := r.Route("llama3.2:8b", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -34,7 +35,7 @@ func TestRouteWarmFirst(t *testing.T) {
 		t.Error("expected warm routing")
 	}
 
-	node, warm = r.Route("unknown")
+	node, warm = r.Route("unknown", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -58,7 +59,7 @@ func TestAllUnhealthy(t *testing.T) {
 	r.nodes[0].mu.Lock()
 	r.nodes[0].Healthy = false
 	r.nodes[0].mu.Unlock()
-	node, _ := r.Route("any")
+	node, _ := r.Route("any", "")
 	if node != nil {
 		t.Error("expected nil for all unhealthy")
 	}
@@ -80,10 +81,10 @@ func TestWarmFirstPicksLeastConns(t *testing.T) {
 	r.nodes[1].mu.Unlock()
 
 	// gpu-0 has more active connections — gpu-1 should win
-	r.nodes[0].ActiveConns = 5
-	r.nodes[1].ActiveConns = 1
+	atomic.StoreInt32(&r.nodes[0].ActiveConns, 5)
+	atomic.StoreInt32(&r.nodes[1].ActiveConns, 1)
 
-	node, warm := r.Route("llama3.2:8b")
+	node, warm := r.Route("llama3.2:8b", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -276,7 +277,7 @@ func TestRouteCloudFallsBackWhenAllNodesUnhealthy(t *testing.T) {
 	r.nodes[0].Healthy = false
 	r.nodes[0].mu.Unlock()
 
-	node, _ := r.Route("llama3.2:8b")
+	node, _ := r.Route("llama3.2:8b", "")
 	if node != nil {
 		t.Error("Route() should return nil when all nodes unhealthy")
 	}
@@ -286,6 +287,127 @@ func TestRouteCloudFallsBackWhenAllNodesUnhealthy(t *testing.T) {
 	}
 	if cloud.Name != "openai" {
 		t.Errorf("RouteCloud().Name = %q, want openai", cloud.Name)
+	}
+}
+
+func TestSessionAffinitySticksToBestNode(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434"},
+		{Name: "node-b", URL: "http://node-b:11434"},
+	}, nil)
+	// Both nodes healthy, node-a has the model warm.
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "llama3"}}
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Healthy = true
+	r.nodes[1].mu.Unlock()
+
+	// First request: no affinity entry yet — should pick node-a (warm).
+	n1, warm1 := r.Route("llama3", "sess-1")
+	if n1 == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if n1.Name != "node-a" {
+		t.Errorf("first Route() = %s, want node-a (warm)", n1.Name)
+	}
+	if !warm1 {
+		t.Error("expected warm=true for first route")
+	}
+
+	// Second request: affinity pinned to node-a — must return node-a even if node-b is also warm.
+	r.nodes[1].mu.Lock()
+	r.nodes[1].LoadedModels = []ModelInfo{{Name: "llama3"}}
+	r.nodes[1].mu.Unlock()
+	n2, _ := r.Route("llama3", "sess-1")
+	if n2 == nil || n2.Name != "node-a" {
+		t.Errorf("second Route() = %v, want node-a (sticky)", n2)
+	}
+}
+
+func TestSessionAffinityFallsBackOnUnhealthyNode(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434"},
+		{Name: "node-b", URL: "http://node-b:11434"},
+	}, nil)
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "llama3"}}
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Healthy = true
+	r.nodes[1].LoadedModels = []ModelInfo{{Name: "llama3"}}
+	r.nodes[1].mu.Unlock()
+
+	// Pin sess-2 to node-a.
+	r.Route("llama3", "sess-2")
+
+	// node-a goes down.
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = false
+	r.nodes[0].mu.Unlock()
+
+	// Next request for sess-2 must not return nil or node-a.
+	n, _ := r.Route("llama3", "sess-2")
+	if n == nil {
+		t.Fatal("expected fallback node, got nil")
+	}
+	if n.Name == "node-a" {
+		t.Error("sticky node was unhealthy but Route still returned it")
+	}
+	// Affinity entry for the old (unhealthy) node must have been evicted.
+	// After re-routing, a new entry for node-b may exist (correct); only a
+	// surviving pin to node-a's URL is wrong. Read nodeURL inside the lock.
+	r.affinityMu.RLock()
+	var pinnedURL string
+	if e, ok := r.affinity["sess-2"]; ok {
+		pinnedURL = e.nodeURL
+	}
+	r.affinityMu.RUnlock()
+	if pinnedURL == "http://node-a:11434" {
+		t.Error("stale affinity entry for unhealthy node-a was not evicted")
+	}
+}
+
+func TestSessionAffinityNoIDIsStateless(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434"},
+	}, nil)
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].mu.Unlock()
+
+	// No session ID — must not create affinity entries.
+	r.Route("llama3", "")
+	r.affinityMu.RLock()
+	count := len(r.affinity)
+	r.affinityMu.RUnlock()
+	if count != 0 {
+		t.Errorf("affinity map has %d entries after stateless Route(), want 0", count)
+	}
+}
+
+func TestSweepAffinityRemovesExpired(t *testing.T) {
+	r := New(config.RoutingConfig{SessionAffinityTTL: "1s"}, []config.NodeConfig{}, nil)
+	// Insert a stale entry.
+	r.affinityMu.Lock()
+	r.affinity["old"] = &affinityEntry{nodeURL: "http://x:11434", lastSeen: time.Now().Add(-2 * time.Second)}
+	r.affinity["fresh"] = &affinityEntry{nodeURL: "http://y:11434", lastSeen: time.Now()}
+	r.affinityMu.Unlock()
+
+	r.sweepAffinity()
+
+	r.affinityMu.RLock()
+	_, oldStillPresent := r.affinity["old"]
+	_, freshStillPresent := r.affinity["fresh"]
+	r.affinityMu.RUnlock()
+
+	if oldStillPresent {
+		t.Error("expired entry 'old' should have been removed by sweepAffinity")
+	}
+	if !freshStillPresent {
+		t.Error("fresh entry should not have been removed by sweepAffinity")
 	}
 }
 

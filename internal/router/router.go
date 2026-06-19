@@ -73,6 +73,19 @@ type tagsInflightEntry struct {
 	err    error
 }
 
+// maxAffinityEntries is the hard cap on the number of live session-affinity
+// entries. When the map is full, new session IDs are routed normally (stateless
+// fallback) rather than pinned, to prevent a memory-exhaustion DoS from
+// authenticated callers sending unique session IDs at high rate.
+const maxAffinityEntries = 10_000
+
+// affinityEntry records which node a session was last routed to and when,
+// so the router can honour the sticky-session contract for the TTL window.
+type affinityEntry struct {
+	nodeURL  string
+	lastSeen time.Time
+}
+
 type Router struct {
 	nodes          []*NodeState
 	strategy       string
@@ -96,6 +109,10 @@ type Router struct {
 	tagsInflight    map[string]*tagsInflightEntry
 	upstreamTimeout time.Duration // ResponseHeaderTimeout for upstream Transport
 	maxRetries      int           // max alternate nodes to try on upstream failure
+	// affinity maps session ID → sticky node. Populated and swept by Route / sweepAffinity.
+	affinity    map[string]*affinityEntry
+	affinityMu  sync.RWMutex
+	affinityTTL time.Duration
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -125,6 +142,12 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	if maxRetries <= 0 {
 		maxRetries = 2
 	}
+	affinityTTL := 10 * time.Minute
+	if cfg.SessionAffinityTTL != "" {
+		if d, err := time.ParseDuration(cfg.SessionAffinityTTL); err == nil && d > 0 {
+			affinityTTL = d
+		}
+	}
 	return &Router{
 		nodes:           nodes,
 		strategy:        cfg.Strategy,
@@ -139,6 +162,8 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		tagsInflight:    make(map[string]*tagsInflightEntry),
 		upstreamTimeout: upstreamTimeout,
 		maxRetries:      maxRetries,
+		affinity:        make(map[string]*affinityEntry),
+		affinityTTL:     affinityTTL,
 	}
 }
 
@@ -297,6 +322,15 @@ func (r *Router) Start(ctx context.Context) {
 	dockerTicker := time.NewTicker(dockerInterval)
 	defer dockerTicker.Stop()
 
+	// Sweep expired affinity entries at half the TTL interval to avoid
+	// holding memory for sessions that have been idle for >1 TTL.
+	sweepInterval := r.affinityTTL / 2
+	if sweepInterval < time.Minute {
+		sweepInterval = time.Minute
+	}
+	sweepTicker := time.NewTicker(sweepInterval)
+	defer sweepTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -305,6 +339,8 @@ func (r *Router) Start(ctx context.Context) {
 			r.pollAll()
 		case <-dockerTicker.C:
 			r.discoverAndAddDockerNodes()
+		case <-sweepTicker.C:
+			r.sweepAffinity()
 		}
 	}
 }
@@ -509,7 +545,104 @@ func (r *Router) markFailure(n *NodeState) {
 	}
 }
 
-func (r *Router) Route(modelName string) (*NodeState, bool) {
+// Route picks the best healthy node for modelName. If sessionID is non-empty
+// and a valid affinity entry exists for it, the previously-used node is
+// preferred (KV-cache / context affinity). If the sticky node is gone or
+// unhealthy, the entry is evicted and normal warm-first routing applies; the
+// new node is then pinned for the session.
+func (r *Router) Route(modelName, sessionID string) (*NodeState, bool) {
+	if sessionID != "" {
+		if node := r.stickyNode(sessionID); node != nil {
+			return node, isModelWarm(node, modelName)
+		}
+	}
+
+	node, warm := r.routeInternal(modelName)
+	if node != nil && sessionID != "" {
+		r.affinityMu.Lock()
+		// Only pin if under the cap — prevents memory-exhaustion DoS from
+		// authenticated callers sending unique session IDs at high rate.
+		if len(r.affinity) < maxAffinityEntries {
+			r.affinity[sessionID] = &affinityEntry{nodeURL: node.URL, lastSeen: time.Now()}
+		}
+		r.affinityMu.Unlock()
+	}
+	return node, warm
+}
+
+// stickyNode returns the pinned node for sessionID if it is still healthy and
+// within the TTL window, refreshing the TTL on success. Returns nil to signal
+// "fall through to normal routing."
+func (r *Router) stickyNode(sessionID string) *NodeState {
+	r.affinityMu.RLock()
+	entry, ok := r.affinity[sessionID]
+	var lastSeen time.Time
+	var nodeURL string
+	if ok {
+		// Copy fields while holding the lock to avoid a data race: the struct
+		// is heap-allocated and shared; reading fields after RUnlock is unsafe
+		// if sweepAffinity or Route concurrently modifies the same entry.
+		lastSeen = entry.lastSeen
+		nodeURL = entry.nodeURL
+	}
+	r.affinityMu.RUnlock()
+	if !ok || time.Since(lastSeen) >= r.affinityTTL {
+		return nil
+	}
+
+	r.mu.RLock()
+	var sticky *NodeState
+	for _, n := range r.nodes {
+		if n.URL == nodeURL {
+			sticky = n
+			break
+		}
+	}
+	r.mu.RUnlock()
+
+	if sticky == nil {
+		r.affinityMu.Lock()
+		delete(r.affinity, sessionID)
+		r.affinityMu.Unlock()
+		return nil
+	}
+	sticky.mu.RLock()
+	healthy := sticky.Healthy
+	sticky.mu.RUnlock()
+	if !healthy {
+		r.affinityMu.Lock()
+		delete(r.affinity, sessionID)
+		r.affinityMu.Unlock()
+		return nil
+	}
+
+	r.affinityMu.Lock()
+	if e, ok := r.affinity[sessionID]; ok {
+		e.lastSeen = time.Now()
+	}
+	r.affinityMu.Unlock()
+	return sticky
+}
+
+// isModelWarm reports whether modelName is currently loaded in VRAM on node n.
+func isModelWarm(n *NodeState, modelName string) bool {
+	if modelName == "" {
+		return false
+	}
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	for _, m := range n.LoadedModels {
+		if m.Name == modelName {
+			return true
+		}
+	}
+	return false
+}
+
+// routeInternal is the core warm-first / fallback routing logic, extracted so
+// both Route and RouteExcluding can share it without duplicating the strategy
+// switch. Callers provide a filtered healthy-node slice.
+func (r *Router) routeInternal(modelName string) (*NodeState, bool) {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
@@ -557,6 +690,19 @@ func (r *Router) Route(modelName string) (*NodeState, bool) {
 		return healthy[idx], false
 	}
 	return healthy[0], false
+}
+
+// sweepAffinity removes expired session-affinity entries. Called periodically
+// from Start to bound memory usage on long-running deployments.
+func (r *Router) sweepAffinity() {
+	now := time.Now()
+	r.affinityMu.Lock()
+	for id, e := range r.affinity {
+		if now.Sub(e.lastSeen) >= r.affinityTTL {
+			delete(r.affinity, id)
+		}
+	}
+	r.affinityMu.Unlock()
 }
 
 func pickLeastConns(nodes []*NodeState) *NodeState {

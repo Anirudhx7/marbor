@@ -137,6 +137,16 @@ type RoutingConfig struct {
 	// true only for single-tenant homelab use. No Validate() default needed -
 	// false is the safe zero value.
 	AllowManagementEndpoints bool `yaml:"allow_management_endpoints" json:"allow_management_endpoints"`
+	// SessionAffinity, when true, routes requests that share an X-Session-ID
+	// header to the same backend node. The node's KV cache (context history)
+	// from prior turns stays in VRAM, so subsequent requests skip the prefill
+	// re-computation and produce the first token faster. Default false (zero-
+	// value safe): stateless routing, no sticky sessions.
+	SessionAffinity bool `yaml:"session_affinity" json:"session_affinity"`
+	// SessionAffinityTTL is a duration string (e.g. "10m", "30m") specifying
+	// how long an idle session pin stays valid. After this window with no
+	// requests, the next request re-routes normally. Default "10m".
+	SessionAffinityTTL string `yaml:"session_affinity_ttl" json:"session_affinity_ttl"`
 }
 
 type MetricsConfig struct {

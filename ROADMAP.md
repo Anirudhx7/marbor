@@ -57,9 +57,9 @@ Goal: Lower the barrier to first run; make every number in the dashboard trustwo
 
 ## Next (planned, north-star order)
 
-- [ ] **Warm-vs-cold benchmark** - reproducible first-token latency comparison (warm model in VRAM vs cold load); 30-second side-by-side screen recording; this is the proof point that sells the product
-- [ ] **Gate coverage: security regression tests** - one regression test per security invariant (constant-time compare, auth closed, cloud off, body cap, SSRF, etc.); gate can't be gamed by accident
-- [ ] **KV-cache / context affinity** - sticky session routing for stateful workloads; same conversation → same node → faster inference from cached KV context
+- [x] **Warm-vs-cold benchmark** - reproducible first-token latency comparison (warm model in VRAM vs cold load); 30-second side-by-side screen recording; this is the proof point that sells the product
+- [x] **Gate coverage: security regression tests** - one regression test per security invariant (constant-time compare, auth closed, cloud off, body cap, SSRF, etc.); gate can't be gamed by accident
+- [x] **KV-cache / context affinity** - sticky session routing via X-Session-ID header; same conversation → same node → faster inference from cached KV context; TTL-based eviction, falls back on node failure
 - [ ] **HA story / kill the proxy SPOF** - active/passive or DNS round-robin with health-check failover; single mesh node going down should not drop all traffic
 - [ ] **VRAM-aware placement** - auto-rebalance model loads across heterogeneous fleets; route new requests to the node with the most free VRAM for the requested model
 - [ ] Model Advisor page - model catalog with VRAM fit per node, recommend which node to pull a model onto

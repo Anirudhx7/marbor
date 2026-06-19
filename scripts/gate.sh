@@ -21,10 +21,20 @@ fail() { echo ""; echo "GATE RED: $*" >&2; exit 1; }
 
 echo "=== [1/5] UI: npm ci + build ==="
 if command -v powershell.exe &>/dev/null; then
-  # Windows: cmd rd /s /q handles deep node_modules trees reliably;
-  # Remove-Item -ErrorAction SilentlyContinue silently fails on ENOTEMPTY.
+  # Windows: neither 'rd /s /q' nor 'Remove-Item -Recurse' is 100% reliable
+  # alone — Windows Defender or VS Code file watchers lock different packages
+  # each run. Strategy: try both methods in a retry loop until the directory
+  # is gone or we give up and let npm ci handle it (npm ci also cleans first,
+  # and it may succeed even if our pre-delete partially failed).
   powershell.exe -NonInteractive -NoProfile -Command "
-    cmd /c 'if exist ui\node_modules rd /s /q ui\node_modules'
+    for (\$i = 0; \$i -lt 4; \$i++) {
+      if (-not (Test-Path 'ui\node_modules')) { break }
+      cmd /c 'rd /s /q ui\node_modules 2>nul'
+      if (-not (Test-Path 'ui\node_modules')) { break }
+      Remove-Item -Path 'ui\node_modules' -Recurse -Force -ErrorAction SilentlyContinue
+      if (-not (Test-Path 'ui\node_modules')) { break }
+      Start-Sleep -Milliseconds 800
+    }
     Set-Location ui
     npm ci; if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
     node node_modules\typescript\lib\tsc.js -b; if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }

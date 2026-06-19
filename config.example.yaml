@@ -80,6 +80,17 @@ routing:
   # (/api/generate, /api/chat, /api/embed) are always allowed.
   allow_management_endpoints: false
 
+  # Session affinity (KV-cache / context affinity)
+  # When true, requests carrying the same X-Session-ID header are routed to the
+  # same backend node. The node's KV cache for that conversation stays in VRAM,
+  # so subsequent turns skip re-prefill and produce the first token faster.
+  # Default false — stateless routing. Safe zero value.
+  session_affinity: false
+  # How long an idle session pin stays valid. After this window with no requests,
+  # the session is evicted and the next request re-routes normally.
+  # Accepts Go duration strings: "5m", "15m", "30m", "1h". Default "10m".
+  session_affinity_ttl: "10m"
+
 metrics:
   enabled: true
   port: 9090
