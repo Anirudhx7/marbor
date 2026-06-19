@@ -125,6 +125,7 @@ type Router struct {
 	queueDepth    int32 // atomic, current waiters in WaitForNode
 	queueMaxDepth int
 	queueTimeout  time.Duration
+	warmupCfg     config.WarmupConfig
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -192,6 +193,18 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		queueMaxDepth:      queueMaxDepth,
 		queueTimeout:       queueTimeout,
 	}
+}
+
+func (r *Router) SetWarmupConfig(cfg config.WarmupConfig) {
+	r.mu.Lock()
+	r.warmupCfg = cfg
+	r.mu.Unlock()
+}
+
+// TriggerWarmup fires an immediate warmup ping cycle for all configured models.
+// Safe to call concurrently; each (model, node) pair runs in its own goroutine.
+func (r *Router) TriggerWarmup(ctx context.Context) {
+	go r.pingWarmupModels(ctx)
 }
 
 func (r *Router) SetDockerConfig(cfg config.DockerConfig) {
@@ -362,6 +375,17 @@ func (r *Router) Start(ctx context.Context) {
 	sweepTicker := time.NewTicker(sweepInterval)
 	defer sweepTicker.Stop()
 
+	// Warmup ticker: only active when warmup is enabled and models are configured.
+	r.mu.RLock()
+	warmupEnabled := r.warmupCfg.Enabled && len(r.warmupCfg.Models) > 0
+	warmupInterval := time.Duration(r.warmupCfg.IntervalMs) * time.Millisecond
+	r.mu.RUnlock()
+	if warmupEnabled {
+		go r.pingWarmupModels(ctx) // initial ping on startup
+	}
+	warmupTicker := time.NewTicker(warmupInterval)
+	defer warmupTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -374,6 +398,10 @@ func (r *Router) Start(ctx context.Context) {
 			r.pollNvidiaAll()
 		case <-sweepTicker.C:
 			r.sweepAffinity()
+		case <-warmupTicker.C:
+			if warmupEnabled {
+				go r.pingWarmupModels(ctx)
+			}
 		}
 	}
 }

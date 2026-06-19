@@ -132,6 +132,20 @@ docker:
   socket: /var/run/docker.sock
   poll_interval_ms: 30000
 
+# Warmup: proactively keep models loaded in VRAM so every request is warm.
+# The warmer sends a zero-token /api/generate with keep_alive to each target
+# node on interval_ms cadence, preventing Ollama from evicting the model.
+# Without this, a model not used for OLLAMA_KEEP_ALIVE (default 5m) gets
+# unloaded and the next request pays a cold-start penalty.
+warmup:
+  enabled: false
+  interval_ms: 300000   # ping every 5 min (must be less than OLLAMA_KEEP_ALIVE)
+  keep_alive: "10m"     # how long Ollama keeps the model in VRAM after each ping
+  models:
+    # - model: llama3.2          # keep warm on all healthy nodes
+    # - model: llama3.1:8b
+    #   nodes: [gpu-1, gpu-2]   # restrict to specific nodes (empty = all nodes)
+
 # Cloud fallback: when all local Ollama nodes are busy or down,
 # requests fall back to these providers in order.
 # Set enabled: false to disable without removing the config.

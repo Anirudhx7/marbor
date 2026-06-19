@@ -147,6 +147,11 @@ func main() {
 	if cfg.Docker.Enabled {
 		log.Printf("Docker auto-discovery enabled (socket: %s)", cfg.Docker.Socket)
 	}
+	r.SetWarmupConfig(cfg.Warmup)
+	if cfg.Warmup.Enabled && len(cfg.Warmup.Models) > 0 {
+		log.Printf("Model warmup enabled: %d model(s), interval %dms, keep_alive %s",
+			len(cfg.Warmup.Models), cfg.Warmup.IntervalMs, cfg.Warmup.KeepAlive)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go r.Start(ctx)

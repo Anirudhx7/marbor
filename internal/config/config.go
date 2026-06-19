@@ -9,6 +9,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// WarmupEntry names a model to keep warm and optionally restricts which nodes
+// receive keepalive pings. Empty Nodes means "all healthy nodes".
+type WarmupEntry struct {
+	Model string   `yaml:"model" json:"model"`
+	Nodes []string `yaml:"nodes,omitempty" json:"nodes,omitempty"`
+}
+
+// WarmupConfig controls proactive model keepalive. The warmer sends a
+// zero-token /api/generate with keep_alive to each configured node on
+// IntervalMs cadence so models never get evicted from VRAM between requests.
+type WarmupConfig struct {
+	Enabled    bool          `yaml:"enabled" json:"enabled"`
+	IntervalMs int           `yaml:"interval_ms" json:"interval_ms"`
+	// KeepAlive is the Ollama keep_alive value forwarded in each ping (e.g.
+	// "10m"). Must exceed IntervalMs; defaults to "10m".
+	KeepAlive string        `yaml:"keep_alive" json:"keep_alive"`
+	Models    []WarmupEntry `yaml:"models,omitempty" json:"models,omitempty"`
+}
+
 type Config struct {
 	Proxy          ProxyConfig     `yaml:"proxy"`
 	Admin          AdminConfig     `yaml:"admin" json:"admin"`
@@ -23,6 +42,7 @@ type Config struct {
 	Webhook        WebhookConfig   `yaml:"webhook" json:"webhook"`
 	Savings        SavingsConfig   `yaml:"savings" json:"savings"`
 	HA             HAConfig        `yaml:"ha" json:"ha"`
+	Warmup         WarmupConfig    `yaml:"warmup" json:"warmup"`
 }
 
 // HAConfig controls peer-awareness for active/active HA deployments.
@@ -311,6 +331,13 @@ func (c *Config) Validate() error {
 	}
 	if c.Docker.PollIntervalMs == 0 {
 		c.Docker.PollIntervalMs = 30000
+	}
+
+	if c.Warmup.IntervalMs == 0 {
+		c.Warmup.IntervalMs = 300000 // 5 min
+	}
+	if c.Warmup.KeepAlive == "" {
+		c.Warmup.KeepAlive = "10m"
 	}
 
 	if c.Audit.Path == "" {

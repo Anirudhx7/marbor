@@ -100,6 +100,11 @@ var (
 		Name: "ollamamesh_queue_timeouts_total",
 		Help: "Requests that waited in the queue and timed out without getting a node",
 	})
+
+	warmupPingsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollamamesh_warmup_pings_total",
+		Help: "Proactive keepalive pings sent to prevent model eviction from VRAM",
+	}, []string{"model", "node", "status"})
 )
 
 func RequestsTotal(key, model, node, status string) {
@@ -160,4 +165,9 @@ func QueueDepth(v float64) {
 // QueueTimeout records a queued request that timed out before getting a node.
 func QueueTimeout() {
 	queueTimeoutsTotal.Inc()
+}
+
+// WarmupPing records a keepalive ping. status is "ok" or "error".
+func WarmupPing(model, node, status string) {
+	warmupPingsTotal.WithLabelValues(boundModel(model), node, status).Inc()
 }

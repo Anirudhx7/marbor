@@ -193,6 +193,9 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
 
+	reg("GET /admin/warmup", s.cors(s.adminAuth(s.handleWarmupStatus)))
+	reg("POST /admin/warmup/ping", s.cors(s.adminAuth(s.handleWarmupPing)))
+
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
 
@@ -398,6 +401,27 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		"total_nodes":     len(nodes),
 		"queue_depth":     s.router.QueueDepth(),
 	})
+}
+
+func (s *Server) handleWarmupStatus(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	cfg := s.cfg.Warmup
+	s.mu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	enabled := s.cfg.Warmup.Enabled
+	s.mu.RUnlock()
+	if !enabled {
+		http.Error(w, `{"error":"warmup not enabled"}`, http.StatusBadRequest)
+		return
+	}
+	s.router.TriggerWarmup(r.Context())
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"triggered"}`))
 }
 
 func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
