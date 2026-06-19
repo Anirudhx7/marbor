@@ -61,7 +61,7 @@ Goal: Lower the barrier to first run; make every number in the dashboard trustwo
 - [x] **Gate coverage: security regression tests** - one regression test per security invariant (constant-time compare, auth closed, cloud off, body cap, SSRF, etc.); gate can't be gamed by accident
 - [x] **KV-cache / context affinity** - sticky session routing via X-Session-ID header; same conversation → same node → faster inference from cached KV context; TTL-based eviction, falls back on node failure
 - [x] **HA story / kill the proxy SPOF** - active/active peer-awareness: each instance polls peers' /health, exposes GET /admin/ha/peers for cluster status; operators run two instances behind any TCP LB
-- [ ] **VRAM-aware placement** - auto-rebalance model loads across heterogeneous fleets; route new requests to the node with the most free VRAM for the requested model
+- [x] **VRAM-aware placement** - fallback: "vram-aware" routes cold requests to the node with the most free VRAM; skips unknown-capacity and overcommitted nodes; falls back to least-connections when all nodes are at capacity
 - [ ] Model Advisor page - model catalog with VRAM fit per node, recommend which node to pull a model onto
 - [ ] SQLite analytics persistence - survives restarts; deferred until retention semantics are defined
 - [ ] Remote node GPU telemetry - sidecar agent for nvidia-smi on non-mesh nodes (needs operator confirmation of real user demand before building)

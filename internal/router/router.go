@@ -682,14 +682,15 @@ func (r *Router) routeInternal(modelName string) (*NodeState, bool) {
 		metrics.CacheMiss()
 	}
 
-	if fallback == "least-connections" || fallback == "" {
-		return pickLeastConns(healthy), false
-	}
-	if fallback == "round-robin" {
+	switch fallback {
+	case "vram-aware":
+		return pickMostFreeVRAM(healthy), false
+	case "round-robin":
 		idx := atomic.AddUint32(&r.roundRobin, 1) % uint32(len(healthy))
 		return healthy[idx], false
+	default: // "least-connections" or ""
+		return pickLeastConns(healthy), false
 	}
-	return healthy[0], false
 }
 
 // sweepAffinity removes expired session-affinity entries. Called periodically
@@ -714,6 +715,36 @@ func pickLeastConns(nodes []*NodeState) *NodeState {
 			minConns = conns
 			best = n
 		}
+	}
+	return best
+}
+
+// pickMostFreeVRAM selects the healthy node with the most free VRAM.
+// Nodes where VRAMTotalMB == 0 (unknown capacity) or VRAMUsedMB >= VRAMTotalMB
+// (overcommitted / at capacity) are excluded; if ALL eligible nodes are excluded
+// it falls back to pickLeastConns so a request is never dropped.
+func pickMostFreeVRAM(nodes []*NodeState) *NodeState {
+	var best *NodeState
+	var bestFree int64 = 0
+	for _, n := range nodes {
+		n.mu.RLock()
+		total := n.VRAMTotalMB
+		used := n.VRAMUsedMB
+		n.mu.RUnlock()
+		if total <= 0 {
+			continue // capacity unknown
+		}
+		free := total - used
+		if free <= 0 {
+			continue // at or over capacity
+		}
+		if free > bestFree {
+			bestFree = free
+			best = n
+		}
+	}
+	if best == nil {
+		return pickLeastConns(nodes) // all unknown/full: safe degradation
 	}
 	return best
 }
@@ -826,7 +857,19 @@ func (r *Router) RouteExcluding(modelName string, exclude map[string]bool) (*Nod
 		}
 	}
 
-	return pickLeastConns(healthy), false
+	r.mu.RLock()
+	fallback := r.fallback
+	r.mu.RUnlock()
+
+	switch fallback {
+	case "vram-aware":
+		return pickMostFreeVRAM(healthy), false
+	case "round-robin":
+		idx := atomic.AddUint32(&r.roundRobin, 1) % uint32(len(healthy))
+		return healthy[idx], false
+	default: // "least-connections" or ""
+		return pickLeastConns(healthy), false
+	}
 }
 
 func (r *Router) IncrConn(node *NodeState) {

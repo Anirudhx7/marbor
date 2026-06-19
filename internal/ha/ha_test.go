@@ -1,7 +1,6 @@
 package ha
 
 import (
-	"context"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -29,11 +28,7 @@ func TestMonitor_PeerReachable(t *testing.T) {
 	defer srv.Close()
 
 	m := newMonitor([]string{srv.URL}, 20, 500)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go m.Start(ctx)
-	time.Sleep(3 * testInterval)
+	m.checkAll() // deterministic — no goroutine/timer needed
 
 	statuses := m.PeerStatuses()
 	if !statuses[srv.URL] {
@@ -51,11 +46,7 @@ func TestMonitor_PeerUnreachable(t *testing.T) {
 	defer srv.Close()
 
 	m := newMonitor([]string{srv.URL}, 20, 500)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go m.Start(ctx)
-	time.Sleep(3 * testInterval)
+	m.checkAll()
 
 	statuses := m.PeerStatuses()
 	if statuses[srv.URL] {
@@ -78,11 +69,7 @@ func TestMonitor_MultiPeer(t *testing.T) {
 	defer unhealthy.Close()
 
 	m := newMonitor([]string{healthy.URL, unhealthy.URL}, 20, 500)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go m.Start(ctx)
-	time.Sleep(3 * testInterval)
+	m.checkAll()
 
 	statuses := m.PeerStatuses()
 	if !statuses[healthy.URL] {
@@ -142,11 +129,7 @@ func TestMonitor_PeerConnectionRefused(t *testing.T) {
 
 	peerURL := "http://" + addr
 	m := newMonitor([]string{peerURL}, 20, 100)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go m.Start(ctx)
-	time.Sleep(3 * testInterval)
+	m.checkAll()
 
 	statuses := m.PeerStatuses()
 	if statuses[peerURL] {
