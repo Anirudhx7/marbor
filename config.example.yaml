@@ -91,6 +91,16 @@ routing:
   # Accepts Go duration strings: "5m", "15m", "30m", "1h". Default "10m".
   session_affinity_ttl: "10m"
 
+# HA (active/active): run two mesh instances pointing at each other.
+# Clients use HAProxy/nginx in front of both on :11434.
+# Each instance independently routes to the same Ollama node pool.
+# Usage state (usage-state.json) is NOT shared between instances.
+ha:
+  enabled: false
+  peers: []           # admin port URLs of peer instances, e.g. http://host-b:8080
+  heartbeat_interval_ms: 5000
+  peer_timeout_ms: 3000
+
 metrics:
   enabled: true
   port: 9090

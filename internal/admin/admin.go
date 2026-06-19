@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/ha"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
@@ -46,6 +48,7 @@ type Server struct {
 	startTime     time.Time
 	analytics     *analyticsStore
 	auditLog      *audit.Logger
+	haMonitor     *ha.Monitor // nil when HA disabled
 }
 
 // SetVersion sets the version string reported by /health.
@@ -63,6 +66,9 @@ func (s *Server) SetConfigPath(p string) {
 func (s *Server) SetAuditLogger(al *audit.Logger) {
 	s.auditLog = al
 }
+
+// SetHAMonitor wires the HA monitor into the admin server.
+func (s *Server) SetHAMonitor(m *ha.Monitor) { s.haMonitor = m }
 
 type RequestLog struct {
 	ID           string    `json:"id"`
@@ -184,6 +190,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
+
+	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -1108,8 +1116,32 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleHealth is an unauthenticated endpoint for load balancers and Docker healthchecks.
-// Returns 200 OK with node health summary and server uptime.
+// handleHAPeers returns the HA peer reachability snapshot. Requires admin auth.
+func (s *Server) handleHAPeers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.haMonitor == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"enabled": false,
+			"peers":   []struct{}{},
+		})
+		return
+	}
+	statuses := s.haMonitor.PeerStatuses()
+	type peerEntry struct {
+		URL       string `json:"url"`
+		Reachable bool   `json:"reachable"`
+	}
+	peers := make([]peerEntry, 0, len(statuses))
+	for peerURL, reachable := range statuses {
+		peers = append(peers, peerEntry{URL: peerURL, Reachable: reachable})
+	}
+	sort.Slice(peers, func(i, j int) bool { return peers[i].URL < peers[j].URL })
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"enabled": true,
+		"peers":   peers,
+	})
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
 	total := len(nodes)

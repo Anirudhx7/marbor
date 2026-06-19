@@ -18,6 +18,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/ha"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
@@ -184,6 +185,13 @@ func main() {
 	adminSrv.SetAuditLogger(auditLog)
 	adminSrv.SetVersion(Version)
 	adminSrv.SetConfigPath(cfgPath)
+
+	if cfg.HA.Enabled && len(cfg.HA.Peers) > 0 {
+		haMonitor := ha.New(cfg.HA)
+		adminSrv.SetHAMonitor(haMonitor)
+		go haMonitor.Start(ctx)
+		log.Printf("HA enabled: monitoring %d peer(s)", haMonitor.PeerCount())
+	}
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	proxyHandler.SetAuth(authMw)

@@ -21,6 +21,19 @@ type Config struct {
 	Audit          AuditConfig     `yaml:"audit" json:"audit"`
 	Webhook        WebhookConfig   `yaml:"webhook" json:"webhook"`
 	Savings        SavingsConfig   `yaml:"savings" json:"savings"`
+	HA             HAConfig        `yaml:"ha" json:"ha"`
+}
+
+// HAConfig controls peer-awareness for active/active HA deployments.
+// Two mesh instances point at each other's admin port; a TCP LB (HAProxy/nginx)
+// sits in front of both. The monitor polls each peer's /health endpoint and
+// logs reachability transitions so operators can observe split-brain or partial
+// failure without any external monitoring tool.
+type HAConfig struct {
+	Enabled             bool     `yaml:"enabled" json:"enabled"`
+	Peers               []string `yaml:"peers" json:"peers"`
+	HeartbeatIntervalMs int      `yaml:"heartbeat_interval_ms" json:"heartbeat_interval_ms"`
+	PeerTimeoutMs       int      `yaml:"peer_timeout_ms" json:"peer_timeout_ms"`
 }
 
 // SavingsConfig controls how locally-served tokens are valued in the
@@ -278,6 +291,22 @@ func (c *Config) Validate() error {
 
 	if c.Savings.ReferenceCostPer1K <= 0 {
 		c.Savings.ReferenceCostPer1K = 0.002
+	}
+
+	if c.HA.HeartbeatIntervalMs <= 0 {
+		c.HA.HeartbeatIntervalMs = 5000
+	}
+	if c.HA.PeerTimeoutMs <= 0 {
+		c.HA.PeerTimeoutMs = 3000
+	}
+	for i, peer := range c.HA.Peers {
+		u, err := url.Parse(peer)
+		if err != nil {
+			return fmt.Errorf("ha peer %d: invalid URL %q: %w", i, peer, err)
+		}
+		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("ha peer %d URL must be http(s) with a host: %s", i, peer)
+		}
 	}
 
 	if c.LiteLLM.Enabled && c.LiteLLM.URL == "" {
