@@ -396,6 +396,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		"active_requests": totalConns,
 		"nodes_online":    online,
 		"total_nodes":     len(nodes),
+		"queue_depth":     s.router.QueueDepth(),
 	})
 }
 

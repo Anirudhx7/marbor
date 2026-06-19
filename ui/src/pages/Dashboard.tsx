@@ -25,9 +25,13 @@ interface MetricCardProps {
   icon: React.ReactNode;
   trend?: string;
   trendUp?: boolean;
+  highlight?: 'warning' | 'danger';
 }
 
-function MetricCard({ title, value, unit, icon, trend, trendUp }: MetricCardProps) {
+function MetricCard({ title, value, unit, icon, trend, trendUp, highlight }: MetricCardProps) {
+  const iconBg = highlight === 'danger' ? 'bg-destructive/10 text-destructive'
+    : highlight === 'warning' ? 'bg-warning/10 text-warning'
+    : 'bg-primary/10 text-primary';
   return (
     <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors">
       <div className="flex items-start justify-between">
@@ -38,7 +42,7 @@ function MetricCard({ title, value, unit, icon, trend, trendUp }: MetricCardProp
             {unit && <span className="text-sm font-medium text-muted-foreground ml-1">{unit}</span>}
           </div>
         </div>
-        <div className="p-2 bg-primary/10 rounded-lg text-primary">
+        <div className={`p-2 rounded-lg ${iconBg}`}>
           {icon}
         </div>
       </div>
@@ -156,7 +160,10 @@ export function Dashboard() {
     activeRequests: 0,
     avgLatency: 0,
     tokensPerMin: 0,
-    coldStarts: 0
+    coldStarts: 0,
+    queueDepth: 0,
+    nodesOnline: 0,
+    totalNodes: 0,
   });
   const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
   const [savingsLoading, setSavingsLoading] = useState(!demoMode);
@@ -225,6 +232,7 @@ export function Dashboard() {
   const displayLatency = isLive ? summary.avgLatency : 0;
   const displayTokens = isLive ? summary.tokensPerMin : "--";
   const displayColdStarts = isLive ? summary.coldStarts : '--';
+  const displayQueue = isLive ? summary.queueDepth : 0;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -261,11 +269,18 @@ export function Dashboard() {
       )}
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <MetricCard
           title="Active Requests"
           value={displayActive.toString()}
           icon={<Activity className="w-5 h-5" />}
+        />
+        <MetricCard
+          title="Queued"
+          value={displayQueue.toString()}
+          unit="waiting"
+          icon={<Clock className="w-5 h-5" />}
+          highlight={displayQueue > 0 ? 'warning' : undefined}
         />
         <MetricCard
           title="Avg Latency"

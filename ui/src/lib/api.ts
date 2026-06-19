@@ -43,6 +43,9 @@ export async function fetchSummary() {
     avgLatency: d.avg_latency ?? 0,
     tokensPerMin: d.tokens_per_min ?? 0,
     coldStarts: d.cold_starts ?? 0,
+    queueDepth: d.queue_depth ?? 0,
+    nodesOnline: d.nodes_online ?? 0,
+    totalNodes: d.total_nodes ?? 0,
   };
 }
 
