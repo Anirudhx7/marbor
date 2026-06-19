@@ -201,7 +201,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract session ID for KV-cache affinity. The header is optional; an
 	// absent or empty value means stateless routing (no sticky session).
 	sessionID := strings.TrimSpace(r.Header.Get("X-Session-ID"))
-	node, warm := h.router.Route(modelName, sessionID)
+	// WaitForNode tries an immediate route first; if no node is available it
+	// queues the request and blocks until a node frees up or the queue timeout
+	// elapses. On timeout or queue-full it returns nil and we fall through to
+	// cloud fallback or 503 as before. The request context is passed so a
+	// client disconnect aborts the wait immediately.
+	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID)
 	if node == nil {
 		cloud := h.router.RouteCloud()
 		if cloud != nil {

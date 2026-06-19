@@ -98,6 +98,15 @@ routing:
   # poll_interval_ms — only nvidia-smi telemetry is decoupled here.
   nvidia_poll_interval_ms: 30000
 
+  # Request queue: when all local nodes are saturated, requests queue here
+  # instead of returning 503 immediately. The queue is drained as nodes free up.
+  # queue_max_depth: hard cap on waiting requests. Over-limit requests skip the
+  #   queue and go straight to cloud fallback or 503. Default 100.
+  # queue_timeout_ms: how long a queued request waits before giving up.
+  #   Default 30000 (30s). Set to match your P95 model load time.
+  queue_max_depth: 100
+  queue_timeout_ms: 30000
+
 # HA (active/active): run two mesh instances pointing at each other.
 # Clients use HAProxy/nginx in front of both on :11434.
 # Each instance independently routes to the same Ollama node pool.

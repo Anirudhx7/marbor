@@ -116,9 +116,15 @@ type Router struct {
 	// nvidiaCache holds the last nvidia-smi result per GPU index for local nodes.
 	// Populated by a separate ticker (nvidiaPollInterval) so that nvidia-smi is
 	// never invoked on every /api/ps poll cycle.
-	nvidiaCache         map[int]GPUStats
-	nvidiaMu            sync.RWMutex
-	nvidiaPollInterval  time.Duration
+	nvidiaCache        map[int]GPUStats
+	nvidiaMu           sync.RWMutex
+	nvidiaPollInterval time.Duration
+	// notifyCh is a capacity-1 channel; DecrConn sends a non-blocking signal
+	// whenever a connection is freed so WaitForNode waiters can retry routing.
+	notifyCh      chan struct{}
+	queueDepth    int32 // atomic, current waiters in WaitForNode
+	queueMaxDepth int
+	queueTimeout  time.Duration
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -158,6 +164,14 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	if nvidiaPollInterval <= 0 {
 		nvidiaPollInterval = 30 * time.Second
 	}
+	queueTimeout := time.Duration(cfg.QueueTimeoutMs) * time.Millisecond
+	if queueTimeout <= 0 {
+		queueTimeout = 30 * time.Second
+	}
+	queueMaxDepth := cfg.QueueMaxDepth
+	if queueMaxDepth <= 0 {
+		queueMaxDepth = 100
+	}
 	return &Router{
 		nodes:              nodes,
 		strategy:           cfg.Strategy,
@@ -176,6 +190,9 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		affinityTTL:        affinityTTL,
 		nvidiaCache:        make(map[int]GPUStats),
 		nvidiaPollInterval: nvidiaPollInterval,
+		notifyCh:           make(chan struct{}, 1),
+		queueMaxDepth:      queueMaxDepth,
+		queueTimeout:       queueTimeout,
 	}
 }
 
@@ -937,7 +954,69 @@ func (r *Router) DecrConn(node *NodeState) {
 			v = 0
 		}
 		metrics.ActiveConnections(node.Name, float64(v))
+		// Wake up any WaitForNode callers — a slot just freed.
+		select {
+		case r.notifyCh <- struct{}{}:
+		default:
+		}
 	}
+}
+
+// WaitForNode is the queued variant of Route. It first tries Route() immediately;
+// if no node is available it waits up to queueTimeout for one to free up (signaled
+// by DecrConn). Returns nil after timeout or context cancellation, at which point
+// the caller should fall through to cloud fallback or 503.
+//
+// If the queue is already at queueMaxDepth, returns nil immediately without queuing
+// to prevent unbounded memory growth under sustained overload.
+func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (*NodeState, bool) {
+	// Fast path: immediate route.
+	if node, warm := r.Route(modelName, sessionID); node != nil {
+		return node, warm
+	}
+
+	// Claim a queue slot atomically. Reject if already at capacity.
+	depth := atomic.AddInt32(&r.queueDepth, 1)
+	if int(depth) > r.queueMaxDepth {
+		atomic.AddInt32(&r.queueDepth, -1)
+		return nil, false
+	}
+	metrics.QueueDepth(float64(depth))
+	defer func() {
+		d := atomic.AddInt32(&r.queueDepth, -1)
+		metrics.QueueDepth(float64(d))
+	}()
+
+	timer := time.NewTimer(r.queueTimeout)
+	defer timer.Stop()
+	// Periodic safety-net retry: coalesced notifyCh signals can miss concurrent
+	// DecrConn bursts (channel capacity 1). 100ms poll adds negligible CPU but
+	// ensures waiters are never stuck longer than one polling interval.
+	retryTick := time.NewTicker(100 * time.Millisecond)
+	defer retryTick.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, false
+		case <-timer.C:
+			metrics.QueueTimeout()
+			return nil, false
+		case <-r.notifyCh:
+			if node, warm := r.Route(modelName, sessionID); node != nil {
+				return node, warm
+			}
+		case <-retryTick.C:
+			if node, warm := r.Route(modelName, sessionID); node != nil {
+				return node, warm
+			}
+		}
+	}
+}
+
+// QueueDepth returns the current number of requests waiting in WaitForNode.
+func (r *Router) QueueDepth() int {
+	return int(atomic.LoadInt32(&r.queueDepth))
 }
 
 func ExtractModelName(body []byte) string {

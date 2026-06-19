@@ -90,6 +90,16 @@ var (
 		Name: "ollamamesh_panics_total",
 		Help: "Handler panics recovered by the recovery middleware (a non-zero rate is a bug to investigate)",
 	})
+
+	queueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "ollamamesh_queue_depth",
+		Help: "Current number of requests queued waiting for a local node to become available",
+	})
+
+	queueTimeoutsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ollamamesh_queue_timeouts_total",
+		Help: "Requests that waited in the queue and timed out without getting a node",
+	})
 )
 
 func RequestsTotal(key, model, node, status string) {
@@ -140,4 +150,14 @@ func QuotaRejection(key, period string) {
 // Panic records a recovered handler panic.
 func Panic() {
 	panicsTotal.Inc()
+}
+
+// QueueDepth sets the current request queue depth.
+func QueueDepth(v float64) {
+	queueDepth.Set(v)
+}
+
+// QueueTimeout records a queued request that timed out before getting a node.
+func QueueTimeout() {
+	queueTimeoutsTotal.Inc()
 }

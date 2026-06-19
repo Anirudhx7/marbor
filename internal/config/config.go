@@ -166,6 +166,15 @@ type RoutingConfig struct {
 	// subprocess each call, so the default is 30s rather than the /api/ps
 	// poll rate (2s) to avoid measurable CPU overhead on the mesh host.
 	NvidiaPollIntervalMs int `yaml:"nvidia_poll_interval_ms" json:"nvidia_poll_interval_ms"`
+	// QueueMaxDepth is the maximum number of requests that can wait for a local
+	// node to become available. When the cluster is fully saturated, requests
+	// are queued here before falling through to cloud fallback or 503. 0
+	// disables queuing (immediate cloud/503). Default 100.
+	QueueMaxDepth int `yaml:"queue_max_depth" json:"queue_max_depth"`
+	// QueueTimeoutMs is how long a queued request waits for a node to free up
+	// before giving up and falling through to cloud fallback or 503. Default
+	// 30000 (30s).
+	QueueTimeoutMs int `yaml:"queue_timeout_ms" json:"queue_timeout_ms"`
 }
 
 type MetricsConfig struct {
@@ -250,6 +259,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Routing.NvidiaPollIntervalMs == 0 {
 		c.Routing.NvidiaPollIntervalMs = 30000
+	}
+	if c.Routing.QueueMaxDepth == 0 {
+		c.Routing.QueueMaxDepth = 100
+	}
+	if c.Routing.QueueTimeoutMs == 0 {
+		c.Routing.QueueTimeoutMs = 30000
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
