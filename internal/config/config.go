@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"runtime"
 
 	"gopkg.in/yaml.v3"
 )
@@ -160,6 +161,11 @@ type RoutingConfig struct {
 	// how long an idle session pin stays valid. After this window with no
 	// requests, the next request re-routes normally. Default "10m".
 	SessionAffinityTTL string `yaml:"session_affinity_ttl" json:"session_affinity_ttl"`
+	// NvidiaPollIntervalMs controls how often the router calls nvidia-smi to
+	// refresh VRAM/temperature/power data for local nodes. nvidia-smi forks a
+	// subprocess each call, so the default is 30s rather than the /api/ps
+	// poll rate (2s) to avoid measurable CPU overhead on the mesh host.
+	NvidiaPollIntervalMs int `yaml:"nvidia_poll_interval_ms" json:"nvidia_poll_interval_ms"`
 }
 
 type MetricsConfig struct {
@@ -242,6 +248,9 @@ func (c *Config) Validate() error {
 	if c.Routing.MaxRetries == 0 {
 		c.Routing.MaxRetries = 2
 	}
+	if c.Routing.NvidiaPollIntervalMs == 0 {
+		c.Routing.NvidiaPollIntervalMs = 30000
+	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
 	}
@@ -279,7 +288,11 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Docker.Socket == "" {
-		c.Docker.Socket = "/var/run/docker.sock"
+		if runtime.GOOS == "windows" {
+			c.Docker.Socket = `//./pipe/docker_engine`
+		} else {
+			c.Docker.Socket = "/var/run/docker.sock"
+		}
 	}
 	if c.Docker.PollIntervalMs == 0 {
 		c.Docker.PollIntervalMs = 30000

@@ -86,6 +86,43 @@ func TestNoQuotaMeansUnlimited(t *testing.T) {
 	}
 }
 
+// TestQuotaRejectionDoesNotDriftCounter verifies that a request rejected by
+// quota enforcement does not permanently consume a slot against the limit.
+// Before the fix, incrementAndStats() ran before the limit check, so each
+// rejection permanently counted against today/month — operators saw their
+// quota evaporating without any real usage.
+func TestQuotaRejectionDoesNotDriftCounter(t *testing.T) {
+	const limit = 2
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: true,
+		Keys:    []config.KeyConfig{{Name: "drift", Key: "sk-drift", RateLimit: 100000, DailyLimit: limit}},
+	})
+	h := mw.Handler(okHandler())
+
+	// Use up the entire limit.
+	for i := 0; i < limit; i++ {
+		if rec := fire(h, "sk-drift"); rec.Code != http.StatusOK {
+			t.Fatalf("setup request %d: got %d, want 200", i+1, rec.Code)
+		}
+	}
+
+	// Fire many requests that must be rejected.
+	for i := 0; i < 10; i++ {
+		if rec := fire(h, "sk-drift"); rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("rejection %d: got %d, want 429", i+1, rec.Code)
+		}
+	}
+
+	// Counter must still equal the limit (not limit+10).
+	today, _, _, _, _, _, _, ok := mw.KeyStats("drift")
+	if !ok {
+		t.Fatal("key drift should exist")
+	}
+	if today != limit {
+		t.Errorf("counter drifted: today = %d, want %d (rejected requests must not increment)", today, limit)
+	}
+}
+
 func fire(h http.Handler, key string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "/api/generate", nil)
 	req.Header.Set("Authorization", "Bearer "+key)

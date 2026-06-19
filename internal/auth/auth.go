@@ -329,6 +329,8 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		today, month := ks.counter.incrementAndStats()
 		if ks.dailyLimit > 0 || ks.monthlyLimit > 0 {
 			if ks.dailyLimit > 0 && today > ks.dailyLimit {
+				ks.counter.decrement()
+				ks.limiter.refund()
 				metrics.QuotaRejection(ks.name, "daily")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
@@ -336,6 +338,8 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				return
 			}
 			if ks.monthlyLimit > 0 && month > ks.monthlyLimit {
+				ks.counter.decrement()
+				ks.limiter.refund()
 				metrics.QuotaRejection(ks.name, "monthly")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)

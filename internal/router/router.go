@@ -113,6 +113,12 @@ type Router struct {
 	affinity    map[string]*affinityEntry
 	affinityMu  sync.RWMutex
 	affinityTTL time.Duration
+	// nvidiaCache holds the last nvidia-smi result per GPU index for local nodes.
+	// Populated by a separate ticker (nvidiaPollInterval) so that nvidia-smi is
+	// never invoked on every /api/ps poll cycle.
+	nvidiaCache         map[int]GPUStats
+	nvidiaMu            sync.RWMutex
+	nvidiaPollInterval  time.Duration
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -148,22 +154,28 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			affinityTTL = d
 		}
 	}
+	nvidiaPollInterval := time.Duration(cfg.NvidiaPollIntervalMs) * time.Millisecond
+	if nvidiaPollInterval <= 0 {
+		nvidiaPollInterval = 30 * time.Second
+	}
 	return &Router{
-		nodes:           nodes,
-		strategy:        cfg.Strategy,
-		fallback:        cfg.Fallback,
-		interval:        time.Duration(cfg.PollIntervalMs) * time.Millisecond,
-		client:          &http.Client{Timeout: 5 * time.Second},
-		rules:           cfg.Rules,
-		clouds:          cloudsCopy,
-		discoveredURLs:  make(map[string]struct{}),
-		prevHealthy:     prev,
-		tagsCache:       make(map[string]*TagsCache),
-		tagsInflight:    make(map[string]*tagsInflightEntry),
-		upstreamTimeout: upstreamTimeout,
-		maxRetries:      maxRetries,
-		affinity:        make(map[string]*affinityEntry),
-		affinityTTL:     affinityTTL,
+		nodes:              nodes,
+		strategy:           cfg.Strategy,
+		fallback:           cfg.Fallback,
+		interval:           time.Duration(cfg.PollIntervalMs) * time.Millisecond,
+		client:             &http.Client{Timeout: 5 * time.Second},
+		rules:              cfg.Rules,
+		clouds:             cloudsCopy,
+		discoveredURLs:     make(map[string]struct{}),
+		prevHealthy:        prev,
+		tagsCache:          make(map[string]*TagsCache),
+		tagsInflight:       make(map[string]*tagsInflightEntry),
+		upstreamTimeout:    upstreamTimeout,
+		maxRetries:         maxRetries,
+		affinity:           make(map[string]*affinityEntry),
+		affinityTTL:        affinityTTL,
+		nvidiaCache:        make(map[int]GPUStats),
+		nvidiaPollInterval: nvidiaPollInterval,
 	}
 }
 
@@ -308,6 +320,7 @@ func (n *NodeState) RUnlock() {
 }
 
 func (r *Router) Start(ctx context.Context) {
+	r.pollNvidiaAll()
 	r.pollAll()
 	r.discoverAndAddDockerNodes()
 	ticker := time.NewTicker(r.interval)
@@ -321,6 +334,9 @@ func (r *Router) Start(ctx context.Context) {
 	r.mu.RUnlock()
 	dockerTicker := time.NewTicker(dockerInterval)
 	defer dockerTicker.Stop()
+
+	nvidiaTicker := time.NewTicker(r.nvidiaPollInterval)
+	defer nvidiaTicker.Stop()
 
 	// Sweep expired affinity entries at half the TTL interval to avoid
 	// holding memory for sessions that have been idle for >1 TTL.
@@ -339,9 +355,40 @@ func (r *Router) Start(ctx context.Context) {
 			r.pollAll()
 		case <-dockerTicker.C:
 			r.discoverAndAddDockerNodes()
+		case <-nvidiaTicker.C:
+			r.pollNvidiaAll()
 		case <-sweepTicker.C:
 			r.sweepAffinity()
 		}
+	}
+}
+
+// pollNvidiaAll refreshes nvidia-smi stats for all local nodes and stores
+// results in nvidiaCache. Called on a separate ticker (default 30s) so that
+// nvidia-smi is never forked on every /api/ps poll cycle.
+func (r *Router) pollNvidiaAll() {
+	r.mu.RLock()
+	nodes := make([]*NodeState, len(r.nodes))
+	copy(nodes, r.nodes)
+	r.mu.RUnlock()
+
+	seen := make(map[int]bool)
+	for _, n := range nodes {
+		if !isLocalNode(n.URL) {
+			continue
+		}
+		if seen[n.NvidiaIndex] {
+			continue
+		}
+		seen[n.NvidiaIndex] = true
+		gpu, ok := queryGPU(n.NvidiaIndex)
+		r.nvidiaMu.Lock()
+		if ok {
+			r.nvidiaCache[n.NvidiaIndex] = gpu
+		} else {
+			delete(r.nvidiaCache, n.NvidiaIndex)
+		}
+		r.nvidiaMu.Unlock()
 	}
 }
 
@@ -426,13 +473,16 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 	psUsedMB := psUsedBytes / (1024 * 1024)
 
-	// nvidia-smi only describes GPUs on the mesh host itself. Attribute it only to
-	// co-located (localhost) nodes; remote nodes derive real used-VRAM from their
-	// own /api/ps and total from operator-declared config.
+	// nvidia-smi only describes GPUs on the mesh host itself. Read from the
+	// nvidiaCache populated by pollNvidiaAll() on its own slower ticker (default
+	// 30s) rather than calling queryGPU() here, which would fork nvidia-smi on
+	// every /api/ps poll cycle and cause measurable CPU overhead.
 	var gpu GPUStats
 	hasGPU := false
 	if isLocalNode(n.URL) {
-		gpu, hasGPU = queryGPU(n.NvidiaIndex)
+		r.nvidiaMu.RLock()
+		gpu, hasGPU = r.nvidiaCache[n.NvidiaIndex]
+		r.nvidiaMu.RUnlock()
 	}
 
 	n.mu.Lock()

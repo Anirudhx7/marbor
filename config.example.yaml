@@ -91,6 +91,13 @@ routing:
   # Accepts Go duration strings: "5m", "15m", "30m", "1h". Default "10m".
   session_affinity_ttl: "10m"
 
+  # nvidia-smi poll interval (milliseconds). nvidia-smi forks a subprocess each
+  # call; polling it every 2s alongside /api/ps produces measurable CPU overhead.
+  # Default 30000 (30s). Set lower only if you need near-real-time temp/power
+  # data in the dashboard. /api/ps (VRAM used by loaded models) still polls at
+  # poll_interval_ms — only nvidia-smi telemetry is decoupled here.
+  nvidia_poll_interval_ms: 30000
+
 # HA (active/active): run two mesh instances pointing at each other.
 # Clients use HAProxy/nginx in front of both on :11434.
 # Each instance independently routes to the same Ollama node pool.
