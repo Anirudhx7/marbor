@@ -260,7 +260,26 @@ func main() {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+
+	reloadCh := make(chan os.Signal, 1)
+	setupReloadSignal(reloadCh)
+
+	for {
+		select {
+		case <-reloadCh:
+			newCfg, err := config.LoadConfig(cfgPath)
+			if err != nil {
+				log.Printf("config reload failed: %v (keeping previous config)", err)
+				continue
+			}
+			authMw.Reload(newCfg.Auth)
+			r.SetWarmupConfig(newCfg.Warmup)
+			log.Printf("config reloaded from %s (auth keys: %d, warmup: %v)", cfgPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled)
+			continue
+		case <-sig:
+		}
+		break
+	}
 	log.Println("Shutting down gracefully...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)

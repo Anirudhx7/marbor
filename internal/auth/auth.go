@@ -244,6 +244,56 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 	m.mu.Unlock()
 }
 
+// Reload atomically replaces the key set from a new config. Keys whose name
+// AND token value are unchanged have their counter and rate-limiter state
+// preserved (request counts survive reload). Keys with a rotated token value
+// start fresh (old token stops working immediately). Removed keys stop
+// accepting requests after the swap.
+func (m *Middleware) Reload(cfg config.AuthConfig) {
+	newKeys := make(map[string]*keyState, len(cfg.Keys))
+	newByName := make(map[string]*keyState, len(cfg.Keys))
+
+	m.mu.RLock()
+	oldByName := m.byName
+	m.mu.RUnlock()
+
+	for _, k := range cfg.Keys {
+		existing, sameName := oldByName[k.Name]
+		if sameName && existing.key == k.Key {
+			// Same key value — preserve counter + limiter, update policy fields.
+			existing.models = k.Models
+			existing.dailyLimit = k.DailyLimit
+			existing.monthlyLimit = k.MonthlyLimit
+			existing.rateLimit = k.RateLimit
+			existing.expiresAt = k.ExpiresAt
+			newKeys[k.Key] = existing
+			newByName[k.Name] = existing
+		} else {
+			// New key or rotated token — fresh state.
+			ks := &keyState{
+				name:         k.Name,
+				key:          k.Key,
+				rateLimit:    k.RateLimit,
+				limiter:      newTokenBucket(k.RateLimit),
+				counter:      &keyCounter{lastReset: time.Now()},
+				models:       k.Models,
+				expiresAt:    k.ExpiresAt,
+				createdAt:    time.Now(),
+				dailyLimit:   k.DailyLimit,
+				monthlyLimit: k.MonthlyLimit,
+			}
+			newKeys[k.Key] = ks
+			newByName[k.Name] = ks
+		}
+	}
+
+	m.mu.Lock()
+	m.enabled = cfg.Enabled
+	m.keys = newKeys
+	m.byName = newByName
+	m.mu.Unlock()
+}
+
 func (m *Middleware) RevokeKey(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
