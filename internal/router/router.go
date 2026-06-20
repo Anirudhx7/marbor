@@ -32,9 +32,10 @@ type NodeState struct {
 	GPUModel     string
 	NvidiaIndex  int
 	LoadedModels []ModelInfo
-	ActiveConns  int32
-	Healthy      bool
-	Draining     bool
+	ActiveConns    int32
+	RequestsTotal  int64 // atomic: lifetime requests routed to this node
+	Healthy        bool
+	Draining       bool
 	LastPollAt   time.Time
 	Failures     int
 	CPUPercent   float64
@@ -923,7 +924,9 @@ func (r *Router) DrainNode(name string) bool {
 		if n.Name == name {
 			n.mu.Lock()
 			n.Draining = true
+			nodeURL := n.URL
 			n.mu.Unlock()
+			r.fireWebhook("node_drain", name, nodeURL)
 			return true
 		}
 	}
@@ -939,7 +942,9 @@ func (r *Router) UndrainNode(name string) bool {
 		if n.Name == name {
 			n.mu.Lock()
 			n.Draining = false
+			nodeURL := n.URL
 			n.mu.Unlock()
+			r.fireWebhook("node_undrain", name, nodeURL)
 			return true
 		}
 	}
@@ -1078,6 +1083,7 @@ func (r *Router) RouteExcluding(modelName string, exclude map[string]bool) (*Nod
 func (r *Router) IncrConn(node *NodeState) {
 	if node != nil {
 		v := atomic.AddInt32(&node.ActiveConns, 1)
+		atomic.AddInt64(&node.RequestsTotal, 1)
 		metrics.ActiveConnections(node.Name, float64(v))
 	}
 }

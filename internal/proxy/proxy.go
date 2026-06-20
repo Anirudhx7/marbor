@@ -251,7 +251,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 
 	for attempt := 0; ; attempt++ {
-		proxy := buildLocalProxy(targetURL, body, r, transport)
+		proxy := buildLocalProxy(targetURL, body, r, transport, requestID)
 
 		// retryNode is set inside the ErrorHandler closure when a retry is
 		// needed. Using a pointer-to-pointer lets the closure write through to
@@ -397,7 +397,7 @@ var errCloudHandled = fmt.Errorf("cloud handled")
 
 // buildLocalProxy constructs a reverse proxy for the given node URL.
 // It is extracted so the retry loop can rebuild it cleanly for each attempt.
-func buildLocalProxy(targetURL *url.URL, body []byte, orig *http.Request, transport *http.Transport) *httputil.ReverseProxy {
+func buildLocalProxy(targetURL *url.URL, body []byte, orig *http.Request, transport *http.Transport, requestID string) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.Transport = transport
 	proxy.Director = func(req *http.Request) {
@@ -411,6 +411,10 @@ func buildLocalProxy(targetURL *url.URL, body []byte, orig *http.Request, transp
 			if k != "Authorization" {
 				req.Header[k] = v
 			}
+		}
+		// Forward request ID to upstream so mesh and Ollama logs correlate.
+		if requestID != "" {
+			req.Header.Set("X-Request-ID", requestID)
 		}
 		if len(body) > 0 {
 			req.Body = io.NopCloser(bytes.NewReader(body))

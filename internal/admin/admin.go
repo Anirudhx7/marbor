@@ -99,6 +99,7 @@ type nodeResp struct {
 	Uptime        string             `json:"uptime"`
 	LoadedModels  []router.ModelInfo `json:"loadedModels"`
 	ActiveConns   int32              `json:"activeConns"`
+	RequestsTotal int64              `json:"requestsTotal"`
 	HealthHistory []float64          `json:"healthHistory"`
 }
 
@@ -170,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/keys", s.cors(s.adminAuth(s.handleKeys)))
 	reg("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
+	reg("PATCH /admin/keys/{name}", s.cors(s.adminAuth(s.handlePatchKey)))
 	reg("DELETE /admin/keys/{name}", s.cors(s.adminAuth(s.handleRevokeKey)))
 
 	reg("GET /admin/routing/rules", s.cors(s.adminAuth(s.handleRoutingRules)))
@@ -307,6 +309,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			Uptime:        n.Uptime,
 			LoadedModels:  append([]router.ModelInfo(nil), n.LoadedModels...),
 			ActiveConns:   atomic.LoadInt32(&n.ActiveConns),
+			RequestsTotal: atomic.LoadInt64(&n.RequestsTotal),
 			HealthHistory: hist,
 		}
 		n.RUnlock()
@@ -656,6 +659,26 @@ func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
 		s.auth.RevokeKey(name)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handlePatchKey updates mutable key settings (rate_limit, daily_limit,
+// monthly_limit, models) without rotating the token or resetting counters.
+// PATCH /admin/keys/{name}
+func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var patch auth.KeyPatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		return
+	}
+	if s.auth == nil || !s.auth.PatchKey(name, patch) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"key %q not found"}`, name), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"key":%q,"updated":true}`, name)
 }
 
 func (s *Server) handleRoutingRules(w http.ResponseWriter, r *http.Request) {
