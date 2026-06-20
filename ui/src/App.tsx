@@ -22,9 +22,9 @@ function App() {
       <BrowserRouter basename={basename}>
         <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
           <Sidebar />
-          <main className="ml-64 min-h-screen">
+          <main className="md:ml-64 min-h-screen">
             <DemoBanner />
-            <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+            <div className="pt-14 md:pt-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/gpu-nodes" element={<GPUNodes />} />

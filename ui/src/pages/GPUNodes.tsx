@@ -138,7 +138,7 @@ function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit }: {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div className="bg-secondary rounded-lg p-3">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <Cpu className="w-3.5 h-3.5" />
@@ -520,7 +520,7 @@ export function GPUNodes() {
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                 Port

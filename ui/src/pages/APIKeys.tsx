@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Copy, Trash2, Key } from 'lucide-react';
+import { Plus, Copy, Trash2, Key, Pencil } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { SearchInput } from '../components/SearchInput';
 import { mockAPIKeys } from '../lib/mockData';
-import { fetchKeys, createKey, revokeKey } from '../lib/api';
+import { fetchKeys, createKey, revokeKey, patchKey } from '../lib/api';
 import type { APIKey } from '../types';
 
 const MODELS = [
@@ -42,6 +42,56 @@ export function APIKeys() {
   const [error, setError] = useState<string | null>(null);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+  const [editKey, setEditKey] = useState<APIKey | null>(null);
+  const [editForm, setEditForm] = useState({ rateLimit: '', dailyLimit: '', monthlyLimit: '', models: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const openEditModal = (key: APIKey) => {
+    setEditKey(key);
+    setEditForm({
+      rateLimit: key.rateLimit != null ? String(key.rateLimit) : '',
+      dailyLimit: key.dailyLimit != null ? String(key.dailyLimit) : '',
+      monthlyLimit: key.monthlyLimit != null ? String(key.monthlyLimit) : '',
+      models: (key.allowedModels ?? []).join(', '),
+    });
+    setEditError('');
+  };
+
+  const handleSaveKeyPatch = async () => {
+    if (!editKey || !isLive) return;
+    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; models?: string[] } = {};
+    if (editForm.rateLimit.trim()) {
+      const v = parseInt(editForm.rateLimit, 10);
+      if (isNaN(v) || v < 0) { setEditError('Rate limit must be a non-negative integer'); return; }
+      patch.rate_limit = v;
+    }
+    if (editForm.dailyLimit.trim()) {
+      const v = parseInt(editForm.dailyLimit, 10);
+      if (isNaN(v) || v < 0) { setEditError('Daily limit must be a non-negative integer'); return; }
+      patch.daily_limit = v;
+    }
+    if (editForm.monthlyLimit.trim()) {
+      const v = parseInt(editForm.monthlyLimit, 10);
+      if (isNaN(v) || v < 0) { setEditError('Monthly limit must be a non-negative integer'); return; }
+      patch.monthly_limit = v;
+    }
+    if (editForm.models.trim()) {
+      patch.models = editForm.models.split(',').map(m => m.trim()).filter(Boolean);
+    }
+    if (Object.keys(patch).length === 0) { setEditKey(null); return; }
+    setEditSaving(true); setEditError('');
+    try {
+      await patchKey(editKey.name, patch);
+      await loadKeys();
+      setEditKey(null);
+    } catch {
+      setEditError('Failed to save changes');
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const [newKeyForm, setNewKeyForm] = useState({
     name: '',
@@ -319,16 +369,26 @@ export function APIKeys() {
                     </Badge>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => {
-                        setKeyToRevoke(key);
-                        setIsRevokeModalOpen(true);
-                      }}
-                      disabled={key.status === 'suspended'}
-                      className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => openEditModal(key)}
+                        disabled={!isLive || key.status === 'suspended'}
+                        title="Edit key limits"
+                        className="p-2 text-muted-foreground hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setKeyToRevoke(key);
+                          setIsRevokeModalOpen(true);
+                        }}
+                        disabled={key.status === 'suspended'}
+                        className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -452,6 +512,64 @@ export function APIKeys() {
               className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Create Key
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Key Modal */}
+      <Modal
+        isOpen={editKey !== null}
+        onClose={() => setEditKey(null)}
+        title={`Edit Key: ${editKey?.name ?? ''}`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Update limits and allowed models at runtime. Counters and the key token are preserved.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Rate Limit (req/hr)</label>
+              <input type="number" min="0" value={editForm.rateLimit}
+                onChange={e => setEditForm({ ...editForm, rateLimit: e.target.value })}
+                placeholder="e.g. 1000"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Daily Limit</label>
+              <input type="number" min="0" value={editForm.dailyLimit}
+                onChange={e => setEditForm({ ...editForm, dailyLimit: e.target.value })}
+                placeholder="0 = unlimited"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Monthly Limit</label>
+              <input type="number" min="0" value={editForm.monthlyLimit}
+                onChange={e => setEditForm({ ...editForm, monthlyLimit: e.target.value })}
+                placeholder="0 = unlimited"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Allowed Models (comma-separated)</label>
+            <input type="text" value={editForm.models}
+              onChange={e => setEditForm({ ...editForm, models: e.target.value })}
+              placeholder="e.g. llama3, mistral (empty = all models)"
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+          </div>
+          {editError && <p className="text-sm text-destructive">{editError}</p>}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button onClick={() => setEditKey(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSaveKeyPatch} disabled={editSaving}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm">
+              {editSaving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </div>
