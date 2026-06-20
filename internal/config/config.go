@@ -86,6 +86,10 @@ type DockerConfig struct {
 type ProxyConfig struct {
 	Port     int    `yaml:"port"`
 	LogLevel string `yaml:"log_level"`
+	// LogFormat controls the format of system (non-access) log lines.
+	// "text" emits the default Go log prefix lines; "json" emits slog JSON
+	// objects that log aggregators (Loki, Datadog, Fluentd) can parse natively.
+	LogFormat string `yaml:"log_format" json:"log_format"`
 	// AccessLog enables a structured JSON access-log line on stdout per request.
 	// Defaults to true (enabled) when unset. Set to false to silence it.
 	AccessLog *bool `yaml:"access_log,omitempty" json:"access_log,omitempty"`
@@ -254,6 +258,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Proxy.LogLevel == "" {
 		c.Proxy.LogLevel = "info"
+	}
+	if c.Proxy.LogFormat == "" {
+		c.Proxy.LogFormat = "text"
 	}
 	if c.Proxy.AccessLog == nil {
 		enabled := true

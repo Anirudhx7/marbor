@@ -1,6 +1,10 @@
 proxy:
   port: 11434
   log_level: info
+  # log_format: text or json. Use "json" to emit slog JSON objects that log
+  # aggregators (Loki, Datadog, Fluentd) can parse natively. Default: text.
+  # Also settable via --log-format CLI flag (flag takes precedence).
+  log_format: text
   # Structured JSON access log (one line per request) on stdout. Default true.
   # Logs key NAME (never the key value), model, node, status, latency, request id.
   access_log: true

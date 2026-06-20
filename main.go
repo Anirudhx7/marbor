@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -65,9 +66,10 @@ func printFirstRunBanner(fr *config.FirstRunResult, cfgPath string, saved bool) 
 
 func main() {
 	var (
-		showVersion  = flag.Bool("version", false, "print version and exit")
-		cfgFlag      = flag.String("config", "", "path to config file (overrides CONFIG_PATH env; default config.yaml)")
-		validateOnly = flag.Bool("validate", false, "load and validate the config file, then exit (0 = valid, 1 = invalid)")
+		showVersion   = flag.Bool("version", false, "print version and exit")
+		cfgFlag       = flag.String("config", "", "path to config file (overrides CONFIG_PATH env; default config.yaml)")
+		validateOnly  = flag.Bool("validate", false, "load and validate the config file, then exit (0 = valid, 1 = invalid)")
+		logFormatFlag = flag.String("log-format", "", "log output format: text (default) or json")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "ollama-mesh %s - warm-model-aware load balancer with cloud overflow for Ollama\n\n", Version)
@@ -119,6 +121,20 @@ func main() {
 			log.Printf("WARNING: continuing with in-memory config; generated keys will change on next restart")
 		}
 		printFirstRunBanner(fr, cfgPath, saved)
+	}
+
+	// Configure structured logging. CLI flag takes precedence over config file.
+	logFormat := cfg.Proxy.LogFormat
+	if *logFormatFlag != "" {
+		logFormat = *logFormatFlag
+	}
+	if logFormat == "json" {
+		h := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
+		slog.SetDefault(slog.New(h))
+		// Redirect legacy log.Printf calls (from internal packages) through slog
+		// so all output is machine-parseable JSON when log_format=json is set.
+		log.SetFlags(0)
+		log.SetOutput(slog.NewLogLogger(h, slog.LevelInfo).Writer())
 	}
 
 	log.Printf("ollama-mesh %s starting...", Version)
