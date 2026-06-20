@@ -132,7 +132,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 /* install line */
 .install {
   display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden; background: var(--bg-elevated); margin-bottom: 28px; max-width: 680px;
+  overflow: hidden; background: var(--bg-elevated); margin-bottom: 28px; max-width: 860px;
 }
 .install .prompt {
   display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
@@ -303,7 +303,11 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
 <nav>
   <div class="page">
     <a href="#top" class="brand" aria-label="ollama-mesh home">
-      <img src="favicon.svg" width="32" height="32" alt="" aria-hidden="true" style="flex-shrink:0;border-radius:8px">
+      <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
+          <path d="M1 13V1L9 7 17 1v12" stroke="#d4a853" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
       <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
       <span class="ver">{{VERSION}}</span>
     </a>
