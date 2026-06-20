@@ -616,6 +616,57 @@ func TestDrainNodeExcludesFromRouting(t *testing.T) {
 	}
 }
 
+func TestSyncNodes(t *testing.T) {
+	cfg := config.RoutingConfig{}
+	initial := []config.NodeConfig{
+		{Name: "a", URL: "http://a:11434"},
+		{Name: "b", URL: "http://b:11434"},
+	}
+	r := New(cfg, initial, nil)
+	if len(r.nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(r.nodes))
+	}
+
+	// Remove b, add c, keep a.
+	newNodes := []config.NodeConfig{
+		{Name: "a", URL: "http://a:11434"},
+		{Name: "c", URL: "http://c:11434"},
+	}
+	added, removed := r.SyncNodes(newNodes)
+	if added != 1 {
+		t.Errorf("added = %d, want 1", added)
+	}
+	if removed != 1 {
+		t.Errorf("removed = %d, want 1", removed)
+	}
+	r.mu.RLock()
+	names := make([]string, len(r.nodes))
+	for i, n := range r.nodes {
+		names[i] = n.Name
+	}
+	r.mu.RUnlock()
+	foundA, foundC, foundB := false, false, false
+	for _, n := range names {
+		switch n {
+		case "a":
+			foundA = true
+		case "c":
+			foundC = true
+		case "b":
+			foundB = true
+		}
+	}
+	if !foundA {
+		t.Error("node a should still be present")
+	}
+	if !foundC {
+		t.Error("node c should have been added")
+	}
+	if foundB {
+		t.Error("node b should have been removed")
+	}
+}
+
 func TestDrainNodeNotFound(t *testing.T) {
 	r := New(config.RoutingConfig{}, nil, nil)
 	if r.DrainNode("nonexistent") {

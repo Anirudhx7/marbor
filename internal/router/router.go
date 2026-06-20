@@ -872,6 +872,48 @@ func (r *Router) RemoveNode(name string) {
 	}
 }
 
+// SyncNodes reconciles the live node pool against a new config slice.
+// Nodes present in the config but not in the current pool are added.
+// Nodes in the current pool but absent from the config are removed.
+// Nodes present in both (matched by name AND URL) are left untouched so
+// in-flight connections and health history are not disrupted.
+func (r *Router) SyncNodes(newNodes []config.NodeConfig) (added, removed int) {
+	// Build lookup sets.
+	newByName := make(map[string]config.NodeConfig, len(newNodes))
+	for _, n := range newNodes {
+		newByName[n.Name] = n
+	}
+
+	r.mu.RLock()
+	currentNames := make(map[string]string, len(r.nodes)) // name -> URL
+	for _, n := range r.nodes {
+		currentNames[n.Name] = n.URL
+	}
+	r.mu.RUnlock()
+
+	// Remove nodes that are no longer in config.
+	for name := range currentNames {
+		if _, ok := newByName[name]; !ok {
+			r.RemoveNode(name)
+			removed++
+		}
+	}
+
+	// Add nodes that are new in config.
+	for _, n := range newNodes {
+		if existingURL, ok := currentNames[n.Name]; !ok || existingURL != n.URL {
+			if ok {
+				// Same name, different URL — remove old first.
+				r.RemoveNode(n.Name)
+				removed++
+			}
+			r.AddNode(n)
+			added++
+		}
+	}
+	return added, removed
+}
+
 // DrainNode marks a node as draining: it will no longer receive new requests
 // but in-flight connections are allowed to finish. Returns false if not found.
 func (r *Router) DrainNode(name string) bool {

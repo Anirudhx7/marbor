@@ -290,7 +290,10 @@ func main() {
 			}
 			authMw.Reload(newCfg.Auth)
 			r.SetWarmupConfig(newCfg.Warmup)
-			log.Printf("config reloaded from %s (auth keys: %d, warmup: %v)", cfgPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled)
+			r.SetClouds(newCfg.CloudProviders)
+			added, removed := r.SyncNodes(newCfg.Nodes)
+			log.Printf("config reloaded from %s (auth keys: %d, warmup: %v, nodes: +%d/-%d, cloud providers: %d)",
+				cfgPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled, added, removed, len(newCfg.CloudProviders))
 			continue
 		case <-sig:
 		}
