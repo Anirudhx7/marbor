@@ -50,8 +50,6 @@ jobs:
           cp site/demo/index.html site/demo/404.html
           # Landing page (website/) becomes the root
           cp -r website/. site/
-          # Inject version into landing page badge
-          sed -i "s/{{VERSION}}/v${{ steps.version.outputs.version }}/g" site/index.html
           # Root 404 redirects to landing page
           cp website/404.html site/404.html 2>/dev/null || cp website/index.html site/404.html
 
