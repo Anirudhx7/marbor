@@ -48,10 +48,14 @@ jobs:
           cp -r ui/dist/. site/demo/
           # Create SPA 404 fallback inside demo/
           cp site/demo/index.html site/demo/404.html
+          # Build docs HTML from markdown source
+          cd website && node build-docs.mjs && cd ..
           # Landing page (website/) becomes the root
           cp -r website/. site/
           # Root 404 redirects to landing page
           cp website/404.html site/404.html 2>/dev/null || cp website/index.html site/404.html
+          # Inject version token into all HTML files
+          find site -name "*.html" -exec sed -i "s/{{VERSION}}/v${{ steps.version.outputs.version }}/g" {} \;
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
