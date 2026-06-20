@@ -132,7 +132,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 /* install line */
 .install {
   display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden; background: var(--bg-elevated); margin-bottom: 28px;
+  overflow: hidden; background: var(--bg-elevated); margin-bottom: 28px; max-width: 680px;
 }
 .install .prompt {
   display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
@@ -151,7 +151,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 .copy-btn svg { width: 14px; height: 14px; }
 .copy-btn.copied { color: var(--accent2); }
 /* code block with copy button */
-.code-wrap { position: relative; }
+.code-wrap { position: relative; max-width: 680px; }
 .code-wrap .copy-btn { position: absolute; top: 8px; right: 8px; }
 
 .trust-row { display: flex; flex-direction: column; gap: 7px; }
@@ -303,26 +303,17 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
 <nav>
   <div class="page">
     <a href="#top" class="brand" aria-label="ollama-mesh home">
-      <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        <svg width="20" height="18" viewBox="0 0 32 28" fill="none" aria-hidden="true">
-          <line x1="16" y1="9" x2="8" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
-          <line x1="16" y1="9" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
-          <line x1="8" y1="23" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
-          <circle cx="16" cy="8" r="3.5" fill="#d4a853"/>
-          <circle cx="8" cy="23" r="3" fill="#a87f3a"/>
-          <circle cx="24" cy="23" r="3" fill="#a87f3a"/>
-        </svg>
-      </div>
+      <img src="favicon.svg" width="32" height="32" alt="" aria-hidden="true" style="flex-shrink:0;border-radius:8px">
       <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
       <span class="ver">{{VERSION}}</span>
     </a>
     <div class="nav-right">
       <div class="nav-links">
-        <a class="link" href="#features">features</a>
-        <a class="link" href="#how">how it works</a>
-        <a class="link" href="#compare">compare</a>
-        <a class="link" href="docs/">docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh">github&nbsp;↗</a>
+        <a class="link" href="#features">Features</a>
+        <a class="link" href="#how">How it works</a>
+        <a class="link" href="#compare">Compare</a>
+        <a class="link" href="docs/">Docs</a>
+        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh">GitHub&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -335,19 +326,19 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
   </div>
 </nav>
 <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
-  <a href="#features">features</a>
-  <a href="#how">how it works</a>
-  <a href="#compare">compare</a>
-  <a href="docs/">docs</a>
-  <a href="/ollama-mesh/demo/">live demo</a>
-  <a href="https://github.com/Anirudhx7/ollama-mesh">github ↗</a>
+  <a href="#features">Features</a>
+  <a href="#how">How it works</a>
+  <a href="#compare">Compare</a>
+  <a href="docs/">Docs</a>
+  <a href="/ollama-mesh/demo/">Live demo</a>
+  <a href="https://github.com/Anirudhx7/ollama-mesh">GitHub ↗</a>
 </div>
 
 <a id="top"></a>
 <!-- HERO -->
 <header class="hero">
   <div class="page">
-    <span class="kicker"><span class="dot"></span>self-hosted · no cold starts · zero API cost per local token</span>
+    <span class="kicker"><span class="dot"></span>self-hosted · open source · Apache 2.0</span>
     <h1 class="headline">Stop sending requests to <em>cold GPUs.</em></h1>
     <p class="subhead">
       ollama-mesh is a smart proxy for your Ollama cluster. Your engineers are already running
