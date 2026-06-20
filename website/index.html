@@ -267,6 +267,8 @@ h1 .hl { color: var(--accent); }
 .btn:hover { opacity: 0.85; text-decoration: none; }
 .btn-primary { background: var(--accent); color: #fff; }
 html.light .btn-primary { color: #fff; }
+.btn-secondary { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
+.btn-secondary:hover { background: var(--accent); color: #fff; opacity: 1; }
 .btn-ghost {
   background: transparent;
   color: var(--text);
@@ -609,6 +611,7 @@ footer .inner {
     </p>
     <div class="hero-actions">
       <a href="#install" class="btn btn-primary">Get Started</a>
+      <a href="/ollama-mesh/demo/" class="btn btn-secondary">Live Demo</a>
       <a href="https://github.com/Anirudhx7/ollama-mesh" class="btn btn-ghost">View on GitHub</a>
     </div>
 

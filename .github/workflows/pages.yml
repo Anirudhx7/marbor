@@ -41,13 +41,22 @@ jobs:
           VITE_FORCE_DEMO: 'true'
           VITE_APP_VERSION: ${{ steps.version.outputs.version }}
 
-      - name: Create 404.html for SPA routing
-        run: cp ui/dist/index.html ui/dist/404.html
+      - name: Assemble site (landing page + demo)
+        run: |
+          mkdir -p site/demo
+          # Dashboard demo goes under /demo/
+          cp -r ui/dist/. site/demo/
+          # Create SPA 404 fallback inside demo/
+          cp site/demo/index.html site/demo/404.html
+          # Landing page (website/) becomes the root
+          cp -r website/. site/
+          # Root 404 redirects to landing page
+          cp website/404.html site/404.html 2>/dev/null || cp website/index.html site/404.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ui/dist
+          path: site
 
   deploy:
     needs: build
