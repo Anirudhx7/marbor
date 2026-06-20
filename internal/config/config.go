@@ -314,10 +314,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	seenNodeNames := make(map[string]bool, len(c.Nodes))
+	seenNodeURLs := make(map[string]bool, len(c.Nodes))
 	for i, n := range c.Nodes {
 		if n.Name == "" || n.URL == "" {
 			return fmt.Errorf("node %d must have name and url", i)
 		}
+		if seenNodeNames[n.Name] {
+			return fmt.Errorf("duplicate node name: %s", n.Name)
+		}
+		seenNodeNames[n.Name] = true
 		u, err := url.Parse(n.URL)
 		if err != nil {
 			return fmt.Errorf("invalid node URL %s: %w", n.URL, err)
@@ -327,6 +333,14 @@ func (c *Config) Validate() error {
 		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("node %d (%s) URL must be http(s) with a host: %s", i, n.Name, n.URL)
 		}
+		if seenNodeURLs[n.URL] {
+			return fmt.Errorf("duplicate node URL: %s", n.URL)
+		}
+		seenNodeURLs[n.URL] = true
+	}
+	// Detect port collisions between proxy, admin, and metrics servers.
+	if c.Metrics.Enabled && c.Metrics.Port == c.Proxy.Port {
+		return fmt.Errorf("metrics port %d conflicts with proxy port", c.Metrics.Port)
 	}
 
 	if c.Docker.Socket == "" {

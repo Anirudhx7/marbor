@@ -163,6 +163,7 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	reg("GET /admin/nodes", s.cors(s.adminAuth(s.handleNodes)))
+	reg("GET /admin/nodes/{name}", s.cors(s.adminAuth(s.handleNode)))
 	reg("POST /admin/nodes", s.cors(s.adminAuth(s.handleAddNode)))
 	reg("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
 
@@ -308,6 +309,54 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
+}
+
+// handleNode returns a single node by name.
+// GET /admin/nodes/{name} (also /admin/v1/nodes/{name})
+func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	nodes := s.router.Nodes()
+	for i, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		n.RLock()
+		port := 0
+		if u, err := url.Parse(n.URL); err == nil {
+			port, _ = strconv.Atoi(u.Port())
+		}
+		health := "healthy"
+		if !n.Healthy {
+			health = "down"
+		} else if n.Failures > 0 {
+			health = "degraded"
+		}
+		hist := make([]float64, len(n.HealthHistory))
+		copy(hist, n.HealthHistory)
+		out := nodeResp{
+			ID:            fmt.Sprintf("gpu-%d", i),
+			Name:          n.Name,
+			Port:          port,
+			GPUModel:      n.GPUModel,
+			VRAMTotalMB:   n.VRAMTotalMB,
+			VRAMUsedMB:    n.VRAMUsedMB,
+			VRAMSource:    n.VRAMSource,
+			PowerDrawW:    n.PowerDrawW,
+			Temperature:   n.Temperature,
+			Health:        health,
+			Draining:      n.Draining,
+			Uptime:        n.Uptime,
+			LoadedModels:  append([]router.ModelInfo(nil), n.LoadedModels...),
+			ActiveConns:   atomic.LoadInt32(&n.ActiveConns),
+			HealthHistory: hist,
+		}
+		n.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(out)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
 }
 
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
