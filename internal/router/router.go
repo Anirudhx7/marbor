@@ -946,6 +946,39 @@ func (r *Router) UndrainNode(name string) bool {
 	return false
 }
 
+// NodePatch holds optional runtime-mutable node metadata.
+// Only non-nil fields are applied.
+type NodePatch struct {
+	VRAMTotalMB *int64  `json:"vram_total_mb"`
+	GPUModel    *string `json:"gpu_model"`
+}
+
+// PatchNode applies runtime metadata overrides to a node without restarting.
+// Returns false if the node is not found.
+func (r *Router) PatchNode(name string, patch NodePatch) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.Name == name {
+			n.mu.Lock()
+			if patch.VRAMTotalMB != nil {
+				n.VRAMTotalMBConfig = *patch.VRAMTotalMB
+				// Only override live total when nvidia-smi has no measurement.
+				if n.VRAMSource == "none" || n.VRAMSource == "declared" {
+					n.VRAMTotalMB = *patch.VRAMTotalMB
+					n.VRAMSource = "declared"
+				}
+			}
+			if patch.GPUModel != nil {
+				n.GPUModel = *patch.GPUModel
+			}
+			n.mu.Unlock()
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Router) Nodes() []*NodeState {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

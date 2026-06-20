@@ -163,6 +163,7 @@ export function Dashboard() {
     coldStarts: 0,
     queueDepth: 0,
     nodesOnline: 0,
+    nodesDraining: 0,
     totalNodes: 0,
   });
   const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
@@ -321,6 +322,12 @@ export function Dashboard() {
               <span className="w-2 h-2 rounded-full bg-destructive" />
               <span className="text-muted-foreground">Down</span>
             </div>
+            {summary.nodesDraining > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-amber-500 font-semibold">{summary.nodesDraining} Draining</span>
+              </div>
+            )}
           </div>
         </div>
         

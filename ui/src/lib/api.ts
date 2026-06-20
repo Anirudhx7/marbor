@@ -45,6 +45,7 @@ export async function fetchSummary() {
     coldStarts: d.cold_starts ?? 0,
     queueDepth: d.queue_depth ?? 0,
     nodesOnline: d.nodes_online ?? 0,
+    nodesDraining: d.nodes_draining ?? 0,
     totalNodes: d.total_nodes ?? 0,
   };
 }
@@ -98,6 +99,16 @@ export async function undrainNode(name: string) {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to undrain node');
+}
+
+export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string }) {
+  const res = await fetch(`${BASE}/nodes/${encodeURIComponent(name)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to patch node');
+  return res.json() as Promise<import('../types').GPUNode>;
 }
 
 export async function fetchRoutingRules() {

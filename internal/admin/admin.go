@@ -164,6 +164,7 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/nodes", s.cors(s.adminAuth(s.handleNodes)))
 	reg("GET /admin/nodes/{name}", s.cors(s.adminAuth(s.handleNode)))
+	reg("PATCH /admin/nodes/{name}", s.cors(s.adminAuth(s.handlePatchNode)))
 	reg("POST /admin/nodes", s.cors(s.adminAuth(s.handleAddNode)))
 	reg("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
 
@@ -441,12 +442,17 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
 	totalConns := int32(0)
 	online := 0
+	draining := 0
 	for _, n := range nodes {
 		n.RLock()
 		healthy := n.Healthy
+		isDraining := n.Draining
 		n.RUnlock()
 		if healthy {
 			online++
+		}
+		if isDraining {
+			draining++
 		}
 		totalConns += atomic.LoadInt32(&n.ActiveConns)
 	}
@@ -454,6 +460,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"active_requests": totalConns,
 		"nodes_online":    online,
+		"nodes_draining":  draining,
 		"total_nodes":     len(nodes),
 		"queue_depth":     s.router.QueueDepth(),
 	})
@@ -571,6 +578,25 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"node":%q,"draining":false}`, name)
+}
+
+// handlePatchNode applies runtime metadata overrides to a node.
+// PATCH /admin/nodes/{name} — accepts {"vram_total_mb":N,"gpu_model":"..."}
+func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var patch router.NodePatch
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		return
+	}
+	if !s.router.PatchNode(name, patch) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		return
+	}
+	// Return the updated node.
+	s.handleNode(w, r)
 }
 
 // generateAPIKey creates a cryptographically random API key of the form sk-<name>-<48 hex chars>.

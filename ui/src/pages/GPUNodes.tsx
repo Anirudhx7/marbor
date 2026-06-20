@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity } from 'lucide-react';
+import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
@@ -7,7 +7,7 @@ import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, fetchModelFit } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, patchNode, fetchModelFit } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -79,11 +79,12 @@ function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
   );
 }
 
-function NodeCard({ node, onRemove, onDrain, onUndrain }: {
+function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit }: {
   node: GPUNode;
   onRemove: (name: string) => void;
   onDrain: (name: string) => void;
   onUndrain: (name: string) => void;
+  onEdit: (node: GPUNode) => void;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -113,6 +114,13 @@ function NodeCard({ node, onRemove, onDrain, onUndrain }: {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => onEdit(node)}
+            title="Edit node metadata"
+            className="p-1.5 text-muted-foreground hover:text-primary transition-colors"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
           <button
             onClick={() => node.draining ? onUndrain(node.name) : onDrain(node.name)}
             title={node.draining ? 'Undrain node' : 'Drain node (stop new requests)'}
@@ -332,6 +340,42 @@ export function GPUNodes() {
     }
   };
 
+  const [editNode, setEditNode] = useState<GPUNode | null>(null);
+  const [editVRAM, setEditVRAM] = useState('');
+  const [editGPUModel, setEditGPUModel] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const openEditModal = (node: GPUNode) => {
+    setEditNode(node);
+    setEditVRAM(node.vramTotalMB > 0 ? String(node.vramTotalMB) : '');
+    setEditGPUModel(node.gpuModel ?? '');
+    setEditError('');
+  };
+
+  const handleSavePatch = async () => {
+    if (!editNode || !isLive) return;
+    const patch: { vram_total_mb?: number; gpu_model?: string } = {};
+    if (editVRAM.trim() !== '') {
+      const v = parseInt(editVRAM, 10);
+      if (isNaN(v) || v < 0) { setEditError('VRAM must be a non-negative integer (MB)'); return; }
+      patch.vram_total_mb = v;
+    }
+    if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
+    if (Object.keys(patch).length === 0) { setEditNode(null); return; }
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await patchNode(editNode.name, patch);
+      await loadNodes();
+      setEditNode(null);
+    } catch (e) {
+      setEditError('Failed to save changes');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       {/* Header */}
@@ -379,7 +423,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} />
+          <NodeCard key={node.id} node={node} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onEdit={openEditModal} />
         ))}
       </div>
 
@@ -514,6 +558,65 @@ export function GPUNodes() {
               className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Add Node
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Node Modal */}
+      <Modal
+        isOpen={editNode !== null}
+        onClose={() => setEditNode(null)}
+        title={`Edit Node: ${editNode?.name ?? ''}`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Override runtime metadata. Changes apply immediately without restart.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              GPU Model Label
+            </label>
+            <input
+              type="text"
+              value={editGPUModel}
+              onChange={(e) => setEditGPUModel(e.target.value)}
+              placeholder="e.g., NVIDIA RTX 4090"
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              VRAM Total Override (MB)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={editVRAM}
+              onChange={(e) => setEditVRAM(e.target.value)}
+              placeholder="e.g., 24576 for 24 GB"
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Only applied when nvidia-smi has no measurement (remote nodes). Ignored if source is nvidia.
+            </p>
+          </div>
+          {editError && (
+            <p className="text-sm text-destructive">{editError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setEditNode(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSavePatch}
+              disabled={editSaving}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {editSaving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </div>

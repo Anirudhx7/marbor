@@ -676,3 +676,80 @@ func TestDrainNodeNotFound(t *testing.T) {
 		t.Error("UndrainNode should return false for unknown node")
 	}
 }
+
+func TestPatchNodeMetadata(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+
+	r.nodes[0].mu.Lock()
+	r.nodes[0].VRAMSource = "none"
+	r.nodes[0].mu.Unlock()
+
+	vram := int64(24576)
+	model := "NVIDIA RTX 4090"
+	if !r.PatchNode("gpu-0", NodePatch{VRAMTotalMB: &vram, GPUModel: &model}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+
+	r.nodes[0].mu.RLock()
+	gotVRAM := r.nodes[0].VRAMTotalMB
+	gotConfig := r.nodes[0].VRAMTotalMBConfig
+	gotSource := r.nodes[0].VRAMSource
+	gotModel := r.nodes[0].GPUModel
+	r.nodes[0].mu.RUnlock()
+
+	if gotVRAM != 24576 {
+		t.Errorf("VRAMTotalMB = %d, want 24576", gotVRAM)
+	}
+	if gotConfig != 24576 {
+		t.Errorf("VRAMTotalMBConfig = %d, want 24576", gotConfig)
+	}
+	if gotSource != "declared" {
+		t.Errorf("VRAMSource = %q, want declared", gotSource)
+	}
+	if gotModel != "NVIDIA RTX 4090" {
+		t.Errorf("GPUModel = %q, want NVIDIA RTX 4090", gotModel)
+	}
+}
+
+func TestPatchNodeSkipsVRAMWhenNvidia(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+
+	r.nodes[0].mu.Lock()
+	r.nodes[0].VRAMSource = "nvidia"
+	r.nodes[0].VRAMTotalMB = 40960
+	r.nodes[0].mu.Unlock()
+
+	vram := int64(8192)
+	if !r.PatchNode("gpu-0", NodePatch{VRAMTotalMB: &vram}) {
+		t.Fatal("PatchNode returned false")
+	}
+
+	r.nodes[0].mu.RLock()
+	gotLive := r.nodes[0].VRAMTotalMB
+	gotConfig := r.nodes[0].VRAMTotalMBConfig
+	gotSource := r.nodes[0].VRAMSource
+	r.nodes[0].mu.RUnlock()
+
+	// Config field updated but live total must not change when nvidia owns it.
+	if gotConfig != 8192 {
+		t.Errorf("VRAMTotalMBConfig = %d, want 8192", gotConfig)
+	}
+	if gotLive != 40960 {
+		t.Errorf("VRAMTotalMB changed to %d; should stay 40960 when source=nvidia", gotLive)
+	}
+	if gotSource != "nvidia" {
+		t.Errorf("VRAMSource changed to %q; should stay nvidia", gotSource)
+	}
+}
+
+func TestPatchNodeNotFound(t *testing.T) {
+	r := New(config.RoutingConfig{}, nil, nil)
+	vram := int64(8192)
+	if r.PatchNode("nonexistent", NodePatch{VRAMTotalMB: &vram}) {
+		t.Error("PatchNode should return false for unknown node")
+	}
+}
