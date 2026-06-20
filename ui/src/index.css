@@ -44,40 +44,40 @@
     --brand-dim: #6b5210;
     --brand-bg: rgba(139,105,20,0.06);
 
-    /* Warm Almond/Cream Light Theme */
-    --background: 36 25% 97%;
-    --foreground: 36 10% 10%;
-    --card: 0 0% 100%;
-    --card-foreground: 36 10% 10%;
+    /* Crisp Slate-Blue Light Theme */
+    --background: 210 40% 98%; /* Slate 50 */
+    --foreground: 222.2 84% 4.9%; /* Slate 950 */
+    --card: 0 0% 100%; /* White */
+    --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 36 10% 10%;
+    --popover-foreground: 222.2 84% 4.9%;
     
-    --primary: 38 73% 30%;
-    --primary-foreground: 36 25% 97%;
+    --primary: 38 73% 30%; /* Brand gold/amber */
+    --primary-foreground: 210 40% 98%;
     
-    --secondary: 36 15% 94%;
-    --secondary-foreground: 36 10% 10%;
+    --secondary: 210 40% 96.1%; /* Slate 100 */
+    --secondary-foreground: 222.2 47.4% 11.2%; /* Slate 900 */
     
-    --muted: 36 15% 94%;
-    --muted-foreground: 36 8% 45%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%; /* Slate 500 */
     
-    --accent: 36 15% 94%;
-    --accent-foreground: 36 10% 10%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
     
     --destructive: 346.8 77.2% 49.8%;
-    --destructive-foreground: 36 25% 97%;
+    --destructive-foreground: 210 40% 98%;
 
     --success: 142.1 70.6% 45.3%;
-    --success-foreground: 36 25% 97%;
+    --success-foreground: 210 40% 98%;
 
     --warning: 24 95% 45%; /* Safety Orange (Light Theme) */
-    --warning-foreground: 36 25% 97%;
+    --warning-foreground: 210 40% 98%;
 
     --info: 221.2 83.2% 53.3%;
-    --info-foreground: 36 25% 97%;
+    --info-foreground: 210 40% 98%;
 
-    --border: 36 15% 90%;
-    --input: 36 15% 90%;
+    --border: 214.3 31.8% 91.4%; /* Slate 200 */
+    --input: 214.3 31.8% 91.4%;
     --ring: 38 73% 30%;
   }
 
