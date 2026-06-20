@@ -79,7 +79,7 @@ nav .page { display: flex; align-items: center; justify-content: space-between; 
 .brand .name { font-weight: 600; letter-spacing: -0.01em; }
 .brand .ver { color: var(--text-faint); font-size: 12px; }
 .nav-right { display: flex; align-items: center; gap: 4px; }
-.nav-right a.link { color: var(--text-muted); padding: 6px 0; border-radius: var(--radius); font-size: 13px; }
+.nav-right a.link { color: var(--text-muted); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; }
 .nav-right a.link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
 .icon-btn {
   width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
@@ -107,7 +107,7 @@ html.light .theme-toggle .moon { display: block; }
 h1.headline {
   font-family: var(--font-serif); font-weight: 400;
   font-size: clamp(34px, 6.5vw, 52px); line-height: 1.2; letter-spacing: -0.015em;
-  margin: 0 0 22px; color: var(--text);
+  margin: 0 0 22px; color: var(--text); max-width: 720px;
 }
 h1.headline em { font-style: italic; color: var(--accent); }
 .subhead {
@@ -150,6 +150,9 @@ h1.headline em { font-style: italic; color: var(--accent); }
 .copy-btn:hover { color: var(--text); background: var(--bg-input); }
 .copy-btn svg { width: 14px; height: 14px; }
 .copy-btn.copied { color: var(--accent2); }
+/* code block with copy button */
+.code-wrap { position: relative; }
+.code-wrap .copy-btn { position: absolute; top: 8px; right: 8px; }
 
 .trust-row { display: flex; flex-direction: column; gap: 7px; }
 .trust-item { display: flex; align-items: center; gap: 9px; color: var(--text-muted); font-size: 13px; }
@@ -159,7 +162,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 /* ROUTING DIAGRAM */
 .routing {
   margin-top: 40px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--bg-elevated); overflow: hidden;
+  background: var(--bg-elevated); overflow: hidden; max-width: 860px;
 }
 .routing-head {
   display: flex; align-items: center; gap: 9px; padding: 9px 14px;
@@ -470,8 +473,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
         <div>
           <h3>Install the binary</h3>
           <p>Grab the release for your platform — or build from source with Go. It's one file with no runtime dependencies.</p>
-          <pre class="code"><span class="c"># one line, no sudo needed</span>
-<span class="g">curl</span> -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="b">|</span> sh</pre>
+          <div class="code-wrap"><pre class="code"><span class="c"># one line, no sudo needed</span>
+<span class="g">curl</span> -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="b">|</span> sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
       <div class="step">
@@ -479,11 +482,11 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
         <div>
           <h3>Point it at your nodes</h3>
           <p>List your Ollama machines and, optionally, a cloud key for fallback. ollama-mesh discovers which models are warm on each.</p>
-          <pre class="code"><span class="c"># mesh.yaml</span>
+          <div class="code-wrap"><pre class="code"><span class="c"># mesh.yaml</span>
 <span class="b">nodes:</span>
   - http://gpu-01:11434
   - http://gpu-02:11434
-<span class="b">fallback:</span> openai  <span class="c"># optional: deepseek-r1, llama3.1, qwen3</span></pre>
+<span class="b">fallback:</span> openai  <span class="c"># optional: deepseek-r1, llama3.1, qwen3</span></pre><button class="copy-btn" aria-label="Copy" data-copy="# mesh.yaml&#10;nodes:&#10;  - http://gpu-01:11434&#10;  - http://gpu-02:11434&#10;fallback: openai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
       <div class="step">
@@ -491,9 +494,9 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
         <div>
           <h3>Send traffic to one URL</h3>
           <p>Repoint your apps to the mesh. Same OpenAI-compatible endpoint — the routing happens behind it.</p>
-          <pre class="code"><span class="c"># your app, unchanged otherwise</span>
+          <div class="code-wrap"><pre class="code"><span class="c"># your app, unchanged otherwise</span>
 base_url = <span class="g">"http://mesh:8080/v1"</span>
-<span class="c"># warm node picked automatically</span></pre>
+<span class="c"># warm node picked automatically</span></pre><button class="copy-btn" aria-label="Copy" data-copy='base_url = "http://mesh:8080/v1"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
     </div>
@@ -661,16 +664,23 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
     });
     menu.querySelectorAll("a").forEach(function (a) { a.addEventListener("click", closeMenu); });
   }
-  var copyBtn = document.getElementById("copyBtn");
-  var copyLabel = document.getElementById("copyLabel");
-  if (copyBtn) copyBtn.addEventListener("click", function () {
-    var text = "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh";
-    var done = function () {
-      copyBtn.classList.add("copied"); copyLabel.textContent = "copied";
-      setTimeout(function () { copyBtn.classList.remove("copied"); copyLabel.textContent = "copy"; }, 1600);
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
-    else { var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} document.body.removeChild(ta); done(); }
+  document.querySelectorAll(".copy-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = btn.dataset.copy || "";
+      if (!text) {
+        var wrap = btn.closest(".code-wrap");
+        var pre = wrap && wrap.querySelector("pre");
+        if (pre) text = pre.innerText || pre.textContent || "";
+      }
+      var label = btn.querySelector("span");
+      var done = function () {
+        btn.classList.add("copied");
+        if (label) label.textContent = "copied!";
+        setTimeout(function () { btn.classList.remove("copied"); if (label) label.textContent = "copy"; }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
+      else { var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} document.body.removeChild(ta); done(); }
+    });
   });
   var y = document.getElementById("year"); if (y) y.textContent = new Date().getFullYear();
 })();
