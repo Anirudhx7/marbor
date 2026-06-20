@@ -11,7 +11,11 @@ backend:
 build: ui backend
 
 test:
+	@mkdir -p internal/admin/web/dist/assets
+	@touch internal/admin/web/dist/index.html
 	go test ./...
+
+test-ci: ui test
 
 dev-ui:
 	cd ui && npm run dev
