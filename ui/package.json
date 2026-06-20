@@ -1,7 +1,7 @@
 {
   "name": "placeholder-model-2",
   "private": true,
-  "version": "0.8.8",
+  "version": "0.8.9",
   "type": "module",
   "scripts": {
     "dev": "vite",

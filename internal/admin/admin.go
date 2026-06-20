@@ -200,6 +200,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/warmup", s.cors(s.adminAuth(s.handleWarmupStatus)))
 	reg("POST /admin/warmup/ping", s.cors(s.adminAuth(s.handleWarmupPing)))
 
+	reg("POST /admin/config/reload", s.cors(s.adminAuth(s.handleConfigReload)))
+
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
 
@@ -475,6 +477,28 @@ func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
 	s.router.TriggerWarmup(r.Context())
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"triggered"}`))
+}
+
+// handleConfigReload reloads the config file from disk without restarting.
+// POST /admin/config/reload (also /admin/v1/config/reload)
+// Equivalent to sending SIGHUP — useful in container environments where
+// sending Unix signals is inconvenient (Kubernetes, Nomad, etc.).
+func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
+	newCfg, err := config.LoadConfig(s.configPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	s.auth.Reload(newCfg.Auth)
+	s.router.SetWarmupConfig(newCfg.Warmup)
+	s.mu.Lock()
+	s.cfg = *newCfg
+	s.mu.Unlock()
+	log.Printf("config reloaded via API from %s (auth keys: %d, warmup: %v)", s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled)
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"reloaded":true,"config_path":%q,"auth_keys":%d,"warmup_enabled":%v}`,
+		s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled)
 }
 
 func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
