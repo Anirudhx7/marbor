@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -22,9 +22,8 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Ollama Load Balancer - GPU-Aware LLM Routing | ollama-mesh">
 <meta name="twitter:description" content="Route LLM requests to the GPU node that already has your model warm in VRAM. Cloud overflow when your cluster is saturated. Single Go binary, zero deps.">
-<meta name="twitter:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh">
 
-<!-- JSON-LD Structured Data -->
+<!-- Structured Data -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -103,6 +102,8 @@ nav {
   top: 0;
   background: var(--bg);
   z-index: 100;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 nav .inner {
   display: flex;
@@ -168,19 +169,19 @@ html.light .icon-sun  { display: block; }
   cursor: pointer;
   padding: 0;
   color: var(--text);
-  flex-direction: column;
-  gap: 5px;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
   width: 38px;
   height: 38px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
 }
-.hamburger:hover { background: var(--bg2); }
 .hamburger span {
   display: block;
   width: 18px;
   height: 2px;
-  background: var(--text);
+  background: currentColor;
   border-radius: 1px;
   transition: transform 0.2s, opacity 0.2s;
 }
@@ -188,18 +189,16 @@ html.light .icon-sun  { display: block; }
 .hamburger.open span:nth-child(2) { opacity: 0; }
 .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
-/* MOBILE NAV DRAWER */
+/* MOBILE NAV */
 .mobile-nav {
   display: none;
   flex-direction: column;
   border-top: 1px solid var(--border);
-  background: var(--bg);
 }
 .mobile-nav.open { display: flex; }
 .mobile-nav a {
-  color: var(--text);
-  font-size: 15px;
   padding: 14px 24px;
+  font-size: 15px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -210,9 +209,50 @@ html.light .icon-sun  { display: block; }
 
 /* HERO */
 .hero {
-  padding: 72px 0 56px;
+  padding: 80px 0 64px;
   text-align: center;
+  position: relative;
+  overflow: hidden;
 }
+
+/* Subtle animated grid background */
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.35;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Animated gradient orb */
+.hero::after {
+  content: '';
+  position: absolute;
+  top: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 700px;
+  height: 400px;
+  background: radial-gradient(ellipse at center, rgba(88,166,255,0.08) 0%, transparent 70%);
+  pointer-events: none;
+  animation: orb-pulse 6s ease-in-out infinite;
+}
+html.light .hero::after {
+  background: radial-gradient(ellipse at center, rgba(9,105,218,0.06) 0%, transparent 70%);
+}
+@keyframes orb-pulse {
+  0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.08); }
+}
+
+.hero .container { position: relative; z-index: 1; }
+
 .badge {
   display: inline-block;
   background: rgba(88,166,255,0.12);
@@ -230,11 +270,11 @@ html.light .badge {
   border-color: rgba(9,105,218,0.3);
 }
 h1 {
-  font-size: clamp(28px, 5vw, 52px);
+  font-size: clamp(32px, 5.5vw, 58px);
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.1;
   margin-bottom: 20px;
-  letter-spacing: -1px;
+  letter-spacing: -1.5px;
 }
 h1 .hl { color: var(--accent); }
 .hero-sub {
@@ -249,23 +289,50 @@ h1 .hl { color: var(--accent); }
   gap: 12px;
   justify-content: center;
   flex-wrap: wrap;
-  margin-bottom: 44px;
+  margin-bottom: 28px;
 }
+
+/* TRUST BAR */
+.trust-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: wrap;
+  margin-bottom: 36px;
+  font-size: 13px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.trust-bar span {
+  padding: 0 14px;
+  border-right: 1px solid var(--border);
+  line-height: 1.4;
+}
+.trust-bar span:last-child { border-right: none; }
+@media (max-width: 480px) {
+  .trust-bar { gap: 6px; }
+  .trust-bar span { border-right: none; padding: 2px 8px; }
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 11px 22px;
   border-radius: 6px;
+  border: none;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
   min-height: 44px;
   white-space: nowrap;
+  gap: 8px;
 }
-.btn:hover { opacity: 0.85; text-decoration: none; }
-.btn-primary { background: var(--accent); color: #fff; }
+.btn:hover { opacity: 0.88; text-decoration: none; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn-primary { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(88,166,255,0.25); }
 html.light .btn-primary { color: #fff; }
 .btn-secondary { background: transparent; color: var(--accent); border: 1.5px solid var(--accent); }
 .btn-secondary:hover { background: var(--accent); color: #fff; opacity: 1; }
@@ -274,37 +341,73 @@ html.light .btn-primary { color: #fff; }
   color: var(--text);
   border: 1px solid var(--border);
 }
+.btn-ghost:hover { border-color: var(--muted); }
 
-/* INSTALL */
+/* INSTALL BLOCK */
 .install-block {
-  background: var(--bg2);
-  border: 1px solid var(--border);
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-left: 3px solid var(--accent2);
   border-radius: 8px;
   padding: 16px 20px;
-  max-width: 620px;
+  max-width: 640px;
   margin: 0 auto;
   text-align: left;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+html.light .install-block {
+  background: #1b1f24;
+  border-color: #444c56;
+  border-left-color: var(--accent2);
+}
+.install-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 .install-label {
   font-size: 11px;
   font-family: var(--mono);
-  color: var(--muted);
+  color: #8b949e;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin-bottom: 8px;
 }
 .install-cmd {
   font-family: var(--mono);
   font-size: 13px;
-  color: var(--accent2);
+  color: #3fb950;
   word-break: break-all;
+  padding-right: 36px;
 }
-.install-comment { color: var(--muted); }
+
+/* COPY BUTTON */
+.copy-btn {
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  line-height: 1;
+}
+.copy-btn:hover { border-color: #58a6ff; color: #58a6ff; background: rgba(88,166,255,0.08); }
+.copy-btn.copied { border-color: #3fb950; color: #3fb950; }
+.copy-btn svg { display: block; }
+.copy-icon { display: block; }
+.check-icon { display: none; }
+.copy-btn.copied .copy-icon { display: none; }
+.copy-btn.copied .check-icon { display: block; }
 
 /* SECTION */
-section { padding: 64px 0; }
+section { padding: 72px 0; }
 .section-label {
   font-size: 12px;
   font-family: var(--mono);
@@ -314,49 +417,80 @@ section { padding: 64px 0; }
   margin-bottom: 12px;
 }
 h2 {
-  font-size: clamp(22px, 3vw, 34px);
+  font-size: clamp(24px, 3.2vw, 38px);
   font-weight: 700;
   margin-bottom: 14px;
   letter-spacing: -0.5px;
+  line-height: 1.2;
 }
 .section-desc {
   color: var(--muted);
   font-size: clamp(14px, 2vw, 17px);
   max-width: 560px;
-  margin-bottom: 44px;
+  margin-bottom: 48px;
+  line-height: 1.7;
 }
 
 /* FEATURE GRID */
 .feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
+@media (max-width: 768px) {
+  .feature-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .feature-grid { grid-template-columns: 1fr; }
+}
+
 .feature-card {
   background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 24px;
-  transition: border-color 0.15s;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
-.feature-card:hover { border-color: var(--accent); }
+.feature-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+}
+html.light .feature-card:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+}
 .feature-icon {
-  font-size: 20px;
-  margin-bottom: 14px;
-  line-height: 1;
-  font-family: var(--mono);
-  font-weight: 700;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(88,166,255,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+html.light .feature-icon { background: rgba(9,105,218,0.1); }
+.feature-icon svg {
+  width: 20px;
+  height: 20px;
   color: var(--accent);
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .feature-card h3 {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 8px;
+  line-height: 1.3;
 }
 .feature-card p {
   font-size: 14px;
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.65;
 }
 .feature-card code {
   font-family: var(--mono);
@@ -378,50 +512,102 @@ h2 {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 24px;
+  margin-bottom: 40px;
 }
-.step { display: flex; flex-direction: column; gap: 12px; }
+.step {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 24px;
+  border: 1px solid var(--border);
+}
 .step-num {
-  width: 32px; height: 32px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: rgba(88,166,255,0.15);
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  font-family: var(--mono);
-  font-size: 13px;
+  background: var(--accent);
+  color: #fff;
   font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
   flex-shrink: 0;
 }
-html.light .step-num { background: rgba(9,105,218,0.1); }
-.step h3 { font-size: 15px; font-weight: 600; }
-.step p { font-size: 14px; color: var(--muted); }
-.step p code {
+.step h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.step p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.step code {
   font-family: var(--mono);
   font-size: 12px;
-  background: var(--bg3);
+  background: var(--bg);
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--border);
   color: var(--accent2);
 }
-
 .flow-diagram {
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: #0d1117;
+  border: 1px solid #30363d;
   border-radius: 8px;
   padding: 20px 24px;
   font-family: var(--mono);
   font-size: 13px;
-  color: var(--muted);
+  color: #e6edf3;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   margin-top: 36px;
   line-height: 1.8;
   white-space: pre;
 }
+html.light .flow-diagram {
+  background: #1b1f24;
+  border-color: #444c56;
+  color: #e6edf3;
+}
 .flow-diagram .hi { color: var(--accent); }
-.flow-diagram .hi2 { color: var(--accent2); }
+.flow-diagram .hi2 { color: #3fb950; }
 .flow-diagram .hi3 { color: var(--warn); }
+
+/* GET STARTED CODE BLOCK */
+.code-block {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 20px 24px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: #e6edf3;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  line-height: 1.8;
+}
+html.light .code-block {
+  background: #1b1f24;
+  border-color: #444c56;
+  color: #e6edf3;
+}
+.code-block .c { color: #8b949e; }
+.code-block .k { color: #58a6ff; }
+.code-block .s { color: #8b949e; }
+.code-block .v { color: #ffa657; }
+.ic {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--text);
+  word-break: break-all;
+}
 
 /* COMPARISON TABLE */
 .table-wrap {
@@ -443,55 +629,63 @@ th {
   font-weight: 600;
   font-size: 13px;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   background: var(--bg2);
-  white-space: nowrap;
 }
-th:first-child { color: var(--text); }
+th.col-us { color: var(--accent); }
 td {
-  padding: 13px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
-  background: var(--bg);
 }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: var(--bg2); }
-.col-us { color: var(--accent2); font-weight: 600; }
-.check { color: var(--accent2); font-weight: 700; }
-.cross { color: #f85149; }
-html.light .cross { color: #cf222e; }
-.partial { color: var(--warn); }
+tbody tr:nth-child(even) { background: rgba(88,166,255,0.025); }
+html.light tbody tr:nth-child(even) { background: rgba(9,105,218,0.03); }
 
-/* CODE BLOCK */
-.code-block {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 20px 24px;
-  font-family: var(--mono);
-  font-size: 13px;
-  line-height: 1.8;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  white-space: pre;
+.check {
+  color: #3fb950;
+  font-weight: 600;
 }
-.code-block .c { color: var(--muted); }
-.code-block .k { color: var(--accent); }
-.code-block .s { color: var(--accent2); }
-.code-block .v { color: #ffa657; }
-html.light .code-block .v { color: #953800; }
-
-/* INLINE CODE */
-code.ic {
-  font-family: var(--mono);
-  font-size: 12px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 6px;
-  color: var(--text);
-  word-break: break-all;
+.check::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background-color: #3fb950;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -3px;
+  /* checkmark via clip-path-like SVG background */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Ccircle cx='8' cy='8' r='8' fill='%233fb950'/%3E%3Cpath d='M4.5 8.5L7 11L11.5 5.5' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-color: transparent;
+}
+.cross {
+  color: var(--muted);
+  font-weight: 400;
+}
+.cross::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: -3px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Ccircle cx='8' cy='8' r='8' fill='%2330363d'/%3E%3Cpath d='M5.5 5.5L10.5 10.5M10.5 5.5L5.5 10.5' stroke='%238b949e' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-size: cover;
+}
+.partial {
+  color: var(--warn);
+  font-weight: 400;
+}
+.partial::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: -3px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Ccircle cx='8' cy='8' r='8' fill='%23d29922'/%3E%3Crect x='4' y='7' width='8' height='2' rx='1' fill='white'/%3E%3C/svg%3E");
+  background-size: cover;
 }
 
 /* CTA */
@@ -502,32 +696,39 @@ code.ic {
 /* FOOTER */
 footer {
   border-top: 1px solid var(--border);
-  padding: 28px 0;
+  padding: 24px 0;
   font-size: 13px;
   color: var(--muted);
-  background: var(--bg2);
 }
 footer .inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
   max-width: 960px;
   margin: 0 auto;
   padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 .footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.footer-links a { color: var(--muted); }
+.footer-links a:hover { color: var(--accent); text-decoration: none; }
+
+/* SECTION SEPARATOR */
+.section-sep {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
 
 /* RESPONSIVE: tablet */
 @media (max-width: 768px) {
   .nav-links { display: none; }
   .hamburger { display: flex; }
 
-  .hero { padding: 44px 0 40px; }
-  section { padding: 48px 0; }
+  .hero { padding: 52px 0 44px; }
+  section { padding: 52px 0; }
 
-  .feature-grid { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }
 
   .flow-diagram { font-size: 11.5px; padding: 16px 18px; }
@@ -543,13 +744,13 @@ footer .inner {
   footer .inner { padding: 0 16px; }
   .mobile-nav a { padding: 14px 16px; }
 
-  .hero { padding: 32px 0 28px; }
+  .hero { padding: 36px 0 32px; }
   .hero-sub { font-size: 14px; }
   .hero-actions { flex-direction: column; align-items: stretch; }
   .hero-actions .btn { width: 100%; }
 
-  section { padding: 36px 0; }
-  .section-desc { margin-bottom: 28px; }
+  section { padding: 40px 0; }
+  .section-desc { margin-bottom: 32px; }
 
   .feature-card { padding: 18px; }
   .install-block { padding: 12px 14px; }
@@ -603,24 +804,46 @@ footer .inner {
 
 <div class="hero">
   <div class="container">
-    <div class="badge">v0.5.0 - Open Source - MIT License</div>
+    <div class="badge">{{VERSION}} &middot; Open Source &middot; MIT License</div>
     <h1>One endpoint for all<br>your <span class="hl">LLM traffic</span></h1>
     <p class="hero-sub">
-      GPU-aware Ollama load balancer. Routes requests to the node that already holds your model warm in VRAM.
-      Cloud overflow to OpenAI or Anthropic when your cluster is saturated - with receipts.
+      GPU-aware load balancer for Ollama. Routes every request to the node that already holds your model warm in VRAM.
+      Cloud overflow to OpenAI or Anthropic when your cluster is saturated - with cost receipts.
     </p>
     <div class="hero-actions">
-      <a href="#install" class="btn btn-primary">Get Started</a>
+      <a href="#features" class="btn btn-primary">Get Started</a>
       <a href="/ollama-mesh/demo/" class="btn btn-secondary">Live Demo</a>
       <a href="https://github.com/Anirudhx7/ollama-mesh" class="btn btn-ghost">View on GitHub</a>
     </div>
 
+    <div class="trust-bar">
+      <span>&lt; 2ms routing overhead</span>
+      <span>zero dependencies</span>
+      <span>single static binary</span>
+      <span>MIT license</span>
+    </div>
+
     <div class="install-block" id="install">
-      <div class="install-label">Quick install (Linux / macOS)</div>
-      <div class="install-cmd">curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh</div>
+      <div class="install-header">
+        <div class="install-label">Quick install (Linux / macOS)</div>
+        <button class="copy-btn" id="copyBtn" aria-label="Copy install command" title="Copy to clipboard">
+          <!-- copy icon -->
+          <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <!-- checkmark icon -->
+          <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </button>
+      </div>
+      <div class="install-cmd" id="installCmd">curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh</div>
     </div>
   </div>
 </div>
+
+<hr class="section-sep">
 
 <section id="features">
   <div class="container">
@@ -630,36 +853,61 @@ footer .inner {
       Not a toy proxy. Built to the standard of a platform engineer with real GPU clusters, real SLAs, and real API bills.
     </p>
     <div class="feature-grid">
+
       <div class="feature-card">
-        <div class="feature-icon">[*]</div>
+        <div class="feature-icon">
+          <!-- CPU/chip icon -->
+          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+        </div>
         <h3>Warm-first GPU routing</h3>
-        <p>Polls each node's <code>/api/ps</code> every 2 seconds. Routes to the node that already has your model loaded in VRAM, eliminating cold-start latency.</p>
+        <p>Polls each node's <code>/api/ps</code> every 2 seconds. Routes to the node that already has your model loaded in VRAM, eliminating cold-start latency entirely.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">[~]</div>
+        <div class="feature-icon">
+          <!-- cloud icon -->
+          <svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
+        </div>
         <h3>Cloud overflow fallback</h3>
-        <p>When your local cluster is saturated or offline, requests automatically fall back to OpenAI or Anthropic. Ollama-native requests get response translation back to NDJSON.</p>
+        <p>When your local cluster is saturated or offline, requests automatically fall back to OpenAI or Anthropic. Ollama-native requests get response translation back to NDJSON - transparent to the client.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">[$]</div>
+        <div class="feature-icon">
+          <!-- receipt/dollar icon -->
+          <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        </div>
         <h3>Cost tracking with receipts</h3>
-        <p>Parses real token counts from every response. Shows exactly how much you saved routing local vs cloud. The dashboard savings widget is the viral screenshot.</p>
+        <p>Parses real token counts from every response. See exactly what you saved routing to local GPUs vs paying cloud API rates - down to the dollar, per request, per API key.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">[#]</div>
+        <div class="feature-icon">
+          <!-- key/lock icon -->
+          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
         <h3>Per-key auth and quotas</h3>
-        <p>API keys with per-model allow-lists, daily and monthly hard limits, token-bucket rate limiting, and durable quota persistence across restarts.</p>
+        <p>API keys with per-model allow-lists, daily and monthly hard limits, token-bucket rate limiting, and durable quota persistence across restarts. No bypass possible.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">[+]</div>
+        <div class="feature-icon">
+          <!-- bar chart icon -->
+          <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+        </div>
         <h3>VRAM telemetry</h3>
         <p>Live used-VRAM per node summed cluster-wide from each node's <code>/api/ps</code>. Total capacity from nvidia-smi (local) or declared config (remote). Every figure labelled by source.</p>
       </div>
+
       <div class="feature-card">
-        <div class="feature-icon">[^]</div>
+        <div class="feature-icon">
+          <!-- binary/cube icon -->
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="7.5 19.79 7.5 14.6 3 12"/><polyline points="21 12 16.5 14.6 16.5 19.79"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
         <h3>Single Go binary, zero deps</h3>
-        <p>One static binary runs everywhere. No Python, no Docker required. Embeds the admin dashboard. Starts in under 100ms. Ops teams trust it.</p>
+        <p>One static binary runs everywhere. No Python, no Docker required. Embeds the admin dashboard. Starts in under 100ms. Your ops team can drop it on a server and go.</p>
       </div>
+
     </div>
   </div>
 </section>
@@ -669,7 +917,7 @@ footer .inner {
     <div class="section-label">How it works</div>
     <h2>Replace OLLAMA_BASE_URL. That's it.</h2>
     <p class="section-desc">
-      Point your OpenAI-compatible client or Ollama client at ollama-mesh instead of directly at your Ollama node. The routing is invisible.
+      Point your OpenAI-compatible client or Ollama client at ollama-mesh instead of directly at your Ollama node. The routing is invisible to the caller.
     </p>
     <div class="steps">
       <div class="step">
@@ -685,7 +933,7 @@ footer .inner {
       <div class="step">
         <div class="step-num">3</div>
         <h3>Proxies and streams</h3>
-        <p>Reverse-proxies to the chosen node with no response buffering. On node failure before first byte, retries alternate nodes, then cloud. Tracks tokens and logs cost.</p>
+        <p>Reverse-proxies to the chosen node with no response buffering. On node failure before first byte, retries alternate nodes, then cloud. Tracks tokens and logs cost per request.</p>
       </div>
     </div>
     <div class="flow-diagram">
@@ -712,11 +960,13 @@ footer .inner {
   </div>
 </section>
 
+<hr class="section-sep">
+
 <section id="install-full">
   <div class="container">
     <div class="section-label">Get started</div>
     <h2>Up in 60 seconds</h2>
-    <p class="section-desc">Zero-config first run: ollama-mesh auto-detects localhost:11434, generates API keys, and prints the endpoint.</p>
+    <p class="section-desc">Zero-config first run: ollama-mesh auto-detects localhost:11434, generates API keys, and prints the endpoint URL.</p>
 
     <div class="code-block">
 <span class="c"># Download the binary for your platform</span>
@@ -739,7 +989,7 @@ footer .inner {
     </div>
 
     <p style="margin-top: 24px; color: var(--muted); font-size: 14px;">
-      Docker? <code class="ic">docker run -p 11434:11434 -p 8080:8080 ghcr.io/anirudhx7/ollama-mesh:latest</code>
+      Prefer Docker? <code class="ic">docker run -p 11434:11434 -p 8080:8080 ghcr.io/anirudhx7/ollama-mesh:latest</code>
     </p>
   </div>
 </section>
@@ -819,18 +1069,19 @@ footer .inner {
   <div class="container">
     <div class="section-label">Open Source</div>
     <h2>MIT licensed. Self-host forever.</h2>
-    <p>No telemetry. No license keys. No phone-home. Run it on your hardware.</p>
+    <p>No telemetry. No license keys. No phone-home. Run it on your hardware, your network, your terms.</p>
     <a href="https://github.com/Anirudhx7/ollama-mesh" class="btn btn-primary">View on GitHub</a>
   </div>
 </section>
 
 <footer>
   <div class="inner">
-    <span>ollama-mesh - MIT License - <a href="https://github.com/Anirudhx7/ollama-mesh">github.com/Anirudhx7/ollama-mesh</a></span>
+    <span>ollama-mesh &middot; MIT License &middot; <a href="https://github.com/Anirudhx7/ollama-mesh">github.com/Anirudhx7/ollama-mesh</a></span>
     <div class="footer-links">
       <a href="https://github.com/Anirudhx7/ollama-mesh/releases">Releases</a>
       <a href="https://github.com/Anirudhx7/ollama-mesh/issues">Issues</a>
       <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/config.example.yaml">Config reference</a>
+      <a href="/ollama-mesh/demo/">Live Demo</a>
     </div>
   </div>
 </footer>
@@ -867,6 +1118,47 @@ document.addEventListener('DOMContentLoaded', function() {
       hamburger.setAttribute('aria-expanded', 'false');
     }
   });
+
+  // Copy button for install one-liner
+  var copyBtn = document.getElementById('copyBtn');
+  var installCmd = document.getElementById('installCmd');
+  if (copyBtn && installCmd) {
+    copyBtn.addEventListener('click', function() {
+      var text = installCmd.textContent.trim();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+          showCopied();
+        }).catch(function() {
+          fallbackCopy(text);
+        });
+      } else {
+        fallbackCopy(text);
+      }
+    });
+  }
+
+  function showCopied() {
+    copyBtn.classList.add('copied');
+    setTimeout(function() {
+      copyBtn.classList.remove('copied');
+    }, 2000);
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showCopied();
+    } catch(e) {}
+    document.body.removeChild(ta);
+  }
 });
 </script>
 
