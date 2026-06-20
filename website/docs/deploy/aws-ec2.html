@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Deploy ollama-mesh on AWS EC2 · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: Deploy ollama-mesh on AWS EC2." />
+<link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+<style>:root {
+  --bg: #0f0e0c;
+  --bg-elevated: #1a1815;
+  --bg-surface: #24221e;
+  --bg-input: #2e2b26;
+  --border: #3a3630;
+  --border-subtle: #2a2723;
+  --text: #e8e4df;
+  --text-muted: #8a8478;
+  --text-faint: #5a5548;
+  --accent: #d4a853;
+  --accent-dim: #b8933f;
+  --accent-bg: rgba(212,168,83,0.08);
+  --accent2: #7cb97c;
+  --accent3: #c97c7c;
+  --font-serif: "Georgia", "Times New Roman", "Liberation Serif", serif;
+  --font-mono: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+  --radius: 4px;
+}
+html.light {
+  --bg: #faf8f5;
+  --bg-elevated: #ffffff;
+  --bg-surface: #f5f2ed;
+  --bg-input: #ebe7e0;
+  --border: #ddd8d0;
+  --border-subtle: #e8e4dc;
+  --text: #1a1815;
+  --text-muted: #6b6558;
+  --text-faint: #a0998a;
+  --accent: #8b6914;
+  --accent-dim: #6b5210;
+  --accent-bg: rgba(139,105,20,0.06);
+  --accent2: #4a7a4a;
+  --accent3: #a05050;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-mono); font-size: 14px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased; transition: background .2s, color .2s;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::selection { background: var(--accent); color: var(--bg); }
+.serif { font-family: var(--font-serif); }
+.page { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
+
+/* nav (shared with landing) */
+nav {
+  padding: 18px 0; position: sticky; top: 0; z-index: 100;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle);
+}
+nav .page { max-width: 1100px; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); }
+.brand:hover { text-decoration: none; }
+.brand .mark { width: 22px; height: 22px; flex: none; }
+.brand .name { font-weight: 600; letter-spacing: -0.01em; }
+.brand .ver { color: var(--text-faint); font-size: 12px; }
+.nav-right { display: flex; align-items: center; gap: 4px; }
+.nav-right a.link { color: var(--text-muted); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; }
+.nav-right a.link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
+.nav-right a.link.active { color: var(--accent); }
+.icon-btn {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text-muted); cursor: pointer; transition: all .15s; padding: 0;
+}
+.icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+.icon-btn svg { width: 15px; height: 15px; }
+.theme-toggle .moon { display: none; }
+html.light .theme-toggle .sun { display: none; }
+html.light .theme-toggle .moon { display: block; }
+.hamburger { display: none; }
+.nav-links { display: flex; align-items: center; gap: 24px; }
+
+/* doc shell */
+.doc-shell { max-width: 1100px; margin: 0 auto; padding: 0 40px; display: grid; grid-template-columns: 200px minmax(0,1fr) 200px; gap: 44px; align-items: start; }
+.doc-sidebar { position: sticky; top: 72px; padding: 26px 0; max-height: calc(100vh - 72px); overflow-y: auto; }
+.doc-nav-link { display: block; color: var(--text-muted); font-size: 13px; padding: 5px 11px; border-radius: var(--radius); border-left: 2px solid transparent; margin-bottom: 1px; }
+.doc-nav-link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
+.doc-nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-bg); }
+.doc-nav-link.home { color: var(--text); font-weight: 600; margin-bottom: 18px; }
+.nav-group { margin-bottom: 20px; }
+.nav-group-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); padding: 0 11px; margin-bottom: 7px; }
+
+.doc-main { padding: 34px 0 80px; min-width: 0; }
+.breadcrumb { font-size: 12.5px; color: var(--text-muted); margin-bottom: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.breadcrumb a { color: var(--text-muted); }
+.breadcrumb a:hover { color: var(--accent); }
+.breadcrumb .sep { color: var(--border); }
+.breadcrumb .current { color: var(--text); }
+
+/* content */
+.doc-content { font-size: 14px; }
+.doc-content h1 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(28px, 4.5vw, 38px); letter-spacing: -0.015em; margin: 0 0 10px; line-height: 1.12; }
+.doc-content h2 { font-family: var(--font-serif); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; margin: 40px 0 13px; padding-top: 16px; border-top: 1px solid var(--border-subtle); scroll-margin-top: 80px; }
+.doc-content h3 { font-family: var(--font-serif); font-weight: 600; font-size: 17px; margin: 26px 0 9px; scroll-margin-top: 80px; }
+.doc-content h2 .anchor, .doc-content h3 .anchor { opacity: 0; margin-left: 8px; color: var(--text-faint); font-weight: 400; font-family: var(--font-mono); text-decoration: none; font-size: 0.7em; }
+.doc-content h2:hover .anchor, .doc-content h3:hover .anchor { opacity: 1; }
+.doc-content h1 .anchor { display: none; }
+.doc-content p { margin: 0 0 15px; color: var(--text-muted); }
+.doc-content strong { color: var(--text); font-weight: 600; }
+.doc-content a { color: var(--accent); }
+.doc-content ul, .doc-content ol { margin: 0 0 16px; padding-left: 22px; color: var(--text-muted); }
+.doc-content li { margin-bottom: 5px; }
+.doc-content li::marker { color: var(--accent-dim); }
+.doc-content hr { border: none; border-top: 1px solid var(--border-subtle); margin: 30px 0; }
+.doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
+.doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; margin: 0 0 18px; position: relative; }
+.doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
+.doc-content blockquote p { margin: 0; color: var(--text); }
+.table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
+.doc-content table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 440px; }
+.doc-content th, .doc-content td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+.doc-content thead th { background: var(--bg-surface); font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+.doc-content tbody tr:last-child td { border-bottom: none; }
+.doc-content td code { font-size: 11.5px; }
+.doc-foot-edit { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border-subtle); font-size: 13px; }
+
+/* toc */
+.doc-toc { position: sticky; top: 72px; padding: 34px 0; max-height: calc(100vh - 72px); overflow-y: auto; }
+.toc-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 11px; }
+.toc { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--border-subtle); }
+.toc li a { display: block; padding: 4px 0 4px 13px; margin-left: -1px; border-left: 2px solid transparent; color: var(--text-muted); font-size: 12.5px; line-height: 1.4; }
+.toc li.lvl-3 a { padding-left: 24px; font-size: 12px; }
+.toc li a:hover { color: var(--text); text-decoration: none; }
+.toc li a.active { color: var(--accent); border-left-color: var(--accent); }
+.toc-empty { color: var(--text-faint); font-size: 12.5px; }
+
+/* docs index */
+.doc-index { max-width: 1100px; margin: 0 auto; padding: 56px 40px 90px; }
+.doc-index .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+.doc-index h1 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(30px, 5vw, 44px); letter-spacing: -0.02em; margin: 0 0 14px; line-height: 1.08; }
+.doc-index .lead { font-family: var(--font-serif); font-size: 17px; color: var(--text-muted); max-width: 60ch; margin: 0 0 44px; line-height: 1.6; }
+.index-section { margin-bottom: 38px; }
+.index-section h2 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 16px; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.index-card { display: block; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; transition: border-color .15s, transform .15s; }
+.index-card:hover { border-color: var(--accent-dim); transform: translateY(-1px); text-decoration: none; }
+.index-card h3 { font-family: var(--font-serif); font-weight: 600; font-size: 16px; margin: 0 0 7px; color: var(--text); }
+.index-card p { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.55; }
+.index-card .arrow { font-size: 12px; color: var(--accent); }
+
+/* footer */
+footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
+.foot-bottom { max-width: 1100px; margin: 0 auto; padding: 0 40px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; color: var(--text-faint); font-size: 12px; }
+
+@media (max-width: 1024px) {
+  .doc-shell { grid-template-columns: 200px minmax(0,1fr); }
+  .doc-toc { display: none; }
+}
+.mobile-menu { display: none; }
+@media (max-width: 720px) {
+  .nav-links { display: none; }
+  .hamburger { display: inline-flex; }
+  .doc-shell { grid-template-columns: 1fr; padding: 0 20px; }
+  .doc-sidebar { position: fixed; inset: 69px 0 auto 0; z-index: 39; background: var(--bg); border-bottom: 1px solid var(--border); padding: 14px 24px; max-height: 70vh; display: none; }
+  .doc-sidebar.open { display: block; }
+  .doc-main { padding: 26px 0 70px; }
+  .mobile-menu.open {
+    display: block; position: fixed; inset: 69px 0 0; z-index: 39; background: var(--bg);
+    padding: 14px 24px; animation: fade .18s ease;
+  }
+  .mobile-menu.open a { display: block; padding: 14px 0; min-height: 44px; font-size: 16px; color: var(--text); border-bottom: 1px solid var(--border-subtle); }
+  @keyframes fade { from{opacity:0;transform:translateY(-5px);} to{opacity:1;transform:none;} }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="page">
+    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span></a>
+    <div class="nav-right">
+      <div class="nav-links">
+        <a class="link" href="../../index.html#features">Features</a>
+        <a class="link" href="../../index.html#how">How it works</a>
+        <a class="link" href="../../index.html#compare">Compare</a>
+        <a class="link active" href="../../docs/index.html">Docs</a>
+        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener">GitHub&nbsp;↗</a>
+      </div>
+      <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+      </button>
+      <button class="icon-btn hamburger" id="sidebarToggle" aria-label="Open docs menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<div class="doc-shell">
+  <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
+    <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
+    
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deploy</div>
+      <a class="doc-nav-link active" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+  </aside>
+
+  <main class="doc-main">
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>deploy</span><span class="sep">/</span><span class="current">Deploy ollama-mesh on AWS EC2</span></div>
+    <article class="doc-content">
+      <h1 id="deploy-ollama-mesh-on-aws-ec2">Deploy ollama-mesh on AWS EC2<a class="anchor" href="#deploy-ollama-mesh-on-aws-ec2" aria-label="Link to section">#</a></h1>
+<p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2. ollama-mesh is a single static binary — no runtime, no dependencies — so an EC2 deploy is "download, drop a config, start a service."</p>
+<p>This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing, node-failure route-around, and self-healing recovery all verified live).</p>
+<h2 id="architecture">Architecture<a class="anchor" href="#architecture" aria-label="Link to section">#</a></h2>
+<pre class="code"><code>clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
+                 │  warm-first routing + auth + dashboard + metrics
+                 ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
+                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre>
+<p>The mesh box does <strong>not</strong> need a GPU — it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
+<h2 id="1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)<a class="anchor" href="#1-gpu-instances-the-ollama-nodes" aria-label="Link to section">#</a></h2>
+<p>Cheapest CUDA option is <code>g4dn.xlarge</code> (NVIDIA T4 16GB). <code>g5.xlarge</code> (A10G) and <code>g6.xlarge</code> (L4) are faster. Use a Deep Learning AMI or install the NVIDIA driver on Amazon Linux 2023, then install Ollama and bind it to the VPC:</p>
+<pre class="code" data-lang="bash"><code>curl -fsSL https://ollama.com/install.sh | sh
+sudo systemctl edit ollama   # add: Environment=OLLAMA_HOST=0.0.0.0:11434
+sudo systemctl restart ollama
+ollama pull llama3.2:3b</code></pre>
+<blockquote><strong>Quota note:</strong> brand-new AWS accounts start with a GPU On-Demand vCPU quota of 0. Request an increase under Service Quotas → EC2 → "Running On-Demand G and VT instances" before launching. Approval can take hours to days.</blockquote>
+<h2 id="2-the-mesh-box">2. The mesh box<a class="anchor" href="#2-the-mesh-box" aria-label="Link to section">#</a></h2>
+<p>A small CPU instance (<code>t3.small</code> is plenty). Pull the release binary and point it at your GPU nodes' <strong>private</strong> IPs:</p>
+<pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/ollama-mesh \
+  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
+chmod +x /usr/local/bin/ollama-mesh</code></pre>
+<p><code>/opt/config.yaml</code>:</p>
+<pre class="code" data-lang="yaml"><code>proxy: { port: 11434, access_log: true }
+admin: { bind_address: "127.0.0.1:8080" }   # reach via SSH tunnel; don't expose
+auth:
+  enabled: true
+  admin_token: &lt;generate-a-strong-token&gt;
+  state_path: /opt/usage-state.json          # quotas survive restarts
+  keys:
+    - { name: app, key: &lt;generate-a-strong-key&gt;, rate_limit: 1000 }
+nodes:
+  - { name: gpu-0, url: http://10.0.1.10:11434, gpu_model: "NVIDIA T4 16GB" }
+  - { name: gpu-1, url: http://10.0.1.11:11434, gpu_model: "NVIDIA A10G 24GB" }
+routing: { strategy: warm-first, poll_interval_ms: 2000, max_retries: 2 }
+metrics: { enabled: true, port: 9090 }
+savings: { reference_cost_per_1k: 0.002 }
+audit: { enabled: true, path: /opt/audit.log }</code></pre>
+<p>systemd unit (<code>/etc/systemd/system/ollama-mesh.service</code>):</p>
+<pre class="code" data-lang="ini"><code>[Unit]
+After=network-online.target
+Wants=network-online.target
+[Service]
+WorkingDirectory=/opt
+Environment=CONFIG_PATH=/opt/config.yaml
+ExecStart=/usr/local/bin/ollama-mesh
+Restart=always
+[Install]
+WantedBy=multi-user.target</code></pre>
+<pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh</code></pre>
+<h2 id="3-security-group">3. Security group<a class="anchor" href="#3-security-group" aria-label="Link to section">#</a></h2>
+<ul><li><strong>Proxy <code>:11434</code></strong> — open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> — keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
+<p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. The admin token is sensitive.</p>
+<ul><li><strong>Node <code>:11434</code></strong> — open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the proxy; the binary speaks plain HTTP.</li></ul>
+<h2 id="4-verify">4. Verify<a class="anchor" href="#4-verify" aria-label="Link to section">#</a></h2>
+<pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}
+curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/tags
+curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/generate \
+     -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'</code></pre>
+<p>Point any OpenAI-compatible client at <code>http://&lt;mesh&gt;:11434/v1</code> with your key.</p>
+<h2 id="cost-tip">Cost tip<a class="anchor" href="#cost-tip" aria-label="Link to section">#</a></h2>
+<p>Only the GPU nodes are expensive. Stop them when idle — the mesh box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
+
+      <div class="doc-foot-edit">
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/deploy/aws-ec2.md" target="_blank" rel="noopener">Edit this page on GitHub →</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="doc-toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul class="toc"><li class="lvl-2"><a href="#architecture">Architecture</a></li><li class="lvl-2"><a href="#1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)</a></li><li class="lvl-2"><a href="#2-the-mesh-box">2. The mesh box</a></li><li class="lvl-2"><a href="#3-security-group">3. Security group</a></li><li class="lvl-2"><a href="#4-verify">4. Verify</a></li><li class="lvl-2"><a href="#cost-tip">Cost tip</a></li></ul>
+  </aside>
+</div>
+
+<footer class="foot">
+  <div class="foot-bottom">
+    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+  </div>
+</footer>
+
+<script>
+(function(){"use strict";var root=document.documentElement;
+try{var s=localStorage.getItem("om-theme");if(s==="light")root.classList.add("light");else if(!s&&matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)root.classList.add("light");}catch(e){}
+var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",function(){root.classList.toggle("light");try{localStorage.setItem("om-theme",root.classList.contains("light")?"light":"dark");}catch(e){}});
+var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
+if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
+var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+// active TOC on scroll
+var links=[].slice.call(document.querySelectorAll(".toc a"));
+var ids=links.map(function(a){return a.getAttribute("href").slice(1);});
+var heads=ids.map(function(id){return document.getElementById(id);}).filter(Boolean);
+function onScroll(){var top=window.scrollY+120,cur=heads[0];for(var i=0;i<heads.length;i++){if(heads[i].offsetTop<=top)cur=heads[i];}links.forEach(function(a){a.classList.toggle("active",a.getAttribute("href")==="#"+(cur&&cur.id));});}
+window.addEventListener("scroll",onScroll,{passive:true});onScroll();
+})();
+</script>
+</body>
+</html>

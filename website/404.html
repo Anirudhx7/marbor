@@ -11,8 +11,11 @@
   // React app reads sessionStorage on load and restores URL via history.replaceState.
   (function () {
     var l = window.location;
-    if (l.pathname.indexOf('/ollama-mesh/demo/') === 0) {
-      sessionStorage.setItem('spa_redirect', l.pathname + l.search + l.hash);
+    var path = l.pathname;
+    if (path === '/ollama-mesh/demo') {
+      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/');
+    } else if (path.indexOf('/ollama-mesh/demo/') === 0) {
+      sessionStorage.setItem('spa_redirect', path + l.search + l.hash);
       l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/');
     }
   })();
@@ -21,8 +24,8 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   background: #0f0e0c;
-  color: #e8e0d0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #e8e4df;
+  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -32,21 +35,21 @@ body {
 }
 .inner { max-width: 400px; }
 .code {
-  font-family: "Consolas", "Liberation Mono", monospace;
+  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
   font-size: 72px;
   font-weight: 800;
   color: #d4a853;
   line-height: 1;
   margin-bottom: 16px;
 }
-h1 { font-size: 22px; margin-bottom: 10px; color: #e8e0d0; }
-p { color: #8b7d6b; margin-bottom: 28px; font-size: 15px; }
+h1 { font-size: 22px; margin-bottom: 10px; color: #e8e4df; }
+p { color: #8a8478; margin-bottom: 28px; font-size: 15px; }
 a {
   display: inline-block;
   background: #d4a853;
   color: #0f0e0c;
   padding: 10px 22px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-weight: 600;
   font-size: 15px;
   text-decoration: none;
@@ -56,6 +59,14 @@ a:hover { opacity: 0.85; }
 </head>
 <body>
 <div class="inner">
+  <div style="margin-bottom: 24px; display: inline-flex; align-items: center; justify-content: center;">
+    <div style="width:48px;height:48px;background:#1a1714;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg width="32" height="32" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+        <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
+      </svg>
+    </div>
+  </div>
   <div class="code">404</div>
   <h1>Page not found</h1>
   <p>The page you're looking for doesn't exist. It may have moved or been removed.</p>

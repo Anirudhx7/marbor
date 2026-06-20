@@ -67,7 +67,7 @@ a:hover { text-decoration: underline; }
 /* NAV */
 nav {
   padding: 18px 0;
-  position: sticky; top: 0; z-index: 40;
+  position: sticky; top: 0; z-index: 100;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border-subtle);
@@ -280,7 +280,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
   .foot-brand { grid-column: 1 / -1; }
   .hero { padding: 44px 0 32px; }
   .mobile-menu.open {
-    display: block; position: fixed; inset: 59px 0 0; z-index: 39; background: var(--bg);
+    display: block; position: fixed; inset: 69px 0 0; z-index: 39; background: var(--bg);
     padding: 14px 24px; animation: fade .18s ease;
   }
   .mobile-menu.open a { display: block; padding: 14px 0; min-height: 44px; font-size: 16px; color: var(--text); border-bottom: 1px solid var(--border-subtle); }
@@ -373,7 +373,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
         <span class="sigil">$</span>
         <span class="cmd">curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="dim">|</span> sh</span>
       </div>
-      <button class="copy-btn" id="copyBtn" aria-label="Copy install command">
+      <button class="copy-btn" id="copyBtn" aria-label="Copy install command" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
         <span id="copyLabel">copy</span>
       </button>
@@ -590,13 +590,9 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
       <div class="foot-brand">
         <a href="#top" class="brand" aria-label="ollama-mesh home">
           <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg width="20" height="18" viewBox="0 0 32 28" fill="none" aria-hidden="true">
-              <line x1="16" y1="9" x2="8" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
-              <line x1="16" y1="9" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
-              <line x1="8" y1="23" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
-              <circle cx="16" cy="8" r="3.5" fill="#d4a853"/>
-              <circle cx="8" cy="23" r="3" fill="#a87f3a"/>
-              <circle cx="24" cy="23" r="3" fill="#a87f3a"/>
+            <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+              <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
             </svg>
           </div>
           <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>

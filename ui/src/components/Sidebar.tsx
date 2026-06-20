@@ -57,13 +57,15 @@ export function Sidebar() {
       <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--brand-bg)' }}>
-            <svg width="20" height="20" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
               <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--brand)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
               <circle cx="75" cy="75" r="8" fill="var(--brand-dim)" />
             </svg>
           </div>
           <div className="flex flex-col">
-            <span className="font-semibold text-foreground text-sm tracking-tight">Ollama Mesh</span>
+            <span className="font-semibold text-foreground text-sm tracking-tight">
+              ollama<span className="text-primary">-mesh</span>
+            </span>
             <span className="text-[10px] font-medium text-muted-foreground leading-none">v{__APP_VERSION__}</span>
           </div>
         </div>

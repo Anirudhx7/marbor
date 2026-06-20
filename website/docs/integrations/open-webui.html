@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Open WebUI · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: Open WebUI." />
+<link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+<style>:root {
+  --bg: #0f0e0c;
+  --bg-elevated: #1a1815;
+  --bg-surface: #24221e;
+  --bg-input: #2e2b26;
+  --border: #3a3630;
+  --border-subtle: #2a2723;
+  --text: #e8e4df;
+  --text-muted: #8a8478;
+  --text-faint: #5a5548;
+  --accent: #d4a853;
+  --accent-dim: #b8933f;
+  --accent-bg: rgba(212,168,83,0.08);
+  --accent2: #7cb97c;
+  --accent3: #c97c7c;
+  --font-serif: "Georgia", "Times New Roman", "Liberation Serif", serif;
+  --font-mono: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
+  --radius: 4px;
+}
+html.light {
+  --bg: #faf8f5;
+  --bg-elevated: #ffffff;
+  --bg-surface: #f5f2ed;
+  --bg-input: #ebe7e0;
+  --border: #ddd8d0;
+  --border-subtle: #e8e4dc;
+  --text: #1a1815;
+  --text-muted: #6b6558;
+  --text-faint: #a0998a;
+  --accent: #8b6914;
+  --accent-dim: #6b5210;
+  --accent-bg: rgba(139,105,20,0.06);
+  --accent2: #4a7a4a;
+  --accent3: #a05050;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font-mono); font-size: 14px; line-height: 1.7;
+  -webkit-font-smoothing: antialiased; transition: background .2s, color .2s;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::selection { background: var(--accent); color: var(--bg); }
+.serif { font-family: var(--font-serif); }
+.page { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
+
+/* nav (shared with landing) */
+nav {
+  padding: 18px 0; position: sticky; top: 0; z-index: 100;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-subtle);
+}
+nav .page { max-width: 1100px; padding: 0 40px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); }
+.brand:hover { text-decoration: none; }
+.brand .mark { width: 22px; height: 22px; flex: none; }
+.brand .name { font-weight: 600; letter-spacing: -0.01em; }
+.brand .ver { color: var(--text-faint); font-size: 12px; }
+.nav-right { display: flex; align-items: center; gap: 4px; }
+.nav-right a.link { color: var(--text-muted); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; }
+.nav-right a.link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
+.nav-right a.link.active { color: var(--accent); }
+.icon-btn {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text-muted); cursor: pointer; transition: all .15s; padding: 0;
+}
+.icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+.icon-btn svg { width: 15px; height: 15px; }
+.theme-toggle .moon { display: none; }
+html.light .theme-toggle .sun { display: none; }
+html.light .theme-toggle .moon { display: block; }
+.hamburger { display: none; }
+.nav-links { display: flex; align-items: center; gap: 24px; }
+
+/* doc shell */
+.doc-shell { max-width: 1100px; margin: 0 auto; padding: 0 40px; display: grid; grid-template-columns: 200px minmax(0,1fr) 200px; gap: 44px; align-items: start; }
+.doc-sidebar { position: sticky; top: 72px; padding: 26px 0; max-height: calc(100vh - 72px); overflow-y: auto; }
+.doc-nav-link { display: block; color: var(--text-muted); font-size: 13px; padding: 5px 11px; border-radius: var(--radius); border-left: 2px solid transparent; margin-bottom: 1px; }
+.doc-nav-link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
+.doc-nav-link.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-bg); }
+.doc-nav-link.home { color: var(--text); font-weight: 600; margin-bottom: 18px; }
+.nav-group { margin-bottom: 20px; }
+.nav-group-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); padding: 0 11px; margin-bottom: 7px; }
+
+.doc-main { padding: 34px 0 80px; min-width: 0; }
+.breadcrumb { font-size: 12.5px; color: var(--text-muted); margin-bottom: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.breadcrumb a { color: var(--text-muted); }
+.breadcrumb a:hover { color: var(--accent); }
+.breadcrumb .sep { color: var(--border); }
+.breadcrumb .current { color: var(--text); }
+
+/* content */
+.doc-content { font-size: 14px; }
+.doc-content h1 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(28px, 4.5vw, 38px); letter-spacing: -0.015em; margin: 0 0 10px; line-height: 1.12; }
+.doc-content h2 { font-family: var(--font-serif); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; margin: 40px 0 13px; padding-top: 16px; border-top: 1px solid var(--border-subtle); scroll-margin-top: 80px; }
+.doc-content h3 { font-family: var(--font-serif); font-weight: 600; font-size: 17px; margin: 26px 0 9px; scroll-margin-top: 80px; }
+.doc-content h2 .anchor, .doc-content h3 .anchor { opacity: 0; margin-left: 8px; color: var(--text-faint); font-weight: 400; font-family: var(--font-mono); text-decoration: none; font-size: 0.7em; }
+.doc-content h2:hover .anchor, .doc-content h3:hover .anchor { opacity: 1; }
+.doc-content h1 .anchor { display: none; }
+.doc-content p { margin: 0 0 15px; color: var(--text-muted); }
+.doc-content strong { color: var(--text); font-weight: 600; }
+.doc-content a { color: var(--accent); }
+.doc-content ul, .doc-content ol { margin: 0 0 16px; padding-left: 22px; color: var(--text-muted); }
+.doc-content li { margin-bottom: 5px; }
+.doc-content li::marker { color: var(--accent-dim); }
+.doc-content hr { border: none; border-top: 1px solid var(--border-subtle); margin: 30px 0; }
+.doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
+.doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; margin: 0 0 18px; position: relative; }
+.doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
+.doc-content blockquote p { margin: 0; color: var(--text); }
+.table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
+.doc-content table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 440px; }
+.doc-content th, .doc-content td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+.doc-content thead th { background: var(--bg-surface); font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+.doc-content tbody tr:last-child td { border-bottom: none; }
+.doc-content td code { font-size: 11.5px; }
+.doc-foot-edit { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border-subtle); font-size: 13px; }
+
+/* toc */
+.doc-toc { position: sticky; top: 72px; padding: 34px 0; max-height: calc(100vh - 72px); overflow-y: auto; }
+.toc-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 11px; }
+.toc { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--border-subtle); }
+.toc li a { display: block; padding: 4px 0 4px 13px; margin-left: -1px; border-left: 2px solid transparent; color: var(--text-muted); font-size: 12.5px; line-height: 1.4; }
+.toc li.lvl-3 a { padding-left: 24px; font-size: 12px; }
+.toc li a:hover { color: var(--text); text-decoration: none; }
+.toc li a.active { color: var(--accent); border-left-color: var(--accent); }
+.toc-empty { color: var(--text-faint); font-size: 12.5px; }
+
+/* docs index */
+.doc-index { max-width: 1100px; margin: 0 auto; padding: 56px 40px 90px; }
+.doc-index .eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+.doc-index h1 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(30px, 5vw, 44px); letter-spacing: -0.02em; margin: 0 0 14px; line-height: 1.08; }
+.doc-index .lead { font-family: var(--font-serif); font-size: 17px; color: var(--text-muted); max-width: 60ch; margin: 0 0 44px; line-height: 1.6; }
+.index-section { margin-bottom: 38px; }
+.index-section h2 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 16px; }
+.index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.index-card { display: block; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; transition: border-color .15s, transform .15s; }
+.index-card:hover { border-color: var(--accent-dim); transform: translateY(-1px); text-decoration: none; }
+.index-card h3 { font-family: var(--font-serif); font-weight: 600; font-size: 16px; margin: 0 0 7px; color: var(--text); }
+.index-card p { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.55; }
+.index-card .arrow { font-size: 12px; color: var(--accent); }
+
+/* footer */
+footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
+.foot-bottom { max-width: 1100px; margin: 0 auto; padding: 0 40px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; color: var(--text-faint); font-size: 12px; }
+
+@media (max-width: 1024px) {
+  .doc-shell { grid-template-columns: 200px minmax(0,1fr); }
+  .doc-toc { display: none; }
+}
+.mobile-menu { display: none; }
+@media (max-width: 720px) {
+  .nav-links { display: none; }
+  .hamburger { display: inline-flex; }
+  .doc-shell { grid-template-columns: 1fr; padding: 0 20px; }
+  .doc-sidebar { position: fixed; inset: 69px 0 auto 0; z-index: 39; background: var(--bg); border-bottom: 1px solid var(--border); padding: 14px 24px; max-height: 70vh; display: none; }
+  .doc-sidebar.open { display: block; }
+  .doc-main { padding: 26px 0 70px; }
+  .mobile-menu.open {
+    display: block; position: fixed; inset: 69px 0 0; z-index: 39; background: var(--bg);
+    padding: 14px 24px; animation: fade .18s ease;
+  }
+  .mobile-menu.open a { display: block; padding: 14px 0; min-height: 44px; font-size: 16px; color: var(--text); border-bottom: 1px solid var(--border-subtle); }
+  @keyframes fade { from{opacity:0;transform:translateY(-5px);} to{opacity:1;transform:none;} }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="page">
+    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span></a>
+    <div class="nav-right">
+      <div class="nav-links">
+        <a class="link" href="../../index.html#features">Features</a>
+        <a class="link" href="../../index.html#how">How it works</a>
+        <a class="link" href="../../index.html#compare">Compare</a>
+        <a class="link active" href="../../docs/index.html">Docs</a>
+        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener">GitHub&nbsp;↗</a>
+      </div>
+      <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+      </button>
+      <button class="icon-btn hamburger" id="sidebarToggle" aria-label="Open docs menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<div class="doc-shell">
+  <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
+    <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
+    
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deploy</div>
+      <a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link active" href="../../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+  </aside>
+
+  <main class="doc-main">
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">Open WebUI</span></div>
+    <article class="doc-content">
+      <h1 id="open-webui">Open WebUI<a class="anchor" href="#open-webui" aria-label="Link to section">#</a></h1>
+<p>Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes, automatic cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same Ollama API calls it always has; the mesh handles which node actually runs the model.</p>
+<hr/>
+<h2 id="connection-options">Connection options<a class="anchor" href="#connection-options" aria-label="Link to section">#</a></h2>
+<p>ollama-mesh exposes two protocols on the same port:</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Protocol</th><th>URL</th><th>When to use</th></tr></thead>
+<tbody><tr><td>Ollama-native</td><td><code>http://&lt;mesh-host&gt;:11434</code></td><td>Recommended. Full Ollama API passthrough including <code>/api/chat</code>, <code>/api/generate</code>, <code>/api/pull</code>.</td></tr>
+<tr><td>OpenAI-compatible</td><td><code>http://&lt;mesh-host&gt;:11434/v1</code></td><td>Use when connecting through Open WebUI's OpenAI connection type.</td></tr></tbody>
+</table></div>
+<p>Both paths require your <code>sk-mesh-...</code> API key sent as a <code>Bearer</code> token.</p>
+<hr/>
+<h2 id="option-a---ollama-connection-type-recommended">Option A - Ollama connection type (recommended)<a class="anchor" href="#option-a---ollama-connection-type-recommended" aria-label="Link to section">#</a></h2>
+<p>This is the best fit because Open WebUI treats the mesh exactly like a single Ollama instance and can enumerate models automatically.</p>
+<ol><li>Open Open WebUI and go to <strong>Admin Settings</strong> (gear icon, top-right).</li><li>Navigate to <strong>Connections &gt; Ollama</strong>.</li><li>In the URL field, enter:</li></ol>
+<p>   ``<code>    http://&lt;mesh-host&gt;:11434    </code>`<code>    Replace </code>&lt;mesh-host&gt;<code> with the IP or hostname of the machine running ollama-mesh. If Open WebUI is running in Docker on the same host, use </code>host.docker.internal<code> instead of </code>localhost`.</p>
+<ol><li>Open WebUI will probe <code>/api/tags</code> and <code>/v1/models</code> to enumerate models. The mesh aggregates model lists from all healthy nodes, so every model available across your fleet appears in one dropdown.</li><li><strong>API key</strong>: Open WebUI's Ollama connection type does not send an <code>Authorization</code> header by default. If <code>auth.enabled: true</code> in your mesh config, you have two options:</li><li>Set <code>auth.enabled: false</code> and rely on network-level access control (only recommended on a trusted LAN).</li><li>Use the OpenAI connection type (Option B below), which has an explicit API key field.</li></ol>
+<hr/>
+<h2 id="option-b---openai-compatible-connection-type">Option B - OpenAI-compatible connection type<a class="anchor" href="#option-b---openai-compatible-connection-type" aria-label="Link to section">#</a></h2>
+<p>Use this when you want to supply the mesh API key through the UI, or when you are already using Open WebUI's OpenAI connection slot.</p>
+<ol><li>Go to <strong>Admin Settings &gt; Connections &gt; OpenAI</strong> (in Open WebUI v0.5+, labeled under <strong>Connections</strong>).</li><li>Click <strong>Add Connection</strong> (the <code>+</code> button).</li><li>Fill in the fields:</li></ol>
+<p>   | Field | Value |    |-------|-------|    | <strong>URL</strong> | <code>http://&lt;mesh-host&gt;:11434/v1</code> |    | <strong>API Key</strong> | Your <code>sk-mesh-...</code> key from <code>config.yaml</code> |</p>
+<ol><li>Click <strong>Save</strong>. Open WebUI calls <code>GET /v1/models</code> - the mesh returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.</li></ol>
+<blockquote>The exact label for the OpenAI connection section has shifted between Open WebUI versions. Look for <strong>Connections</strong> under Admin Settings; the OpenAI slot is the one that has a separate <strong>URL</strong> and <strong>API Key</strong> field pair.</blockquote>
+<hr/>
+<h2 id="docker-env-vars">Docker env vars<a class="anchor" href="#docker-env-vars" aria-label="Link to section">#</a></h2>
+<p>If you run Open WebUI via Docker and want to pre-configure the connection without touching the UI:</p>
+<p><strong>Ollama-native (no auth):</strong></p>
+<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
+  -e OLLAMA_BASE_URL="http://&lt;mesh-host&gt;:11434" \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  ghcr.io/open-webui/open-webui:main</code></pre>
+<p><strong>OpenAI-compatible (with API key):</strong></p>
+<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
+  -e OPENAI_API_BASE_URL="http://&lt;mesh-host&gt;:11434/v1" \
+  -e OPENAI_API_KEY="sk-mesh-abc123" \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  ghcr.io/open-webui/open-webui:main</code></pre>
+<blockquote><code>OLLAMA_BASE_URL</code> and <code>OPENAI_API_BASE_URL</code> are <code>ConfigVar</code> variables in Open WebUI - their values are persisted to the internal database on first launch. If you change them after the first run, set <code>ENABLE_PERSISTENT_CONFIG=False</code> to force Open WebUI to always read from the environment.</blockquote>
+<p><strong>Docker Compose example (both running as services):</strong></p>
+<pre class="code" data-lang="yaml"><code>services:
+  ollama-mesh:
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    ports:
+      - "11434:11434"
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/config.yaml
+    environment:
+      CONFIG_PATH: /config.yaml
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "3000:8080"
+    environment:
+      OPENAI_API_BASE_URL: "http://ollama-mesh:11434/v1"
+      OPENAI_API_KEY: "sk-mesh-abc123"
+    volumes:
+      - open-webui:/app/backend/data
+    depends_on:
+      - ollama-mesh
+
+volumes:
+  open-webui:</code></pre>
+<hr/>
+<h2 id="verifying-the-connection">Verifying the connection<a class="anchor" href="#verifying-the-connection" aria-label="Link to section">#</a></h2>
+<p>After saving the connection, confirm models appear in the Open WebUI model selector. You can also check the mesh side:</p>
+<pre class="code" data-lang="bash"><code># Should return JSON with all models loaded across your nodes
+curl http://&lt;mesh-host&gt;:11434/v1/models \
+  -H "Authorization: Bearer sk-mesh-abc123"</code></pre>
+<p>The mesh admin dashboard at <code>http://&lt;mesh-host&gt;:8080</code> shows each request logged with the routing decision (which node, model, latency) so you can confirm Open WebUI traffic is flowing through.</p>
+<hr/>
+<h2 id="troubleshooting">Troubleshooting<a class="anchor" href="#troubleshooting" aria-label="Link to section">#</a></h2>
+<p><strong>Models not appearing in the dropdown</strong></p>
+<ul><li>Confirm at least one Ollama node is reachable and has models loaded (<code>ollama list</code> on the node).</li><li>Check the mesh admin dashboard to verify nodes show as healthy.</li><li>For the Ollama connection type, Open WebUI calls <code>/api/tags</code>. For the OpenAI connection type it calls <code>/v1/models</code>. Both are served by the mesh.</li><li>If you added the connection via Docker env var and models still don't appear, see the <code>ConfigVar</code> note above - the persisted value may be overriding your env var.</li></ul>
+<p><strong>401 Unauthorized</strong></p>
+<p>Your API key is missing or wrong. Verify the key matches one of the <code>auth.keys[].key</code> values in <code>config.yaml</code>. The mesh requires the exact key string as a <code>Bearer</code> token - no substring matching.</p>
+<p><strong>403 Forbidden on a specific model</strong></p>
+<p>The key you are using has a <code>models:</code> allow-list in <code>config.yaml</code> that does not include the requested model. Either add the model to the key's allow-list or use a key with <code>models: []</code> (empty = allow all).</p>
+<p><strong>Connection refused / timeout</strong></p>
+<ul><li>If Open WebUI is in Docker and the mesh is on the host, use <code>http://host.docker.internal:11434</code> not <code>http://localhost:11434</code>.</li><li>Confirm the mesh is running: <code>curl http://&lt;mesh-host&gt;:11434/api/tags</code> from the Open WebUI host (no auth needed for this endpoint if <code>auth.enabled: false</code>, or add the header if enabled).</li></ul>
+<p><strong>Slow model list on startup</strong></p>
+<p>If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's <code>routing.upstream_timeout_ms</code> in <code>config.yaml</code>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
+
+      <div class="doc-foot-edit">
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">Edit this page on GitHub →</a>
+      </div>
+    </article>
+  </main>
+
+  <aside class="doc-toc" aria-label="On this page">
+    <div class="toc-title">On this page</div>
+    <ul class="toc"><li class="lvl-2"><a href="#connection-options">Connection options</a></li><li class="lvl-2"><a href="#option-a---ollama-connection-type-recommended">Option A - Ollama connection type (recommended)</a></li><li class="lvl-2"><a href="#option-b---openai-compatible-connection-type">Option B - OpenAI-compatible connection type</a></li><li class="lvl-2"><a href="#docker-env-vars">Docker env vars</a></li><li class="lvl-2"><a href="#verifying-the-connection">Verifying the connection</a></li><li class="lvl-2"><a href="#troubleshooting">Troubleshooting</a></li></ul>
+  </aside>
+</div>
+
+<footer class="foot">
+  <div class="foot-bottom">
+    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+  </div>
+</footer>
+
+<script>
+(function(){"use strict";var root=document.documentElement;
+try{var s=localStorage.getItem("om-theme");if(s==="light")root.classList.add("light");else if(!s&&matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)root.classList.add("light");}catch(e){}
+var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",function(){root.classList.toggle("light");try{localStorage.setItem("om-theme",root.classList.contains("light")?"light":"dark");}catch(e){}});
+var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
+if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
+var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+// active TOC on scroll
+var links=[].slice.call(document.querySelectorAll(".toc a"));
+var ids=links.map(function(a){return a.getAttribute("href").slice(1);});
+var heads=ids.map(function(id){return document.getElementById(id);}).filter(Boolean);
+function onScroll(){var top=window.scrollY+120,cur=heads[0];for(var i=0;i<heads.length;i++){if(heads[i].offsetTop<=top)cur=heads[i];}links.forEach(function(a){a.classList.toggle("active",a.getAttribute("href")==="#"+(cur&&cur.id));});}
+window.addEventListener("scroll",onScroll,{passive:true});onScroll();
+})();
+</script>
+</body>
+</html>
