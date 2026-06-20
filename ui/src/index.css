@@ -39,6 +39,11 @@
 
 @layer base {
   :root {
+    /* Brand amber accent */
+    --brand: #8b6914;
+    --brand-dim: #6b5210;
+    --brand-bg: rgba(139,105,20,0.06);
+
     /* Professional Light Theme (Slate & Blue) */
     --background: 210 40% 98%; /* Slate 50 */
     --foreground: 222.2 84% 4.9%; /* Slate 950 */
@@ -47,7 +52,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     
-    --primary: 221.2 83.2% 53.3%; /* Blue 600 */
+    --primary: 38 73% 30%; /* Brand amber (light) #8b6914 */
     --primary-foreground: 210 40% 98%;
     
     --secondary: 210 40% 96.1%; /* Slate 100 */
@@ -70,13 +75,18 @@
 
     --info: 221.2 83.2% 53.3%; /* Blue 600 */
     --info-foreground: 210 40% 98%;
-    
+
     --border: 214.3 31.8% 91.4%; /* Slate 200 */
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 38 73% 30%; /* Brand amber focus ring */
   }
 
   .dark {
+    /* Brand amber accent */
+    --brand: #d4a853;
+    --brand-dim: #b8933f;
+    --brand-bg: rgba(212,168,83,0.08);
+
     /* Professional Dark Theme (Deep Slate & Blue) */
     --background: 222.2 84% 4.9%; /* Slate 950 */
     --foreground: 210 40% 98%; /* Slate 50 */
@@ -85,7 +95,7 @@
     --popover: 222.2 47.4% 11.2%;
     --popover-foreground: 210 40% 98%;
     
-    --primary: 217.2 91.2% 59.8%; /* Blue 500 */
+    --primary: 38 57% 58%; /* Brand amber (dark) #d4a853 */
     --primary-foreground: 222.2 47.4% 1.2%;
     
     --secondary: 217.2 32.6% 17.5%; /* Slate 800 */
@@ -108,10 +118,10 @@
 
     --info: 217.2 91.2% 59.8%;
     --info-foreground: 222.2 47.4% 1.2%;
-    
+
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 217.2 91.2% 59.8%;
+    --ring: 38 57% 58%; /* Brand amber focus ring */
   }
 }
 
