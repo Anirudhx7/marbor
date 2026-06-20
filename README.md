@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![ollama-mesh dashboard](docs/screenshots/dashboard.png)
+![ollama-mesh dashboard](website/screenshots/dashboard.png)
 *Dashboard showing live request log with Tokens and tok/s columns, VRAM fit badges on GPU Nodes, and savings computed from real token counts.*
 
 ---
@@ -67,7 +67,7 @@ Not for you if you're one person chatting with one box occasionally - you don't 
 
 Existing clients keep working: ollama-mesh speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints, so both `ollama` clients and OpenAI SDKs can point at it unchanged.
 
-**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) - [Continue](docs/integrations/continue.md) - [LibreChat](docs/integrations/librechat.md) - [AWS EC2 deploy](docs/deploy/aws-ec2.md)
+**Integration guides:** [Open WebUI](website/integrations/open-webui.md) - [Continue](website/integrations/continue.md) - [LibreChat](website/integrations/librechat.md) - [AWS EC2 deploy](website/deploy/aws-ec2.md)
 
 ---
 
