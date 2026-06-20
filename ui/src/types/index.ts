@@ -46,8 +46,11 @@ export interface APIKey {
   tokensThisMonth: number;
   estimatedCostUsd: number;
   rateLimit: number;
+  dailyLimit?: number;
+  monthlyLimit?: number;
   status: 'active' | 'suspended' | 'rate-limited';
   allowedModels: string[];
+  models?: string[];
   expiresAt: string | null;
 }
 

@@ -111,6 +111,16 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
   return res.json() as Promise<import('../types').GPUNode>;
 }
 
+export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; models?: string[] }) {
+  const res = await fetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to patch key');
+  return res.json();
+}
+
 export async function fetchRoutingRules() {
   const res = await fetch(`${BASE}/routing/rules`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch routing rules');
