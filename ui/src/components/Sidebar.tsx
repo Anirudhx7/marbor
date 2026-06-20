@@ -15,8 +15,10 @@ import {
   Activity,
   Menu,
   X,
+  ArrowLeft,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
+import { forcedDemo } from '../hooks/useDemoMode';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -83,7 +85,16 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-border shrink-0">
+      <div className="p-4 border-t border-border shrink-0 space-y-1">
+        {forcedDemo && (
+          <a
+            href="/ollama-mesh/"
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4 shrink-0" />
+            <span>Back to website</span>
+          </a>
+        )}
         <button
           onClick={toggleTheme}
           className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
