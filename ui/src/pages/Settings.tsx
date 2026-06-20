@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud } from 'lucide-react';
+import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, getCloudProviders } from '../lib/api';
+import { fetchSettings, updateSettings, getCloudProviders, reloadConfig } from '../lib/api';
 import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
@@ -13,6 +13,8 @@ export function SettingsPage() {
   const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>(demoMode ? mockCloudProviders : []);
   const [cloudLoading, setCloudLoading] = useState(!demoMode);
   const [saved, setSaved] = useState(false);
+  const [reloaded, setReloaded] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,6 +75,25 @@ export function SettingsPage() {
     }
   };
 
+  const handleReload = async () => {
+    if (demoMode) {
+      setReloaded(true);
+      setTimeout(() => setReloaded(false), 2000);
+      return;
+    }
+    setReloading(true);
+    try {
+      await reloadConfig();
+      setReloaded(true);
+      setError(null);
+      setTimeout(() => setReloaded(false), 2000);
+    } catch (err: any) {
+      setError(err.message || 'Config reload failed');
+    } finally {
+      setReloading(false);
+    }
+  };
+
   const buildYAML = (): string => {
     if (demoMode) return configFileYAML;
     return [
@@ -112,22 +133,42 @@ export function SettingsPage() {
             Configure proxy settings, authentication, and integrations
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
-        >
-          {saved ? (
-            <>
-              <Check className="w-4 h-4" />
-              Saved
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              Save Changes
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleReload}
+            disabled={reloading}
+            title="Reload config from disk without restarting (equivalent to SIGHUP)"
+            className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-foreground font-medium rounded-lg transition-colors border border-border"
+          >
+            {reloaded ? (
+              <>
+                <Check className="w-4 h-4 text-primary" />
+                Reloaded
+              </>
+            ) : (
+              <>
+                <RefreshCw className={`w-4 h-4 ${reloading ? 'animate-spin' : ''}`} />
+                Reload Config
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
+          >
+            {saved ? (
+              <>
+                <Check className="w-4 h-4" />
+                Saved
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Save Changes
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {error && (

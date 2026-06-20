@@ -201,6 +201,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/warmup/ping", s.cors(s.adminAuth(s.handleWarmupPing)))
 
 	reg("POST /admin/config/reload", s.cors(s.adminAuth(s.handleConfigReload)))
+	reg("GET /admin/config", s.cors(s.adminAuth(s.handleGetConfig)))
 
 	// Health check — no auth required. Used by load balancers and Docker healthchecks.
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -499,6 +500,39 @@ func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"reloaded":true,"config_path":%q,"auth_keys":%d,"warmup_enabled":%v}`,
 		s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled)
+}
+
+// handleGetConfig returns the current running config with all secret values masked.
+// GET /admin/config (also /admin/v1/config)
+// AdminToken is already json:"-"; this handler additionally masks API key values
+// and cloud provider keys so the response is safe to log or share for debugging.
+func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	cfg := s.cfg
+	s.mu.RUnlock()
+
+	// Deep-copy and mask secrets before serialising.
+	masked := cfg
+	keys := make([]config.KeyConfig, len(cfg.Auth.Keys))
+	copy(keys, cfg.Auth.Keys)
+	for i := range keys {
+		keys[i].Key = "***"
+	}
+	masked.Auth.Keys = keys
+
+	providers := make([]config.CloudProvider, len(cfg.CloudProviders))
+	copy(providers, cfg.CloudProviders)
+	for i := range providers {
+		providers[i].APIKey = "***"
+	}
+	masked.CloudProviders = providers
+
+	if masked.Webhook.Secret != "" {
+		masked.Webhook.Secret = "***"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(masked)
 }
 
 func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {

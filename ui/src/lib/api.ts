@@ -165,6 +165,15 @@ export async function getCloudProviders(): Promise<CloudProvider[]> {
   return res.json();
 }
 
+export async function reloadConfig(): Promise<{ reloaded: boolean; config_path: string; auth_keys: number; warmup_enabled: boolean }> {
+  const res = await fetch(`${BASE}/config/reload`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Config reload failed');
+  return res.json();
+}
+
 export async function fetchModels(): Promise<ModelCatalog> {
   const res = await fetch(`${BASE}/models`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch models');
