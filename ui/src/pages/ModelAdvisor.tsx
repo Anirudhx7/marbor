@@ -296,7 +296,7 @@ export function ModelAdvisor() {
         </div>
       )}
 
-      {/* Mesh host system info — shown once, not per node */}
+      {/* Mesh host system info - shown once, not per node */}
       {sysInfo && (
         <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>

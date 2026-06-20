@@ -208,7 +208,7 @@ export function Metrics() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Total Requests</p>
                   <p className="text-xl font-bold text-foreground font-mono">
-                    {totalRequests != null ? totalRequests.toLocaleString() : '—'}
+                    {totalRequests != null ? totalRequests.toLocaleString() : '-'}
                   </p>
                 </div>
               </div>
@@ -222,7 +222,7 @@ export function Metrics() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">Local Routing</p>
                   <p className="text-xl font-bold text-foreground font-mono">
-                    {localPct != null ? `${localPct}%` : '—'}
+                    {localPct != null ? `${localPct}%` : '-'}
                   </p>
                 </div>
               </div>
@@ -238,7 +238,7 @@ export function Metrics() {
                   <p className="text-xl font-bold text-foreground font-mono">
                     {analytics.total_spent_usd != null
                       ? `$${analytics.total_spent_usd.toFixed(4)}`
-                      : '—'}
+                      : '-'}
                   </p>
                 </div>
               </div>
@@ -254,7 +254,7 @@ export function Metrics() {
                   <p className="text-xl font-bold text-foreground font-mono">
                     {analytics.total_saved_usd != null
                       ? `$${analytics.total_saved_usd.toFixed(4)}`
-                      : '—'}
+                      : '-'}
                   </p>
                 </div>
               </div>

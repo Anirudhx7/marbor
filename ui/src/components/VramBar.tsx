@@ -25,7 +25,7 @@ export function VramBar({ used, total, source, size = 'md' }: VramBarProps) {
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground font-medium">VRAM Usage</span>
-          <span className="text-muted-foreground font-mono">—</span>
+          <span className="text-muted-foreground font-mono">-</span>
         </div>
         <div className={`w-full bg-secondary rounded-full overflow-hidden ${barHeight}`} />
       </div>
@@ -40,10 +40,10 @@ export function VramBar({ used, total, source, size = 'md' }: VramBarProps) {
       <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground font-medium">VRAM in use</span>
-          <span className="text-foreground/80 font-mono">{used.toFixed(1)}GB / —</span>
+          <span className="text-foreground/80 font-mono">{used.toFixed(1)}GB / -</span>
         </div>
         <div className={`w-full bg-secondary rounded-full overflow-hidden ${barHeight} relative`}>
-          {/* Real usage, capacity unknown — neutral fill, no proportion implied. */}
+          {/* Real usage, capacity unknown - neutral fill, no proportion implied. */}
           <div className="absolute inset-0 bg-primary/30" />
         </div>
         <div className="flex items-center justify-between">

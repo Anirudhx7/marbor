@@ -490,7 +490,7 @@ export const mockSystemInfo: SystemInfo = {
 };
 
 // Mock ModelCatalogResponse for ModelAdvisor demo mode
-// Demo node: NVIDIA RTX 4090 24GB, 10240MB free (14336MB in use — llama3.1:8b + deepseek-r1:7b loaded)
+// Demo node: NVIDIA RTX 4090 24GB, 10240MB free (14336MB in use - llama3.1:8b + deepseek-r1:7b loaded)
 // Fit logic: green = fits free VRAM (<10240MB), yellow = fits total VRAM (needs eviction, <24576MB), red = too large
 export const mockModelCatalogResponse: ModelCatalogResponse = {
   catalog: [

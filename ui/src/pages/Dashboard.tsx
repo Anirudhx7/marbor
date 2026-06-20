@@ -79,7 +79,7 @@ function SavingsCard({ savings, loading }: SavingsCardProps) {
               <span className="text-2xl font-bold text-foreground animate-pulse">--</span>
             ) : savings ? (
               <span className="text-2xl font-bold text-success">
-                {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '—'}
+                {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '-'}
               </span>
             ) : (
               <span className="text-2xl font-bold text-muted-foreground">--</span>
@@ -430,10 +430,10 @@ export function Dashboard() {
                     </Badge>
                   </td>
                   <td className="px-6 py-3 text-right font-mono text-muted-foreground">
-                    {req.tokens > 0 ? req.tokens : '—'}
+                    {req.tokens > 0 ? req.tokens : '-'}
                   </td>
                   <td className="px-6 py-3 text-right font-mono text-muted-foreground">
-                    {req.tokensPerSec > 0 ? req.tokensPerSec.toFixed(1) : '—'}
+                    {req.tokensPerSec > 0 ? req.tokensPerSec.toFixed(1) : '-'}
                   </td>
                   <td className="px-6 py-3 text-right font-medium font-mono">
                     <span className={req.latency > 1000 ? 'text-amber-500' : 'text-primary'}>

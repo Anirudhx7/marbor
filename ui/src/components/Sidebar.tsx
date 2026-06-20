@@ -57,16 +57,9 @@ export function Sidebar() {
       <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--brand-bg)' }}>
-            <svg width="20" height="20" viewBox="0 0 32 28" fill="none" aria-hidden="true">
-              {/* mesh triangle: top node amber, bottom two nodes amber, warm-first line accents */}
-              <line x1="16" y1="9" x2="8" y2="23" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.3" className="text-foreground" />
-              <line x1="16" y1="9" x2="24" y2="23" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.3" className="text-foreground" />
-              <line x1="8" y1="23" x2="24" y2="23" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.3" className="text-foreground" />
-              {/* top node — brand amber (warm/active) */}
-              <circle cx="16" cy="8" r="3.5" fill="var(--brand)" />
-              {/* bottom nodes — dimmer amber */}
-              <circle cx="8" cy="23" r="3" fill="var(--brand-dim)" />
-              <circle cx="24" cy="23" r="3" fill="var(--brand-dim)" />
+            <svg width="20" height="20" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+              <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--brand)" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="75" cy="75" r="8" fill="var(--brand-dim)" />
             </svg>
           </div>
           <div className="flex flex-col">

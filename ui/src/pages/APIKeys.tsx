@@ -345,10 +345,10 @@ export function APIKeys() {
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="font-mono text-foreground font-medium">
-                        {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '—'} <span className="text-muted-foreground text-xs font-sans">tokens</span>
+                        {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '-'} <span className="text-muted-foreground text-xs font-sans">tokens</span>
                       </span>
                       <span className="text-xs font-mono text-muted-foreground">
-                        {key.estimatedCostUsd > 0 ? `~$${key.estimatedCostUsd.toFixed(2)}` : '—'} <span className="font-sans">est.</span>
+                        {key.estimatedCostUsd > 0 ? `~$${key.estimatedCostUsd.toFixed(2)}` : '-'} <span className="font-sans">est.</span>
                       </span>
                     </div>
                   </td>

@@ -105,7 +105,7 @@ export function Analytics() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Cost savings and routing breakdown — last 24 hours
+              Cost savings and routing breakdown - last 24 hours
             </p>
           </div>
         </div>
@@ -121,7 +121,7 @@ export function Analytics() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
           title="Total Saved vs Cloud"
-          value={loading ? '--' : data?.total_saved_usd != null ? `$${data.total_saved_usd.toFixed(2)}` : '—'}
+          value={loading ? '--' : data?.total_saved_usd != null ? `$${data.total_saved_usd.toFixed(2)}` : '-'}
           sub={`${localPct}% requests served locally`}
           icon={<DollarSign className="w-5 h-5" />}
           accent="success"
@@ -135,7 +135,7 @@ export function Analytics() {
         />
         <StatCard
           title="Cloud Spend"
-          value={loading ? '--' : data?.total_spent_usd != null ? `$${data.total_spent_usd.toFixed(4)}` : '—'}
+          value={loading ? '--' : data?.total_spent_usd != null ? `$${data.total_spent_usd.toFixed(4)}` : '-'}
           sub={`${(data?.cloud_requests ?? 0).toLocaleString()} cloud fallback requests`}
           icon={<Cloud className="w-5 h-5" />}
           accent="amber"
@@ -145,7 +145,7 @@ export function Analytics() {
       {/* 24h Chart */}
       <div className="glass-panel rounded-xl p-6">
         <h3 className="text-sm font-semibold text-foreground mb-6">
-          Requests per Hour — Local vs Cloud (24h)
+          Requests per Hour - Local vs Cloud (24h)
         </h3>
         {loading ? (
           <div className="h-64 bg-secondary/30 rounded-lg animate-pulse" />
