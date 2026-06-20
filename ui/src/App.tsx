@@ -14,7 +14,7 @@ import { Models } from './pages/Models';
 import { ModelAdvisor } from './pages/ModelAdvisor';
 import { Requests } from './pages/Requests';
 
-const basename = forcedDemo ? '/ollama-mesh' : '/';
+const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
 function App() {
   return (

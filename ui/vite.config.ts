@@ -12,7 +12,7 @@ const appVersion = process.env.VITE_APP_VERSION || pkg.version;
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: isPages ? '/ollama-mesh/' : './',
+  base: isPages ? '/ollama-mesh/demo/' : './',
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
