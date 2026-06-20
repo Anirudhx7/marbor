@@ -27,21 +27,21 @@ type ModelInfo struct {
 }
 
 type NodeState struct {
-	Name         string
-	URL          string
-	GPUModel     string
-	NvidiaIndex  int
-	LoadedModels []ModelInfo
-	ActiveConns    int32
-	RequestsTotal  int64 // atomic: lifetime requests routed to this node
-	Healthy        bool
-	Draining       bool
-	LastPollAt   time.Time
-	Failures     int
-	CPUPercent   float64
-	Temperature  *float64
-	VRAMTotalMB  int64
-	VRAMUsedMB   int64
+	Name          string
+	URL           string
+	GPUModel      string
+	NvidiaIndex   int
+	LoadedModels  []ModelInfo
+	ActiveConns   int32
+	RequestsTotal int64 // atomic: lifetime requests routed to this node
+	Healthy       bool
+	Draining      bool
+	LastPollAt    time.Time
+	Failures      int
+	CPUPercent    float64
+	Temperature   *float64
+	VRAMTotalMB   int64
+	VRAMUsedMB    int64
 	// VRAMTotalMBConfig is the operator-declared total VRAM (config vram_total_mb),
 	// used for remote nodes nvidia-smi cannot reach. 0 = not declared.
 	VRAMTotalMBConfig int64

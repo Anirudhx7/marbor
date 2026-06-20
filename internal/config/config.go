@@ -20,8 +20,8 @@ type WarmupEntry struct {
 // zero-token /api/generate with keep_alive to each configured node on
 // IntervalMs cadence so models never get evicted from VRAM between requests.
 type WarmupConfig struct {
-	Enabled    bool          `yaml:"enabled" json:"enabled"`
-	IntervalMs int           `yaml:"interval_ms" json:"interval_ms"`
+	Enabled    bool `yaml:"enabled" json:"enabled"`
+	IntervalMs int  `yaml:"interval_ms" json:"interval_ms"`
 	// KeepAlive is the Ollama keep_alive value forwarded in each ping (e.g.
 	// "10m"). Must exceed IntervalMs; defaults to "10m".
 	KeepAlive string        `yaml:"keep_alive" json:"keep_alive"`
