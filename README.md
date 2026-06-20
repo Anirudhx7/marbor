@@ -24,12 +24,14 @@ git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh && make dem
 
 ---
 
-## What's new in v0.8
+## What's new in v0.9
 
-- **Model warmup** - proactive `keep_alive` pings on a configurable schedule keep your most-used models loaded in VRAM. No more cold starts on the first request after idle.
-- **SIGHUP config hot-reload** - rotate API keys or change routing config without restarting. Send `kill -HUP <pid>` and the new config is live in under a second.
-- **Request queue with backpressure** - configurable `queue_max_depth` and `queue_timeout_ms` prevent thundering-herd from hammering nodes. Excess requests queue and drain rather than 502-ing immediately.
-- **11 Prometheus metrics** (up from 7) - retries, cloud fallbacks, quota rejections, and panic counts are now tracked.
+- **Mobile-responsive dashboard** - sidebar collapses to a hamburger drawer on mobile; all pages reflow correctly on phone and tablet.
+- **Node drain** - `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight completes. Zero-downtime GPU maintenance.
+- **Runtime key mutation** - `PATCH /admin/keys/{name}` updates rate limits, quotas, and model allow-lists without rotating the key or restarting.
+- **PATCH /admin/nodes/{name}** - override `vram_total_mb` and `gpu_model` at runtime without editing config.
+- **Config hot-reload via HTTP** - `POST /admin/v1/config/reload` for environments that can't send SIGHUP (containers, systemd with Restart=always).
+- **Structured JSON logging** - `--log-format json` for log aggregators. Plain text default unchanged.
 
 ---
 

@@ -6,6 +6,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-06-20
+
+### Changed
+- Dashboard sidebar is now a slide-in drawer on mobile with a hamburger toggle and backdrop overlay. Desktop behavior unchanged.
+- Main content area has correct top padding on mobile to clear the hamburger button.
+- Fixed non-responsive `grid-cols-2/3` layouts in API Keys edit modal, GPU Nodes stat panel, and Routing rule form - all now collapse to single column on small screens.
+
+## [0.9.0] - 2026-06-19
+
+### Added
+- **Model warmup** - proactive `keep_alive` pings on a configurable schedule keep loaded models hot in VRAM. Eliminates cold starts on first request after idle.
+- **SIGHUP full config reload** - `kill -HUP <pid>` diffs the new config against the running state: adds new nodes/cloud providers/auth keys, removes deleted ones, leaves unchanged ones running. Zero-downtime reconfiguration without a process restart.
+- **Structured JSON logging** via `log/slog`. `--log-format json` outputs one JSON object per line. Default remains plain text. Legacy `log.Printf` calls redirect through the same handler.
+- **Node drain** - `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight requests complete. `DELETE` to undrain. Enables zero-downtime GPU maintenance. Dashboard shows an amber DRAINING badge.
+- **Per-node request counter** - `requests_total` tracked atomically per node, exposed in `GET /admin/nodes`.
+- **X-Request-ID forwarded upstream** - the proxy now sets `X-Request-ID` on requests forwarded to Ollama nodes for end-to-end log correlation.
+- **Retry-After + quota reset headers** on 429 responses - clients see when to retry.
+- **`POST /admin/v1/config/reload`** - HTTP-triggered config reload for container environments that cannot send SIGHUP.
+- **`GET /admin/v1/config`** - returns the current live config (secrets masked). Settings page shows a Reload button.
+- **`PATCH /admin/nodes/{name}`** - runtime metadata overrides: `vram_total_mb`, `gpu_model`.
+- **`PATCH /admin/keys/{name}`** (`PatchKey`) - update rate limit, daily/monthly quotas, and model allow-list at runtime without rotating the key. Counters preserved.
+- Queue depth metric card on the dashboard.
+
+## [0.8.2] - 2026-06-19
+
+### Added
+- **Request queue** - instead of returning 503 when all nodes are at connection capacity, requests queue and retry as slots free. Configurable `routing.queue_max_depth` and `routing.queue_timeout_ms`.
+
+## [0.8.1] - 2026-06-18
+
+### Fixed
+- Quota counters no longer drift when multiple requests race the monthly reset window.
+- `nvidia-smi` is polled at the configured `routing.poll_interval_ms` interval, not on every health check.
+- Docker auto-discovery now works on Windows (path normalization for Docker Desktop socket).
+
+## [0.8.0] - 2026-06-18
+
+### Added
+- **VRAM-aware cold routing** - when no node has a model warm, the router places the request on the node with the most free VRAM rather than using least-connections. Nodes with unknown capacity or overcommitted VRAM are skipped; falls back to least-connections when all nodes are at capacity.
+
+## [0.7.0] - 2026-06-18
+
+### Added
+- **Active/active HA** - each instance polls a configurable peer list (`ha.peers`) via `/health`. `GET /admin/ha/peers` returns cluster status. Run two instances behind any TCP load balancer; the proxy SPOF is eliminated.
+
+## [0.6.0] - 2026-06-17
+
+### Added
+- **KV-cache / context affinity** - sticky session routing via `X-Session-ID` request header. Same conversation ID routes to the same node, keeping the KV cache warm for multi-turn inference. TTL-based eviction; falls back gracefully on node failure.
+- **Warm-vs-cold benchmark** - `make bench` runs a reproducible first-token latency comparison (warm model in VRAM vs cold load). Numbers are measured on real hardware. See `bench/`.
+- Security regression tests for five invariants: constant-time admin token compare, auth fails closed when enabled, cloud off by default when unconfigured, request body cap enforced, upstream host comes only from config.
+
 ## [0.5.0] - 2026-06-17
 
 ### Security
