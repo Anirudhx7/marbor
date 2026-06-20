@@ -79,7 +79,7 @@ nav .page { display: flex; align-items: center; justify-content: space-between; 
 .brand .name { font-weight: 600; letter-spacing: -0.01em; }
 .brand .ver { color: var(--text-faint); font-size: 12px; }
 .nav-right { display: flex; align-items: center; gap: 4px; }
-.nav-right a.link { color: var(--text-muted); padding: 6px 10px; border-radius: var(--radius); font-size: 13px; }
+.nav-right a.link { color: var(--text-muted); padding: 6px 0; border-radius: var(--radius); font-size: 13px; }
 .nav-right a.link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
 .icon-btn {
   width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
@@ -92,7 +92,7 @@ nav .page { display: flex; align-items: center; justify-content: space-between; 
 html.light .theme-toggle .sun { display: none; }
 html.light .theme-toggle .moon { display: block; }
 .hamburger { display: none; }
-.nav-links { display: flex; align-items: center; gap: 2px; }
+.nav-links { display: flex; align-items: center; gap: 24px; }
 
 /* HERO */
 .hero { padding: 64px 0 40px; }
@@ -106,7 +106,7 @@ html.light .theme-toggle .moon { display: block; }
 @keyframes pulse { 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent2) 55%, transparent);} 70%{box-shadow:0 0 0 7px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
 h1.headline {
   font-family: var(--font-serif); font-weight: 400;
-  font-size: clamp(34px, 6.5vw, 52px); line-height: 1.08; letter-spacing: -0.015em;
+  font-size: clamp(34px, 6.5vw, 52px); line-height: 1.2; letter-spacing: -0.015em;
   margin: 0 0 22px; color: var(--text);
 }
 h1.headline em { font-style: italic; color: var(--accent); }
@@ -117,7 +117,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 .subhead strong { color: var(--text); font-weight: 600; }
 
 /* buttons */
-.cta-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 28px; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 28px; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono);
   font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: var(--radius);
@@ -173,7 +173,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 .rcol { padding: 18px 16px; }
 .rcol.full { grid-column: 1 / -1; border-top: 1px solid var(--border-subtle); }
 .rcol + .rcol:not(.full) { border-left: 1px solid var(--border-subtle); }
-.rlabel { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 13px; }
+.rlabel { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 13px; }
 .req {
   font-size: 12.5px; background: var(--bg); border: 1px solid var(--border-subtle);
   border-radius: var(--radius); padding: 10px 12px; color: var(--text); margin-bottom: 8px; line-height: 1.55;
@@ -199,9 +199,9 @@ h1.headline em { font-style: italic; color: var(--accent); }
 }
 
 /* SECTIONS */
-section { padding: 52px 0; }
-.eyebrow { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
-h2.sec { font-family: var(--font-serif); font-weight: 400; font-size: clamp(26px, 4.4vw, 34px); letter-spacing: -0.01em; line-height: 1.15; margin: 0 0 12px; }
+section { padding: 80px 0; }
+.eyebrow { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+h2.sec { font-family: var(--font-serif); font-weight: 400; font-size: clamp(26px, 4.4vw, 34px); letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 12px; }
 h2.sec em { font-style: italic; color: var(--accent); }
 .sec-sub { font-family: var(--font-serif); color: var(--text-muted); font-size: 16px; line-height: 1.6; max-width: 58ch; margin: 0 0 36px; }
 
@@ -210,9 +210,9 @@ h2.sec em { font-style: italic; color: var(--accent); }
 .feat { display: grid; grid-template-columns: 34px 1fr; gap: 16px; padding: 22px 0; border-bottom: 1px solid var(--border-subtle); }
 .feat .ic { color: var(--accent); width: 34px; height: 34px; display: flex; align-items: flex-start; justify-content: center; padding-top: 2px; }
 .feat .ic svg { width: 22px; height: 22px; }
-.feat.warm .ic { color: var(--accent2); }
-.feat h3 { font-family: var(--font-serif); font-weight: 600; font-size: 18px; margin: 0 0 6px; letter-spacing: -0.005em; }
-.feat p { color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.65; }
+.feat.warm .ic { color: var(--accent); }
+.feat h3 { font-family: var(--font-serif); font-weight: 600; font-size: 18px; margin: 0 0 10px; letter-spacing: -0.005em; }
+.feat p { color: var(--text-muted); font-size: 14px; margin: 0; line-height: 1.65; }
 .feat p code { background: var(--bg-surface); padding: 1px 5px; border-radius: 3px; color: var(--text); font-size: 12px; border: 1px solid var(--border-subtle); }
 
 /* steps */
@@ -280,8 +280,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
     display: block; position: fixed; inset: 59px 0 0; z-index: 39; background: var(--bg);
     padding: 14px 24px; animation: fade .18s ease;
   }
-  .mobile-menu.open a { display: block; padding: 14px 0; font-size: 16px; color: var(--text); border-bottom: 1px solid var(--border-subtle); }
+  .mobile-menu.open a { display: block; padding: 14px 0; min-height: 44px; font-size: 16px; color: var(--text); border-bottom: 1px solid var(--border-subtle); }
   @keyframes fade { from{opacity:0;transform:translateY(-5px);} to{opacity:1;transform:none;} }
+}
+@media (max-width: 480px) {
+  h1.headline { font-size: clamp(28px, 8vw, 40px); }
+  .cta-row { flex-direction: column; }
+  .btn { width: 100%; justify-content: center; min-height: 44px; }
+  .band { padding: 28px 20px; }
+  .band .cta-row { flex-direction: column; align-items: stretch; }
 }
 @media (max-width: 380px) { .page { padding: 0 16px; } .foot-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto; } }
@@ -293,14 +300,17 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
 <nav>
   <div class="page">
     <a href="#top" class="brand" aria-label="ollama-mesh home">
-      <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <circle cx="16" cy="8" r="3" fill="var(--accent2)"/>
-        <circle cx="8" cy="22" r="3" fill="var(--accent)"/>
-        <circle cx="24" cy="22" r="3" fill="var(--accent)"/>
-        <path d="M16 11 L9 19 M16 11 L23 19 M9 22 L23 22" stroke="var(--border)" stroke-width="1.5"/>
-        <path d="M16 11 L9 19" stroke="var(--accent2)" stroke-width="1.5"/>
-      </svg>
-      <span class="name">ollama-mesh</span>
+      <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="20" height="18" viewBox="0 0 32 28" fill="none" aria-hidden="true">
+          <line x1="16" y1="9" x2="8" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
+          <line x1="16" y1="9" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
+          <line x1="8" y1="23" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
+          <circle cx="16" cy="8" r="3.5" fill="#d4a853"/>
+          <circle cx="8" cy="23" r="3" fill="#a87f3a"/>
+          <circle cx="24" cy="23" r="3" fill="#a87f3a"/>
+        </svg>
+      </div>
+      <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
       <span class="ver">{{VERSION}}</span>
     </a>
     <div class="nav-right">
@@ -334,12 +344,13 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
 <!-- HERO -->
 <header class="hero">
   <div class="page">
-    <span class="kicker"><span class="dot"></span>single Go binary · starts in &lt;100ms · no Python, no Docker</span>
+    <span class="kicker"><span class="dot"></span>self-hosted · no cold starts · zero API cost per local token</span>
     <h1 class="headline">Stop sending requests to <em>cold GPUs.</em></h1>
     <p class="subhead">
-      ollama-mesh is a smart proxy for your Ollama cluster. It routes each request to the node that
-      <strong>already has the model loaded in GPU memory</strong>, and falls back to OpenAI or Anthropic
-      only when your own machines are saturated — tracking every dollar on the way.
+      ollama-mesh is a smart proxy for your Ollama cluster. Your engineers are already running
+      <strong>DeepSeek-R1, Llama 3.1, and Qwen3</strong> on local GPUs - models that rival GPT-4 at zero cost per token.
+      ollama-mesh routes each request to the node that already has the model warm in VRAM, and falls back
+      to OpenAI or Anthropic only when your cluster is saturated - tracking every dollar on the way.
     </p>
 
     <div class="cta-row">
@@ -376,7 +387,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
     </div>
 
     <!-- routing diagram -->
-    <div class="routing" role="img" aria-label="Diagram: a chat completion request for llama3 is routed to the GPU node that already has llama3 warm, instead of a cold node or a paid API fallback">
+    <div class="routing" role="img" aria-label="Diagram: a chat completion request for deepseek-r1 is routed to the GPU node that already has the model warm, instead of a cold node or a paid API fallback">
       <div class="routing-head">
         <div class="dots"><span></span><span></span><span></span></div>
         <span>ollama-mesh · router</span>
@@ -385,16 +396,16 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
       <div class="routing-body">
         <div class="rcol">
           <div class="rlabel">Incoming request</div>
-          <div class="req"><span class="k">POST</span> /v1/chat/completions<br><span class="k">model</span>: <span class="s">"llama3:8b"</span><br><span class="k">stream</span>: true</div>
+          <div class="req"><span class="k">POST</span> /v1/chat/completions<br><span class="k">model</span>: <span class="s">"deepseek-r1:7b"</span><br><span class="k">stream</span>: true</div>
         </div>
         <div class="rcol">
           <div class="rlabel">Cluster state</div>
           <div class="node warm">
             <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg>
-            <div>gpu-01 <span class="gpu">llama3:8b loaded</span></div>
+            <div>gpu-01 <span class="gpu">deepseek-r1:7b loaded</span></div>
             <span class="state">warm</span>
           </div>
-          <div class="node"><span class="pin" style="text-align:center">◷</span><div>gpu-02 <span class="gpu">mistral:7b</span></div><span class="state cold">cold</span></div>
+          <div class="node"><span class="pin" style="text-align:center">◷</span><div>gpu-02 <span class="gpu">llama3.1:8b</span></div><span class="state cold">cold</span></div>
           <div class="node"><span class="pin" style="text-align:center">◷</span><div>gpu-03 <span class="gpu">idle</span></div><span class="state cold">cold</span></div>
         </div>
         <div class="rcol full">
@@ -472,7 +483,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
 <span class="b">nodes:</span>
   - http://gpu-01:11434
   - http://gpu-02:11434
-<span class="b">fallback:</span> openai <span class="c"># optional</span></pre>
+<span class="b">fallback:</span> openai  <span class="c"># optional: deepseek-r1, llama3.1, qwen3</span></pre>
         </div>
       </div>
       <div class="step">
@@ -579,14 +590,17 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
     <div class="foot-grid">
       <div class="foot-brand">
         <a href="#top" class="brand" aria-label="ollama-mesh home">
-          <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-            <circle cx="16" cy="8" r="3" fill="var(--accent2)"/>
-            <circle cx="8" cy="22" r="3" fill="var(--accent)"/>
-            <circle cx="24" cy="22" r="3" fill="var(--accent)"/>
-            <path d="M16 11 L9 19 M16 11 L23 19 M9 22 L23 22" stroke="var(--border)" stroke-width="1.5"/>
-            <path d="M16 11 L9 19" stroke="var(--accent2)" stroke-width="1.5"/>
-          </svg>
-          <span class="name">ollama-mesh</span>
+          <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="20" height="18" viewBox="0 0 32 28" fill="none" aria-hidden="true">
+              <line x1="16" y1="9" x2="8" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
+              <line x1="16" y1="9" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
+              <line x1="8" y1="23" x2="24" y2="23" stroke="rgba(212,168,83,0.25)" stroke-width="1.5"/>
+              <circle cx="16" cy="8" r="3.5" fill="#d4a853"/>
+              <circle cx="8" cy="23" r="3" fill="#a87f3a"/>
+              <circle cx="24" cy="23" r="3" fill="#a87f3a"/>
+            </svg>
+          </div>
+          <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
         </a>
         <p>Warm-first routing and honest cost tracking for self-hosted Ollama GPU clusters.</p>
         <a class="gh-link" href="https://github.com/Anirudhx7/ollama-mesh" aria-label="GitHub repository">
@@ -616,8 +630,8 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
       </div>
     </div>
     <div class="foot-bottom">
-      <span>© <span id="year">2025</span> ollama-mesh contributors · Apache-2.0</span>
-      <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span> · built with Go</span>
+      <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+      <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span> · <a href="https://github.com/Anirudhx7/ollama-mesh/releases" class="gh-link">releases ↗</a></span>
     </div>
   </div>
 </footer>
