@@ -244,6 +244,40 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 	return m
 }
 
+// KeyPatch holds optional runtime-mutable key settings.
+// Only non-nil fields are applied; counters are preserved.
+type KeyPatch struct {
+	RateLimit    *int     `json:"rate_limit"`
+	DailyLimit   *int     `json:"daily_limit"`
+	MonthlyLimit *int     `json:"monthly_limit"`
+	Models       []string `json:"models"`
+}
+
+// PatchKey updates mutable fields of an existing key without rotating it.
+// Counters and the key token itself are preserved. Returns false if not found.
+func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ks, ok := m.byName[name]
+	if !ok {
+		return false
+	}
+	if patch.RateLimit != nil {
+		ks.rateLimit = *patch.RateLimit
+		ks.limiter = newTokenBucket(*patch.RateLimit)
+	}
+	if patch.DailyLimit != nil {
+		ks.dailyLimit = *patch.DailyLimit
+	}
+	if patch.MonthlyLimit != nil {
+		ks.monthlyLimit = *patch.MonthlyLimit
+	}
+	if patch.Models != nil {
+		ks.models = patch.Models
+	}
+	return true
+}
+
 func (m *Middleware) AddKey(k config.KeyConfig) {
 	ks := &keyState{
 		name:         k.Name,
