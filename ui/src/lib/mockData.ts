@@ -468,30 +468,30 @@ observability:
     output: stdout
 `;
 
-// Mock system info: single RTX 3070 node, 16 GB RAM, 8 cores
+// Mock system info: single RTX 4090 node, 64 GB RAM, 24 cores
 export const mockSystemInfo: SystemInfo = {
-  cpu_cores: 8,
+  cpu_cores: 24,
   os: 'linux',
   arch: 'x86_64',
-  ram_total_mb: 16384,
-  ram_free_mb: 8192,
+  ram_total_mb: 65536,
+  ram_free_mb: 40960,
   gpus: [
     {
-      name: 'NVIDIA RTX 3070',
+      name: 'NVIDIA RTX 4090',
       url: 'http://localhost:11434',
-      vram_total_mb: 8192,
-      vram_free_mb: 3200,
+      vram_total_mb: 24576,
+      vram_free_mb: 10240,
       vram_source: 'nvidia-smi',
-      temperature_c: 62,
-      power_draw_w: 145,
+      temperature_c: 58,
+      power_draw_w: 210,
       healthy: true,
     },
   ],
 };
 
 // Mock ModelCatalogResponse for ModelAdvisor demo mode
-// Demo node: NVIDIA RTX 3070 8GB, 3200MB free (4992MB in use)
-// Fit logic: green = fits free VRAM, yellow = fits total VRAM (needs eviction), red = too large for GPU
+// Demo node: NVIDIA RTX 4090 24GB, 10240MB free (14336MB in use — llama3.1:8b + deepseek-r1:7b loaded)
+// Fit logic: green = fits free VRAM (<10240MB), yellow = fits total VRAM (needs eviction, <24576MB), red = too large
 export const mockModelCatalogResponse: ModelCatalogResponse = {
   catalog: [
     {
@@ -606,8 +606,8 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
     {
       name: 'localhost',
       url: 'http://localhost:11434',
-      vram_free_bytes: 3200 * 1024 * 1024,
-      vram_total_bytes: 8192 * 1024 * 1024,
+      vram_free_bytes: 10240 * 1024 * 1024,
+      vram_total_bytes: 24576 * 1024 * 1024,
       vram_source: 'nvidia-smi',
       models: [
         {
@@ -620,9 +620,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
           rank: 1,
           downloaded: false,
           variants: [
-            { tag: 'deepseek-r1:7b', quantization: 'Q4_K_M', vram_est_mb: 5000, size_mb: 4200, recommended: true, fit: 'yellow' },
+            { tag: 'deepseek-r1:7b', quantization: 'Q4_K_M', vram_est_mb: 5000, size_mb: 4200, recommended: true, fit: 'green' },
             { tag: 'deepseek-r1:7b-q2_k', quantization: 'Q2_K', vram_est_mb: 3100, size_mb: 2600, recommended: false, fit: 'green' },
-            { tag: 'deepseek-r1:7b-fp16', quantization: 'F16', vram_est_mb: 14400, size_mb: 14000, recommended: false, fit: 'red' },
+            { tag: 'deepseek-r1:7b-fp16', quantization: 'F16', vram_est_mb: 14400, size_mb: 14000, recommended: false, fit: 'yellow' },
           ],
         },
         {
@@ -635,9 +635,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
           rank: 2,
           downloaded: true,
           variants: [
-            { tag: 'llama3.1:8b', quantization: 'Q4_K_M', vram_est_mb: 5500, size_mb: 4700, recommended: true, fit: 'yellow' },
-            { tag: 'llama3.1:8b-q2_k', quantization: 'Q2_K', vram_est_mb: 3400, size_mb: 2900, recommended: false, fit: 'yellow' },
-            { tag: 'llama3.1:8b-fp16', quantization: 'F16', vram_est_mb: 16000, size_mb: 15500, recommended: false, fit: 'red' },
+            { tag: 'llama3.1:8b', quantization: 'Q4_K_M', vram_est_mb: 5500, size_mb: 4700, recommended: true, fit: 'green' },
+            { tag: 'llama3.1:8b-q2_k', quantization: 'Q2_K', vram_est_mb: 3400, size_mb: 2900, recommended: false, fit: 'green' },
+            { tag: 'llama3.1:8b-fp16', quantization: 'F16', vram_est_mb: 16000, size_mb: 15500, recommended: false, fit: 'yellow' },
           ],
         },
         {
@@ -650,9 +650,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
           rank: 3,
           downloaded: false,
           variants: [
-            { tag: 'qwen3:8b', quantization: 'Q4_K_M', vram_est_mb: 5200, size_mb: 4500, recommended: true, fit: 'yellow' },
+            { tag: 'qwen3:8b', quantization: 'Q4_K_M', vram_est_mb: 5200, size_mb: 4500, recommended: true, fit: 'green' },
             { tag: 'qwen3:8b-q2_k', quantization: 'Q2_K', vram_est_mb: 3200, size_mb: 2700, recommended: false, fit: 'green' },
-            { tag: 'qwen3:8b-fp16', quantization: 'F16', vram_est_mb: 16384, size_mb: 15800, recommended: false, fit: 'red' },
+            { tag: 'qwen3:8b-fp16', quantization: 'F16', vram_est_mb: 16384, size_mb: 15800, recommended: false, fit: 'yellow' },
           ],
         },
         {
@@ -665,8 +665,8 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
           rank: 4,
           downloaded: false,
           variants: [
-            { tag: 'gemma4:12b', quantization: 'Q4_K_M', vram_est_mb: 7800, size_mb: 6800, recommended: true, fit: 'yellow' },
-            { tag: 'gemma4:12b-fp16', quantization: 'F16', vram_est_mb: 24000, size_mb: 23500, recommended: false, fit: 'red' },
+            { tag: 'gemma4:12b', quantization: 'Q4_K_M', vram_est_mb: 7800, size_mb: 6800, recommended: true, fit: 'green' },
+            { tag: 'gemma4:12b-fp16', quantization: 'F16', vram_est_mb: 24000, size_mb: 23500, recommended: false, fit: 'yellow' },
           ],
         },
         {
@@ -693,7 +693,7 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
           rank: 6,
           downloaded: false,
           variants: [
-            { tag: 'qwen2.5:14b', quantization: 'Q4_K_M', vram_est_mb: 9000, size_mb: 7800, recommended: true, fit: 'red' },
+            { tag: 'qwen2.5:14b', quantization: 'Q4_K_M', vram_est_mb: 9000, size_mb: 7800, recommended: true, fit: 'green' },
             { tag: 'qwen2.5:14b-fp16', quantization: 'F16', vram_est_mb: 28000, size_mb: 27500, recommended: false, fit: 'red' },
           ],
         },
@@ -707,8 +707,8 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
           rank: 7,
           downloaded: false,
           variants: [
-            { tag: 'mistral:7b', quantization: 'Q4_K_M', vram_est_mb: 4800, size_mb: 4100, recommended: true, fit: 'yellow' },
-            { tag: 'mistral:7b-fp16', quantization: 'F16', vram_est_mb: 14400, size_mb: 14000, recommended: false, fit: 'red' },
+            { tag: 'mistral:7b', quantization: 'Q4_K_M', vram_est_mb: 4800, size_mb: 4100, recommended: true, fit: 'green' },
+            { tag: 'mistral:7b-fp16', quantization: 'F16', vram_est_mb: 14400, size_mb: 14000, recommended: false, fit: 'yellow' },
           ],
         },
         {
@@ -721,8 +721,8 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
           rank: 8,
           downloaded: false,
           variants: [
-            { tag: 'gemma2:9b', quantization: 'Q4_K_M', vram_est_mb: 6200, size_mb: 5400, recommended: true, fit: 'yellow' },
-            { tag: 'gemma2:9b-fp16', quantization: 'F16', vram_est_mb: 18000, size_mb: 17500, recommended: false, fit: 'red' },
+            { tag: 'gemma2:9b', quantization: 'Q4_K_M', vram_est_mb: 6200, size_mb: 5400, recommended: true, fit: 'green' },
+            { tag: 'gemma2:9b-fp16', quantization: 'F16', vram_est_mb: 18000, size_mb: 17500, recommended: false, fit: 'yellow' },
           ],
         },
       ],

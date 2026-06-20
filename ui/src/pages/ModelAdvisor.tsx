@@ -272,7 +272,7 @@ export function ModelAdvisor() {
 
       {demoMode && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm">
-          Demo mode - showing simulated NVIDIA RTX 3070 (8 GB VRAM). Connect a real node to see live fit results.
+          Demo mode - showing simulated NVIDIA RTX 4090 (24 GB VRAM, 10 GB free). Connect a real node to see live fit results.
         </div>
       )}
 
