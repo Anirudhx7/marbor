@@ -34,6 +34,7 @@ type NodeState struct {
 	LoadedModels []ModelInfo
 	ActiveConns  int32
 	Healthy      bool
+	Draining     bool
 	LastPollAt   time.Time
 	Failures     int
 	CPUPercent   float64
@@ -701,8 +702,9 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 	}
 	sticky.mu.RLock()
 	healthy := sticky.Healthy
+	draining := sticky.Draining
 	sticky.mu.RUnlock()
-	if !healthy {
+	if !healthy || draining {
 		r.affinityMu.Lock()
 		delete(r.affinity, sessionID)
 		r.affinityMu.Unlock()
@@ -747,8 +749,9 @@ func (r *Router) routeInternal(modelName string) (*NodeState, bool) {
 	for _, n := range nodes {
 		n.mu.RLock()
 		isHealthy := n.Healthy
+		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy {
+		if isHealthy && !isDraining {
 			healthy = append(healthy, n)
 		}
 	}
@@ -867,6 +870,38 @@ func (r *Router) RemoveNode(name string) {
 			break
 		}
 	}
+}
+
+// DrainNode marks a node as draining: it will no longer receive new requests
+// but in-flight connections are allowed to finish. Returns false if not found.
+func (r *Router) DrainNode(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.Name == name {
+			n.mu.Lock()
+			n.Draining = true
+			n.mu.Unlock()
+			return true
+		}
+	}
+	return false
+}
+
+// UndrainNode clears the draining flag, returning the node to the active pool.
+// Returns false if not found.
+func (r *Router) UndrainNode(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.Name == name {
+			n.mu.Lock()
+			n.Draining = false
+			n.mu.Unlock()
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Router) Nodes() []*NodeState {

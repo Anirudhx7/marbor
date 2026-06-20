@@ -570,3 +570,58 @@ func TestPollNodeUptime(t *testing.T) {
 		t.Error("expected Uptime to be set")
 	}
 }
+
+func TestDrainNodeExcludesFromRouting(t *testing.T) {
+	cfg := config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 100}
+	nodes := []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434"},
+		{Name: "node-b", URL: "http://localhost:11435"},
+	}
+	r := New(cfg, nodes, nil)
+
+	// Mark both nodes healthy and node-b as having the model warm.
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Healthy = true
+	r.nodes[1].LoadedModels = []ModelInfo{{Name: "llama3", SizeVRAM: 1024}}
+	r.nodes[1].mu.Unlock()
+
+	// Drain node-b.
+	if !r.DrainNode("node-b") {
+		t.Fatal("DrainNode returned false for existing node")
+	}
+
+	// Route should never return node-b while draining.
+	for i := 0; i < 10; i++ {
+		node, _ := r.Route("llama3", "")
+		if node == nil {
+			t.Fatal("Route returned nil (expected node-a)")
+		}
+		if node.Name == "node-b" {
+			t.Error("draining node-b was selected by router")
+		}
+	}
+
+	// Undrain restores it to the pool.
+	if !r.UndrainNode("node-b") {
+		t.Fatal("UndrainNode returned false for existing node")
+	}
+	r.nodes[1].mu.RLock()
+	draining := r.nodes[1].Draining
+	r.nodes[1].mu.RUnlock()
+	if draining {
+		t.Error("Draining should be false after UndrainNode")
+	}
+}
+
+func TestDrainNodeNotFound(t *testing.T) {
+	r := New(config.RoutingConfig{}, nil, nil)
+	if r.DrainNode("nonexistent") {
+		t.Error("DrainNode should return false for unknown node")
+	}
+	if r.UndrainNode("nonexistent") {
+		t.Error("UndrainNode should return false for unknown node")
+	}
+}

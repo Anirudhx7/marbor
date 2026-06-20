@@ -84,6 +84,22 @@ export async function removeNode(name: string) {
   if (!res.ok) throw new Error('Failed to remove node');
 }
 
+export async function drainNode(name: string) {
+  const res = await fetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to drain node');
+}
+
+export async function undrainNode(name: string) {
+  const res = await fetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to undrain node');
+}
+
 export async function fetchRoutingRules() {
   const res = await fetch(`${BASE}/routing/rules`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch routing rules');

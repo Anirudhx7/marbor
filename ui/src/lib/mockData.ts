@@ -17,6 +17,7 @@ export const mockGPUNodes: GPUNode[] = [
     cpuPercent: 34,
     temperature: 72,
     health: 'healthy',
+    draining: false,
     uptime: '14d 6h',
     loadedModels: [
       { name: 'llama3.1:70b', sizeVram: Math.round(40.2 * GiB) },
@@ -36,6 +37,7 @@ export const mockGPUNodes: GPUNode[] = [
     cpuPercent: 28,
     temperature: 68,
     health: 'healthy',
+    draining: false,
     uptime: '12d 14h',
     loadedModels: [
       { name: 'llama3.1:8b', sizeVram: Math.round(16.2 * GiB) },
@@ -56,6 +58,7 @@ export const mockGPUNodes: GPUNode[] = [
     cpuPercent: 45,
     temperature: 78,
     health: 'healthy',
+    draining: false,
     uptime: '8d 2h',
     loadedModels: [
       { name: 'llama3.2:3b', sizeVram: Math.round(4.2 * GiB) },
@@ -75,6 +78,7 @@ export const mockGPUNodes: GPUNode[] = [
     cpuPercent: 12,
     temperature: 45,
     health: 'degraded',
+    draining: false,
     uptime: '3d 8h',
     loadedModels: [
       { name: 'phi3:medium', sizeVram: Math.round(4.2 * GiB) },

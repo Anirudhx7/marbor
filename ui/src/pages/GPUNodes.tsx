@@ -7,7 +7,7 @@ import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, fetchModelFit } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, fetchModelFit } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -79,7 +79,12 @@ function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
   );
 }
 
-function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) => void }) {
+function NodeCard({ node, onRemove, onDrain, onUndrain }: {
+  node: GPUNode;
+  onRemove: (name: string) => void;
+  onDrain: (name: string) => void;
+  onUndrain: (name: string) => void;
+}) {
   const healthColor = {
     healthy: 'text-primary',
     degraded: 'text-amber-500',
@@ -87,7 +92,7 @@ function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) 
   }[node.health];
 
   return (
-    <div className="bg-card border border-border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors">
+    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors ${node.draining ? 'border-amber-500/60' : 'border-border'}`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-start gap-3">
@@ -98,16 +103,30 @@ function NodeCard({ node, onRemove }: { node: GPUNode, onRemove: (name: string) 
             <div className="flex items-center gap-2">
               <StatusDot status={node.health} />
               <h3 className="font-semibold text-foreground">{node.name}</h3>
+              {node.draining && (
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                  DRAINING
+                </span>
+              )}
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">{node.gpuModel}</p>
           </div>
         </div>
-        <button 
-          onClick={() => onRemove(node.name)}
-          className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => node.draining ? onUndrain(node.name) : onDrain(node.name)}
+            title={node.draining ? 'Undrain node' : 'Drain node (stop new requests)'}
+            className={`p-1.5 transition-colors ${node.draining ? 'text-amber-400 hover:text-primary' : 'text-muted-foreground hover:text-amber-400'}`}
+          >
+            <Activity className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onRemove(node.name)}
+            className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -293,6 +312,26 @@ export function GPUNodes() {
     }
   };
 
+  const handleDrainNode = async (name: string) => {
+    if (!isLive) return;
+    try {
+      await drainNode(name);
+      await loadNodes();
+    } catch (e) {
+      console.error('Failed to drain node');
+    }
+  };
+
+  const handleUndrainNode = async (name: string) => {
+    if (!isLive) return;
+    try {
+      await undrainNode(name);
+      await loadNodes();
+    } catch (e) {
+      console.error('Failed to undrain node');
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       {/* Header */}
@@ -340,7 +379,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} onRemove={handleRemoveNode} />
+          <NodeCard key={node.id} node={node} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} />
         ))}
       </div>
 

@@ -95,6 +95,7 @@ type nodeResp struct {
 	PowerDrawW    float64            `json:"powerDrawW"`
 	Temperature   *float64           `json:"temperature"`
 	Health        string             `json:"health"`
+	Draining      bool               `json:"draining"`
 	Uptime        string             `json:"uptime"`
 	LoadedModels  []router.ModelInfo `json:"loadedModels"`
 	ActiveConns   int32              `json:"activeConns"`
@@ -187,6 +188,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
 	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
+	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
+	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
@@ -295,6 +298,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			PowerDrawW:    n.PowerDrawW,
 			Temperature:   n.Temperature,
 			Health:        health,
+			Draining:      n.Draining,
 			Uptime:        n.Uptime,
 			LoadedModels:  append([]router.ModelInfo(nil), n.LoadedModels...),
 			ActiveConns:   atomic.LoadInt32(&n.ActiveConns),
@@ -438,6 +442,28 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	s.router.RemoveNode(name)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !s.router.DrainNode(name) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"node":%q,"draining":true}`, name)
+}
+
+func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !s.router.UndrainNode(name) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"node":%q,"draining":false}`, name)
 }
 
 // generateAPIKey creates a cryptographically random API key of the form sk-<name>-<48 hex chars>.
