@@ -65,7 +65,7 @@ Goal: Lower the barrier to first run; make every number in the dashboard trustwo
 - [x] Model Advisor page - model catalog with VRAM fit per node, recommend which node to pull a model onto
 - [ ] SQLite analytics persistence - survives restarts; deferred until retention semantics are defined
 - [ ] Remote node GPU telemetry - sidecar agent for nvidia-smi on non-mesh nodes (needs operator confirmation of real user demand before building)
-- [ ] Multi-node backend docs for Open WebUI / Continue / LibreChat
+- [x] Multi-node backend docs for Open WebUI / Continue / LibreChat
 
 ## Phase 3 - Enterprise (planned)
 

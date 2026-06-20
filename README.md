@@ -67,6 +67,8 @@ Not for you if you're one person chatting with one box occasionally - you don't 
 
 Existing clients keep working: ollama-mesh speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints, so both `ollama` clients and OpenAI SDKs can point at it unchanged.
 
+**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) - [Continue](docs/integrations/continue.md) - [LibreChat](docs/integrations/librechat.md) - [AWS EC2 deploy](docs/deploy/aws-ec2.md)
+
 ---
 
 ## Quick Start
