@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -170,6 +171,24 @@ func (tb *tokenBucket) snapshot() (remaining float64, capacity float64, resetAt 
 	}
 	reset := now.Add(time.Duration(secsUntilFull * float64(time.Second))).Unix()
 	return current, tb.capacity, reset
+}
+
+// retryAfterSeconds returns how many seconds until at least one token is
+// available. Minimum 1. Used to populate Retry-After on 429 responses.
+func (tb *tokenBucket) retryAfterSeconds() int {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+	now := time.Now()
+	elapsed := now.Sub(tb.lastRefill).Seconds()
+	current := tb.tokens + elapsed*tb.rate
+	if current > tb.capacity {
+		current = tb.capacity
+	}
+	if current >= 1 || tb.rate <= 0 {
+		return 1
+	}
+	secs := (1 - current) / tb.rate
+	return int(math.Ceil(secs))
 }
 
 // refund returns one token to the bucket (capped at capacity), reversing an
@@ -364,6 +383,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		}
 		if !ks.limiter.allow() {
 			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", ks.limiter.retryAfterSeconds()))
 			w.WriteHeader(http.StatusTooManyRequests)
 			w.Write([]byte(`{"error":"rate limit exceeded"}`))
 			return
@@ -382,7 +402,12 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				ks.counter.decrement()
 				ks.limiter.refund()
 				metrics.QuotaRejection(ks.name, "daily")
+				now := time.Now()
+				midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", ks.dailyLimit))
+				w.Header().Set("X-Quota-Reset", fmt.Sprintf("%d", midnight.Unix()))
+				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(math.Ceil(time.Until(midnight).Seconds()))))
 				w.WriteHeader(http.StatusTooManyRequests)
 				w.Write([]byte(`{"error":"daily quota exceeded"}`))
 				return
@@ -391,7 +416,12 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				ks.counter.decrement()
 				ks.limiter.refund()
 				metrics.QuotaRejection(ks.name, "monthly")
+				now := time.Now()
+				nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
 				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", ks.monthlyLimit))
+				w.Header().Set("X-Quota-Reset", fmt.Sprintf("%d", nextMonth.Unix()))
+				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(math.Ceil(time.Until(nextMonth).Seconds()))))
 				w.WriteHeader(http.StatusTooManyRequests)
 				w.Write([]byte(`{"error":"monthly quota exceeded"}`))
 				return

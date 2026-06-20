@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
@@ -69,6 +70,43 @@ func TestRateLimit(t *testing.T) {
 	handler.ServeHTTP(rec2, req)
 	if rec2.Code != 429 {
 		t.Errorf("second request = %d, want 429", rec2.Code)
+	}
+}
+
+func TestRetryAfterHeaderOnRateLimit(t *testing.T) {
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: true,
+		Keys: []config.KeyConfig{
+			{Name: "retry-test", Key: "sk-retry", RateLimit: 1},
+		},
+	})
+	handler := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer sk-retry")
+
+	// First request: consume the token.
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first request = %d, want 200", rec.Code)
+	}
+
+	// Second request: rate limited - must have Retry-After.
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request = %d, want 429", rec2.Code)
+	}
+	ra := rec2.Header().Get("Retry-After")
+	if ra == "" {
+		t.Error("429 response missing Retry-After header")
+	}
+	v, err := strconv.Atoi(ra)
+	if err != nil || v < 1 {
+		t.Errorf("Retry-After = %q, want a positive integer", ra)
 	}
 }
 
