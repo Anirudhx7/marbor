@@ -44,41 +44,41 @@
     --brand-dim: #6b5210;
     --brand-bg: rgba(139,105,20,0.06);
 
-    /* Professional Light Theme (Slate & Blue) */
-    --background: 210 40% 98%; /* Slate 50 */
-    --foreground: 222.2 84% 4.9%; /* Slate 950 */
-    --card: 0 0% 100%; /* White */
-    --card-foreground: 222.2 84% 4.9%;
+    /* Warm Almond/Cream Light Theme */
+    --background: 36 25% 97%;
+    --foreground: 36 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 36 10% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 36 10% 10%;
     
-    --primary: 38 73% 30%; /* Brand amber (light) #8b6914 */
-    --primary-foreground: 210 40% 98%;
+    --primary: 38 73% 30%;
+    --primary-foreground: 36 25% 97%;
     
-    --secondary: 210 40% 96.1%; /* Slate 100 */
-    --secondary-foreground: 222.2 47.4% 11.2%; /* Slate 900 */
+    --secondary: 36 15% 94%;
+    --secondary-foreground: 36 10% 10%;
     
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%; /* Slate 500 */
+    --muted: 36 15% 94%;
+    --muted-foreground: 36 8% 45%;
     
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 36 15% 94%;
+    --accent-foreground: 36 10% 10%;
     
-    --destructive: 346.8 77.2% 49.8%; /* Rose 500 */
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 346.8 77.2% 49.8%;
+    --destructive-foreground: 36 25% 97%;
 
-    --success: 142.1 70.6% 45.3%; /* Emerald 500 */
-    --success-foreground: 210 40% 98%;
+    --success: 142.1 70.6% 45.3%;
+    --success-foreground: 36 25% 97%;
 
-    --warning: 37.7 92.1% 50.2%; /* Amber 500 */
-    --warning-foreground: 210 40% 98%;
+    --warning: 24 95% 45%; /* Safety Orange (Light Theme) */
+    --warning-foreground: 36 25% 97%;
 
-    --info: 221.2 83.2% 53.3%; /* Blue 600 */
-    --info-foreground: 210 40% 98%;
+    --info: 221.2 83.2% 53.3%;
+    --info-foreground: 36 25% 97%;
 
-    --border: 214.3 31.8% 91.4%; /* Slate 200 */
-    --input: 214.3 31.8% 91.4%;
-    --ring: 38 73% 30%; /* Brand amber focus ring */
+    --border: 36 15% 90%;
+    --input: 36 15% 90%;
+    --ring: 38 73% 30%;
   }
 
   .dark {
@@ -87,41 +87,41 @@
     --brand-dim: #b8933f;
     --brand-bg: rgba(212,168,83,0.08);
 
-    /* Professional Dark Theme (Deep Slate & Blue) */
-    --background: 222.2 84% 4.9%; /* Slate 950 */
-    --foreground: 210 40% 98%; /* Slate 50 */
-    --card: 222.2 47.4% 11.2%; /* Slate 900 */
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 47.4% 11.2%;
-    --popover-foreground: 210 40% 98%;
+    /* Warm Charcoal/Brown Dark Theme */
+    --background: 30 10% 5%;
+    --foreground: 30 10% 90%;
+    --card: 30 8% 10%;
+    --card-foreground: 30 10% 90%;
+    --popover: 30 8% 10%;
+    --popover-foreground: 30 10% 90%;
     
-    --primary: 38 57% 58%; /* Brand amber (dark) #d4a853 */
-    --primary-foreground: 222.2 47.4% 1.2%;
+    --primary: 38 57% 58%;
+    --primary-foreground: 30 10% 5%;
     
-    --secondary: 217.2 32.6% 17.5%; /* Slate 800 */
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 30 8% 15%;
+    --secondary-foreground: 30 10% 90%;
     
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%; /* Slate 400 */
+    --muted: 30 8% 15%;
+    --muted-foreground: 30 6% 65%;
     
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 30 8% 15%;
+    --accent-foreground: 30 10% 90%;
     
     --destructive: 346.8 77.2% 49.8%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 30 10% 90%;
 
     --success: 142.1 70.6% 45.3%;
-    --success-foreground: 222.2 47.4% 1.2%;
+    --success-foreground: 30 10% 5%;
 
-    --warning: 37.7 92.1% 50.2%;
-    --warning-foreground: 222.2 47.4% 1.2%;
+    --warning: 24 95% 53%; /* Safety Orange (Dark Theme) */
+    --warning-foreground: 30 10% 5%;
 
     --info: 217.2 91.2% 59.8%;
-    --info-foreground: 222.2 47.4% 1.2%;
+    --info-foreground: 30 10% 5%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 38 57% 58%; /* Brand amber focus ring */
+    --border: 30 8% 20%;
+    --input: 30 8% 20%;
+    --ring: 38 57% 58%;
   }
 }
 
