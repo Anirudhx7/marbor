@@ -5,11 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Page Not Found | ollama-mesh</title>
 <meta name="robots" content="noindex, nofollow">
+<script>
+  // SPA redirect for GitHub Pages demo subpath.
+  // Deep-link to /demo/* → store path in sessionStorage → redirect to SPA root.
+  // React app reads sessionStorage on load and restores URL via history.replaceState.
+  (function () {
+    var l = window.location;
+    if (l.pathname.indexOf('/ollama-mesh/demo/') === 0) {
+      sessionStorage.setItem('spa_redirect', l.pathname + l.search + l.hash);
+      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/');
+    }
+  })();
+</script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-  background: #0d1117;
-  color: #e6edf3;
+  background: #0f0e0c;
+  color: #e8e0d0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   min-height: 100vh;
   display: flex;
@@ -23,16 +35,16 @@ body {
   font-family: "Consolas", "Liberation Mono", monospace;
   font-size: 72px;
   font-weight: 800;
-  color: #58a6ff;
+  color: #d4a853;
   line-height: 1;
   margin-bottom: 16px;
 }
-h1 { font-size: 22px; margin-bottom: 10px; }
-p { color: #8b949e; margin-bottom: 28px; font-size: 15px; }
+h1 { font-size: 22px; margin-bottom: 10px; color: #e8e0d0; }
+p { color: #8b7d6b; margin-bottom: 28px; font-size: 15px; }
 a {
   display: inline-block;
-  background: #58a6ff;
-  color: #0d1117;
+  background: #d4a853;
+  color: #0f0e0c;
   padding: 10px 22px;
   border-radius: 6px;
   font-weight: 600;
