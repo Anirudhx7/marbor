@@ -363,7 +363,8 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+	w.WriteHeader(http.StatusNotFound)
+	fmt.Fprintf(w, `{"error":"node %q not found"}`, name)
 }
 
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
@@ -548,7 +549,9 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	var cfg config.NodeConfig
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `{"error":"invalid request body"}`)
 		return
 	}
 	s.router.AddNode(cfg)

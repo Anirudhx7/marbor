@@ -55,7 +55,7 @@ ollama-mesh does not terminate TLS internally by design. TLS is delegated to a r
 
 **For any deployment reachable from outside your local network or VPN, you must place TLS in front of port 11434 and port 8080.** Without TLS, API keys and admin tokens travel in plaintext.
 
-See [website/PRODUCTION.md](website/PRODUCTION.md) for a working nginx TLS configuration snippet.
+See [docs/PRODUCTION.md](docs/PRODUCTION.md) for a working nginx TLS configuration snippet.
 
 The metrics port (9090) should not be exposed to untrusted networks. Scrape it from within your monitoring network only.
 
