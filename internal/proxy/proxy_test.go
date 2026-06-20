@@ -394,6 +394,36 @@ func TestProxy_ManagementEndpointsBlocked(t *testing.T) {
 	}
 }
 
+// TestProxy_XRequestIDForwarded verifies that the X-Request-ID header is
+// forwarded to the upstream Ollama node.
+func TestProxy_XRequestIDForwarded(t *testing.T) {
+	var gotRequestID string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRequestID = r.Header.Get("X-Request-ID")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"llama3","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+	}, nil)
+	r.Nodes()[0].Lock()
+	r.Nodes()[0].Healthy = true
+	r.Nodes()[0].Unlock()
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"llama3"}`)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if gotRequestID == "" {
+		t.Error("upstream did not receive X-Request-ID header; want non-empty")
+	}
+}
+
 func TestProxyExtractAndRoute(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11435", GPUModel: "RTX 4090"},
