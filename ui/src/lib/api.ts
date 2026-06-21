@@ -273,3 +273,47 @@ export async function fetchSystemInfo(): Promise<SystemInfo> {
   return res.json();
 }
 
+export interface HFModel {
+  id: string;
+  downloads: number;
+  likes: number;
+  tags: string[];
+  lastModified: string;
+  pipeline_tag: string;
+}
+
+export interface ModelVariantFit {
+  tag: string;
+  quantization: string;
+  vram_est_mb: number;
+  size_mb: number;
+  fit: 'green' | 'yellow' | 'red' | 'unknown';
+  downloaded: boolean;
+}
+
+export interface HFRepoDetails {
+  id: string;
+  downloads: number;
+  likes: number;
+  tags: string[];
+  last_modified: string;
+  variants: ModelVariantFit[];
+}
+
+export async function searchHFModels(query: string): Promise<HFModel[]> {
+  const url = `${BASE}/v1/models/search?q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to search Hugging Face models');
+  return res.json();
+}
+
+export async function getHFRepoDetails(repoId: string, nodeName?: string, ctxLen?: number): Promise<HFRepoDetails> {
+  let url = `${BASE}/v1/models/repo?id=${encodeURIComponent(repoId)}`;
+  if (nodeName) url += `&node=${encodeURIComponent(nodeName)}`;
+  if (ctxLen) url += `&ctx=${ctxLen}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch Hugging Face repository details');
+  return res.json();
+}
+
+

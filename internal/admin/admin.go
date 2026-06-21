@@ -197,6 +197,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
+	reg("GET /admin/models/search", s.cors(s.adminAuth(s.handleModelSearch)))
+	reg("GET /admin/models/repo", s.cors(s.adminAuth(s.handleModelRepo)))
 
 	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
 

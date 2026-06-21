@@ -29,20 +29,25 @@ type WarmupConfig struct {
 }
 
 type Config struct {
-	Proxy          ProxyConfig     `yaml:"proxy"`
-	Admin          AdminConfig     `yaml:"admin" json:"admin"`
-	Auth           AuthConfig      `yaml:"auth"`
-	Nodes          []NodeConfig    `yaml:"nodes"`
-	Routing        RoutingConfig   `yaml:"routing"`
-	Metrics        MetricsConfig   `yaml:"metrics"`
-	LiteLLM        LiteLLMConfig   `yaml:"litellm"`
-	CloudProviders []CloudProvider `yaml:"cloud_providers" json:"cloud_providers"`
-	Docker         DockerConfig    `yaml:"docker" json:"docker"`
-	Audit          AuditConfig     `yaml:"audit" json:"audit"`
-	Webhook        WebhookConfig   `yaml:"webhook" json:"webhook"`
-	Savings        SavingsConfig   `yaml:"savings" json:"savings"`
-	HA             HAConfig        `yaml:"ha" json:"ha"`
-	Warmup         WarmupConfig    `yaml:"warmup" json:"warmup"`
+	Proxy          ProxyConfig       `yaml:"proxy"`
+	Admin          AdminConfig       `yaml:"admin" json:"admin"`
+	Auth           AuthConfig        `yaml:"auth"`
+	Nodes          []NodeConfig      `yaml:"nodes"`
+	Routing        RoutingConfig     `yaml:"routing"`
+	Metrics        MetricsConfig     `yaml:"metrics"`
+	LiteLLM        LiteLLMConfig     `yaml:"litellm"`
+	CloudProviders []CloudProvider   `yaml:"cloud_providers" json:"cloud_providers"`
+	Docker         DockerConfig      `yaml:"docker" json:"docker"`
+	Audit          AuditConfig       `yaml:"audit" json:"audit"`
+	Webhook        WebhookConfig     `yaml:"webhook" json:"webhook"`
+	Savings        SavingsConfig     `yaml:"savings" json:"savings"`
+	HA             HAConfig          `yaml:"ha" json:"ha"`
+	Warmup         WarmupConfig      `yaml:"warmup" json:"warmup"`
+	HuggingFace    HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
+}
+
+type HuggingFaceConfig struct {
+	Token string `yaml:"token" json:"token"`
 }
 
 // HAConfig controls peer-awareness for active/active HA deployments.

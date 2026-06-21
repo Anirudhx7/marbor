@@ -175,3 +175,26 @@ func TestClassifyFit(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractQuantization(t *testing.T) {
+	cases := []struct {
+		filename string
+		want     string
+	}{
+		{"Llama-3.2-1B-Instruct-Q4_K_M.gguf", "Q4_K_M"},
+		{"model-q8_0.gguf", "Q8_0"},
+		{"phi3-fp16.gguf", "FP16"},
+		{"custom_model-IQ4_XS.gguf", "IQ4_XS"},
+		{"llama-3-8b.gguf", "GGUF"},
+		{"some-other-quant-format-bf16.gguf", "BF16"},
+		{"no_hyphen_q4_k_m.gguf", "Q4_K_M"},
+		{"q4_k_m-in-middle-but-ends-with-something.gguf", "Q4_K_M"},
+	}
+
+	for _, c := range cases {
+		if got := extractQuantization(c.filename); got != c.want {
+			t.Errorf("extractQuantization(%q) = %q, want %q", c.filename, got, c.want)
+		}
+	}
+}
+

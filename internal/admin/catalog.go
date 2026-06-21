@@ -2,8 +2,14 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
 // CatalogModel is a curated, popular Ollama model baked into the binary.
@@ -378,3 +384,287 @@ func isDownloaded(cm CatalogModel, downloaded map[string]bool) bool {
 	}
 	return false
 }
+
+// HFModelInfo represents the metadata returned by Hugging Face API
+type HFModelInfo struct {
+	ID           string   `json:"id"`
+	Downloads    int      `json:"downloads"`
+	Likes        int      `json:"likes"`
+	Tags         []string `json:"tags"`
+	LastModified string   `json:"lastModified"`
+	PipelineTag  string   `json:"pipeline_tag"`
+}
+
+// HFRepoResponse represents the detail returned by Hugging Face API for a single repository
+type HFRepoResponse struct {
+	ID           string   `json:"id"`
+	Downloads    int      `json:"downloads"`
+	Likes        int      `json:"likes"`
+	Tags         []string `json:"tags"`
+	LastModified string   `json:"lastModified"`
+	Siblings     []struct {
+		Rfilename string `json:"rfilename"`
+		Size      int64  `json:"size"`
+	} `json:"siblings"`
+}
+
+type ModelVariantFit struct {
+	Tag          string `json:"tag"`          // "hf.co/username/repo:quant"
+	Quantization string `json:"quantization"` // "Q4_K_M"
+	VRAMEstMB    int64  `json:"vram_est_mb"`
+	SizeMB       int64  `json:"size_mb"`
+	Fit          string `json:"fit"`          // "green", "yellow", "red", "unknown"
+	Downloaded   bool   `json:"downloaded"`
+}
+
+// handleModelSearch searches Hugging Face GGUF models.
+// GET /admin/models/search?q={query} (also /admin/v1/models/search)
+func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+
+	targetURL := "https://huggingface.co/api/models?filter=gguf&sort=downloads&direction=-1&limit=25"
+	if query != "" {
+		targetURL += "&search=" + url.QueryEscape(query)
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"create request: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if s.cfg.HuggingFace.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"fetch from Hugging Face: %s"}`, err.Error()), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, fmt.Sprintf(`{"error":"Hugging Face API returned status %d"}`, resp.StatusCode), http.StatusBadGateway)
+		return
+	}
+
+	var hfModels []HFModelInfo
+	if err := json.NewDecoder(resp.Body).Decode(&hfModels); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decode Hugging Face response: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(hfModels)
+}
+
+// handleModelRepo fetches variants and details for a specific repository.
+// GET /admin/models/repo?id={repo_id}&node={node}&ctx={ctx} (also /admin/v1/models/repo)
+func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
+	repoID := r.URL.Query().Get("id")
+	if repoID == "" {
+		http.Error(w, `{"error":"missing id parameter"}`, http.StatusBadRequest)
+		return
+	}
+
+	ctxLen := int64(8192) // default to 8k context window
+	if cStr := r.URL.Query().Get("ctx"); cStr != "" {
+		if cVal, err := strconv.ParseInt(cStr, 10, 64); err == nil && cVal > 0 {
+			ctxLen = cVal
+		}
+	}
+
+	nodeName := r.URL.Query().Get("node")
+
+	targetURL := fmt.Sprintf("https://huggingface.co/api/models/%s?files_metadata=true", repoID)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"create request: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	if s.cfg.HuggingFace.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"fetch from Hugging Face: %s"}`, err.Error()), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, fmt.Sprintf(`{"error":"Hugging Face API returned status %d"}`, resp.StatusCode), http.StatusBadGateway)
+		return
+	}
+
+	var repo HFRepoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decode Hugging Face response: %s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+
+	// 1. Gather downloaded status map for the selected node
+	downloaded := make(map[string]bool)
+	vramFreeBytes := int64(0)
+	vramSource := "unknown"
+
+	nodes := s.router.Nodes()
+	var targetNode *router.NodeState
+	if nodeName != "" {
+		for _, n := range nodes {
+			if n.Name == nodeName {
+				targetNode = n
+				break
+			}
+		}
+	} else if len(nodes) > 0 {
+		targetNode = nodes[0]
+	}
+
+	if targetNode != nil {
+		targetNode.RLock()
+		nodeURL := targetNode.URL
+		vramTotalMB := targetNode.VRAMTotalMB
+		vramUsedMBFromPS := int64(0)
+		for _, m := range targetNode.LoadedModels {
+			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
+		}
+		targetNode.RUnlock()
+
+		if vramTotalMB > 0 {
+			vramTotalBytes := vramTotalMB * 1024 * 1024
+			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
+			vramFreeBytes = vramTotalBytes - vramUsedBytes
+			if vramFreeBytes < 0 {
+				vramFreeBytes = 0
+			}
+			vramSource = "nvidia-smi"
+		} else if vramUsedMBFromPS > 0 {
+			vramSource = "inferred"
+		}
+
+		if tagModels, err := s.router.FetchModelTags(nodeURL); err == nil {
+			for _, tm := range tagModels {
+				downloaded[tm.Name] = true
+			}
+		}
+	}
+
+	// 2. Filter GGUF siblings and build variants list
+	var variants []ModelVariantFit
+	for _, sib := range repo.Siblings {
+		if !strings.HasSuffix(strings.ToLower(sib.Rfilename), ".gguf") {
+			continue
+		}
+
+		quant := extractQuantization(sib.Rfilename)
+		sizeMB := sib.Size / (1024 * 1024)
+		if sizeMB == 0 {
+			continue // skip directories/metadata placeholder files
+		}
+
+		// Calculate estimated VRAM based on file size and context length
+		// Formula: VRAMEstMB = sizeMB * 1.10 + ctxLen * 0.15
+		vramEstMB := int64(float64(sizeMB)*1.10 + float64(ctxLen)*0.15)
+		estBytes := vramEstMB * 1024 * 1024
+
+		tag := fmt.Sprintf("hf.co/%s:%s", repo.ID, quant)
+		if quant == "GGUF" {
+			tag = fmt.Sprintf("hf.co/%s", repo.ID)
+		}
+
+		// Check downloaded status
+		isDl := downloaded[tag] || downloaded[tag+":latest"]
+		if !isDl {
+			// Check case-insensitive base name cut match
+			for k := range downloaded {
+				if strings.EqualFold(k, tag) || strings.EqualFold(k, tag+":latest") {
+					isDl = true
+					break
+				}
+			}
+		}
+
+		variants = append(variants, ModelVariantFit{
+			Tag:          tag,
+			Quantization: quant,
+			VRAMEstMB:    vramEstMB,
+			SizeMB:       sizeMB,
+			Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
+			Downloaded:   isDl,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":            repo.ID,
+		"downloads":     repo.Downloads,
+		"likes":         repo.Likes,
+		"tags":          repo.Tags,
+		"last_modified": repo.LastModified,
+		"variants":      variants,
+	})
+}
+
+// extractQuantization extracts the quantization format from a GGUF filename.
+func extractQuantization(filename string) string {
+	lower := strings.ToLower(filename)
+	// Remove .gguf extension
+	name := strings.TrimSuffix(lower, ".gguf")
+
+	// List of known quants sorted by length descending so we don't partially match (e.g. bf16 before f16)
+	quants := []string{
+		"q2_k_s", "q2_k", "q3_k_s", "q3_k_m", "q3_k_l", "q4_k_s", "q4_k_m", "q5_k_s", "q5_k_m", "q8_0", "q4_0", "q4_1", "q5_0", "q5_1", "q6_k", "q3_k",
+		"iq1_s", "iq1_m", "iq2_xxs", "iq2_xs", "iq2_s", "iq2_m", "iq3_xxs", "iq3_xs", "iq3_s", "iq3_m", "iq4_xs", "iq4_nl",
+		"bf16", "fp16", "f16", "f32",
+	}
+
+	for _, q := range quants {
+		if strings.Contains(name, q) {
+			return strings.ToUpper(q)
+		}
+	}
+
+	// Fallback to searching with regex/suffix
+	var suffix string
+	if idx := strings.LastIndex(name, "-"); idx != -1 && idx+1 < len(name) {
+		suffix = strings.ToUpper(name[idx+1:])
+	} else if idx := strings.LastIndex(name, "_"); idx != -1 && idx+1 < len(name) {
+		suffix = strings.ToUpper(name[idx+1:])
+	}
+
+	if suffix != "" {
+		ignored := map[string]bool{
+			"INSTRUCT": true, "CHAT": true, "LATEST": true, "PREVIEW": true, "BASE": true, "TEXT": true, "EMBED": true,
+		}
+		if ignored[suffix] || isParamCount(suffix) {
+			return "GGUF"
+		}
+		return suffix
+	}
+
+	return "GGUF"
+}
+
+func isParamCount(s string) bool {
+	if len(s) < 2 {
+		return false
+	}
+	lastChar := s[len(s)-1]
+	if lastChar != 'B' {
+		return false
+	}
+	for i := 0; i < len(s)-1; i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && c != '.' {
+			return false
+		}
+	}
+	return true
+}
+

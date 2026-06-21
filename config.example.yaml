@@ -189,3 +189,9 @@ savings:
 audit:
   enabled: false
   path: audit.log
+
+# Hugging Face integration: optional API token for accessing private GGUF repositories
+# or bypassing Hugging Face API rate limits on searches.
+huggingface:
+  token: ""
+

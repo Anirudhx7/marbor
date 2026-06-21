@@ -1,53 +1,29 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Package, Download, Check, Server, Loader2, Cpu, HardDrive } from 'lucide-react';
+import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
-import { fetchModelCatalog, pullModel, fetchSystemInfo, SystemInfo } from '../lib/api';
+import {
+  pullModel,
+  fetchSystemInfo,
+  SystemInfo,
+  fetchModelCatalog,
+  searchHFModels,
+  getHFRepoDetails,
+  HFModel,
+  HFRepoDetails,
+  ModelVariantFit,
+} from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockModelCatalogResponse, mockSystemInfo } from '../lib/mockData';
-import type {
-  ModelCatalogResponse,
-  CatalogNodeEntry,
-  CatalogModelFit,
-  CatalogVariantFit,
-  FitStatus,
-} from '../types';
+import { mockHFModels, mockHFRepoDetails, mockSystemInfo } from '../lib/mockData';
 
-type CategoryFilter = 'all' | 'chat' | 'coding' | 'reasoning' | 'embedding' | 'vision';
-type FitFilter = 'all' | 'fits' | 'too-large';
-
-const CATEGORY_OPTIONS: { value: CategoryFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'chat', label: 'Chat' },
-  { value: 'coding', label: 'Coding' },
-  { value: 'reasoning', label: 'Reasoning' },
-  { value: 'embedding', label: 'Embedding' },
-  { value: 'vision', label: 'Vision' },
-];
-
-const FIT_OPTIONS: { value: FitFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'fits', label: 'Fits' },
-  { value: 'too-large', label: 'Too Large' },
-];
-
-function bytesToGB(bytes: number): string {
-  const gb = bytes / (1024 * 1024 * 1024);
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-}
-
-function mbToGB(mb: number): string {
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
-}
-
-function FitBadge({ fit }: { fit: FitStatus }) {
-  const styles: Record<FitStatus, string> = {
+function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
+  const styles = {
     green: 'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
     yellow: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
     red: 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30',
     unknown: 'bg-secondary text-muted-foreground border border-border',
   };
-  const labels: Record<FitStatus, string> = {
+  const labels = {
     green: 'Fits',
     yellow: 'Tight',
     red: 'Too Large',
@@ -60,271 +36,393 @@ function FitBadge({ fit }: { fit: FitStatus }) {
   );
 }
 
-// Pick the highest-quality variant that fits the node's actual VRAM.
-// Priority: green (recommended first) > green > yellow (recommended first) > yellow > catalog recommended > first.
-function recommendedVariant(model: CatalogModelFit): CatalogVariantFit {
-  const greens = model.variants.filter((v) => v.fit === 'green');
-  if (greens.length > 0) return greens.find((v) => v.recommended) ?? greens[0];
-  const yellows = model.variants.filter((v) => v.fit === 'yellow');
-  if (yellows.length > 0) return yellows.find((v) => v.recommended) ?? yellows[0];
-  return model.variants.find((v) => v.recommended) ?? model.variants[0];
-}
-
 function ModelCard({
   model,
   nodeName,
   isLive,
-  onPulled,
+  demoMode,
 }: {
-  model: CatalogModelFit;
+  model: HFModel;
   nodeName: string | null;
   isLive: boolean;
-  onPulled: () => void;
+  demoMode: boolean;
 }) {
-  const rec = recommendedVariant(model);
-  const [pulling, setPulling] = useState(false);
-  const [pullError, setPullError] = useState<string | null>(null);
-  const [pulled, setPulled] = useState(false);
-
-  const handlePull = async () => {
-    if (!nodeName) return;
-    setPulling(true);
-    setPullError(null);
-    try {
-      await pullModel(nodeName, rec.tag);
-      setPulled(true);
-      onPulled();
-    } catch (e: unknown) {
-      setPullError(e instanceof Error ? e.message : 'Pull failed');
-    } finally {
-      setPulling(false);
-    }
-  };
-
-  const alreadyDownloaded = model.downloaded || pulled;
-
-  return (
-    <div className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h3 className="font-semibold text-foreground">{model.display_name}</h3>
-          <code className="text-xs text-muted-foreground font-mono">{model.name}</code>
-        </div>
-        <span className="inline-flex items-center px-2 py-0.5 rounded bg-secondary text-xs font-medium text-foreground shrink-0">
-          {model.param_count}
-        </span>
-      </div>
-
-      <p className="text-sm text-muted-foreground mb-3 flex-1">{model.description}</p>
-
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {model.categories.map((c) => (
-          <span key={c} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary capitalize">
-            {c}
-          </span>
-        ))}
-      </div>
-
-      {/* All variants with fit badges */}
-      <div className="border-t border-border pt-3 mb-3 space-y-1.5">
-        {model.variants.map((v) => (
-          <div key={v.tag} className={`flex items-center justify-between text-xs rounded px-2 py-1 ${v.tag === rec.tag ? 'bg-primary/8 border border-primary/20' : 'bg-secondary/50'}`}>
-            <div className="flex items-center gap-1.5 min-w-0">
-              {v.tag === rec.tag && <span className="text-[9px] font-bold text-primary uppercase tracking-wide shrink-0">Best</span>}
-              <span className="font-mono text-foreground truncate">{v.quantization}</span>
-              <span className="text-muted-foreground shrink-0">{mbToGB(v.vram_est_mb)} VRAM</span>
-            </div>
-            <FitBadge fit={v.fit} />
-          </div>
-        ))}
-      </div>
-
-      {rec.fit === 'red' && (
-        <p className="text-xs text-destructive mb-2 font-medium">Requires more VRAM than available - no variant fits your hardware.</p>
-      )}
-      {pullError && <p className="text-xs text-destructive mb-2">{pullError}</p>}
-
-      <div className="flex items-center justify-between gap-2">
-        {alreadyDownloaded ? (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400">
-            <Check className="w-3.5 h-3.5" /> Already Downloaded
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground font-mono">{mbToGB(rec.size_mb)} download</span>
-        )}
-        <button
-          onClick={handlePull}
-          disabled={!isLive || !nodeName || pulling || alreadyDownloaded || rec.fit === 'red'}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-medium rounded-lg transition-colors"
-          title={rec.fit === 'red' ? 'No variant fits your available VRAM' : !isLive ? 'Connect to backend to pull models' : !nodeName ? 'No node selected' : ''}
-        >
-          {pulling ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Pulling...
-            </>
-          ) : (
-            <>
-              <Download className="w-3.5 h-3.5" /> Pull
-            </>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function ModelAdvisor() {
-  const { demoMode } = useDemoMode();
-  const [data, setData] = useState<ModelCatalogResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [details, setDetails] = useState<HFRepoDetails | null>(null);
+  const [ctxLen, setCtxLen] = useState(8192);
+  const [pullingTag, setPullingTag] = useState<string | null>(null);
+  const [pulledTags, setPulledTags] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const [isLive, setIsLive] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
 
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<CategoryFilter>('all');
-  const [fitFilter, setFitFilter] = useState<FitFilter>('all');
-
-  const loadCatalog = async () => {
+  const fetchDetails = async (len: number) => {
     if (demoMode) {
-      setData(mockModelCatalogResponse);
-      setSysInfo(mockSystemInfo);
-      setSelectedNode(mockModelCatalogResponse.nodes[0]?.name ?? null);
-      setLoading(false);
-      setIsLive(false);
-      setError(null);
+      const mock = mockHFRepoDetails[model.id];
+      if (mock) {
+        // Adjust mock fit based on context length simulation
+        const adjustedVariants = mock.variants.map((v: any) => {
+          const sizeFactor = v.size_mb;
+          const estVram = sizeFactor * 1.10 + len * 0.15;
+          let fit: 'green' | 'yellow' | 'red' = 'green';
+          if (estVram > 24576) fit = 'red';
+          else if (estVram > 10240) fit = 'yellow';
+          return {
+            ...v,
+            vram_est_mb: Math.round(estVram),
+            fit,
+          };
+        });
+        setDetails({ ...mock, variants: adjustedVariants });
+      } else {
+        setDetails({
+          id: model.id,
+          downloads: model.downloads,
+          likes: model.likes,
+          tags: model.tags,
+          last_modified: model.lastModified,
+          variants: [
+            { tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', downloaded: false }
+          ]
+        });
+      }
       return;
     }
+
     setLoading(true);
+    setError(null);
     try {
-      const [resp, sys] = await Promise.all([fetchModelCatalog(), fetchSystemInfo().catch(() => null)]);
-      setSysInfo(sys);
-      setData(resp);
-      setIsLive(true);
-      setError(null);
-      setFitFilter('fits'); // default to showing only runnable models when hardware is known
-      if (resp.nodes.length > 0) {
-        setSelectedNode((prev) =>
-          prev && resp.nodes.some((n) => n.name === prev) ? prev : resp.nodes[0].name
-        );
-      } else {
-        setSelectedNode(null);
-      }
+      const resp = await getHFRepoDetails(model.id, nodeName || undefined, len);
+      setDetails(resp);
     } catch (e: unknown) {
-      setIsLive(false);
-      setData(null);
-      setError(e instanceof Error ? e.message : 'Failed to load catalog');
+      setError(e instanceof Error ? e.message : 'Failed to load variants');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadCatalog();
+    if (expanded) {
+      fetchDetails(ctxLen);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, nodeName, ctxLen]);
+
+  const handlePull = async (variant: ModelVariantFit) => {
+    if (!nodeName) return;
+    setPullingTag(variant.tag);
+    setError(null);
+    try {
+      await pullModel(nodeName, variant.tag);
+      setPulledTags(prev => new Set([...prev, variant.tag]));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Pull failed');
+    } finally {
+      setPullingTag(null);
+    }
+  };
+
+  const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
+  const formattedLikes = new Intl.NumberFormat().format(model.likes);
+
+  return (
+    <div className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors">
+      <div className="flex items-start justify-between mb-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-foreground truncate" title={model.id}>
+            {model.id.split('/').pop()}
+          </h3>
+          <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
+        </div>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary text-[11px] font-medium text-foreground shrink-0 ml-2">
+          <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+        <span className="flex items-center gap-1">
+          <ArrowDown className="w-3.5 h-3.5" /> {formattedDownloads} downloads
+        </span>
+        {model.pipeline_tag && (
+          <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
+            {model.pipeline_tag.replace('-', ' ')}
+          </span>
+        )}
+      </div>
+
+      {!expanded ? (
+        <button
+          onClick={() => setExpanded(true)}
+          className="mt-2 w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium rounded-lg transition-colors font-medium cursor-pointer"
+        >
+          View Quantizations
+        </button>
+      ) : (
+        <div className="mt-3 border-t border-border pt-4 space-y-4">
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground">Target Context Length:</span>
+              <span className="font-mono font-medium text-foreground">
+                {new Intl.NumberFormat().format(ctxLen)} tokens
+              </span>
+            </div>
+            <input
+              type="range"
+              min="2048"
+              max="32768"
+              step="2048"
+              value={ctxLen}
+              onChange={(e) => setCtxLen(parseInt(e.target.value))}
+              disabled={loading}
+              className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+            />
+            <p className="text-[10px] text-muted-foreground leading-normal">
+              Larger context windows increase KV-cache allocation and total VRAM requirement.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading variants...
+            </div>
+          ) : error ? (
+            <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
+              {error}
+            </div>
+          ) : details && details.variants.length > 0 ? (
+            <div className="space-y-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">GGUF File Quantizations</span>
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                {details.variants.map((v) => {
+                  const isPulled = v.downloaded || pulledTags.has(v.tag);
+                  const isPulling = pullingTag === v.tag;
+                  const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
+                  const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
+
+                  return (
+                    <div
+                      key={v.tag}
+                      className="flex items-center justify-between text-xs rounded px-2.5 py-1.5 bg-secondary/50 border border-border/50 hover:border-border transition-colors"
+                    >
+                      <div className="min-w-0 flex-1 mr-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-semibold text-foreground">{v.quantization}</span>
+                          <span className="text-[10px] text-muted-foreground">{sizeGB} size · {vramGB} VRAM</span>
+                        </div>
+                        <span className="text-[9px] text-muted-foreground font-mono block truncate" title={v.tag}>
+                          {v.tag}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <FitBadge fit={v.fit} />
+                        {isPulled ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
+                            <Check className="w-3.5 h-3.5" /> Ready
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handlePull(v)}
+                            disabled={!isLive || !nodeName || isPulling || v.fit === 'red'}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
+                            title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
+                          >
+                            {isPulling ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Download className="w-3 h-3" />
+                            )}
+                            Pull
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground py-2 text-center">No GGUF files found in this repository.</p>
+          )}
+
+          <div className="flex items-center justify-between pt-2">
+            <a
+              href={`https://huggingface.co/${model.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+            >
+              <ExternalLink className="w-3 h-3" /> View on Hugging Face
+            </a>
+            <button
+              onClick={() => setExpanded(false)}
+              className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              Collapse
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ModelAdvisor() {
+  const { demoMode } = useDemoMode();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isLive, setIsLive] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [sysInfo, setSysInfo] = useState<SystemInfo | null>(null);
+  const [nodes, setNodes] = useState<any[]>([]);
+
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [models, setModels] = useState<HFModel[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  const loadSystemInfo = async () => {
+    if (demoMode) {
+      setSysInfo(mockSystemInfo);
+      setNodes([
+        {
+          name: 'gpu-0',
+          url: 'http://localhost:11435',
+          vram_free_bytes: 10 * 1024 * 1024 * 1024,
+          vram_total_bytes: 24 * 1024 * 1024 * 1024,
+          vram_source: 'nvidia-smi',
+          models: [],
+        }
+      ]);
+      setSelectedNode('gpu-0');
+      setIsLive(false);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const [sys, catalogResp] = await Promise.all([
+        fetchSystemInfo().catch(() => null),
+        fetchModelCatalog().catch(() => null)
+      ]);
+      setSysInfo(sys);
+      setIsLive(true);
+      setError(null);
+      if (catalogResp && catalogResp.nodes) {
+        setNodes(catalogResp.nodes);
+        if (catalogResp.nodes.length > 0) {
+          setSelectedNode(prev => {
+            const exists = catalogResp.nodes.some((n: any) => n.name === prev);
+            return exists ? prev : catalogResp.nodes[0].name;
+          });
+        }
+      }
+    } catch (e: unknown) {
+      setIsLive(false);
+      setError(e instanceof Error ? e.message : 'Failed to connect to backend');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSystemInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode]);
 
-  const activeNode: CatalogNodeEntry | null = useMemo(() => {
-    if (!data || !selectedNode) return null;
-    return data.nodes.find((n) => n.name === selectedNode) ?? null;
-  }, [data, selectedNode]);
+  useEffect(() => {
+    const doSearch = async () => {
+      if (demoMode) {
+        if (debouncedSearch.trim() === '') {
+          setModels(mockHFModels);
+        } else {
+          const q = debouncedSearch.toLowerCase();
+          setModels(mockHFModels.filter(m => m.id.toLowerCase().includes(q)));
+        }
+        return;
+      }
 
-  const models: CatalogModelFit[] = useMemo(() => {
-    if (!activeNode) return [];
-    let list = [...activeNode.models].sort((a, b) => a.rank - b.rank);
+      setSearching(true);
+      try {
+        const resp = await searchHFModels(debouncedSearch);
+        setModels(resp);
+      } catch (e: unknown) {
+        console.error(e);
+      } finally {
+        setSearching(false);
+      }
+    };
+    doSearch();
+  }, [debouncedSearch, demoMode]);
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (m) => m.name.toLowerCase().includes(q) || m.display_name.toLowerCase().includes(q)
-      );
-    }
-    if (category !== 'all') {
-      list = list.filter((m) => m.categories.includes(category));
-    }
-    if (fitFilter !== 'all') {
-      list = list.filter((m) => {
-        const fit = recommendedVariant(m).fit;
-        return fitFilter === 'fits' ? fit === 'green' || fit === 'yellow' : fit === 'red';
-      });
-    }
-    return list;
-  }, [activeNode, search, category, fitFilter]);
+  const activeNode = useMemo(() => {
+    if (!selectedNode || nodes.length === 0) return null;
+    return nodes.find(n => n.name === selectedNode) || null;
+  }, [nodes, selectedNode]);
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Package className="w-6 h-6 text-primary" /> Model Advisor
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Find models that fit your hardware</p>
+          <p className="text-sm text-muted-foreground mt-1 font-medium">Search and pull Hugging Face GGUF models directly to Ollama</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-success' : 'bg-amber-500'}`} />
-          <span className={`text-xs font-medium ${isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
+          <span className={`text-xs font-semibold ${isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
             {demoMode ? 'Demo Mode' : isLive ? 'Live Data' : 'Disconnected'}
           </span>
         </div>
       </div>
 
       {demoMode && (
-        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm">
-          Demo mode - showing simulated NVIDIA RTX 4090 (24 GB VRAM, 10 GB free). Connect a real node to see live fit results.
+        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm font-medium">
+          Demo mode - showing simulated NVIDIA RTX 4090 (24 GB VRAM, 10 GB free). Connect a real node to pull models.
         </div>
       )}
 
       {error && !demoMode && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
+        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-semibold">
           {error}
         </div>
       )}
 
-      {loading && !demoMode && (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading catalog...
-        </div>
-      )}
-
-      {/* No nodes */}
-      {!loading && !error && data && data.nodes.length === 0 && (
-        <div className="text-center py-16">
-          <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground">No nodes available. Add a GPU node to see model fit.</p>
-        </div>
-      )}
-
-      {/* Mesh host system info - shown once, not per node */}
       {sysInfo && (
-        <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
+        <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs shadow-sm">
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
           <span className="flex items-center gap-1.5">
             <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-foreground font-medium">{sysInfo.cpu_cores} cores</span>
-            <span className="text-muted-foreground">{sysInfo.arch} · {sysInfo.os}</span>
+            <span className="text-foreground font-semibold">{sysInfo.cpu_cores} cores</span>
+            <span className="text-muted-foreground font-medium">{sysInfo.arch} · {sysInfo.os}</span>
           </span>
           {sysInfo.ram_total_mb > 0 && (
             <span className="flex items-center gap-1.5">
               <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-foreground font-medium">{(sysInfo.ram_free_mb / 1024).toFixed(1)} GB free</span>
-              <span className="text-muted-foreground">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB RAM</span>
+              <span className="text-foreground font-semibold">{(sysInfo.ram_free_mb / 1024).toFixed(1)} GB free</span>
+              <span className="text-muted-foreground font-medium">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB RAM</span>
             </span>
           )}
         </div>
       )}
 
-      {/* Node tabs + VRAM */}
       {activeNode && (
         <>
-          {data && data.nodes.length > 1 && (
+          {nodes.length > 1 && (
             <div className="flex flex-wrap gap-2">
-              {data.nodes.map((n) => (
+              {nodes.map((n) => (
                 <button
                   key={n.name}
                   onClick={() => setSelectedNode(n.name)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
                     n.name === selectedNode
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-secondary text-muted-foreground hover:text-foreground'
@@ -336,16 +434,16 @@ export function ModelAdvisor() {
             </div>
           )}
 
-          <div className="bg-card border border-border rounded-xl p-5">
+          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">GPU Node</span>
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">GPU Node</span>
                 <h3 className="font-semibold text-foreground mt-0.5">{activeNode.name}</h3>
               </div>
               <span className="text-xs text-muted-foreground">
                 VRAM source:{' '}
                 <span
-                  className={`px-1.5 py-0.5 rounded font-medium ${
+                  className={`px-1.5 py-0.5 rounded font-semibold ${
                     activeNode.vram_source === 'nvidia-smi'
                       ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                       : activeNode.vram_source === 'inferred'
@@ -364,84 +462,47 @@ export function ModelAdvisor() {
                   total={activeNode.vram_total_bytes / (1024 * 1024 * 1024)}
                 />
                 <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground font-medium">
                     {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
                   </p>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-green-600 dark:text-green-400 font-medium">
-                      {activeNode.models.filter((m) => recommendedVariant(m).fit === 'green' || recommendedVariant(m).fit === 'yellow').length} models fit
-                    </span>
-                    <span className="text-destructive font-medium">
-                      {activeNode.models.filter((m) => recommendedVariant(m).fit === 'red').length} too large
-                    </span>
-                  </div>
                 </div>
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                VRAM totals unavailable - nvidia-smi reads the mesh host only. Fit shown as "unknown".
+              <p className="text-xs text-muted-foreground font-medium">
+                VRAM totals unavailable - nvidia-smi reads the mesh host only.
               </p>
             )}
           </div>
 
-          {/* Filter bar */}
-          <div className="flex flex-col lg:flex-row gap-4 lg:items-center">
+          <div className="flex flex-col md:flex-row gap-4 md:items-center">
             <div className="max-w-md flex-1">
-              <SearchInput value={search} onChange={setSearch} placeholder="Search models by name..." />
+              <SearchInput value={search} onChange={setSearch} placeholder="Search Hugging Face (e.g. llama-3.2, deepseek-r1)..." />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Category:</span>
-              <div className="flex flex-wrap gap-1">
-                {CATEGORY_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setCategory(opt.value)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                      category === opt.value
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Fit:</span>
-              <div className="flex gap-1">
-                {FIT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFitFilter(opt.value)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                      fitFilter === opt.value
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {searching && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium animate-pulse">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /> Searching Hugging Face...
+              </span>
+            )}
           </div>
 
-          {/* Model grid */}
-          {models.length === 0 ? (
-            <div className="text-center py-12">
+          {loading && !demoMode ? (
+            <div className="flex justify-center items-center py-16 gap-2 text-muted-foreground">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" /> Loading models...
+            </div>
+          ) : models.length === 0 ? (
+            <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
               <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-              <p className="text-muted-foreground">No models match your filters.</p>
+              <p className="text-muted-foreground font-medium">No repositories found. Try searching for "llama" or "gemma".</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
               {models.map((m) => (
                 <ModelCard
-                  key={m.name}
+                  key={m.id}
                   model={m}
                   nodeName={selectedNode}
                   isLive={isLive}
-                  onPulled={loadCatalog}
+                  demoMode={demoMode}
                 />
               ))}
             </div>
@@ -450,4 +511,9 @@ export function ModelAdvisor() {
       )}
     </div>
   );
+}
+
+function bytesToGB(bytes: number): string {
+  const gb = bytes / (1024 * 1024 * 1024);
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 }
