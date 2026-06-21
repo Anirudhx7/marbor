@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -83,14 +84,12 @@ type RequestLog struct {
 }
 
 type nodeResp struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Port        int    `json:"port"`
-	GPUModel    string `json:"gpuModel"`
-	VRAMTotalMB int64  `json:"vramTotalMB"`
-	VRAMUsedMB  int64  `json:"vramUsedMB"`
-	// VRAMSource: "nvidia" (live local nvidia-smi), "api" (summed from the node's
-	// own /api/ps size_vram, total unknown), "declared" (total from config), "none".
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Port          int                `json:"port"`
+	GPUModel      string             `json:"gpuModel"`
+	VRAMTotalMB   int64              `json:"vramTotalMB"`
+	VRAMUsedMB    int64              `json:"vramUsedMB"`
 	VRAMSource    string             `json:"vramSource"`
 	PowerDrawW    float64            `json:"powerDrawW"`
 	Temperature   *float64           `json:"temperature"`
@@ -101,6 +100,26 @@ type nodeResp struct {
 	ActiveConns   int32              `json:"activeConns"`
 	RequestsTotal int64              `json:"requestsTotal"`
 	HealthHistory []float64          `json:"healthHistory"`
+}
+
+type SystemInfo struct {
+	CPUCores   int           `json:"cpu_cores"`
+	OS         string        `json:"os"`
+	Arch       string        `json:"arch"`
+	RAMTotalMB int64         `json:"ram_total_mb"`
+	RAMFreeMB  int64         `json:"ram_free_mb"`
+	GPUs       []sysGPUEntry `json:"gpus"`
+}
+
+type sysGPUEntry struct {
+	Name         string   `json:"name"`
+	URL          string   `json:"url"`
+	VRAMTotalMB  int64    `json:"vram_total_mb"`
+	VRAMFreeMB   int64    `json:"vram_free_mb"`
+	VRAMSource   string   `json:"vram_source"`
+	TemperatureC *float64 `json:"temperature_c"`
+	PowerDrawW   *float64 `json:"power_draw_w"`
+	Healthy      bool     `json:"healthy"`
 }
 
 type keyResp struct {
@@ -201,6 +220,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/models/repo", s.cors(s.adminAuth(s.handleModelRepo)))
 
 	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
+	reg("GET /admin/system-info", s.cors(s.adminAuth(s.handleSystemInfo)))
 
 	reg("GET /admin/warmup", s.cors(s.adminAuth(s.handleWarmupStatus)))
 	reg("POST /admin/warmup/ping", s.cors(s.adminAuth(s.handleWarmupPing)))
@@ -309,7 +329,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			Health:        health,
 			Draining:      n.Draining,
 			Uptime:        n.Uptime,
-			LoadedModels:  append([]router.ModelInfo(nil), n.LoadedModels...),
+			LoadedModels:  safeModelInfoSlice(n.LoadedModels),
 			ActiveConns:   atomic.LoadInt32(&n.ActiveConns),
 			RequestsTotal: atomic.LoadInt64(&n.RequestsTotal),
 			HealthHistory: hist,
@@ -355,7 +375,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			Health:        health,
 			Draining:      n.Draining,
 			Uptime:        n.Uptime,
-			LoadedModels:  append([]router.ModelInfo(nil), n.LoadedModels...),
+			LoadedModels:  safeModelInfoSlice(n.LoadedModels),
 			ActiveConns:   atomic.LoadInt32(&n.ActiveConns),
 			HealthHistory: hist,
 		}
@@ -761,6 +781,13 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		incoming.Auth.Keys = s.cfg.Auth.Keys
 	}
 	incoming.Auth.AdminToken = s.cfg.Auth.AdminToken
+
+	if err := incoming.Validate(); err != nil {
+		s.mu.Unlock()
+		http.Error(w, fmt.Sprintf("validation failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
 	s.cfg = incoming
 	cfg := s.cfg
 	s.mu.Unlock()
@@ -1000,15 +1027,6 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// Go 1.22+ ServeMux populates PathValue from the {name} wildcard.
 	// Manual parse covers the /admin/v1/ variant registered via strings.Replace.
 	nodeName := r.PathValue("name")
-	if nodeName == "" {
-		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		for i, p := range parts {
-			if p == "nodes" && i+2 < len(parts) && parts[i+2] == "pull" {
-				nodeName = parts[i+1]
-				break
-			}
-		}
-	}
 
 	var body struct {
 		Model string `json:"model"`
@@ -1245,6 +1263,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		nodeName := n.Name
 		vramTotalMB := n.VRAMTotalMB
 		vramUsedMBFromPS := int64(0)
+		rawVramSource := n.VRAMSource
 		loadedSet := make(map[string]bool)
 		for _, m := range n.LoadedModels {
 			loadedSet[m.Name] = true
@@ -1258,7 +1277,6 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		vramSource := "unknown"
 
 		if vramTotalMB > 0 {
-			// nvidia-smi data is available on this host.
 			vramTotalBytes = vramTotalMB * 1024 * 1024
 			// Use nvidia-smi total minus what /api/ps says is loaded.
 			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
@@ -1266,12 +1284,20 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
 			}
-			vramSource = "nvidia-smi"
+			if rawVramSource == "nvidia" {
+				vramSource = "nvidia-smi"
+			} else if rawVramSource == "declared" {
+				vramSource = "declared"
+			} else {
+				vramSource = "nvidia-smi" // fallback
+			}
 		} else if vramUsedMBFromPS > 0 {
 			// No nvidia-smi but we have ps data — use loaded model VRAM as lower bound.
 			vramTotalBytes = 0
 			vramFreeBytes = 0
 			vramSource = "inferred"
+		} else {
+			vramSource = "unknown"
 		}
 
 		// Fetch downloaded models from /api/tags (cached 30s in router).
@@ -1391,4 +1417,65 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"healthy": healthy,
 		},
 	})
+}
+
+func safeModelInfoSlice(slice []router.ModelInfo) []router.ModelInfo {
+	if slice == nil {
+		return []router.ModelInfo{}
+	}
+	out := make([]router.ModelInfo, len(slice))
+	copy(out, slice)
+	return out
+}
+
+func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+	totalMB, freeMB := readSystemMemory()
+
+	nodes := s.router.Nodes()
+	gpus := make([]sysGPUEntry, len(nodes))
+	for i, n := range nodes {
+		n.RLock()
+		var vramFreeMB int64
+		if n.VRAMTotalMB > 0 {
+			vramUsedMBFromPS := int64(0)
+			for _, m := range n.LoadedModels {
+				vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
+			}
+			vramFreeMB = n.VRAMTotalMB - vramUsedMBFromPS
+			if vramFreeMB < 0 {
+				vramFreeMB = 0
+			}
+		}
+		var tempC *float64
+		if n.Temperature != nil {
+			tempC = n.Temperature
+		}
+		var powerW *float64
+		if n.PowerDrawW > 0 {
+			powerW = &n.PowerDrawW
+		}
+		gpus[i] = sysGPUEntry{
+			Name:         n.Name,
+			URL:          n.URL,
+			VRAMTotalMB:  n.VRAMTotalMB,
+			VRAMFreeMB:   vramFreeMB,
+			VRAMSource:   n.VRAMSource,
+			TemperatureC: tempC,
+			PowerDrawW:   powerW,
+			Healthy:      n.Healthy,
+		}
+		n.RUnlock()
+	}
+
+	info := SystemInfo{
+		CPUCores:   runtime.NumCPU(),
+		OS:         runtime.GOOS,
+		Arch:       runtime.GOARCH,
+		RAMTotalMB: totalMB,
+		RAMFreeMB:  freeMB,
+		GPUs:       gpus,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
 }

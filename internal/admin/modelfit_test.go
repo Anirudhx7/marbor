@@ -26,6 +26,7 @@ func newModelFitTestServer(ollamaURL string) *Server {
 	nodes[0].Healthy = true
 	nodes[0].VRAMTotalMB = 8192 // 8 GB via nvidia-smi
 	nodes[0].LoadedModels = []router.ModelInfo{{Name: "llama3:8b", SizeVRAM: 4 * 1024 * 1024 * 1024}}
+	nodes[0].VRAMSource = "nvidia"
 	nodes[0].Unlock()
 
 	return NewServer(r, nil, config.Config{})
@@ -70,6 +71,9 @@ func TestHandleModelFit_HappyPath(t *testing.T) {
 			VRAMSource string `json:"vram_source"`
 			VRAMFree   int64  `json:"vram_free_bytes"`
 			VRAMTotal  int64  `json:"vram_total_bytes"`
+			GPUs       []struct {
+				Name string `json:"name"`
+			} `json:"gpus"`
 			Models     []struct {
 				Name   string `json:"name"`
 				Fit    string `json:"fit"`

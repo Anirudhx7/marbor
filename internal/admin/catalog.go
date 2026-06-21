@@ -303,6 +303,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		nodeName := n.Name
 		vramTotalMB := n.VRAMTotalMB
 		vramUsedMBFromPS := int64(0)
+		rawVramSource := n.VRAMSource
 		for _, m := range n.LoadedModels {
 			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
 		}
@@ -318,9 +319,17 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
 			}
-			vramSource = "nvidia-smi"
+			if rawVramSource == "nvidia" {
+				vramSource = "nvidia-smi"
+			} else if rawVramSource == "declared" {
+				vramSource = "declared"
+			} else {
+				vramSource = "nvidia-smi" // fallback
+			}
 		} else if vramUsedMBFromPS > 0 {
 			vramSource = "inferred"
+		} else {
+			vramSource = "unknown"
 		}
 
 		// Build a set of downloaded model names/tags from /api/tags (cached 30s).
@@ -478,7 +487,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 
 	nodeName := r.URL.Query().Get("node")
 
-	targetURL := fmt.Sprintf("https://huggingface.co/api/models/%s?files_metadata=true", repoID)
+	targetURL := fmt.Sprintf("https://huggingface.co/api/models/%s?blobs=true", repoID)
 	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"create request: %s"}`, err.Error()), http.StatusInternalServerError)
@@ -531,6 +540,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		nodeURL := targetNode.URL
 		vramTotalMB := targetNode.VRAMTotalMB
 		vramUsedMBFromPS := int64(0)
+		vramSource = targetNode.VRAMSource
 		for _, m := range targetNode.LoadedModels {
 			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
 		}
@@ -543,9 +553,10 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
 			}
-			vramSource = "nvidia-smi"
 		} else if vramUsedMBFromPS > 0 {
 			vramSource = "inferred"
+		} else {
+			vramSource = "unknown"
 		}
 
 		if tagModels, err := s.router.FetchModelTags(nodeURL); err == nil {
@@ -556,7 +567,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Filter GGUF siblings and build variants list
-	var variants []ModelVariantFit
+	variants := []ModelVariantFit{}
 	for _, sib := range repo.Siblings {
 		if !strings.HasSuffix(strings.ToLower(sib.Rfilename), ".gguf") {
 			continue
