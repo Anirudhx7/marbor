@@ -41,13 +41,16 @@ function ModelCard({
   nodeName,
   isLive,
   demoMode,
+  expanded,
+  onToggleExpand,
 }: {
   model: HFModel;
   nodeName: string | null;
   isLive: boolean;
   demoMode: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState<HFRepoDetails | null>(null);
   const [ctxLen, setCtxLen] = useState(8192);
@@ -151,10 +154,10 @@ function ModelCard({
 
       {!expanded ? (
         <button
-          onClick={() => setExpanded(true)}
+          onClick={onToggleExpand}
           className="mt-2 w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium rounded-lg transition-colors font-medium cursor-pointer"
         >
-          View Quantizations
+          View Quantizations & Pull
         </button>
       ) : (
         <div className="mt-3 border-t border-border pt-4 space-y-4">
@@ -188,12 +191,12 @@ function ModelCard({
             <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
               {error}
             </div>
-          ) : details && details.variants.length > 0 ? (
+          ) : details && details.variants && details.variants.length > 0 ? (
             <div className="space-y-2">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">GGUF File Quantizations</span>
               <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                {details.variants.map((v) => {
-                  const isPulled = v.downloaded || pulledTags.has(v.tag);
+                {(details.variants || []).map((v) => {
+                  const isPulled = v.downloaded || (v.tag && pulledTags.has(v.tag));
                   const isPulling = pullingTag === v.tag;
                   const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
                   const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
@@ -253,7 +256,7 @@ function ModelCard({
               <ExternalLink className="w-3 h-3" /> View on Hugging Face
             </a>
             <button
-              onClick={() => setExpanded(false)}
+              onClick={onToggleExpand}
               className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
             >
               Collapse
@@ -278,6 +281,8 @@ export function ModelAdvisor() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [models, setModels] = useState<HFModel[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -340,6 +345,7 @@ export function ModelAdvisor() {
   useEffect(() => {
     const doSearch = async () => {
       if (demoMode) {
+        setSearchError(null);
         if (debouncedSearch.trim() === '') {
           setModels(mockHFModels);
         } else {
@@ -350,17 +356,24 @@ export function ModelAdvisor() {
       }
 
       setSearching(true);
+      setSearchError(null);
       try {
         const resp = await searchHFModels(debouncedSearch);
-        setModels(resp);
+        setModels(resp || []);
       } catch (e: unknown) {
         console.error(e);
+        setSearchError(e instanceof Error ? e.message : 'Failed to search Hugging Face models. Make sure the backend has internet access.');
+        setModels([]);
       } finally {
         setSearching(false);
       }
     };
     doSearch();
   }, [debouncedSearch, demoMode]);
+
+  useEffect(() => {
+    setExpandedModelId(null);
+  }, [models]);
 
   const activeNode = useMemo(() => {
     if (!selectedNode || nodes.length === 0) return null;
@@ -377,9 +390,9 @@ export function ModelAdvisor() {
           <p className="text-sm text-muted-foreground mt-1 font-medium">Search and pull Hugging Face GGUF models directly to Ollama</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-success' : 'bg-amber-500'}`} />
-          <span className={`text-xs font-semibold ${isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
-            {demoMode ? 'Demo Mode' : isLive ? 'Live Data' : 'Disconnected'}
+          <div className={`w-2 h-2 rounded-full ${demoMode ? 'bg-success' : (loading && !isLive) ? 'bg-blue-500 animate-pulse' : isLive ? 'bg-success' : 'bg-amber-500'}`} />
+          <span className={`text-xs font-semibold ${demoMode ? 'text-success' : (loading && !isLive) ? 'text-blue-500 animate-pulse' : isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
+            {demoMode ? 'Demo Mode' : (loading && !isLive) ? 'Connecting...' : isLive ? 'Live Data' : 'Disconnected'}
           </span>
         </div>
       </div>
@@ -448,10 +461,12 @@ export function ModelAdvisor() {
                       ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                       : activeNode.vram_source === 'inferred'
                       ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                      : activeNode.vram_source === 'declared'
+                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
                       : 'bg-secondary text-muted-foreground'
                   }`}
                 >
-                  {activeNode.vram_source}
+                  {activeNode.vram_source === 'declared' ? 'declared' : activeNode.vram_source}
                 </span>
               </span>
             </div>
@@ -474,6 +489,15 @@ export function ModelAdvisor() {
             )}
           </div>
 
+          <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground leading-relaxed shadow-sm">
+            <span className="font-semibold text-foreground block mb-1">💡 How to add models to nodes:</span>
+            1. Search for any GGUF model repository (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below.
+            <br />
+            2. Click <strong className="text-foreground">View Quantizations & Pull</strong> on the model's card to load available quantization variants.
+            <br />
+            3. Select the desired quantization (GGUF format) and click the <strong className="text-foreground">Pull</strong> button to download it directly to the active node.
+          </div>
+
           <div className="flex flex-col md:flex-row gap-4 md:items-center">
             <div className="max-w-md flex-1">
               <SearchInput value={search} onChange={setSearch} placeholder="Search Hugging Face (e.g. llama-3.2, deepseek-r1)..." />
@@ -484,6 +508,12 @@ export function ModelAdvisor() {
               </span>
             )}
           </div>
+
+          {searchError && (
+            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs font-semibold">
+              {searchError}
+            </div>
+          )}
 
           {loading && !demoMode ? (
             <div className="flex justify-center items-center py-16 gap-2 text-muted-foreground">
@@ -503,11 +533,24 @@ export function ModelAdvisor() {
                   nodeName={selectedNode}
                   isLive={isLive}
                   demoMode={demoMode}
+                  expanded={expandedModelId === m.id}
+                  onToggleExpand={() => setExpandedModelId(expandedModelId === m.id ? null : m.id)}
                 />
               ))}
             </div>
           )}
         </>
+      )}
+
+      {!activeNode && !loading && !error && nodes.length === 0 && (
+        <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
+          <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-foreground">No GPU Nodes Connected</h3>
+          <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal mt-1">
+            Ollama-Mesh requires at least one active Ollama node to calculate VRAM capacity and check model compatibility.
+            Connect your first node in the <strong>GPU Nodes</strong> page.
+          </p>
+        </div>
       )}
     </div>
   );

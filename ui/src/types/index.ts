@@ -183,7 +183,7 @@ export interface NodeFit {
   url: string;
   vram_free_bytes: number;
   vram_total_bytes: number;
-  vram_source: 'nvidia-smi' | 'inferred' | 'unknown';
+  vram_source: 'nvidia-smi' | 'inferred' | 'unknown' | 'declared';
   models: ModelFit[];
 }
 
@@ -226,7 +226,7 @@ export interface CatalogNodeEntry {
   url: string;
   vram_free_bytes: number;
   vram_total_bytes: number;
-  vram_source: 'nvidia-smi' | 'inferred' | 'unknown';
+  vram_source: 'nvidia-smi' | 'inferred' | 'unknown' | 'declared';
   models: CatalogModelFit[];
 }
 

@@ -200,7 +200,7 @@ function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit }: {
       <div className="border-t border-border pt-3">
         <p className="text-xs font-medium text-muted-foreground mb-2">Loaded Models</p>
         <div className="flex flex-wrap gap-1.5">
-          {node.loadedModels.map((model) => (
+          {(node.loadedModels || []).map((model) => (
             <Badge
               key={model.name}
               variant="success"
@@ -286,8 +286,8 @@ export function GPUNodes() {
   }, [demoMode]);
 
   const filteredNodes = nodes.filter(node =>
-    node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    node.gpuModel.toLowerCase().includes(searchQuery.toLowerCase())
+    (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (node.gpuModel || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleAddNode = async () => {
@@ -473,9 +473,11 @@ export function GPUNodes() {
                       ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                       : nodeFit.vram_source === 'inferred'
                       ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                      : nodeFit.vram_source === 'declared'
+                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
                       : 'bg-secondary text-muted-foreground'
                   }`}>
-                    {nodeFit.vram_source}
+                    {nodeFit.vram_source === 'declared' ? 'declared' : nodeFit.vram_source}
                   </span>
                 </div>
               </div>

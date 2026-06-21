@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Package } from 'lucide-react';
+import { Package, Download, Loader2 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
 import { mockModelCatalog } from '../lib/mockData';
-import { fetchModels, pullModel } from '../lib/api';
+import { fetchModels, pullModel, fetchNodes } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
-import type { ModelCatalog, ModelEntry } from '../types';
+import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
+import { Modal } from '../components/Modal';
 
 function formatVRAM(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -156,6 +157,76 @@ export function Models() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!demoMode);
 
+  const [isPullModalOpen, setIsPullModalOpen] = useState(false);
+  const [pullNodesList, setPullNodesList] = useState<GPUNode[]>([]);
+  const [pullSelectedNode, setPullSelectedNode] = useState('');
+  const [pullModelName, setPullModelName] = useState('');
+  const [pullLoading, setPullLoading] = useState(false);
+  const [pullSuccess, setPullSuccess] = useState(false);
+  const [pullErrorMsg, setPullErrorMsg] = useState('');
+
+  const openPullModal = async () => {
+    if (demoMode) {
+      setPullNodesList([
+        {
+          id: 'gpu-0',
+          name: 'gpu-0',
+          gpuModel: 'NVIDIA A100',
+          port: 11434,
+          vramTotalMB: 81920,
+          vramUsedMB: 40960,
+          vramSource: 'nvidia',
+          powerDrawW: 250,
+          cpuPercent: 12,
+          temperature: 65,
+          health: 'healthy',
+          draining: false,
+          uptime: '2d 4h',
+          loadedModels: [],
+          healthHistory: []
+        }
+      ]);
+      setPullSelectedNode('gpu-0');
+      setIsPullModalOpen(true);
+      return;
+    }
+
+    try {
+      const nodeList = await fetchNodes();
+      setPullNodesList(nodeList || []);
+      if (nodeList && nodeList.length > 0) {
+        const healthyNode = nodeList.find(n => n.health === 'healthy') || nodeList[0];
+        setPullSelectedNode(healthyNode.name);
+      }
+      setIsPullModalOpen(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load nodes for pulling');
+    }
+  };
+
+  const handleGeneralPull = async () => {
+    const trimmedModel = pullModelName.trim();
+    if (!trimmedModel || !pullSelectedNode) return;
+    setPullLoading(true);
+    setPullErrorMsg('');
+    setPullSuccess(false);
+
+    try {
+      if (demoMode) {
+        await new Promise<void>(resolve => setTimeout(resolve, 1500));
+      } else {
+        await pullModel(pullSelectedNode, trimmedModel);
+      }
+      setPullSuccess(true);
+      setPullModelName('');
+      loadModels();
+    } catch (e: unknown) {
+      setPullErrorMsg(e instanceof Error ? e.message : 'Pull failed');
+    } finally {
+      setPullLoading(false);
+    }
+  };
+
   const loadModels = async () => {
     if (demoMode) {
       setCatalog(mockModelCatalog);
@@ -211,6 +282,15 @@ export function Models() {
               {demoMode ? 'Demo Mode' : isLive ? 'Live Data' : 'Disconnected'}
             </span>
           </div>
+          <button
+            onClick={openPullModal}
+            disabled={!isLive}
+            title={!isLive ? 'Backend disconnected' : undefined}
+            className="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Pull Model
+          </button>
         </div>
       </div>
 
@@ -243,15 +323,116 @@ export function Models() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-12">
+        <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
           <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground">
-            {searchQuery
-              ? 'No models matching your search.'
-              : 'No models loaded across any nodes. Start an Ollama request to load a model into VRAM.'}
-          </p>
+          {catalog && catalog.total_nodes === 0 ? (
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold text-foreground">No GPU Nodes Connected</h3>
+              <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal">
+                Connect your first Ollama node in the <strong>GPU Nodes</strong> page to view loaded models and monitor warm VRAM status.
+              </p>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm font-medium">
+              {searchQuery
+                ? 'No models matching your search.'
+                : 'No models loaded across any nodes. Start an Ollama request to load a model into VRAM.'}
+            </p>
+          )}
         </div>
       )}
+
+      {/* General Pull Model Modal */}
+      <Modal
+        isOpen={isPullModalOpen}
+        onClose={() => {
+          if (!pullLoading) {
+            setIsPullModalOpen(false);
+            setPullErrorMsg('');
+            setPullSuccess(false);
+          }
+        }}
+        title="Pull Model from Registry"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground leading-normal">
+            Download a model from the official Ollama library directly to one of your GPU nodes.
+            Note: The node must have internet access to reach the Ollama registry.
+          </p>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Target GPU Node</label>
+            <select
+              value={pullSelectedNode}
+              onChange={(e) => setPullSelectedNode(e.target.value)}
+              disabled={pullLoading || pullSuccess}
+              className="w-full px-3 py-2 text-sm bg-secondary border border-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            >
+              {pullNodesList.map((n) => (
+                <option key={n.name} value={n.name}>
+                  {n.name} ({n.health})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Model Tag / Name</label>
+            <input
+              type="text"
+              value={pullModelName}
+              onChange={(e) => setPullModelName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !pullLoading && pullModelName.trim() && pullSelectedNode && handleGeneralPull()}
+              placeholder="e.g. llama3.2, gemma2, nomic-embed-text"
+              disabled={pullLoading || pullSuccess}
+              className="w-full px-3 py-2 text-sm bg-secondary border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+            />
+          </div>
+
+          {pullErrorMsg && (
+            <p className="text-xs text-destructive font-medium bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
+              {pullErrorMsg}
+            </p>
+          )}
+
+          {pullSuccess && (
+            <p className="text-xs text-success font-medium bg-success/10 border border-success/20 rounded-lg p-2.5">
+              Model pull request initiated successfully! The model will download in the background.
+            </p>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              onClick={() => {
+                setIsPullModalOpen(false);
+                setPullErrorMsg('');
+                setPullSuccess(false);
+              }}
+              disabled={pullLoading}
+              className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-foreground text-sm font-semibold rounded-lg transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+            <button
+              onClick={handleGeneralPull}
+              disabled={pullLoading || !pullModelName.trim() || !pullSelectedNode}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-semibold rounded-lg transition-colors shadow-sm cursor-pointer"
+            >
+              {pullLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Pulling...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  Pull Model
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

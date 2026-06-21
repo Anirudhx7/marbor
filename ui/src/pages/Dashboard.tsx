@@ -358,7 +358,7 @@ export function Dashboard() {
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
-                  {node.loadedModels.map((model) => (
+                  {(node.loadedModels || []).map((model) => (
                     <Badge
                       key={model.name}
                       variant="success"
