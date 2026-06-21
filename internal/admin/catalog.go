@@ -422,7 +422,7 @@ type ModelVariantFit struct {
 	Quantization string `json:"quantization"` // "Q4_K_M"
 	VRAMEstMB    int64  `json:"vram_est_mb"`
 	SizeMB       int64  `json:"size_mb"`
-	Fit          string `json:"fit"`          // "green", "yellow", "red", "unknown"
+	Fit          string `json:"fit"` // "green", "yellow", "red", "unknown"
 	Downloaded   bool   `json:"downloaded"`
 }
 
@@ -678,4 +678,3 @@ func isParamCount(s string) bool {
 	}
 	return true
 }
-

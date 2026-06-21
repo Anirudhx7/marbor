@@ -74,7 +74,7 @@ func TestHandleModelFit_HappyPath(t *testing.T) {
 			GPUs       []struct {
 				Name string `json:"name"`
 			} `json:"gpus"`
-			Models     []struct {
+			Models []struct {
 				Name   string `json:"name"`
 				Fit    string `json:"fit"`
 				Loaded bool   `json:"loaded"`

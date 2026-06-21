@@ -799,7 +799,7 @@ func (r *Router) sweepAffinity() {
 	now := time.Now().UnixNano()
 	r.affinityMu.Lock()
 	for id, e := range r.affinity {
-		if now - e.lastSeen.Load() >= int64(r.affinityTTL) {
+		if now-e.lastSeen.Load() >= int64(r.affinityTTL) {
 			delete(r.affinity, id)
 		}
 	}
