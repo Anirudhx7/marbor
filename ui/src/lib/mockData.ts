@@ -762,6 +762,54 @@ export const mockHFModels = [
     tags: ['text-generation', 'gguf', 'gemma', 'instruction'],
     lastModified: '2026-06-10T16:45:00Z',
     pipeline_tag: 'text-generation'
+  },
+  {
+    id: 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
+    downloads: 145200,
+    likes: 1205,
+    tags: ['text-generation', 'gguf', 'qwen', 'coding'],
+    lastModified: '2026-06-16T10:20:00Z',
+    pipeline_tag: 'text-generation'
+  },
+  {
+    id: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+    downloads: 54100,
+    likes: 412,
+    tags: ['text-generation', 'gguf', 'phi-3.5', 'lightweight'],
+    lastModified: '2026-06-11T14:50:00Z',
+    pipeline_tag: 'text-generation'
+  },
+  {
+    id: 'bartowski/Mistral-7B-Instruct-v0.3-GGUF',
+    downloads: 189000,
+    likes: 1420,
+    tags: ['text-generation', 'gguf', 'mistral', 'general'],
+    lastModified: '2026-06-08T08:30:00Z',
+    pipeline_tag: 'text-generation'
+  },
+  {
+    id: 'google/gemma-2-2b-it-GGUF',
+    downloads: 110400,
+    likes: 720,
+    tags: ['text-generation', 'gguf', 'gemma', 'edge'],
+    lastModified: '2026-06-12T11:15:00Z',
+    pipeline_tag: 'text-generation'
+  },
+  {
+    id: 'bartowski/Llama-3.2-11B-Vision-Instruct-GGUF',
+    downloads: 67200,
+    likes: 498,
+    tags: ['image-text-to-text', 'gguf', 'llama-3.2', 'vision'],
+    lastModified: '2026-06-17T15:20:00Z',
+    pipeline_tag: 'image-text-to-text'
+  },
+  {
+    id: 'bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF',
+    downloads: 320000,
+    likes: 2140,
+    tags: ['text-generation', 'gguf', 'deepseek', 'reasoning'],
+    lastModified: '2026-06-19T07:45:00Z',
+    pipeline_tag: 'text-generation'
   }
 ];
 
@@ -810,6 +858,73 @@ export const mockHFRepoDetails: Record<string, any> = {
       { tag: 'hf.co/google/gemma-2-9b-it-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 7000, size_mb: 5800, recommended: true, fit: 'green', downloaded: false },
       { tag: 'hf.co/google/gemma-2-9b-it-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 11000, size_mb: 9600, recommended: false, fit: 'yellow', downloaded: false }
     ]
+  },
+  'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF': {
+    id: 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
+    downloads: 145200,
+    likes: 1205,
+    tags: ['text-generation', 'gguf', 'qwen', 'coding'],
+    last_modified: '2026-06-16T10:20:00Z',
+    variants: [
+      { tag: 'hf.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 5200, size_mb: 4700, recommended: true, fit: 'green', downloaded: false },
+      { tag: 'hf.co/Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 8800, size_mb: 7900, recommended: false, fit: 'green', downloaded: false }
+    ]
+  },
+  'bartowski/Phi-3.5-mini-instruct-GGUF': {
+    id: 'bartowski/Phi-3.5-mini-instruct-GGUF',
+    downloads: 54100,
+    likes: 412,
+    tags: ['text-generation', 'gguf', 'phi-3.5', 'lightweight'],
+    last_modified: '2026-06-11T14:50:00Z',
+    variants: [
+      { tag: 'hf.co/bartowski/Phi-3.5-mini-instruct-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 2900, size_mb: 2200, recommended: true, fit: 'green', downloaded: false },
+      { tag: 'hf.co/bartowski/Phi-3.5-mini-instruct-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 4500, size_mb: 3800, recommended: false, fit: 'green', downloaded: false }
+    ]
+  },
+  'bartowski/Mistral-7B-Instruct-v0.3-GGUF': {
+    id: 'bartowski/Mistral-7B-Instruct-v0.3-GGUF',
+    downloads: 189000,
+    likes: 1420,
+    tags: ['text-generation', 'gguf', 'mistral', 'general'],
+    last_modified: '2026-06-08T08:30:00Z',
+    variants: [
+      { tag: 'hf.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 5100, size_mb: 4400, recommended: true, fit: 'green', downloaded: false },
+      { tag: 'hf.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 8500, size_mb: 7600, recommended: false, fit: 'green', downloaded: false }
+    ]
+  },
+  'google/gemma-2-2b-it-GGUF': {
+    id: 'google/gemma-2-2b-it-GGUF',
+    downloads: 110400,
+    likes: 720,
+    tags: ['text-generation', 'gguf', 'gemma', 'edge'],
+    last_modified: '2026-06-12T11:15:00Z',
+    variants: [
+      { tag: 'hf.co/google/gemma-2-2b-it-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 1800, size_mb: 1600, recommended: true, fit: 'green', downloaded: false },
+      { tag: 'hf.co/google/gemma-2-2b-it-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 3000, size_mb: 2700, recommended: false, fit: 'green', downloaded: false }
+    ]
+  },
+  'bartowski/Llama-3.2-11B-Vision-Instruct-GGUF': {
+    id: 'bartowski/Llama-3.2-11B-Vision-Instruct-GGUF',
+    downloads: 67200,
+    likes: 498,
+    tags: ['image-text-to-text', 'gguf', 'llama-3.2', 'vision'],
+    last_modified: '2026-06-17T15:20:00Z',
+    variants: [
+      { tag: 'hf.co/bartowski/Llama-3.2-11B-Vision-Instruct-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 7800, size_mb: 6900, recommended: true, fit: 'green', downloaded: false },
+      { tag: 'hf.co/bartowski/Llama-3.2-11B-Vision-Instruct-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 12500, size_mb: 11400, recommended: false, fit: 'yellow', downloaded: false }
+    ]
+  },
+  'bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF': {
+    id: 'bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF',
+    downloads: 320000,
+    likes: 2140,
+    tags: ['text-generation', 'gguf', 'deepseek', 'reasoning'],
+    last_modified: '2026-06-19T07:45:00Z',
+    variants: [
+      { tag: 'hf.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 6100, size_mb: 4900, recommended: true, fit: 'green', downloaded: false },
+      { tag: 'hf.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 9800, size_mb: 8500, recommended: false, fit: 'green', downloaded: false }
+    ]
   }
 };
+;
 
