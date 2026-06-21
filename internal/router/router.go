@@ -85,7 +85,7 @@ const maxAffinityEntries = 10_000
 // so the router can honour the sticky-session contract for the TTL window.
 type affinityEntry struct {
 	nodeURL  string
-	lastSeen time.Time
+	lastSeen atomic.Int64 // unix nanoseconds
 }
 
 type Router struct {
@@ -121,9 +121,9 @@ type Router struct {
 	nvidiaCache        map[int]GPUStats
 	nvidiaMu           sync.RWMutex
 	nvidiaPollInterval time.Duration
-	// notifyCh is a capacity-1 channel; DecrConn sends a non-blocking signal
-	// whenever a connection is freed so WaitForNode waiters can retry routing.
+	// notifyCh is closed and recreated to broadcast wakes when a connection is freed.
 	notifyCh      chan struct{}
+	notifyMu      sync.Mutex
 	queueDepth    int32 // atomic, current waiters in WaitForNode
 	queueMaxDepth int
 	queueTimeout  time.Duration
@@ -191,7 +191,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		affinityTTL:        affinityTTL,
 		nvidiaCache:        make(map[int]GPUStats),
 		nvidiaPollInterval: nvidiaPollInterval,
-		notifyCh:           make(chan struct{}, 1),
+		notifyCh:           make(chan struct{}),
 		queueMaxDepth:      queueMaxDepth,
 		queueTimeout:       queueTimeout,
 	}
@@ -417,24 +417,25 @@ func (r *Router) pollNvidiaAll() {
 	copy(nodes, r.nodes)
 	r.mu.RUnlock()
 
-	seen := make(map[int]bool)
+	hasLocal := false
 	for _, n := range nodes {
-		if !isLocalNode(n.URL) {
-			continue
+		if isLocalNode(n.URL) {
+			hasLocal = true
+			break
 		}
-		if seen[n.NvidiaIndex] {
-			continue
-		}
-		seen[n.NvidiaIndex] = true
-		gpu, ok := queryGPU(n.NvidiaIndex)
-		r.nvidiaMu.Lock()
-		if ok {
-			r.nvidiaCache[n.NvidiaIndex] = gpu
-		} else {
-			delete(r.nvidiaCache, n.NvidiaIndex)
-		}
-		r.nvidiaMu.Unlock()
 	}
+	if !hasLocal {
+		return
+	}
+
+	gpus, ok := queryAllGPUs()
+	r.nvidiaMu.Lock()
+	if ok {
+		r.nvidiaCache = gpus
+	} else {
+		r.nvidiaCache = make(map[int]GPUStats)
+	}
+	r.nvidiaMu.Unlock()
 }
 
 // discoverAndAddDockerNodes queries the Docker socket and adds any new
@@ -658,7 +659,9 @@ func (r *Router) Route(modelName, sessionID string) (*NodeState, bool) {
 		// Only pin if under the cap — prevents memory-exhaustion DoS from
 		// authenticated callers sending unique session IDs at high rate.
 		if len(r.affinity) < maxAffinityEntries {
-			r.affinity[sessionID] = &affinityEntry{nodeURL: node.URL, lastSeen: time.Now()}
+			entry := &affinityEntry{nodeURL: node.URL}
+			entry.lastSeen.Store(time.Now().UnixNano())
+			r.affinity[sessionID] = entry
 		}
 		r.affinityMu.Unlock()
 	}
@@ -671,17 +674,17 @@ func (r *Router) Route(modelName, sessionID string) (*NodeState, bool) {
 func (r *Router) stickyNode(sessionID string) *NodeState {
 	r.affinityMu.RLock()
 	entry, ok := r.affinity[sessionID]
-	var lastSeen time.Time
+	var lastSeenNano int64
 	var nodeURL string
 	if ok {
 		// Copy fields while holding the lock to avoid a data race: the struct
 		// is heap-allocated and shared; reading fields after RUnlock is unsafe
 		// if sweepAffinity or Route concurrently modifies the same entry.
-		lastSeen = entry.lastSeen
+		lastSeenNano = entry.lastSeen.Load()
 		nodeURL = entry.nodeURL
 	}
 	r.affinityMu.RUnlock()
-	if !ok || time.Since(lastSeen) >= r.affinityTTL {
+	if !ok || time.Since(time.Unix(0, lastSeenNano)) >= r.affinityTTL {
 		return nil
 	}
 
@@ -712,11 +715,11 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 		return nil
 	}
 
-	r.affinityMu.Lock()
+	r.affinityMu.RLock()
 	if e, ok := r.affinity[sessionID]; ok {
-		e.lastSeen = time.Now()
+		e.lastSeen.Store(time.Now().UnixNano())
 	}
-	r.affinityMu.Unlock()
+	r.affinityMu.RUnlock()
 	return sticky
 }
 
@@ -793,10 +796,10 @@ func (r *Router) routeInternal(modelName string) (*NodeState, bool) {
 // sweepAffinity removes expired session-affinity entries. Called periodically
 // from Start to bound memory usage on long-running deployments.
 func (r *Router) sweepAffinity() {
-	now := time.Now()
+	now := time.Now().UnixNano()
 	r.affinityMu.Lock()
 	for id, e := range r.affinity {
-		if now.Sub(e.lastSeen) >= r.affinityTTL {
+		if now - e.lastSeen.Load() >= int64(r.affinityTTL) {
 			delete(r.affinity, id)
 		}
 	}
@@ -865,11 +868,20 @@ func (r *Router) AddNode(n config.NodeConfig) {
 func (r *Router) RemoveNode(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	var urlToRemove string
 	for i, n := range r.nodes {
 		if n.Name == name {
+			urlToRemove = n.URL
 			r.nodes = append(r.nodes[:i], r.nodes[i+1:]...)
 			break
 		}
+	}
+	delete(r.prevHealthy, name)
+	if urlToRemove != "" {
+		delete(r.discoveredURLs, urlToRemove)
+		r.tagsMu.Lock()
+		delete(r.tagsCache, urlToRemove)
+		r.tagsMu.Unlock()
 	}
 }
 
@@ -1096,11 +1108,12 @@ func (r *Router) DecrConn(node *NodeState) {
 			v = 0
 		}
 		metrics.ActiveConnections(node.Name, float64(v))
-		// Wake up any WaitForNode callers — a slot just freed.
-		select {
-		case r.notifyCh <- struct{}{}:
-		default:
-		}
+		// Wake up all WaitForNode callers — a slot just freed.
+		r.notifyMu.Lock()
+		ch := r.notifyCh
+		r.notifyCh = make(chan struct{})
+		close(ch)
+		r.notifyMu.Unlock()
 	}
 }
 
@@ -1145,13 +1158,17 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (
 	defer retryTick.Stop()
 
 	for {
+		r.notifyMu.Lock()
+		ch := r.notifyCh
+		r.notifyMu.Unlock()
+
 		select {
 		case <-ctx.Done():
 			return nil, false
 		case <-timer.C:
 			metrics.QueueTimeout()
 			return nil, false
-		case <-r.notifyCh:
+		case <-ch:
 			if node, warm := r.Route(modelName, sessionID); node != nil {
 				return node, warm
 			}

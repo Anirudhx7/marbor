@@ -392,8 +392,13 @@ func TestSweepAffinityRemovesExpired(t *testing.T) {
 	r := New(config.RoutingConfig{SessionAffinityTTL: "1s"}, []config.NodeConfig{}, nil)
 	// Insert a stale entry.
 	r.affinityMu.Lock()
-	r.affinity["old"] = &affinityEntry{nodeURL: "http://x:11434", lastSeen: time.Now().Add(-2 * time.Second)}
-	r.affinity["fresh"] = &affinityEntry{nodeURL: "http://y:11434", lastSeen: time.Now()}
+	oldEntry := &affinityEntry{nodeURL: "http://x:11434"}
+	oldEntry.lastSeen.Store(time.Now().Add(-2 * time.Second).UnixNano())
+	r.affinity["old"] = oldEntry
+
+	freshEntry := &affinityEntry{nodeURL: "http://y:11434"}
+	freshEntry.lastSeen.Store(time.Now().UnixNano())
+	r.affinity["fresh"] = freshEntry
 	r.affinityMu.Unlock()
 
 	r.sweepAffinity()

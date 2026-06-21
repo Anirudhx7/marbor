@@ -59,32 +59,50 @@ func parseWatts(s string) float64 {
 // queryGPU returns GPU stats from nvidia-smi for the given GPU index.
 // Returns zero-value GPUStats and false if nvidia-smi is unavailable or fails.
 func queryGPU(gpuIndex int) (GPUStats, bool) {
-	out, err := exec.Command("nvidia-smi", "-q", "-x").Output()
-	if err != nil {
+	statsMap, ok := queryAllGPUs()
+	if !ok {
 		return GPUStats{}, false
 	}
-	return parseNvidiaSMIXML(out, gpuIndex)
+	stats, found := statsMap[gpuIndex]
+	return stats, found
 }
 
 func parseNvidiaSMIXML(data []byte, gpuIndex int) (GPUStats, bool) {
+	statsMap, ok := parseAllNvidiaSMIXML(data)
+	if !ok {
+		return GPUStats{}, false
+	}
+	stats, found := statsMap[gpuIndex]
+	return stats, found
+}
+
+// queryAllGPUs returns stats for all GPUs on the host by executing nvidia-smi once.
+func queryAllGPUs() (map[int]GPUStats, bool) {
+	out, err := exec.Command("nvidia-smi", "-q", "-x").Output()
+	if err != nil {
+		return nil, false
+	}
+	return parseAllNvidiaSMIXML(out)
+}
+
+func parseAllNvidiaSMIXML(data []byte) (map[int]GPUStats, bool) {
 	var log nvidiaSMILog
 	if err := xml.Unmarshal(data, &log); err != nil {
-		return GPUStats{}, false
+		return nil, false
 	}
-	if gpuIndex >= len(log.GPUs) {
-		return GPUStats{}, false
+	statsMap := make(map[int]GPUStats)
+	for i, gpu := range log.GPUs {
+		stats := GPUStats{
+			VRAMTotalMB: parseMiB(gpu.FBMemory.Total),
+			VRAMUsedMB:  parseMiB(gpu.FBMemory.Used),
+			TempCelsius: parseCelsius(gpu.Temperature.GPUTemp),
+		}
+		if gpu.PowerReadings.PowerDraw != "" && gpu.PowerReadings.PowerDraw != "N/A" {
+			stats.PowerDrawW = parseWatts(gpu.PowerReadings.PowerDraw)
+		} else {
+			stats.PowerDrawW = parseWatts(gpu.GPUPowerReadings.PowerDraw)
+		}
+		statsMap[i] = stats
 	}
-	gpu := log.GPUs[gpuIndex]
-	stats := GPUStats{
-		VRAMTotalMB: parseMiB(gpu.FBMemory.Total),
-		VRAMUsedMB:  parseMiB(gpu.FBMemory.Used),
-		TempCelsius: parseCelsius(gpu.Temperature.GPUTemp),
-	}
-	// Driver version determines which tag is used for power readings.
-	if gpu.PowerReadings.PowerDraw != "" && gpu.PowerReadings.PowerDraw != "N/A" {
-		stats.PowerDrawW = parseWatts(gpu.PowerReadings.PowerDraw)
-	} else {
-		stats.PowerDrawW = parseWatts(gpu.GPUPowerReadings.PowerDraw)
-	}
-	return stats, true
+	return statsMap, true
 }
