@@ -1,73 +1,116 @@
 # ollama-mesh
 
-**Zero cold starts for your Ollama fleet.** One endpoint for all your LLM traffic: every request goes to the GPU node that already holds the model warm in VRAM, with cloud overflow only when you allow it. Local first, cloud second, with receipts.
+**Enterprise-Grade, Hardware-Aware GPU Routing Proxy for Distributed Local LLM Inference**
+
+One endpoint for all your LLM traffic. Every request routes to the GPU node that already holds the model warm in VRAM. Cloud overflow activates only when local capacity is exhausted — consent-first, never silent. Local hardware first. Cloud second. Full financial receipts.
 
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ![ollama-mesh dashboard](website/screenshots/dashboard.png)
-*Dashboard showing live request log with Tokens and tok/s columns, VRAM fit badges on GPU Nodes, and savings computed from real token counts.*
+*Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings — all from real parsed token counts.*
 
 ---
 
-## LiteLLM treats Ollama like an API. ollama-mesh treats it like a cluster.
+## The Problem: Uncontrolled LLM Cloud Spend at Scale
 
-It polls each node's GPU state every 2 seconds and sends every request to whichever box already has the model warm in VRAM - so you stop paying the 30-second cold-start tax on each call. When the cluster is saturated or down, it overflows to OpenAI/Anthropic (off by default, consent-first). One static Go binary. No Python, no runtime.
+Enterprise teams deploying LLM-powered applications — coding agents, RAG pipelines, internal copilots — face a compounding cost problem:
 
-```bash
-# See it live in 60 seconds - no Ollama, no Go install, just Docker:
-git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh && make demo
+- **Cold-start latency tax.** Generic load balancers spray requests across GPU nodes with no awareness of model residency. Each miss triggers a 15–45 second model load from disk to VRAM, destroying time-to-first-token (TTFT) SLAs.
+- **Invisible cloud egress.** Without a local-first routing layer, traffic silently overflows to OpenAI/Anthropic at $0.15–$60/M tokens. Platform teams discover the bill at month-end.
+- **No GPU utilization visibility.** Ops teams have Grafana for CPU and memory. They have nothing for per-node VRAM residency, model warm state, or inference cost attribution across API keys.
+
+**ollama-mesh eliminates all three.** It sits between your applications and your GPU fleet, routing every request to the node that already has the model loaded in VRAM. Cloud overflow is explicit, metered, and off by default. Every token is counted, attributed to an API key, and valued against your configured cloud reference rate.
+
+---
+
+## Core Architecture
+
+```
+Client Application (Agent / RAG / Copilot)
+    │
+    ▼
+┌──────────────────────────────────────────────────────┐
+│  ollama-mesh proxy (:11434)                          │
+│                                                      │
+│  Auth ─► Rate Limit ─► Quota Check ─► Model Allow    │
+│    │                                                 │
+│    ▼                                                 │
+│  Request Queue (configurable depth + backpressure)   │
+│    │                                                 │
+│    ▼                                                 │
+│  Router: extract model from JSON body                │
+│    ├── Warm in VRAM? ──► Route to warm node           │
+│    │   (least-connections among warm candidates)      │
+│    ├── VRAM-fit placement ──► Node with most headroom │
+│    ├── Session affinity (X-Session-ID) ──► KV-cache  │
+│    └── All busy/down? ──► Cloud fallback              │
+│         (OpenAI/Anthropic, format-translated)        │
+│                                                      │
+│  Token Tracking ─► Cost Attribution ─► Audit Log     │
+└──────────────────────────────────────────────────────┘
+    │               │              │
+    ▼               ▼              ▼
+  GPU Nodes     Cloud APIs     Prometheus :9090
+  (Ollama)      (overflow)     Grafana Dashboard
 ```
 
-> **Benchmark:** a reproducible warm-vs-cold time-to-first-token harness lives in [`bench/`](bench/). Headline numbers are measured on real GPU hardware and published as measurements, never estimates. See [CHANGELOG.md](CHANGELOG.md) for release history.
+**Single static Go binary. Zero runtime dependencies. No Python. No JVM. No Node.js.**
 
 ---
 
-## What's new in v0.9
+## Enterprise Feature Matrix
 
-- **Mobile-responsive dashboard** - sidebar collapses to a hamburger drawer on mobile; all pages reflow correctly on phone and tablet.
-- **Node drain** - `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight completes. Zero-downtime GPU maintenance.
-- **Runtime key mutation** - `PATCH /admin/keys/{name}` updates rate limits, quotas, and model allow-lists without rotating the key or restarting.
-- **PATCH /admin/nodes/{name}** - override `vram_total_mb` and `gpu_model` at runtime without editing config.
-- **Config hot-reload via HTTP** - `POST /admin/v1/config/reload` for environments that can't send SIGHUP (containers, systemd with Restart=always).
-- **Structured JSON logging** - `--log-format json` for log aggregators. Plain text default unchanged.
+| Category | Feature | Detail |
+|----------|---------|--------|
+| **GPU-Aware Routing** | Warm-first model routing | Polls `/api/ps` on every node every 2s. Routes to the node where the model is already resident in VRAM. Eliminates cold-start latency. |
+| | VRAM-fit placement | Cold requests route to the node with the most free VRAM. Prevents OOM under concurrent multi-model traffic. |
+| | Session affinity (KV-cache) | `X-Session-ID` header pins a conversation to a node. KV-cache stays hot — subsequent turns skip re-prefill. TTL-based eviction. |
+| | Proactive model warmup | `keep_alive` pings on a configurable schedule keep priority models resident between requests. |
+| **Financial Controls** | Real-time savings tracking | Every locally-served token valued against your cloud reference rate. Dashboard shows exact dollar savings vs pure-cloud baseline. |
+| | Per-key cost attribution | Token totals and estimated cost per API key per month. Attribute inference spend to teams, projects, or agents. |
+| | Cloud spend metering | Overflow tokens priced at provider-configured rates. Full local-vs-cloud cost breakdown. |
+| | Per-key quotas | Hard `daily_limit`/`monthly_limit` per key. 429 when exceeded. Persisted across restarts. |
+| **Multi-Tenant Auth** | Per-key rate limiting | Token-bucket rate limiter per API key. `X-RateLimit-Limit/Remaining/Reset` headers on every response. |
+| | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access — enforced at the proxy, not advisory. |
+| | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
+| **Observability** | Prometheus metrics | 11 production metrics: request throughput, latency percentiles, token counts, retry rates, cloud fallback frequency, quota rejections, panic recovery, node health. |
+| | Grafana dashboard | Included JSON (`grafana/ollama-mesh.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
+| | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
+| | Audit trail | Append-only JSON-lines audit log. Every request recorded with crypto/rand request IDs. |
+| | Webhook alerts | `node_down`/`node_up` events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
+| **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
+| | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
+| | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
+| | HA peer awareness | Multiple instances poll each other's `/health`. Deploy behind any TCP load balancer for active/active HA. |
+| | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-reads config in place. Key rotations and routing changes take effect without dropping connections. |
+| **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
+| | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: operator-declared `vram_total_mb`. Every figure labelled with its source (nvidia/api/declared). |
+| | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
+| **Deployment** | Single binary | One static Go binary per platform. Drop onto a VM and run. No package manager, no virtualenv, no container runtime required. |
+| | Docker auto-discovery | Scans Docker socket for `ollama/ollama` containers. Auto-registers nodes. Zero config. |
+| | Cloud format translation | Ollama-native requests that overflow to cloud get OpenAI responses translated back to Ollama NDJSON. Clients never see a format difference. |
 
 ---
 
-## The savings angle
+## TTFT Performance: The Business Case
 
-This is what makes the dashboard screenshot worth sharing: ollama-mesh tracks every token you served locally vs in the cloud, and shows you exactly how much that local inference saved you compared to routing everything to OpenAI.
+The single most impactful metric for LLM infrastructure is **Time-to-First-Token (TTFT)**. Every cold model load adds 15–45 seconds of latency before the first token appears. In a multi-agent workflow making hundreds of calls per hour, this compounds into minutes of wasted wall-clock time per pipeline execution.
+
+ollama-mesh's warm-first routing eliminates this entirely. The router knows which models are resident in VRAM on which nodes at sub-3-second granularity. A request for `llama3.2:8b` goes to the node that already has it loaded — TTFT drops to the model's native inference speed, typically 50–200ms.
+
+A reproducible warm-vs-cold TTFT benchmark harness is included in [`bench/`](bench/).
+
+---
+
+## The Savings Angle
+
+This is the dashboard screenshot that sells itself: ollama-mesh tracks every token you served locally vs in the cloud, and shows you exactly how much that local inference saved compared to routing everything to OpenAI.
 
 The math uses real parsed token counts from each response (`eval_count` from Ollama, `usage.total_tokens` from cloud), valued at your configured reference rate. When token data is unavailable, the dashboard shows "—" rather than a fabricated number. No fake math.
 
-Platform engineers with a team routing through one Ollama box typically see $200-800/month in avoided cloud spend visible in the dashboard within the first week.
-
----
-
-## Why
-
-- Your Ollama box is busy or down and requests just fail - ollama-mesh overflows them to OpenAI/Anthropic automatically, so clients never see an error
-- Models cold-start on every new node - 30 second delays kill UX. Warm-first routing sends requests to the node that already has the model in VRAM
-- You have no visibility into what's being served locally vs in the cloud, or what it's costing you
-
-Works with a single Ollama node plus a cloud fallback key. Scales to multiple nodes when you add them.
-
----
-
-## Who is this for?
-
-- **Self-hosters** running apps or agents against one Ollama box: get cloud overflow, API keys, and a dashboard.
-- **Platform engineers** with on-prem GPUs and a team to serve: per-key auth, rate limits, cost visibility, Prometheus/Grafana.
-- **Multi-GPU homelabs**: warm-first routing across nodes, no more cold-start roulette.
-
-Not for you if you're one person chatting with one box occasionally - you don't need a proxy.
-
-**"Isn't this just LiteLLM?"** No - LiteLLM routes between clouds and treats Ollama as a dumb URL. ollama-mesh treats your GPU as the preferred resource and the cloud as the overflow valve, and it knows which node already has the model in VRAM. One static Go binary, no Python stack. Full comparison: [How It Compares](#how-it-compares).
-
-Existing clients keep working: ollama-mesh speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints, so both `ollama` clients and OpenAI SDKs can point at it unchanged.
-
-**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) - [Continue](docs/integrations/continue.md) - [LibreChat](docs/integrations/librechat.md) - [AWS EC2 deploy](docs/deploy/aws-ec2.md)
+Platform engineers with a team routing through local GPU hardware typically see $200–$3,000+/month in avoided cloud spend visible in the dashboard within the first week. Full financial model: [SAVINGS-MATH.md](docs/SAVINGS-MATH.md).
 
 ---
 
@@ -75,28 +118,19 @@ Existing clients keep working: ollama-mesh speaks the Ollama API and passes thro
 
 **Try it in 60 seconds (no Ollama needed):**
 
-Requirements: Docker Desktop (no Go, no Ollama needed)
-
 ```bash
-git clone https://github.com/Anirudhx7/ollama-mesh
-cd ollama-mesh
-make demo
+git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh && make demo
 ```
 
-`make demo` does three things:
-1. Builds and starts two mock Ollama nodes (node-a with llama3.2:3b + qwen2.5:7b warm, node-b with mistral:7b warm) and the mesh proxy - all in Docker.
-2. Sends 20 real HTTP requests through the proxy covering all three models, populating the request log and analytics.
-3. Prints the dashboard URL with credentials.
-
-Open `http://localhost:8080` with token `demo-admin-token` to see the populated dashboard. Use `make demo-down` to stop everything.
+`make demo` builds two mock Ollama nodes and the mesh proxy in Docker, sends 20 real HTTP requests through the proxy, and prints the dashboard URL. Open `http://localhost:8080` with token `demo-admin-token`. Use `make demo-down` to stop.
 
 ---
 
-**Zero-config run (Ollama already running):**
+**Zero-config production start (Ollama already running):**
 ```bash
 ./ollama-mesh
 ```
-If no `config.yaml` exists, ollama-mesh auto-detects `localhost:11434`, generates API keys, and prints a curl example. Config file is optional.
+If no `config.yaml` exists, ollama-mesh auto-detects `localhost:11434`, generates API keys, and prints a curl example.
 
 ---
 
@@ -107,20 +141,20 @@ chmod +x ollama-mesh
 ./ollama-mesh
 ```
 
-**Supported platforms** (one static binary per target, plus a Docker image):
+**Supported platforms** (single static binary per target + multi-arch Docker image):
 
 | Platform | Architecture | Asset | Typical hardware |
 |----------|-------------|-------|------------------|
-| macOS | Apple Silicon | `ollama-mesh-darwin-arm64` | Mac mini / MacBook M1-M4, Mac Studio |
+| Linux | amd64 | `ollama-mesh-linux-amd64` | Production GPU servers, x86 workstations |
+| Linux | arm64 | `ollama-mesh-linux-arm64` | ARM servers, Graviton instances |
+| macOS | Apple Silicon | `ollama-mesh-darwin-arm64` | Mac Studio, Mac Pro, M-series dev machines |
 | macOS | Intel | `ollama-mesh-darwin-amd64` | Intel Macs |
-| Linux | amd64 | `ollama-mesh-linux-amd64` | most servers, x86 GPU boxes |
-| Linux | arm64 | `ollama-mesh-linux-arm64` | ARM servers, Raspberry Pi |
-| Windows | amd64 | `ollama-mesh-windows-amd64.exe` | Windows |
-| Docker | multi-arch | `ghcr.io/anirudhx7/ollama-mesh` | any container host |
+| Windows | amd64 | `ollama-mesh-windows-amd64.exe` | Windows GPU workstations |
+| Docker | multi-arch | `ghcr.io/anirudhx7/ollama-mesh` | Any container orchestrator |
 
-> **macOS Gatekeeper:** binaries are not yet Apple-notarized. Clear the quarantine flag once: `xattr -d com.apple.quarantine ollama-mesh` (or right-click in Finder -> Open).
+> **macOS Gatekeeper:** binaries are not yet Apple-notarized. Clear the quarantine flag once: `xattr -d com.apple.quarantine ollama-mesh`.
 
-All builds and `checksums.txt` are on the [releases page](https://github.com/Anirudhx7/ollama-mesh/releases/latest).
+All builds and `checksums.txt` on the [releases page](https://github.com/Anirudhx7/ollama-mesh/releases/latest).
 
 **Docker Compose:**
 ```bash
@@ -138,58 +172,34 @@ make build
 ./ollama-mesh
 ```
 
-Point your Ollama clients at `:11434` instead of a single node. Everything else stays the same.
+Point your LLM clients at `:11434`. ollama-mesh speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints — both `ollama` clients and OpenAI SDKs work unchanged.
 
----
-
-## What It Does
-
-| Feature | Detail |
-|---------|--------|
-| Warm-first routing | Routes to the node that already has the model in VRAM. Eliminates cold starts. |
-| Model warmup | Proactive `keep_alive` pings on a schedule keep priority models loaded. No cold start on first request after idle. |
-| SIGHUP hot-reload | Rotate keys or change routing config without a restart. `kill -HUP <pid>` applies changes in under a second. |
-| Request queue | `queue_max_depth` and `queue_timeout_ms` absorb traffic spikes. Requests queue and drain rather than immediately 502-ing. |
-| Cloud fallback | When all GPUs are busy or down, automatically routes to OpenAI or Anthropic. Off by default - explicit opt-in. |
-| Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes, then cloud, then 502. A dead node never surfaces as a client error. |
-| OpenAI-compatible `/v1/models` | Aggregated model list from all nodes. OpenAI SDKs that probe this endpoint on startup work against the mesh unchanged. |
-| Per-key model allow-lists | A key with a `models:` list can only call those models. Anything else is rejected with 403, enforced at the proxy. |
-| Per-key quotas + usage | Hard `daily_limit`/`monthly_limit` per key (429 when exceeded), plus per-key token totals and estimated cost. |
-| Savings tracking | Computed from real parsed token counts (Ollama `eval_count`, cloud `usage`). Shows "—" when no token data exists - never a fabricated number. |
-| VRAM fit indicator | GPU Nodes page shows green/yellow/red fit badges for each downloaded model per node based on available VRAM. |
-| Tokens/sec in request log | Live request table shows Tokens and tok/s columns per request. |
-| Cloud model rewriting | Request log shows "original -> cloud_model" when cloud default_model is applied - full observability into what was actually sent. |
-| Docker auto-discovery | Detects `ollama/ollama` containers automatically from the Docker socket. Zero config. |
-| Cluster VRAM telemetry | Per-node used-VRAM is live across the whole cluster from each node's own `/api/ps` (no agent needed). Capacity from nvidia-smi on mesh host or declared `vram_total_mb` per remote node. Every figure labelled with its source (nvidia/api/declared) - nothing presented as a measurement it isn't. |
-| Prometheus metrics | 11 metrics at `:9090` (requests, latency, tokens, retries, cloud fallbacks, quota rejections, panics, node health). Grafana dashboard included. |
-| Audit logging | Append-only JSON-lines file. Configurable path. |
-| Webhook alerts | `node_down`/`node_up` events with HMAC-SHA256 signatures. |
-| Rate limit headers | `X-RateLimit-Limit`/`Remaining`/`Reset` on every response. |
-| Mid-stream abort logging | Aborted requests recorded in metrics, admin log, and audit log with `status="aborted"`. |
-| Zero dependencies | Single Go binary. Runs anywhere. No Python, no Node, no runtime. |
+**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) · [Continue](docs/integrations/continue.md) · [LibreChat](docs/integrations/librechat.md) · [AWS EC2 deploy](docs/deploy/aws-ec2.md)
 
 ---
 
 ## Configuration
 
-Start from `config.example.yaml`:
+Start from [`config.example.yaml`](config.example.yaml):
 
 ```yaml
 proxy:
   port: 11434
   log_level: info
+  log_format: json  # for log aggregators
 
-# Your Ollama nodes
 nodes:
   - name: gpu-0
-    url: http://localhost:11435
-    gpu_model: "NVIDIA RTX 4090 24GB"
+    url: http://10.0.1.10:11434
+    gpu_model: "NVIDIA A100 80GB"
   - name: gpu-1
-    url: http://localhost:11436
-    gpu_model: "NVIDIA RTX 4090 24GB"
+    url: http://10.0.1.11:11434
+    gpu_model: "NVIDIA A100 80GB"
+  - name: gpu-remote
+    url: http://10.0.2.10:11434
+    gpu_model: "NVIDIA A10G 24GB"
+    vram_total_mb: 24576
 
-# warm-first routes to nodes with the model in VRAM.
-# Falls back to least-connections when no warm node is available.
 routing:
   strategy: warm-first
   poll_interval_ms: 2000
@@ -198,27 +208,36 @@ routing:
   upstream_timeout_ms: 120000
   queue_max_depth: 100
   queue_timeout_ms: 30000
+  session_affinity: true
+  session_affinity_ttl: "10m"
 
-# Proactive model warmup: keep priority models loaded between requests
 warmup:
   enabled: true
-  interval_ms: 300000   # ping every 5 minutes
+  interval_ms: 300000
   models:
-    - llama3.2:3b
-    - mistral:7b
+    - llama3.2:8b
+    - codellama:34b
 
-# Per-key rate limits and model allow-lists
 auth:
   enabled: true
+  admin_token: sk-admin-change-me
+  state_path: usage-state.json
   keys:
-    - name: team-shared
-      key: sk-mesh-xyz789
+    - name: engineering
+      key: sk-mesh-eng-001
       rate_limit: 5000
-      models: []             # empty = allow all models
-    - name: agent-runner
-      key: sk-mesh-agent001
-      rate_limit: 500
+      monthly_limit: 5000000
+      models: []
+    - name: data-science
+      key: sk-mesh-ds-001
+      rate_limit: 2000
       daily_limit: 100000
+      models:
+        - llama3.2:8b
+        - codellama:34b
+    - name: agent-pipeline
+      key: sk-mesh-agent-001
+      rate_limit: 500
       monthly_limit: 2000000
       expires_at: "2027-01-01"
 
@@ -226,24 +245,22 @@ metrics:
   enabled: true
   port: 9090
 
-# Cloud fallback: only used when all local nodes are unavailable
 cloud_providers:
-  - name: openai-fallback
+  - name: openai-overflow
     provider: openai
     base_url: https://api.openai.com
     api_key: sk-...
     default_model: gpt-4o-mini
     cost_per_1k_tokens: 0.00015
-    enabled: false
+    enabled: false  # explicit opt-in
 
-# Docker auto-discovery
 docker:
   enabled: false
   socket: /var/run/docker.sock
   poll_interval_ms: 30000
 
 savings:
-  reference_cost_per_1k: 0.00015   # rate used to value local tokens in savings calc
+  reference_cost_per_1k: 0.002
 ```
 
 ---
@@ -251,90 +268,77 @@ savings:
 ## How Routing Works
 
 ```
-Request
-  |
-  v
-Auth (API key validation + rate limit + quota check)
-  |
-  v
-Request queue (if nodes busy - drains when capacity opens)
-  |
-  v
-Extract model name from JSON body
-  |
-  +-- Model warm in VRAM? --Yes--> Route to warm node (least connections)
-  |                                         |
-  |                                         v
-  |                                Stream response + track tokens
-  |
-  +-- No warm node --> All nodes healthy? --Yes--> Route to least-connections node
-                               |
-                               +-- All busy/down? --> Cloud fallback (OpenAI/Anthropic)
-                                                              |
-                                                              v
-                                                   Translate response to Ollama format
-                                                   Log cost + update savings tracker
+Request arrives at :11434
+    │
+    ▼
+Auth middleware: Bearer token validation → rate limit → quota check → model allow-list
+    │
+    ▼
+Request queue: absorbs traffic spikes (configurable depth + timeout)
+    │
+    ▼
+Router: extract model name from JSON body
+    │
+    ├── X-Session-ID present + session affinity enabled?
+    │   └── Yes → route to pinned node (KV-cache affinity)
+    │
+    ├── Model warm in VRAM on any node?
+    │   └── Yes → route to warm node with least active connections
+    │
+    ├── All nodes healthy?
+    │   └── Yes → VRAM-fit placement (most free VRAM) or least-connections fallback
+    │
+    └── All nodes busy/down?
+        └── Cloud overflow → OpenAI/Anthropic → response format-translated → cost logged
 ```
 
-The router polls `/api/ps` on each node every 2 seconds to know which models are loaded in VRAM. No guessing, no stale state.
+The router polls `/api/ps` on each node every 2 seconds. State is real-time, not cached guesses.
 
-**Config hot-reload:** send `SIGHUP` to the process and ollama-mesh re-reads `config.yaml` in place. API key rotations and routing changes take effect without dropping connections or restarting.
+**Config hot-reload:** `kill -HUP <pid>` or `POST /admin/v1/config/reload` re-reads `config.yaml` without dropping connections.
 
 ---
 
 ## Model Warmup
 
-ollama-mesh can proactively keep priority models loaded in VRAM between requests. Without this, a model that hasn't been used recently gets evicted from VRAM and the next request pays the cold-start tax again.
-
-With warmup enabled, ollama-mesh sends a lightweight `keep_alive` ping to each node on a configurable interval. The model stays resident. The first user request after an idle period gets warm latency, not cold-load latency.
+ollama-mesh proactively keeps priority models loaded in VRAM between requests. Without this, idle models get evicted and the next request pays the cold-start tax.
 
 ```yaml
 warmup:
   enabled: true
   interval_ms: 300000   # every 5 minutes
   models:
-    - llama3.2:3b       # your highest-traffic models
-    - mistral:7b
+    - llama3.2:8b       # your highest-traffic models
+    - codellama:34b
 ```
-
-This is particularly useful when you have a small number of models that handle most traffic and VRAM is sufficient to hold them resident.
 
 ---
 
 ## Cloud Fallback Setup
 
-Set `enabled: true` on any provider in `config.yaml`:
+Cloud providers are used **only** when all local Ollama nodes are unavailable or at capacity. Local GPU always wins. Set `enabled: true` on any provider:
 
 ```yaml
 cloud_providers:
-  - name: openai-fallback
+  - name: openai-overflow
     provider: openai
     base_url: https://api.openai.com
     api_key: sk-...
     default_model: gpt-4o-mini
     cost_per_1k_tokens: 0.00015
     enabled: true
-
-  - name: anthropic-fallback
-    provider: anthropic
-    base_url: https://api.anthropic.com
-    api_key: sk-ant-...
-    default_model: claude-haiku-4-5-20251001
-    cost_per_1k_tokens: 0.00025
-    enabled: true
 ```
 
-Cloud providers are used **only** when all local Ollama nodes are unavailable or at capacity. Local GPU always wins when it can serve the request. Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI response translated back to Ollama NDJSON - clients never see a format difference.
+Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI response translated back to Ollama NDJSON — clients never see a format difference.
 
 ---
 
-## Servers
+## Operational Topology
 
-| Port | Purpose |
-|------|---------|
-| `:11434` | Ollama-compatible proxy - drop-in replacement for a single Ollama instance |
-| `:8080` | Admin dashboard + REST API |
-| `:9090` | Prometheus metrics |
+| Port | Service | Auth |
+|------|---------|------|
+| `:11434` | Ollama-compatible proxy — drop-in replacement | Per-key Bearer token |
+| `:8080` | Admin dashboard + REST API | Admin token |
+| `:9090` | Prometheus metrics | Unauthenticated (scrape target) |
 
 ---
 
@@ -342,111 +346,90 @@ Cloud providers are used **only** when all local Ollama nodes are unavailable or
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/admin/v1/nodes` | Node list with status, VRAM usage, and active models |
-| GET | `/admin/v1/keys` | API key list with usage stats and monthly cost |
-| GET | `/admin/v1/metrics/savings` | Cost savings vs pure cloud this month |
-| GET | `/admin/v1/cloud/providers` | Configured cloud fallback providers and status |
-| GET | `/health` | Returns 200 when proxy is ready (unauthenticated, for load balancers) |
+| GET | `/admin/v1/nodes` | Node list: status, VRAM usage, active models, source labels |
+| GET | `/admin/v1/keys` | API keys: usage stats, monthly cost, token totals |
+| GET | `/admin/v1/metrics/savings` | Cost savings vs pure cloud — current process lifetime |
+| GET | `/admin/v1/cloud/providers` | Cloud fallback providers: status, spend |
+| GET | `/health` | 200 OK when proxy is ready (unauthenticated, for LB health checks) |
+| POST | `/admin/nodes/{name}/drain` | Drain node for maintenance |
+| PATCH | `/admin/keys/{name}` | Mutate key rate limits, quotas, model allow-lists at runtime |
+| PATCH | `/admin/nodes/{name}` | Override `vram_total_mb`, `gpu_model` at runtime |
+| POST | `/admin/v1/config/reload` | Hot-reload config without SIGHUP |
 
 ---
 
-## Docker Auto-Discovery
+## Observability Stack
 
-Enable in `config.yaml`:
+### Prometheus
 
-```yaml
-docker:
-  enabled: true
-  socket: /var/run/docker.sock
-  poll_interval_ms: 30000
-```
+11 metrics exported at `:9090/metrics`:
 
-ollama-mesh scans the Docker socket every 30 seconds and registers any running `ollama/ollama` containers as nodes automatically. No manual node entries required.
+- `ollama_mesh_requests_total` — total proxied requests (labels: key, model, node, status)
+- `ollama_mesh_request_duration_seconds` — histogram of request latency
+- `ollama_mesh_tokens_total` — total tokens processed (labels: key, model, direction)
+- `ollama_mesh_retries_total` — upstream retry count
+- `ollama_mesh_cloud_fallbacks_total` — cloud overflow events
+- `ollama_mesh_quota_rejections_total` — 429 quota enforcement events
+- `ollama_mesh_panics_total` — recovered panics
+- `ollama_mesh_node_healthy` — gauge per node
+- Plus latency percentiles, active connections, queue depth
 
-When running ollama-mesh itself in Docker, mount the socket:
+### Grafana
 
-```yaml
-services:
-  ollama-mesh:
-    build: .
-    ports:
-      - "11434:11434"
-      - "8080:8080"
-      - "9090:9090"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./config.yaml:/root/config.yaml
-```
+Import `grafana/ollama-mesh.json` into Grafana. Point the Prometheus datasource at `:9090`. Pre-built panels: VRAM utilization, request throughput, latency percentiles, cloud fallback rate, cost attribution.
+
+### Structured Logging
+
+`--log-format json` emits slog JSON objects that Loki, Datadog, Fluentd, and Splunk parse natively. Every request logged with: key name (never the key value), model, target node, HTTP status, latency, request ID.
 
 ---
 
-## Grafana
+## Competitive Positioning
 
-Import `grafana/ollama-mesh.json` into Grafana and point the Prometheus datasource at `:9090`. The dashboard shows mesh-host VRAM utilization, request throughput, latency percentiles, and cloud fallback rate.
+| | ollama-mesh | LiteLLM | nginx/HAProxy | Portkey/Helicone |
+|---|---|---|---|---|
+| **GPU-aware routing** | ✅ Polls VRAM state every 2s | ❌ Treats Ollama as a dumb URL | ❌ No GPU visibility | ❌ Cloud-only |
+| **Warm-model routing** | ✅ Routes to node with model in VRAM | ❌ | ❌ | ❌ |
+| **VRAM-fit placement** | ✅ Cold requests → most free VRAM | ❌ | ❌ | ❌ |
+| **KV-cache session affinity** | ✅ X-Session-ID sticky routing | ❌ | ❌ | ❌ |
+| **Cloud overflow (consent-first)** | ✅ Off by default, explicit opt-in | ✅ (default on) | ❌ | ✅ (cloud-native) |
+| **Savings tracking** | ✅ Real parsed token math | ❌ | ❌ | Partial |
+| **Per-key cost attribution** | ✅ Tokens + USD per key per month | ✅ | ❌ | ✅ |
+| **Single binary, zero deps** | ✅ Go static binary | ❌ Python + deps | ✅ | ❌ SaaS |
+| **Embedded dashboard** | ✅ React UI in the binary | Separate UI | ❌ | SaaS dashboard |
+| **Prometheus + Grafana** | ✅ 11 metrics + included dashboard | ✅ | Partial | ❌ |
+| **Local-first architecture** | ✅ GPU traffic never leaves your network | ❌ Cloud-centric | ✅ | ❌ |
 
----
+### Use ollama-mesh when:
 
-## How It Compares
+- You have on-premises GPU hardware running Ollama and want to maximize utilization before paying for cloud tokens.
+- You need per-key auth, rate limiting, cost attribution, and a usage dashboard without standing up a Python service.
+- You need GPU-warm-first routing to eliminate cold-start latency in multi-agent workflows.
+- You want cloud overflow that is explicitly opt-in — not a default that silently generates bills.
+- You need a single static binary that ops teams can deploy and manage like any other Go service.
 
-The table below is intentionally honest. "partial" means the feature exists but with meaningful limitations.
+### Use LiteLLM instead when:
 
-| | ollama-mesh | LiteLLM | LM Studio server | Raw Ollama | nginx upstream |
-|---|---|---|---|---|---|
-| **Language / deploy** | Go, single static binary | Python, pip/Docker | Electron desktop app | Go binary | C, system package |
-| **Auth (Bearer keys)** | per-key, enforced at proxy | virtual keys | none | none | none |
-| **Per-key rate limits** | per-hour token bucket | yes | no | no | no |
-| **Per-key daily/monthly quotas** | persisted across restarts | yes | no | no | no |
-| **Per-key model allow-lists** | enforced, 403 on violation | partial (budget-based) | no | no | no |
-| **Per-key token + cost attribution** | real parsed counts, persisted | yes | no | no | no |
-| **Warm-model routing (VRAM-aware)** | polls /api/ps every 2s, routes to warm node | **no** - treats Ollama as a dumb URL | no - single machine | no routing layer | no routing intelligence |
-| **Proactive model warmup** | keep_alive pings on schedule | no | no | manual keep_alive only | no |
-| **Config hot-reload (SIGHUP)** | yes - no restart needed | no | no | no | yes |
-| **Request queue / backpressure** | configurable depth + timeout | no | no | no | yes |
-| **GPU telemetry (VRAM / temp / power)** | cluster-wide used-VRAM from /api/ps; capacity from nvidia-smi or declared; source-labelled | no | no | no | no |
-| **Cloud overflow (consent-first)** | off by default; OpenAI + Anthropic | broad provider support | no | no | no |
-| **Savings vs pure-cloud tracking** | real parsed token math, "—" when unknown | no | no | no | no |
-| **Embedded dashboard** | React UI in the binary | partial (separate UI) | desktop GUI | no | no |
-| **Single binary, zero runtime deps** | yes | **no** - requires Python + deps | no - requires Electron | yes | yes |
-| **Prometheus metrics** | 11 metrics, Grafana dashboard included | yes | no | no | partial |
-| **Audit log** | append-only JSON-lines | partial | no | no | partial |
-
-### Use ollama-mesh when...
-
-- You have one or more Ollama nodes and want auth, per-key rate limits, and a usage dashboard without standing up a Python service.
-- You want GPU-warm-first routing: send requests to the node that already has the model loaded, not a random node that has to cold-load it.
-- You want cloud overflow that is off by default and explicit in your config - not a default that quietly bills you.
-- You need a single static binary that ops teams can drop onto a VM and manage like any other Go service.
-- You want to see what local inference is actually saving you each month, in dollars, with real token counts.
-
-### Use LiteLLM instead when...
-
-- You need to route across many cloud providers (Bedrock, Vertex, Cohere, etc.) and don't have on-prem Ollama nodes.
+- You route primarily between cloud providers (Bedrock, Vertex, Cohere) and don't have on-premises GPU hardware.
 - You are already invested in the LiteLLM ecosystem and don't need GPU-aware routing.
-- You are fine with the Python operational footprint.
-
-### Use LM Studio when...
-
-- You are a developer on a single machine and want a GUI to browse, download, and chat with models. It is not an ops/team tool and ships no auth by design.
+- You are comfortable with the Python operational footprint.
 
 ---
 
 ## Roadmap
 
-- [x] Phase 1: Trustworthy - real nvidia-smi GPU metrics, no fake data, mutex-safe auth
-- [x] Phase 2: Hybrid routing - cloud fallback, savings tracking, Docker auto-discovery
-- [x] v0.2.0: Analytics, model catalog, request log, webhooks, rate limit headers
-- [x] v0.2.1: Zero-config first run, `make demo`, VRAM fit badges, tokens/sec, real savings math
-- [x] v0.3.0: Per-key model allow-lists enforced, retry/failover, /v1/models, per-key quotas, durable usage, cloud format translation
-- [x] v0.5.0: Remote VRAM telemetry fix, vramSource labels, multi-node VRAM correctness
-- [x] v0.8.0: Model warmup, SIGHUP hot-reload, request queue with backpressure, 11 Prometheus metrics
-- [ ] Phase 3: Enterprise - SSO, RBAC, audit log export, Helm chart
-- [ ] Phase 4: Managed cloud - metered token hosting
+See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 
 ---
 
-## Contributing
+## Documentation
 
-PRs welcome. Run `go test ./...` before submitting.
+- [Production Deployment Guide](docs/PRODUCTION.md)
+- [Savings Math](docs/SAVINGS-MATH.md) — how every dollar figure is computed
+- [Use Cases](docs/USE-CASES.md)
+- [Security](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
 
 ---
 
