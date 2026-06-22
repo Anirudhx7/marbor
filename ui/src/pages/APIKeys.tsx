@@ -205,8 +205,8 @@ export function APIKeys() {
       try {
         await revokeKey(keyToRevoke.name);
         loadKeys();
-      } catch (e) {
-        console.error('Failed to revoke key');
+      } catch {
+        // revoke failed; keys list unchanged
       }
     } else {
       setKeys(keys.map(k => 

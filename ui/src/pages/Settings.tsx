@@ -3,7 +3,7 @@ import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, C
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, getCloudProviders, reloadConfig } from '../lib/api';
+import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig } from '../lib/api';
 import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
@@ -27,7 +27,7 @@ export function SettingsPage() {
       return;
     }
     setCloudLoading(true);
-    Promise.all([fetchSettings(), getCloudProviders()])
+    Promise.all([fetchSettings(), fetchCloudProviders()])
       .then(([settingsData, providersData]) => {
         setSettings({
           proxyPort: settingsData.proxy?.port || 11434,

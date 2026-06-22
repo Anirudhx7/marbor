@@ -75,7 +75,7 @@ Client Application (Agent / RAG / Copilot)
 | **Multi-Tenant Auth** | Per-key rate limiting | Token-bucket rate limiter per API key. `X-RateLimit-Limit/Remaining/Reset` headers on every response. |
 | | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access — enforced at the proxy, not advisory. |
 | | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
-| **Observability** | Prometheus metrics | 11 production metrics: request throughput, latency percentiles, token counts, retry rates, cloud fallback frequency, quota rejections, panic recovery, node health. |
+| **Observability** | Prometheus metrics | 14 production metrics: request throughput, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, quota rejections, request queue depth/timeouts, warmup pings, panic recovery, node health. |
 | | Grafana dashboard | Included JSON (`grafana/ollama-mesh.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
 | | Audit trail | Append-only JSON-lines audit log. Every request recorded with crypto/rand request IDs. |
@@ -83,7 +83,7 @@ Client Application (Agent / RAG / Copilot)
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
-| | HA peer awareness | Multiple instances poll each other's `/health`. Deploy behind any TCP load balancer for active/active HA. |
+| | HA peer health monitoring | Multiple instances poll each other's `/health` and expose peer reachability at `/admin/ha/peers`. Autonomous failover is delegated to an external TCP load balancer (HAProxy/nginx) in front of all instances. |
 | | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-reads config in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: operator-declared `vram_total_mb`. Every figure labelled with its source (nvidia/api/declared). |
@@ -116,7 +116,7 @@ Platform engineers with a team routing through local GPU hardware typically see 
 
 ## Quick Start
 
-**Try it in 60 seconds (no Ollama needed):**
+**Try it with no Ollama needed:**
 
 ```bash
 git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh && make demo
@@ -362,17 +362,22 @@ Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI respons
 
 ### Prometheus
 
-11 metrics exported at `:9090/metrics`:
+14 metrics exported at `:9090/metrics`:
 
-- `ollama_mesh_requests_total` — total proxied requests (labels: key, model, node, status)
-- `ollama_mesh_request_duration_seconds` — histogram of request latency
-- `ollama_mesh_tokens_total` — total tokens processed (labels: key, model, direction)
-- `ollama_mesh_retries_total` — upstream retry count
-- `ollama_mesh_cloud_fallbacks_total` — cloud overflow events
-- `ollama_mesh_quota_rejections_total` — 429 quota enforcement events
-- `ollama_mesh_panics_total` — recovered panics
-- `ollama_mesh_node_healthy` — gauge per node
-- Plus latency percentiles, active connections, queue depth
+- `ollamamesh_requests_total` — total proxied requests (labels: key, model, node, status)
+- `ollamamesh_request_duration_seconds` — histogram of request latency
+- `ollamamesh_active_connections` — active connections per node
+- `ollamamesh_node_healthy` — health gauge per node (1=healthy, 0=unhealthy)
+- `ollamamesh_cache_hits_total` — warm-model cache hits
+- `ollamamesh_cache_misses_total` — cold-start cache misses
+- `ollamamesh_tokens_total` — tokens processed (labels: key, node)
+- `ollamamesh_retries_total` — upstream failover retries per node
+- `ollamamesh_cloud_fallbacks_total` — cloud overflow events per provider
+- `ollamamesh_quota_rejections_total` — 429 quota enforcement events (labels: key, period)
+- `ollamamesh_panics_total` — recovered handler panics
+- `ollamamesh_queue_depth` — current request queue depth
+- `ollamamesh_queue_timeouts_total` — queued requests that timed out before getting a node
+- `ollamamesh_warmup_pings_total` — proactive keepalive pings per model/node
 
 ### Grafana
 
@@ -397,7 +402,7 @@ Import `grafana/ollama-mesh.json` into Grafana. Point the Prometheus datasource 
 | **Per-key cost attribution** | ✅ Tokens + USD per key per month | ✅ | ❌ | ✅ |
 | **Single binary, zero deps** | ✅ Go static binary | ❌ Python + deps | ✅ | ❌ SaaS |
 | **Embedded dashboard** | ✅ React UI in the binary | Separate UI | ❌ | SaaS dashboard |
-| **Prometheus + Grafana** | ✅ 11 metrics + included dashboard | ✅ | Partial | ❌ |
+| **Prometheus + Grafana** | ✅ 14 metrics + included dashboard | ✅ | Partial | ❌ |
 | **Local-first architecture** | ✅ GPU traffic never leaves your network | ❌ Cloud-centric | ✅ | ❌ |
 
 ### Use ollama-mesh when:

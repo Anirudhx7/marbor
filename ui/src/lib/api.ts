@@ -50,16 +50,6 @@ export async function fetchSummary() {
   };
 }
 
-export async function createKey(data: any): Promise<{ key: string }> {
-  const res = await fetch(`${BASE}/keys`, {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to create key');
-  return res.json();
-}
-
 export async function revokeKey(name: string) {
   const res = await fetch(`${BASE}/keys/${name}`, {
     method: 'DELETE',
@@ -127,40 +117,6 @@ export async function fetchRoutingRules() {
   return res.json();
 }
 
-export async function addRoutingRule(data: any) {
-  const res = await fetch(`${BASE}/routing/rules`, {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to add routing rule');
-}
-
-export async function removeRoutingRule(id: string) {
-  const res = await fetch(`${BASE}/routing/rules/${id}`, {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to remove routing rule');
-}
-
-export async function toggleRoutingRule(id: string) {
-  const res = await fetch(`${BASE}/routing/rules/${id}/toggle`, {
-    method: 'PUT',
-    headers: authHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to toggle routing rule');
-}
-
-export async function setRoutingStrategy(strategy: string) {
-  const res = await fetch(`${BASE}/routing/strategy`, {
-    method: 'PUT',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ strategy }),
-  });
-  if (!res.ok) throw new Error('Failed to set routing strategy');
-}
-
 export async function fetchRoutingStrategy(): Promise<string> {
   const res = await fetch(`${BASE}/routing/strategy`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch routing strategy');
@@ -174,13 +130,13 @@ export async function fetchSettings() {
   return res.json();
 }
 
-export async function getSavings(): Promise<Savings> {
+export async function fetchSavings(): Promise<Savings> {
   const res = await fetch(`${BASE}/metrics/savings`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch savings');
   return res.json();
 }
 
-export async function getCloudProviders(): Promise<CloudProvider[]> {
+export async function fetchCloudProviders(): Promise<CloudProvider[]> {
   const res = await fetch(`${BASE}/cloud/providers`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch cloud providers');
   return res.json();
@@ -201,7 +157,7 @@ export async function fetchModels(): Promise<ModelCatalog> {
   return res.json();
 }
 
-export async function getRequests(): Promise<RequestEntry[]> {
+export async function fetchRequests(): Promise<RequestEntry[]> {
   const res = await fetch(`${BASE}/requests`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch requests');
   return res.json();
@@ -216,7 +172,7 @@ export async function updateSettings(data: any) {
   if (!res.ok) throw new Error('Failed to update settings');
 }
 
-export async function getAnalytics(): Promise<Analytics> {
+export async function fetchAnalytics(): Promise<Analytics> {
   const res = await fetch(`${BASE}/analytics`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch analytics');
   return res.json();

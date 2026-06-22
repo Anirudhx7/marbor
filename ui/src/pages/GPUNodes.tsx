@@ -302,8 +302,8 @@ export function GPUNodes() {
     try {
       await addNode(nodeData);
       await loadNodes();
-    } catch (e) {
-      console.error('Failed to add node');
+    } catch {
+      // add failed; node list unchanged
     }
 
     setIsAddModalOpen(false);
@@ -315,8 +315,8 @@ export function GPUNodes() {
     try {
       await removeNode(name);
       await loadNodes();
-    } catch (e) {
-      console.error('Failed to remove node');
+    } catch {
+      // remove failed; node list unchanged
     }
   };
 
@@ -325,8 +325,8 @@ export function GPUNodes() {
     try {
       await drainNode(name);
       await loadNodes();
-    } catch (e) {
-      console.error('Failed to drain node');
+    } catch {
+      // drain failed; node list unchanged
     }
   };
 
@@ -335,8 +335,8 @@ export function GPUNodes() {
     try {
       await undrainNode(name);
       await loadNodes();
-    } catch (e) {
-      console.error('Failed to undrain node');
+    } catch {
+      // undrain failed; node list unchanged
     }
   };
 

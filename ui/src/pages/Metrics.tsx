@@ -16,7 +16,7 @@ import {
   Legend,
 } from 'recharts';
 import { mockAnalytics } from '../lib/mockData';
-import { getAnalytics } from '../lib/api';
+import { fetchAnalytics } from '../lib/api';
 import type { Analytics, HourlyBucket, ModelStat } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
@@ -133,7 +133,7 @@ export function Metrics() {
       }
       setLoading(true);
       setError(null);
-      getAnalytics()
+      fetchAnalytics()
         .then(data => {
           setAnalytics(data);
           setLoading(false);

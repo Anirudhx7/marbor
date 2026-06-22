@@ -208,8 +208,7 @@ func (m *mockOllamaServer) handleGenerate(w http.ResponseWriter, r *http.Request
 func buildDemoConfig(node1URL, node2URL string, apiKey, adminToken string) config.Config {
 	return config.Config{
 		Proxy: config.ProxyConfig{
-			Port:     11437,
-			LogLevel: "info",
+			Port: 11437,
 		},
 		Auth: config.AuthConfig{
 			Enabled: true,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { RequestEntry } from '../types';
-import { getRequests } from '../lib/api';
+import { fetchRequests } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockRequests } from '../lib/mockData';
 
@@ -53,7 +53,7 @@ export function Requests() {
 
     async function poll() {
       try {
-        const data = await getRequests();
+        const data = await fetchRequests();
         if (!cancelled) {
           setEntries(data);
           setFetchError(null);

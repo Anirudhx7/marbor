@@ -89,8 +89,7 @@ type DockerConfig struct {
 }
 
 type ProxyConfig struct {
-	Port     int    `yaml:"port"`
-	LogLevel string `yaml:"log_level"`
+	Port int `yaml:"port"`
 	// LogFormat controls the format of system (non-access) log lines.
 	// "text" emits the default Go log prefix lines; "json" emits slog JSON
 	// objects that log aggregators (Loki, Datadog, Fluentd) can parse natively.
@@ -260,9 +259,6 @@ func SaveConfig(path string, cfg Config) error {
 func (c *Config) Validate() error {
 	if c.Proxy.Port == 0 {
 		c.Proxy.Port = 11434
-	}
-	if c.Proxy.LogLevel == "" {
-		c.Proxy.LogLevel = "info"
 	}
 	if c.Proxy.LogFormat == "" {
 		c.Proxy.LogFormat = "text"

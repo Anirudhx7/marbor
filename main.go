@@ -164,6 +164,7 @@ func main() {
 		log.Printf("Docker auto-discovery enabled (socket: %s)", cfg.Docker.Socket)
 	}
 	r.SetWarmupConfig(cfg.Warmup)
+	r.SetWebhookConfig(cfg.Webhook)
 	if cfg.Warmup.Enabled && len(cfg.Warmup.Models) > 0 {
 		log.Printf("Model warmup enabled: %d model(s), interval %dms, keep_alive %s",
 			len(cfg.Warmup.Models), cfg.Warmup.IntervalMs, cfg.Warmup.KeepAlive)

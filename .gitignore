@@ -42,3 +42,6 @@ nul
 
 # Claude Code local working dirs
 .claude/
+
+# Codex local working dirs
+.codex/

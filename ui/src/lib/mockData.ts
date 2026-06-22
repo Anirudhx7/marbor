@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, RoutingRule, MetricData, TokenUsageData, RequestDistributionData, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse } from '../types';
+import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse } from '../types';
 import type { SystemInfo } from './api';
 
 const GB = 1024;
@@ -158,102 +158,6 @@ export const mockAPIKeys: APIKey[] = [
     allowedModels: ['all'],
     expiresAt: '2025-01-01',
   },
-];
-
-export const mockRoutingRules: RoutingRule[] = [
-  {
-    id: 'rule-1',
-    priority: 1,
-    condition: 'model =~ "70b"',
-    targetNode: 'gpu-node-01',
-    strategy: 'warm-first',
-    enabled: true,
-  },
-  {
-    id: 'rule-2',
-    priority: 2,
-    condition: 'model =~ "mixtral"',
-    targetNode: 'gpu-node-01',
-    strategy: 'warm-first',
-    enabled: true,
-  },
-  {
-    id: 'rule-3',
-    priority: 3,
-    condition: 'model =~ "8b|7b|9b"',
-    targetNode: 'gpu-node-02',
-    strategy: 'least-conn',
-    enabled: true,
-  },
-  {
-    id: 'rule-4',
-    priority: 4,
-    condition: 'model =~ "3b"',
-    targetNode: 'gpu-node-03',
-    strategy: 'round-robin',
-    enabled: true,
-  },
-  {
-    id: 'rule-5',
-    priority: 5,
-    condition: 'api_key == "sk-ci-*"',
-    targetNode: 'gpu-node-04',
-    strategy: 'round-robin',
-    enabled: false,
-  },
-];
-
-// Deterministic so the demo chart is stable across refreshes (no Math.random
-// sawtooth - same honesty standard the real product holds itself to). A diurnal
-// base plus a fixed harmonic gives believable shape without jumping each render.
-export const generateRequestsPerMinuteData = (): MetricData[] => {
-  const data: MetricData[] = [];
-  const now = new Date();
-  for (let i = 1440; i >= 0; i -= 5) {
-    const time = new Date(now.getTime() - i * 60000);
-    const value = 50 + Math.sin(i / 100) * 30 + Math.sin(i / 13) * 12;
-    data.push({
-      timestamp: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      value: Math.max(0, Math.floor(value)),
-    });
-  }
-  return data;
-};
-
-export const generateTokenUsageData = (): TokenUsageData[] => [
-  { keyName: 'Production API', tokens: 2847563 },
-  { keyName: 'Development API', tokens: 452312 },
-  { keyName: 'Load Testing', tokens: 890012 },
-  { keyName: 'CI/CD Pipeline', tokens: 123456 },
-  { keyName: 'External Partner', tokens: 56789 },
-  { keyName: 'Internal Tools', tokens: 345678 },
-  { keyName: 'Research Team', tokens: 234567 },
-  { keyName: 'QA Testing', tokens: 123456 },
-  { keyName: 'Staging Env', tokens: 98765 },
-  { keyName: 'Demo Account', tokens: 45678 },
-];
-
-// Deterministic latency series (see generateRequestsPerMinuteData) - stable
-// ~45-70ms shape, no per-render random jitter.
-export const generateNodeLatencyData = (): MetricData[] => {
-  const data: MetricData[] = [];
-  const now = new Date();
-  for (let i = 1440; i >= 0; i -= 10) {
-    const time = new Date(now.getTime() - i * 60000);
-    const value = 52 + Math.sin(i / 60) * 12 + Math.sin(i / 7) * 6;
-    data.push({
-      timestamp: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      value: Math.floor(value),
-    });
-  }
-  return data;
-};
-
-export const generateRequestDistributionData = (): RequestDistributionData[] => [
-  { nodeName: 'gpu-node-01', requests: 45231 },
-  { nodeName: 'gpu-node-02', requests: 38456 },
-  { nodeName: 'gpu-node-03', requests: 23145 },
-  { nodeName: 'gpu-node-04', requests: 9876 },
 ];
 
 export const defaultSettings: Settings = {

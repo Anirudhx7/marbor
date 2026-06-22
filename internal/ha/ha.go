@@ -89,9 +89,9 @@ func (m *Monitor) PeerStatuses() map[string]bool {
 	return out
 }
 
-// AllPeersUp returns true if all configured peers are reachable.
+// allPeersUp returns true if all configured peers are reachable.
 // Returns true (vacuously) when no peers are configured.
-func (m *Monitor) AllPeersUp() bool {
+func (m *Monitor) allPeersUp() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, up := range m.statuses {

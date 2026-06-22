@@ -1,7 +1,7 @@
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
 
 export function DemoBanner() {
-  const { demoMode, forcedDemo } = useDemoMode();
+  const { demoMode } = useDemoMode();
   if (!demoMode) return null;
   return (
     <div className="bg-amber-500 text-black text-sm font-medium text-center py-1.5 px-4">

@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { getAnalytics } from '../lib/api';
+import { fetchAnalytics } from '../lib/api';
 import { mockAnalytics } from '../lib/mockData';
 import { useDemoMode } from '../hooks/useDemoMode';
 import type { Analytics, HourlyBucket, ModelStat } from '../types';
@@ -69,7 +69,7 @@ export function Analytics() {
         return;
       }
       try {
-        const d = await getAnalytics();
+        const d = await fetchAnalytics();
         setData(d);
         setError(null);
       } catch (e: unknown) {

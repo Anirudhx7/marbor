@@ -15,7 +15,7 @@ import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
 import { useLiveRequests } from '../hooks/useLiveRequests';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
-import { fetchNodes, fetchSummary, getSavings, fetchHealth } from '../lib/api';
+import { fetchNodes, fetchSummary, fetchSavings, fetchHealth } from '../lib/api';
 import { GPUNode, Savings } from '../types';
 
 interface MetricCardProps {
@@ -215,7 +215,7 @@ export function Dashboard() {
       if (demoMode) return;
       setSavingsLoading(true);
       try {
-        const data = await getSavings();
+        const data = await fetchSavings();
         setSavings(data);
       } catch {
         setSavings(null);

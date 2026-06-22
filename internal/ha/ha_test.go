@@ -34,8 +34,8 @@ func TestMonitor_PeerReachable(t *testing.T) {
 	if !statuses[srv.URL] {
 		t.Errorf("expected peer %s to be reachable, got unreachable", srv.URL)
 	}
-	if !m.AllPeersUp() {
-		t.Error("AllPeersUp() should return true when all peers respond 200")
+	if !m.allPeersUp() {
+		t.Error("allPeersUp() should return true when all peers respond 200")
 	}
 }
 
@@ -52,8 +52,8 @@ func TestMonitor_PeerUnreachable(t *testing.T) {
 	if statuses[srv.URL] {
 		t.Errorf("expected peer %s to be unreachable (503), got reachable", srv.URL)
 	}
-	if m.AllPeersUp() {
-		t.Error("AllPeersUp() should return false when a peer responds non-200")
+	if m.allPeersUp() {
+		t.Error("allPeersUp() should return false when a peer responds non-200")
 	}
 }
 
@@ -78,8 +78,8 @@ func TestMonitor_MultiPeer(t *testing.T) {
 	if statuses[unhealthy.URL] {
 		t.Errorf("expected unhealthy peer %s to be unreachable", unhealthy.URL)
 	}
-	if m.AllPeersUp() {
-		t.Error("AllPeersUp() should return false when at least one peer is down")
+	if m.allPeersUp() {
+		t.Error("allPeersUp() should return false when at least one peer is down")
 	}
 	if m.PeerCount() != 2 {
 		t.Errorf("PeerCount() = %d, want 2", m.PeerCount())
@@ -89,8 +89,8 @@ func TestMonitor_MultiPeer(t *testing.T) {
 func TestAllPeersUp_NoPeers(t *testing.T) {
 	m := newMonitor(nil, 20, 500)
 	// No Start needed — vacuous truth requires no polling.
-	if !m.AllPeersUp() {
-		t.Error("AllPeersUp() should return true (vacuously) when no peers are configured")
+	if !m.allPeersUp() {
+		t.Error("allPeersUp() should return true (vacuously) when no peers are configured")
 	}
 }
 

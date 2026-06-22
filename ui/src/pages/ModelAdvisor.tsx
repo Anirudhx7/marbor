@@ -361,7 +361,6 @@ export function ModelAdvisor() {
         const resp = await searchHFModels(debouncedSearch);
         setModels(resp || []);
       } catch (e: unknown) {
-        console.error(e);
         setSearchError(e instanceof Error ? e.message : 'Failed to search Hugging Face models. Make sure the backend has internet access.');
         setModels([]);
       } finally {

@@ -27,5 +27,5 @@ export function useDemoMode() {
     return () => window.removeEventListener(CHANGE_EVENT, sync);
   }, []);
 
-  return { demoMode, setDemoMode, forcedDemo };
+  return { demoMode, setDemoMode };
 }
