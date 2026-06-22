@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
 import {
@@ -23,12 +23,7 @@ function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
     red: 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30',
     unknown: 'bg-secondary text-muted-foreground border border-border',
   };
-  const labels = {
-    green: 'Fits',
-    yellow: 'Tight',
-    red: 'Too Large',
-    unknown: 'Unknown',
-  };
+  const labels = { green: 'Fits', yellow: 'Tight', red: 'Too Large', unknown: 'Unknown' };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[fit]}`}>
       {labels[fit]}
@@ -36,21 +31,20 @@ function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   );
 }
 
-function ModelCard({
+function ModelDetailOverlay({
   model,
   nodeName,
   isLive,
   demoMode,
-  expanded,
-  onToggleExpand,
+  onClose,
 }: {
   model: HFModel;
   nodeName: string | null;
   isLive: boolean;
   demoMode: boolean;
-  expanded: boolean;
-  onToggleExpand: () => void;
+  onClose: () => void;
 }) {
+  const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState<HFRepoDetails | null>(null);
   const [ctxLen, setCtxLen] = useState(8192);
@@ -58,22 +52,33 @@ function ModelCard({
   const [pulledTags, setPulledTags] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDetails = async (len: number) => {
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setVisible(false);
+    setTimeout(onClose, 180);
+  }, [onClose]);
+
+  const fetchDetails = useCallback(async (len: number) => {
     if (demoMode) {
       const mock = mockHFRepoDetails[model.id];
       if (mock) {
-        // Adjust mock fit based on context length simulation
         const adjustedVariants = mock.variants.map((v: any) => {
-          const sizeFactor = v.size_mb;
-          const estVram = sizeFactor * 1.10 + len * 0.15;
+          const estVram = v.size_mb * 1.10 + len * 0.15;
           let fit: 'green' | 'yellow' | 'red' = 'green';
           if (estVram > 24576) fit = 'red';
           else if (estVram > 10240) fit = 'yellow';
-          return {
-            ...v,
-            vram_est_mb: Math.round(estVram),
-            fit,
-          };
+          return { ...v, vram_est_mb: Math.round(estVram), fit };
         });
         setDetails({ ...mock, variants: adjustedVariants });
       } else {
@@ -83,14 +88,11 @@ function ModelCard({
           likes: model.likes,
           tags: model.tags,
           last_modified: model.lastModified,
-          variants: [
-            { tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', downloaded: false }
-          ]
+          variants: [{ tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', downloaded: false }],
         });
       }
       return;
     }
-
     setLoading(true);
     setError(null);
     try {
@@ -101,14 +103,9 @@ function ModelCard({
     } finally {
       setLoading(false);
     }
-  };
+  }, [demoMode, model.id, model.downloads, model.likes, model.tags, model.lastModified, nodeName]);
 
-  useEffect(() => {
-    if (expanded) {
-      fetchDetails(ctxLen);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, nodeName, ctxLen]);
+  useEffect(() => { fetchDetails(ctxLen); }, [ctxLen, fetchDetails]);
 
   const handlePull = async (variant: ModelVariantFit) => {
     if (!nodeName) return;
@@ -128,39 +125,58 @@ function ModelCard({
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
 
   return (
-    <div className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors self-start w-full">
-      <div className="flex items-start justify-between mb-2">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-foreground truncate" title={model.id}>
-            {model.id.split('/').pop()}
-          </h3>
-          <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ transition: 'opacity 180ms ease-out', opacity: visible ? 1 : 0 }}
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={handleClose}
+      />
+
+      {/* Panel */}
+      <div
+        className="relative bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-hidden flex flex-col shadow-2xl"
+        style={{
+          transition: 'transform 180ms ease-out, opacity 180ms ease-out',
+          transform: visible ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.98)',
+          opacity: visible ? 1 : 0,
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-border shrink-0">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-foreground text-base truncate" title={model.id}>
+              {model.id.split('/').pop()}
+            </h2>
+            <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1.5">
+              <span className="flex items-center gap-1">
+                <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowDown className="w-3.5 h-3.5" /> {formattedDownloads} downloads
+              </span>
+              {model.pipeline_tag && (
+                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
+                  {model.pipeline_tag.replace('-', ' ')}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={handleClose}
+            className="ml-4 shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary text-[11px] font-medium text-foreground shrink-0 ml-2">
-          <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
-        </span>
-      </div>
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-        <span className="flex items-center gap-1">
-          <ArrowDown className="w-3.5 h-3.5" /> {formattedDownloads} downloads
-        </span>
-        {model.pipeline_tag && (
-          <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
-            {model.pipeline_tag.replace('-', ' ')}
-          </span>
-        )}
-      </div>
-
-      {!expanded ? (
-        <button
-          onClick={onToggleExpand}
-          className="mt-2 w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium rounded-lg transition-colors font-medium cursor-pointer"
-        >
-          View Quantizations & Pull
-        </button>
-      ) : (
-        <div className="mt-3 border-t border-border pt-4 space-y-4">
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {/* Context slider */}
           <div className="space-y-1.5">
             <div className="flex justify-between items-center text-xs">
               <span className="text-muted-foreground">Target Context Length:</span>
@@ -183,8 +199,9 @@ function ModelCard({
             </p>
           </div>
 
+          {/* Variants */}
           {loading ? (
-            <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center justify-center py-10 gap-2 text-xs text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading variants...
             </div>
           ) : error ? (
@@ -194,17 +211,16 @@ function ModelCard({
           ) : details && details.variants && details.variants.length > 0 ? (
             <div className="space-y-2">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">GGUF File Quantizations</span>
-              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                {(details.variants || []).map((v) => {
+              <div className="space-y-1.5">
+                {details.variants.map((v) => {
                   const isPulled = v.downloaded || (v.tag && pulledTags.has(v.tag));
                   const isPulling = pullingTag === v.tag;
                   const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
                   const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
-
                   return (
                     <div
                       key={v.tag}
-                      className="flex items-center justify-between text-xs rounded px-2.5 py-1.5 bg-secondary/50 border border-border/50 hover:border-border transition-colors"
+                      className="flex items-center justify-between text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50 hover:border-border transition-colors"
                     >
                       <div className="min-w-0 flex-1 mr-2">
                         <div className="flex items-center gap-1.5">
@@ -228,11 +244,7 @@ function ModelCard({
                             className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
                             title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
                           >
-                            {isPulling ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Download className="w-3 h-3" />
-                            )}
+                            {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                             Pull
                           </button>
                         )}
@@ -243,27 +255,73 @@ function ModelCard({
               </div>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground py-2 text-center">No GGUF files found in this repository.</p>
+            <p className="text-xs text-muted-foreground py-4 text-center">No GGUF files found in this repository.</p>
           )}
-
-          <div className="flex items-center justify-between pt-2">
-            <a
-              href={`https://huggingface.co/${model.id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
-            >
-              <ExternalLink className="w-3 h-3" /> View on Hugging Face
-            </a>
-            <button
-              onClick={onToggleExpand}
-              className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
-            >
-              Collapse
-            </button>
-          </div>
         </div>
-      )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border shrink-0 bg-secondary/20">
+          <a
+            href={`https://huggingface.co/${model.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+          >
+            <ExternalLink className="w-3 h-3" /> View on Hugging Face
+          </a>
+          <button
+            onClick={handleClose}
+            className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModelCard({
+  model,
+  onSelect,
+}: {
+  model: HFModel;
+  onSelect: () => void;
+}) {
+  const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
+  const formattedLikes = new Intl.NumberFormat().format(model.likes);
+
+  return (
+    <div className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors">
+      <div className="flex items-start justify-between mb-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-foreground truncate" title={model.id}>
+            {model.id.split('/').pop()}
+          </h3>
+          <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
+        </div>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary text-[11px] font-medium text-foreground shrink-0 ml-2">
+          <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+        <span className="flex items-center gap-1">
+          <ArrowDown className="w-3.5 h-3.5" /> {formattedDownloads} downloads
+        </span>
+        {model.pipeline_tag && (
+          <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
+            {model.pipeline_tag.replace('-', ' ')}
+          </span>
+        )}
+      </div>
+
+      <button
+        onClick={onSelect}
+        className="mt-auto w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium rounded-lg transition-colors cursor-pointer"
+      >
+        View Quantizations & Pull
+      </button>
     </div>
   );
 }
@@ -282,40 +340,35 @@ export function ModelAdvisor() {
   const [models, setModels] = useState<HFModel[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<HFModel | null>(null);
 
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 300);
+    const handler = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(handler);
   }, [search]);
 
   const loadSystemInfo = async () => {
     if (demoMode) {
       setSysInfo(mockSystemInfo);
-      setNodes([
-        {
-          name: 'gpu-0',
-          url: 'http://localhost:11435',
-          vram_free_bytes: 10 * 1024 * 1024 * 1024,
-          vram_total_bytes: 24 * 1024 * 1024 * 1024,
-          vram_source: 'nvidia-smi',
-          models: [],
-        }
-      ]);
+      setNodes([{
+        name: 'gpu-0',
+        url: 'http://localhost:11435',
+        vram_free_bytes: 10 * 1024 * 1024 * 1024,
+        vram_total_bytes: 24 * 1024 * 1024 * 1024,
+        vram_source: 'nvidia-smi',
+        models: [],
+      }]);
       setSelectedNode('gpu-0');
       setIsLive(false);
       setError(null);
       setLoading(false);
       return;
     }
-
     setLoading(true);
     try {
       const [sys, catalogResp] = await Promise.all([
         fetchSystemInfo().catch(() => null),
-        fetchModelCatalog().catch(() => null)
+        fetchModelCatalog().catch(() => null),
       ]);
       setSysInfo(sys);
       setIsLive(true);
@@ -337,10 +390,7 @@ export function ModelAdvisor() {
     }
   };
 
-  useEffect(() => {
-    loadSystemInfo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoMode]);
+  useEffect(() => { loadSystemInfo(); }, [demoMode]);
 
   useEffect(() => {
     const doSearch = async () => {
@@ -354,7 +404,6 @@ export function ModelAdvisor() {
         }
         return;
       }
-
       setSearching(true);
       setSearchError(null);
       try {
@@ -370,12 +419,8 @@ export function ModelAdvisor() {
     doSearch();
   }, [debouncedSearch, demoMode]);
 
-  useEffect(() => {
-    setExpandedModelId(null);
-  }, [models]);
+  useEffect(() => { setSelectedModel(null); }, [models]);
 
-  // Deduplicate by model ID — HF API can return duplicate entries which
-  // would cause multiple cards to match the same expandedModelId.
   const uniqueModels = useMemo(() => {
     const seen = new Set<string>();
     return models.filter(m => {
@@ -385,10 +430,10 @@ export function ModelAdvisor() {
     });
   }, [models]);
 
-  const activeNode = useMemo(() => {
-    if (!selectedNode || nodes.length === 0) return null;
-    return nodes.find(n => n.name === selectedNode) || null;
-  }, [nodes, selectedNode]);
+  const activeNode = useMemo(
+    () => (!selectedNode || nodes.length === 0) ? null : nodes.find(n => n.name === selectedNode) || null,
+    [nodes, selectedNode]
+  );
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -465,17 +510,15 @@ export function ModelAdvisor() {
               </div>
               <span className="text-xs text-muted-foreground">
                 VRAM source:{' '}
-                <span
-                  className={`px-1.5 py-0.5 rounded font-semibold ${
-                    activeNode.vram_source === 'nvidia-smi'
-                      ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                      : activeNode.vram_source === 'inferred'
-                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                      : activeNode.vram_source === 'declared'
-                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
-                      : 'bg-secondary text-muted-foreground'
-                  }`}
-                >
+                <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                  activeNode.vram_source === 'nvidia-smi'
+                    ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                    : activeNode.vram_source === 'inferred'
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : activeNode.vram_source === 'declared'
+                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                    : 'bg-secondary text-muted-foreground'
+                }`}>
                   {activeNode.vram_source === 'declared' ? 'declared' : activeNode.vram_source}
                 </span>
               </span>
@@ -486,11 +529,9 @@ export function ModelAdvisor() {
                   used={(activeNode.vram_total_bytes - activeNode.vram_free_bytes) / (1024 * 1024 * 1024)}
                   total={activeNode.vram_total_bytes / (1024 * 1024 * 1024)}
                 />
-                <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-muted-foreground font-medium">
-                    {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
-                  </p>
-                </div>
+                <p className="text-xs text-muted-foreground font-medium mt-2">
+                  {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
+                </p>
               </>
             ) : (
               <p className="text-xs text-muted-foreground font-medium">
@@ -500,12 +541,12 @@ export function ModelAdvisor() {
           </div>
 
           <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground leading-relaxed shadow-sm">
-            <span className="font-semibold text-foreground block mb-1">💡 How to add models to nodes:</span>
-            1. Search for any GGUF model repository (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below.
+            <span className="font-semibold text-foreground block mb-1">How to add models to nodes:</span>
+            1. Search for any GGUF model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below.
             <br />
-            2. Click <strong className="text-foreground">View Quantizations & Pull</strong> on the model's card to load available quantization variants.
+            2. Click <strong className="text-foreground">View Quantizations & Pull</strong> on a card to open the detail panel.
             <br />
-            3. Select the desired quantization (GGUF format) and click the <strong className="text-foreground">Pull</strong> button to download it directly to the active node.
+            3. Select a quantization and click <strong className="text-foreground">Pull</strong> to download it to the active node.
           </div>
 
           <div className="flex flex-col md:flex-row gap-4 md:items-center">
@@ -535,18 +576,13 @@ export function ModelAdvisor() {
               <p className="text-muted-foreground font-medium">No repositories found. Try searching for "llama" or "gemma".</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
               {uniqueModels.map((m) => (
-                <div key={m.id} className={expandedModelId === m.id ? 'col-span-full' : ''}>
-                  <ModelCard
-                    model={m}
-                    nodeName={selectedNode}
-                    isLive={isLive}
-                    demoMode={demoMode}
-                    expanded={expandedModelId === m.id}
-                    onToggleExpand={() => setExpandedModelId(prev => prev === m.id ? null : m.id)}
-                  />
-                </div>
+                <ModelCard
+                  key={m.id}
+                  model={m}
+                  onSelect={() => setSelectedModel(m)}
+                />
               ))}
             </div>
           )}
@@ -562,6 +598,16 @@ export function ModelAdvisor() {
             Connect your first node in the <strong>GPU Nodes</strong> page.
           </p>
         </div>
+      )}
+
+      {selectedModel && (
+        <ModelDetailOverlay
+          model={selectedModel}
+          nodeName={selectedNode}
+          isLive={isLive}
+          demoMode={demoMode}
+          onClose={() => setSelectedModel(null)}
+        />
       )}
     </div>
   );

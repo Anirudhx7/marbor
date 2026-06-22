@@ -196,6 +196,14 @@ export function Metrics() {
         </div>
       )}
 
+      {!loading && !error && !analytics && (
+        <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
+          <BarChart3 className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+          <p className="text-muted-foreground font-medium">No analytics data available yet.</p>
+          <p className="text-xs text-muted-foreground mt-1">Requests will appear here as traffic flows through the proxy.</p>
+        </div>
+      )}
+
       {!loading && !error && analytics && (
         <>
           {/* Summary Stats */}
