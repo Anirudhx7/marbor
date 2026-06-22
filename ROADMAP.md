@@ -49,7 +49,7 @@ Goal: Full operational visibility into the mesh.
 - [x] Rate limit headers — `X-RateLimit-Limit/Remaining/Reset` on every response
 - [x] Webhook notifications — `node_down`/`node_up` with HMAC-SHA256 signatures
 - [x] Audit logging — append-only JSON-lines, crypto/rand request IDs
-- [x] 11 Prometheus metrics on `:9090/metrics`
+- [x] 14 Prometheus metrics on `:9090/metrics`
 - [x] `GET /health` — unauthenticated, for load balancers
 - [x] Real savings math — parsed token counts, null/"—" when unavailable
 - [x] Mid-stream abort logging — recorded in metrics, admin log, audit
@@ -102,6 +102,65 @@ Goal: Day-2 operational workflow support.
 - [x] VRAM-aware placement — cold requests route to node with most free VRAM
 - [x] Model Advisor page — model catalog with VRAM fit per node
 
+### v0.9.1 — Enterprise Auth MVP (next)
+
+Goal: Teams sign in with their company SSO and get API keys without admins editing YAML.
+
+**New deps (pure Go, zero CGO, static binary preserved):**
+- `github.com/coreos/go-oidc/v3` + `golang.org/x/oauth2` — OIDC login (~+1MB)
+- `modernc.org/sqlite` — user DB (~+4MB)
+- `github.com/wneessen/go-mail` — SMTP email delivery (~+0.2MB)
+- Binary: ~16MB → ~21MB
+
+**OIDC login flow (OSS — gate on `auth.oidc.issuer_url` being set):**
+- [ ] `GET /auth/login` — redirect to OIDC provider
+- [ ] `GET /auth/callback` — validate JWT, extract email/sub, create pending user in SQLite
+- [ ] `GET /auth/logout` — clear session
+- [ ] Existing API key auth unchanged when OIDC not configured
+
+**User provisioning:**
+- [ ] SQLite user schema — `id (sub)`, `email`, `name`, `status (pending/active/suspended)`, `key_name`, `approved_by`, timestamps
+- [ ] Admin dashboard — "Pending Users" tab with approve/deny controls
+- [ ] Approve → auto-generate API key (crypto/rand) → send email (SMTP) with key + endpoint URL + curl example
+- [ ] Deny → send rejection email with optional reason
+- [ ] `GET /admin/v1/users` — list all users by status
+- [ ] `POST /admin/v1/users/{id}/approve` — approve + key generation + email delivery
+- [ ] `POST /admin/v1/users/{id}/deny` — deny with optional message
+- [ ] `DELETE /admin/v1/users/{id}` — revoke (key deactivated, user notified)
+- [ ] Per-user usage visible in admin (keys tied to user identity)
+
+**Config:**
+- [ ] `auth.oidc` block — `issuer_url`, `client_id`, `client_secret`, `redirect_url`, `scopes`
+- [ ] `email` block — `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password`, `from`, `tls`
+- [ ] `config.example.yaml` updated with both sections
+
+**Not in this phase:**
+- SCIM directory sync
+- RBAC roles beyond admin/consumer (comes after first paying enterprise customer)
+
+### v0.9.2 — Multi-Backend Adapters (next after 0.9.1)
+
+Goal: Route across heterogeneous inference fleets — not just Ollama.
+
+**Problem:** Enterprise GPU fleets run vLLM for throughput, TGI for HuggingFace ecosystem, llama.cpp for single-node efficiency. All expose OpenAI-compatible `/v1/` APIs but differ in health probes and model-list endpoints.
+
+**Solution:** `RuntimeProbe` interface — health check, VRAM/model-list discovery, warm detection. Router stays runtime-agnostic.
+
+| Runtime | Health Probe | Warm-Model Detection |
+|---------|-------------|---------------------|
+| Ollama | `/api/ps` | `size_vram` field |
+| vLLM | `/health` + `/v1/models` | Running model from `/v1/models` |
+| HF TGI | `/health` | Model loaded state |
+| llama.cpp / LM Studio | `/health` | Single-model, always warm |
+
+- [ ] `RuntimeProbe` interface in `internal/router`
+- [ ] Ollama adapter (refactor existing poller to implement interface)
+- [ ] vLLM adapter — poll `/health`, `/v1/models`; detect loaded model
+- [ ] TGI adapter — poll `/health`; single-model detection
+- [ ] llama.cpp / LM Studio adapter — OpenAI /v1/ passthrough, always-warm model
+- [ ] Node config: `type: ollama|vllm|tgi|llamacpp` field (default: `ollama` for backward compat)
+- [ ] `config.example.yaml` updated with multi-backend examples
+
 ### Open-Source Backlog
 
 - [ ] SQLite analytics persistence — counters survive restarts; deferred until retention semantics defined
@@ -115,20 +174,18 @@ Goal: Day-2 operational workflow support.
 
 The monetization engine. Capabilities that enterprise procurement requires and open-source economics cannot sustain.
 
-### Tier 1 — Backend Plurality
+> **Note on backend plurality:** vLLM, TGI, llama.cpp, and LM Studio adapters ship in OSS v0.9.2 (see Open-Source Backlog above). Commercial Tier 1 covers the runtimes that require specialized commercial access or enterprise-only integrations: NVIDIA TensorRT-LLM (Triton API), proprietary inference clusters.
 
-**Problem:** Enterprise GPU fleets run more than Ollama. Production ML teams deploy vLLM for throughput, TGI for Hugging Face ecosystem compatibility, and TensorRT-LLM for NVIDIA-optimized inference. A routing proxy locked to a single runtime is a single point of vendor dependency.
+### Tier 1 — Enterprise Inference Runtimes
 
-**Solution:** Native routing adapters for each inference runtime, sharing the same warm-model awareness, health polling, and VRAM-fit logic.
+**Problem:** Enterprise GPU fleets at the largest deployments run NVIDIA TensorRT-LLM on Triton Inference Server. Triton's health/model APIs differ fundamentally from the OpenAI-compatible surface exposed by Ollama/vLLM/TGI.
 
-| Runtime | Health Probe | VRAM Discovery | Warm-Model Detection | Routing Strategy |
-|---------|-------------|----------------|---------------------|------------------|
-| Ollama | `/api/ps` | `size_vram` field | Model list from `/api/ps` | Warm-first → least-connections |
-| vLLM | `/health` + `/v1/models` | PagedAttention KV-cache metrics | Running model from `/v1/models` | Warm-first → KV-cache utilization |
-| Hugging Face TGI | `/health` | CUDA memory allocation | Model loaded state | Warm-first → queue depth |
-| NVIDIA TensorRT-LLM | Triton health API | GPU memory from Triton metrics | Engine loaded state | Warm-first → batch utilization |
+**Solution:** Triton Inference Server adapter with native gRPC health probes, per-engine VRAM metrics from NVML, and batch utilization-aware routing.
 
-Each adapter implements the same `RuntimeProbe` interface — the router is runtime-agnostic. A single ollama-mesh instance can route across a heterogeneous fleet of Ollama, vLLM, and TGI nodes simultaneously.
+| Runtime | Health Probe | VRAM Discovery | Routing Strategy |
+|---------|-------------|----------------|------------------|
+| NVIDIA TensorRT-LLM | Triton gRPC health | GPU memory from NVML | Warm-first → batch utilization |
+| Custom proprietary | Configurable HTTP probe | Operator-declared | Configurable strategy |
 
 ### Tier 2 — Enterprise Compliance & Access Control
 
@@ -181,11 +238,17 @@ Each adapter implements the same `RuntimeProbe` interface — the router is runt
 
 ## Pricing Model
 
-| Tier | Target | Pricing |
-|------|--------|---------|
-| **Open-Source Core** | Individual developers, small teams, homelabs | Free (MIT) |
-| **Enterprise Self-Hosted** | Platform teams at 50–500 person companies | $500–$2,000/mo per cluster |
-| **Enterprise Managed** | Teams that want routing intelligence without operational burden | Metered per-token + base fee |
+| Tier | Target | Pricing | Key Features |
+|------|--------|---------|--------------|
+| **OSS Core** | Individual developers, homelabs, SMBs | Free (MIT) | GPU-aware routing, cloud fallback, basic API keys, Prometheus metrics |
+| **Team** | Platform teams at 10–500 person companies | $299/mo per cluster | OIDC/SSO, user provisioning, admin approval, per-user quotas, multi-backend |
+| **Enterprise** | Regulated industries, large enterprises | $999–$2,000/mo per cluster | HA cluster, SOC2 audit logs, SCIM/LDAP, priority support, custom SLA |
+| **Managed** | Teams without ops bandwidth | Metered per-token + base fee | Hosted control plane, GPU nodes stay on-prem |
+
+> **Competitive context (June 2026):**
+> - LiteLLM Enterprise Basic: $250/mo licensing + ~$1.9K/mo TCO (Python + Postgres + Redis + DevOps) = ~$2.2K/mo total
+> - Bifrost: Apache 2.0 OSS (no commercial tier yet), 23+ providers, SSO/RBAC — but ZERO GPU/VRAM awareness
+> - Our Team tier at $299/mo: undercuts LiteLLM's TCO by 7x, beats Bifrost on GPU intelligence, wins on ops simplicity (single Go binary, zero infrastructure)
 
 ---
 
@@ -199,3 +262,4 @@ Each adapter implements the same `RuntimeProbe` interface — the router is runt
 | v0.5.0 | 2026-06-15 | Cluster VRAM telemetry, vramSource labels |
 | v0.8.0 | 2026-06-17 | Model warmup, SIGHUP, request queue |
 | v0.9.0 | 2026-06-21 | Node drain, runtime mutation, structured logging, HA, KV-cache affinity |
+| v0.9.1 | TBD | User registration, admin approval workflow, email API key delivery |

@@ -374,6 +374,17 @@ export function ModelAdvisor() {
     setExpandedModelId(null);
   }, [models]);
 
+  // Deduplicate by model ID — HF API can return duplicate entries which
+  // would cause multiple cards to match the same expandedModelId.
+  const uniqueModels = useMemo(() => {
+    const seen = new Set<string>();
+    return models.filter(m => {
+      if (!m.id || seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+  }, [models]);
+
   const activeNode = useMemo(() => {
     if (!selectedNode || nodes.length === 0) return null;
     return nodes.find(n => n.name === selectedNode) || null;
@@ -525,7 +536,7 @@ export function ModelAdvisor() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-              {models.map((m) => (
+              {uniqueModels.map((m) => (
                 <ModelCard
                   key={m.id}
                   model={m}
@@ -533,7 +544,7 @@ export function ModelAdvisor() {
                   isLive={isLive}
                   demoMode={demoMode}
                   expanded={expandedModelId === m.id}
-                  onToggleExpand={() => setExpandedModelId(expandedModelId === m.id ? null : m.id)}
+                  onToggleExpand={() => setExpandedModelId(prev => prev === m.id ? null : m.id)}
                 />
               ))}
             </div>
