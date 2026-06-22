@@ -67,10 +67,11 @@ The following projections use conservative assumptions grounded in real-world mu
 | Daily token volume | 10,000,000 |
 | Monthly token volume (22 working days) | 220,000,000 |
 | Cloud cost at $0.002/1K | **$440/month** |
-| Cloud cost at $0.015/1K (GPT-4o class) | **$3,300/month** |
-| Local GPU serving cost (amortized hardware + power) | ~$200/month (2× RTX 4090) |
-| **Monthly savings at $0.002/1K reference** | **$240/month** |
-| **Monthly savings at $0.015/1K reference** | **$3,100/month** |
+| Cloud cost at $0.005/1K (GPT-4o, blended input/output) | **$1,100/month** |
+| Cloud cost at $0.015/1K (Claude Sonnet 4, output-heavy) | **$3,300/month** |
+| Local GPU serving cost (amortized hardware + power, 3yr) | ~$200/month (2× RTX 4090) |
+| **Monthly net savings at $0.005/1K reference** | **$900/month** |
+| **Monthly net savings at $0.015/1K reference** | **$3,100/month** |
 
 ### Scenario B: Multi-Agent RAG Pipeline (Production)
 
@@ -82,11 +83,13 @@ The following projections use conservative assumptions grounded in real-world mu
 | Daily token volume | 90,000,000 |
 | Monthly token volume | 2,700,000,000 |
 | Cloud cost at $0.002/1K | **$5,400/month** |
-| Cloud cost at $0.015/1K (GPT-4o class) | **$40,500/month** |
-| Local GPU serving cost (amortized) | ~$800/month (4× A100 80GB) |
-| **Monthly savings at $0.002/1K reference** | **$4,600/month** |
-| **Monthly savings at $0.015/1K reference** | **$39,700/month** |
-| **Annual savings at $0.015/1K reference** | **$476,400/year** |
+| Cloud cost at $0.005/1K (GPT-4o, blended) | **$13,500/month** |
+| Cloud cost at $0.015/1K (Claude Sonnet 4, output-heavy) | **$40,500/month** |
+| Local GPU serving cost (amortized hardware + power, 3yr) | ~$1,800/month (4× A100 80GB) |
+| **Monthly net savings at $0.002/1K reference** | **$3,600/month** |
+| **Monthly net savings at $0.005/1K reference** | **$11,700/month** |
+| **Monthly net savings at $0.015/1K reference** | **$38,700/month** |
+| **Annual net savings at $0.015/1K reference** | **$464,400/year** |
 
 ### Scenario C: Internal Platform (200-Person Organization)
 
@@ -96,11 +99,13 @@ The following projections use conservative assumptions grounded in real-world mu
 | Total daily token volume across departments | 150,000,000 |
 | Monthly token volume | 4,500,000,000 |
 | Cloud cost at $0.002/1K | **$9,000/month** |
-| Cloud cost at $0.015/1K (GPT-4o class) | **$67,500/month** |
-| Local GPU fleet cost (amortized) | ~$2,000/month (8× A100 80GB) |
-| **Monthly savings at $0.015/1K reference** | **$65,500/month** |
-| **Annual savings at $0.015/1K reference** | **$786,000/year** |
-| **3-year TCO advantage** | **$2,358,000** |
+| Cloud cost at $0.005/1K (GPT-4o, blended) | **$22,500/month** |
+| Cloud cost at $0.015/1K (Claude Sonnet 4, output-heavy) | **$67,500/month** |
+| Local GPU fleet cost (amortized hardware + power, 3yr) | ~$3,600/month (8× A100 80GB) |
+| **Monthly net savings at $0.005/1K reference** | **$18,900/month** |
+| **Monthly net savings at $0.015/1K reference** | **$63,900/month** |
+| **Annual net savings at $0.015/1K reference** | **$766,800/year** |
+| **3-year TCO advantage** | **$2,300,400** |
 
 > **Note:** These projections calculate the *difference* between cloud API costs and amortized local hardware costs. The hardware amortization includes purchase price, power, cooling, and rack space over a 3-year depreciation schedule. Actual savings depend on GPU utilization rates, model sizes, and local-vs-cloud traffic split. ollama-mesh's dashboard shows the *real* split based on actual parsed token counts, not these projections.
 
@@ -113,16 +118,22 @@ The following projections use conservative assumptions grounded in real-world mu
 The break-even point is when cumulative cloud savings equal the upfront GPU hardware investment:
 
 ```
-break_even_months = hardware_cost / monthly_cloud_savings
+break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)
 ```
 
-| GPU Configuration | Hardware Cost | Monthly Cloud Equivalent (at $0.015/1K) | Break-Even |
-|-------------------|--------------|----------------------------------------|------------|
-| 2× RTX 4090 (24GB each) | $3,200 | $3,300/month (50-person copilot) | **< 1 month** |
-| 4× A100 80GB | $60,000 | $40,500/month (production RAG) | **1.5 months** |
-| 8× A100 80GB | $120,000 | $67,500/month (200-person org) | **1.8 months** |
+Monthly hardware opex = amortized purchase price (3yr) + power + rack/cooling. At $0.015/1K (Claude Sonnet 4 output-heavy workloads):
 
-After break-even, every locally-served token is pure cost deflection. The hardware continues serving traffic for 3–5 years.
+| GPU Configuration | Hardware Cost | Monthly Opex (amort+power) | Monthly Cloud Equivalent | Break-Even |
+|-------------------|--------------|---------------------------|--------------------------|------------|
+| 2× RTX 4090 (24GB each) | $3,600 | ~$200/month | $3,300/month | **~1.2 months** |
+| 4× A100 80GB | $60,000 | ~$1,800/month | $40,500/month | **~1.6 months** |
+| 8× A100 80GB | $120,000 | ~$3,600/month | $67,500/month | **~1.9 months** |
+
+At GPT-4o blended rates ($0.005/1K), the monthly cloud equivalent is lower but break-even remains attractive: 2× RTX 4090 breaks even in ~4 months at GPT-4o rates.
+
+After break-even, every locally-served token is pure cost deflection. The hardware continues serving traffic for 3-5 years.
+
+> **Hardware pricing notes:** RTX 4090 ~$1,800/card at current retail. A100 80GB ~$10,000-15,000/card (data center pricing, new); secondary market lower. Monthly opex above uses 3-year straight-line amortization plus ~$0.12/kWh power at typical GPU utilization. Rack/cooling adds 10-15% in enterprise colocations.
 
 ---
 
@@ -159,14 +170,14 @@ savings:
 
 Set this to the blended rate of the cloud model your traffic would otherwise consume:
 
-| Cloud Model | Rate (per 1K tokens) | Notes |
-|-------------|---------------------|-------|
-| GPT-4o mini | $0.00015 | Input rate; output is $0.0006 |
-| GPT-4o | $0.0025–$0.01 | Depends on input/output split |
-| GPT-4.1 | $0.002–$0.008 | Input vs output pricing |
-| Claude Haiku 3.5 | $0.0008–$0.004 | Depends on input/output split |
-| Claude Sonnet 4 | $0.003–$0.015 | Depends on input/output split |
-| Claude Opus 4 | $0.015–$0.075 | Depends on input/output split |
+| Cloud Model | Rate (per 1K tokens) | Blended (70% in / 30% out) | Notes |
+|-------------|---------------------|---------------------------|-------|
+| GPT-4o mini | $0.00015–$0.0006 | ~$0.00028/1K | Cheapest quality tier |
+| GPT-4o | $0.0025–$0.01 | ~$0.005/1K | Most common enterprise default |
+| GPT-4.1 | $0.002–$0.008 | ~$0.0038/1K | Input vs output pricing |
+| Claude Haiku 4.5 | $0.0008–$0.004 | ~$0.0018/1K | Fast, cheap Anthropic tier |
+| Claude Sonnet 4 | $0.003–$0.015 | ~$0.0066/1K | Mid-tier; blended ≈ $0.006/1K |
+| Claude Opus 4 | $0.015–$0.075 | ~$0.033/1K | Premium; output-heavy = $0.075 |
 
 When the field is missing or zero, the default `$0.002/1K` applies. Changing the rate only affects requests recorded after the change; it does not retroactively revalue earlier requests.
 
