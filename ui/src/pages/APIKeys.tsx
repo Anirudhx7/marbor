@@ -122,6 +122,7 @@ export function APIKeys() {
 
   useEffect(() => {
     loadKeys();
+    if (demoMode) return;
     const interval = setInterval(loadKeys, 30000);
     return () => clearInterval(interval);
   }, [demoMode]);

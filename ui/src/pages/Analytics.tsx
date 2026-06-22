@@ -62,12 +62,12 @@ export function Analytics() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (demoMode) {
+      setData(mockAnalytics);
+      setLoading(false);
+      return;
+    }
     const load = async () => {
-      if (demoMode) {
-        setData(mockAnalytics);
-        setLoading(false);
-        return;
-      }
       try {
         const d = await fetchAnalytics();
         setData(d);

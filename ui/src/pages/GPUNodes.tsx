@@ -273,6 +273,7 @@ export function GPUNodes() {
 
   useEffect(() => {
     loadNodes();
+    if (demoMode) return;
     const interval = setInterval(loadNodes, 10000);
     return () => clearInterval(interval);
   }, [demoMode]);

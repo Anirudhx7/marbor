@@ -125,12 +125,12 @@ export function Metrics() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
+    if (demoMode) {
+      setAnalytics(mockAnalytics);
+      setLoading(false);
+      return;
+    }
     const load = () => {
-      if (demoMode) {
-        setAnalytics(mockAnalytics);
-        setLoading(false);
-        return;
-      }
       setLoading(true);
       setError(null);
       fetchAnalytics()

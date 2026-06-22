@@ -295,6 +295,8 @@ export const mockRequests: RequestEntry[] = [
   { id: 'req-f2a7b8c9d0e1', time: mins(11),  key_name: 'Support Bot',       model: 'llama3.1:8b',     node: 'gpu-node-03', status: 200, latency_ms: 44,   cloud: false },
   { id: 'req-a3b8c9d0e1f2', time: mins(13),  key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-04', status: 429, latency_ms: 3,    cloud: false },
   { id: 'req-b4c9d0e1f2a3', time: mins(15),  key_name: 'Data Platform',     model: 'llama3.1:70b',    node: 'gpu-node-01', status: 500, latency_ms: 1104, cloud: false },
+  { id: 'req-c5d0e1f2a3b4', time: mins(17),  key_name: 'Engineering Team',  model: 'gemma4:12b',      node: 'gpu-node-03', status: 200, latency_ms: 91,   cloud: false },
+  { id: 'req-d6e1f2a3b4c5', time: mins(19),  key_name: 'Support Bot',       model: 'mistral:7b',      node: 'gpu-node-04', status: 200, latency_ms: 47,   cloud: false },
 ];
 
 function makeHourKey(hoursAgo: number): string {
@@ -306,17 +308,17 @@ function makeHourKey(hoursAgo: number): string {
   return `${y}-${mo}-${day}T${h}`;
 }
 
-// Deterministic hourly pattern: 80-person engineering org with 6-model fleet, clear work-day peaks
+// Deterministic hourly pattern: 80-person engineering org with 8-model fleet, clear work-day peaks
 // 24 entries, index 0 = 23h ago, index 23 = current hour
 // Cloud overflow only during peak hours when all 4 local nodes are saturated
-const _hourlyLocal = [46, 39, 34, 38, 51, 67, 108, 176, 272, 380, 436, 415, 349, 241, 298, 387, 406, 349, 241, 163, 136, 106, 114, 95];
-const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,   2,   5,   9,  14,  17,  15,  11,   7,  10,  16,  19,  12,   7,   5,   4,   2,   4,  2];
+const _hourlyLocal = [51, 43, 38, 42, 56, 74, 119, 194, 300, 420, 481, 458, 385, 266, 329, 427, 448, 385, 266, 180, 150, 117, 126, 105];
+const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,   2,   6,  10,  16,  19,  17,  12,   8,  11,  18,  21,  13,   8,   6,   4,   2,   4,  2];
 
 export const mockAnalytics: Analytics = {
-  local_requests: 4950,
-  cloud_requests: 166,
-  total_saved_usd: 53.80,
-  total_spent_usd: 1.66,
+  local_requests: 5465,
+  cloud_requests: 186,
+  total_saved_usd: 58.95,
+  total_spent_usd: 1.86,
   hourly: Array.from({ length: 24 }, (_, i) => ({
     hour: makeHourKey(23 - i),
     local: _hourlyLocal[i],
@@ -331,6 +333,8 @@ export const mockAnalytics: Analytics = {
     { model: 'qwen2.5:14b',    local:  520, cloud: 18, saved_usd:  5.20 },
     { model: 'llama3.1:70b',   local:  215, cloud:  8, saved_usd:  6.45 },
     { model: 'codellama:13b',  local:  148, cloud:  6, saved_usd:  1.48 },
+    { model: 'gemma4:12b',     local:  312, cloud: 12, saved_usd:  3.12 },
+    { model: 'mistral:7b',     local:  203, cloud:  8, saved_usd:  2.03 },
   ],
 };
 

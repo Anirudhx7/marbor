@@ -250,6 +250,7 @@ export function Models() {
 
   useEffect(() => {
     loadModels();
+    if (demoMode) return;
     const interval = setInterval(loadModels, 5000);
     return () => clearInterval(interval);
   }, [demoMode]);

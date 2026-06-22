@@ -206,6 +206,7 @@ export function Dashboard() {
       }
     };
     loadData();
+    if (demoMode) return;
     const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
   }, [demoMode]);
