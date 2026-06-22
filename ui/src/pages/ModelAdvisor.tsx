@@ -535,7 +535,7 @@ export function ModelAdvisor() {
               <p className="text-muted-foreground font-medium">No repositories found. Try searching for "llama" or "gemma".</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
               {uniqueModels.map((m) => (
                 <ModelCard
                   key={m.id}
