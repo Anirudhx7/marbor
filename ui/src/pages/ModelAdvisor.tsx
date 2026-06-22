@@ -537,15 +537,16 @@ export function ModelAdvisor() {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
               {uniqueModels.map((m) => (
-                <ModelCard
-                  key={m.id}
-                  model={m}
-                  nodeName={selectedNode}
-                  isLive={isLive}
-                  demoMode={demoMode}
-                  expanded={expandedModelId === m.id}
-                  onToggleExpand={() => setExpandedModelId(prev => prev === m.id ? null : m.id)}
-                />
+                <div key={m.id} className={expandedModelId === m.id ? 'col-span-full' : ''}>
+                  <ModelCard
+                    model={m}
+                    nodeName={selectedNode}
+                    isLive={isLive}
+                    demoMode={demoMode}
+                    expanded={expandedModelId === m.id}
+                    onToggleExpand={() => setExpandedModelId(prev => prev === m.id ? null : m.id)}
+                  />
+                </div>
               ))}
             </div>
           )}
