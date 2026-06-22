@@ -1,4 +1,24 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, Component, ReactNode } from 'react';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-8 text-center">
+          <p className="text-destructive font-semibold mb-2">Page failed to load</p>
+          <p className="text-xs text-muted-foreground font-mono">{this.state.error.message}</p>
+          <button onClick={() => this.setState({ error: null })} className="mt-4 px-3 py-1.5 text-xs bg-secondary rounded-lg text-foreground hover:bg-secondary/80 cursor-pointer">Retry</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
@@ -27,6 +47,7 @@ function App() {
           <main className="md:ml-64 min-h-screen">
             <DemoBanner />
             <div className="pt-14 md:pt-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
+              <ErrorBoundary>
               <Suspense fallback={<div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Loading...</div>}>
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
@@ -41,6 +62,7 @@ function App() {
                   <Route path="/requests" element={<Requests />} />
                 </Routes>
               </Suspense>
+              </ErrorBoundary>
             </div>
           </main>
         </div>
