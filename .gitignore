@@ -45,5 +45,3 @@ nul
 
 # Codex local working dirs
 .codex/
-
-# AI tooling config files (private, not for public repo - moved to .local/)
