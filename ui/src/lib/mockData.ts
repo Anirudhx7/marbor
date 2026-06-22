@@ -90,13 +90,13 @@ export const mockGPUNodes: GPUNode[] = [
 export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-1',
-    name: 'Production API',
-    key: 'sk-prod-7a3f-b7c2-d4e5-f8g9',
-    created: '2024-11-15',
-    requestsToday: 12543,
-    requestsThisMonth: 284756,
-    tokensThisMonth: 42713400,
-    estimatedCostUsd: 85.43,
+    name: 'Engineering Team',
+    key: 'om-eng-7a3f-b7c2-d4e5-f8g9',
+    created: '2026-01-15',
+    requestsToday: 3124,
+    requestsThisMonth: 142380,
+    tokensThisMonth: 284760000,
+    estimatedCostUsd: 1423.80,
     rateLimit: 10000,
     status: 'active',
     allowedModels: ['all'],
@@ -104,59 +104,73 @@ export const mockAPIKeys: APIKey[] = [
   },
   {
     id: 'key-2',
-    name: 'Development API',
-    key: 'sk-dev-9h2i-j4k5-l6m7-n8o9',
-    created: '2024-12-01',
-    requestsToday: 3421,
-    requestsThisMonth: 45231,
-    tokensThisMonth: 6784650,
-    estimatedCostUsd: 13.57,
+    name: 'Data Platform',
+    key: 'om-data-9h2i-j4k5-l6m7-n8o9',
+    created: '2026-02-01',
+    requestsToday: 1287,
+    requestsThisMonth: 89450,
+    tokensThisMonth: 178900000,
+    estimatedCostUsd: 894.50,
     rateLimit: 5000,
     status: 'active',
-    allowedModels: ['deepseek-r1:7b', 'llama3.1:8b', 'qwen3:8b'],
+    allowedModels: ['qwen2.5:14b', 'llama3.1:70b', 'deepseek-r1:7b'],
     expiresAt: null,
   },
   {
     id: 'key-3',
-    name: 'CI/CD Pipeline',
-    key: 'sk-ci-1p2q-r3s4-t5u6-v7w8',
-    created: '2024-12-10',
+    name: 'Support Bot',
+    key: 'om-sup-1p2q-r3s4-t5u6-v7w8',
+    created: '2026-02-14',
     requestsToday: 892,
-    requestsThisMonth: 12345,
-    tokensThisMonth: 1851750,
-    estimatedCostUsd: 3.70,
-    rateLimit: 2000,
+    requestsThisMonth: 62340,
+    tokensThisMonth: 62340000,
+    estimatedCostUsd: 311.70,
+    rateLimit: 3000,
     status: 'active',
-    allowedModels: ['llama3.2:3b', 'llama3.1:8b'],
-    expiresAt: '2025-03-01',
+    allowedModels: ['llama3.1:8b', 'deepseek-r1:7b'],
+    expiresAt: null,
   },
   {
     id: 'key-4',
-    name: 'External Partner',
-    key: 'sk-ext-8x9y-z1a2-b3c4-d5e6',
-    created: '2024-12-05',
-    requestsToday: 0,
-    requestsThisMonth: 5678,
-    tokensThisMonth: 851700,
-    estimatedCostUsd: 1.70,
-    rateLimit: 1000,
-    status: 'suspended',
-    allowedModels: ['llama3.1:8b'],
+    name: 'CI/CD Pipeline',
+    key: 'om-ci-8x9y-z1a2-b3c4-d5e6',
+    created: '2026-01-20',
+    requestsToday: 412,
+    requestsThisMonth: 28160,
+    tokensThisMonth: 28160000,
+    estimatedCostUsd: 140.80,
+    rateLimit: 2000,
+    status: 'active',
+    allowedModels: ['codellama:13b', 'llama3.1:8b'],
     expiresAt: null,
   },
   {
     id: 'key-5',
-    name: 'Load Testing',
-    key: 'sk-load-4f5g-h6i7-j8k9-l0m1',
-    created: '2024-12-20',
-    requestsToday: 45000,
-    requestsThisMonth: 89000,
-    tokensThisMonth: 13350000,
-    estimatedCostUsd: 26.70,
-    rateLimit: 50000,
-    status: 'rate-limited',
-    allowedModels: ['all'],
-    expiresAt: '2025-01-01',
+    name: 'Legal & Compliance',
+    key: 'om-leg-4f5g-h6i7-j8k9-l0m1',
+    created: '2026-03-01',
+    requestsToday: 234,
+    requestsThisMonth: 15840,
+    tokensThisMonth: 15840000,
+    estimatedCostUsd: 79.20,
+    rateLimit: 1000,
+    status: 'active',
+    allowedModels: ['qwen2.5:14b', 'llama3.1:8b'],
+    expiresAt: null,
+  },
+  {
+    id: 'key-6',
+    name: 'External Partner',
+    key: 'om-ext-2k3l-m4n5-o6p7-q8r9',
+    created: '2026-03-10',
+    requestsToday: 0,
+    requestsThisMonth: 4397,
+    tokensThisMonth: 4397000,
+    estimatedCostUsd: 21.99,
+    rateLimit: 500,
+    status: 'suspended',
+    allowedModels: ['llama3.1:8b'],
+    expiresAt: null,
   },
 ];
 
@@ -172,11 +186,11 @@ export const defaultSettings: Settings = {
 };
 
 export const mockSavings: Savings = {
-  local_requests: 342567,
-  cloud_requests: 12453,
-  cloud_spent_usd: 186.42,
-  saved_usd: 3847.23,
-  total_requests: 355020,
+  local_requests: 328547,
+  cloud_requests: 13920,
+  cloud_spent_usd: 248.63,
+  saved_usd: 4724.18,
+  total_requests: 342467,
 };
 
 export const mockModelCatalog: ModelCatalog = {
@@ -267,16 +281,20 @@ const mins = (n: number) => new Date(now - n * 60000).toISOString();
 const secs = (n: number) => new Date(now - n * 1000).toISOString();
 
 export const mockRequests: RequestEntry[] = [
-  { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Production API',  model: 'deepseek-r1:32b', node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false },
-  { id: 'req-b2c3d4e5f6a1', time: secs(31),  key_name: 'Development API', model: 'llama3.1:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false },
-  { id: 'req-c3d4e5f6a1b2', time: secs(55),  key_name: 'Production API',  model: 'gpt-4o',           node: '',            status: 200, latency_ms: 312,  cloud: true  },
-  { id: 'req-d4e5f6a1b2c3', time: mins(2),   key_name: 'CI/CD Pipeline',  model: 'llama3.2:3b',     node: 'gpu-node-03', status: 200, latency_ms: 21,   cloud: false },
-  { id: 'req-e5f6a1b2c3d4', time: mins(3),   key_name: 'Production API',  model: 'qwen3:8b',         node: 'gpu-node-02', status: 200, latency_ms: 67,   cloud: false },
-  { id: 'req-f6a1b2c3d4e5', time: mins(5),   key_name: 'Development API', model: 'gemma4:12b',       node: 'gpu-node-03', status: 429, latency_ms: 3,    cloud: false },
-  { id: 'req-a7b8c9d0e1f2', time: mins(7),   key_name: 'Production API',  model: 'deepseek-r1:7b',  node: 'gpu-node-02', status: 200, latency_ms: 55,   cloud: false },
-  { id: 'req-b8c9d0e1f2a7', time: mins(9),   key_name: 'CI/CD Pipeline',  model: 'claude-3-5-sonnet-20241022', node: '', status: 200, latency_ms: 487, cloud: true },
-  { id: 'req-c9d0e1f2a7b8', time: mins(12),  key_name: 'Production API',  model: 'llama3.1:70b',    node: 'gpu-node-01', status: 500, latency_ms: 1204, cloud: false },
-  { id: 'req-d0e1f2a7b8c9', time: mins(15),  key_name: 'Development API', model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 33,   cloud: false },
+  { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Engineering Team',  model: 'deepseek-r1:7b',  node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false },
+  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.1:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false },
+  { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false },
+  { id: 'req-d4e5f6a1b2c3', time: secs(51),  key_name: 'Engineering Team',  model: 'gpt-4o',           node: '',            status: 200, latency_ms: 312,  cloud: true  },
+  { id: 'req-e5f6a1b2c3d4', time: mins(1),   key_name: 'CI/CD Pipeline',    model: 'codellama:13b',   node: 'gpu-node-01', status: 200, latency_ms: 29,   cloud: false },
+  { id: 'req-f6a1b2c3d4e5', time: mins(2),   key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-03', status: 200, latency_ms: 67,   cloud: false },
+  { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.1:70b',    node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false },
+  { id: 'req-b8c9d0e1f2a7', time: mins(5),   key_name: 'Support Bot',       model: 'deepseek-r1:7b',  node: 'gpu-node-02', status: 200, latency_ms: 55,   cloud: false },
+  { id: 'req-c9d0e1f2a7b8', time: mins(6),   key_name: 'Engineering Team',  model: 'claude-sonnet-4', node: '',            status: 200, latency_ms: 521,  cloud: true  },
+  { id: 'req-d0e1f2a7b8c9', time: mins(8),   key_name: 'CI/CD Pipeline',    model: 'codellama:13b',   node: 'gpu-node-01', status: 200, latency_ms: 24,   cloud: false },
+  { id: 'req-e1f2a7b8c9d0', time: mins(10),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 81,   cloud: false },
+  { id: 'req-f2a7b8c9d0e1', time: mins(11),  key_name: 'Support Bot',       model: 'llama3.1:8b',     node: 'gpu-node-03', status: 200, latency_ms: 44,   cloud: false },
+  { id: 'req-a3b8c9d0e1f2', time: mins(13),  key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-04', status: 429, latency_ms: 3,    cloud: false },
+  { id: 'req-b4c9d0e1f2a3', time: mins(15),  key_name: 'Data Platform',     model: 'llama3.1:70b',    node: 'gpu-node-01', status: 500, latency_ms: 1104, cloud: false },
 ];
 
 function makeHourKey(hoursAgo: number): string {
@@ -288,17 +306,17 @@ function makeHourKey(hoursAgo: number): string {
   return `${y}-${mo}-${day}T${h}`;
 }
 
-// Deterministic hourly pattern: 50-person engineering org, clear work-day peaks 9-11am + 2-4pm UTC
+// Deterministic hourly pattern: 80-person engineering org with 6-model fleet, clear work-day peaks
 // 24 entries, index 0 = 23h ago, index 23 = current hour
-// Cloud overflow only during peak hours when local capacity is saturated
-const _hourlyLocal = [38, 32, 28, 31, 42, 55, 89, 145, 224, 312, 358, 341, 287, 198, 245, 318, 334, 287, 198, 134, 112, 87, 94, 78];
-const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,  2,   4,   7,  11,  14,  12,   9,   6,   8,  13,  15,  10,   6,   4,   3,  2,  3,  2];
+// Cloud overflow only during peak hours when all 4 local nodes are saturated
+const _hourlyLocal = [46, 39, 34, 38, 51, 67, 108, 176, 272, 380, 436, 415, 349, 241, 298, 387, 406, 349, 241, 163, 136, 106, 114, 95];
+const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,   2,   5,   9,  14,  17,  15,  11,   7,  10,  16,  19,  12,   7,   5,   4,   2,   4,  2];
 
 export const mockAnalytics: Analytics = {
-  local_requests: 4067,
-  cloud_requests: 134,
-  total_saved_usd: 40.67,
-  total_spent_usd: 1.34,
+  local_requests: 4950,
+  cloud_requests: 166,
+  total_saved_usd: 53.80,
+  total_spent_usd: 1.66,
   hourly: Array.from({ length: 24 }, (_, i) => ({
     hour: makeHourKey(23 - i),
     local: _hourlyLocal[i],
@@ -310,6 +328,9 @@ export const mockAnalytics: Analytics = {
     { model: 'deepseek-r1:7b', local: 1830, cloud: 60, saved_usd: 18.30 },
     { model: 'llama3.1:8b',    local: 1305, cloud: 42, saved_usd: 13.05 },
     { model: 'qwen3:8b',       local:  932, cloud: 32, saved_usd:  9.32 },
+    { model: 'qwen2.5:14b',    local:  520, cloud: 18, saved_usd:  5.20 },
+    { model: 'llama3.1:70b',   local:  215, cloud:  8, saved_usd:  6.45 },
+    { model: 'codellama:13b',  local:  148, cloud:  6, saved_usd:  1.48 },
   ],
 };
 
