@@ -128,7 +128,7 @@ function ModelCard({
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
 
   return (
-    <div className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors">
+    <div className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors self-start w-full">
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-foreground truncate" title={model.id}>

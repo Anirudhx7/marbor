@@ -174,8 +174,8 @@ export const defaultSettings: Settings = {
 export const mockSavings: Savings = {
   local_requests: 342567,
   cloud_requests: 12453,
-  cloud_spent_usd: 48.72,
-  saved_usd: 284.15,
+  cloud_spent_usd: 186.42,
+  saved_usd: 3847.23,
   total_requests: 355020,
 };
 
@@ -288,27 +288,28 @@ function makeHourKey(hoursAgo: number): string {
   return `${y}-${mo}-${day}T${h}`;
 }
 
-// Deterministic hourly pattern: base traffic + spikes at hours 9-11 and 14-16 UTC
+// Deterministic hourly pattern: 50-person engineering org, clear work-day peaks 9-11am + 2-4pm UTC
 // 24 entries, index 0 = 23h ago, index 23 = current hour
-const _hourlyLocal = [8, 6, 5, 5, 7, 10, 18, 28, 38, 40, 37, 32, 28, 30, 36, 38, 34, 28, 22, 18, 14, 12, 10, 9];
-const _hourlyCloud = [0, 0, 0, 0, 0,  0,  1,  1,  2,  2,  1,  1,  1,  1,  2,  2,  1,  1,  1,  0,  0,  0,  0, 0];
+// Cloud overflow only during peak hours when local capacity is saturated
+const _hourlyLocal = [38, 32, 28, 31, 42, 55, 89, 145, 224, 312, 358, 341, 287, 198, 245, 318, 334, 287, 198, 134, 112, 87, 94, 78];
+const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,  2,   4,   7,  11,  14,  12,   9,   6,   8,  13,  15,  10,   6,   4,   3,  2,  3,  2];
 
 export const mockAnalytics: Analytics = {
-  local_requests: 831,
-  cloud_requests: 16,
-  total_saved_usd: 4.1557,
-  total_spent_usd: 0.0048,
+  local_requests: 4067,
+  cloud_requests: 134,
+  total_saved_usd: 40.67,
+  total_spent_usd: 1.34,
   hourly: Array.from({ length: 24 }, (_, i) => ({
     hour: makeHourKey(23 - i),
     local: _hourlyLocal[i],
     cloud: _hourlyCloud[i],
-    saved_usd: parseFloat((_hourlyLocal[i] * 0.005).toFixed(4)),
-    spent_usd: parseFloat((_hourlyCloud[i] * 0.003).toFixed(4)),
+    saved_usd: parseFloat((_hourlyLocal[i] * 0.01).toFixed(4)),
+    spent_usd: parseFloat((_hourlyCloud[i] * 0.01).toFixed(4)),
   })),
   by_model: [
-    { model: 'deepseek-r1:7b', local: 374, cloud: 7,  saved_usd: 1.870 },
-    { model: 'llama3.1:8b',    local: 266, cloud: 5,  saved_usd: 1.330 },
-    { model: 'qwen3:8b',       local: 191, cloud: 4,  saved_usd: 0.955 },
+    { model: 'deepseek-r1:7b', local: 1830, cloud: 60, saved_usd: 18.30 },
+    { model: 'llama3.1:8b',    local: 1305, cloud: 42, saved_usd: 13.05 },
+    { model: 'qwen3:8b',       local:  932, cloud: 32, saved_usd:  9.32 },
   ],
 };
 
