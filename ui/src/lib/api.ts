@@ -50,6 +50,16 @@ export async function fetchSummary() {
   };
 }
 
+export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string }): Promise<{ key: string }> {
+  const res = await fetch(`${BASE}/keys`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error('Failed to create key');
+  return res.json();
+}
+
 export async function revokeKey(name: string) {
   const res = await fetch(`${BASE}/keys/${name}`, {
     method: 'DELETE',
@@ -115,6 +125,40 @@ export async function fetchRoutingRules() {
   const res = await fetch(`${BASE}/routing/rules`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch routing rules');
   return res.json();
+}
+
+export async function addRoutingRule(rule: { id: string; priority: number; condition: string; targetNode: string; strategy: string; enabled: boolean }) {
+  const res = await fetch(`${BASE}/routing/rules`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(rule),
+  });
+  if (!res.ok) throw new Error('Failed to add routing rule');
+}
+
+export async function removeRoutingRule(id: string) {
+  const res = await fetch(`${BASE}/routing/rules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to remove routing rule');
+}
+
+export async function toggleRoutingRule(id: string) {
+  const res = await fetch(`${BASE}/routing/rules/${encodeURIComponent(id)}/toggle`, {
+    method: 'PUT',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to toggle routing rule');
+}
+
+export async function setRoutingStrategy(strategy: string) {
+  const res = await fetch(`${BASE}/routing/strategy`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy }),
+  });
+  if (!res.ok) throw new Error('Failed to set routing strategy');
 }
 
 export async function fetchRoutingStrategy(): Promise<string> {
