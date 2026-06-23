@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
@@ -131,7 +132,7 @@ function ModelDetailOverlay({
   const panelTop = anchorRect.bottom + 8;
   const maxPanelHeight = (typeof window !== 'undefined' ? window.innerHeight : 800) - panelTop - 16;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50"
       style={{ opacity: visible ? 1 : 0, transition: 'opacity 180ms ease-out' }}
@@ -288,7 +289,8 @@ function ModelDetailOverlay({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
