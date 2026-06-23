@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-06-23
+
+### Added
+- **Multi-backend runtime support** - nodes now declare a `runtime:` field (values: `ollama`, `vllm`, `tgi`, `llamacpp`; default: `ollama`). The router is now runtime-agnostic via a `RuntimeProbe` interface in the new `internal/runtime` package.
+- **RuntimeProbe interface** (`internal/runtime`) - defines `ListModels()` and `HealthCheck()` per backend. Implementations: Ollama (`GET /api/ps`), vLLM (`GET /health` + `GET /v1/models`), TGI (`GET /health` + `GET /info`), llama.cpp (`GET /health` + `GET /v1/models`).
+- **Path-aware routing** - `/api/*` requests route exclusively to Ollama nodes. `/v1/*` requests route to any runtime. Non-Ollama backends that receive `/api/*` requests are skipped, not errored.
+- **`runtime` field in admin API** - `GET /admin/nodes` now includes `runtime` on each node response.
+
+### Changed
+- Warmup (keepalive pings) skips non-Ollama nodes. Keep-alive is an Ollama-native feature; vLLM/TGI/llama.cpp do not expose it.
+- VRAM reporting for vLLM, TGI, and llama.cpp nodes is not available via API. Use the existing `vram_total_mb` config field to declare capacity for these nodes. The dashboard labels the source as `declared`.
+
 ## [0.9.1] - 2026-06-20
 
 ### Changed

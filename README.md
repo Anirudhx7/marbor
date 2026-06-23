@@ -88,6 +88,8 @@ Client Application (Agent / RAG / Copilot)
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: operator-declared `vram_total_mb`. Every figure labelled with its source (nvidia/api/declared). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
+| **Multi-Backend** | Ollama, vLLM, TGI, llama.cpp | Declare `runtime: ollama/vllm/tgi/llamacpp` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. |
+| | Path-aware routing | `/api/*` routes to Ollama nodes only. `/v1/*` routes to any runtime. Non-Ollama nodes are transparent to OpenAI SDK clients. |
 | **Deployment** | Single binary | One static Go binary per platform. Drop onto a VM and run. No package manager, no virtualenv, no container runtime required. |
 | | Docker auto-discovery | Scans Docker socket for `ollama/ollama` containers. Auto-registers nodes. Zero config. |
 | | Cloud format translation | Ollama-native requests that overflow to cloud get OpenAI responses translated back to Ollama NDJSON. Clients never see a format difference. |
@@ -192,13 +194,22 @@ nodes:
   - name: gpu-0
     url: http://10.0.1.10:11434
     gpu_model: "NVIDIA A100 80GB"
+    # runtime: ollama  # default - GET /api/ps for warm-model detection
   - name: gpu-1
     url: http://10.0.1.11:11434
     gpu_model: "NVIDIA A100 80GB"
-  - name: gpu-remote
-    url: http://10.0.2.10:11434
-    gpu_model: "NVIDIA A10G 24GB"
+  - name: vllm-gpu
+    url: http://10.0.1.20:8000
+    runtime: vllm       # GET /health + /v1/models; /v1/* traffic only
     vram_total_mb: 24576
+  - name: tgi-gpu
+    url: http://10.0.1.21:8080
+    runtime: tgi        # GET /health + /info; /v1/* traffic only
+    vram_total_mb: 24576
+  - name: llamacpp-gpu
+    url: http://10.0.1.22:8080
+    runtime: llamacpp   # GET /health + /v1/models; /v1/* traffic only
+    vram_total_mb: 16384
 
 routing:
   strategy: warm-first
