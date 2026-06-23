@@ -24,7 +24,7 @@ func TestRouteWarmFirst(t *testing.T) {
 	r.nodes[1].Healthy = true
 	r.nodes[1].mu.Unlock()
 
-	node, warm := r.Route("llama3.2:8b", "")
+	node, warm := r.Route("llama3.2:8b", "", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -35,7 +35,7 @@ func TestRouteWarmFirst(t *testing.T) {
 		t.Error("expected warm routing")
 	}
 
-	node, warm = r.Route("unknown", "")
+	node, warm = r.Route("unknown", "", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -59,7 +59,7 @@ func TestAllUnhealthy(t *testing.T) {
 	r.nodes[0].mu.Lock()
 	r.nodes[0].Healthy = false
 	r.nodes[0].mu.Unlock()
-	node, _ := r.Route("any", "")
+	node, _ := r.Route("any", "", "")
 	if node != nil {
 		t.Error("expected nil for all unhealthy")
 	}
@@ -84,7 +84,7 @@ func TestWarmFirstPicksLeastConns(t *testing.T) {
 	atomic.StoreInt32(&r.nodes[0].ActiveConns, 5)
 	atomic.StoreInt32(&r.nodes[1].ActiveConns, 1)
 
-	node, warm := r.Route("llama3.2:8b", "")
+	node, warm := r.Route("llama3.2:8b", "", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -277,7 +277,7 @@ func TestRouteCloudFallsBackWhenAllNodesUnhealthy(t *testing.T) {
 	r.nodes[0].Healthy = false
 	r.nodes[0].mu.Unlock()
 
-	node, _ := r.Route("llama3.2:8b", "")
+	node, _ := r.Route("llama3.2:8b", "", "")
 	if node != nil {
 		t.Error("Route() should return nil when all nodes unhealthy")
 	}
@@ -305,7 +305,7 @@ func TestSessionAffinitySticksToBestNode(t *testing.T) {
 	r.nodes[1].mu.Unlock()
 
 	// First request: no affinity entry yet — should pick node-a (warm).
-	n1, warm1 := r.Route("llama3", "sess-1")
+	n1, warm1 := r.Route("llama3", "sess-1", "")
 	if n1 == nil {
 		t.Fatal("expected a node, got nil")
 	}
@@ -320,7 +320,7 @@ func TestSessionAffinitySticksToBestNode(t *testing.T) {
 	r.nodes[1].mu.Lock()
 	r.nodes[1].LoadedModels = []ModelInfo{{Name: "llama3"}}
 	r.nodes[1].mu.Unlock()
-	n2, _ := r.Route("llama3", "sess-1")
+	n2, _ := r.Route("llama3", "sess-1", "")
 	if n2 == nil || n2.Name != "node-a" {
 		t.Errorf("second Route() = %v, want node-a (sticky)", n2)
 	}
@@ -341,7 +341,7 @@ func TestSessionAffinityFallsBackOnUnhealthyNode(t *testing.T) {
 	r.nodes[1].mu.Unlock()
 
 	// Pin sess-2 to node-a.
-	r.Route("llama3", "sess-2")
+	r.Route("llama3", "sess-2", "")
 
 	// node-a goes down.
 	r.nodes[0].mu.Lock()
@@ -349,7 +349,7 @@ func TestSessionAffinityFallsBackOnUnhealthyNode(t *testing.T) {
 	r.nodes[0].mu.Unlock()
 
 	// Next request for sess-2 must not return nil or node-a.
-	n, _ := r.Route("llama3", "sess-2")
+	n, _ := r.Route("llama3", "sess-2", "")
 	if n == nil {
 		t.Fatal("expected fallback node, got nil")
 	}
@@ -379,7 +379,7 @@ func TestSessionAffinityNoIDIsStateless(t *testing.T) {
 	r.nodes[0].mu.Unlock()
 
 	// No session ID — must not create affinity entries.
-	r.Route("llama3", "")
+	r.Route("llama3", "", "")
 	r.affinityMu.RLock()
 	count := len(r.affinity)
 	r.affinityMu.RUnlock()
@@ -512,7 +512,7 @@ func TestRouteInternal_VRAMFallback(t *testing.T) {
 	r.nodes[1].mu.Unlock()
 	atomic.StoreInt32(&r.nodes[1].ActiveConns, 1)
 
-	node, warm := r.Route("unknown-model", "")
+	node, warm := r.Route("unknown-model", "", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -545,7 +545,7 @@ func TestRouteExcluding_VRAMFallback(t *testing.T) {
 	atomic.StoreInt32(&r.nodes[1].ActiveConns, 1)
 
 	exclude := map[string]bool{"http://node-a:11434": true}
-	node, _ := r.RouteExcluding("unknown-model", exclude)
+	node, _ := r.RouteExcluding("unknown-model", "", exclude)
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -600,7 +600,7 @@ func TestDrainNodeExcludesFromRouting(t *testing.T) {
 
 	// Route should never return node-b while draining.
 	for i := 0; i < 10; i++ {
-		node, _ := r.Route("llama3", "")
+		node, _ := r.Route("llama3", "", "")
 		if node == nil {
 			t.Fatal("Route returned nil (expected node-a)")
 		}
@@ -756,5 +756,74 @@ func TestPatchNodeNotFound(t *testing.T) {
 	vram := int64(8192)
 	if r.PatchNode("nonexistent", NodePatch{VRAMTotalMB: &vram}) {
 		t.Error("PatchNode should return false for unknown node")
+	}
+}
+
+// TestRoute_RuntimeFilter_OllamaOnly verifies that runtimeFilter="ollama" returns
+// only the Ollama node when both an Ollama and a vLLM node are healthy.
+func TestRoute_RuntimeFilter_OllamaOnly(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "ollama-0", URL: "http://localhost:1"},
+		{Name: "vllm-0", URL: "http://localhost:2"},
+	}, nil)
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].Runtime = "ollama"
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Healthy = true
+	r.nodes[1].Runtime = "vllm"
+	r.nodes[1].mu.Unlock()
+
+	node, _ := r.Route("llama3", "", "ollama")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "ollama-0" {
+		t.Errorf("Route with runtimeFilter=ollama returned %q, want ollama-0", node.Name)
+	}
+}
+
+// TestRoute_RuntimeFilter_Any verifies that runtimeFilter="" allows routing to
+// any runtime — both Ollama and vLLM nodes are eligible.
+func TestRoute_RuntimeFilter_Any(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "ollama-0", URL: "http://localhost:1"},
+		{Name: "vllm-0", URL: "http://localhost:2"},
+	}, nil)
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].Runtime = "ollama"
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Healthy = true
+	r.nodes[1].Runtime = "vllm"
+	r.nodes[1].mu.Unlock()
+
+	node, _ := r.Route("llama3", "", "")
+	if node == nil {
+		t.Fatal("Route with runtimeFilter=\"\" returned nil, want any node")
+	}
+}
+
+// TestRoute_RuntimeFilter_NoMatch verifies that runtimeFilter="ollama" returns
+// nil when only vLLM nodes are available.
+func TestRoute_RuntimeFilter_NoMatch(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "vllm-0", URL: "http://localhost:1"},
+		{Name: "vllm-1", URL: "http://localhost:2"},
+	}, nil)
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].Runtime = "vllm"
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Healthy = true
+	r.nodes[1].Runtime = "vllm"
+	r.nodes[1].mu.Unlock()
+
+	node, _ := r.Route("llama3", "", "ollama")
+	if node != nil {
+		t.Errorf("Route with runtimeFilter=ollama returned %q, want nil (no Ollama nodes)", node.Name)
 	}
 }
