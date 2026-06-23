@@ -344,7 +344,7 @@ section, #install { scroll-margin-top: 80px; }
 <!-- HERO -->
 <header class="hero">
   <div class="page">
-    <span class="kicker"><span class="dot"></span>self-hosted · open source · Apache 2.0</span>
+    <span class="kicker"><span class="dot"></span>v0.10.0: vLLM, TGI, llama.cpp · self-hosted · Apache 2.0</span>
     <h1 class="headline">Stop sending requests to <em>cold GPUs.</em></h1>
     <p class="subhead">
       ollama-mesh is a smart proxy for your Ollama cluster. Your engineers are already running
@@ -453,6 +453,10 @@ section, #install { scroll-margin-top: 80px; }
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div>
         <div><h3>OpenAI-compatible API</h3><p>Speaks the <code>/v1/chat/completions</code> spec your tools already use. Continue, LibreChat, Open WebUI, and your own services connect by changing one base URL.</p></div>
       </div>
+      <div class="feat">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/><rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/><path d="M9 6.5h6M9 17.5h6M5.5 10v4M18.5 10v4"/></svg></div>
+        <div><h3>Any inference backend</h3><p>Nodes can be Ollama, vLLM, TGI (Text Generation Inference), llama.cpp, or any OpenAI-compatible endpoint. Set <code>runtime: vllm</code> (or <code>tgi</code>, <code>llamacpp</code>) per node - <code>/v1/*</code> routes to any backend, <code>/api/*</code> stays Ollama-only. GPU VRAM metrics are Ollama and nvidia-smi; vLLM/TGI nodes show operator-declared capacity.</p></div>
+      </div>
     </div>
   </div>
 </section>
@@ -478,12 +482,16 @@ section, #install { scroll-margin-top: 80px; }
         <div class="num">2</div>
         <div>
           <h3>Point it at your nodes</h3>
-          <p>List your Ollama machines and, optionally, a cloud key for fallback. ollama-mesh discovers which models are warm on each.</p>
+          <p>List your nodes and, optionally, a cloud key for fallback. Ollama, vLLM, TGI, and llama.cpp nodes all work - set <code>runtime:</code> per node.</p>
           <div class="code-wrap"><pre class="code"><span class="c"># mesh.yaml</span>
 <span class="b">nodes:</span>
-  - http://gpu-01:11434
-  - http://gpu-02:11434
-<span class="b">fallback:</span> openai  <span class="c"># optional: deepseek-r1, llama3.1, qwen3</span></pre><button class="copy-btn" aria-label="Copy" data-copy="# mesh.yaml&#10;nodes:&#10;  - http://gpu-01:11434&#10;  - http://gpu-02:11434&#10;fallback: openai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  - <span class="b">name:</span> ollama-gpu
+    <span class="b">url:</span> http://gpu-01:11434
+    <span class="b">runtime:</span> <span class="g">ollama</span>
+  - <span class="b">name:</span> vllm-gpu
+    <span class="b">url:</span> http://10.0.1.20:8000
+    <span class="b">runtime:</span> <span class="g">vllm</span>
+<span class="b">fallback:</span> openai  <span class="c"># optional cloud overflow</span></pre><button class="copy-btn" aria-label="Copy" data-copy="# mesh.yaml&#10;nodes:&#10;  - name: ollama-gpu&#10;    url: http://gpu-01:11434&#10;    runtime: ollama&#10;  - name: vllm-gpu&#10;    url: http://10.0.1.20:8000&#10;    runtime: vllm&#10;fallback: openai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
       <div class="step">
@@ -560,6 +568,13 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
             <td><span class="no">Seconds</span></td>
             <td><span class="no">n/a (hosted)</span></td>
             <td><span class="yes">Fast</span></td>
+          </tr>
+          <tr>
+            <td>vLLM / TGI / llama.cpp nodes</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>v0.10.0+</span></td>
+            <td><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="no">No</span></td>
+            <td><span class="no">No</span></td>
           </tr>
         </tbody>
       </table>
