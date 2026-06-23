@@ -79,6 +79,29 @@ function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
   );
 }
 
+function RuntimeBadge({ runtime }: { runtime: string }) {
+  const runtimeStyles: Record<string, string> = {
+    ollama:   'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+    vllm:     'bg-purple-500/20 text-purple-400 border border-purple-500/30',
+    tgi:      'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+    llamacpp: 'bg-green-500/20 text-green-400 border border-green-500/30',
+  };
+  const runtimeLabels: Record<string, string> = {
+    ollama:   'Ollama',
+    vllm:     'vLLM',
+    tgi:      'TGI',
+    llamacpp: 'llama.cpp',
+  };
+  const key = (runtime || '').toLowerCase();
+  const style = runtimeStyles[key] ?? 'bg-gray-500/20 text-gray-400 border border-gray-500/30';
+  const label = runtimeLabels[key] ?? (runtime || 'unknown');
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style}`}>
+      {label}
+    </span>
+  );
+}
+
 function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit }: {
   node: GPUNode;
   onRemove: (name: string) => void;
@@ -110,7 +133,10 @@ function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit }: {
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground mt-0.5">{node.gpuModel}</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-sm text-muted-foreground">{node.gpuModel}</p>
+              <RuntimeBadge runtime={node.runtime} />
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -384,7 +410,7 @@ export function GPUNodes() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">GPU Nodes</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage {nodes.length} Ollama instances across your infrastructure
+            Manage {nodes.length} inference nodes across your infrastructure
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -431,7 +457,7 @@ export function GPUNodes() {
       {filteredNodes.length === 0 && (
         <div className="text-center py-12">
           <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground">No GPU nodes found matching your search.</p>
+          <p className="text-muted-foreground">No inference nodes found matching your search.</p>
         </div>
       )}
 

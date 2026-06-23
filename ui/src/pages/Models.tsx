@@ -176,6 +176,7 @@ export function Models() {
           vramTotalMB: 81920,
           vramUsedMB: 40960,
           vramSource: 'nvidia',
+          runtime: 'ollama',
           powerDrawW: 250,
           cpuPercent: 12,
           temperature: 65,

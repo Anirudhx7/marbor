@@ -13,6 +13,7 @@ export interface GPUNode {
   cpuPercent: number;
   temperature: number | null;
   health: 'healthy' | 'degraded' | 'down';
+  runtime: string;
   draining: boolean;
   uptime: string;
   loadedModels: LoadedModel[];
