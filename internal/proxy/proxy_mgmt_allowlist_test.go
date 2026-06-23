@@ -35,7 +35,7 @@ func mgmtTestHandler(t *testing.T, allowManagement bool) (*Handler, *int64) {
 			UpstreamTimeoutMs: 5000,
 			MaxRetries:        2,
 		},
-		[]config.NodeConfig{{Name: "good", URL: upstream.URL}},
+		[]config.NodeConfig{{Name: "good", URL: upstream.URL, Runtime: "ollama"}},
 		nil,
 	)
 	for _, n := range r.Nodes() {

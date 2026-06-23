@@ -93,7 +93,7 @@ func (r *streamRecorder) Flush() {
 func newStreamTestHandler(t *testing.T, nodeURL string) (*Handler, *admin.Server) {
 	t.Helper()
 	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections"}, []config.NodeConfig{
-		{Name: "mock-node", URL: nodeURL, GPUModel: "test-gpu"},
+		{Name: "mock-node", URL: nodeURL, GPUModel: "test-gpu", Runtime: "ollama"},
 	}, nil)
 	n := r.Nodes()[0]
 	n.Lock()
@@ -228,7 +228,7 @@ func TestAbortedStreamStillRecorded(t *testing.T) {
 	defer node.Close()
 
 	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections"}, []config.NodeConfig{
-		{Name: "mock-node", URL: node.URL, GPUModel: "test-gpu"},
+		{Name: "mock-node", URL: node.URL, GPUModel: "test-gpu", Runtime: "ollama"},
 	}, nil)
 	n := r.Nodes()[0]
 	n.Lock()

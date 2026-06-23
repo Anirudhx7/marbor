@@ -23,10 +23,12 @@ import (
 	"strings"
 )
 
-// isOllamaPath reports whether path is an Ollama-native API path that needs
-// response translation on cloud fallback.
+// isOllamaPath reports whether path is an Ollama-native API path.
+// Any path under /api/ is Ollama-native; /v1/ paths are OpenAI-compat and
+// can reach any backend runtime. Cloud fallback for /api/ paths still works
+// because translateCloudPath handles the full /api/ space.
 func isOllamaPath(path string) bool {
-	return path == "/api/chat" || path == "/api/generate"
+	return strings.HasPrefix(path, "/api/")
 }
 
 // translatingTransport wraps an inner RoundTripper and, for responses to

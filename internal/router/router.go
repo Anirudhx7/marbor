@@ -19,6 +19,7 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
+	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
 )
 
 type ModelInfo struct {
@@ -53,7 +54,11 @@ type NodeState struct {
 	Uptime        string
 	HealthHistory []float64
 	FirstSeenAt   time.Time
-	mu            sync.RWMutex
+	// Runtime identifies the backend type: "ollama", "vllm", "tgi", "llamacpp".
+	// Empty string is treated as "ollama" for backwards compatibility.
+	Runtime string
+	probe   runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
+	mu      sync.RWMutex
 }
 
 // TagsCache holds a cached result from /api/tags for a single node.
@@ -131,6 +136,7 @@ type Router struct {
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
+	client := &http.Client{Timeout: 5 * time.Second}
 	nodes := make([]*NodeState, len(nodesCfg))
 	for i, n := range nodesCfg {
 		nodes[i] = &NodeState{
@@ -141,6 +147,8 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			VRAMTotalMBConfig: n.VRAMTotalMB,
 			Healthy:           true,
 			FirstSeenAt:       time.Now(),
+			Runtime:           n.Runtime,
+			probe:             runtimepkg.NewProbe(n.Runtime, client),
 		}
 	}
 	cloudsCopy := make([]config.CloudProvider, len(clouds))
@@ -178,7 +186,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		strategy:           cfg.Strategy,
 		fallback:           cfg.Fallback,
 		interval:           time.Duration(cfg.PollIntervalMs) * time.Millisecond,
-		client:             &http.Client{Timeout: 5 * time.Second},
+		client:             client,
 		rules:              cfg.Rules,
 		clouds:             cloudsCopy,
 		discoveredURLs:     make(map[string]struct{}),
@@ -482,42 +490,18 @@ func (r *Router) pollAll() {
 func (r *Router) pollNode(n *NodeState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", n.URL+"/api/ps", nil)
+
+	result, err := n.probe.Probe(ctx, n.URL)
 	if err != nil {
 		r.markFailure(n)
 		return
 	}
-	resp, err := r.client.Do(req)
-	if err != nil {
-		r.markFailure(n)
-		return
+	// Convert runtime.LoadedModel slice to []ModelInfo (router's internal type).
+	models := make([]ModelInfo, len(result.LoadedModels))
+	for i, m := range result.LoadedModels {
+		models[i] = ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAMBytes}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		r.markFailure(n)
-		return
-	}
-	// Decode /api/ps. Ollama sends size_vram (snake_case) per loaded model; map it
-	// into ModelInfo, which serializes as sizeVram for the admin API. The earlier
-	// single-struct approach used the sizeVram tag for decode too, so Ollama's
-	// size_vram was silently dropped and per-node used-VRAM was always 0.
-	var ps struct {
-		Models []struct {
-			Name     string `json:"name"`
-			SizeVRAM int64  `json:"size_vram"`
-		} `json:"models"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
-		r.markFailure(n)
-		return
-	}
-	models := make([]ModelInfo, len(ps.Models))
-	var psUsedBytes int64
-	for i, m := range ps.Models {
-		models[i] = ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAM}
-		psUsedBytes += m.SizeVRAM
-	}
-	psUsedMB := psUsedBytes / (1024 * 1024)
+	psUsedMB := result.VRAMUsedMB
 
 	// nvidia-smi only describes GPUs on the mesh host itself. Read from the
 	// nvidiaCache populated by pollNvidiaAll() on its own slower ticker (default
@@ -646,14 +630,24 @@ func (r *Router) markFailure(n *NodeState) {
 // preferred (KV-cache / context affinity). If the sticky node is gone or
 // unhealthy, the entry is evicted and normal warm-first routing applies; the
 // new node is then pinned for the session.
-func (r *Router) Route(modelName, sessionID string) (*NodeState, bool) {
+//
+// runtimeFilter, when non-empty, restricts candidates to nodes whose Runtime
+// field matches exactly. Pass "" to allow any runtime (existing behaviour).
+func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, bool) {
 	if sessionID != "" {
 		if node := r.stickyNode(sessionID); node != nil {
-			return node, isModelWarm(node, modelName)
+			// Honour runtime filter even for sticky nodes.
+			if runtimeFilter == "" || node.Runtime == runtimeFilter {
+				return node, isModelWarm(node, modelName)
+			}
+			// Sticky node doesn't match filter — evict and re-route.
+			r.affinityMu.Lock()
+			delete(r.affinity, sessionID)
+			r.affinityMu.Unlock()
 		}
 	}
 
-	node, warm := r.routeInternal(modelName)
+	node, warm := r.routeInternal(modelName, runtimeFilter)
 	if node != nil && sessionID != "" {
 		r.affinityMu.Lock()
 		// Only pin if under the cap — prevents memory-exhaustion DoS from
@@ -740,8 +734,9 @@ func isModelWarm(n *NodeState, modelName string) bool {
 
 // routeInternal is the core warm-first / fallback routing logic, extracted so
 // both Route and RouteExcluding can share it without duplicating the strategy
-// switch. Callers provide a filtered healthy-node slice.
-func (r *Router) routeInternal(modelName string) (*NodeState, bool) {
+// switch. runtimeFilter, when non-empty, restricts candidates to nodes whose
+// Runtime matches exactly.
+func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, bool) {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
@@ -751,6 +746,9 @@ func (r *Router) routeInternal(modelName string) (*NodeState, bool) {
 
 	var healthy []*NodeState
 	for _, n := range nodes {
+		if runtimeFilter != "" && n.Runtime != runtimeFilter {
+			continue // skip nodes that don't match the requested runtime
+		}
 		n.mu.RLock()
 		isHealthy := n.Healthy
 		isDraining := n.Draining
@@ -857,6 +855,8 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		NvidiaIndex: n.NvidiaIndex,
 		Healthy:     true,
 		FirstSeenAt: time.Now(),
+		Runtime:     n.Runtime,
+		probe:       runtimepkg.NewProbe(n.Runtime, r.client),
 	}
 	r.mu.Lock()
 	r.nodes = append(r.nodes, node)
@@ -1037,7 +1037,10 @@ func (r *Router) MaxRetries() int {
 // RouteExcluding picks the best healthy node for modelName, excluding any
 // node whose URL appears in the exclude map. Used by the retry loop in
 // proxy.go to avoid re-selecting an already-failed node.
-func (r *Router) RouteExcluding(modelName string, exclude map[string]bool) (*NodeState, bool) {
+//
+// runtimeFilter, when non-empty, additionally restricts candidates to nodes
+// whose Runtime field matches exactly. Pass "" to allow any runtime.
+func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[string]bool) (*NodeState, bool) {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
@@ -1048,6 +1051,9 @@ func (r *Router) RouteExcluding(modelName string, exclude map[string]bool) (*Nod
 	for _, n := range nodes {
 		if exclude[n.URL] {
 			continue
+		}
+		if runtimeFilter != "" && n.Runtime != runtimeFilter {
+			continue // skip nodes that don't match the requested runtime
 		}
 		n.mu.RLock()
 		isHealthy := n.Healthy
@@ -1126,7 +1132,7 @@ func (r *Router) DecrConn(node *NodeState) {
 // to prevent unbounded memory growth under sustained overload.
 func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (*NodeState, bool) {
 	// Fast path: immediate route.
-	if node, warm := r.Route(modelName, sessionID); node != nil {
+	if node, warm := r.Route(modelName, sessionID, ""); node != nil {
 		return node, warm
 	}
 
@@ -1169,11 +1175,11 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (
 			metrics.QueueTimeout()
 			return nil, false
 		case <-ch:
-			if node, warm := r.Route(modelName, sessionID); node != nil {
+			if node, warm := r.Route(modelName, sessionID, ""); node != nil {
 				return node, warm
 			}
 		case <-retryTick.C:
-			if node, warm := r.Route(modelName, sessionID); node != nil {
+			if node, warm := r.Route(modelName, sessionID, ""); node != nil {
 				return node, warm
 			}
 		}

@@ -293,7 +293,7 @@ func TestProxy_AuthHeaderStripped(t *testing.T) {
 	defer upstream.Close()
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
-		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
 	}, nil)
 	r.Nodes()[0].Lock()
 	r.Nodes()[0].Healthy = true
@@ -323,7 +323,7 @@ func TestProxy_BodyCapEnforced(t *testing.T) {
 	defer upstream.Close()
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
-		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
 	}, nil)
 	r.Nodes()[0].Lock()
 	r.Nodes()[0].Healthy = true
@@ -357,7 +357,7 @@ func TestProxy_ManagementEndpointsBlocked(t *testing.T) {
 	defer upstream.Close()
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
-		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
 	}, nil)
 	r.Nodes()[0].Lock()
 	r.Nodes()[0].Healthy = true
@@ -406,7 +406,7 @@ func TestProxy_XRequestIDForwarded(t *testing.T) {
 	defer upstream.Close()
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
-		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100"},
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
 	}, nil)
 	r.Nodes()[0].Lock()
 	r.Nodes()[0].Healthy = true
@@ -426,7 +426,7 @@ func TestProxy_XRequestIDForwarded(t *testing.T) {
 
 func TestProxyExtractAndRoute(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections"}, []config.NodeConfig{
-		{Name: "gpu-0", URL: "http://localhost:11435", GPUModel: "RTX 4090"},
+		{Name: "gpu-0", URL: "http://localhost:11435", GPUModel: "RTX 4090", Runtime: "ollama"},
 	}, nil)
 	r.Nodes()[0].Lock()
 	r.Nodes()[0].Healthy = true

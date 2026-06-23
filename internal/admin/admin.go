@@ -93,6 +93,7 @@ type nodeResp struct {
 	VRAMSource    string             `json:"vramSource"`
 	PowerDrawW    float64            `json:"powerDrawW"`
 	Temperature   *float64           `json:"temperature"`
+	Runtime       string             `json:"runtime"`
 	Health        string             `json:"health"`
 	Draining      bool               `json:"draining"`
 	Uptime        string             `json:"uptime"`
@@ -326,6 +327,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			VRAMSource:    n.VRAMSource,
 			PowerDrawW:    n.PowerDrawW,
 			Temperature:   n.Temperature,
+			Runtime:       n.Runtime,
 			Health:        health,
 			Draining:      n.Draining,
 			Uptime:        n.Uptime,
@@ -372,6 +374,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			VRAMSource:    n.VRAMSource,
 			PowerDrawW:    n.PowerDrawW,
 			Temperature:   n.Temperature,
+			Runtime:       n.Runtime,
 			Health:        health,
 			Draining:      n.Draining,
 			Uptime:        n.Uptime,

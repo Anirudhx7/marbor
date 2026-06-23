@@ -38,6 +38,11 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 	for _, entry := range cfg.Models {
 		targets := nodesForEntry(nodes, entry.Nodes)
 		for _, n := range targets {
+			// Warmup pings use Ollama's /api/generate keep_alive endpoint.
+			// Skip non-Ollama backends — they have no equivalent API.
+			if n.Runtime != "ollama" && n.Runtime != "" {
+				continue
+			}
 			n := n // capture
 			entry := entry
 			go func() {

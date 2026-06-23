@@ -201,16 +201,59 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Extract session ID for KV-cache affinity. The header is optional; an
 	// absent or empty value means stateless routing (no sticky session).
 	sessionID := strings.TrimSpace(r.Header.Get("X-Session-ID"))
+
+	// Determine runtime filter from request path. Ollama-native paths (/api/*)
+	// must only route to Ollama nodes; /v1/* paths can reach any backend
+	// (vLLM, TGI, llama.cpp, Ollama). An empty filter means no restriction.
+	runtimeFilter := ""
+	if isOllamaPath(r.URL.Path) {
+		runtimeFilter = "ollama"
+	}
+
 	// WaitForNode tries an immediate route first; if no node is available it
 	// queues the request and blocks until a node frees up or the queue timeout
 	// elapses. On timeout or queue-full it returns nil and we fall through to
 	// cloud fallback or 503 as before. The request context is passed so a
 	// client disconnect aborts the wait immediately.
 	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID)
+
+	// WaitForNode calls Route with an empty runtimeFilter, so it may return a
+	// node whose Runtime does not match the path requirement. Re-check here: if
+	// the path is Ollama-native but the selected node is a non-Ollama runtime
+	// (e.g. "vllm"), treat it as "no Ollama node available" and fall through.
+	//
+	// Note: Runtime=="" only appears in tests that bypass config.Validate().
+	// In production, config.Validate() always sets Runtime="ollama" as the default,
+	// so no node should have Runtime=="" at runtime. A Runtime="" node is therefore
+	// excluded from runtimeFilter="ollama" routes (it falls to cloud/503), which is
+	// the correct behavior - production nodes always go through Validate().
+	if node != nil && runtimeFilter != "" {
+		node.RLock()
+		nodeRuntime := node.Runtime
+		node.RUnlock()
+		if nodeRuntime != runtimeFilter {
+			// Node runtime does not match the path requirement.
+			node = nil
+		}
+	}
+
 	if node == nil {
+		// Try cloud fallback first - cloud providers support /api/* paths via
+		// the translating transport, so Ollama-native clients can still reach
+		// cloud when no local Ollama node is available.
 		cloud := h.router.RouteCloud()
 		if cloud != nil {
 			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, cloud)
+			return
+		}
+		// No local node and no cloud. If this was an Ollama-native path, return
+		// a clear actionable message so the caller knows to use /v1/ for
+		// non-Ollama backends rather than getting a generic 503.
+		if runtimeFilter == "ollama" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"error":"no Ollama nodes available; use /v1/ endpoint for non-Ollama backends"}`))
+			metrics.RequestsTotal(keyName, modelName, "none", "503")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -281,7 +324,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if attempt < maxRetries {
-				alt, _ := h.router.RouteExcluding(modelName, tried)
+				alt, _ := h.router.RouteExcluding(modelName, runtimeFilter, tried)
 				if alt != nil {
 					metrics.Retry(node.Name)
 					nextNode = alt
