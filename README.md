@@ -1,8 +1,8 @@
 # ollama-mesh
 
-**Enterprise-Grade, Hardware-Aware GPU Routing Proxy for Distributed Local LLM Inference**
+**Enterprise-Grade, Hardware-Aware GPU Routing Proxy for Ollama, vLLM, TGI, and llama.cpp**
 
-One endpoint for all your LLM traffic. Every request routes to the GPU node that already holds the model warm in VRAM. Cloud overflow activates only when local capacity is exhausted — consent-first, never silent. Local hardware first. Cloud second. Full financial receipts.
+One endpoint for all your LLM traffic. Every request routes to the GPU node that already holds the model warm in VRAM - across any OpenAI-compatible backend. Cloud overflow activates only when local capacity is exhausted - consent-first, never silent. Local hardware first. Cloud second. Full financial receipts.
 
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
@@ -53,7 +53,9 @@ Client Application (Agent / RAG / Copilot)
     │               │              │
     ▼               ▼              ▼
   GPU Nodes     Cloud APIs     Prometheus :9090
-  (Ollama)      (overflow)     Grafana Dashboard
+  (Ollama/      (overflow)     Grafana Dashboard
+   vLLM/TGI/
+   llama.cpp)
 ```
 
 **Single static Go binary. Zero runtime dependencies. No Python. No JVM. No Node.js.**
@@ -113,6 +115,40 @@ This is the dashboard screenshot that sells itself: ollama-mesh tracks every tok
 The math uses real parsed token counts from each response (`eval_count` from Ollama, `usage.total_tokens` from cloud), valued at your configured reference rate. When token data is unavailable, the dashboard shows "—" rather than a fabricated number. No fake math.
 
 Platform engineers with a team routing through local GPU hardware typically see $200–$3,000+/month in avoided cloud spend visible in the dashboard within the first week. Full financial model: [SAVINGS-MATH.md](docs/SAVINGS-MATH.md).
+
+---
+
+## Supported Backends
+
+ollama-mesh is runtime-agnostic. Declare `runtime:` per node and the router uses the correct health probe and model-discovery call for each backend.
+
+| Backend | `runtime:` value | Health check | Model discovery | Path routing |
+|---------|-----------------|--------------|-----------------|--------------|
+| Ollama | `ollama` (default) | GET /api/ps | /api/ps response | /api/* and /v1/* |
+| vLLM | `vllm` | GET /health | GET /v1/models | /v1/* only |
+| TGI (HuggingFace) | `tgi` | GET /health | GET /info | /v1/* only |
+| llama.cpp server | `llamacpp` | GET /health | GET /v1/models | /v1/* only |
+
+`/api/*` paths (Ollama-native) route only to Ollama nodes. `/v1/*` paths route to any runtime - OpenAI SDK clients work unchanged against a mixed fleet.
+
+**Mixed-fleet example:**
+
+```yaml
+nodes:
+  - name: ollama-local
+    url: http://localhost:11434
+    runtime: ollama  # default
+  - name: vllm-gpu
+    url: http://10.0.1.20:8000
+    runtime: vllm
+    vram_total_mb: 81920
+  - name: tgi-server
+    url: http://10.0.1.21:8080
+    runtime: tgi
+  - name: llamacpp-server
+    url: http://10.0.1.22:8080
+    runtime: llamacpp
+```
 
 ---
 
@@ -326,7 +362,7 @@ warmup:
 
 ## Cloud Fallback Setup
 
-Cloud providers are used **only** when all local Ollama nodes are unavailable or at capacity. Local GPU always wins. Set `enabled: true` on any provider:
+Cloud providers are used **only** when all local inference nodes (Ollama, vLLM, TGI, llama.cpp) are unavailable or at capacity. Local GPU always wins. Set `enabled: true` on any provider:
 
 ```yaml
 cloud_providers:
@@ -418,7 +454,7 @@ Import `grafana/ollama-mesh.json` into Grafana. Point the Prometheus datasource 
 
 ### Use ollama-mesh when:
 
-- You have on-premises GPU hardware running Ollama and want to maximize utilization before paying for cloud tokens.
+- You have on-premises GPU hardware running Ollama, vLLM, TGI, or llama.cpp and want to maximize utilization before paying for cloud tokens.
 - You need per-key auth, rate limiting, cost attribution, and a usage dashboard without standing up a Python service.
 - You need GPU-warm-first routing to eliminate cold-start latency in multi-agent workflows.
 - You want cloud overflow that is explicitly opt-in — not a default that silently generates bills.

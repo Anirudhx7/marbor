@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ollama-mesh - warm-first routing for Ollama GPU clusters</title>
-<meta name="description" content="A single Go binary that routes LLM requests to whichever node already has the model loaded in GPU memory, falls back to OpenAI or Anthropic when the cluster is busy, and tracks every dollar. No Python. No Docker. Starts in under 100ms." />
+<title>ollama-mesh - warm-first routing for Ollama, vLLM, TGI, and llama.cpp</title>
+<meta name="description" content="A single Go binary that routes LLM requests to whichever node already has the model loaded in GPU memory - Ollama, vLLM, TGI, or llama.cpp. Falls back to OpenAI or Anthropic when the cluster is busy, and tracks every dollar. No Python. No Docker. Starts in under 100ms." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <style>
 :root {
@@ -347,8 +347,9 @@ section, #install { scroll-margin-top: 80px; }
     <span class="kicker"><span class="dot"></span>v0.10.0: vLLM, TGI, llama.cpp · self-hosted · Apache 2.0</span>
     <h1 class="headline">Stop sending requests to <em>cold GPUs.</em></h1>
     <p class="subhead">
-      ollama-mesh is a smart proxy for your Ollama cluster. Your engineers are already running
-      <strong>DeepSeek-R1, Llama 3.1, and Qwen3</strong> on local GPUs - models that rival GPT-4 at zero cost per token.
+      ollama-mesh is a smart proxy for your local inference fleet - Ollama, vLLM, TGI, or llama.cpp.
+      Your engineers are already running <strong>DeepSeek-R1, Llama 3.1, and Qwen3</strong> on local GPUs -
+      models that rival GPT-4 at zero cost per token.
       ollama-mesh routes each request to the node that already has the model warm in VRAM, and falls back
       to OpenAI or Anthropic only when your cluster is saturated - tracking every dollar on the way.
     </p>
@@ -613,7 +614,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
           </div>
           <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
         </a>
-        <p>Warm-first routing and honest cost tracking for self-hosted Ollama GPU clusters.</p>
+        <p>Warm-first routing and honest cost tracking for self-hosted GPU inference - Ollama, vLLM, TGI, and llama.cpp.</p>
         <a class="gh-link" href="https://github.com/Anirudhx7/ollama-mesh" aria-label="GitHub repository">
           <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
