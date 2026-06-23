@@ -45,3 +45,6 @@ nul
 
 # Codex local working dirs
 .codex/
+
+# Git worktrees
+.worktrees/
