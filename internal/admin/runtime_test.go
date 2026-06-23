@@ -1,0 +1,76 @@
+package admin
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/router"
+)
+
+func TestHandleNodes_RuntimeField_VllmNode(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "vllm-node", URL: "http://localhost:8000", Runtime: "vllm"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/nodes", nil)
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
+	rec := httptest.NewRecorder()
+	s.handleNodes(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var nodes []map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&nodes); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("len(nodes) = %d, want 1", len(nodes))
+	}
+	got, ok := nodes[0]["runtime"].(string)
+	if !ok {
+		t.Fatalf("runtime field missing or not a string")
+	}
+	if got != "vllm" {
+		t.Errorf("runtime = %q, want %q", got, "vllm")
+	}
+}
+
+func TestHandleNodes_RuntimeField_DefaultOllama(t *testing.T) {
+	// Runtime "" is normalised to "ollama" by config.Validate, but router.New
+	// also copies NodeConfig.Runtime directly into NodeState.Runtime. Use an
+	// explicit "ollama" value (what Validate would set) to mirror production.
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "ollama-node", URL: "http://localhost:11434", Runtime: "ollama"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/nodes", nil)
+	req.Header.Set("Authorization", "Bearer "+s.adminToken)
+	rec := httptest.NewRecorder()
+	s.handleNodes(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var nodes []map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&nodes); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("len(nodes) = %d, want 1", len(nodes))
+	}
+	got, ok := nodes[0]["runtime"].(string)
+	if !ok {
+		t.Fatalf("runtime field missing or not a string")
+	}
+	if got != "ollama" {
+		t.Errorf("runtime = %q, want %q", got, "ollama")
+	}
+}
