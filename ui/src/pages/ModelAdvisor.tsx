@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
@@ -37,12 +37,14 @@ function ModelDetailOverlay({
   isLive,
   demoMode,
   onClose,
+  anchorRect,
 }: {
   model: HFModel;
   nodeName: string | null;
   isLive: boolean;
   demoMode: boolean;
   onClose: () => void;
+  anchorRect: DOMRect;
 }) {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -124,23 +126,32 @@ function ModelDetailOverlay({
   const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
 
+  const panelWidth = Math.min(600, (typeof window !== 'undefined' ? window.innerWidth : 640) - 32);
+  const panelLeft = Math.max(16, Math.min(anchorRect.left, (typeof window !== 'undefined' ? window.innerWidth : 640) - panelWidth - 16));
+  const panelTop = anchorRect.bottom + 8;
+  const maxPanelHeight = (typeof window !== 'undefined' ? window.innerHeight : 800) - panelTop - 16;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ transition: 'opacity 180ms ease-out', opacity: visible ? 1 : 0 }}
+      className="fixed inset-0 z-50"
+      style={{ opacity: visible ? 1 : 0, transition: 'opacity 180ms ease-out' }}
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={handleClose}
       />
 
-      {/* Panel */}
+      {/* Panel — anchored below clicked card */}
       <div
-        className="relative bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-hidden flex flex-col shadow-2xl"
+        className="absolute bg-card border border-border rounded-2xl overflow-hidden flex flex-col shadow-2xl"
         style={{
+          top: panelTop,
+          left: panelLeft,
+          width: panelWidth,
+          maxHeight: Math.max(300, maxPanelHeight),
           transition: 'transform 180ms ease-out, opacity 180ms ease-out',
-          transform: visible ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.98)',
+          transform: visible ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
           opacity: visible ? 1 : 0,
         }}
       >
@@ -286,13 +297,19 @@ function ModelCard({
   onSelect,
 }: {
   model: HFModel;
-  onSelect: () => void;
+  onSelect: (rect: DOMRect) => void;
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
 
+  const handleClick = () => {
+    const rect = cardRef.current?.getBoundingClientRect() ?? new DOMRect();
+    onSelect(rect);
+  };
+
   return (
-    <div className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors">
+    <div ref={cardRef} className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors">
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-foreground truncate" title={model.id}>
@@ -317,7 +334,7 @@ function ModelCard({
       </div>
 
       <button
-        onClick={onSelect}
+        onClick={handleClick}
         className="mt-auto w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium rounded-lg transition-colors cursor-pointer"
       >
         View Quantizations & Pull
@@ -341,6 +358,7 @@ export function ModelAdvisor() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<HFModel | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(search), 300);
@@ -581,7 +599,7 @@ export function ModelAdvisor() {
                 <ModelCard
                   key={m.id}
                   model={m}
-                  onSelect={() => setSelectedModel(m)}
+                  onSelect={(rect) => { setSelectedModel(m); setAnchorRect(rect); }}
                 />
               ))}
             </div>
@@ -600,13 +618,14 @@ export function ModelAdvisor() {
         </div>
       )}
 
-      {selectedModel && (
+      {selectedModel && anchorRect && (
         <ModelDetailOverlay
           model={selectedModel}
           nodeName={selectedNode}
           isLive={isLive}
           demoMode={demoMode}
-          onClose={() => setSelectedModel(null)}
+          onClose={() => { setSelectedModel(null); setAnchorRect(null); }}
+          anchorRect={anchorRect}
         />
       )}
     </div>
