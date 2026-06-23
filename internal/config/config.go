@@ -148,6 +148,9 @@ type NodeConfig struct {
 	// only sees the mesh host). Operator-declared, surfaced as "declared", never
 	// presented as a live measurement. 0 = unknown (UI shows capacity as "—").
 	VRAMTotalMB int64 `yaml:"vram_total_mb" json:"vram_total_mb"`
+	// Runtime identifies the inference backend. Valid: "ollama" (default), "vllm", "tgi", "llamacpp".
+	// Controls which health endpoint and warm-model detection API the router uses.
+	Runtime string `yaml:"runtime" json:"runtime"`
 }
 
 type RoutingRule struct {
@@ -338,6 +341,15 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate node URL: %s", n.URL)
 		}
 		seenNodeURLs[n.URL] = true
+		if c.Nodes[i].Runtime == "" {
+			c.Nodes[i].Runtime = "ollama"
+		}
+		switch c.Nodes[i].Runtime {
+		case "ollama", "vllm", "tgi", "llamacpp":
+			// valid
+		default:
+			return fmt.Errorf("node %s: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp)", n.Name, c.Nodes[i].Runtime)
+		}
 	}
 	// Detect port collisions between proxy, admin, and metrics servers.
 	if c.Metrics.Enabled && c.Metrics.Port == c.Proxy.Port {

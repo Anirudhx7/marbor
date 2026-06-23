@@ -65,6 +65,20 @@ nodes:
     url: http://10.0.1.10:11434
     gpu_model: "NVIDIA A10G 24GB"
     vram_total_mb: 24576
+  # runtime: identifies the inference backend type. Default: "ollama".
+  # Valid values: ollama, vllm, tgi, llamacpp
+  # Ollama nodes use /api/ps for warm-model detection.
+  # vLLM, TGI, and llama.cpp use /health + /v1/models or /info.
+  # - name: vllm-node
+  #   url: http://10.0.1.20:8000
+  #   runtime: vllm
+  #   vram_total_mb: 81920
+  # - name: tgi-node
+  #   url: http://10.0.1.21:8080
+  #   runtime: tgi
+  # - name: llamacpp-node
+  #   url: http://10.0.1.22:8080
+  #   runtime: llamacpp
 
 routing:
   strategy: warm-first
