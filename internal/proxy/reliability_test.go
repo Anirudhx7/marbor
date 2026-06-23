@@ -60,8 +60,8 @@ func TestRetryFailoverSuccess(t *testing.T) {
 			MaxRetries:        2,
 		},
 		[]config.NodeConfig{
-			{Name: "dead", URL: dead},
-			{Name: "good", URL: good.URL},
+			{Name: "dead", URL: dead, Runtime: "ollama"},
+			{Name: "good", URL: good.URL, Runtime: "ollama"},
 		},
 		nil,
 	)
@@ -98,8 +98,8 @@ func TestRetryAllDeadNoCloud(t *testing.T) {
 			MaxRetries:        2,
 		},
 		[]config.NodeConfig{
-			{Name: "dead1", URL: dead1},
-			{Name: "dead2", URL: dead2},
+			{Name: "dead1", URL: dead1, Runtime: "ollama"},
+			{Name: "dead2", URL: dead2, Runtime: "ollama"},
 		},
 		nil,
 	)

@@ -38,7 +38,7 @@ func buildAllowlistStack(t *testing.T, keys []config.KeyConfig) http.Handler {
 
 	rtr := router.New(
 		config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections"},
-		[]config.NodeConfig{{Name: "gpu-0", URL: mockOllama.URL}},
+		[]config.NodeConfig{{Name: "gpu-0", URL: mockOllama.URL, Runtime: "ollama"}},
 		nil,
 	)
 	// Seed both models warm so routing is never the reason for a non-200.

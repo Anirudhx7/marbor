@@ -219,27 +219,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// WaitForNode calls Route with an empty runtimeFilter, so it may return a
 	// node whose Runtime does not match the path requirement. Re-check here: if
-	// the path is Ollama-native but the selected node is an explicitly non-Ollama
-	// runtime (e.g. "vllm"), treat it as "no Ollama node available" and fall through.
-	// Nodes with Runtime=="" are treated as Ollama (the default) for backward
-	// compatibility with configs that pre-date the Runtime field.
+	// the path is Ollama-native but the selected node is a non-Ollama runtime
+	// (e.g. "vllm"), treat it as "no Ollama node available" and fall through.
 	//
-	// routeRuntimeFilter is what we pass to RouteExcluding in the retry loop.
-	// When the initial node had Runtime=="" (implicit Ollama), the router's strict
-	// filter would exclude those nodes, so we pass "" to keep retry behavior
-	// unchanged for legacy configs.
-	routeRuntimeFilter := runtimeFilter
+	// Note: Runtime=="" only appears in tests that bypass config.Validate().
+	// In production, config.Validate() always sets Runtime="ollama" as the default,
+	// so no node should have Runtime=="" at runtime. A Runtime="" node is therefore
+	// excluded from runtimeFilter="ollama" routes (it falls to cloud/503), which is
+	// the correct behavior - production nodes always go through Validate().
 	if node != nil && runtimeFilter != "" {
 		node.RLock()
 		nodeRuntime := node.Runtime
 		node.RUnlock()
-		if nodeRuntime != "" && nodeRuntime != runtimeFilter {
-			// Explicitly non-Ollama node selected for an Ollama-only path.
+		if nodeRuntime != runtimeFilter {
+			// Node runtime does not match the path requirement.
 			node = nil
-		} else if nodeRuntime == "" {
-			// Implicit-Ollama node: pass "" to RouteExcluding so the router's
-			// strict filter does not exclude other implicit-Ollama nodes.
-			routeRuntimeFilter = ""
 		}
 	}
 
@@ -330,7 +324,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if attempt < maxRetries {
-				alt, _ := h.router.RouteExcluding(modelName, routeRuntimeFilter, tried)
+				alt, _ := h.router.RouteExcluding(modelName, runtimeFilter, tried)
 				if alt != nil {
 					metrics.Retry(node.Name)
 					nextNode = alt

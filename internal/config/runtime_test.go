@@ -5,24 +5,6 @@ import (
 	"testing"
 )
 
-// baseNodeYAML returns a minimal valid config with one node, optionally with
-// a runtime field appended to the node entry.
-func nodeYAMLWithRuntime(runtime string) string {
-	if runtime == "" {
-		return `
-nodes:
-  - name: test-node
-    url: http://localhost:11434
-`
-	}
-	return `
-nodes:
-  - name: test-node
-    url: http://localhost:11434
-    runtime: ` + runtime + `
-`
-}
-
 func TestNodeRuntimeDefaultsToOllama(t *testing.T) {
 	var cfg Config
 	cfg.Nodes = []NodeConfig{

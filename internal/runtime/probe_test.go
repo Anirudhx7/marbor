@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -212,9 +213,9 @@ func TestLlamaCppProbe_HealthFails(t *testing.T) {
 
 func TestNewProbe_KnownRuntimes(t *testing.T) {
 	client := testClient()
-	cases := []struct {
-		runtime  string
-		wantType string
+	tests := []struct {
+		runtime string
+		want    string
 	}{
 		{"ollama", "*runtime.OllamaProbe"},
 		{"", "*runtime.OllamaProbe"},
@@ -222,10 +223,11 @@ func TestNewProbe_KnownRuntimes(t *testing.T) {
 		{"tgi", "*runtime.TGIProbe"},
 		{"llamacpp", "*runtime.LlamaCppProbe"},
 	}
-	for _, tc := range cases {
-		probe := NewProbe(tc.runtime, client)
-		if probe == nil {
-			t.Errorf("NewProbe(%q) returned nil", tc.runtime)
+	for _, tt := range tests {
+		p := NewProbe(tt.runtime, client)
+		got := fmt.Sprintf("%T", p)
+		if got != tt.want {
+			t.Errorf("NewProbe(%q) = %s, want %s", tt.runtime, got, tt.want)
 		}
 	}
 }

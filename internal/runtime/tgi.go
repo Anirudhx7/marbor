@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // TGIProbe probes a HuggingFace Text Generation Inference backend.
@@ -17,13 +18,14 @@ type TGIProbe struct {
 
 // Probe checks TGI health then fetches the loaded model name from /info.
 func (p *TGIProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, error) {
+	base := strings.TrimRight(nodeURL, "/")
 	// Step 1: health check.
-	if err := checkHealth(ctx, p.client, nodeURL); err != nil {
+	if err := checkHealth(ctx, p.client, base); err != nil {
 		return ProbeResult{}, fmt.Errorf("tgi probe: %w", err)
 	}
 
 	// Step 2: fetch model info.
-	req, err := http.NewRequestWithContext(ctx, "GET", nodeURL+"/info", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", base+"/info", nil)
 	if err != nil {
 		return ProbeResult{}, fmt.Errorf("tgi probe build info request: %w", err)
 	}

@@ -63,7 +63,7 @@ func buildSpineStack(t *testing.T) (handler http.Handler, adminSrv *admin.Server
 	// 2. Router - single node pointing at the mock, no background polling.
 	rtr := router.New(
 		config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections"},
-		[]config.NodeConfig{{Name: "gpu-0", URL: mockOllama.URL, GPUModel: "RTX 4090"}},
+		[]config.NodeConfig{{Name: "gpu-0", URL: mockOllama.URL, GPUModel: "RTX 4090", Runtime: "ollama"}},
 		nil,
 	)
 

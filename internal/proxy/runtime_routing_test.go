@@ -97,6 +97,52 @@ func TestProxy_V1Path_VLLMNode(t *testing.T) {
 	}
 }
 
+// TestProxy_LegacyEmptyRuntime_ApiPath: a node with Runtime="" (pre-Validate,
+// legacy config) on an /api/chat request must NOT be routed - it is excluded
+// by the runtimeFilter="ollama" check (""!="ollama") and the request falls
+// through to 503 (no cloud configured). In production, config.Validate()
+// always sets Runtime="ollama" as the default so this edge case only appears
+// in tests or configs that bypass Validate().
+func TestProxy_LegacyEmptyRuntime_ApiPath(t *testing.T) {
+	// Mock backend that should never be reached.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer backend.Close()
+
+	r := router.New(
+		config.RoutingConfig{
+			Strategy:       "warm-first",
+			Fallback:       "least-connections",
+			PollIntervalMs: 2000,
+		},
+		[]config.NodeConfig{
+			// Runtime deliberately left "" to simulate pre-Validate legacy config.
+			{Name: "legacy-node", URL: backend.URL, Runtime: ""},
+		},
+		nil,
+	)
+
+	for _, n := range r.Nodes() {
+		seedNode(n, "llama3")
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/chat",
+		bytes.NewReader([]byte(`{"model":"llama3","messages":[]}`)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	// Runtime="" node is excluded from runtimeFilter="ollama"; no cloud configured
+	// so we expect 503.
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 (Runtime=\"\" node must not serve /api/ paths)", rec.Code)
+	}
+}
+
 // TestProxy_OllamaPath_OllamaNode: POST /api/chat with an Ollama node must
 // route to that node (200 from mock).
 func TestProxy_OllamaPath_OllamaNode(t *testing.T) {

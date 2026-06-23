@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // LlamaCppProbe probes a llama.cpp server backend.
@@ -17,13 +18,14 @@ type LlamaCppProbe struct {
 
 // Probe checks llama.cpp health then fetches the loaded model name.
 func (p *LlamaCppProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, error) {
+	base := strings.TrimRight(nodeURL, "/")
 	// Step 1: health check.
-	if err := checkHealth(ctx, p.client, nodeURL); err != nil {
+	if err := checkHealth(ctx, p.client, base); err != nil {
 		return ProbeResult{}, fmt.Errorf("llamacpp probe: %w", err)
 	}
 
 	// Step 2: list models (OpenAI-compatible /v1/models).
-	req, err := http.NewRequestWithContext(ctx, "GET", nodeURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", base+"/v1/models", nil)
 	if err != nil {
 		return ProbeResult{}, fmt.Errorf("llamacpp probe build models request: %w", err)
 	}

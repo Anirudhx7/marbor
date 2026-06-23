@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // OllamaProbe probes an Ollama backend via GET /api/ps.
@@ -14,7 +15,8 @@ type OllamaProbe struct {
 
 // Probe calls GET {nodeURL}/api/ps and returns all loaded models with VRAM usage.
 func (p *OllamaProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", nodeURL+"/api/ps", nil)
+	url := strings.TrimRight(nodeURL, "/") + "/api/ps"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return ProbeResult{}, fmt.Errorf("ollama probe build request: %w", err)
 	}
