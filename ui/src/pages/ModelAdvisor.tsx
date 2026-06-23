@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
@@ -32,21 +31,20 @@ function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   );
 }
 
-function ModelDetailOverlay({
+function ModelDetailPanel({
   model,
   nodeName,
   isLive,
   demoMode,
   onClose,
-  anchorRect,
 }: {
   model: HFModel;
   nodeName: string | null;
   isLive: boolean;
   demoMode: boolean;
   onClose: () => void;
-  anchorRect: DOMRect;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState<HFRepoDetails | null>(null);
@@ -56,7 +54,10 @@ function ModelDetailOverlay({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => setVisible(true));
+    const id = requestAnimationFrame(() => {
+      setVisible(true);
+      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
     return () => cancelAnimationFrame(id);
   }, []);
 
@@ -69,7 +70,7 @@ function ModelDetailOverlay({
 
   const handleClose = useCallback(() => {
     setVisible(false);
-    setTimeout(onClose, 180);
+    setTimeout(onClose, 150);
   }, [onClose]);
 
   const fetchDetails = useCallback(async (len: number) => {
@@ -127,191 +128,167 @@ function ModelDetailOverlay({
   const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
 
-  const panelWidth = Math.min(600, (typeof window !== 'undefined' ? window.innerWidth : 640) - 32);
-  const panelLeft = Math.max(16, Math.min(anchorRect.left, (typeof window !== 'undefined' ? window.innerWidth : 640) - panelWidth - 16));
-  const panelTop = anchorRect.bottom + 8;
-  const maxPanelHeight = (typeof window !== 'undefined' ? window.innerHeight : 800) - panelTop - 16;
-
-  return createPortal(
+  return (
     <div
-      className="fixed inset-0 z-50"
-      style={{ opacity: visible ? 1 : 0, transition: 'opacity 180ms ease-out' }}
+      ref={panelRef}
+      className="col-span-full bg-card border border-primary/30 rounded-2xl overflow-hidden flex flex-col shadow-xl"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(-6px)',
+        transition: 'opacity 150ms ease-out, transform 150ms ease-out',
+        maxHeight: '70vh',
+      }}
     >
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={handleClose}
-      />
-
-      {/* Panel — anchored below clicked card */}
-      <div
-        className="absolute bg-card border border-border rounded-2xl overflow-hidden flex flex-col shadow-2xl"
-        style={{
-          top: panelTop,
-          left: panelLeft,
-          width: panelWidth,
-          maxHeight: Math.max(300, maxPanelHeight),
-          transition: 'transform 180ms ease-out, opacity 180ms ease-out',
-          transform: visible ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.98)',
-          opacity: visible ? 1 : 0,
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-border shrink-0">
-          <div className="min-w-0 flex-1">
-            <h2 className="font-semibold text-foreground text-base truncate" title={model.id}>
-              {model.id.split('/').pop()}
-            </h2>
-            <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1.5">
-              <span className="flex items-center gap-1">
-                <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+      {/* Header */}
+      <div className="flex items-start justify-between p-5 border-b border-border shrink-0">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-semibold text-foreground text-base truncate" title={model.id}>
+            {model.id.split('/').pop()}
+          </h2>
+          <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1.5">
+            <span className="flex items-center gap-1">
+              <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+            </span>
+            <span className="flex items-center gap-1">
+              <ArrowDown className="w-3.5 h-3.5" /> {formattedDownloads} downloads
+            </span>
+            {model.pipeline_tag && (
+              <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
+                {model.pipeline_tag.replace('-', ' ')}
               </span>
-              <span className="flex items-center gap-1">
-                <ArrowDown className="w-3.5 h-3.5" /> {formattedDownloads} downloads
-              </span>
-              {model.pipeline_tag && (
-                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
-                  {model.pipeline_tag.replace('-', ' ')}
-                </span>
-              )}
-            </div>
+            )}
           </div>
-          <button
-            onClick={handleClose}
-            className="ml-4 shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-            aria-label="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto flex-1 p-5 space-y-4">
-          {/* Context slider */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-muted-foreground">Target Context Length:</span>
-              <span className="font-mono font-medium text-foreground">
-                {new Intl.NumberFormat().format(ctxLen)} tokens
-              </span>
-            </div>
-            <input
-              type="range"
-              min="2048"
-              max="32768"
-              step="2048"
-              value={ctxLen}
-              onChange={(e) => setCtxLen(parseInt(e.target.value))}
-              disabled={loading}
-              className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-            />
-            <p className="text-[10px] text-muted-foreground leading-normal">
-              Larger context windows increase KV-cache allocation and total VRAM requirement.
-            </p>
-          </div>
-
-          {/* Variants */}
-          {loading ? (
-            <div className="flex items-center justify-center py-10 gap-2 text-xs text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading variants...
-            </div>
-          ) : error ? (
-            <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
-              {error}
-            </div>
-          ) : details && details.variants && details.variants.length > 0 ? (
-            <div className="space-y-2">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">GGUF File Quantizations</span>
-              <div className="space-y-1.5">
-                {details.variants.map((v) => {
-                  const isPulled = v.downloaded || (v.tag && pulledTags.has(v.tag));
-                  const isPulling = pullingTag === v.tag;
-                  const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
-                  const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
-                  return (
-                    <div
-                      key={v.tag}
-                      className="flex items-center justify-between text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50 hover:border-border transition-colors"
-                    >
-                      <div className="min-w-0 flex-1 mr-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-semibold text-foreground">{v.quantization}</span>
-                          <span className="text-[10px] text-muted-foreground">{sizeGB} size · {vramGB} VRAM</span>
-                        </div>
-                        <span className="text-[9px] text-muted-foreground font-mono block truncate" title={v.tag}>
-                          {v.tag}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <FitBadge fit={v.fit} />
-                        {isPulled ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
-                            <Check className="w-3.5 h-3.5" /> Ready
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => handlePull(v)}
-                            disabled={!isLive || !nodeName || isPulling || v.fit === 'red'}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
-                            title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
-                          >
-                            {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                            Pull
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground py-4 text-center">No GGUF files found in this repository.</p>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-border shrink-0 bg-secondary/20">
-          <a
-            href={`https://huggingface.co/${model.id}`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
-          >
-            <ExternalLink className="w-3 h-3" /> View on Hugging Face
-          </a>
-          <button
-            onClick={handleClose}
-            className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-          >
-            Close
-          </button>
-        </div>
+        <button
+          onClick={handleClose}
+          className="ml-4 shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
-    </div>,
-    document.body
+
+      {/* Body */}
+      <div className="overflow-y-auto flex-1 p-5 space-y-4">
+        {/* Context slider */}
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-center text-xs">
+            <span className="text-muted-foreground">Target Context Length:</span>
+            <span className="font-mono font-medium text-foreground">
+              {new Intl.NumberFormat().format(ctxLen)} tokens
+            </span>
+          </div>
+          <input
+            type="range"
+            min="2048"
+            max="32768"
+            step="2048"
+            value={ctxLen}
+            onChange={(e) => setCtxLen(parseInt(e.target.value))}
+            disabled={loading}
+            className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+          />
+          <p className="text-[10px] text-muted-foreground leading-normal">
+            Larger context windows increase KV-cache allocation and total VRAM requirement.
+          </p>
+        </div>
+
+        {/* Variants */}
+        {loading ? (
+          <div className="flex items-center justify-center py-10 gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading variants...
+          </div>
+        ) : error ? (
+          <div className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
+            {error}
+          </div>
+        ) : details && details.variants && details.variants.length > 0 ? (
+          <div className="space-y-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">GGUF File Quantizations</span>
+            <div className="space-y-1.5">
+              {details.variants.map((v) => {
+                const isPulled = v.downloaded || (v.tag && pulledTags.has(v.tag));
+                const isPulling = pullingTag === v.tag;
+                const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
+                const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
+                return (
+                  <div
+                    key={v.tag}
+                    className="flex items-center justify-between text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50 hover:border-border transition-colors"
+                  >
+                    <div className="min-w-0 flex-1 mr-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-semibold text-foreground">{v.quantization}</span>
+                        <span className="text-[10px] text-muted-foreground">{sizeGB} size · {vramGB} VRAM</span>
+                      </div>
+                      <span className="text-[9px] text-muted-foreground font-mono block truncate" title={v.tag}>
+                        {v.tag}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <FitBadge fit={v.fit} />
+                      {isPulled ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
+                          <Check className="w-3.5 h-3.5" /> Ready
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handlePull(v)}
+                          disabled={!isLive || !nodeName || isPulling || v.fit === 'red'}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
+                          title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
+                        >
+                          {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                          Pull
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground py-4 text-center">No GGUF files found in this repository.</p>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-5 py-3 border-t border-border shrink-0 bg-secondary/20">
+        <a
+          href={`https://huggingface.co/${model.id}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[11px] text-primary hover:underline inline-flex items-center gap-1"
+        >
+          <ExternalLink className="w-3 h-3" /> View on Hugging Face
+        </a>
+        <button
+          onClick={handleClose}
+          className="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+        >
+          Close
+        </button>
+      </div>
+    </div>
   );
 }
 
 function ModelCard({
   model,
+  selected,
   onSelect,
 }: {
   model: HFModel;
-  onSelect: (rect: DOMRect) => void;
+  selected: boolean;
+  onSelect: () => void;
 }) {
-  const cardRef = useRef<HTMLDivElement>(null);
   const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
 
-  const handleClick = () => {
-    const rect = cardRef.current?.getBoundingClientRect() ?? new DOMRect();
-    onSelect(rect);
-  };
-
   return (
-    <div ref={cardRef} className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col hover:border-primary/50 transition-colors">
+    <div className={`bg-card border shadow-sm rounded-xl p-5 flex flex-col transition-colors ${selected ? 'border-primary' : 'border-border hover:border-primary/50'}`}>
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-foreground truncate" title={model.id}>
@@ -336,10 +313,10 @@ function ModelCard({
       </div>
 
       <button
-        onClick={handleClick}
-        className="mt-auto w-full py-2 bg-secondary hover:bg-secondary/80 text-foreground text-xs font-medium rounded-lg transition-colors cursor-pointer"
+        onClick={onSelect}
+        className={`mt-auto w-full py-2 text-foreground text-xs font-medium rounded-lg transition-colors cursor-pointer ${selected ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-secondary hover:bg-secondary/80'}`}
       >
-        View Quantizations & Pull
+        {selected ? 'Hide Details' : 'View Quantizations & Pull'}
       </button>
     </div>
   );
@@ -359,8 +336,19 @@ export function ModelAdvisor() {
   const [models, setModels] = useState<HFModel[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState<HFModel | null>(null);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [columnCount, setColumnCount] = useState(3);
+
+  // Track grid column count to insert panel at end of the correct row
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth;
+      setColumnCount(w >= 1280 ? 3 : w >= 1024 ? 2 : 1);
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedSearch(search), 300);
@@ -439,7 +427,8 @@ export function ModelAdvisor() {
     doSearch();
   }, [debouncedSearch, demoMode]);
 
-  useEffect(() => { setSelectedModel(null); }, [models]);
+  // Close panel when search results change
+  useEffect(() => { setSelectedModelId(null); }, [models]);
 
   const uniqueModels = useMemo(() => {
     const seen = new Set<string>();
@@ -454,6 +443,34 @@ export function ModelAdvisor() {
     () => (!selectedNode || nodes.length === 0) ? null : nodes.find(n => n.name === selectedNode) || null,
     [nodes, selectedNode]
   );
+
+  const selectedModel = useMemo(
+    () => uniqueModels.find(m => m.id === selectedModelId) ?? null,
+    [uniqueModels, selectedModelId]
+  );
+
+  // Build grid items: cards + panel inserted after end of the clicked card's row
+  type GridItem = { kind: 'card'; model: HFModel } | { kind: 'panel'; model: HFModel };
+  const gridItems = useMemo((): GridItem[] => {
+    if (!selectedModelId || !selectedModel) {
+      return uniqueModels.map(m => ({ kind: 'card' as const, model: m }));
+    }
+    const idx = uniqueModels.findIndex(m => m.id === selectedModelId);
+    if (idx < 0) return uniqueModels.map(m => ({ kind: 'card' as const, model: m }));
+
+    // Insert panel after the last card in the row containing the selected card
+    const rowEnd = Math.ceil((idx + 1) / columnCount) * columnCount - 1;
+    const insertAfter = Math.min(rowEnd, uniqueModels.length - 1);
+
+    const items: GridItem[] = [];
+    uniqueModels.forEach((m, i) => {
+      items.push({ kind: 'card', model: m });
+      if (i === insertAfter) {
+        items.push({ kind: 'panel', model: selectedModel });
+      }
+    });
+    return items;
+  }, [uniqueModels, selectedModelId, selectedModel, columnCount]);
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -564,7 +581,7 @@ export function ModelAdvisor() {
             <span className="font-semibold text-foreground block mb-1">How to add models to nodes:</span>
             1. Search for any GGUF model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below.
             <br />
-            2. Click <strong className="text-foreground">View Quantizations & Pull</strong> on a card to open the detail panel.
+            2. Click <strong className="text-foreground">View Quantizations & Pull</strong> on a card to expand the detail panel inline.
             <br />
             3. Select a quantization and click <strong className="text-foreground">Pull</strong> to download it to the active node.
           </div>
@@ -597,13 +614,27 @@ export function ModelAdvisor() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-              {uniqueModels.map((m) => (
-                <ModelCard
-                  key={m.id}
-                  model={m}
-                  onSelect={(rect) => { setSelectedModel(m); setAnchorRect(rect); }}
-                />
-              ))}
+              {gridItems.map((item) =>
+                item.kind === 'card' ? (
+                  <ModelCard
+                    key={item.model.id}
+                    model={item.model}
+                    selected={item.model.id === selectedModelId}
+                    onSelect={() => setSelectedModelId(
+                      item.model.id === selectedModelId ? null : item.model.id
+                    )}
+                  />
+                ) : (
+                  <ModelDetailPanel
+                    key="__panel__"
+                    model={item.model}
+                    nodeName={selectedNode}
+                    isLive={isLive}
+                    demoMode={demoMode}
+                    onClose={() => setSelectedModelId(null)}
+                  />
+                )
+              )}
             </div>
           )}
         </>
@@ -618,17 +649,6 @@ export function ModelAdvisor() {
             Connect your first node in the <strong>GPU Nodes</strong> page.
           </p>
         </div>
-      )}
-
-      {selectedModel && anchorRect && (
-        <ModelDetailOverlay
-          model={selectedModel}
-          nodeName={selectedNode}
-          isLive={isLive}
-          demoMode={demoMode}
-          onClose={() => { setSelectedModel(null); setAnchorRect(null); }}
-          anchorRect={anchorRect}
-        />
       )}
     </div>
   );
