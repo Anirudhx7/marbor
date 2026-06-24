@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"embed"
@@ -26,6 +27,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/ha"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 //go:embed web/dist
@@ -50,6 +52,7 @@ type Server struct {
 	analytics     *analyticsStore
 	auditLog      *audit.Logger
 	haMonitor     *ha.Monitor // nil when HA disabled
+	st            store.Store // never nil; NopStore when persistence disabled
 }
 
 // SetVersion sets the version string reported by /health.
@@ -70,6 +73,88 @@ func (s *Server) SetAuditLogger(al *audit.Logger) {
 
 // SetHAMonitor wires the HA monitor into the admin server.
 func (s *Server) SetHAMonitor(m *ha.Monitor) { s.haMonitor = m }
+
+// SetStore replaces the persistence backend. Useful for tests and for wiring
+// a real SQLite store after construction when the store isn't known yet.
+// If st is nil, NopStore is used so callers never need to nil-check.
+func (s *Server) SetStore(st store.Store) {
+	if st == nil {
+		st = store.NopStore{}
+	}
+	s.st = st
+}
+
+// LoadFromStore seeds in-memory state from the persistent store on startup.
+// Errors are non-fatal — the server still runs, just with a cold cache.
+func (s *Server) LoadFromStore() error {
+	// Restore global counters.
+	if c, err := s.st.GetCounters(); err == nil {
+		atomic.StoreInt64(&s.localCount, c.LocalRequests)
+		atomic.StoreInt64(&s.cloudCount, c.CloudRequests)
+		atomic.StoreInt64(&s.localTokens, c.TotalTokens)
+		s.mu.Lock()
+		s.cloudSpentUSD = c.CloudSpentUSD
+		s.mu.Unlock()
+	} else {
+		log.Printf("store: could not load counters: %v", err)
+	}
+	// Restore last 50 request log entries.
+	if recs, err := s.st.LastRequests(50); err == nil {
+		logs := make([]RequestLog, 0, len(recs))
+		for _, rec := range recs {
+			logs = append(logs, RequestLog{
+				ID:      rec.ID,
+				ApiKey:  rec.KeyName,
+				Model:   rec.Model,
+				Node:    rec.NodeName,
+				Status:  strconv.Itoa(rec.StatusCode),
+				Latency: int(rec.LatencyMs),
+				Tokens:  rec.TokensUsed,
+				Time:    rec.TS,
+			})
+		}
+		s.mu.Lock()
+		s.requests = logs
+		s.mu.Unlock()
+	} else {
+		log.Printf("store: could not load request log: %v", err)
+	}
+	return nil
+}
+
+// StartCounterFlush launches a background goroutine that persists global
+// counters every 30 seconds. Call once after construction; ctx cancellation
+// stops the ticker.
+func (s *Server) StartCounterFlush(ctx context.Context) {
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				s.flushCounters()
+				return
+			case <-t.C:
+				s.flushCounters()
+			}
+		}
+	}()
+}
+
+func (s *Server) flushCounters() {
+	local := atomic.LoadInt64(&s.localCount)
+	cloud := atomic.LoadInt64(&s.cloudCount)
+	localTok := atomic.LoadInt64(&s.localTokens)
+	s.mu.RLock()
+	spent := s.cloudSpentUSD
+	s.mu.RUnlock()
+	_ = s.st.SetCounters(store.Counters{
+		LocalRequests: local,
+		CloudRequests: cloud,
+		TotalTokens:   localTok,
+		CloudSpentUSD: spent,
+	})
+}
 
 type RequestLog struct {
 	ID           string    `json:"id"`
@@ -138,7 +223,7 @@ type keyResp struct {
 	ExpiresAt         string   `json:"expiresAt,omitempty"`
 }
 
-func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server {
+func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...store.Store) *Server {
 	// Precedence: explicit AdminToken wins; then the first auth key when auth is
 	// enabled; otherwise generate a cryptographically-random token. The admin API
 	// binds all interfaces by default, so a constant fallback (e.g. "admin") is a
@@ -159,6 +244,10 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server 
 	if refRate <= 0 {
 		refRate = 0.002
 	}
+	var stImpl store.Store = store.NopStore{}
+	if len(st) > 0 && st[0] != nil {
+		stImpl = st[0]
+	}
 	return &Server{
 		router:       r,
 		auth:         a,
@@ -169,6 +258,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config) *Server 
 		refCostPer1K: refRate,
 		startTime:    time.Now(),
 		analytics:    newAnalyticsStore(refRate),
+		st:           stImpl,
 	}
 }
 
@@ -580,12 +670,24 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.router.AddNode(cfg)
+	var vramPtr *int64
+	if cfg.VRAMTotalMB != 0 {
+		v := cfg.VRAMTotalMB
+		vramPtr = &v
+	}
+	_ = s.st.UpsertNode(store.NodeRecord{
+		Name:        cfg.Name,
+		URL:         cfg.URL,
+		Runtime:     cfg.Runtime,
+		VRAMTotalMB: vramPtr,
+	})
 	w.WriteHeader(http.StatusCreated)
 }
 
 func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	s.router.RemoveNode(name)
+	_ = s.st.DeleteNode(name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -596,6 +698,7 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
 		return
 	}
+	_ = s.st.SetNodeDrain(name, true)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"node":%q,"draining":true}`, name)
 }
@@ -607,6 +710,7 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
 		return
 	}
+	_ = s.st.SetNodeDrain(name, false)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"node":%q,"draining":false}`, name)
 }
@@ -626,6 +730,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
 		return
 	}
+	_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel)
 	// Return the updated node.
 	s.handleNode(w, r)
 }
@@ -676,6 +781,15 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil {
 		s.auth.AddKey(k)
 	}
+	_ = s.st.UpsertKey(store.KeyRecord{
+		Name:         k.Name,
+		Key:          k.Key,
+		RateLimit:    k.RateLimit,
+		DailyLimit:   k.DailyLimit,
+		MonthlyLimit: k.MonthlyLimit,
+		Models:       k.Models,
+		Revoked:      false,
+	})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(k)
@@ -686,6 +800,7 @@ func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
 	if s.auth != nil {
 		s.auth.RevokeKey(name)
 	}
+	_ = s.st.RevokeKey(name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -810,10 +925,12 @@ func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int, t
 	if s.auth != nil {
 		s.auth.AddKeyTokens(apiKey, tokens)
 	}
+	now := time.Now()
+	id := fmt.Sprintf("req-%d", now.UnixNano())
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests = append(s.requests, RequestLog{
-		ID:           fmt.Sprintf("req-%d", time.Now().UnixNano()),
+		ID:           id,
 		ApiKey:       apiKey,
 		Model:        model,
 		Node:         node,
@@ -821,11 +938,28 @@ func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int, t
 		Latency:      latencyMs,
 		Tokens:       tokens,
 		TokensPerSec: tps,
-		Time:         time.Now(),
+		Time:         now,
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
 	}
+	// Parse status code for the store record.
+	statusCode := 200
+	if status != "" && status != "200" {
+		if code, err := strconv.Atoi(status); err == nil {
+			statusCode = code
+		}
+	}
+	_ = s.st.AppendRequest(store.RequestRecord{
+		ID:         id,
+		KeyName:    apiKey,
+		Model:      model,
+		NodeName:   node,
+		StatusCode: statusCode,
+		LatencyMs:  int64(latencyMs),
+		TokensUsed: tokens,
+		TS:         now,
+	})
 }
 
 // TrackLocalRequestModel tracks a local request with model-level granularity.
@@ -836,6 +970,21 @@ func (s *Server) TrackLocalRequestModel(model string, tokens int64) {
 	atomic.AddInt64(&s.localCount, 1)
 	atomic.AddInt64(&s.localTokens, tokens)
 	s.analytics.recordLocal(model, tokens)
+	// Persist hourly bucket and model stat for this request.
+	now := time.Now().UTC().Truncate(time.Hour)
+	saved := s.refCostPer1K * float64(tokens) / 1000.0
+	_ = s.st.UpsertHourlyBucket(store.HourlyBucket{
+		Hour:          now,
+		LocalRequests: 1,
+		Tokens:        tokens,
+		CostUSD:       0,
+	})
+	_ = s.st.UpsertModelStat(store.ModelStat{
+		Model:    model,
+		Requests: 1,
+		Tokens:   tokens,
+		CostUSD:  saved,
+	})
 }
 
 // LocalTokens returns the running total of real tokens served by local nodes.
@@ -857,6 +1006,20 @@ func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int
 	s.cloudSpentUSD += cost
 	s.mu.Unlock()
 	s.analytics.recordCloud(model, costPer1K, tokens)
+	// Persist hourly bucket and model stat for this request.
+	now := time.Now().UTC().Truncate(time.Hour)
+	_ = s.st.UpsertHourlyBucket(store.HourlyBucket{
+		Hour:          now,
+		CloudRequests: 1,
+		Tokens:        tokens,
+		CostUSD:       cost,
+	})
+	_ = s.st.UpsertModelStat(store.ModelStat{
+		Model:    model,
+		Requests: 1,
+		Tokens:   tokens,
+		CostUSD:  cost,
+	})
 }
 
 func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {

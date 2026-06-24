@@ -22,6 +22,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/ha"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 // Version is set at build time via ldflags: -X main.Version=v0.x.y
@@ -147,6 +148,17 @@ func main() {
 		log.Printf("  - %s (%s) -> %s", n.Name, n.GPUModel, n.URL)
 	}
 
+	// Open the SQLite persistence store. "-" disables; empty defaults to mesh.db.
+	var st store.Store = store.NopStore{}
+	if cfg.Storage.DBPath != "-" {
+		var stErr error
+		st, stErr = store.Open(cfg.Storage.DBPath)
+		if stErr != nil {
+			log.Fatalf("failed to open store: %v", stErr)
+		}
+		defer st.Close()
+	}
+
 	authMw := auth.NewMiddleware(cfg.Auth)
 
 	// Per-key usage/quota counters persist across restarts. "-" disables.
@@ -156,6 +168,31 @@ func main() {
 	}
 	if err := authMw.LoadState(statePath); err != nil {
 		log.Printf("WARNING: could not load usage state from %s: %v", statePath, err)
+	}
+
+	// Overlay runtime API keys from the store (keys added via admin API that
+	// aren't in config.yaml). Config-file keys always win on name collision
+	// because NewMiddleware already loaded them; AddKey is idempotent on dup key token.
+	if runtimeKeys, err := st.AllKeys(); err == nil {
+		for _, k := range runtimeKeys {
+			if k.Revoked {
+				authMw.RevokeKey(k.Name)
+			} else {
+				authMw.AddKey(config.KeyConfig{
+					Name:         k.Name,
+					Key:          k.Key,
+					RateLimit:    k.RateLimit,
+					DailyLimit:   k.DailyLimit,
+					MonthlyLimit: k.MonthlyLimit,
+					Models:       k.Models,
+				})
+			}
+		}
+		if len(runtimeKeys) > 0 {
+			log.Printf("store: loaded %d runtime key(s)", len(runtimeKeys))
+		}
+	} else {
+		log.Printf("WARNING: could not load runtime keys from store: %v", err)
 	}
 
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
@@ -172,6 +209,41 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go r.Start(ctx)
+
+	// Overlay runtime nodes from the store (nodes added via admin API).
+	// Nodes already in config are already registered; AddNode is called for
+	// runtime-only nodes. Overrides and drain states are applied to all nodes.
+	if runtimeNodes, err := st.AllNodes(); err == nil {
+		for _, n := range runtimeNodes {
+			vram := int64(0)
+			if n.VRAMTotalMB != nil {
+				vram = *n.VRAMTotalMB
+			}
+			r.AddNode(config.NodeConfig{
+				Name:        n.Name,
+				URL:         n.URL,
+				Runtime:     n.Runtime,
+				VRAMTotalMB: vram,
+			})
+		}
+		if len(runtimeNodes) > 0 {
+			log.Printf("store: loaded %d runtime node(s)", len(runtimeNodes))
+		}
+	} else {
+		log.Printf("WARNING: could not load runtime nodes from store: %v", err)
+	}
+	if overrides, err := st.NodeOverrides(); err == nil {
+		for name, ov := range overrides {
+			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel})
+		}
+	}
+	if drains, err := st.NodeDrainStates(); err == nil {
+		for name, draining := range drains {
+			if draining {
+				r.DrainNode(name)
+			}
+		}
+	}
 
 	// Periodically flush usage counters so a restart preserves quota/usage
 	// state (crash loses at most one interval).
@@ -203,10 +275,14 @@ func main() {
 	}
 	defer auditLog.Close()
 
-	adminSrv := admin.NewServer(r, authMw, *cfg)
+	adminSrv := admin.NewServer(r, authMw, *cfg, st)
 	adminSrv.SetAuditLogger(auditLog)
 	adminSrv.SetVersion(Version)
 	adminSrv.SetConfigPath(cfgPath)
+	if err := adminSrv.LoadFromStore(); err != nil {
+		log.Printf("WARNING: could not restore analytics from store: %v", err)
+	}
+	adminSrv.StartCounterFlush(ctx)
 
 	if cfg.HA.Enabled && len(cfg.HA.Peers) > 0 {
 		haMonitor := ha.New(cfg.HA)

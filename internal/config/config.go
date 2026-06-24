@@ -44,6 +44,14 @@ type Config struct {
 	HA             HAConfig          `yaml:"ha" json:"ha"`
 	Warmup         WarmupConfig      `yaml:"warmup" json:"warmup"`
 	HuggingFace    HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
+	Storage        StorageConfig     `yaml:"storage" json:"storage"`
+}
+
+// StorageConfig controls the SQLite persistence layer.
+// DBPath is the file path for the SQLite database. A value of "-" disables
+// persistence (NopStore). Empty string defaults to "mesh.db" in Validate().
+type StorageConfig struct {
+	DBPath string `yaml:"db_path" json:"db_path"`
 }
 
 type HuggingFaceConfig struct {
@@ -303,6 +311,10 @@ func (c *Config) Validate() error {
 
 	if c.Auth.StatePath == "" {
 		c.Auth.StatePath = "usage-state.json"
+	}
+
+	if c.Storage.DBPath == "" {
+		c.Storage.DBPath = "mesh.db"
 	}
 
 	if c.Auth.Enabled {

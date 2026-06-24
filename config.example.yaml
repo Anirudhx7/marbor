@@ -202,6 +202,14 @@ webhook:
 savings:
   reference_cost_per_1k: 0.002
 
+# Persistent storage: SQLite database for request log, analytics, counters,
+# runtime-added nodes, node overrides, and API keys created via the admin API.
+# All mutable operational state survives restarts. config.yaml remains the
+# bootstrap seed for static settings (admin token, routing, cloud providers).
+# Set to "-" to disable persistence (in-memory only, legacy behaviour).
+storage:
+  db_path: mesh.db
+
 # Audit logging: append-only JSON-lines file of all proxy requests.
 # Records: timestamp, request_id, key_name, model, node, status, latency_ms, cloud.
 # Never logs API key values or request bodies.
