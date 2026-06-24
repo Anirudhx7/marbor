@@ -80,10 +80,10 @@ type ModelStat struct {
 
 // Counters holds global lifetime totals.
 type Counters struct {
-	LocalRequests  int64   `json:"local_requests"`
-	CloudRequests  int64   `json:"cloud_requests"`
-	TotalTokens    int64   `json:"total_tokens"`
-	CloudSpentUSD  float64 `json:"cloud_spent_usd"`
+	LocalRequests int64   `json:"local_requests"`
+	CloudRequests int64   `json:"cloud_requests"`
+	TotalTokens   int64   `json:"total_tokens"`
+	CloudSpentUSD float64 `json:"cloud_spent_usd"`
 }
 
 // KeyCounterSnapshot is the persisted form of per-key usage counters.
@@ -98,10 +98,10 @@ type KeyCounterSnapshot struct {
 // NodeRecord is a runtime-discovered or config-declared node that should
 // survive a process restart.
 type NodeRecord struct {
-	Name        string  `json:"name"`
-	URL         string  `json:"url"`
-	Runtime     string  `json:"runtime"`
-	VRAMTotalMB *int64  `json:"vram_total_mb,omitempty"`
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	Runtime     string `json:"runtime"`
+	VRAMTotalMB *int64 `json:"vram_total_mb,omitempty"`
 }
 
 // NodeOverride holds operator-declared overrides for a node.
@@ -124,24 +124,24 @@ type KeyRecord struct {
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
-func (NopStore) AppendRequest(_ RequestRecord) error                                    { return nil }
-func (NopStore) LastRequests(_ int) ([]RequestRecord, error)                           { return nil, nil }
-func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                               { return nil }
-func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)                     { return nil, nil }
-func (NopStore) UpsertModelStat(_ ModelStat) error                                     { return nil }
-func (NopStore) AllModelStats() ([]ModelStat, error)                                   { return nil, nil }
-func (NopStore) SetCounters(_ Counters) error                                          { return nil }
-func (NopStore) GetCounters() (Counters, error)                                        { return Counters{}, nil }
-func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error                  { return nil }
-func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error)                { return nil, nil }
-func (NopStore) UpsertNode(_ NodeRecord) error                                         { return nil }
-func (NopStore) DeleteNode(_ string) error                                             { return nil }
-func (NopStore) AllNodes() ([]NodeRecord, error)                                       { return nil, nil }
-func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string) error                { return nil }
-func (NopStore) NodeOverrides() (map[string]NodeOverride, error)                       { return nil, nil }
-func (NopStore) SetNodeDrain(_ string, _ bool) error                                   { return nil }
-func (NopStore) NodeDrainStates() (map[string]bool, error)                             { return nil, nil }
-func (NopStore) UpsertKey(_ KeyRecord) error                                           { return nil }
-func (NopStore) RevokeKey(_ string) error                                              { return nil }
-func (NopStore) AllKeys() ([]KeyRecord, error)                                         { return nil, nil }
-func (NopStore) Close() error                                                          { return nil }
+func (NopStore) AppendRequest(_ RequestRecord) error                    { return nil }
+func (NopStore) LastRequests(_ int) ([]RequestRecord, error)            { return nil, nil }
+func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                { return nil }
+func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)      { return nil, nil }
+func (NopStore) UpsertModelStat(_ ModelStat) error                      { return nil }
+func (NopStore) AllModelStats() ([]ModelStat, error)                    { return nil, nil }
+func (NopStore) SetCounters(_ Counters) error                           { return nil }
+func (NopStore) GetCounters() (Counters, error)                         { return Counters{}, nil }
+func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error   { return nil }
+func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error) { return nil, nil }
+func (NopStore) UpsertNode(_ NodeRecord) error                          { return nil }
+func (NopStore) DeleteNode(_ string) error                              { return nil }
+func (NopStore) AllNodes() ([]NodeRecord, error)                        { return nil, nil }
+func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string) error { return nil }
+func (NopStore) NodeOverrides() (map[string]NodeOverride, error)        { return nil, nil }
+func (NopStore) SetNodeDrain(_ string, _ bool) error                    { return nil }
+func (NopStore) NodeDrainStates() (map[string]bool, error)              { return nil, nil }
+func (NopStore) UpsertKey(_ KeyRecord) error                            { return nil }
+func (NopStore) RevokeKey(_ string) error                               { return nil }
+func (NopStore) AllKeys() ([]KeyRecord, error)                          { return nil, nil }
+func (NopStore) Close() error                                           { return nil }
