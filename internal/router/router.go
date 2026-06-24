@@ -58,7 +58,7 @@ type NodeState struct {
 	// Empty string is treated as "ollama" for backwards compatibility.
 	// "auto" means detection is pending; resolved to a real runtime on first poll.
 	Runtime    string
-	autoDetect bool               // true if config said runtime: auto; cleared after first detection
+	autoDetect bool                    // true if config said runtime: auto; cleared after first detection
 	probe      runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
 	mu         sync.RWMutex
 }
