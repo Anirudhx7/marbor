@@ -79,6 +79,11 @@ nodes:
   # - name: llamacpp-node
   #   url: http://10.0.1.22:8080
   #   runtime: llamacpp
+  # Auto-detect example: ollama-mesh will probe the node and resolve the runtime
+  # automatically (ollama -> tgi -> vllm/llamacpp detection order).
+  # - name: unknown-node
+  #   url: http://10.0.1.23:8080
+  #   runtime: auto   # auto-detect backend (ollama/vllm/tgi/llamacpp)
 
 routing:
   strategy: warm-first

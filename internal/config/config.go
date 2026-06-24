@@ -345,10 +345,10 @@ func (c *Config) Validate() error {
 			c.Nodes[i].Runtime = "ollama"
 		}
 		switch c.Nodes[i].Runtime {
-		case "ollama", "vllm", "tgi", "llamacpp":
+		case "ollama", "vllm", "tgi", "llamacpp", "auto":
 			// valid
 		default:
-			return fmt.Errorf("node %s: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp)", n.Name, c.Nodes[i].Runtime)
+			return fmt.Errorf("node %s: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)", n.Name, c.Nodes[i].Runtime)
 		}
 	}
 	// Detect port collisions between proxy, admin, and metrics servers.

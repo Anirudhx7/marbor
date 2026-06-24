@@ -56,9 +56,11 @@ type NodeState struct {
 	FirstSeenAt   time.Time
 	// Runtime identifies the backend type: "ollama", "vllm", "tgi", "llamacpp".
 	// Empty string is treated as "ollama" for backwards compatibility.
-	Runtime string
-	probe   runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
-	mu      sync.RWMutex
+	// "auto" means detection is pending; resolved to a real runtime on first poll.
+	Runtime    string
+	autoDetect bool               // true if config said runtime: auto; cleared after first detection
+	probe      runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
+	mu         sync.RWMutex
 }
 
 // TagsCache holds a cached result from /api/tags for a single node.
@@ -139,7 +141,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	client := &http.Client{Timeout: 5 * time.Second}
 	nodes := make([]*NodeState, len(nodesCfg))
 	for i, n := range nodesCfg {
-		nodes[i] = &NodeState{
+		ns := &NodeState{
 			Name:              n.Name,
 			URL:               n.URL,
 			GPUModel:          n.GPUModel,
@@ -148,8 +150,14 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			Healthy:           true,
 			FirstSeenAt:       time.Now(),
 			Runtime:           n.Runtime,
-			probe:             runtimepkg.NewProbe(n.Runtime, client),
 		}
+		if n.Runtime == "auto" {
+			ns.autoDetect = true
+			// probe is nil until first detection in pollNode
+		} else {
+			ns.probe = runtimepkg.NewProbe(n.Runtime, client)
+		}
+		nodes[i] = ns
 	}
 	cloudsCopy := make([]config.CloudProvider, len(clouds))
 	copy(cloudsCopy, clouds)
@@ -490,6 +498,21 @@ func (r *Router) pollAll() {
 func (r *Router) pollNode(n *NodeState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	// If auto-detect is pending, probe the node now to determine its runtime.
+	// Use n.mu to guard the read, then r.client (Router-level, read-only after New).
+	n.mu.RLock()
+	needsDetect := n.autoDetect && n.Runtime == "auto"
+	n.mu.RUnlock()
+	if needsDetect {
+		detected := runtimepkg.DetectRuntime(ctx, n.URL, r.client)
+		n.mu.Lock()
+		n.Runtime = detected
+		n.probe = runtimepkg.NewProbe(detected, r.client)
+		n.autoDetect = false
+		n.mu.Unlock()
+		log.Printf("auto-detect: node %s resolved to runtime %q", n.Name, detected)
+	}
 
 	result, err := n.probe.Probe(ctx, n.URL)
 	if err != nil {
@@ -856,7 +879,12 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		Healthy:     true,
 		FirstSeenAt: time.Now(),
 		Runtime:     n.Runtime,
-		probe:       runtimepkg.NewProbe(n.Runtime, r.client),
+	}
+	if n.Runtime == "auto" {
+		node.autoDetect = true
+		// probe is nil until first detection in pollNode
+	} else {
+		node.probe = runtimepkg.NewProbe(n.Runtime, r.client)
 	}
 	r.mu.Lock()
 	r.nodes = append(r.nodes, node)
