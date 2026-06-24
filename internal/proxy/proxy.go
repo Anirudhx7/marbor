@@ -119,10 +119,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	keyName := auth.KeyNameFromContext(r.Context())
 
-	// Generate request ID for tracing
+	// Generate request ID for tracing. Falls back to nanosecond timestamp so
+	// the header is never empty even if the CSPRNG fails.
 	var requestID string
 	b := make([]byte, 8)
-	if _, err := rand.Read(b); err == nil {
+	if _, err := rand.Read(b); err != nil {
+		requestID = fmt.Sprintf("r%d", time.Now().UnixNano())
+	} else {
 		requestID = hex.EncodeToString(b)
 	}
 	w.Header().Set("X-Request-ID", requestID)
