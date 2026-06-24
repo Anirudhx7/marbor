@@ -265,6 +265,7 @@ type catalogNodeEntry struct {
 	URL            string            `json:"url"`
 	VRAMFreeBytes  int64             `json:"vram_free_bytes"`
 	VRAMTotalBytes int64             `json:"vram_total_bytes"`
+	VRAMUsedBytes  int64             `json:"vram_used_bytes"`
 	VRAMSource     string            `json:"vram_source"`
 	Models         []catalogModelFit `json:"models"`
 }
@@ -362,6 +363,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			URL:            nodeURL,
 			VRAMFreeBytes:  vramFreeBytes,
 			VRAMTotalBytes: vramTotalBytes,
+			VRAMUsedBytes:  vramUsedMBFromPS * 1024 * 1024,
 			VRAMSource:     vramSource,
 			Models:         models,
 		})

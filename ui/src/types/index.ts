@@ -228,6 +228,7 @@ export interface CatalogNodeEntry {
   runtime?: string;
   vram_free_bytes: number;
   vram_total_bytes: number;
+  vram_used_bytes?: number;
   vram_source: 'nvidia-smi' | 'inferred' | 'unknown' | 'declared';
   models: CatalogModelFit[];
 }
