@@ -4,6 +4,9 @@ Allow: /
 User-agent: GPTBot
 Allow: /
 
+User-agent: OAI-SearchBot
+Allow: /
+
 User-agent: ClaudeBot
 Allow: /
 
@@ -19,13 +22,16 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-User-agent: OAI-SearchBot
+User-agent: Bytespider
 Allow: /
 
-User-agent: Bytespider
+User-agent: meta-externalagent
 Allow: /
 
 User-agent: DuckAssistBot
 Allow: /
 
-Sitemap: https://anirudhx7.github.io/ollama-mesh/sitemap.xml
+User-agent: cohere-ai
+Allow: /
+
+Sitemap: https://anirudh.social/ollama-mesh/sitemap.xml

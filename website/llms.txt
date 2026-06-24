@@ -48,7 +48,7 @@ export OPENAI_API_KEY=sk-mesh-<generated>
 ## Key facts
 
 - Language: Go (single static binary, no CGO, no Python)
-- License: MIT
+- License: Apache-2.0
 - Ports: :11434 (proxy), :8080 (admin), :9090 (metrics)
 - Compatible with: any OpenAI SDK, Ollama client, LangChain, llama-index
 - Platforms: Linux, macOS, Windows (amd64, arm64)

@@ -6,6 +6,75 @@
 <title>ollama-mesh - warm-first routing for Ollama, vLLM, TGI, and llama.cpp</title>
 <meta name="description" content="A single Go binary that routes LLM requests to whichever node already has the model loaded in GPU memory - Ollama, vLLM, TGI, or llama.cpp. Falls back to OpenAI or Anthropic when the cluster is busy, and tracks every dollar. No Python. No Docker. Starts in under 100ms." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="canonical" href="https://anirudh.social/ollama-mesh/" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+<meta name="theme-color" content="#d4a853" />
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ollama-mesh" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:title" content="ollama-mesh - GPU-aware LLM proxy for Ollama, vLLM, TGI, llama.cpp" />
+<meta property="og:description" content="Route LLM requests to the GPU that already has your model warm in VRAM. Cloud fallback to OpenAI or Anthropic on saturation, per-token cost tracking. Single Go binary, zero deps." />
+<meta property="og:url" content="https://anirudh.social/ollama-mesh/" />
+<meta property="og:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="ollama-mesh - GPU-aware LLM proxy for Ollama, vLLM, TGI, llama.cpp" />
+<meta name="twitter:description" content="Route LLM requests to the GPU that already has your model warm in VRAM. Cloud fallback to OpenAI or Anthropic on saturation, per-token cost tracking. Single Go binary, zero deps." />
+<meta name="twitter:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
+<script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "ollama-mesh",
+    "description": "GPU-aware load balancer and proxy for Ollama, vLLM, TGI, and llama.cpp. Routes LLM requests warm-first to the node that already has the model in VRAM. Falls back to OpenAI or Anthropic when the cluster is saturated, tracking every dollar.",
+    "url": "https://anirudh.social/ollama-mesh/",
+    "downloadUrl": "https://github.com/Anirudhx7/ollama-mesh/releases",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows",
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "codeRepository": "https://github.com/Anirudhx7/ollama-mesh",
+    "programmingLanguage": "Go",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Anirudh Mehandru", "url": "https://anirudh.social" },
+    "keywords": "Ollama load balancer, GPU-aware LLM routing, Ollama proxy, warm model routing, local LLM gateway, vLLM proxy, cloud fallback"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is ollama-mesh?",
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single Go binary that acts as a smart proxy for your local LLM inference fleet (Ollama, vLLM, TGI, llama.cpp). It routes each request to the GPU node that already has the model warm in VRAM, eliminating cold-start latency. When all nodes are saturated, it falls back to OpenAI or Anthropic and tracks the cost." }
+      },
+      {
+        "@type": "Question",
+        "name": "How does warm-first routing work?",
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh polls each node's /api/ps endpoint every 2 seconds to know which models are currently loaded in GPU memory. When a request arrives, it routes to the node that already has the requested model resident in VRAM, skipping the multi-second model load time." }
+      },
+      {
+        "@type": "Question",
+        "name": "Does ollama-mesh support vLLM, TGI, and llama.cpp?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. As of v0.10.0, ollama-mesh supports Ollama, vLLM, TGI (Text Generation Inference), and llama.cpp nodes. Set runtime: vllm, tgi, or llamacpp per node in your config file." }
+      },
+      {
+        "@type": "Question",
+        "name": "What happens when the local cluster is busy?",
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh automatically falls back to configured cloud providers (OpenAI or Anthropic) when all local nodes are saturated or unreachable. Every fallback request is priced per token and logged so you can see exactly what you spent on cloud APIs vs what you saved by serving locally." }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need Docker or Python to run ollama-mesh?",
+        "acceptedAnswer": { "@type": "Answer", "text": "No. ollama-mesh is a single static Go binary with zero runtime dependencies. Install it with one curl command and it starts in under 100ms. No Python, no Docker, no dependency tree to manage." }
+      }
+    ]
+  }
+]
+</script>
 <style>
 :root {
   --bg: #0f0e0c;
