@@ -234,16 +234,20 @@ function ModelDetailPanel({
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
                           <Check className="w-3.5 h-3.5" /> Ready
                         </span>
-                      ) : (
+                      ) : (!nodeRuntime || nodeRuntime === 'ollama') ? (
                         <button
                           onClick={() => handlePull(v)}
-                          disabled={!isLive || !nodeName || isPulling || v.fit === 'red' || nodeRuntime !== 'ollama'}
+                          disabled={!isLive || !nodeName || isPulling || v.fit === 'red'}
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
-                          title={v.fit === 'red' ? 'Requires more VRAM than available' : nodeRuntime !== 'ollama' ? 'Pull is only available on Ollama nodes' : ''}
+                          title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
                         >
                           {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                           Pull
                         </button>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground italic">
+                          Model loaded at startup
+                        </span>
                       )}
                     </div>
                   </div>
