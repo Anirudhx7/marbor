@@ -1,4 +1,4 @@
-import { lazy, Suspense, Component, ReactNode } from 'react';
+import { lazy, Suspense, Component, ReactNode, useState } from 'react';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -24,6 +24,8 @@ import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { DemoBanner } from './components/DemoBanner';
+import { Login } from './components/Login';
+import { clearAdminToken } from './lib/api';
 
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const GPUNodes     = lazy(() => import('./pages/GPUNodes').then(m => ({ default: m.GPUNodes })));
@@ -39,11 +41,28 @@ const Requests     = lazy(() => import('./pages/Requests').then(m => ({ default:
 const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
 function App() {
+  const [authed, setAuthed] = useState<boolean>(
+    () => forcedDemo || !!localStorage.getItem('adminToken')
+  );
+
+  function handleLogout() {
+    clearAdminToken();
+    setAuthed(false);
+  }
+
+  if (!authed) {
+    return (
+      <ThemeProvider>
+        <Login onSuccess={() => setAuthed(true)} />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider>
       <BrowserRouter basename={basename}>
         <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-          <Sidebar />
+          <Sidebar onLogout={handleLogout} />
           <main className="md:ml-64 min-h-screen">
             <DemoBanner />
             <div className="pt-14 md:pt-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">

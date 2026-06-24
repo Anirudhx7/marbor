@@ -2,40 +2,59 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, Req
 
 const BASE = '/admin';
 
-function getAdminToken(): string {
+export function getAdminToken(): string {
   if (import.meta.env.VITE_FORCE_DEMO === 'true') return 'demo';
-  let token = localStorage.getItem('adminToken');
-  if (!token) {
-    token = window.prompt('Enter admin token:') ?? '';
-    if (token) localStorage.setItem('adminToken', token);
+  return localStorage.getItem('adminToken') ?? '';
+}
+
+export function clearAdminToken(): void {
+  localStorage.removeItem('adminToken');
+}
+
+export async function validateAdminToken(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/metrics/summary`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.status === 200;
+  } catch {
+    return false;
   }
-  return token;
 }
 
 function authHeaders(): { Authorization: string } {
   return { Authorization: `Bearer ${getAdminToken()}` };
 }
 
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status === 401) {
+    clearAdminToken();
+    window.location.reload();
+  }
+  return res;
+}
+
 export async function fetchNodes(): Promise<GPUNode[]> {
-  const res = await fetch(`${BASE}/nodes`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/nodes`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch nodes');
   return res.json();
 }
 
 export async function fetchKeys(): Promise<APIKey[]> {
-  const res = await fetch(`${BASE}/keys`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/keys`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch keys');
   return res.json();
 }
 
 export async function fetchLiveRequests(): Promise<LiveRequest[]> {
-  const res = await fetch(`${BASE}/requests/live`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/requests/live`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch requests');
   return res.json();
 }
 
 export async function fetchSummary() {
-  const res = await fetch(`${BASE}/metrics/summary`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/metrics/summary`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch summary');
   const d = await res.json();
   return {
@@ -51,7 +70,7 @@ export async function fetchSummary() {
 }
 
 export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string }): Promise<{ key: string }> {
-  const res = await fetch(`${BASE}/keys`, {
+  const res = await apiFetch(`${BASE}/keys`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -61,15 +80,15 @@ export async function createKey(data: { name: string; rate_limit: number; models
 }
 
 export async function revokeKey(name: string) {
-  const res = await fetch(`${BASE}/keys/${name}`, {
+  const res = await apiFetch(`${BASE}/keys/${name}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to revoke key');
 }
 
-export async function addNode(data: any) {
-  const res = await fetch(`${BASE}/nodes`, {
+export async function addNode(data: Record<string, unknown>) {
+  const res = await apiFetch(`${BASE}/nodes`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -78,7 +97,7 @@ export async function addNode(data: any) {
 }
 
 export async function removeNode(name: string) {
-  const res = await fetch(`${BASE}/nodes/${name}`, {
+  const res = await apiFetch(`${BASE}/nodes/${name}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
@@ -86,7 +105,7 @@ export async function removeNode(name: string) {
 }
 
 export async function drainNode(name: string) {
-  const res = await fetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
     method: 'POST',
     headers: authHeaders(),
   });
@@ -94,7 +113,7 @@ export async function drainNode(name: string) {
 }
 
 export async function undrainNode(name: string) {
-  const res = await fetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
@@ -102,7 +121,7 @@ export async function undrainNode(name: string) {
 }
 
 export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string }) {
-  const res = await fetch(`${BASE}/nodes/${encodeURIComponent(name)}`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -112,7 +131,7 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
 }
 
 export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; models?: string[] }) {
-  const res = await fetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
+  const res = await apiFetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -122,13 +141,13 @@ export async function patchKey(name: string, data: { rate_limit?: number; daily_
 }
 
 export async function fetchRoutingRules() {
-  const res = await fetch(`${BASE}/routing/rules`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/routing/rules`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch routing rules');
   return res.json();
 }
 
 export async function addRoutingRule(rule: { id: string; priority: number; condition: string; targetNode: string; strategy: string; enabled: boolean }) {
-  const res = await fetch(`${BASE}/routing/rules`, {
+  const res = await apiFetch(`${BASE}/routing/rules`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(rule),
@@ -137,7 +156,7 @@ export async function addRoutingRule(rule: { id: string; priority: number; condi
 }
 
 export async function removeRoutingRule(id: string) {
-  const res = await fetch(`${BASE}/routing/rules/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${BASE}/routing/rules/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
@@ -145,7 +164,7 @@ export async function removeRoutingRule(id: string) {
 }
 
 export async function toggleRoutingRule(id: string) {
-  const res = await fetch(`${BASE}/routing/rules/${encodeURIComponent(id)}/toggle`, {
+  const res = await apiFetch(`${BASE}/routing/rules/${encodeURIComponent(id)}/toggle`, {
     method: 'PUT',
     headers: authHeaders(),
   });
@@ -153,7 +172,7 @@ export async function toggleRoutingRule(id: string) {
 }
 
 export async function setRoutingStrategy(strategy: string) {
-  const res = await fetch(`${BASE}/routing/strategy`, {
+  const res = await apiFetch(`${BASE}/routing/strategy`, {
     method: 'PUT',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy }),
@@ -162,32 +181,32 @@ export async function setRoutingStrategy(strategy: string) {
 }
 
 export async function fetchRoutingStrategy(): Promise<string> {
-  const res = await fetch(`${BASE}/routing/strategy`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/routing/strategy`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch routing strategy');
   const data = await res.json();
   return data.strategy ?? 'warm-first';
 }
 
 export async function fetchSettings() {
-  const res = await fetch(`${BASE}/settings`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch settings');
   return res.json();
 }
 
 export async function fetchSavings(): Promise<Savings> {
-  const res = await fetch(`${BASE}/metrics/savings`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/metrics/savings`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch savings');
   return res.json();
 }
 
 export async function fetchCloudProviders(): Promise<CloudProvider[]> {
-  const res = await fetch(`${BASE}/cloud/providers`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/cloud/providers`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch cloud providers');
   return res.json();
 }
 
 export async function reloadConfig(): Promise<{ reloaded: boolean; config_path: string; auth_keys: number; warmup_enabled: boolean }> {
-  const res = await fetch(`${BASE}/config/reload`, {
+  const res = await apiFetch(`${BASE}/config/reload`, {
     method: 'POST',
     headers: authHeaders(),
   });
@@ -196,19 +215,19 @@ export async function reloadConfig(): Promise<{ reloaded: boolean; config_path: 
 }
 
 export async function fetchModels(): Promise<ModelCatalog> {
-  const res = await fetch(`${BASE}/models`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/models`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch models');
   return res.json();
 }
 
 export async function fetchRequests(): Promise<RequestEntry[]> {
-  const res = await fetch(`${BASE}/requests`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/requests`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch requests');
   return res.json();
 }
 
-export async function updateSettings(data: any) {
-  const res = await fetch(`${BASE}/settings`, {
+export async function updateSettings(data: Record<string, unknown>) {
+  const res = await apiFetch(`${BASE}/settings`, {
     method: 'PUT',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -217,13 +236,13 @@ export async function updateSettings(data: any) {
 }
 
 export async function fetchAnalytics(): Promise<Analytics> {
-  const res = await fetch(`${BASE}/analytics`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/analytics`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch analytics');
   return res.json();
 }
 
 export async function pullModel(nodeName: string, model: string): Promise<void> {
-  const res = await fetch(`${BASE}/v1/nodes/${encodeURIComponent(nodeName)}/pull`, {
+  const res = await apiFetch(`${BASE}/v1/nodes/${encodeURIComponent(nodeName)}/pull`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ model }),
@@ -232,13 +251,13 @@ export async function pullModel(nodeName: string, model: string): Promise<void> 
 }
 
 export async function fetchModelFit(): Promise<ModelFitResponse> {
-  const res = await fetch(`${BASE}/nodes/model-fit`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/nodes/model-fit`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch model fit data');
   return res.json();
 }
 
 export async function fetchModelCatalog(): Promise<ModelCatalogResponse> {
-  const res = await fetch(`${BASE}/v1/models/catalog`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/v1/models/catalog`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch model catalog');
   return res.json();
 }
@@ -268,7 +287,7 @@ export interface SystemInfo {
 }
 
 export async function fetchSystemInfo(): Promise<SystemInfo> {
-  const res = await fetch(`${BASE}/system-info`, { headers: authHeaders() });
+  const res = await apiFetch(`${BASE}/system-info`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch system info');
   return res.json();
 }
@@ -302,7 +321,7 @@ export interface HFRepoDetails {
 
 export async function searchHFModels(query: string): Promise<HFModel[]> {
   const url = `${BASE}/v1/models/search?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await apiFetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to search Hugging Face models');
   return res.json();
 }
@@ -311,9 +330,7 @@ export async function getHFRepoDetails(repoId: string, nodeName?: string, ctxLen
   let url = `${BASE}/v1/models/repo?id=${encodeURIComponent(repoId)}`;
   if (nodeName) url += `&node=${encodeURIComponent(nodeName)}`;
   if (ctxLen) url += `&ctx=${ctxLen}`;
-  const res = await fetch(url, { headers: authHeaders() });
+  const res = await apiFetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch Hugging Face repository details');
   return res.json();
 }
-
-

@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   ArrowLeft,
+  LogOut,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { forcedDemo } from '../hooks/useDemoMode';
@@ -33,7 +34,11 @@ const navItems = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  onLogout?: () => void;
+}
+
+export function Sidebar({ onLogout }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
@@ -105,6 +110,15 @@ export function Sidebar() {
             <><Moon className="w-4 h-4 shrink-0" /><span>Dark Mode</span></>
           )}
         </button>
+        {onLogout && !forcedDemo && (
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span>Logout</span>
+          </button>
+        )}
       </div>
     </>
   );
