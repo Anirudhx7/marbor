@@ -14,7 +14,7 @@ import {
   ModelVariantFit,
 } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockHFModels, mockHFRepoDetails, mockSystemInfo } from '../lib/mockData';
+import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse } from '../lib/mockData';
 
 function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   const styles = {
@@ -34,12 +34,14 @@ function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
 function ModelDetailPanel({
   model,
   nodeName,
+  nodeRuntime,
   isLive,
   demoMode,
   onClose,
 }: {
   model: HFModel;
   nodeName: string | null;
+  nodeRuntime: string | null;
   isLive: boolean;
   demoMode: boolean;
   onClose: () => void;
@@ -235,9 +237,9 @@ function ModelDetailPanel({
                       ) : (
                         <button
                           onClick={() => handlePull(v)}
-                          disabled={!isLive || !nodeName || isPulling || v.fit === 'red'}
+                          disabled={!isLive || !nodeName || isPulling || v.fit === 'red' || nodeRuntime !== 'ollama'}
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
-                          title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
+                          title={v.fit === 'red' ? 'Requires more VRAM than available' : nodeRuntime !== 'ollama' ? 'Pull is only available on Ollama nodes' : ''}
                         >
                           {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                           Pull
@@ -358,15 +360,9 @@ export function ModelAdvisor() {
   const loadSystemInfo = async () => {
     if (demoMode) {
       setSysInfo(mockSystemInfo);
-      setNodes([{
-        name: 'gpu-0',
-        url: 'http://localhost:11435',
-        vram_free_bytes: 10 * 1024 * 1024 * 1024,
-        vram_total_bytes: 24 * 1024 * 1024 * 1024,
-        vram_source: 'nvidia-smi',
-        models: [],
-      }]);
-      setSelectedNode('gpu-0');
+      const catalogNodes = mockModelCatalogResponse.nodes;
+      setNodes(catalogNodes);
+      setSelectedNode(catalogNodes[0]?.name ?? '');
       setIsLive(false);
       setError(null);
       setLoading(false);
@@ -491,7 +487,7 @@ export function ModelAdvisor() {
 
       {demoMode && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm font-medium">
-          Demo mode - showing simulated NVIDIA RTX 4090 (24 GB VRAM, 10 GB free). Connect a real node to pull models.
+          Demo mode - 4 inference nodes (Ollama, vLLM, TGI, llama.cpp). Connect real nodes to see live data.
         </div>
       )}
 
@@ -629,6 +625,7 @@ export function ModelAdvisor() {
                     key="__panel__"
                     model={item.model}
                     nodeName={selectedNode}
+                    nodeRuntime={activeNode?.runtime ?? null}
                     isLive={isLive}
                     demoMode={demoMode}
                     onClose={() => setSelectedModelId(null)}

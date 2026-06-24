@@ -225,6 +225,7 @@ export interface CatalogModelFit extends CatalogModel {
 export interface CatalogNodeEntry {
   name: string;
   url: string;
+  runtime?: string;
   vram_free_bytes: number;
   vram_total_bytes: number;
   vram_source: 'nvidia-smi' | 'inferred' | 'unknown' | 'declared';
