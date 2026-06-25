@@ -31,25 +31,25 @@ Enterprise teams deploying LLM-powered applications — coding agents, RAG pipel
 Client Application (Agent / RAG / Copilot)
     │
     ▼
-┌──────────────────────────────────────────────────────┐
-│  ollama-mesh proxy (:11434)                          │
-│                                                      │
-│  Auth ─► Rate Limit ─► Quota Check ─► Model Allow    │
-│    │                                                 │
-│    ▼                                                 │
-│  Request Queue (configurable depth + backpressure)   │
-│    │                                                 │
-│    ▼                                                 │
-│  Router: extract model from JSON body                │
+┌───────────────────────────────────────────────────────┐
+│  ollama-mesh proxy (:11434)                           │
+│                                                       │
+│  Auth ─► Rate Limit ─► Quota Check ─► Model Allow     │
+│    │                                                  │
+│    ▼                                                  │
+│  Request Queue (configurable depth + backpressure)    │
+│    │                                                  │
+│    ▼                                                  │
+│  Router: extract model from JSON body                 │
 │    ├── Warm in VRAM? ──► Route to warm node           │
 │    │   (least-connections among warm candidates)      │
 │    ├── VRAM-fit placement ──► Node with most headroom │
-│    ├── Session affinity (X-Session-ID) ──► KV-cache  │
+│    ├── Session affinity (X-Session-ID) ──► KV-cache   │
 │    └── All busy/down? ──► Cloud fallback              │
-│         (OpenAI/Anthropic, format-translated)        │
-│                                                      │
-│  Token Tracking ─► Cost Attribution ─► Audit Log     │
-└──────────────────────────────────────────────────────┘
+│         (OpenAI/Anthropic, format-translated)         │
+│                                                       │
+│  Token Tracking ─► Cost Attribution ─► Audit Log      │
+└───────────────────────────────────────────────────────┘
     │               │              │
     ▼               ▼              ▼
   GPU Nodes     Cloud APIs     Prometheus :9090
