@@ -42,7 +42,7 @@ const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
 function App() {
   const [authed, setAuthed] = useState<boolean>(
-    () => forcedDemo || !!getSessionToken()
+    () => !!getSessionToken()
   );
 
   function handleLogout() {

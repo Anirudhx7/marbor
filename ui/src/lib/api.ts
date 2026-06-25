@@ -3,7 +3,6 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, Req
 const BASE = '/admin';
 
 export function getSessionToken(): string {
-  if (import.meta.env.VITE_FORCE_DEMO === 'true') return 'demo-session';
   return localStorage.getItem('sessionToken') ?? localStorage.getItem('adminToken') ?? '';
 }
 
@@ -21,6 +20,13 @@ export function getAdminToken(): string { return getSessionToken(); }
 export function clearAdminToken(): void { clearSessionToken(); }
 
 export async function login(username: string, password: string): Promise<{ token: string; expires_at: string }> {
+  // Demo mode: no backend on GitHub Pages - validate admin/admin locally
+  if (import.meta.env.VITE_FORCE_DEMO === 'true') {
+    if (username === 'admin' && password === 'admin') {
+      return { token: 'demo-session', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() };
+    }
+    throw new Error('Invalid credentials');
+  }
   const r = await fetch('/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
