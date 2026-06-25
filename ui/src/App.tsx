@@ -25,7 +25,7 @@ import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { DemoBanner } from './components/DemoBanner';
 import { Login } from './components/Login';
-import { clearAdminToken } from './lib/api';
+import { getSessionToken, logout } from './lib/api';
 
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const GPUNodes     = lazy(() => import('./pages/GPUNodes').then(m => ({ default: m.GPUNodes })));
@@ -42,11 +42,11 @@ const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
 function App() {
   const [authed, setAuthed] = useState<boolean>(
-    () => forcedDemo || !!localStorage.getItem('adminToken')
+    () => forcedDemo || !!getSessionToken()
   );
 
   function handleLogout() {
-    clearAdminToken();
+    logout(); // fire-and-forget: clears localStorage + invalidates server session
     setAuthed(false);
   }
 

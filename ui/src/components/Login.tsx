@@ -1,30 +1,31 @@
 import { useState, FormEvent } from 'react';
-import { validateAdminToken } from '../lib/api';
+import { login, setSessionToken } from '../lib/api';
+import { forcedDemo } from '../hooks/useDemoMode';
 
 interface LoginProps {
   onSuccess: () => void;
 }
 
 export function Login({ onSuccess }: LoginProps) {
-  const [token, setToken] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!token.trim()) return;
+    if (!username.trim() || !password.trim()) return;
 
     setLoading(true);
     setError('');
 
-    const valid = await validateAdminToken(token.trim());
-
-    if (valid) {
-      localStorage.setItem('adminToken', token.trim());
+    try {
+      const data = await login(username.trim(), password.trim());
+      setSessionToken(data.token);
       onSuccess();
-    } else {
-      setError('Invalid token - try again');
-      setToken('');
+    } catch {
+      setError('Invalid username or password');
+      setPassword('');
       setLoading(false);
     }
   }
@@ -34,11 +35,11 @@ export function Login({ onSuccess }: LoginProps) {
       <div className="w-full max-w-sm">
         <div className="glass-panel rounded-xl p-8">
           <div className="mb-8 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-4">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary/10 text-primary mb-4">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                width="22"
-                height="22"
+                width="28"
+                height="28"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -46,26 +47,46 @@ export function Login({ onSuccess }: LoginProps) {
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+                <circle cx="12" cy="5" r="2" />
+                <circle cx="5" cy="19" r="2" />
+                <circle cx="19" cy="19" r="2" />
+                <line x1="12" y1="7" x2="5" y2="17" />
+                <line x1="12" y1="7" x2="19" y2="17" />
+                <line x1="7" y1="19" x2="17" y2="19" />
               </svg>
             </div>
-            <h1 className="text-xl font-semibold text-foreground">Ollama Mesh</h1>
-            <p className="text-sm text-muted-foreground mt-1">Enter your admin token to continue</p>
+            <h1 className="text-xl font-semibold text-foreground">ollama-mesh</h1>
+            <p className="text-sm text-muted-foreground mt-1">Sign in to the admin dashboard</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="token" className="block text-sm font-medium text-muted-foreground mb-1.5">
-                Admin Token
+              <label htmlFor="username" className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Username
               </label>
               <input
-                id="token"
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="sk-..."
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="admin"
                 autoFocus
+                autoComplete="username"
+                disabled={loading}
+                className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground placeholder-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-50"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
                 autoComplete="current-password"
                 disabled={loading}
                 className="w-full px-3 py-2 rounded-lg bg-secondary border border-border text-foreground placeholder-muted-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors disabled:opacity-50"
@@ -78,7 +99,7 @@ export function Login({ onSuccess }: LoginProps) {
 
             <button
               type="submit"
-              disabled={loading || !token.trim()}
+              disabled={loading || !username.trim() || !password.trim()}
               className="w-full px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
@@ -89,27 +110,22 @@ export function Login({ onSuccess }: LoginProps) {
                     fill="none"
                     viewBox="0 0 24 24"
                   >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Connecting...
+                  Signing in...
                 </>
               ) : (
-                'Connect'
+                'Sign in'
               )}
             </button>
           </form>
+
+          {forcedDemo && (
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              Demo credentials: <span className="font-mono text-foreground">admin</span> / <span className="font-mono text-foreground">admin</span>
+            </p>
+          )}
         </div>
       </div>
     </div>

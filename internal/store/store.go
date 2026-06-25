@@ -1,6 +1,19 @@
 package store
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrNoAdminCreds is returned by GetAdminCreds when no credentials have been stored yet.
+var ErrNoAdminCreds = errors.New("store: no admin credentials set")
+
+// AdminCreds holds the dashboard administrator's login credentials.
+type AdminCreds struct {
+	Username     string
+	PasswordHash string // hex(sha256 iterated over salt+":"+password)
+	Salt         string // 32 random bytes as hex
+}
 
 // Store is the persistence interface. A nil Store is valid (all ops are no-ops)
 // so callers never need to nil-check.
@@ -44,6 +57,16 @@ type Store interface {
 	// Audit log (replaces audit/audit.go file-based logger)
 	AppendAuditLog(e AuditEntry) error
 	QueryAuditLog(opts AuditQuery) ([]AuditEntry, error)
+
+	// Admin dashboard credentials
+	GetAdminCreds() (AdminCreds, error)
+	SetAdminCreds(creds AdminCreds) error
+
+	// Admin dashboard sessions
+	CreateSession(token string, expiresAt time.Time) error
+	ValidateSession(token string) (bool, error)
+	DeleteSession(token string) error
+	PruneExpiredSessions() error
 
 	Close() error
 }
@@ -172,4 +195,10 @@ func (NopStore) RevokeKey(_ string) error                               { return
 func (NopStore) AllKeys() ([]KeyRecord, error)                          { return nil, nil }
 func (NopStore) AppendAuditLog(_ AuditEntry) error                      { return nil }
 func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)       { return nil, nil }
+func (NopStore) GetAdminCreds() (AdminCreds, error)                     { return AdminCreds{}, ErrNoAdminCreds }
+func (NopStore) SetAdminCreds(_ AdminCreds) error                       { return nil }
+func (NopStore) CreateSession(_ string, _ time.Time) error              { return nil }
+func (NopStore) ValidateSession(_ string) (bool, error)                 { return false, nil }
+func (NopStore) DeleteSession(_ string) error                           { return nil }
+func (NopStore) PruneExpiredSessions() error                            { return nil }
 func (NopStore) Close() error                                           { return nil }

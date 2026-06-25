@@ -133,6 +133,19 @@ func (s *sqliteStore) migrate() error {
 			cloud_model TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts DESC)`,
+
+		`CREATE TABLE IF NOT EXISTS admin_credentials (
+			id            INTEGER PRIMARY KEY CHECK(id=1),
+			username      TEXT NOT NULL DEFAULT 'admin',
+			password_hash TEXT NOT NULL,
+			salt          TEXT NOT NULL
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS admin_sessions (
+			token      TEXT PRIMARY KEY,
+			created_at INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -638,6 +651,76 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		return nil, fmt.Errorf("store: QueryAuditLog rows: %w", err)
 	}
 	return entries, nil
+}
+
+// --- Admin credentials ---
+
+func (s *sqliteStore) GetAdminCreds() (AdminCreds, error) {
+	var c AdminCreds
+	err := s.db.QueryRow(
+		`SELECT username, password_hash, salt FROM admin_credentials WHERE id=1`,
+	).Scan(&c.Username, &c.PasswordHash, &c.Salt)
+	if err == sql.ErrNoRows {
+		return AdminCreds{}, ErrNoAdminCreds
+	}
+	if err != nil {
+		return AdminCreds{}, fmt.Errorf("store: GetAdminCreds: %w", err)
+	}
+	return c, nil
+}
+
+func (s *sqliteStore) SetAdminCreds(c AdminCreds) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO admin_credentials (id, username, password_hash, salt) VALUES (1, ?, ?, ?)`,
+		c.Username, c.PasswordHash, c.Salt,
+	)
+	if err != nil {
+		return fmt.Errorf("store: SetAdminCreds: %w", err)
+	}
+	return nil
+}
+
+// --- Admin sessions ---
+
+func (s *sqliteStore) CreateSession(token string, expiresAt time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO admin_sessions (token, created_at, expires_at) VALUES (?, ?, ?)`,
+		token, time.Now().Unix(), expiresAt.Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("store: CreateSession: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) ValidateSession(token string) (bool, error) {
+	var expiresAt int64
+	err := s.db.QueryRow(
+		`SELECT expires_at FROM admin_sessions WHERE token=?`, token,
+	).Scan(&expiresAt)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("store: ValidateSession: %w", err)
+	}
+	return time.Now().Unix() < expiresAt, nil
+}
+
+func (s *sqliteStore) DeleteSession(token string) error {
+	_, err := s.db.Exec(`DELETE FROM admin_sessions WHERE token=?`, token)
+	if err != nil {
+		return fmt.Errorf("store: DeleteSession: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) PruneExpiredSessions() error {
+	_, err := s.db.Exec(`DELETE FROM admin_sessions WHERE expires_at < ?`, time.Now().Unix())
+	if err != nil {
+		return fmt.Errorf("store: PruneExpiredSessions: %w", err)
+	}
+	return nil
 }
 
 func (s *sqliteStore) Close() error {

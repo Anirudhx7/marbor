@@ -2,34 +2,65 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, Req
 
 const BASE = '/admin';
 
-export function getAdminToken(): string {
-  if (import.meta.env.VITE_FORCE_DEMO === 'true') return 'demo';
-  return localStorage.getItem('adminToken') ?? '';
+export function getSessionToken(): string {
+  if (import.meta.env.VITE_FORCE_DEMO === 'true') return 'demo-session';
+  return localStorage.getItem('sessionToken') ?? localStorage.getItem('adminToken') ?? '';
 }
 
-export function clearAdminToken(): void {
+export function setSessionToken(token: string): void {
+  localStorage.setItem('sessionToken', token);
+}
+
+export function clearSessionToken(): void {
+  localStorage.removeItem('sessionToken');
   localStorage.removeItem('adminToken');
 }
 
-export async function validateAdminToken(token: string): Promise<boolean> {
+// Kept for backward compat — resolves to the active session token.
+export function getAdminToken(): string { return getSessionToken(); }
+export function clearAdminToken(): void { clearSessionToken(); }
+
+export async function login(username: string, password: string): Promise<{ token: string; expires_at: string }> {
+  const r = await fetch('/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!r.ok) throw new Error('Invalid credentials');
+  return r.json();
+}
+
+export async function logout(): Promise<void> {
   try {
-    const res = await fetch(`${BASE}/metrics/summary`, {
-      headers: { Authorization: `Bearer ${token}` },
+    await fetch(`${BASE}/v1/logout`, {
+      method: 'POST',
+      headers: authHeaders(),
     });
-    return res.status === 200;
-  } catch {
-    return false;
+  } finally {
+    clearSessionToken();
+  }
+}
+
+export async function changePassword(currentPassword: string, newUsername: string, newPassword: string): Promise<void> {
+  const r = await apiFetch(`${BASE}/v1/change-password`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_password: currentPassword, new_username: newUsername, new_password: newPassword }),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Failed to change password');
   }
 }
 
 function authHeaders(): { Authorization: string } {
-  return { Authorization: `Bearer ${getAdminToken()}` };
+  return { Authorization: `Bearer ${getSessionToken()}` };
 }
 
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, init);
   if (res.status === 401) {
-    clearAdminToken();
+    clearSessionToken();
     window.location.reload();
   }
   return res;

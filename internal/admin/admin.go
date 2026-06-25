@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/csv"
@@ -53,6 +54,7 @@ type Server struct {
 	auditLog      *audit.Logger
 	haMonitor     *ha.Monitor // nil when HA disabled
 	st            store.Store // never nil; NopStore when persistence disabled
+	demoMode      bool        // when true, login accepts admin/admin without DB
 }
 
 // SetVersion sets the version string reported by /health.
@@ -73,6 +75,9 @@ func (s *Server) SetAuditLogger(al *audit.Logger) {
 
 // SetHAMonitor wires the HA monitor into the admin server.
 func (s *Server) SetHAMonitor(m *ha.Monitor) { s.haMonitor = m }
+
+// SetDemoMode enables demo mode, where the dashboard login accepts admin/admin.
+func (s *Server) SetDemoMode(v bool) { s.demoMode = v }
 
 // SetStore replaces the persistence backend. Useful for tests and for wiring
 // a real SQLite store after construction when the store isn't known yet.
@@ -249,7 +254,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 	if len(st) > 0 && st[0] != nil {
 		stImpl = st[0]
 	}
-	return &Server{
+	s := &Server{
 		router:       r,
 		auth:         a,
 		cfg:          cfg,
@@ -261,6 +266,8 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		analytics:    newAnalyticsStore(refRate),
 		st:           stImpl,
 	}
+	s.ensureAdminCreds()
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
@@ -321,8 +328,11 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/config/reload", s.cors(s.adminAuth(s.handleConfigReload)))
 	reg("GET /admin/config", s.cors(s.adminAuth(s.handleGetConfig)))
 
-	// Health check — no auth required. Used by load balancers and Docker healthchecks.
+	// Health check and login — no auth required.
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("POST /login", s.cors(s.handleLogin))
+	reg("POST /admin/logout", s.cors(s.adminAuth(s.handleLogout)))
+	reg("POST /admin/change-password", s.cors(s.adminAuth(s.handleChangePassword)))
 
 	if sub, err := fs.Sub(webFS, "web/dist"); err == nil {
 		mux.Handle("/assets/", s.noCache(http.FileServer(http.FS(sub))))
@@ -379,8 +389,17 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		// Constant-time compare so a timing side channel cannot reveal the
-		// admin token byte-by-byte. Length is part of the comparison.
+
+		// Accept dashboard session tokens first.
+		if token != "" {
+			if valid, err := s.st.ValidateSession(token); err == nil && valid {
+				next(w, r)
+				return
+			}
+		}
+
+		// Fall back to the legacy admin_token (config-based or generated at startup).
+		// Constant-time compare so a timing side channel cannot reveal the token.
 		if subtle.ConstantTimeCompare([]byte(token), []byte(s.adminToken)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -814,6 +833,116 @@ func generateAPIKey(name string) string {
 	return "sk-" + name + "-" + hex.EncodeToString(b)
 }
 
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	// Demo mode: fixed admin/admin credentials, no DB needed.
+	if s.demoMode {
+		if req.Username == "admin" && req.Password == "admin" {
+			expiry := time.Now().Add(30 * 24 * time.Hour)
+			json.NewEncoder(w).Encode(map[string]string{
+				"token":      "demo-session",
+				"expires_at": expiry.Format(time.RFC3339),
+			})
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"invalid credentials"}`))
+		return
+	}
+
+	creds, err := s.st.GetAdminCreds()
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"invalid credentials"}`))
+		return
+	}
+	hash := hashPassword(req.Password, creds.Salt)
+	if subtle.ConstantTimeCompare([]byte(req.Username), []byte(creds.Username)) != 1 ||
+		subtle.ConstantTimeCompare([]byte(hash), []byte(creds.PasswordHash)) != 1 {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"invalid credentials"}`))
+		return
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	sessionToken := hex.EncodeToString(b)
+	expiry := time.Now().Add(30 * 24 * time.Hour)
+	if err := s.st.CreateSession(sessionToken, expiry); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{
+		"token":      sessionToken,
+		"expires_at": expiry.Format(time.RFC3339),
+	})
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	s.st.DeleteSession(token)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{}`))
+}
+
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewUsername     string `json:"new_username"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	creds, err := s.st.GetAdminCreds()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"could not load credentials"}`))
+		return
+	}
+	hash := hashPassword(req.CurrentPassword, creds.Salt)
+	if subtle.ConstantTimeCompare([]byte(hash), []byte(creds.PasswordHash)) != 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"wrong current password"}`))
+		return
+	}
+	username := req.NewUsername
+	if username == "" {
+		username = creds.Username
+	}
+	newSalt := generateSalt()
+	newHash := hashPassword(req.NewPassword, newSalt)
+	if err := s.st.SetAdminCreds(store.AdminCreds{
+		Username:     username,
+		PasswordHash: newHash,
+		Salt:         newSalt,
+	}); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"could not save credentials"}`))
+		return
+	}
+	w.Write([]byte(`{}`))
+}
+
 // generateAdminToken returns a cryptographically-random 64-char hex token
 // (32 bytes). A failing CSPRNG at startup is unrecoverable for security, so we
 // fail closed via log.Fatalf rather than serve a weak/empty token.
@@ -830,6 +959,53 @@ func generateAdminToken() string {
 // whose token was auto-generated; harmless to expose since the token must be
 // presented as a bearer credential anyway.
 func (s *Server) AdminToken() string { return s.adminToken }
+
+// hashPassword returns hex(sha256 iterated 10000 times over salt+":"+password).
+func hashPassword(password, salt string) string {
+	h := sha256.New()
+	for i := 0; i < 10000; i++ {
+		h.Write([]byte(salt + ":" + password))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// generateSalt returns 16 cryptographically-random bytes as hex.
+func generateSalt() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("admin: failed to generate password salt: %v", err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// ensureAdminCreds creates default admin credentials in the store if none exist.
+// Called once on startup; prints the generated password so the operator can log in.
+func (s *Server) ensureAdminCreds() {
+	if _, err := s.st.GetAdminCreds(); err == nil {
+		return // credentials already configured
+	}
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	raw := make([]byte, 12)
+	if _, err := rand.Read(raw); err != nil {
+		log.Printf("admin: could not generate initial admin password: %v", err)
+		return
+	}
+	for i := range raw {
+		raw[i] = charset[int(raw[i])%len(charset)]
+	}
+	password := string(raw)
+	salt := generateSalt()
+	hash := hashPassword(password, salt)
+	if err := s.st.SetAdminCreds(store.AdminCreds{
+		Username:     "admin",
+		PasswordHash: hash,
+		Salt:         salt,
+	}); err != nil {
+		log.Printf("admin: could not persist admin credentials: %v", err)
+		return
+	}
+	log.Printf("admin dashboard login - username: admin  password: %s  (change this in Settings -> Admin Credentials)", password)
+}
 
 // maskKey returns a non-reversible preview of an API key so the list endpoint
 // never re-serves the full secret. Format: first 7 chars + "…" + last 4

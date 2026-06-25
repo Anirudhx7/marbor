@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw } from 'lucide-react';
+import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig } from '../lib/api';
+import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig, changePassword } from '../lib/api';
 import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
@@ -17,6 +17,15 @@ export function SettingsPage() {
   const [reloading, setReloading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Admin credentials change
+  const [credCurrentPw, setCredCurrentPw] = useState('');
+  const [credNewUsername, setCredNewUsername] = useState('');
+  const [credNewPw, setCredNewPw] = useState('');
+  const [credConfirmPw, setCredConfirmPw] = useState('');
+  const [credSaving, setCredSaving] = useState(false);
+  const [credError, setCredError] = useState<string | null>(null);
+  const [credSaved, setCredSaved] = useState(false);
 
   useEffect(() => {
     if (demoMode) {
@@ -138,6 +147,32 @@ export function SettingsPage() {
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleChangeCredentials = async () => {
+    if (credNewPw && credNewPw !== credConfirmPw) {
+      setCredError('New passwords do not match');
+      return;
+    }
+    if (!credCurrentPw) {
+      setCredError('Current password is required');
+      return;
+    }
+    setCredSaving(true);
+    setCredError(null);
+    try {
+      await changePassword(credCurrentPw, credNewUsername || '', credNewPw || '');
+      setCredSaved(true);
+      setCredCurrentPw('');
+      setCredNewUsername('');
+      setCredNewPw('');
+      setCredConfirmPw('');
+      setTimeout(() => setCredSaved(false), 3000);
+    } catch (err: any) {
+      setCredError(err.message || 'Failed to update credentials');
+    } finally {
+      setCredSaving(false);
+    }
   };
 
   return (
@@ -502,6 +537,89 @@ export function SettingsPage() {
             </Badge>
           </div>
         </div>
+        {/* Admin Credentials - hidden in demo mode */}
+        {!demoMode && (
+          <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 bg-rose-500/10 rounded-lg">
+                <KeyRound className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Admin Credentials</h3>
+                <p className="text-xs font-medium text-muted-foreground">Change dashboard login username or password</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Current Password</label>
+                <input
+                  type="password"
+                  value={credCurrentPw}
+                  onChange={(e) => setCredCurrentPw(e.target.value)}
+                  placeholder="Required to make changes"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">New Username <span className="text-muted-foreground/60">(optional)</span></label>
+                <input
+                  type="text"
+                  value={credNewUsername}
+                  onChange={(e) => setCredNewUsername(e.target.value)}
+                  placeholder="Leave blank to keep current"
+                  autoComplete="username"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">New Password <span className="text-muted-foreground/60">(optional)</span></label>
+                <input
+                  type="password"
+                  value={credNewPw}
+                  onChange={(e) => setCredNewPw(e.target.value)}
+                  placeholder="Leave blank to keep current"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={credConfirmPw}
+                  onChange={(e) => setCredConfirmPw(e.target.value)}
+                  placeholder="Repeat new password"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+            </div>
+
+            {credError && (
+              <p className="mt-3 text-sm text-destructive">{credError}</p>
+            )}
+            {credSaved && (
+              <p className="mt-3 text-sm text-green-600 dark:text-green-400">Credentials updated. Re-login required on other sessions.</p>
+            )}
+
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleChangeCredentials}
+                disabled={credSaving || !credCurrentPw}
+                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {credSaving ? (
+                  'Saving...'
+                ) : credSaved ? (
+                  <><Check className="w-4 h-4" /> Saved</>
+                ) : (
+                  <><Save className="w-4 h-4" /> Update Credentials</>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
