@@ -86,7 +86,7 @@ type WebhookConfig struct {
 }
 
 type AuditConfig struct {
-	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
 type DockerConfig struct {
@@ -310,7 +310,6 @@ func (c *Config) Validate() error {
 		c.Metrics.Port = 9090
 	}
 
-
 	if c.Storage.DBPath == "" {
 		c.Storage.DBPath = "mesh.db"
 	}
@@ -383,7 +382,6 @@ func (c *Config) Validate() error {
 	if c.Warmup.KeepAlive == "" {
 		c.Warmup.KeepAlive = "10m"
 	}
-
 
 	if c.Savings.ReferenceCostPer1K <= 0 {
 		c.Savings.ReferenceCostPer1K = 0.002

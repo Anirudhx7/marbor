@@ -16,10 +16,10 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 // buildAllowlistStack builds the auth->proxy chain with a single node that is

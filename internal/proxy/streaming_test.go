@@ -19,9 +19,9 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 // newDyingNode returns a mock Ollama node that sends one chunk, then severs
