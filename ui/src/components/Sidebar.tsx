@@ -110,7 +110,7 @@ export function Sidebar({ onLogout }: SidebarProps) {
             <><Moon className="w-4 h-4 shrink-0" /><span>Dark Mode</span></>
           )}
         </button>
-        {onLogout && !forcedDemo && (
+        {onLogout && (
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
