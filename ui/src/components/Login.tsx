@@ -35,24 +35,12 @@ export function Login({ onSuccess }: LoginProps) {
       <div className="w-full max-w-sm">
         <div className="glass-panel rounded-xl p-8">
           <div className="mb-8 text-center">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary/10 text-primary mb-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="28"
-                height="28"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="5" r="2" />
-                <circle cx="5" cy="19" r="2" />
-                <circle cx="19" cy="19" r="2" />
-                <line x1="12" y1="7" x2="5" y2="17" />
-                <line x1="12" y1="7" x2="19" y2="17" />
-                <line x1="7" y1="19" x2="17" y2="19" />
+            <div className="inline-flex items-center justify-center mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="56" height="56">
+                <rect width="100" height="100" rx="20" fill="#0a0a0a"/>
+                <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65"
+                  stroke="#d4a853" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
               </svg>
             </div>
             <h1 className="text-xl font-semibold text-foreground">ollama-mesh</h1>
