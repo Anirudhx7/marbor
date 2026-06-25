@@ -26,10 +26,6 @@ auth:
   # if left blank, the admin token silently falls back to your first API key,
   # which would grant dashboard access to every API-key holder.
   admin_token: sk-admin-change-me
-  # Per-key usage/quota counters are persisted here so they survive restarts
-  # (a restart would otherwise reset quotas). Defaults to usage-state.json.
-  # Set to "-" to disable persistence.
-  state_path: usage-state.json
   keys:
     - name: anirudh-dev
       key: sk-mesh-abc123
@@ -206,7 +202,6 @@ savings:
 # runtime-added nodes, node overrides, and API keys created via the admin API.
 # All mutable operational state survives restarts. config.yaml remains the
 # bootstrap seed for static settings (admin token, routing, cloud providers).
-# Set to "-" to disable persistence (in-memory only, legacy behaviour).
 storage:
   db_path: mesh.db
 
@@ -215,7 +210,6 @@ storage:
 # Never logs API key values or request bodies.
 audit:
   enabled: false
-  path: audit.log
 
 # Hugging Face integration: optional API token for accessing private GGUF repositories
 # or bypassing Hugging Face API rate limits on searches.

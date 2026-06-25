@@ -41,6 +41,10 @@ type Store interface {
 	RevokeKey(name string) error
 	AllKeys() ([]KeyRecord, error)
 
+	// Audit log (replaces audit/audit.go file-based logger)
+	AppendAuditLog(e AuditEntry) error
+	QueryAuditLog(opts AuditQuery) ([]AuditEntry, error)
+
 	Close() error
 }
 
@@ -121,6 +125,28 @@ type KeyRecord struct {
 	Revoked      bool     `json:"revoked"`
 }
 
+// AuditEntry is one structured audit log record persisted to SQLite.
+type AuditEntry struct {
+	Time       time.Time `json:"time"`
+	RequestID  string    `json:"request_id"`
+	KeyName    string    `json:"key_name"`
+	Model      string    `json:"model"`
+	Node       string    `json:"node"`
+	Status     string    `json:"status"`
+	LatencyMs  int       `json:"latency_ms"`
+	Cloud      bool      `json:"cloud"`
+	CloudModel string    `json:"cloud_model,omitempty"`
+}
+
+// AuditQuery controls filtering for QueryAuditLog.
+type AuditQuery struct {
+	Limit int
+	Model string
+	Key   string
+	Cloud *bool
+	Since time.Time
+}
+
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
@@ -144,4 +170,6 @@ func (NopStore) NodeDrainStates() (map[string]bool, error)              { return
 func (NopStore) UpsertKey(_ KeyRecord) error                            { return nil }
 func (NopStore) RevokeKey(_ string) error                               { return nil }
 func (NopStore) AllKeys() ([]KeyRecord, error)                          { return nil, nil }
+func (NopStore) AppendAuditLog(_ AuditEntry) error                      { return nil }
+func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)       { return nil, nil }
 func (NopStore) Close() error                                           { return nil }

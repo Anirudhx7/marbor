@@ -140,7 +140,7 @@ func main() {
 
 	log.Printf("ollama-mesh %s starting...", Version)
 	log.Printf("Proxy port      : %d", cfg.Proxy.Port)
-	log.Printf("Auth enabled    : %t", cfg.Auth.Enabled)
+	log.Printf("Auth enabled    : %t", cfg.Auth.IsEnabled())
 	log.Printf("Metrics port    : %d", cfg.Metrics.Port)
 	log.Printf("Poll interval   : %dms", cfg.Routing.PollIntervalMs)
 	log.Printf("Nodes registered: %d", len(cfg.Nodes))
@@ -161,13 +161,9 @@ func main() {
 
 	authMw := auth.NewMiddleware(cfg.Auth)
 
-	// Per-key usage/quota counters persist across restarts. "-" disables.
-	statePath := cfg.Auth.StatePath
-	if statePath == "-" {
-		statePath = ""
-	}
-	if err := authMw.LoadState(statePath); err != nil {
-		log.Printf("WARNING: could not load usage state from %s: %v", statePath, err)
+	// Per-key usage/quota counters persist across restarts via SQLite.
+	if err := authMw.LoadFromStore(st); err != nil {
+		log.Printf("WARNING: could not restore key counters from store: %v", err)
 	}
 
 	// Overlay runtime API keys from the store (keys added via admin API that
@@ -219,10 +215,14 @@ func main() {
 			if n.VRAMTotalMB != nil {
 				vram = *n.VRAMTotalMB
 			}
+			rt := n.Runtime
+			if rt == "" {
+				rt = "ollama"
+			}
 			r.AddNode(config.NodeConfig{
 				Name:        n.Name,
 				URL:         n.URL,
-				Runtime:     n.Runtime,
+				Runtime:     rt,
 				VRAMTotalMB: vram,
 			})
 		}
@@ -247,32 +247,22 @@ func main() {
 
 	// Periodically flush usage counters so a restart preserves quota/usage
 	// state (crash loses at most one interval).
-	if statePath != "" {
-		go func() {
-			t := time.NewTicker(30 * time.Second)
-			defer t.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-t.C:
-					if err := authMw.SaveState(statePath); err != nil {
-						log.Printf("WARNING: usage state flush failed: %v", err)
-					}
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := authMw.SaveToStore(st); err != nil {
+					log.Printf("WARNING: usage state flush failed: %v", err)
 				}
 			}
-		}()
-	}
-
-	auditLog, err := audit.New(func() string {
-		if cfg.Audit.Enabled {
-			return cfg.Audit.Path
 		}
-		return ""
-	}())
-	if err != nil {
-		log.Fatalf("audit log: %v", err)
-	}
+	}()
+
+	auditLog := audit.New(st, cfg.Audit.Enabled)
 	defer auditLog.Close()
 
 	adminSrv := admin.NewServer(r, authMw, *cfg, st)
@@ -395,10 +385,8 @@ func main() {
 	cancel()
 
 	// Final flush so the just-served requests are not lost on restart.
-	if statePath != "" {
-		if err := authMw.SaveState(statePath); err != nil {
-			log.Printf("WARNING: final usage state flush failed: %v", err)
-		}
+	if err := authMw.SaveToStore(st); err != nil {
+		log.Printf("WARNING: final usage state flush failed: %v", err)
 	}
 	log.Println("Shutdown complete")
 }

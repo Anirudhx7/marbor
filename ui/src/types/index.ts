@@ -137,6 +137,7 @@ export interface RequestEntry {
   id: string;
   time: string;
   key_name: string;
+  source_ip?: string;
   model: string;
   node: string;
   status: number;

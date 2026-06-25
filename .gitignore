@@ -48,3 +48,4 @@ nul
 
 # Git worktrees
 .worktrees/
+mesh.db

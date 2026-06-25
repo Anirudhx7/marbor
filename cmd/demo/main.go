@@ -33,6 +33,7 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
@@ -361,11 +362,8 @@ func main() {
 	defer cancel()
 	go r.Start(ctx)
 
-	// Audit log: disabled for demo (empty path = no file).
-	auditLog, err := audit.New("")
-	if err != nil {
-		log.Fatalf("audit: %v", err)
-	}
+	// Audit log: disabled for demo.
+	auditLog := audit.New(store.NopStore{}, false)
 	defer auditLog.Close()
 
 	adminSrv := admin.NewServer(r, authMw, cfg)

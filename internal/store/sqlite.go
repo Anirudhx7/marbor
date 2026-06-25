@@ -119,6 +119,20 @@ func (s *sqliteStore) migrate() error {
 			models        TEXT,
 			revoked       INTEGER
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS audit_log (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			ts          TEXT NOT NULL,
+			request_id  TEXT NOT NULL,
+			key_name    TEXT NOT NULL,
+			model       TEXT NOT NULL,
+			node        TEXT NOT NULL,
+			status      TEXT NOT NULL,
+			latency_ms  INTEGER NOT NULL,
+			cloud       INTEGER NOT NULL DEFAULT 0,
+			cloud_model TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts DESC)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -546,6 +560,84 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 		return nil, fmt.Errorf("store: AllKeys rows: %w", err)
 	}
 	return keys, nil
+}
+
+// --- Audit log ---
+
+func (s *sqliteStore) AppendAuditLog(e AuditEntry) error {
+	cloud := 0
+	if e.Cloud {
+		cloud = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Time.UTC().Format(time.RFC3339Nano), e.RequestID, e.KeyName, e.Model,
+		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel,
+	)
+	if err != nil {
+		return fmt.Errorf("store: AppendAuditLog: %w", err)
+	}
+	// Trim to last 10000 entries to prevent unbounded growth.
+	_, _ = s.db.Exec(`DELETE FROM audit_log WHERE id NOT IN (SELECT id FROM audit_log ORDER BY id DESC LIMIT 10000)`)
+	return nil
+}
+
+func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
+	if opts.Limit <= 0 {
+		opts.Limit = 100
+	}
+
+	query := `SELECT ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model
+	          FROM audit_log WHERE 1=1`
+	args := []interface{}{}
+
+	if !opts.Since.IsZero() {
+		query += " AND ts > ?"
+		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+	}
+	if opts.Model != "" {
+		query += " AND model LIKE ?"
+		args = append(args, "%"+opts.Model+"%")
+	}
+	if opts.Key != "" {
+		query += " AND key_name = ?"
+		args = append(args, opts.Key)
+	}
+	if opts.Cloud != nil {
+		cloud := 0
+		if *opts.Cloud {
+			cloud = 1
+		}
+		query += " AND cloud = ?"
+		args = append(args, cloud)
+	}
+	query += " ORDER BY id DESC LIMIT ?"
+	args = append(args, opts.Limit)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: QueryAuditLog: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		var tsStr string
+		var cloud int
+		if err := rows.Scan(&tsStr, &e.RequestID, &e.KeyName, &e.Model,
+			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel); err != nil {
+			return nil, fmt.Errorf("store: QueryAuditLog scan: %w", err)
+		}
+		e.Time, _ = time.Parse(time.RFC3339Nano, tsStr)
+		e.Cloud = cloud != 0
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: QueryAuditLog rows: %w", err)
+	}
+	return entries, nil
 }
 
 func (s *sqliteStore) Close() error {

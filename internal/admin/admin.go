@@ -159,6 +159,7 @@ func (s *Server) flushCounters() {
 type RequestLog struct {
 	ID           string    `json:"id"`
 	ApiKey       string    `json:"apiKey"`
+	SourceIP     string    `json:"sourceIP"`
 	Model        string    `json:"model"`
 	Node         string    `json:"routedTo"`
 	Status       string    `json:"status"`
@@ -232,7 +233,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 	switch {
 	case cfg.Auth.AdminToken != "":
 		token = cfg.Auth.AdminToken
-	case cfg.Auth.Enabled && len(cfg.Auth.Keys) > 0:
+	case cfg.Auth.IsEnabled() && len(cfg.Auth.Keys) > 0:
 		token = cfg.Auth.Keys[0].Key
 	default:
 		token = generateAdminToken()
@@ -294,6 +295,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/settings", s.cors(s.adminAuth(s.handleSettings)))
 	reg("PUT /admin/settings", s.cors(s.adminAuth(s.handleUpdateSettings)))
 
+	reg("GET /admin/requests", s.cors(s.adminAuth(s.handleRequests)))
 	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
 	reg("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
 	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
@@ -483,12 +485,34 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
-	// Snapshot the keys slice under lock; handleUpdateSettings replaces s.cfg
-	// concurrently. The backing array is never mutated in place, so a header
-	// copy is sufficient.
+	// Snapshot the config keys slice under lock.
 	s.mu.RLock()
-	keys := s.cfg.Auth.Keys
+	cfgKeys := s.cfg.Auth.Keys
 	s.mu.RUnlock()
+
+	// Merge config keys with runtime keys from the store (added via admin API).
+	// Config keys take precedence on name collision.
+	keys := make([]config.KeyConfig, len(cfgKeys))
+	copy(keys, cfgKeys)
+	cfgNames := make(map[string]bool, len(cfgKeys))
+	for _, k := range cfgKeys {
+		cfgNames[k.Name] = true
+	}
+	if runtimeKeys, err := s.st.AllKeys(); err == nil {
+		for _, rk := range runtimeKeys {
+			if rk.Revoked || cfgNames[rk.Name] {
+				continue
+			}
+			keys = append(keys, config.KeyConfig{
+				Name:         rk.Name,
+				Key:          rk.Key,
+				RateLimit:    rk.RateLimit,
+				DailyLimit:   rk.DailyLimit,
+				MonthlyLimit: rk.MonthlyLimit,
+				Models:       rk.Models,
+			})
+		}
+	}
 	out := make([]keyResp, 0, len(keys))
 	for i, k := range keys {
 		today, month, models, expires, rateLimit, createdAt, ok := 0, 0, []string(nil), "", k.RateLimit, time.Time{}, false
@@ -555,6 +579,54 @@ func (s *Server) handleLiveRequests(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(reqs)
+}
+
+// handleRequests returns the request log in RequestEntry format for the dashboard.
+func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
+	type entry struct {
+		ID        string    `json:"id"`
+		Time      time.Time `json:"time"`
+		KeyName   string    `json:"key_name"`
+		SourceIP  string    `json:"source_ip"`
+		Model     string    `json:"model"`
+		Node      string    `json:"node"`
+		Status    int       `json:"status"`
+		LatencyMs int       `json:"latency_ms"`
+		Cloud     bool      `json:"cloud"`
+	}
+	s.mu.RLock()
+	reqs := make([]RequestLog, len(s.requests))
+	copy(reqs, s.requests)
+	s.mu.RUnlock()
+
+	out := make([]entry, len(reqs))
+	for i, req := range reqs {
+		statusCode := 200
+		if req.Status != "" {
+			if code, err := strconv.Atoi(req.Status); err == nil {
+				statusCode = code
+			}
+		}
+		// Cloud detection: node values that are URLs belong to cloud providers.
+		isCloud := strings.HasPrefix(req.Node, "http://") || strings.HasPrefix(req.Node, "https://")
+		out[i] = entry{
+			ID:        req.ID,
+			Time:      req.Time,
+			KeyName:   req.ApiKey,
+			SourceIP:  req.SourceIP,
+			Model:     req.Model,
+			Node:      req.Node,
+			Status:    statusCode,
+			LatencyMs: req.Latency,
+			Cloud:     isCloud,
+		}
+	}
+	// Reverse so newest entries come first.
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
@@ -916,7 +988,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int, tokens int64) {
+func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latencyMs int, tokens int64) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -932,6 +1004,7 @@ func (s *Server) LogRequest(apiKey, model, node, status string, latencyMs int, t
 	s.requests = append(s.requests, RequestLog{
 		ID:           id,
 		ApiKey:       apiKey,
+		SourceIP:     sourceIP,
 		Model:        model,
 		Node:         node,
 		Status:       status,
@@ -1127,7 +1200,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	for _, n := range nodes {
 		n.RLock()
+		nodeURL := n.URL
+		nodeName := n.Name
+		nodeHealthy := n.Healthy
+		// Track which models are warm (currently in VRAM) for this node.
+		warmSet := make(map[string]bool, len(n.LoadedModels))
 		for _, m := range n.LoadedModels {
+			warmSet[m.Name] = true
 			if modelMap[m.Name] == nil {
 				modelMap[m.Name] = &modelEntry{
 					Name:     m.Name,
@@ -1135,14 +1214,34 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			modelMap[m.Name].Nodes = append(modelMap[m.Name].Nodes, nodeInfo{
-				Name:    n.Name,
-				Healthy: n.Healthy,
+				Name:    nodeName,
+				Healthy: nodeHealthy,
 			})
-			if n.Healthy {
+			if nodeHealthy {
 				modelMap[m.Name].WarmCount++
 			}
 		}
 		n.RUnlock()
+
+		// Also include models that are installed on disk but not currently loaded.
+		// FetchModelTags queries /api/tags which returns all available models.
+		if nodeHealthy && nodeURL != "" {
+			if tags, err := s.router.FetchModelTags(nodeURL); err == nil {
+				for _, tm := range tags {
+					if warmSet[tm.Name] {
+						continue // already added with warm count above
+					}
+					if modelMap[tm.Name] == nil {
+						modelMap[tm.Name] = &modelEntry{Name: tm.Name}
+					}
+					modelMap[tm.Name].Nodes = append(modelMap[tm.Name].Nodes, nodeInfo{
+						Name:    nodeName,
+						Healthy: nodeHealthy,
+					})
+					// WarmCount stays 0: model is available but not in VRAM
+				}
+			}
+		}
 	}
 
 	totalHealthy := 0

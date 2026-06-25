@@ -410,7 +410,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.admin != nil {
 		tokens := rec.tokenCount()
-		h.admin.LogRequest(keyName, modelName, node.Name, status, latencyMs, tokens)
+		clientIP := r.RemoteAddr
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
+				clientIP = strings.TrimSpace(parts[0])
+			}
+		} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
+			clientIP = fwd2
+		}
+		h.admin.LogRequest(keyName, clientIP, modelName, node.Name, status, latencyMs, tokens)
 		h.admin.TrackLocalRequestModel(modelName, tokens)
 	}
 	if h.audit != nil {
@@ -625,7 +633,15 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
 		tokens := rec.tokenCount()
-		h.admin.LogRequest(keyName, loggedModel, nodeName, status, latencyMs, tokens)
+		clientIP := r.RemoteAddr
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
+				clientIP = strings.TrimSpace(parts[0])
+			}
+		} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
+			clientIP = fwd2
+		}
+		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, tokens)
 		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
 	}
 	if h.audit != nil {

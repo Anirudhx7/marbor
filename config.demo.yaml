@@ -35,4 +35,3 @@ savings:
 
 audit:
   enabled: false
-  path: audit.log

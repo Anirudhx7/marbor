@@ -4,21 +4,9 @@ import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { SearchInput } from '../components/SearchInput';
 import { mockAPIKeys } from '../lib/mockData';
-import { fetchKeys, createKey, revokeKey, patchKey } from '../lib/api';
+import { fetchKeys, createKey, revokeKey, patchKey, fetchModels } from '../lib/api';
 import type { APIKey } from '../types';
 
-const MODELS = [
-  'llama3.2:3b',
-  'llama3.1:8b',
-  'llama3.1:70b',
-  'mistral:7b',
-  'mixtral:8x7b',
-  'qwen2.5:7b',
-  'qwen2.5:14b',
-  'gemma2:9b',
-  'phi3:medium',
-  'codellama:13b',
-];
 
 function maskKey(key: string): string {
   const parts = key.split('-');
@@ -44,7 +32,7 @@ export function APIKeys() {
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [editKey, setEditKey] = useState<APIKey | null>(null);
-  const [editForm, setEditForm] = useState({ rateLimit: '', dailyLimit: '', monthlyLimit: '', models: '' });
+  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; models: string[] }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', models: [] });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -54,7 +42,7 @@ export function APIKeys() {
       rateLimit: key.rateLimit != null ? String(key.rateLimit) : '',
       dailyLimit: key.dailyLimit != null ? String(key.dailyLimit) : '',
       monthlyLimit: key.monthlyLimit != null ? String(key.monthlyLimit) : '',
-      models: (key.allowedModels ?? []).join(', '),
+      models: key.allowedModels ?? [],
     });
     setEditError('');
   };
@@ -77,8 +65,8 @@ export function APIKeys() {
       if (isNaN(v) || v < 0) { setEditError('Monthly limit must be a non-negative integer'); return; }
       patch.monthly_limit = v;
     }
-    if (editForm.models.trim()) {
-      patch.models = editForm.models.split(',').map(m => m.trim()).filter(Boolean);
+    if (editForm.models.length > 0) {
+      patch.models = editForm.models;
     }
     if (Object.keys(patch).length === 0) { setEditKey(null); return; }
     setEditSaving(true); setEditError('');
@@ -120,6 +108,16 @@ export function APIKeys() {
     }
   };
 
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!demoMode) {
+      fetchModels().then(data => {
+        setAvailableModels((data.models || []).map((m: any) => m.name));
+      }).catch(() => {});
+    }
+  }, [demoMode]);
+
   useEffect(() => {
     loadKeys();
     if (demoMode) return;
@@ -132,8 +130,36 @@ export function APIKeys() {
     key.key.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const copyToClipboard = async (key: string, id: string) => {
-    await navigator.clipboard.writeText(key);
+  const copyToClipboard = (key: string, id: string) => {
+    const doCopy = () => {
+      // Modern Clipboard API (HTTPS / localhost only)
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(key).catch(() => legacyCopy(key));
+      } else {
+        legacyCopy(key);
+      }
+    };
+
+    const legacyCopy = (text: string) => {
+      // Works on plain HTTP. Must run synchronously inside a user-gesture handler.
+      const el = document.createElement('textarea');
+      el.value = text;
+      el.setAttribute('readonly', '');
+      // Off-screen but NOT opacity:0 — some browsers block copy from invisible elements.
+      el.style.cssText = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px';
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      el.setSelectionRange(0, text.length);
+      try {
+        document.execCommand('copy');
+      } catch (_) {
+        // Last resort: nothing we can do silently
+      }
+      document.body.removeChild(el);
+    };
+
+    doCopy();
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -463,7 +489,7 @@ export function APIKeys() {
                 />
                 <span className="text-sm text-foreground">All models</span>
               </label>
-              {MODELS.map((model) => (
+              {availableModels.map((model) => (
                 <label key={model} className="flex items-center gap-2 p-1.5 hover:bg-background rounded cursor-pointer">
                   <input
                     type="checkbox"
@@ -555,12 +581,37 @@ export function APIKeys() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Allowed Models (comma-separated)</label>
-            <input type="text" value={editForm.models}
-              onChange={e => setEditForm({ ...editForm, models: e.target.value })}
-              placeholder="e.g. llama3, mistral (empty = all models)"
-              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-            />
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Allowed Models (optional)
+            </label>
+            <div className="max-h-32 overflow-y-auto bg-secondary border border-border rounded-lg p-2">
+              <label className="flex items-center gap-2 p-1.5 hover:bg-background rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editForm.models.length === 0}
+                  onChange={() => setEditForm({ ...editForm, models: [] })}
+                  className="rounded border-border bg-background text-primary focus:ring-primary/20"
+                />
+                <span className="text-sm text-foreground">All models</span>
+              </label>
+              {availableModels.map((model) => (
+                <label key={model} className="flex items-center gap-2 p-1.5 hover:bg-background rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.models.includes(model)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setEditForm({ ...editForm, models: [...editForm.models, model] });
+                      } else {
+                        setEditForm({ ...editForm, models: editForm.models.filter(m => m !== model) });
+                      }
+                    }}
+                    className="rounded border-border bg-background text-primary focus:ring-primary/20"
+                  />
+                  <span className="text-sm font-mono text-muted-foreground">{model}</span>
+                </label>
+              ))}
+            </div>
           </div>
           {editError && <p className="text-sm text-destructive">{editError}</p>}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">

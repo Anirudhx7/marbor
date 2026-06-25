@@ -11,6 +11,7 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
@@ -184,10 +185,13 @@ func newCloudFallbackHandler(t *testing.T, cloud config.CloudProvider) (*Handler
 		n.Unlock()
 	}
 	a := admin.NewServer(r, nil, config.Config{})
-	al, err := audit.New(filepath.Join(t.TempDir(), "audit.log"))
+	tmpDB := filepath.Join(t.TempDir(), "audit.db")
+	st, err := store.Open(tmpDB)
 	if err != nil {
-		t.Fatalf("audit.New: %v", err)
+		t.Fatalf("store.Open: %v", err)
 	}
+	t.Cleanup(func() { st.Close() })
+	al := audit.New(st, true)
 	t.Cleanup(func() { al.Close() })
 	return NewHandler(r, a, al), a, al
 }

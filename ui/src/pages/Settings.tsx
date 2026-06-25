@@ -117,8 +117,25 @@ export function SettingsPage() {
     ].filter(line => line !== null).join('\n');
   };
 
-  const copyConfig = async () => {
-    await navigator.clipboard.writeText(buildYAML());
+  const copyConfig = () => {
+    const yaml = buildYAML();
+    const legacyCopy = (text: string) => {
+      const el = document.createElement('textarea');
+      el.value = text;
+      el.setAttribute('readonly', '');
+      el.style.cssText = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px';
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      el.setSelectionRange(0, text.length);
+      try { document.execCommand('copy'); } catch (_) {}
+      document.body.removeChild(el);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(yaml).catch(() => legacyCopy(yaml));
+    } else {
+      legacyCopy(yaml);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

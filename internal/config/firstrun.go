@@ -72,8 +72,7 @@ func GenerateFirstRun(ollamaURL string, probeTimeout time.Duration) (*FirstRunRe
 
 	cfg := &Config{
 		Proxy: ProxyConfig{Port: FirstRunProxyPort},
-		Auth: AuthConfig{
-			Enabled:    true,
+		Auth: AuthConfig{Enabled: true,
 			AdminToken: adminToken,
 			Keys: []KeyConfig{
 				{Name: "default", Key: apiKey, RateLimit: 1000},

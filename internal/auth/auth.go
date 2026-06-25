@@ -221,7 +221,7 @@ func (tb *tokenBucket) allow() bool {
 
 func NewMiddleware(cfg config.AuthConfig) *Middleware {
 	m := &Middleware{
-		enabled: cfg.Enabled,
+		enabled: cfg.IsEnabled(),
 		keys:    make(map[string]*keyState),
 		byName:  make(map[string]*keyState),
 	}
@@ -341,7 +341,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 	}
 
 	m.mu.Lock()
-	m.enabled = cfg.Enabled
+	m.enabled = cfg.IsEnabled()
 	m.keys = newKeys
 	m.byName = newByName
 	m.mu.Unlock()
@@ -379,6 +379,19 @@ func (m *Middleware) Refund(name string) {
 func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !m.enabled {
+			// Auth enforcement is off, but still extract the key name from the
+			// Authorization header so the request log shows which key was used.
+			if hdr := r.Header.Get("Authorization"); hdr != "" {
+				parts := strings.SplitN(hdr, " ", 2)
+				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+					m.mu.RLock()
+					ks, ok := m.keys[parts[1]]
+					m.mu.RUnlock()
+					if ok {
+						r = r.WithContext(context.WithValue(r.Context(), KeyNameContextKey, ks.name))
+					}
+				}
+			}
 			next.ServeHTTP(w, r)
 			return
 		}

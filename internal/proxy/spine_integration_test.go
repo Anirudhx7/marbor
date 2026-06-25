@@ -18,6 +18,7 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
@@ -87,10 +88,13 @@ func buildSpineStack(t *testing.T) (handler http.Handler, adminSrv *admin.Server
 	adminSrv = admin.NewServer(rtr, nil, cfg)
 
 	// 4. Audit logger (temp file, auto-cleaned).
-	al, err := audit.New(filepath.Join(t.TempDir(), "spine-audit.log"))
+	tmpDB := filepath.Join(t.TempDir(), "spine-audit.db")
+	st, err := store.Open(tmpDB)
 	if err != nil {
-		t.Fatalf("audit.New: %v", err)
+		t.Fatalf("store.Open: %v", err)
 	}
+	t.Cleanup(func() { st.Close() })
+	al := audit.New(st, true)
 	t.Cleanup(func() { al.Close() })
 
 	// 5. Auth middleware.

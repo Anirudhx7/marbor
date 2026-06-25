@@ -80,7 +80,8 @@ export function Requests() {
         (e) =>
           e.model.toLowerCase().includes(filter.toLowerCase()) ||
           e.node.toLowerCase().includes(filter.toLowerCase()) ||
-          e.key_name.toLowerCase().includes(filter.toLowerCase())
+          e.key_name.toLowerCase().includes(filter.toLowerCase()) ||
+          (e.source_ip || '').toLowerCase().includes(filter.toLowerCase())
       )
     : entries;
 
@@ -195,8 +196,18 @@ export function Requests() {
                         {entry.id.slice(0, 8)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-foreground whitespace-nowrap">
-                      {entry.key_name}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {entry.key_name ? (
+                        <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                          {entry.key_name}
+                        </span>
+                      ) : entry.source_ip ? (
+                        <span className="font-mono text-xs text-muted-foreground" title="No API key — showing source IP">
+                          {entry.source_ip}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-xs">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-mono text-xs text-foreground">{entry.model}</span>

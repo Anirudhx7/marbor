@@ -87,7 +87,6 @@ type WebhookConfig struct {
 
 type AuditConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
-	Path    string `yaml:"path" json:"path"`
 }
 
 type DockerConfig struct {
@@ -128,10 +127,6 @@ type AuthConfig struct {
 	// Optional: when empty, the first auth key (or "admin") is used,
 	// preserving pre-first-run behavior.
 	AdminToken string `yaml:"admin_token,omitempty" json:"-"`
-	// StatePath is where per-key usage counters are persisted so quotas and
-	// usage survive restarts. Defaults to "usage-state.json". Set to "-" to
-	// disable persistence.
-	StatePath string `yaml:"state_path,omitempty" json:"-"`
 }
 
 type KeyConfig struct {
@@ -267,6 +262,12 @@ func SaveConfig(path string, cfg Config) error {
 	return nil
 }
 
+// IsEnabled reports whether auth enforcement is on.
+// Defaults to true when the field is absent from the config file.
+func (c AuthConfig) IsEnabled() bool {
+	return c.Enabled
+}
+
 func (c *Config) Validate() error {
 	if c.Proxy.Port == 0 {
 		c.Proxy.Port = 11434
@@ -309,15 +310,12 @@ func (c *Config) Validate() error {
 		c.Metrics.Port = 9090
 	}
 
-	if c.Auth.StatePath == "" {
-		c.Auth.StatePath = "usage-state.json"
-	}
 
 	if c.Storage.DBPath == "" {
 		c.Storage.DBPath = "mesh.db"
 	}
 
-	if c.Auth.Enabled {
+	if c.Auth.IsEnabled() {
 		seen := make(map[string]bool)
 		for _, k := range c.Auth.Keys {
 			if k.Name == "" || k.Key == "" {
@@ -386,9 +384,6 @@ func (c *Config) Validate() error {
 		c.Warmup.KeepAlive = "10m"
 	}
 
-	if c.Audit.Path == "" {
-		c.Audit.Path = "audit.log"
-	}
 
 	if c.Savings.ReferenceCostPer1K <= 0 {
 		c.Savings.ReferenceCostPer1K = 0.002

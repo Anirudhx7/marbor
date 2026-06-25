@@ -42,7 +42,7 @@ metrics:
 	if cfg.Proxy.Port != 11434 {
 		t.Errorf("port = %d, want 11434", cfg.Proxy.Port)
 	}
-	if !cfg.Auth.Enabled {
+	if !cfg.Auth.IsEnabled() {
 		t.Error("auth should be enabled")
 	}
 	if len(cfg.Nodes) != 1 {

@@ -27,8 +27,8 @@ func TestHandleKeysReportsTokensAndCost(t *testing.T) {
 	s := NewServer(r, mw, cfg)
 
 	// Two requests by key "team" totalling 500 tokens this month.
-	s.LogRequest("team", "llama3", "node-a", "warm", 100, 300)
-	s.LogRequest("team", "llama3", "node-a", "warm", 100, 200)
+	s.LogRequest("team", "", "llama3", "node-a", "warm", 100, 300)
+	s.LogRequest("team", "", "llama3", "node-a", "warm", 100, 200)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/keys", nil)
 	req.Header.Set("Authorization", "Bearer admin-tok")

@@ -1,69 +1,55 @@
-// Package audit provides append-only structured audit logging for all proxy requests.
-// Each entry is a JSON line written to a configurable file path.
-// No sensitive data (API key values, request bodies) is logged — only metadata.
+// Package audit provides structured audit logging for all proxy requests.
+// Entries are written to SQLite via the store.Store interface.
 package audit
 
 import (
-	"bufio"
-	"encoding/json"
-	"fmt"
-	"os"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
-// Entry is one audit log record. Written as a single JSON line.
+// Entry is one audit log record. Matches store.AuditEntry field for field.
 type Entry struct {
-	Time      time.Time `json:"time"`
-	RequestID string    `json:"request_id"`
-	KeyName   string    `json:"key_name"`
-	Model     string    `json:"model"`
-	Node      string    `json:"node"`
-	Status    string    `json:"status"`
-	LatencyMs int       `json:"latency_ms"`
-	Cloud     bool      `json:"cloud"`
-	// CloudModel is the model the request was rewritten to when a cloud
-	// provider's default_model replaced the client's requested model.
-	// Empty for local requests and cloud requests that kept the original model.
-	CloudModel string `json:"cloud_model,omitempty"`
+	Time       time.Time `json:"time"`
+	RequestID  string    `json:"request_id"`
+	KeyName    string    `json:"key_name"`
+	Model      string    `json:"model"`
+	Node       string    `json:"node"`
+	Status     string    `json:"status"`
+	LatencyMs  int       `json:"latency_ms"`
+	Cloud      bool      `json:"cloud"`
+	CloudModel string    `json:"cloud_model,omitempty"`
 }
 
-// Logger writes audit entries to a file in JSON-lines format.
-// Writes are serialized via mutex — safe for concurrent use.
-// Entries are flushed to disk immediately (no buffering) for durability.
+// Logger writes audit entries to the store. Disabled (no-op) when enabled=false.
 type Logger struct {
-	mu   sync.Mutex
-	file *os.File
+	st      store.Store
+	enabled bool
 }
 
-// New opens (or creates) the audit log file at path for append-only writing.
-// Returns a no-op logger if path is empty.
-func New(path string) (*Logger, error) {
-	if path == "" {
-		return &Logger{}, nil
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0640)
-	if err != nil {
-		return nil, fmt.Errorf("audit log open %s: %w", path, err)
-	}
-	return &Logger{file: f}, nil
+// New returns a Logger backed by st. When enabled is false every Log call is
+// a no-op, but Query still reads existing entries from the store.
+func New(st store.Store, enabled bool) *Logger {
+	return &Logger{st: st, enabled: enabled}
 }
 
-// Log writes one audit entry. Safe to call from multiple goroutines.
-// No-ops if the logger has no file (disabled).
+// Log writes one audit entry. No-ops if the logger is disabled.
 func (l *Logger) Log(e Entry) {
-	if l == nil || l.file == nil {
+	if l == nil || !l.enabled {
 		return
 	}
-	b, err := json.Marshal(e)
-	if err != nil {
-		return
-	}
-	b = append(b, '\n')
-	l.mu.Lock()
-	l.file.Write(b) //nolint:errcheck — best-effort audit write
-	l.mu.Unlock()
+	_ = l.st.AppendAuditLog(store.AuditEntry{
+		Time:       e.Time,
+		RequestID:  e.RequestID,
+		KeyName:    e.KeyName,
+		Model:      e.Model,
+		Node:       e.Node,
+		Status:     e.Status,
+		LatencyMs:  e.LatencyMs,
+		Cloud:      e.Cloud,
+		CloudModel: e.CloudModel,
+	})
 }
 
 // QueryOptions controls filtering and limiting for Query.
@@ -71,77 +57,50 @@ type QueryOptions struct {
 	Limit int
 	Model string
 	Key   string
-	Cloud *bool // nil = no filter
+	Cloud *bool
 	Since time.Time
 }
 
-// Query reads the audit log file and returns entries matching opts.
-// Entries are returned in reverse chronological order (newest first).
-// Reading is done on a fresh file descriptor — independent of the write path.
+// Query returns audit entries matching opts, newest first.
 func (l *Logger) Query(opts QueryOptions) ([]Entry, error) {
-	if l == nil || l.file == nil {
+	if l == nil {
 		return []Entry{}, nil
 	}
-
-	if opts.Limit <= 0 {
-		opts.Limit = 100
-	}
-
-	f, err := os.Open(l.file.Name())
+	raw, err := l.st.QueryAuditLog(store.AuditQuery{
+		Limit: opts.Limit,
+		Model: opts.Model,
+		Key:   opts.Key,
+		Cloud: opts.Cloud,
+		Since: opts.Since,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("audit query open: %w", err)
+		return nil, err
 	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), 64*1024)
-
-	var all []Entry
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var e Entry
-		if err := json.Unmarshal(line, &e); err != nil {
-			continue // skip malformed lines
-		}
-		// Apply filters
-		if !opts.Since.IsZero() && !e.Time.After(opts.Since) {
-			continue
-		}
-		if opts.Model != "" && !strings.Contains(strings.ToLower(e.Model), strings.ToLower(opts.Model)) {
-			continue
-		}
-		if opts.Key != "" && e.KeyName != opts.Key {
-			continue
-		}
-		if opts.Cloud != nil && e.Cloud != *opts.Cloud {
-			continue
-		}
-		all = append(all, e)
+	out := make([]Entry, 0, len(raw))
+	for _, e := range raw {
+		out = append(out, Entry{
+			Time:       e.Time,
+			RequestID:  e.RequestID,
+			KeyName:    e.KeyName,
+			Model:      e.Model,
+			Node:       e.Node,
+			Status:     e.Status,
+			LatencyMs:  e.LatencyMs,
+			Cloud:      e.Cloud,
+			CloudModel: e.CloudModel,
+		})
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("audit query scan: %w", err)
-	}
-
-	// Reverse to get newest first
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
-	}
-
-	if len(all) > opts.Limit {
-		return all[:opts.Limit], nil
-	}
-	return all, nil
+	return out, nil
 }
 
-// Close flushes and closes the underlying file.
-func (l *Logger) Close() error {
-	if l == nil || l.file == nil {
-		return nil
+// FilterModel returns true if the entry matches the model filter (case-insensitive substring).
+// Kept for callers that filter in-process rather than via QueryOptions.
+func FilterModel(entry Entry, model string) bool {
+	if model == "" {
+		return true
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.file.Close()
+	return strings.Contains(strings.ToLower(entry.Model), strings.ToLower(model))
 }
+
+// Close is a no-op. The underlying store manages its own lifecycle.
+func (l *Logger) Close() error { return nil }
