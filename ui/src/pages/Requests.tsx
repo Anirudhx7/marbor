@@ -193,7 +193,7 @@ export function Requests() {
                         className="font-mono text-xs text-foreground"
                         title={entry.id}
                       >
-                        {entry.id.slice(0, 8)}
+                        {entry.id}
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">

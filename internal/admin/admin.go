@@ -998,7 +998,13 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		s.auth.AddKeyTokens(apiKey, tokens)
 	}
 	now := time.Now()
-	id := fmt.Sprintf("req-%d", now.UnixNano())
+	b := make([]byte, 4)
+	var id string
+	if _, err := rand.Read(b); err == nil {
+		id = "req-" + hex.EncodeToString(b)
+	} else {
+		id = fmt.Sprintf("req-%x", now.UnixNano())
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests = append(s.requests, RequestLog{
