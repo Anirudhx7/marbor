@@ -21,7 +21,7 @@ groups:
           severity: critical
         annotations:
           summary: "All ollama-mesh GPU nodes are down"
-          description: "No healthy Ollama nodes. All traffic is hitting cloud fallback (if configured) or returning 503. Investigate node connectivity immediately."
+          description: "No healthy Ollama nodes. All traffic is hitting cost-aware cloud overflow (if configured) or returning 503. Investigate node connectivity immediately."
           runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#all-nodes-down"
 
       # Request queue is backing up - nodes are saturated, clients are waiting.
@@ -35,7 +35,7 @@ groups:
           description: "More than 10 requests are queued waiting for a GPU node for over 2 minutes. Consider adding nodes or increasing queue_timeout_ms to fail fast."
           runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#high-queue-depth"
 
-      # Cloud fallback is firing more than 50% of the time - local GPUs are not keeping up.
+      # Cost-aware cloud overflow is firing more than 50% of the time - local GPUs are not keeping up.
       - alert: OllamaMeshHighCloudFallbackRate
         expr: |
           rate(ollamamesh_cloud_fallbacks_total[5m])
@@ -47,8 +47,8 @@ groups:
           severity: warning
         annotations:
           summary: "ollama-mesh cloud fallback rate is {{ $value | humanizePercentage }}"
-          description: "More than 50% of requests have fallen back to cloud providers for 10+ minutes. Local GPU capacity is insufficient for current load. Check node health and consider adding GPU nodes."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#high-cloud-fallback"
+          description: "More than 50% of requests have overflowed to cloud providers for 10+ minutes. Local GPU capacity is insufficient for current load. Check node health and consider adding GPU nodes."
+          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#high-cloud-overflow"
 
       # Queue timeouts are occurring - requests are being dropped after waiting.
       - alert: OllamaMeshQueueTimeouts
@@ -61,23 +61,23 @@ groups:
           description: "Requests are timing out in the queue before reaching a GPU node. Increase queue_timeout_ms, add more nodes, or reduce request load."
           runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#queue-timeouts"
 
-      # Panic in the proxy - should never fire; if it does, something is seriously wrong.
+      # Panic in the control plane - should never fire; if it does, something is seriously wrong.
       - alert: OllamaMeshPanic
         expr: increase(ollamamesh_panics_total[5m]) > 0
         labels:
           severity: critical
         annotations:
-          summary: "ollama-mesh proxy panic detected"
-          description: "A panic was recovered in the proxy handler. The request returned a 500 but the process survived. Check logs for the stack trace and open a bug report."
+          summary: "ollama-mesh control plane panic detected"
+          description: "A panic was recovered in the request handler. The request returned a 500 but the process survived. Check logs for the stack trace and open a bug report."
           runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#panic"
 
-      # High p99 latency - proxy overhead is unusually high.
-      - alert: OllamaMeshHighProxyLatency
+      # High p99 latency - end-to-end latency is unusually high.
+      - alert: OllamaMeshHighLatency
         expr: histogram_quantile(0.99, rate(ollamamesh_request_duration_seconds_bucket[5m])) > 5
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "ollama-mesh p99 proxy latency is {{ $value | humanizeDuration }}"
+          summary: "ollama-mesh p99 latency is {{ $value | humanizeDuration }}"
           description: "The 99th percentile end-to-end request latency exceeds 5 seconds. This includes model inference time. Check if a node is overloaded or if models need warming."
           runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#high-latency"

@@ -1,6 +1,6 @@
 # ollama-mesh
 
-**Enterprise-Grade, Hardware-Aware GPU Routing Proxy for Ollama, vLLM, TGI, and llama.cpp**
+**Enterprise-Grade, Hardware-Aware GPU Routing Control Plane and Scheduler for Ollama, vLLM, TGI, and llama.cpp**
 
 One endpoint for all your LLM traffic. Every request routes to the GPU node that already holds the model warm in VRAM - across any OpenAI-compatible backend. Cloud overflow activates only when local capacity is exhausted - consent-first, never silent. Local hardware first. Cloud second. Full financial receipts.
 
@@ -32,7 +32,7 @@ Client Application (Agent / RAG / Copilot)
     │
     ▼
 ┌───────────────────────────────────────────────────────┐
-│  ollama-mesh proxy (:11434)                           │
+│  ollama-mesh endpoint (:11434)                        │
 │                                                       │
 │  Auth ─► Rate Limit ─► Quota Check ─► Model Allow     │
 │    │                                                  │
@@ -75,7 +75,7 @@ Client Application (Agent / RAG / Copilot)
 | | Cloud spend metering | Overflow tokens priced at provider-configured rates. Full local-vs-cloud cost breakdown. |
 | | Per-key quotas | Hard `daily_limit`/`monthly_limit` per key. 429 when exceeded. Persisted across restarts. |
 | **Multi-Tenant Auth** | Per-key rate limiting | Token-bucket rate limiter per API key. `X-RateLimit-Limit/Remaining/Reset` headers on every response. |
-| | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access — enforced at the proxy, not advisory. |
+| | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access — enforced at the control plane, not advisory. |
 | | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
 | **Observability** | Prometheus metrics | 14 production metrics: request throughput, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, quota rejections, request queue depth/timeouts, warmup pings, panic recovery, node health. |
 | | Grafana dashboard | Included JSON (`grafana/ollama-mesh.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
@@ -160,7 +160,7 @@ nodes:
 git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh && make demo
 ```
 
-`make demo` builds two mock Ollama nodes and the mesh proxy in Docker, sends 20 real HTTP requests through the proxy, and prints the dashboard URL. Open `http://localhost:8080` with token `demo-admin-token`. Use `make demo-down` to stop.
+`make demo` builds two mock Ollama nodes and the mesh control plane in Docker, sends 20 real HTTP requests through the endpoint, and prints the dashboard URL. Open `http://localhost:8080` with token `demo-admin-token`. Use `make demo-down` to stop.
 
 ---
 
@@ -383,7 +383,7 @@ Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI respons
 
 | Port | Service | Auth |
 |------|---------|------|
-| `:11434` | Ollama-compatible proxy — drop-in replacement | Per-key Bearer token |
+| `:11434` | Ollama-compatible endpoint — drop-in replacement | Per-key Bearer token |
 | `:8080` | Admin dashboard + REST API | Admin token |
 | `:9090` | Prometheus metrics | Unauthenticated (scrape target) |
 
@@ -397,7 +397,7 @@ Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI respons
 | GET | `/admin/v1/keys` | API keys: usage stats, monthly cost, token totals |
 | GET | `/admin/v1/metrics/savings` | Cost savings vs pure cloud — current process lifetime |
 | GET | `/admin/v1/cloud/providers` | Cloud fallback providers: status, spend |
-| GET | `/health` | 200 OK when proxy is ready (unauthenticated, for LB health checks) |
+| GET | `/health` | 200 OK when control plane is ready (unauthenticated, for LB health checks) |
 | POST | `/admin/nodes/{name}/drain` | Drain node for maintenance |
 | PATCH | `/admin/keys/{name}` | Mutate key rate limits, quotas, model allow-lists at runtime |
 | PATCH | `/admin/nodes/{name}` | Override `vram_total_mb`, `gpu_model` at runtime |

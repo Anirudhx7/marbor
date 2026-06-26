@@ -1,6 +1,6 @@
 # Continue (VS Code / JetBrains)
 
-[Continue](https://continue.dev) is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm-first selection across your GPU nodes, with automatic cloud overflow when nodes are busy.
+[Continue](https://continue.dev) is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm-first selection across your GPU nodes, with cost-aware cloud overflow when nodes are busy.
 
 ---
 
@@ -114,7 +114,7 @@ Add one entry per model you want to use. All entries can share the same `apiBase
 }
 ```
 
-The third entry will route to a cloud provider automatically if `mistral-nemo` is not loaded on any GPU node and you have cloud fallback configured.
+The third entry will route to a cloud provider automatically if `mistral-nemo` is not loaded on any GPU node and you have cost-aware cloud overflow configured.
 
 ---
 

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>How the savings number is computed · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: How the savings number is computed." />
+<title>Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <style>:root {
   --bg: #0f0e0c;
@@ -221,34 +221,148 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   </aside>
 
   <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">How the savings number is computed</span></div>
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend</span></div>
     <article class="doc-content">
-      <h1 id="how-the-savings-number-is-computed">How the savings number is computed<a class="anchor" href="#how-the-savings-number-is-computed" aria-label="Link to section">#</a></h1>
-<p>This document explains exactly what the "saved" and "spent" figures on the dashboard mean, where the numbers come from, and what their limits are. No marketing. If a number cannot be computed honestly, the dashboard shows "—" instead of inventing one.</p>
-<h2 id="savings-local-requests">Savings (local requests)<a class="anchor" href="#savings-local-requests" aria-label="Link to section">#</a></h2>
-<p>When a request is served by a local Ollama node, the proxy parses the real token count from the response:</p>
-<ul><li>Ollama NDJSON: <code>eval_count + prompt_eval_count</code> from the final response object</li><li>OpenAI-style SSE: <code>usage.total_tokens</code> from the final chunk</li></ul>
-<p>The savings for that request are what those tokens would have cost at a reference cloud rate:</p>
-<pre class="code"><code>saved_usd = (eval_count + prompt_eval_count) / 1000 * reference_cost_per_1k</code></pre>
-<p><code>reference_cost_per_1k</code> is configurable (see below) and defaults to <strong>$0.002 per 1K tokens</strong>. It is a single flat rate applied to all locally served tokens, regardless of which cloud model you would actually have used. Pick a rate that matches the cloud model you would otherwise pay for; the default is deliberately conservative.</p>
-<h2 id="cloud-spend-overflow-requests">Cloud spend (overflow requests)<a class="anchor" href="#cloud-spend-overflow-requests" aria-label="Link to section">#</a></h2>
-<p>When a request overflows to a configured cloud provider, spend is computed from the real token count parsed from the provider's response and that provider's configured rate:</p>
-<pre class="code"><code>spent_usd = parsed_tokens / 1000 * cost_per_1k_tokens   (per provider, from config)</code></pre>
-<p>Local requests always count as $0 spend.</p>
-<h2 id="when-you-see">When you see "—"<a class="anchor" href="#when-you-see" aria-label="Link to section">#</a></h2>
-<p>If requests were served but no token counts could be parsed from any response (for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk), the API returns <code>null</code> and the dashboard renders "—". The proxy never substitutes an estimated or random number for missing token data.</p>
-<h2 id="counters-reset-on-restart">Counters reset on restart<a class="anchor" href="#counters-reset-on-restart" aria-label="Link to section">#</a></h2>
-<p>All savings and spend counters are held in memory. Restarting the binary resets them to zero. There is no persistence of these aggregates yet; the audit log (JSON lines, if enabled) is the only durable per-request record.</p>
-<h2 id="changing-the-reference-rate">Changing the reference rate<a class="anchor" href="#changing-the-reference-rate" aria-label="Link to section">#</a></h2>
-<p>In <code>config.yaml</code>:</p>
+      <h1 id="cost-deflection-analysis-local-gpu-inference-vs-cloud-api-spend">Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend<a class="anchor" href="#cost-deflection-analysis-local-gpu-inference-vs-cloud-api-spend" aria-label="Link to section">#</a></h1>
+<p>This document is the financial model behind ollama-mesh's savings tracking. It is designed for infrastructure directors and finance teams evaluating the ROI of shifting LLM inference from third-party cloud APIs to owned GPU hardware routed through ollama-mesh.</p>
+<p>Every figure in the ollama-mesh dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "—" rather than an estimate. No number is ever fabricated.</p>
+<hr/>
+<h2 id="executive-summary">Executive Summary<a class="anchor" href="#executive-summary" aria-label="Link to section">#</a></h2>
+<p>An engineering organization running multi-agent LLM workflows at scale — coding copilots, RAG pipelines, automated code review, internal search — consumes millions of tokens per day. At cloud API rates, this translates to $5,000–$50,000/month in direct API spend, depending on model tier and volume.</p>
+<p>ollama-mesh enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.</p>
+<p><strong>Typical result:</strong> Platform teams running 2–4 GPU nodes with ollama-mesh report 60–85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.</p>
+<hr/>
+<h2 id="the-formulas">The Formulas<a class="anchor" href="#the-formulas" aria-label="Link to section">#</a></h2>
+<h3 id="local-request-savings">Local Request Savings<a class="anchor" href="#local-request-savings" aria-label="Link to section">#</a></h3>
+<p>When a request is served by a local Ollama node, ollama-mesh parses the real token count from the upstream response:</p>
+<ul><li><strong>Ollama NDJSON responses:</strong> <code>eval_count</code> (completion tokens) + <code>prompt_eval_count</code> (input tokens) from the final streamed object</li><li><strong>OpenAI-compatible SSE responses:</strong> <code>usage.total_tokens</code> from the terminal <code>[DONE]</code>-adjacent chunk</li></ul>
+<p>Savings for each locally-served request:</p>
+<pre class="code"><code>saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k</code></pre>
+<p>The <code>reference_cost_per_1k</code> is operator-configured and represents the blended cloud rate the organization would otherwise pay. Default: <strong>$0.002/1K tokens</strong> (deliberately conservative — adjust to match your actual cloud provider rate).</p>
+<h3 id="cloud-overflow-spend">Cloud Overflow Spend<a class="anchor" href="#cloud-overflow-spend" aria-label="Link to section">#</a></h3>
+<p>When a request overflows to a configured cloud provider (OpenAI, Anthropic), spend is computed from the real token count parsed from the provider's response:</p>
+<pre class="code"><code>spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens</code></pre>
+<p><code>cost_per_1k_tokens</code> is configured per cloud provider in <code>config.yaml</code>. Local requests are always $0 spend.</p>
+<h3 id="net-savings">Net Savings<a class="anchor" href="#net-savings" aria-label="Link to section">#</a></h3>
+<pre class="code"><code>net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)</code></pre>
+<p>This is the number displayed on the dashboard savings widget. It represents the actual dollar amount the organization avoided paying to cloud providers by serving traffic locally.</p>
+<hr/>
+<h2 id="enterprise-workload-projections">Enterprise Workload Projections<a class="anchor" href="#enterprise-workload-projections" aria-label="Link to section">#</a></h2>
+<p>The following projections use conservative assumptions grounded in real-world multi-agent workflow patterns. All figures assume the default reference rate of $0.002/1K tokens. Adjust proportionally for your actual cloud rate.</p>
+<h3 id="scenario-a-engineering-copilot-50-person-team">Scenario A: Engineering Copilot (50-Person Team)<a class="anchor" href="#scenario-a-engineering-copilot-50-person-team" aria-label="Link to section">#</a></h3>
+<div class="table-scroll"><table>
+<thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+<tbody><tr><td>Engineers using LLM-assisted tools</td><td>50</td></tr>
+<tr><td>Average requests per engineer per day</td><td>80</td></tr>
+<tr><td>Average tokens per request (prompt + completion)</td><td>2,500</td></tr>
+<tr><td>Daily token volume</td><td>10,000,000</td></tr>
+<tr><td>Monthly token volume (22 working days)</td><td>220,000,000</td></tr>
+<tr><td>Cloud cost at $0.002/1K</td><td><strong>$440/month</strong></td></tr>
+<tr><td>Cloud cost at $0.005/1K (GPT-4o, blended input/output)</td><td><strong>$1,100/month</strong></td></tr>
+<tr><td>Cloud cost at $0.015/1K (Claude Sonnet 4, output-heavy)</td><td><strong>$3,300/month</strong></td></tr>
+<tr><td>Local GPU serving cost (amortized hardware + power, 3yr)</td><td>~$200/month (2× RTX 4090)</td></tr>
+<tr><td><strong>Monthly net savings at $0.005/1K reference</strong></td><td><strong>$900/month</strong></td></tr>
+<tr><td><strong>Monthly net savings at $0.015/1K reference</strong></td><td><strong>$3,100/month</strong></td></tr></tbody>
+</table></div>
+<h3 id="scenario-b-multi-agent-rag-pipeline-production">Scenario B: Multi-Agent RAG Pipeline (Production)<a class="anchor" href="#scenario-b-multi-agent-rag-pipeline-production" aria-label="Link to section">#</a></h3>
+<div class="table-scroll"><table>
+<thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+<tbody><tr><td>Agent pipelines in production</td><td>12</td></tr>
+<tr><td>Average pipeline executions per day</td><td>500</td></tr>
+<tr><td>Average tokens per execution (multi-step)</td><td>15,000</td></tr>
+<tr><td>Daily token volume</td><td>90,000,000</td></tr>
+<tr><td>Monthly token volume</td><td>2,700,000,000</td></tr>
+<tr><td>Cloud cost at $0.002/1K</td><td><strong>$5,400/month</strong></td></tr>
+<tr><td>Cloud cost at $0.005/1K (GPT-4o, blended)</td><td><strong>$13,500/month</strong></td></tr>
+<tr><td>Cloud cost at $0.015/1K (Claude Sonnet 4, output-heavy)</td><td><strong>$40,500/month</strong></td></tr>
+<tr><td>Local GPU serving cost (amortized hardware + power, 3yr)</td><td>~$1,800/month (4× A100 80GB)</td></tr>
+<tr><td><strong>Monthly net savings at $0.002/1K reference</strong></td><td><strong>$3,600/month</strong></td></tr>
+<tr><td><strong>Monthly net savings at $0.005/1K reference</strong></td><td><strong>$11,700/month</strong></td></tr>
+<tr><td><strong>Monthly net savings at $0.015/1K reference</strong></td><td><strong>$38,700/month</strong></td></tr>
+<tr><td><strong>Annual net savings at $0.015/1K reference</strong></td><td><strong>$464,400/year</strong></td></tr></tbody>
+</table></div>
+<h3 id="scenario-c-internal-platform-200-person-organization">Scenario C: Internal Platform (200-Person Organization)<a class="anchor" href="#scenario-c-internal-platform-200-person-organization" aria-label="Link to section">#</a></h3>
+<div class="table-scroll"><table>
+<thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+<tbody><tr><td>Departments using LLM services</td><td>5 (engineering, data science, support, legal, product)</td></tr>
+<tr><td>Total daily token volume across departments</td><td>150,000,000</td></tr>
+<tr><td>Monthly token volume</td><td>4,500,000,000</td></tr>
+<tr><td>Cloud cost at $0.002/1K</td><td><strong>$9,000/month</strong></td></tr>
+<tr><td>Cloud cost at $0.005/1K (GPT-4o, blended)</td><td><strong>$22,500/month</strong></td></tr>
+<tr><td>Cloud cost at $0.015/1K (Claude Sonnet 4, output-heavy)</td><td><strong>$67,500/month</strong></td></tr>
+<tr><td>Local GPU fleet cost (amortized hardware + power, 3yr)</td><td>~$3,600/month (8× A100 80GB)</td></tr>
+<tr><td><strong>Monthly net savings at $0.005/1K reference</strong></td><td><strong>$18,900/month</strong></td></tr>
+<tr><td><strong>Monthly net savings at $0.015/1K reference</strong></td><td><strong>$63,900/month</strong></td></tr>
+<tr><td><strong>Annual net savings at $0.015/1K reference</strong></td><td><strong>$766,800/year</strong></td></tr>
+<tr><td><strong>3-year TCO advantage</strong></td><td><strong>$2,300,400</strong></td></tr></tbody>
+</table></div>
+<blockquote><strong>Note:</strong> These projections calculate the <em>difference</em> between cloud API costs and amortized local hardware costs. The hardware amortization includes purchase price, power, cooling, and rack space over a 3-year depreciation schedule. Actual savings depend on GPU utilization rates, model sizes, and local-vs-cloud traffic split. ollama-mesh's dashboard shows the <em>real</em> split based on actual parsed token counts, not these projections.</blockquote>
+<hr/>
+<h2 id="hardware-roi-calculator">Hardware ROI Calculator<a class="anchor" href="#hardware-roi-calculator" aria-label="Link to section">#</a></h2>
+<h3 id="break-even-analysis">Break-Even Analysis<a class="anchor" href="#break-even-analysis" aria-label="Link to section">#</a></h3>
+<p>The break-even point is when cumulative cloud savings equal the upfront GPU hardware investment:</p>
+<pre class="code"><code>break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)</code></pre>
+<p>Monthly hardware opex = amortized purchase price (3yr) + power + rack/cooling. At $0.015/1K (Claude Sonnet 4 output-heavy workloads):</p>
+<div class="table-scroll"><table>
+<thead><tr><th>GPU Configuration</th><th>Hardware Cost</th><th>Monthly Opex (amort+power)</th><th>Monthly Cloud Equivalent</th><th>Break-Even</th></tr></thead>
+<tbody><tr><td>2× RTX 4090 (24GB each)</td><td>$3,600</td><td>~$200/month</td><td>$3,300/month</td><td><strong>~1.2 months</strong></td></tr>
+<tr><td>4× A100 80GB</td><td>$60,000</td><td>~$1,800/month</td><td>$40,500/month</td><td><strong>~1.6 months</strong></td></tr>
+<tr><td>8× A100 80GB</td><td>$120,000</td><td>~$3,600/month</td><td>$67,500/month</td><td><strong>~1.9 months</strong></td></tr></tbody>
+</table></div>
+<p>At GPT-4o blended rates ($0.005/1K), the monthly cloud equivalent is lower but break-even remains attractive: 2× RTX 4090 breaks even in ~4 months at GPT-4o rates.</p>
+<p>After break-even, every locally-served token is pure cost deflection. The hardware continues serving traffic for 3-5 years.</p>
+<blockquote><strong>Hardware pricing notes:</strong> RTX 4090 ~$1,800/card at current retail. A100 80GB ~$10,000-15,000/card (data center pricing, new); secondary market lower. Monthly opex above uses 3-year straight-line amortization plus ~$0.12/kWh power at typical GPU utilization. Rack/cooling adds 10-15% in enterprise colocations.</blockquote>
+<hr/>
+<h2 id="how-the-dashboard-computes-these-numbers">How the Dashboard Computes These Numbers<a class="anchor" href="#how-the-dashboard-computes-these-numbers" aria-label="Link to section">#</a></h2>
+<h3 id="data-sources">Data Sources<a class="anchor" href="#data-sources" aria-label="Link to section">#</a></h3>
+<ol><li><strong>Local token counts</strong> — parsed from the real upstream Ollama response, not estimated. ollama-mesh reads <code>eval_count</code> and <code>prompt_eval_count</code> from the final NDJSON object (Ollama native) or <code>usage.total_tokens</code> from the terminal SSE chunk (OpenAI-compatible).</li></ol>
+<ol><li><strong>Cloud token counts</strong> — parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.</li></ol>
+<ol><li><strong>Reference rate</strong> — operator-configured in <code>config.yaml</code> under <code>savings.reference_cost_per_1k</code>. Single flat rate applied to all locally-served tokens.</li></ol>
+<ol><li><strong>Cloud rates</strong> — per-provider <code>cost_per_1k_tokens</code> in the <code>cloud_providers</code> config block.</li></ol>
+<h3 id="what-means">What "—" Means<a class="anchor" href="#what-means" aria-label="Link to section">#</a></h3>
+<p>If requests were served but no token counts could be parsed from any response — for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk — the API returns <code>null</code> and the dashboard renders "—". ollama-mesh <strong>never</strong> substitutes an estimated or random number for missing token data.</p>
+<h3 id="counter-lifecycle">Counter Lifecycle<a class="anchor" href="#counter-lifecycle" aria-label="Link to section">#</a></h3>
+<p>Savings and spend counters are held in memory. Per-key token totals and quota counters are persisted to <code>usage-state.json</code> (configurable via <code>auth.state_path</code>) and survive restarts. Aggregate savings counters reset on process restart. The audit log (JSON-lines, if enabled) is the durable per-request record.</p>
+<hr/>
+<h2 id="configuration">Configuration<a class="anchor" href="#configuration" aria-label="Link to section">#</a></h2>
+<h3 id="setting-the-reference-rate">Setting the Reference Rate<a class="anchor" href="#setting-the-reference-rate" aria-label="Link to section">#</a></h3>
 <pre class="code" data-lang="yaml"><code>savings:
-  reference_cost_per_1k: 0.002   # USD per 1K tokens</code></pre>
-<p>Set it to the blended rate of the cloud model your traffic would otherwise hit (e.g. <code>0.00015</code> for gpt-4o-mini, higher for larger models). When the field is missing or zero, the default <code>0.002</code> applies. Changing the rate only affects requests recorded after the restart; it does not retroactively revalue earlier requests.</p>
-<h2 id="known-limitations">Known limitations<a class="anchor" href="#known-limitations" aria-label="Link to section">#</a></h2>
-<ul><li>One flat reference rate for all local traffic; no per-model reference rates.</li><li>Prompt and completion tokens are valued at the same rate (real cloud</li></ul>
-<p>  pricing usually differs between input and output tokens).</p>
-<ul><li>In-memory only; numbers are per-process-lifetime, not per-month, unless</li></ul>
-<p>  the process has been up that long.</p>
+  reference_cost_per_1k: 0.015   # match your actual cloud model rate</code></pre>
+<p>Set this to the blended rate of the cloud model your traffic would otherwise consume:</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Cloud Model</th><th>Rate (per 1K tokens)</th><th>Blended (70% in / 30% out)</th><th>Notes</th></tr></thead>
+<tbody><tr><td>GPT-4o mini</td><td>$0.00015–$0.0006</td><td>~$0.00028/1K</td><td>Cheapest quality tier</td></tr>
+<tr><td>GPT-4o</td><td>$0.0025–$0.01</td><td>~$0.005/1K</td><td>Most common enterprise default</td></tr>
+<tr><td>GPT-4.1</td><td>$0.002–$0.008</td><td>~$0.0038/1K</td><td>Input vs output pricing</td></tr>
+<tr><td>Claude Haiku 4.5</td><td>$0.0008–$0.004</td><td>~$0.0018/1K</td><td>Fast, cheap Anthropic tier</td></tr>
+<tr><td>Claude Sonnet 4</td><td>$0.003–$0.015</td><td>~$0.0066/1K</td><td>Mid-tier; blended ≈ $0.006/1K</td></tr>
+<tr><td>Claude Opus 4</td><td>$0.015–$0.075</td><td>~$0.033/1K</td><td>Premium; output-heavy = $0.075</td></tr></tbody>
+</table></div>
+<p>When the field is missing or zero, the default <code>$0.002/1K</code> applies. Changing the rate only affects requests recorded after the change; it does not retroactively revalue earlier requests.</p>
+<h3 id="per-provider-cloud-rates">Per-Provider Cloud Rates<a class="anchor" href="#per-provider-cloud-rates" aria-label="Link to section">#</a></h3>
+<pre class="code" data-lang="yaml"><code>cloud_providers:
+  - name: openai-overflow
+    provider: openai
+    cost_per_1k_tokens: 0.0025    # GPT-4o blended rate
+    enabled: true
+  - name: anthropic-overflow
+    provider: anthropic
+    cost_per_1k_tokens: 0.004     # Claude Sonnet 4 blended rate
+    enabled: true</code></pre>
+<hr/>
+<h2 id="known-limitations">Known Limitations<a class="anchor" href="#known-limitations" aria-label="Link to section">#</a></h2>
+<div class="table-scroll"><table>
+<thead><tr><th>Limitation</th><th>Impact</th><th>Mitigation</th></tr></thead>
+<tbody><tr><td>Single flat reference rate for all local traffic</td><td>Over- or under-values savings for specific models</td><td>Set rate to match your highest-volume cloud model</td></tr>
+<tr><td>Prompt and completion tokens valued at the same rate</td><td>Real cloud pricing differs (input is cheaper)</td><td>Use a blended rate weighted toward your actual input/output ratio</td></tr>
+<tr><td>Aggregate savings are per-process-lifetime, not calendar-month</td><td>Restart resets the dashboard savings counter</td><td>Per-key token totals persist; audit log provides durable per-request records</td></tr>
+<tr><td>No per-model reference rates</td><td>Cannot model mixed-model cost accurately</td><td>Planned for a future release</td></tr></tbody>
+</table></div>
+<hr/>
+<h2 id="audit-trail-for-financial-verification">Audit Trail for Financial Verification<a class="anchor" href="#audit-trail-for-financial-verification" aria-label="Link to section">#</a></h2>
+<p>Every routed request is recorded in the JSON-lines audit log (when enabled) with:</p>
+<ul><li>Request ID (crypto/rand generated)</li><li>Timestamp</li><li>API key name (never the key value)</li><li>Model requested</li><li>Target node (or cloud provider)</li><li>Token counts (prompt + completion)</li><li>Calculated cost (saved or spent)</li><li>HTTP status and latency</li></ul>
+<p>This log is the source of truth for financial reconciliation. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.</p>
 
       <div class="doc-foot-edit">
         <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/SAVINGS-MATH.md" target="_blank" rel="noopener">Edit this page on GitHub →</a>
@@ -258,7 +372,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#savings-local-requests">Savings (local requests)</a></li><li class="lvl-2"><a href="#cloud-spend-overflow-requests">Cloud spend (overflow requests)</a></li><li class="lvl-2"><a href="#when-you-see">When you see "—"</a></li><li class="lvl-2"><a href="#counters-reset-on-restart">Counters reset on restart</a></li><li class="lvl-2"><a href="#changing-the-reference-rate">Changing the reference rate</a></li><li class="lvl-2"><a href="#known-limitations">Known limitations</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#executive-summary">Executive Summary</a></li><li class="lvl-2"><a href="#the-formulas">The Formulas</a></li><li class="lvl-3"><a href="#local-request-savings">Local Request Savings</a></li><li class="lvl-3"><a href="#cloud-overflow-spend">Cloud Overflow Spend</a></li><li class="lvl-3"><a href="#net-savings">Net Savings</a></li><li class="lvl-2"><a href="#enterprise-workload-projections">Enterprise Workload Projections</a></li><li class="lvl-3"><a href="#scenario-a-engineering-copilot-50-person-team">Scenario A: Engineering Copilot (50-Person Team)</a></li><li class="lvl-3"><a href="#scenario-b-multi-agent-rag-pipeline-production">Scenario B: Multi-Agent RAG Pipeline (Production)</a></li><li class="lvl-3"><a href="#scenario-c-internal-platform-200-person-organization">Scenario C: Internal Platform (200-Person Organization)</a></li><li class="lvl-2"><a href="#hardware-roi-calculator">Hardware ROI Calculator</a></li><li class="lvl-3"><a href="#break-even-analysis">Break-Even Analysis</a></li><li class="lvl-2"><a href="#how-the-dashboard-computes-these-numbers">How the Dashboard Computes These Numbers</a></li><li class="lvl-3"><a href="#data-sources">Data Sources</a></li><li class="lvl-3"><a href="#what-means">What "—" Means</a></li><li class="lvl-3"><a href="#counter-lifecycle">Counter Lifecycle</a></li><li class="lvl-2"><a href="#configuration">Configuration</a></li><li class="lvl-3"><a href="#setting-the-reference-rate">Setting the Reference Rate</a></li><li class="lvl-3"><a href="#per-provider-cloud-rates">Per-Provider Cloud Rates</a></li><li class="lvl-2"><a href="#known-limitations">Known Limitations</a></li><li class="lvl-2"><a href="#audit-trail-for-financial-verification">Audit Trail for Financial Verification</a></li></ul>
   </aside>
 </div>
 

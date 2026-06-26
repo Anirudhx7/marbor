@@ -224,7 +224,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">Continue (VS Code / JetBrains)</span></div>
     <article class="doc-content">
       <h1 id="continue-vs-code-jetbrains">Continue (VS Code / JetBrains)<a class="anchor" href="#continue-vs-code-jetbrains" aria-label="Link to section">#</a></h1>
-<p><a href="https://continue.dev" target="_blank" rel="noopener">Continue</a> is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm-first selection across your GPU nodes, with automatic cloud overflow when nodes are busy.</p>
+<p><a href="https://continue.dev" target="_blank" rel="noopener">Continue</a> is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm-first selection across your GPU nodes, with cost-aware cloud overflow when nodes are busy.</p>
 <hr/>
 <h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to section">#</a></h2>
 <ul><li>Continue extension installed (VS Code: <code>continue.continue</code>, JetBrains: Continue plugin)</li><li>ollama-mesh running and reachable from your workstation</li><li>An API key from the ollama-mesh admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
@@ -306,7 +306,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     }
   ]
 }</code></pre>
-<p>The third entry will route to a cloud provider automatically if <code>mistral-nemo</code> is not loaded on any GPU node and you have cloud fallback configured.</p>
+<p>The third entry will route to a cloud provider automatically if <code>mistral-nemo</code> is not loaded on any GPU node and you have cost-aware cloud overflow configured.</p>
 <hr/>
 <h2 id="per-developer-api-keys">Per-developer API keys<a class="anchor" href="#per-developer-api-keys" aria-label="Link to section">#</a></h2>
 <p>Create a separate API key for each developer in the admin dashboard. This lets you see per-user token usage and apply individual rate limits or model restrictions without sharing a single key.</p>

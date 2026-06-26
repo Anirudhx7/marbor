@@ -1,6 +1,6 @@
 # LibreChat
 
-[LibreChat](https://librechat.ai) supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cloud overflow, and full request logging — with no changes to how LibreChat works.
+[LibreChat](https://librechat.ai) supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging — with no changes to how LibreChat works.
 
 ---
 

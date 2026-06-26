@@ -8,7 +8,7 @@ This guide covers running ollama-mesh in a real production environment. It assum
 
 | Port | Purpose |
 |------|---------|
-| `11434` | Ollama-compatible proxy - this is what clients point at |
+| `11434` | Ollama-compatible endpoint (control plane) - this is what clients point at |
 | `8080` | Admin dashboard + REST API |
 | `9090` | Prometheus metrics (optional) |
 
@@ -20,7 +20,7 @@ Create `/etc/systemd/system/ollama-mesh.service`:
 
 ```ini
 [Unit]
-Description=ollama-mesh LLM proxy
+Description=ollama-mesh LLM control plane
 After=network.target
 Wants=network.target
 
@@ -146,7 +146,7 @@ spec:
             - name: CONFIG_PATH
               value: /config/config.yaml
           ports:
-            - containerPort: 11434   # proxy
+            - containerPort: 11434   # endpoint
             - containerPort: 8080    # admin
             - containerPort: 9090    # metrics
           livenessProbe:
@@ -219,7 +219,7 @@ upstream ollama_mesh_admin {
     server 127.0.0.1:8080;
 }
 
-# Proxy endpoint - clients point OPENAI_BASE_URL here
+# Control plane endpoint - clients point OPENAI_BASE_URL here
 server {
     listen 443 ssl http2;
     server_name llm.example.com;
@@ -261,13 +261,13 @@ server {
 }
 ```
 
-`proxy_buffering off` is required. Buffering the proxy port will break streaming responses.
+`proxy_buffering off` is required. Buffering the endpoint port will break streaming responses.
 
 ---
 
 ## Health Check
 
-`GET /health` on the proxy port (11434) returns HTTP 200 when the process is up and ready to accept connections. It requires no authentication. Use it for load balancer health checks, container liveness/readiness probes, and uptime monitors.
+`GET /health` on the endpoint port (11434) returns HTTP 200 when the process is up and ready to accept connections. It requires no authentication. Use it for load balancer health checks, container liveness/readiness probes, and uptime monitors.
 
 ```bash
 curl http://localhost:11434/health

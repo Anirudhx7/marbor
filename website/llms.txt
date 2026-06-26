@@ -1,12 +1,12 @@
 # ollama-mesh
 
-GPU-aware load balancer and proxy for Ollama. Routes LLM requests to the GPU node that already holds the requested model warm in VRAM, eliminating cold-start latency. Automatic cloud overflow to OpenAI or Anthropic when the local cluster is saturated. Single static Go binary with zero runtime dependencies.
+GPU-aware control plane and scheduler for Ollama. Routes LLM requests to the GPU node that already holds the requested model warm in VRAM, eliminating cold-start latency. Cost-aware cloud overflow to OpenAI or Anthropic when the local cluster is saturated. Single static Go binary with zero runtime dependencies.
 
 ## What it does
 
 - Warm-first routing: polls each Ollama node's /api/ps every 2 seconds; routes to the node with the model already loaded in VRAM
 - Least-connections tiebreaker across warm nodes
-- Cloud fallback: if all local nodes are busy or unreachable, proxies to configured OpenAI or Anthropic endpoint
+- Cost-aware cloud overflow: if all local nodes are busy or unreachable, routes to configured OpenAI or Anthropic endpoint
 - Ollama-native response translation: /api/* requests that fall back to cloud get the OpenAI response translated back to Ollama NDJSON format
 - Per-key API authentication with Bearer tokens
 - Per-key model allow-lists: 403 if key is not permitted for a model
@@ -17,7 +17,7 @@ GPU-aware load balancer and proxy for Ollama. Routes LLM requests to the GPU nod
 - Admin dashboard embedded in binary (React, served at :8080)
 - Prometheus metrics at :9090
 - Pre-stream failover: if a node dies before first byte, retries alternate nodes then cloud
-- X-Request-ID on all proxy responses
+- X-Request-ID on all responses
 - Audit log (append-only JSON-lines)
 - SIGHUP hot-reload for config changes without restart
 - Docker auto-discovery: scans for containers with OLLAMA_HOST env or ollama/ollama image
@@ -37,7 +37,7 @@ Docker: `docker run -p 11434:11434 -p 8080:8080 ghcr.io/anirudhx7/ollama-mesh:la
 
 ```
 ./ollama-mesh
-# Proxy endpoint:  http://localhost:11434
+# Endpoint:  http://localhost:11434
 # Admin dashboard: http://localhost:8080
 # API key printed on first run
 
@@ -49,7 +49,7 @@ export OPENAI_API_KEY=sk-mesh-<generated>
 
 - Language: Go (single static binary, no CGO, no Python)
 - License: Apache-2.0
-- Ports: :11434 (proxy), :8080 (admin), :9090 (metrics)
+- Ports: :11434 (endpoint), :8080 (admin), :9090 (metrics)
 - Compatible with: any OpenAI SDK, Ollama client, LangChain, llama-index
 - Platforms: Linux, macOS, Windows (amd64, arm64)
 - No telemetry, no license server, no phone-home
@@ -60,4 +60,4 @@ https://github.com/Anirudhx7/ollama-mesh
 
 ## Keywords
 
-Ollama load balancer, GPU-aware LLM routing, Ollama proxy, warm model routing, local LLM gateway, Ollama cluster, OpenAI proxy, Anthropic proxy, cloud fallback, VRAM routing
+Ollama control plane, GPU-aware LLM routing, Ollama scheduler, warm model routing, local LLM gateway, Ollama cluster, OpenAI overflow, Anthropic overflow, cost-aware cloud overflow, VRAM routing

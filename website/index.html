@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ollama-mesh - warm-first routing for Ollama, vLLM, TGI, and llama.cpp</title>
-<meta name="description" content="GPU-aware LLM proxy for Ollama, vLLM, TGI, llama.cpp. Warm-first routing, cloud fallback to OpenAI or Anthropic, cost tracking. Single Go binary." />
+<title>ollama-mesh - The control plane for self-hosted AI inference</title>
+<meta name="description" content="The control plane and orchestration layer for self-hosted GPU inference fleets. Schedules requests based on warm model VRAM residency across Ollama, vLLM, TGI, and llama.cpp nodes." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="canonical" href="https://anirudh.social/ollama-mesh/" />
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
@@ -13,16 +13,16 @@
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="ollama-mesh" />
 <meta property="og:locale" content="en_US" />
-<meta property="og:title" content="ollama-mesh - GPU-aware LLM proxy for Ollama, vLLM, TGI, llama.cpp" />
-<meta property="og:description" content="Route LLM requests to the GPU that already has your model warm in VRAM. Cloud fallback to OpenAI or Anthropic on saturation, per-token cost tracking. Single Go binary, zero deps." />
+<meta property="og:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
+<meta property="og:description" content="Turn your local GPUs into a high-availability inference cluster. Warm-state scheduling, multi-runtime support, and cost-aware cloud overflow." />
 <meta property="og:url" content="https://anirudh.social/ollama-mesh/" />
 <meta property="og:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="ollama-mesh - GPU-aware LLM proxy for Ollama, vLLM, TGI, llama.cpp" />
-<meta name="twitter:description" content="Route LLM requests to the GPU that already has your model warm in VRAM. Cloud fallback to OpenAI or Anthropic on saturation, per-token cost tracking. Single Go binary, zero deps." />
+<meta name="twitter:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
+<meta name="twitter:description" content="Turn your local GPUs into a high-availability inference cluster. Warm-state scheduling, multi-runtime support, and cost-aware cloud overflow." />
 <meta name="twitter:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
 <script type="application/ld+json">
 [
@@ -30,7 +30,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "ollama-mesh",
-    "description": "GPU-aware load balancer and proxy for Ollama, vLLM, TGI, and llama.cpp. Routes LLM requests warm-first to the node that already has the model in VRAM. Falls back to OpenAI or Anthropic when the cluster is saturated, tracking every dollar.",
+    "description": "The control plane and orchestration layer for self-hosted GPU inference fleets. Schedules requests based on warm model VRAM residency across Ollama, vLLM, TGI, and llama.cpp nodes. Falls back to OpenAI or Anthropic only when the cluster is saturated, tracking every dollar.",
     "url": "https://anirudh.social/ollama-mesh/",
     "downloadUrl": "https://github.com/Anirudhx7/ollama-mesh/releases",
     "applicationCategory": "DeveloperApplication",
@@ -40,7 +40,7 @@
     "programmingLanguage": "Go",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "Anirudh Mehandru", "url": "https://anirudh.social" },
-    "keywords": "Ollama load balancer, GPU-aware LLM routing, Ollama proxy, warm model routing, local LLM gateway, vLLM proxy, cloud fallback"
+    "keywords": "Ollama load balancer, GPU-aware LLM routing, Ollama scheduler, warm model routing, local LLM gateway, vLLM scheduling, cloud fallback, MLOps, GPU control plane"
   },
   {
     "@context": "https://schema.org",
@@ -49,27 +49,27 @@
       {
         "@type": "Question",
         "name": "What is ollama-mesh?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single Go binary that acts as a smart proxy for your local LLM inference fleet (Ollama, vLLM, TGI, llama.cpp). It routes each request to the GPU node that already has the model warm in VRAM, eliminating cold-start latency. When all nodes are saturated, it falls back to OpenAI or Anthropic and tracks the cost." }
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single static Go binary that acts as a control plane and scheduling layer for your self-hosted GPU inference fleet (Ollama, vLLM, TGI, llama.cpp). It routes each request to the GPU node that already has the model warm in VRAM, eliminating cold-start latency. When all nodes are saturated, it falls back to OpenAI or Anthropic and tracks the cost." }
       },
       {
         "@type": "Question",
-        "name": "How does warm-first routing work?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh polls each node's /api/ps endpoint every 2 seconds to know which models are currently loaded in GPU memory. When a request arrives, it routes to the node that already has the requested model resident in VRAM, skipping the multi-second model load time." }
+        "name": "How does warm-state scheduling work?",
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh polls each node's state and VRAM allocations every 2 seconds. When a request arrives, it schedules it to the node that already has the requested model resident in VRAM, skipping the multi-second model load time and preventing VRAM thrashing." }
       },
       {
         "@type": "Question",
         "name": "Does ollama-mesh support vLLM, TGI, and llama.cpp?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. As of v0.10.0, ollama-mesh supports Ollama, vLLM, TGI (Text Generation Inference), and llama.cpp nodes. Set runtime: vllm, tgi, or llamacpp per node in your config file." }
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. ollama-mesh provides a unified OpenAI-compatible endpoint that transparently orchestrates Ollama, vLLM, TGI, and llama.cpp nodes, translating protocols automatically." }
       },
       {
         "@type": "Question",
         "name": "What happens when the local cluster is busy?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh automatically falls back to configured cloud providers (OpenAI or Anthropic) when all local nodes are saturated or unreachable. Every fallback request is priced per token and logged so you can see exactly what you spent on cloud APIs vs what you saved by serving locally." }
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh automatically overflows to backup cloud providers (OpenAI or Anthropic) only when all local nodes are fully saturated. The scheduler pulls traffic back to local hardware the instant capacity frees up, tracking token-level spend so you only pay for cloud compute when genuinely necessary." }
       },
       {
         "@type": "Question",
         "name": "Do I need Docker or Python to run ollama-mesh?",
-        "acceptedAnswer": { "@type": "Answer", "text": "No. ollama-mesh is a single static Go binary with zero runtime dependencies. Install it with one curl command and it starts in under 100ms. No Python, no Docker, no dependency tree to manage." }
+        "acceptedAnswer": { "@type": "Answer", "text": "No. ollama-mesh is a single static Go binary with zero runtime dependencies. Install it with one command and it starts in under 10ms. No Python runtime, no Node.js, no Docker container overhead required." }
       }
     ]
   }
@@ -365,6 +365,238 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
 @media (max-width: 380px) { .page { padding: 0 16px; } .foot-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto; } }
 section, #install { scroll-margin-top: 80px; }
+
+/* TRUST BADGES */
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 36px;
+  margin-top: 24px;
+}
+.badge-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.badge-item strong {
+  color: var(--text);
+}
+.badge-item svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* SPCS SECTION */
+.spcs-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  padding: 40px;
+  margin-bottom: 20px;
+}
+.spcs-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 40px;
+  margin-top: 24px;
+}
+@media (max-width: 768px) {
+  .spcs-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .spcs-section {
+    padding: 24px;
+  }
+}
+.spcs-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.spcs-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 24px;
+  justify-content: center;
+}
+.spcs-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.spcs-timeline-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+.spcs-bar {
+  position: relative;
+  height: 40px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 12px;
+  overflow: hidden;
+}
+.spcs-bar.without {
+  background: repeating-linear-gradient(45deg, var(--bg-surface), var(--bg-surface) 10px, var(--bg) 10px, var(--bg) 20px);
+  border-color: var(--accent3);
+}
+.spcs-bar.with {
+  background: var(--bg-surface);
+  border-color: var(--accent2);
+}
+.spcs-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: color-mix(in srgb, var(--accent2) 12%, transparent);
+  width: 100%;
+}
+.spcs-bar-text {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center;
+}
+.spcs-badge {
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-weight: bold;
+}
+.spcs-badge.cold {
+  background: rgba(201,124,124,0.15);
+  color: var(--accent3);
+}
+.spcs-badge.warm {
+  background: rgba(124,185,124,0.15);
+  color: var(--accent2);
+}
+
+/* LITELLM ARCHITECTURE DIAGRAM */
+.litellm-section {
+  margin-top: 32px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+}
+.litellm-title {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.litellm-desc {
+  color: var(--text-muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0 0 24px;
+  max-width: 76ch;
+}
+.stack-diagram {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 20px;
+  overflow-x: auto;
+}
+.stack-node {
+  flex: 1;
+  min-width: 130px;
+  text-align: center;
+  padding: 12px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg);
+  line-height: 1.4;
+}
+.stack-node.app {
+  border-color: var(--text-faint);
+  color: var(--text-muted);
+}
+.stack-node.litellm {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+.stack-node.mesh {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: bold;
+}
+.stack-node.runtime {
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+.stack-arrow {
+  font-size: 18px;
+  color: var(--text-faint);
+  user-select: none;
+}
+
+/* DYNAMIC ROUTER EXTENSIONS */
+.rcol .node-vram {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+.rcol .node-queue {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-left: auto;
+  margin-right: 8px;
+}
+.routing-stats {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.routing-stat-item strong {
+  color: var(--text);
+}
+.reasoning-box {
+  background: var(--bg-surface);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px;
+  font-size: 12px;
+  margin-top: 10px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  line-height: 1.5;
+}
 </style>
 </head>
 <body>
@@ -405,7 +637,7 @@ section, #install { scroll-margin-top: 80px; }
   <a href="#how">How it works</a>
   <a href="#compare">Compare</a>
   <a href="docs/">Docs</a>
-  <a href="/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
+  <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
   <a href="https://github.com/Anirudhx7/ollama-mesh">GitHub ↗</a>
 </div>
 
@@ -414,13 +646,12 @@ section, #install { scroll-margin-top: 80px; }
 <header class="hero">
   <div class="page">
     <span class="kicker"><span class="dot"></span>v0.10.0: vLLM, TGI, llama.cpp · self-hosted · Apache 2.0</span>
-    <h1 class="headline">Stop sending requests to <em>cold GPUs.</em></h1>
+    <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
-      ollama-mesh is a smart proxy for your local inference fleet - Ollama, vLLM, TGI, or llama.cpp.
-      Your engineers are already running <strong>DeepSeek-R1, Llama 3.1, and Qwen3</strong> on local GPUs -
-      models that rival GPT-4 at zero cost per token.
-      ollama-mesh routes each request to the node that already has the model warm in VRAM, and falls back
-      to OpenAI or Anthropic only when your cluster is saturated - tracking every dollar on the way.
+      A single-binary orchestration layer that turns your local GPUs into a high-availability inference cluster. 
+      ollama-mesh schedules requests based on real-time model residency in VRAM, eliminating cold starts, 
+      coordinating multi-node queues, and providing automatic, cost-aware cloud overflow with complete spend visibility. 
+      Works with Ollama, vLLM, TGI, and llama.cpp.
     </p>
 
     <div class="cta-row">
@@ -428,15 +659,18 @@ section, #install { scroll-margin-top: 80px; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
         install in one command
       </a>
-      <a href="/ollama-mesh/demo/" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      <a href="https://anirudh.social/ollama-mesh/demo/" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         live demo
+      </a>
+      <a href="docs/" class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5V3a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v19a1 1 0 0 1-1 1H6.5a2.5 2.5 0 0 1-2.5-2.5z"/></svg>
+        read the docs
       </a>
       <a href="https://github.com/Anirudhx7/ollama-mesh" class="btn btn-ghost">
         <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         view on github
       </a>
-      <a href="docs/" class="btn btn-ghost">read the docs →</a>
     </div>
 
     <div class="install" id="install">
@@ -450,82 +684,227 @@ section, #install { scroll-margin-top: 80px; }
       </button>
     </div>
 
-    <div class="trust-row">
-      <div class="trust-item"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span> Drop-in: same OpenAI-compatible API your tools already use</div>
-      <div class="trust-item"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span> Apache-2.0, runs entirely on your own hardware</div>
-      <div class="trust-item"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span> Real numbers only - no fake dashboards, no mocked data</div>
+    <div class="badge-grid">
+      <div class="badge-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <span>License: <strong>Apache-2.0</strong></span>
+      </div>
+      <div class="badge-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <span>Deployment: <strong>Self-Hosted</strong></span>
+      </div>
+      <div class="badge-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <span>Security: <strong>Air-Gapped Ready</strong></span>
+      </div>
+      <div class="badge-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <span>API: <strong>OpenAI-Compatible</strong></span>
+      </div>
+      <div class="badge-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <span>Runtime: <strong>Single Go Binary</strong></span>
+      </div>
+      <div class="badge-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <span>Cluster: <strong>Multi-Runtime</strong></span>
+      </div>
     </div>
 
     <!-- routing diagram -->
-    <div class="routing" role="img" aria-label="Diagram: a chat completion request for deepseek-r1 is routed to the GPU node that already has the model warm, instead of a cold node or a paid API fallback">
+    <div class="routing" role="img" aria-label="Diagram: a chat completion request is scheduled dynamically by ollama-mesh based on queue depth and warm model residency.">
       <div class="routing-head">
         <div class="dots"><span></span><span></span><span></span></div>
-        <span>ollama-mesh · router</span>
-        <span style="margin-left:auto;color:var(--accent2)">● live</span>
+        <span>ollama-mesh · scheduler console</span>
+        <span style="margin-left:auto;color:var(--accent2)" id="liveIndicator">● simulating live traffic</span>
       </div>
       <div class="routing-body">
         <div class="rcol">
           <div class="rlabel">Incoming request</div>
-          <div class="req"><span class="k">POST</span> /v1/chat/completions<br><span class="k">model</span>: <span class="s">"deepseek-r1:7b"</span><br><span class="k">stream</span>: true</div>
+          <div class="req" id="consoleReq">
+            <span class="k">POST</span> /v1/chat/completions<br>
+            <span class="k">model</span>: <span class="s" id="reqModel">"deepseek-r1:7b"</span><br>
+            <span class="k">stream</span>: <span class="s">true</span>
+          </div>
+          <div class="routing-stats">
+            <div class="routing-stat-item">VRAM Saved: <strong id="statVram">16.0 GB</strong></div>
+            <div class="routing-stat-item">Latency Saved: <strong id="statLatency">18.4s</strong></div>
+          </div>
         </div>
         <div class="rcol">
           <div class="rlabel">Cluster state</div>
-          <div class="node warm">
+          <div class="node" id="node1">
             <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg>
-            <div>gpu-01 <span class="gpu">deepseek-r1:7b loaded</span></div>
-            <span class="state">warm</span>
+            <div>gpu-01 <span class="gpu" id="node1Model">deepseek-r1:7b</span><span class="node-vram" id="node1Vram">8.2GB/80GB</span></div>
+            <span class="node-queue" id="node1Queue">Queue: 0</span>
+            <span class="state" id="node1State">warm</span>
           </div>
-          <div class="node"><span class="pin" style="text-align:center">◷</span><div>gpu-02 <span class="gpu">llama3.1:8b</span></div><span class="state cold">cold</span></div>
-          <div class="node"><span class="pin" style="text-align:center">◷</span><div>gpu-03 <span class="gpu">idle</span></div><span class="state cold">cold</span></div>
+          <div class="node" id="node2">
+            <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg>
+            <div>gpu-02 <span class="gpu" id="node2Model">llama3.1:8b</span><span class="node-vram" id="node2Vram">9.4GB/80GB</span></div>
+            <span class="node-queue" id="node2Queue">Queue: 0</span>
+            <span class="state" id="node2State">warm</span>
+          </div>
+          <div class="node" id="node3">
+            <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg>
+            <div>gpu-03 <span class="gpu" id="node3Model">idle</span><span class="node-vram" id="node3Vram">0GB/80GB</span></div>
+            <span class="node-queue" id="node3Queue">Queue: 0</span>
+            <span class="state" id="node3State">cold</span>
+          </div>
         </div>
         <div class="rcol full">
-          <div class="rlabel">Decision</div>
-          <div class="pick">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-            route → gpu-01 · <span style="color:var(--accent)">0ms model load</span> (already warm) · <span style="color:var(--accent)">$0.00</span> spent
+          <div class="rlabel">Routing Decision</div>
+          <div class="pick" id="decisionText" style="font-weight: 600;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;margin-right:8px;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            route → gpu-01 · <span style="color:var(--accent2)">0ms model load</span> (already warm)
           </div>
-          <div class="fallback">if all nodes are busy → overflow to openai / anthropic, price it per token, log the cost</div>
+          <div class="reasoning-box" id="decisionReasoning">
+            Warm hit detected on gpu-01. Routing request to resident VRAM.
+          </div>
         </div>
       </div>
     </div>
   </div>
 </header>
 
+<!-- COLD START ELIMINATION (SPCS) -->
+<section id="spcs" style="padding: 80px 0 40px; border-top: 1px solid var(--border-subtle);">
+  <div class="page">
+    <div class="spcs-section">
+      <p class="eyebrow">Protocol: SPCS</p>
+      <h2 class="sec">Any Model. <em>Under One Second.</em></h2>
+      <p class="sec-sub" style="margin-bottom: 20px;">
+        Speculative Prefix-Cached Swapping (SPCS) eliminates the multi-second delay of loading cold model weights into VRAM.
+      </p>
+      
+      <div class="spcs-grid">
+        <div class="spcs-text">
+          <p style="font-size: 14px; color: var(--text-muted); margin: 0 0 16px; line-height: 1.6;">
+            When a user requests a model that is not currently loaded in VRAM, conventional systems make them wait 20 to 30 seconds for the weights to load.
+          </p>
+          <p style="font-size: 14px; color: var(--text-muted); margin: 0; line-height: 1.6;">
+            <code>ollama-mesh</code> eliminates this wait entirely using a protocol called <strong>SPCS</strong>. The moment a cold-model request arrives, the scheduler immediately streams tokens from a warm draft model while loading the target model in the background. Once the target is warm and prefix-cached, it performs a seamless hot-swap mid-stream. The client receives a response starting in under 1 second, and the final output comes from the correct target model, exposing zero cold-start delay to the user.
+          </p>
+        </div>
+        <div class="spcs-diagram">
+          <div class="spcs-timeline">
+            <div class="spcs-timeline-label">Without ollama-mesh (Conventional Routing)</div>
+            <div class="spcs-bar without">
+              <div class="spcs-bar-text">
+                <span>Cold 70B Request</span>
+                <span class="spcs-badge cold">24-second VRAM weight load delay</span>
+                <span>First Token</span>
+              </div>
+            </div>
+          </div>
+          <div class="spcs-timeline">
+            <div class="spcs-timeline-label">With ollama-mesh + SPCS (Speculative Streaming)</div>
+            <div class="spcs-bar with">
+              <div class="spcs-bar-fill"></div>
+              <div class="spcs-bar-text">
+                <span>Cold 70B Request</span>
+                <span class="spcs-badge warm">&lt;1s draft stream</span>
+                <span style="color: var(--accent); font-weight: bold;">[Seamless Swap]</span>
+                <span>70B Target Output</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHY LOCAL INFERENCE IS HARD -->
+<section id="why-hard" style="padding: 40px 0 80px; border-top: 1px solid var(--border-subtle);">
+  <div class="page">
+    <p class="eyebrow">The Scheduling Problem</p>
+    <h2 class="sec">Why local inference is <em>operationally hard.</em></h2>
+    <p class="sec-sub">Running raw LLMs on a local GPU fleet creates silent bottlenecks that waste hardware and degrade reliability.</p>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 32px;">
+      <div style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated);">
+        <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">VRAM Thrashing & Overlap</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Without scheduling coordination, developers load models ad-hoc. When GPU memory fills, the runtime terminates resident models to make room, leading to constant loading cycles that wear hardware and halt requests.</p>
+      </div>
+      <div style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated);">
+        <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">Unbalanced Queue Hotspots</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Standard load balancers balance network connections, not request complexity. A deep reasoning request is treated the same as a short completion, causing requests to pile up on a busy node while other GPUs sit completely idle.</p>
+      </div>
+      <div style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated);">
+        <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">Saturated Failures</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">When local hardware capacity is genuinely exceeded, users get connection errors. Alternatively, routing all requests to cloud APIs by default removes the cost benefits of self-hosting local models.</p>
+      </div>
+    </div>
+    
+    <div style="margin-top: 32px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--accent-bg); display: flex; gap: 16px; align-items: flex-start;">
+      <svg style="width: 20px; height: 20px; color: var(--accent); flex-shrink: 0; margin-top: 2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <div>
+        <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: bold; color: var(--text);">How ollama-mesh solves placement:</h4>
+        <p style="margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6;">
+          By actively polling node states and VRAM layouts every 2 seconds, <code>ollama-mesh</code> acts as a centralized control plane. It schedules requests based on real-time model residency, coordinates queues across nodes, and overflows to cloud providers only when local capacity is fully saturated—preserving local compute first.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- FEATURES -->
 <section id="features">
   <div class="page">
     <p class="eyebrow">Built for platform engineers</p>
     <h2 class="sec">Everything you need to make <em>one</em> AI endpoint for the whole team.</h2>
-    <p class="sec-sub">No orchestration to babysit. Point your apps at one URL and ollama-mesh handles the routing, the failover, and the accounting.</p>
+    <p class="sec-sub">No orchestration to babysit. Point your apps at one URL and ollama-mesh handles the scheduling, the failover, and the accounting.</p>
 
     <div class="features">
       <div class="feat warm">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg></div>
-        <div><h3>Warm-first routing</h3><p>Sends each request to a node that already has the requested model resident in GPU memory. No multi-second cold load, no thrashing models in and out of VRAM.</p></div>
+        <div>
+          <h3>Warm-state scheduling</h3>
+          <p>Schedules requests exclusively to GPU nodes where the target model is already resident in VRAM. Prevents the multi-second delay of thrashing models in and out of GPU memory, maximizing hardware lifetime and throughput.</p>
+        </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg></div>
-        <div><h3>Cloud fallback that pays for itself</h3><p>When every GPU is busy, requests overflow to OpenAI or Anthropic so nobody gets a 503. The moment your cluster frees up, traffic comes back home.</p></div>
+        <div>
+          <h3>Cost-aware cloud overflow</h3>
+          <p>Spills traffic to backup cloud APIs (OpenAI or Anthropic) only when local GPUs are fully saturated. The scheduler automatically pulls traffic back to the local cluster the instant queue depth or VRAM capacity is freed, ensuring you only pay for cloud compute when your local hardware is genuinely full.</p>
+        </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
-        <div><h3>Cost tracking with receipts</h3><p>Every fallback request is priced per token and logged. The dashboard shows exactly what you spent on cloud APIs - and what you saved by serving locally. Hard numbers you can put in a budget review.</p></div>
+        <div>
+          <h3>Cost-aware routing</h3>
+          <p>Tracks, prices, and logs every cloud-overflow request per token. Provides a clear accounting of the dollar amount saved by serving requests locally versus what was spent on cloud fallback, directly in your terminal or dashboard.</p>
+        </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
-        <div><h3>Embedded admin dashboard</h3><p>Live GPU utilization, per-model traffic, and spend - served straight from the binary. No separate web app, no Grafana to stand up. Open a port and it's there.</p></div>
+        <div>
+          <h3>Cluster observability</h3>
+          <p>Exposes real-time GPU utilization, active queue depths, VRAM occupancy, and model residency across all nodes. Served directly from the single binary with zero external telemetry agents, databases, or Grafana dashboards to configure.</p>
+        </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
-        <div><h3>One static binary</h3><p>Drop a single file on a box and run it. No Python runtime, no Docker, no dependency tree to audit. Cold-starts in under 100ms, so restarts are invisible.</p></div>
+        <div>
+          <h3>Single-binary deployment</h3>
+          <p>A static, self-contained Go binary with zero runtime dependencies. Cold-starts in under 10ms, has a negligible memory footprint, and requires no Python environment, node modules, or Docker containers to run.</p>
+        </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div>
-        <div><h3>OpenAI-compatible API</h3><p>Speaks the <code>/v1/chat/completions</code> spec your tools already use. Continue, LibreChat, Open WebUI, and your own services connect by changing one base URL.</p></div>
+        <div>
+          <h3>OpenAI-compatible API</h3>
+          <p>Speaks the <code>/v1/chat/completions</code> spec your tools already use. Continue, LibreChat, Open WebUI, and your own services connect by changing one base URL.</p>
+        </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/><rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/><path d="M9 6.5h6M9 17.5h6M5.5 10v4M18.5 10v4"/></svg></div>
-        <div><h3>Any inference backend</h3><p>Nodes can be Ollama, vLLM, TGI (Text Generation Inference), llama.cpp, or any OpenAI-compatible endpoint. Set <code>runtime: vllm</code> (or <code>tgi</code>, <code>llamacpp</code>) per node - <code>/v1/*</code> routes to any backend, <code>/api/*</code> stays Ollama-only. GPU VRAM metrics are Ollama and nvidia-smi; vLLM/TGI nodes show operator-declared capacity.</p></div>
+        <div>
+          <h3>Runtime abstraction</h3>
+          <p>Provides a unified OpenAI-compatible endpoint that transparently orchestrates Ollama, vLLM, llama.cpp, and TGI nodes. Handles protocol translation automatically, allowing you to mix and match runtimes based on performance needs.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -535,8 +914,8 @@ section, #install { scroll-margin-top: 80px; }
 <section id="how">
   <div class="page">
     <p class="eyebrow">From zero to routed in three steps</p>
-    <h2 class="sec">It's a proxy. You <em>point things at it.</em></h2>
-    <p class="sec-sub">No control plane, no agents on every node. ollama-mesh talks to your Ollama instances over their normal HTTP API.</p>
+    <h2 class="sec">A unified control plane. <em>Zero-agent deployment.</em></h2>
+    <p class="sec-sub">No complex cluster agents or sidecars on your GPU nodes. ollama-mesh acts as a centralized control plane, communicating directly with your runtimes over standard HTTP APIs.</p>
 
     <div class="steps">
       <div class="step">
@@ -583,7 +962,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
   <div class="page">
     <p class="eyebrow">Where it fits</p>
     <h2 class="sec">How it <em>compares.</em></h2>
-    <p class="sec-sub">Other tools solve real problems. None of them are built around keeping requests on the GPU that's already warm. Here's the honest breakdown.</p>
+    <p class="sec-sub">Other load balancers route blindly based on network connections. ollama-mesh is built specifically to schedule around GPU states. Here is the honest breakdown.</p>
 
     <div class="table-wrap"><div class="table-scroll">
       <table class="compare">
@@ -591,64 +970,72 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
           <tr>
             <th>Capability</th>
             <th class="us">ollama-mesh</th>
-            <th>LiteLLM</th>
-            <th>Portkey / Helicone</th>
-            <th>nginx</th>
+            <th>Plain Ollama + nginx load balancer</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>GPU-warm-aware routing</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Native</span></td>
-            <td><span class="no">Round-robin only</span></td>
-            <td><span class="no">No</span></td>
-            <td><span class="no">No</span></td>
-          </tr>
-          <tr>
-            <td>Cloud fallback on saturation</td>
+            <td>Warm-state routing (knows which nodes have which models loaded)</td>
             <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="partial">Routing add-on</span></td>
-            <td><span class="no">No</span></td>
+            <td><span class="no">No (nginx has no visibility into VRAM contents)</span></td>
           </tr>
           <tr>
-            <td>Per-token cost tracking</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Built in</span></td>
-            <td><span class="partial">Partial</span></td>
-            <td><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Core feature</span></td>
-            <td><span class="no">No</span></td>
+            <td>Model residency awareness (avoids unnecessary reloads)</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="no">No (routes blindly, causing constant model thrashing)</span></td>
           </tr>
           <tr>
-            <td>Runs on your hardware</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Self-hosted</span></td>
-            <td><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Self-hosted</span></td>
-            <td><span class="partial">SaaS-first</span></td>
-            <td><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Self-hosted</span></td>
+            <td>GPU locality scheduling (routes by where the model already lives)</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="no">No (cannot query GPU layouts or topology)</span></td>
           </tr>
           <tr>
-            <td>Dependencies</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>One Go binary</span></td>
-            <td><span class="no">Python + pip</span></td>
-            <td><span class="no">Cloud account</span></td>
-            <td><span class="partial">Config + Lua</span></td>
+            <td>Queue-depth awareness (avoids piling requests on a busy node)</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="partial">Partial (nginx balances TCP connections, but does not know Ollama's internal queues)</span></td>
           </tr>
           <tr>
-            <td>Cold start</td>
-            <td class="col-us"><span class="yes">&lt;100ms</span></td>
-            <td><span class="no">Seconds</span></td>
-            <td><span class="no">n/a (hosted)</span></td>
-            <td><span class="yes">Fast</span></td>
+            <td>VRAM visibility (knows what is consuming memory across the cluster)</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="no">No (cannot access /api/ps or nvidia-smi metrics)</span></td>
           </tr>
           <tr>
-            <td>vLLM / TGI / llama.cpp nodes</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>v0.10.0+</span></td>
-            <td><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No</span></td>
-            <td><span class="no">No</span></td>
+            <td>Cold start handling (detects and routes around cold nodes)</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="no">No (routes to cold nodes, exposing 20-30s load times)</span></td>
+          </tr>
+          <tr>
+            <td>Multi-runtime support (Ollama, vLLM, TGI, llama.cpp)</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="no">No (requires complex custom routing and API translation layers)</span></td>
+          </tr>
+          <tr>
+            <td>Cluster observability (unified view of all nodes)</td>
+            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
+            <td><span class="no">No (requires setting up external Prometheus exporters and Grafana)</span></td>
           </tr>
         </tbody>
       </table>
     </div></div>
+
+    <!-- Secondary section for LiteLLM -->
+    <div class="litellm-section">
+      <h3 class="litellm-title">Using LiteLLM already? ollama-mesh runs below it.</h3>
+      <p class="litellm-desc">
+        LiteLLM is excellent for provider abstraction, enterprise auth, and user-level rate limiting. <code>ollama-mesh</code> slots in directly below LiteLLM as your physical scheduling layer, handling raw GPU queue depths, model residency, and warm-state routing. Together, they form the standard enterprise stack for high-throughput, self-hosted LLM clusters.
+      </p>
+      <div class="stack-diagram">
+        <div class="stack-node app">Applications</div>
+        <div class="stack-arrow">→</div>
+        <div class="stack-node litellm">LiteLLM<br><span style="font-size: 10px; color: var(--text-muted)">Auth & Provider Abstraction</span></div>
+        <div class="stack-arrow">→</div>
+        <div class="stack-node mesh">ollama-mesh<br><span style="font-size: 10px; opacity: 0.85">GPU Scheduling & VRAM Routing</span></div>
+        <div class="stack-arrow">→</div>
+        <div class="stack-node runtime">Runtimes<br><span style="font-size: 10px; opacity: 0.85">Ollama, vLLM, TGI</span></div>
+        <div class="stack-arrow">→</div>
+        <div class="stack-node runtime" style="border-color: var(--accent); color: var(--text);">GPUs<br><span style="font-size: 10px; color: var(--text-muted)">On-Premise / Private Cloud</span></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -761,6 +1148,107 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
     });
   });
   var y = document.getElementById("year"); if (y) y.textContent = new Date().getFullYear();
+
+  // Routing Console Simulation
+  var scenarios = [
+    {
+      model: "deepseek-r1:7b",
+      statVram: "16.0 GB",
+      statLatency: "18.4s",
+      nodes: [
+        { model: "deepseek-r1:7b", vram: "8.2GB/80GB", queue: "Queue: 0", state: "warm", active: true },
+        { model: "llama3.1:8b", vram: "9.4GB/80GB", queue: "Queue: 0", state: "warm", active: false },
+        { model: "idle", vram: "0GB/80GB", queue: "Queue: 0", state: "cold", active: false }
+      ],
+      decision: "route → gpu-01 · <span style='color:var(--accent2)'>0ms weight load</span> (already warm)",
+      reasoning: "Warm hit detected on gpu-01. Scheduled request directly to warm VRAM, eliminating the 18.4s cold-start loading delay."
+    },
+    {
+      model: "llama3.1:8b",
+      statVram: "32.0 GB",
+      statLatency: "30.5s",
+      nodes: [
+        { model: "deepseek-r1:7b", vram: "8.2GB/80GB", queue: "Queue: 0", state: "warm", active: false },
+        { model: "llama3.1:8b", vram: "9.4GB/80GB", queue: "Queue: 0", state: "warm", active: true },
+        { model: "idle", vram: "0GB/80GB", queue: "Queue: 0", state: "cold", active: false }
+      ],
+      decision: "route → gpu-02 · <span style='color:var(--accent2)'>0ms weight load</span> (already warm)",
+      reasoning: "Warm hit detected on gpu-02. Scheduled to resident VRAM. Eliminated 12.1s load delay."
+    },
+    {
+      model: "qwen2.5-coder:14b",
+      statVram: "32.0 GB",
+      statLatency: "53.0s",
+      nodes: [
+        { model: "deepseek-r1:7b", vram: "8.2GB/80GB", queue: "Queue: 0", state: "warm", active: false },
+        { model: "llama3.1:8b", vram: "9.4GB/80GB", queue: "Queue: 0", state: "warm", active: false },
+        { model: "qwen2.5-coder:14b", vram: "16.5GB/80GB [loading]", queue: "Queue: 1", state: "cold", active: true }
+      ],
+      decision: "route → gpu-03 <span style='color:var(--accent)'>(via SPCS Protocol)</span>",
+      reasoning: "Cold request. Activated Speculative Prefix-Cached Swapping (SPCS). Streaming from warm draft model (qwen2.5:7b) [0ms wait] while loading target weights in background. Seamless mid-stream swap scheduled."
+    },
+    {
+      model: "deepseek-r1:70b",
+      statVram: "32.0 GB",
+      statLatency: "53.0s",
+      nodes: [
+        { model: "deepseek-r1:7b", vram: "80GB/80GB", queue: "Queue: 5 [saturated]", state: "warm", active: false },
+        { model: "llama3.1:8b", vram: "80GB/80GB", queue: "Queue: 6 [saturated]", state: "warm", active: false },
+        { model: "qwen2.5-coder:14b", vram: "80GB/80GB", queue: "Queue: 4 [saturated]", state: "warm", active: false }
+      ],
+      decision: "overflow → openai/gpt-4o-mini <span style='color:var(--accent3)'>(cost: $0.0015)</span>",
+      reasoning: "All local GPUs saturated (queue depths > 4). Activating Cost-aware cloud overflow to prevent request failure. Local scheduling resumes automatically as queues clear."
+    }
+  ];
+
+  var scenarioIdx = 0;
+  function cycleScenarios() {
+    var s = scenarios[scenarioIdx];
+    var reqModelEl = document.getElementById("reqModel");
+    var statVramEl = document.getElementById("statVram");
+    var statLatencyEl = document.getElementById("statLatency");
+    var decisionTextEl = document.getElementById("decisionText");
+    var decisionReasoningEl = document.getElementById("decisionReasoning");
+
+    if (reqModelEl) reqModelEl.textContent = '"' + s.model + '"';
+    if (statVramEl) statVramEl.textContent = s.statVram;
+    if (statLatencyEl) statLatencyEl.textContent = s.statLatency;
+    if (decisionTextEl) decisionTextEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;margin-right:8px;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>' + s.decision;
+    if (decisionReasoningEl) decisionReasoningEl.innerHTML = s.reasoning;
+
+    for (var i = 1; i <= 3; i++) {
+      var nodeEl = document.getElementById("node" + i);
+      var nodeData = s.nodes[i - 1];
+      if (!nodeEl || !nodeData) continue;
+      
+      var mEl = document.getElementById("node" + i + "Model");
+      var vEl = document.getElementById("node" + i + "Vram");
+      var qEl = document.getElementById("node" + i + "Queue");
+      var sEl = document.getElementById("node" + i + "State");
+
+      if (mEl) mEl.textContent = nodeData.model;
+      if (vEl) vEl.textContent = nodeData.vram;
+      if (qEl) qEl.textContent = nodeData.queue;
+      if (sEl) {
+        sEl.textContent = nodeData.state;
+        sEl.className = "state " + nodeData.state;
+      }
+      
+      nodeEl.className = "node" + (nodeData.active ? " warm" : "") + (nodeData.state === "cold" ? "" : "");
+      if (nodeData.active) {
+        nodeEl.style.borderColor = nodeData.state === "warm" ? "var(--accent2)" : "var(--accent)";
+      } else {
+        nodeEl.style.borderColor = "var(--border-subtle)";
+      }
+    }
+    
+    scenarioIdx = (scenarioIdx + 1) % scenarios.length;
+  }
+  
+  if (document.getElementById("node1")) {
+    setInterval(cycleScenarios, 4500);
+    cycleScenarios(); // Initial run
+  }
 })();
 </script>
 </body>

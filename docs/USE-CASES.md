@@ -1,6 +1,6 @@
 # Who is ollama-mesh for?
 
-The ops layer Ollama doesn't ship: auth, load balancing, cloud failover, and a cost dashboard - in one Go binary.
+The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- in one Go binary.
 
 You point your apps at ollama-mesh instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible `/v1` endpoints), so existing clients work unchanged.
 
@@ -10,7 +10,7 @@ You point your apps at ollama-mesh instead of Ollama directly. Everything else s
 
 ### 1. "Ollama is busy" kills your app
 
-Ollama has no queue management and no failover. When your GPU is saturated or the box is down, requests fail or hang. ollama-mesh overflows those requests to OpenAI or Anthropic automatically - your client never sees an error, and you only pay for cloud when local can't serve.
+Ollama has no queue management and no failover. When your GPU is saturated or the box is down, requests fail or hang. ollama-mesh routes those requests to a cost-aware cloud overflow target (like OpenAI or Anthropic) automatically -- your client never sees an error, and you only pay for cloud when local can't serve.
 
 **Who feels this:** anyone running an app, agent, or team workload against a single Ollama box.
 
@@ -30,31 +30,41 @@ Vanilla Ollama has no auth, no rate limits, no metrics, no request log. Anyone o
 
 ## Audience, in order of fit
 
-1. **Self-hosters running one Ollama box + apps that hit it.** You get cloud overflow, API keys, and a dashboard. Start here - one node plus one cloud key is a complete setup.
+1. **Self-hosters running one Ollama box + apps that hit it.** You get cost-aware cloud overflow, API keys, and a dashboard. Start here - one node plus one cloud key is a complete setup.
 2. **Platform engineers at 50-500 person companies.** On-prem GPUs, team access control, cost visibility, Prometheus/Grafana integration for the existing monitoring stack.
 3. **Multi-GPU homelabs.** Warm-first routing across nodes is built exactly for you.
 
-**Who should NOT use this:** a single user chatting with one Ollama box occasionally. You have no concurrency problem and no bill to cut - you don't need a proxy.
+**Who should NOT use this:** a single user chatting with one Ollama box occasionally. You have no concurrency problem and no bill to cut - you don't need an orchestration or scheduling layer.
 
 ---
 
-## "Isn't this just LiteLLM?"
+## The Architecture Trade-offs: ollama-mesh vs. Plain Ollama + nginx
 
-Same category (LLM gateway), opposite center of gravity:
+Platform teams often attempt to orchestrate local GPU nodes using generic network load balancers (like nginx or HAProxy). The table below details why a generic proxy falls short compared to a hardware-aware scheduling layer.
 
-| | LiteLLM | ollama-mesh |
-|---|---------|-------------|
-| Core competency | 100+ cloud providers, unified API | Local Ollama nodes as first-class citizens |
-| Local awareness | Ollama is just another URL - no idea what's loaded in VRAM | Polls `/api/ps` every 2s, routes to the node with the model already warm |
-| Direction of fallback | Cloud → cloud (provider A fails, try B) | Local → cloud (free GPU first, paid API only when forced) |
-| Runtime | Python; Redis + Postgres for full features | Single static Go binary, zero dependencies |
-| Built for | Teams all-in on cloud APIs | Teams with local GPUs trying to cut cloud bills |
+| Feature | Plain Ollama + nginx | ollama-mesh |
+|---|---|---|
+| **Routing Intelligence** | Round-robin or least-connections (model-blind; causes constant cold-starts) | **Hardware-aware (routes to the node that already has the model warm in VRAM)** |
+| **Failover Strategy** | Static failover or raw connection drop | **Cost-aware cloud overflow (retains 100% uptime with cloud fallback only when forced)** |
+| **High Availability** | Manual setup (complex nginx configurations and scripts) | **Active-Active stateless HA (cluster state synchronized natively across peers)** |
+| **Multi-Model VRAM Placement** | Handled manually per host | **Dynamic VRAM-fit placement based on active node capacity** |
+| **Enterprise Controls** | No native auth, quotas, or rate limiting | **Per-key auth, token-bucket rate limits, and monthly hard quotas** |
+| **Financial Visibility** | None (separate billing auditing required) | **Real-time savings dashboard tracked by actual token counts** |
+| **Deployment Footprint** | External load balancers, configs, and scripts | **Single static Go binary; zero external dependencies** |
 
-One sentence: **LiteLLM treats local as a dumb endpoint; ollama-mesh treats local as the preferred resource and cloud as the overflow valve.**
+---
 
-vs. nginx upstream config: no auth, no model awareness (cold-start roulette), no dashboard, no cost tracking.
+## Where does LiteLLM fit?
 
-vs. doing nothing: fine until the first time two requests collide or the box goes down mid-demo.
+LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting. 
+
+Rather than a competitor, **ollama-mesh operates as a complementary layer beneath LiteLLM**. 
+
+When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while **ollama-mesh slots in directly below it as the physical scheduling and GPU orchestration layer**. 
+
+This stack offers the best of both worlds:
+1. **LiteLLM (Gateway)**: Manages developer authentication, user quotas, and application-level routing.
+2. **ollama-mesh (Scheduler)**: Interacts directly with local GPU nodes, tracking `/api/ps` model warm-residency, managing queue depths, and executing cost-aware cloud overflow.
 
 ---
 

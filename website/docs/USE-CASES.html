@@ -224,12 +224,12 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Who is ollama-mesh for?</span></div>
     <article class="doc-content">
       <h1 id="who-is-ollama-mesh-for">Who is ollama-mesh for?<a class="anchor" href="#who-is-ollama-mesh-for" aria-label="Link to section">#</a></h1>
-<p>The ops layer Ollama doesn't ship: auth, load balancing, cloud failover, and a cost dashboard - in one Go binary.</p>
+<p>The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- in one Go binary.</p>
 <p>You point your apps at ollama-mesh instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible <code>/v1</code> endpoints), so existing clients work unchanged.</p>
 <hr/>
 <h2 id="the-three-problems-it-solves">The three problems it solves<a class="anchor" href="#the-three-problems-it-solves" aria-label="Link to section">#</a></h2>
 <h3 id="1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app<a class="anchor" href="#1-ollama-is-busy-kills-your-app" aria-label="Link to section">#</a></h3>
-<p>Ollama has no queue management and no failover. When your GPU is saturated or the box is down, requests fail or hang. ollama-mesh overflows those requests to OpenAI or Anthropic automatically - your client never sees an error, and you only pay for cloud when local can't serve.</p>
+<p>Ollama has no queue management and no failover. When your GPU is saturated or the box is down, requests fail or hang. ollama-mesh routes those requests to a cost-aware cloud overflow target (like OpenAI or Anthropic) automatically -- your client never sees an error, and you only pay for cloud when local can't serve.</p>
 <p><strong>Who feels this:</strong> anyone running an app, agent, or team workload against a single Ollama box.</p>
 <h3 id="2-cold-starts-waste-30-seconds-per-model-load">2. Cold starts waste 30 seconds per model load<a class="anchor" href="#2-cold-starts-waste-30-seconds-per-model-load" aria-label="Link to section">#</a></h3>
 <p>With multiple Ollama nodes, a naive load balancer (nginx round-robin) sends requests to nodes that don't have the model loaded, triggering a cold load from disk every time. ollama-mesh polls <code>/api/ps</code> on every node and routes to the one that already has the model warm in VRAM.</p>
@@ -239,22 +239,28 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p><strong>Who feels this:</strong> the platform engineer told "make AI work for the whole team" with on-prem GPUs and an OpenAI bill to justify.</p>
 <hr/>
 <h2 id="audience-in-order-of-fit">Audience, in order of fit<a class="anchor" href="#audience-in-order-of-fit" aria-label="Link to section">#</a></h2>
-<ol><li><strong>Self-hosters running one Ollama box + apps that hit it.</strong> You get cloud overflow, API keys, and a dashboard. Start here - one node plus one cloud key is a complete setup.</li><li><strong>Platform engineers at 50-500 person companies.</strong> On-prem GPUs, team access control, cost visibility, Prometheus/Grafana integration for the existing monitoring stack.</li><li><strong>Multi-GPU homelabs.</strong> Warm-first routing across nodes is built exactly for you.</li></ol>
-<p><strong>Who should NOT use this:</strong> a single user chatting with one Ollama box occasionally. You have no concurrency problem and no bill to cut - you don't need a proxy.</p>
+<ol><li><strong>Self-hosters running one Ollama box + apps that hit it.</strong> You get cost-aware cloud overflow, API keys, and a dashboard. Start here - one node plus one cloud key is a complete setup.</li><li><strong>Platform engineers at 50-500 person companies.</strong> On-prem GPUs, team access control, cost visibility, Prometheus/Grafana integration for the existing monitoring stack.</li><li><strong>Multi-GPU homelabs.</strong> Warm-first routing across nodes is built exactly for you.</li></ol>
+<p><strong>Who should NOT use this:</strong> a single user chatting with one Ollama box occasionally. You have no concurrency problem and no bill to cut - you don't need an orchestration or scheduling layer.</p>
 <hr/>
-<h2 id="isnt-this-just-litellm">"Isn't this just LiteLLM?"<a class="anchor" href="#isnt-this-just-litellm" aria-label="Link to section">#</a></h2>
-<p>Same category (LLM gateway), opposite center of gravity:</p>
+<h2 id="the-architecture-trade-offs-ollama-mesh-vs-plain-ollama-nginx">The Architecture Trade-offs: ollama-mesh vs. Plain Ollama + nginx<a class="anchor" href="#the-architecture-trade-offs-ollama-mesh-vs-plain-ollama-nginx" aria-label="Link to section">#</a></h2>
+<p>Platform teams often attempt to orchestrate local GPU nodes using generic network load balancers (like nginx or HAProxy). The table below details why a generic proxy falls short compared to a hardware-aware scheduling layer.</p>
 <div class="table-scroll"><table>
-<thead><tr><th></th><th>LiteLLM</th><th>ollama-mesh</th></tr></thead>
-<tbody><tr><td>Core competency</td><td>100+ cloud providers, unified API</td><td>Local Ollama nodes as first-class citizens</td></tr>
-<tr><td>Local awareness</td><td>Ollama is just another URL - no idea what's loaded in VRAM</td><td>Polls <code>/api/ps</code> every 2s, routes to the node with the model already warm</td></tr>
-<tr><td>Direction of fallback</td><td>Cloud → cloud (provider A fails, try B)</td><td>Local → cloud (free GPU first, paid API only when forced)</td></tr>
-<tr><td>Runtime</td><td>Python; Redis + Postgres for full features</td><td>Single static Go binary, zero dependencies</td></tr>
-<tr><td>Built for</td><td>Teams all-in on cloud APIs</td><td>Teams with local GPUs trying to cut cloud bills</td></tr></tbody>
+<thead><tr><th>Feature</th><th>Plain Ollama + nginx</th><th>ollama-mesh</th></tr></thead>
+<tbody><tr><td><strong>Routing Intelligence</strong></td><td>Round-robin or least-connections (model-blind; causes constant cold-starts)</td><td><strong>Hardware-aware (routes to the node that already has the model warm in VRAM)</strong></td></tr>
+<tr><td><strong>Failover Strategy</strong></td><td>Static failover or raw connection drop</td><td><strong>Cost-aware cloud overflow (retains 100% uptime with cloud fallback only when forced)</strong></td></tr>
+<tr><td><strong>High Availability</strong></td><td>Manual setup (complex nginx configurations and scripts)</td><td><strong>Active-Active stateless HA (cluster state synchronized natively across peers)</strong></td></tr>
+<tr><td><strong>Multi-Model VRAM Placement</strong></td><td>Handled manually per host</td><td><strong>Dynamic VRAM-fit placement based on active node capacity</strong></td></tr>
+<tr><td><strong>Enterprise Controls</strong></td><td>No native auth, quotas, or rate limiting</td><td><strong>Per-key auth, token-bucket rate limits, and monthly hard quotas</strong></td></tr>
+<tr><td><strong>Financial Visibility</strong></td><td>None (separate billing auditing required)</td><td><strong>Real-time savings dashboard tracked by actual token counts</strong></td></tr>
+<tr><td><strong>Deployment Footprint</strong></td><td>External load balancers, configs, and scripts</td><td><strong>Single static Go binary; zero external dependencies</strong></td></tr></tbody>
 </table></div>
-<p>One sentence: <strong>LiteLLM treats local as a dumb endpoint; ollama-mesh treats local as the preferred resource and cloud as the overflow valve.</strong></p>
-<p>vs. nginx upstream config: no auth, no model awareness (cold-start roulette), no dashboard, no cost tracking.</p>
-<p>vs. doing nothing: fine until the first time two requests collide or the box goes down mid-demo.</p>
+<hr/>
+<h2 id="where-does-litellm-fit">Where does LiteLLM fit?<a class="anchor" href="#where-does-litellm-fit" aria-label="Link to section">#</a></h2>
+<p>LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting. </p>
+<p>Rather than a competitor, <strong>ollama-mesh operates as a complementary layer beneath LiteLLM</strong>. </p>
+<p>When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while <strong>ollama-mesh slots in directly below it as the physical scheduling and GPU orchestration layer</strong>. </p>
+<p>This stack offers the best of both worlds:</p>
+<ol><li><strong>LiteLLM (Gateway)</strong>: Manages developer authentication, user quotas, and application-level routing.</li><li><strong>ollama-mesh (Scheduler)</strong>: Interacts directly with local GPU nodes, tracking <code>/api/ps</code> model warm-residency, managing queue depths, and executing cost-aware cloud overflow.</li></ol>
 <hr/>
 <h2 id="honest-limitations-current-state">Honest limitations (current state)<a class="anchor" href="#honest-limitations-current-state" aria-label="Link to section">#</a></h2>
 <ul><li>GPU metrics (VRAM/temperature/power) come from <code>nvidia-smi</code> on the mesh host only. Remote node GPUs are not visible yet - per-node telemetry is on the roadmap. Warm-model detection works for all nodes regardless (it uses Ollama's own <code>/api/ps</code>).</li><li>Analytics and the request log are in-memory and reset on restart. Prometheus metrics and the audit log file persist.</li><li>Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "—", never an estimate.</li></ul>
@@ -267,7 +273,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#the-three-problems-it-solves">The three problems it solves</a></li><li class="lvl-3"><a href="#1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app</a></li><li class="lvl-3"><a href="#2-cold-starts-waste-30-seconds-per-model-load">2. Cold starts waste 30 seconds per model load</a></li><li class="lvl-3"><a href="#3-no-visibility-no-control">3. No visibility, no control</a></li><li class="lvl-2"><a href="#audience-in-order-of-fit">Audience, in order of fit</a></li><li class="lvl-2"><a href="#isnt-this-just-litellm">"Isn't this just LiteLLM?"</a></li><li class="lvl-2"><a href="#honest-limitations-current-state">Honest limitations (current state)</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#the-three-problems-it-solves">The three problems it solves</a></li><li class="lvl-3"><a href="#1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app</a></li><li class="lvl-3"><a href="#2-cold-starts-waste-30-seconds-per-model-load">2. Cold starts waste 30 seconds per model load</a></li><li class="lvl-3"><a href="#3-no-visibility-no-control">3. No visibility, no control</a></li><li class="lvl-2"><a href="#audience-in-order-of-fit">Audience, in order of fit</a></li><li class="lvl-2"><a href="#the-architecture-trade-offs-ollama-mesh-vs-plain-ollama-nginx">The Architecture Trade-offs: ollama-mesh vs. Plain Ollama + nginx</a></li><li class="lvl-2"><a href="#where-does-litellm-fit">Where does LiteLLM fit?</a></li><li class="lvl-2"><a href="#honest-limitations-current-state">Honest limitations (current state)</a></li></ul>
   </aside>
 </div>
 

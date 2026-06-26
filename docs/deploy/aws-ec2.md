@@ -88,11 +88,11 @@ sudo systemctl daemon-reload && sudo systemctl enable --now ollama-mesh
 
 ## 3. Security group
 
-- **Proxy `:11434`** — open only to your app servers / SG, never `0.0.0.0/0`.
+- **Endpoint `:11434`** — open only to your app servers / SG, never `0.0.0.0/0`.
 - **Admin `:8080`** — keep on `127.0.0.1` and reach it via SSH tunnel
   (`ssh -L 8080:localhost:8080 ...`), or a private SG. The admin token is sensitive.
 - **Node `:11434`** — open only from the mesh box's SG, not the internet.
-- Terminate TLS at an ALB or nginx in front of the proxy; the binary speaks plain HTTP.
+- Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.
 
 ## 4. Verify
 

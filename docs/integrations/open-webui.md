@@ -1,6 +1,6 @@
 # Open WebUI
 
-Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes, automatic cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same Ollama API calls it always has; the mesh handles which node actually runs the model.
+Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same Ollama API calls it always has; the mesh handles which node actually runs the model.
 
 ---
 

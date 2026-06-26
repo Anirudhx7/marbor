@@ -141,7 +141,7 @@ After break-even, every locally-served token is pure cost deflection. The hardwa
 
 ### Data Sources
 
-1. **Local token counts** — parsed from the real upstream Ollama response, not estimated. The proxy reads `eval_count` and `prompt_eval_count` from the final NDJSON object (Ollama native) or `usage.total_tokens` from the terminal SSE chunk (OpenAI-compatible).
+1. **Local token counts** — parsed from the real upstream Ollama response, not estimated. ollama-mesh reads `eval_count` and `prompt_eval_count` from the final NDJSON object (Ollama native) or `usage.total_tokens` from the terminal SSE chunk (OpenAI-compatible).
 
 2. **Cloud token counts** — parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.
 
@@ -151,7 +151,7 @@ After break-even, every locally-served token is pure cost deflection. The hardwa
 
 ### What "—" Means
 
-If requests were served but no token counts could be parsed from any response — for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk — the API returns `null` and the dashboard renders "—". The proxy **never** substitutes an estimated or random number for missing token data.
+If requests were served but no token counts could be parsed from any response — for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk — the API returns `null` and the dashboard renders "—". ollama-mesh **never** substitutes an estimated or random number for missing token data.
 
 ### Counter Lifecycle
 
@@ -210,7 +210,7 @@ cloud_providers:
 
 ## Audit Trail for Financial Verification
 
-Every proxied request is recorded in the JSON-lines audit log (when enabled) with:
+Every routed request is recorded in the JSON-lines audit log (when enabled) with:
 
 - Request ID (crypto/rand generated)
 - Timestamp
