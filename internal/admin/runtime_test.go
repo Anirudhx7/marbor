@@ -17,7 +17,7 @@ func TestHandleNodes_RuntimeField_VllmNode(t *testing.T) {
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/nodes", nil)
-	req.Header.Set("Authorization", "Bearer "+s.adminToken)
+	req.Header.Set("Authorization", "Bearer "+"")
 	rec := httptest.NewRecorder()
 	s.handleNodes(rec, req)
 
@@ -51,7 +51,7 @@ func TestHandleNodes_RuntimeField_DefaultOllama(t *testing.T) {
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/nodes", nil)
-	req.Header.Set("Authorization", "Bearer "+s.adminToken)
+	req.Header.Set("Authorization", "Bearer "+"")
 	rec := httptest.NewRecorder()
 	s.handleNodes(rec, req)
 

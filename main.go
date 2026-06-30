@@ -54,7 +54,6 @@ func printFirstRunBanner(fr *config.FirstRunResult, cfgPath string, saved bool) 
 	fmt.Println()
 	fmt.Println("  Dashboard:           http://localhost:8080")
 	fmt.Println("  Dashboard login:     see startup log for admin username and password")
-	fmt.Println("  Legacy API token:    " + fr.AdminToken + "  (for scripts/curl; see config.yaml)")
 	fmt.Println()
 	if saved {
 		fmt.Printf("  Config saved to %s - your key and token are stable across restarts.\n", cfgPath)
@@ -244,6 +243,24 @@ func main() {
 				r.DrainNode(name)
 			}
 		}
+	}
+
+	// Load persisted routing rules (fixes audit finding #30).
+	if rules, err := st.AllRoutingRules(); err == nil {
+		for _, rule := range rules {
+			r.AddRule(config.RoutingRule{
+				ID:         rule.ID,
+				Condition:  rule.Condition,
+				TargetNode: rule.Target,
+				Priority:   rule.Priority,
+				Enabled:    rule.Enabled,
+			})
+		}
+		if len(rules) > 0 {
+			log.Printf("store: loaded %d routing rule(s)", len(rules))
+		}
+	} else {
+		log.Printf("WARNING: could not load routing rules from store: %v", err)
 	}
 
 	// Periodically flush usage counters so a restart preserves quota/usage

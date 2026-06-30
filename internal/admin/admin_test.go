@@ -79,7 +79,6 @@ func TestHandleSavings(t *testing.T) {
 	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil)
-	req.Header.Set("Authorization", "Bearer "+s.adminToken)
 	rec := httptest.NewRecorder()
 
 	s.handleSavings(rec, req)
@@ -299,23 +298,23 @@ func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 	}
 }
 
-// TestNewServerGeneratesRandomAdminToken verifies that a server built from an
-// empty config (no admin_token, no auth keys) gets a non-empty, randomly
-// generated token instead of the old guessable "admin" literal.
-func TestNewServerGeneratesRandomAdminToken(t *testing.T) {
+// TestAdminTokenEnablesDemoMode verifies that AdminToken() activates demo mode
+// so that the returned "demo-session" literal is accepted by adminAuth.
+func TestAdminTokenEnablesDemoMode(t *testing.T) {
 	s := newTestServer()
 	tok := s.AdminToken()
-	if tok == "" {
-		t.Fatal("AdminToken is empty; expected a generated token")
+	if tok != "demo-session" {
+		t.Fatalf("AdminToken() = %q, want %q", tok, "demo-session")
 	}
-	if tok == "admin" {
-		t.Fatal(`AdminToken is the guessable literal "admin"; expected a random token`)
+	if !s.demoMode {
+		t.Error("AdminToken() did not enable demoMode on the server")
 	}
-	if len(tok) < 32 {
-		t.Errorf("AdminToken length = %d, want >= 32 (32 random bytes hex-encoded)", len(tok))
-	}
-	// A second server must get a different token (proves randomness, not a constant).
-	if other := newTestServer().AdminToken(); other == tok {
-		t.Error("two servers produced identical admin tokens; expected random per-server tokens")
+	// Verify that the token actually passes adminAuth by hitting a real endpoint.
+	req := httptest.NewRequest(http.MethodGet, "/admin/v1/keys", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("admin endpoint status = %d, want 200 (demo-session must be accepted)", rec.Code)
 	}
 }

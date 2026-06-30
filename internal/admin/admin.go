@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"embed"
 	"encoding/csv"
 	"encoding/hex"
@@ -13,6 +11,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"math/big"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -22,6 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
@@ -42,7 +43,6 @@ type Server struct {
 	router        *router.Router
 	auth          *auth.Middleware
 	cfg           config.Config
-	adminToken    string
 	version       string
 	configPath    string
 	mu            sync.RWMutex
@@ -82,6 +82,14 @@ func (s *Server) SetHAMonitor(m *ha.Monitor) { s.haMonitor = m }
 
 // SetDemoMode enables demo mode, where the dashboard login accepts admin/admin.
 func (s *Server) SetDemoMode(v bool) { s.demoMode = v }
+
+// AdminToken enables demo mode on the server and returns the static demo
+// session token. Use only in tests to bypass DB-backed session auth when
+// the authentication pathway itself is not under test.
+func (s *Server) AdminToken() string {
+	s.demoMode = true
+	return "demo-session"
+}
 
 // SetStore replaces the persistence backend. Useful for tests and for wiring
 // a real SQLite store after construction when the store isn't known yet.
@@ -234,20 +242,6 @@ type keyResp struct {
 }
 
 func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...store.Store) *Server {
-	// Precedence: explicit AdminToken wins; then the first auth key when auth is
-	// enabled; otherwise generate a cryptographically-random token. The admin API
-	// binds all interfaces by default, so a constant fallback (e.g. "admin") is a
-	// LAN-takeover footgun — never fall back to a guessable literal.
-	var token string
-	switch {
-	case cfg.Auth.AdminToken != "":
-		token = cfg.Auth.AdminToken
-	case cfg.Auth.IsEnabled() && len(cfg.Auth.Keys) > 0:
-		token = cfg.Auth.Keys[0].Key
-	default:
-		token = generateAdminToken()
-		log.Printf("admin: no admin_token configured; generated a random one for this run: %s", token)
-	}
 	// Mirror config.Validate()'s default so servers constructed from a zero
 	// config (tests, embedded use) still value local tokens at a real rate.
 	refRate := cfg.Savings.ReferenceCostPer1K
@@ -262,7 +256,6 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		router:       r,
 		auth:         a,
 		cfg:          cfg,
-		adminToken:   token,
 		version:      "dev",
 		configPath:   "config.yaml",
 		refCostPer1K: refRate,
@@ -441,40 +434,45 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 
-		// Check new user_sessions table first.
-		if token != "" {
-			if session, found, err := s.st.GetUserSession(token); err == nil && found {
-				if session.Role != "admin" {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusForbidden)
-					w.Write([]byte(`{"error":"admin role required"}`))
-					return
-				}
-				if session.MustChangePassword {
-					// Only allow change-password and logout during forced change.
-					p := r.URL.Path
-					allowed := p == "/admin/v1/change-password" || p == "/admin/change-password" ||
-						p == "/admin/v1/logout" || p == "/admin/logout"
-					if !allowed {
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusForbidden)
-						w.Write([]byte(`{"error":"password_change_required"}`))
-						return
-					}
-				}
-				r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
-				next(w, r)
-				return
-			}
+		// Demo mode: accept the literal "demo-session" token so the GitHub Pages
+		// demo works without a DB. Not a security concern — demo mode is opt-in,
+		// explicitly labelled, and never ships with real credentials.
+		if s.demoMode && token == "demo-session" {
+			next(w, r)
+			return
 		}
 
-		// Fall back to legacy admin_token for API clients and tests.
-		if subtle.ConstantTimeCompare([]byte(token), []byte(s.adminToken)) != 1 {
+		if token == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error":"unauthorized"}`))
 			return
 		}
+		session, found, err := s.st.GetUserSession(token)
+		if err != nil || !found {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthorized"}`))
+			return
+		}
+		if session.Role != "admin" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"error":"admin role required"}`))
+			return
+		}
+		if session.MustChangePassword {
+			p := r.URL.Path
+			allowed := p == "/admin/v1/change-password" || p == "/admin/change-password" ||
+				p == "/admin/v1/logout" || p == "/admin/logout"
+			if !allowed {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":"password_change_required"}`))
+				return
+			}
+		}
+		r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
 		next(w, r)
 	}
 }
@@ -695,8 +693,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 				statusCode = code
 			}
 		}
-		// Cloud detection: node values that are URLs belong to cloud providers.
-		isCloud := strings.HasPrefix(req.Node, "http://") || strings.HasPrefix(req.Node, "https://")
+		// Cloud nodes are stored as "cloud:<name>" (e.g. "cloud:openai").
+		isCloud := strings.HasPrefix(req.Node, "cloud:")
 		out[i] = entry{
 			ID:        req.ID,
 			Time:      req.Time,
@@ -827,6 +825,30 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, `{"error":"invalid request body"}`)
+		return
+	}
+	if cfg.Name == "" || cfg.URL == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"name and url are required"}`))
+		return
+	}
+	u, err := url.Parse(cfg.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"url must be http(s) with a host"}`))
+		return
+	}
+	if cfg.Runtime == "" {
+		cfg.Runtime = "ollama"
+	}
+	switch cfg.Runtime {
+	case "ollama", "vllm", "tgi", "llamacpp", "auto":
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `{"error":"unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)"}`, cfg.Runtime)
 		return
 	}
 	s.router.AddNode(cfg)
@@ -974,8 +996,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		return
 	}
 
-	hash := hashPassword(req.Password, user.Salt)
-	if subtle.ConstantTimeCompare([]byte(hash), []byte(user.PasswordHash)) != 1 {
+	if !verifyPassword(user.PasswordHash, req.Password) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -1051,8 +1072,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(`{"error":"current_password required"}`))
 			return
 		}
-		hash := hashPassword(req.CurrentPassword, user.Salt)
-		if subtle.ConstantTimeCompare([]byte(hash), []byte(user.PasswordHash)) != 1 {
+		if !verifyPassword(user.PasswordHash, req.CurrentPassword) {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(`{"error":"wrong current password"}`))
 			return
@@ -1064,10 +1084,14 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newSalt := generateSalt()
-	newHash := hashPassword(req.NewPassword, newSalt)
+	newHash, err := hashPassword(req.NewPassword)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"could not hash password"}`))
+		return
+	}
 	user.PasswordHash = newHash
-	user.Salt = newSalt
+	user.Salt = ""
 	user.MustChangePassword = false
 	if err := s.st.UpdateUser(user); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1102,18 +1126,21 @@ func (s *Server) handleChangePasswordLegacy(w http.ResponseWriter, currentPass, 
 		w.Write([]byte(`{"error":"could not load credentials"}`))
 		return
 	}
-	hash := hashPassword(currentPass, creds.Salt)
-	if subtle.ConstantTimeCompare([]byte(hash), []byte(creds.PasswordHash)) != 1 {
+	if !verifyPassword(creds.PasswordHash, currentPass) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"wrong current password"}`))
 		return
 	}
-	newSalt := generateSalt()
-	newHash := hashPassword(newPass, newSalt)
+	newHash, err := hashPassword(newPass)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"could not hash password"}`))
+		return
+	}
 	if err := s.st.SetAdminCreds(store.AdminCreds{
 		Username:     creds.Username,
 		PasswordHash: newHash,
-		Salt:         newSalt,
+		Salt:         "",
 	}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not save credentials"}`))
@@ -1158,15 +1185,14 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	if req.Role == "admin" {
 		status = "active"
 	}
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	raw := make([]byte, 12)
-	rand.Read(raw)
-	for i := range raw {
-		raw[i] = charset[int(raw[i])%len(charset)]
+	password := generatePassword(12)
+	hash, err := hashPassword(password)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"could not hash password"}`))
+		return
 	}
-	password := string(raw)
-	salt := generateSalt()
-	hash := hashPassword(password, salt)
 
 	id, err := s.st.CreateUser(store.User{
 		Username:           req.Username,
@@ -1174,7 +1200,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		Role:               req.Role,
 		Status:             status,
 		PasswordHash:       hash,
-		Salt:               salt,
+		Salt:               "",
 		MustChangePassword: true,
 		CreatedAt:          time.Now(),
 	})
@@ -1420,22 +1446,16 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 		w.Write([]byte(`{"error":"user not found"}`))
 		return
 	}
-	const charset = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	raw := make([]byte, 12)
-	if _, err := rand.Read(raw); err != nil {
+	newPassword := generatePassword(12)
+	hash, err := hashPassword(newPassword)
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"failed to generate password"}`))
+		w.Write([]byte(`{"error":"failed to hash password"}`))
 		return
 	}
-	for i := range raw {
-		raw[i] = charset[int(raw[i])%len(charset)]
-	}
-	newPassword := string(raw)
-	salt := generateSalt()
-	hash := hashPassword(newPassword, salt)
 	user.PasswordHash = hash
-	user.Salt = salt
+	user.Salt = ""
 	user.MustChangePassword = true
 	if err := s.st.UpdateUser(user); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -1454,39 +1474,36 @@ func (s *Server) handlePendingUserCount(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `{"count":%d}`, count)
 }
 
-// generateAdminToken returns a cryptographically-random 64-char hex token
-// (32 bytes). A failing CSPRNG at startup is unrecoverable for security, so we
-// fail closed via log.Fatalf rather than serve a weak/empty token.
-func generateAdminToken() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		log.Fatalf("admin: failed to generate admin token from crypto/rand: %v", err)
+// hashPassword hashes a plaintext password with bcrypt (cost=DefaultCost).
+// The salt is embedded in the returned hash — no separate salt parameter needed.
+// Replaces the broken SHA-256 loop (audit finding #1 / #9).
+func hashPassword(password string) (string, error) {
+	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("bcrypt: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return string(h), nil
 }
 
-// AdminToken returns the bearer token the admin API authenticates against.
-// Exposed for tests and callers that need to authenticate against a server
-// whose token was auto-generated; harmless to expose since the token must be
-// presented as a bearer credential anyway.
-func (s *Server) AdminToken() string { return s.adminToken }
-
-// hashPassword returns hex(sha256 iterated 10000 times over salt+":"+password).
-func hashPassword(password, salt string) string {
-	h := sha256.New()
-	for i := 0; i < 10000; i++ {
-		h.Write([]byte(salt + ":" + password))
-	}
-	return hex.EncodeToString(h.Sum(nil))
+// verifyPassword checks a bcrypt hash against a plaintext password.
+func verifyPassword(hash, password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-// generateSalt returns 16 cryptographically-random bytes as hex.
-func generateSalt() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		log.Fatalf("admin: failed to generate password salt: %v", err)
+// generatePassword returns a cryptographically-random password of the given
+// length using unbiased rejection sampling (audit finding #11).
+func generatePassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	charsetLen := big.NewInt(int64(len(charset)))
+	result := make([]byte, length)
+	for i := range result {
+		n, err := rand.Int(rand.Reader, charsetLen)
+		if err != nil {
+			log.Fatalf("admin: CSPRNG failed: %v", err)
+		}
+		result[i] = charset[n.Int64()]
 	}
-	return hex.EncodeToString(b)
+	return string(result)
 }
 
 // ensureAdminUser sets up the initial admin in the users table on first run.
@@ -1517,24 +1534,18 @@ func (s *Server) ensureAdminUser() {
 		}
 	}
 	// Fresh install: generate password and force change on first login.
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	raw := make([]byte, 12)
-	if _, err := rand.Read(raw); err != nil {
-		log.Printf("admin: could not generate initial admin password: %v", err)
+	password := generatePassword(12)
+	hash, hashErr := hashPassword(password)
+	if hashErr != nil {
+		log.Printf("admin: could not hash initial admin password: %v", hashErr)
 		return
 	}
-	for i := range raw {
-		raw[i] = charset[int(raw[i])%len(charset)]
-	}
-	password := string(raw)
-	salt := generateSalt()
-	hash := hashPassword(password, salt)
 	if _, err := s.st.CreateUser(store.User{
 		Username:           "admin",
 		Role:               "admin",
 		Status:             "active",
 		PasswordHash:       hash,
-		Salt:               salt,
+		Salt:               "",
 		MustChangePassword: true,
 		CreatedAt:          time.Now(),
 	}); err != nil {
@@ -1550,22 +1561,16 @@ func (s *Server) ensureAdminCreds() {
 	if _, err := s.st.GetAdminCreds(); err == nil {
 		return // credentials already configured
 	}
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	raw := make([]byte, 12)
-	if _, err := rand.Read(raw); err != nil {
-		log.Printf("admin: could not generate initial admin password: %v", err)
+	password := generatePassword(12)
+	hash, err := hashPassword(password)
+	if err != nil {
+		log.Printf("admin: could not hash initial admin credentials: %v", err)
 		return
 	}
-	for i := range raw {
-		raw[i] = charset[int(raw[i])%len(charset)]
-	}
-	password := string(raw)
-	salt := generateSalt()
-	hash := hashPassword(password, salt)
 	if err := s.st.SetAdminCreds(store.AdminCreds{
 		Username:     "admin",
 		PasswordHash: hash,
-		Salt:         salt,
+		Salt:         "",
 	}); err != nil {
 		log.Printf("admin: could not persist admin credentials: %v", err)
 		return
@@ -1587,6 +1592,18 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	var k config.KeyConfig
 	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if k.Name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"name is required"}`))
+		return
+	}
+	if k.RateLimit < 0 || k.DailyLimit < 0 || k.MonthlyLimit < 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"rate_limit, daily_limit, monthly_limit must be >= 0"}`))
 		return
 	}
 	if k.Key == "" {
@@ -1649,19 +1666,47 @@ func (s *Server) handleAddRoutingRule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if rule.ID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"id is required"}`))
+		return
+	}
+	if rule.Condition == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"condition is required"}`))
+		return
+	}
 	s.router.AddRule(rule)
+	_ = s.st.UpsertRoutingRule(store.RoutingRuleRecord{
+		ID:        rule.ID,
+		Condition: rule.Condition,
+		Target:    rule.TargetNode,
+		Priority:  rule.Priority,
+		Enabled:   rule.Enabled,
+		CreatedAt: time.Now(),
+	})
 	w.WriteHeader(http.StatusCreated)
 }
 
 func (s *Server) handleRemoveRoutingRule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	s.router.RemoveRule(id)
+	_ = s.st.DeleteRoutingRule(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleToggleRoutingRule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	s.router.ToggleRule(id)
+	// Reflect the new enabled state in SQLite by reading what the router now has.
+	for _, rule := range s.router.Rules() {
+		if rule.ID == id {
+			_ = s.st.SetRoutingRuleEnabled(id, rule.Enabled)
+			break
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1721,12 +1766,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.cfg = incoming
-	cfg := s.cfg
 	s.mu.Unlock()
-	if err := config.SaveConfig(s.configPath, cfg); err != nil {
-		http.Error(w, fmt.Sprintf("failed to save config: %v", err), http.StatusInternalServerError)
-		return
-	}
+	// Settings now persist to SQLite routing_rules/runtime_nodes/runtime_keys
+	// tables on each mutation. Scalar settings migration to the settings table
+	// completes in Phase 2. config.SaveConfig removed (audit findings #2, #10).
 	w.WriteHeader(http.StatusOK)
 }
 

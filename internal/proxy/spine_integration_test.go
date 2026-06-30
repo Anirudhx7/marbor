@@ -189,7 +189,7 @@ func TestSpineIntegration(t *testing.T) {
 		}
 
 		adminReq := httptest.NewRequest(http.MethodGet, "/admin/requests/live", nil)
-		adminReq.Header.Set("Authorization", "Bearer admin-spine-token")
+		adminReq.Header.Set("Authorization", "Bearer "+adminSrv.AdminToken())
 		adminRec := httptest.NewRecorder()
 		adminSrv.Handler().ServeHTTP(adminRec, adminReq)
 		if adminRec.Code != http.StatusOK {

@@ -484,8 +484,13 @@ func (r *Router) discoverAndAddDockerNodes() {
 }
 
 func (r *Router) pollAll() {
+	r.mu.RLock()
+	nodes := make([]*NodeState, len(r.nodes))
+	copy(nodes, r.nodes)
+	r.mu.RUnlock()
+
 	var wg sync.WaitGroup
-	for _, n := range r.nodes {
+	for _, n := range nodes {
 		wg.Add(1)
 		go func(node *NodeState) {
 			defer wg.Done()
@@ -1085,8 +1090,9 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 		}
 		n.mu.RLock()
 		isHealthy := n.Healthy
+		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy {
+		if isHealthy && !isDraining {
 			healthy = append(healthy, n)
 		}
 	}

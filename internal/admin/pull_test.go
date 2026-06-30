@@ -50,7 +50,7 @@ func TestHandleNodePull_Success(t *testing.T) {
 
 	body := `{"model":"llama3:8b"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 
@@ -95,7 +95,7 @@ func TestHandleNodePull_NodeNotFound(t *testing.T) {
 
 	body := `{"model":"llama3:8b"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/does-not-exist/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "does-not-exist")
 
@@ -115,7 +115,7 @@ func TestHandleNodePull_MissingModel(t *testing.T) {
 
 	body := `{}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 

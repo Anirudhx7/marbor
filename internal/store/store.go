@@ -8,6 +8,9 @@ import (
 // ErrNoAdminCreds is returned by GetAdminCreds when no credentials have been stored yet.
 var ErrNoAdminCreds = errors.New("store: no admin credentials set")
 
+// ErrNotFound is returned by GetSetting when the key does not exist.
+var ErrNotFound = errors.New("store: key not found")
+
 // ErrUserNotFound is returned by GetUserByUsername / GetUserByID when no row matches.
 var ErrUserNotFound = errors.New("store: user not found")
 
@@ -92,6 +95,29 @@ type Store interface {
 	// Migration helpers
 	HasAdminCredentials() (bool, error)
 	GetLegacyAdminCreds() (username, passwordHash, salt string, err error)
+
+	// Routing rules (persist across restarts — fixes audit finding #30)
+	UpsertRoutingRule(r RoutingRuleRecord) error
+	DeleteRoutingRule(id string) error
+	SetRoutingRuleEnabled(id string, enabled bool) error
+	AllRoutingRules() ([]RoutingRuleRecord, error)
+
+	// Settings key-value store (replaces config.SaveConfig)
+	GetSetting(key string) (string, error)
+	SetSetting(key, value string) error
+	AllSettings() (map[string]string, error)
+
+	// Cloud providers (replaces config.CloudProviders slice)
+	UpsertCloudProvider(cp CloudProviderRecord) error
+	DeleteCloudProvider(name string) error
+	AllCloudProviders() ([]CloudProviderRecord, error)
+
+	// Warmup configuration
+	GetWarmupConfig() (WarmupConfigRecord, error)
+	SetWarmupConfig(enabled bool, keepAlive string) error
+	UpsertWarmupModel(model string, nodes []string) error
+	DeleteWarmupModel(model string) error
+	AllWarmupModels() ([]WarmupModelRecord, error)
 
 	Close() error
 }
@@ -223,6 +249,40 @@ type UserSession struct {
 	ExpiresAt          time.Time
 }
 
+// RoutingRuleRecord is a routing rule that persists across restarts.
+type RoutingRuleRecord struct {
+	ID        string    `json:"id"`
+	Condition string    `json:"condition"`
+	Target    string    `json:"target"`
+	Priority  int       `json:"priority"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// CloudProviderRecord stores cloud fallback provider configuration in SQLite.
+type CloudProviderRecord struct {
+	Name            string  `json:"name"`
+	Provider        string  `json:"provider"`
+	BaseURL         string  `json:"base_url"`
+	APIKey          string  `json:"api_key"`
+	DefaultModel    string  `json:"default_model"`
+	CostPer1KTokens float64 `json:"cost_per_1k_tokens"`
+	Enabled         bool    `json:"enabled"`
+	Priority        int     `json:"priority"`
+}
+
+// WarmupConfigRecord stores global warmup enable/keep-alive settings.
+type WarmupConfigRecord struct {
+	Enabled   bool   `json:"enabled"`
+	KeepAlive string `json:"keep_alive"`
+}
+
+// WarmupModelRecord stores a model pinned for proactive warming.
+type WarmupModelRecord struct {
+	Model string   `json:"model"`
+	Nodes []string `json:"nodes"` // empty = all nodes
+}
+
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
@@ -272,4 +332,19 @@ func (NopStore) HasAdminCredentials() (bool, error)                     { return
 func (NopStore) GetLegacyAdminCreds() (string, string, string, error) {
 	return "", "", "", ErrNoAdminCreds
 }
-func (NopStore) Close() error { return nil }
+func (NopStore) UpsertRoutingRule(_ RoutingRuleRecord) error              { return nil }
+func (NopStore) DeleteRoutingRule(_ string) error                         { return nil }
+func (NopStore) SetRoutingRuleEnabled(_ string, _ bool) error             { return nil }
+func (NopStore) AllRoutingRules() ([]RoutingRuleRecord, error)            { return nil, nil }
+func (NopStore) GetSetting(_ string) (string, error)                     { return "", ErrNotFound }
+func (NopStore) SetSetting(_, _ string) error                            { return nil }
+func (NopStore) AllSettings() (map[string]string, error)                 { return nil, nil }
+func (NopStore) UpsertCloudProvider(_ CloudProviderRecord) error          { return nil }
+func (NopStore) DeleteCloudProvider(_ string) error                      { return nil }
+func (NopStore) AllCloudProviders() ([]CloudProviderRecord, error)        { return nil, nil }
+func (NopStore) GetWarmupConfig() (WarmupConfigRecord, error)             { return WarmupConfigRecord{}, ErrNotFound }
+func (NopStore) SetWarmupConfig(_ bool, _ string) error                  { return nil }
+func (NopStore) UpsertWarmupModel(_ string, _ []string) error            { return nil }
+func (NopStore) DeleteWarmupModel(_ string) error                        { return nil }
+func (NopStore) AllWarmupModels() ([]WarmupModelRecord, error)            { return nil, nil }
+func (NopStore) Close() error                                            { return nil }

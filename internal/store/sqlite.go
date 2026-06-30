@@ -25,13 +25,16 @@ func Open(path string) (Store, error) {
 	// Serialize all writers through a single connection.
 	db.SetMaxOpenConns(1)
 
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("store: WAL pragma: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("store: foreign_keys pragma: %w", err)
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA synchronous=NORMAL",
+		"PRAGMA busy_timeout=5000",
+		"PRAGMA foreign_keys=ON",
+	} {
+		if _, err := db.Exec(pragma); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("store: pragma %q: %w", pragma, err)
+		}
 	}
 
 	s := &sqliteStore{db: db}
@@ -172,6 +175,44 @@ func (s *sqliteStore) migrate() error {
 			must_change_password INTEGER NOT NULL DEFAULT 0,
 			created_at           INTEGER NOT NULL,
 			expires_at           INTEGER NOT NULL
+		)`,
+
+		// --- Phase 1: SQLite-first tables ---
+
+		`CREATE TABLE IF NOT EXISTS settings (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS cloud_providers (
+			name               TEXT PRIMARY KEY,
+			provider           TEXT NOT NULL,
+			base_url           TEXT NOT NULL,
+			api_key            TEXT NOT NULL DEFAULT '',
+			default_model      TEXT NOT NULL DEFAULT '',
+			cost_per_1k_tokens REAL NOT NULL DEFAULT 0.0,
+			enabled            INTEGER NOT NULL DEFAULT 1,
+			priority           INTEGER NOT NULL DEFAULT 0
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS routing_rules (
+			id         TEXT PRIMARY KEY,
+			condition  TEXT NOT NULL,
+			target     TEXT NOT NULL,
+			priority   INTEGER NOT NULL DEFAULT 0,
+			enabled    INTEGER NOT NULL DEFAULT 1,
+			created_at INTEGER NOT NULL
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS warmup_config (
+			id         INTEGER PRIMARY KEY CHECK(id=1),
+			enabled    INTEGER NOT NULL DEFAULT 0,
+			keep_alive TEXT NOT NULL DEFAULT '10m'
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS warmup_models (
+			model      TEXT PRIMARY KEY,
+			nodes_json TEXT NOT NULL DEFAULT '[]'
 		)`,
 	}
 	for _, stmt := range stmts {
@@ -1016,4 +1057,251 @@ func (s *sqliteStore) GetLegacyAdminCreds() (string, string, string, error) {
 
 func (s *sqliteStore) Close() error {
 	return s.db.Close()
+}
+
+// --- Routing rules ---
+
+func (s *sqliteStore) UpsertRoutingRule(r RoutingRuleRecord) error {
+	enabled := 0
+	if r.Enabled {
+		enabled = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO routing_rules (id, condition, target, priority, enabled, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		r.ID, r.Condition, r.Target, r.Priority, enabled, r.CreatedAt.Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("store: UpsertRoutingRule: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteRoutingRule(id string) error {
+	_, err := s.db.Exec(`DELETE FROM routing_rules WHERE id=?`, id)
+	if err != nil {
+		return fmt.Errorf("store: DeleteRoutingRule: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) SetRoutingRuleEnabled(id string, enabled bool) error {
+	e := 0
+	if enabled {
+		e = 1
+	}
+	_, err := s.db.Exec(`UPDATE routing_rules SET enabled=? WHERE id=?`, e, id)
+	if err != nil {
+		return fmt.Errorf("store: SetRoutingRuleEnabled: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) AllRoutingRules() ([]RoutingRuleRecord, error) {
+	rows, err := s.db.Query(
+		`SELECT id, condition, target, priority, enabled, created_at FROM routing_rules ORDER BY priority DESC, created_at ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllRoutingRules: %w", err)
+	}
+	defer rows.Close()
+
+	var rules []RoutingRuleRecord
+	for rows.Next() {
+		var r RoutingRuleRecord
+		var enabled int
+		var createdAt int64
+		if err := rows.Scan(&r.ID, &r.Condition, &r.Target, &r.Priority, &enabled, &createdAt); err != nil {
+			return nil, fmt.Errorf("store: AllRoutingRules scan: %w", err)
+		}
+		r.Enabled = enabled != 0
+		r.CreatedAt = time.Unix(createdAt, 0).UTC()
+		rules = append(rules, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllRoutingRules rows: %w", err)
+	}
+	return rules, nil
+}
+
+// --- Settings key-value store ---
+
+func (s *sqliteStore) GetSetting(key string) (string, error) {
+	var value string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("store: GetSetting: %w", err)
+	}
+	return value, nil
+}
+
+func (s *sqliteStore) SetSetting(key, value string) error {
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+		key, value,
+	)
+	if err != nil {
+		return fmt.Errorf("store: SetSetting: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) AllSettings() (map[string]string, error) {
+	rows, err := s.db.Query(`SELECT key, value FROM settings`)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllSettings: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string]string)
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, fmt.Errorf("store: AllSettings scan: %w", err)
+		}
+		out[k] = v
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllSettings rows: %w", err)
+	}
+	return out, nil
+}
+
+// --- Cloud providers ---
+
+func (s *sqliteStore) UpsertCloudProvider(cp CloudProviderRecord) error {
+	enabled := 0
+	if cp.Enabled {
+		enabled = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO cloud_providers
+			(name, provider, base_url, api_key, default_model, cost_per_1k_tokens, enabled, priority)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		cp.Name, cp.Provider, cp.BaseURL, cp.APIKey, cp.DefaultModel,
+		cp.CostPer1KTokens, enabled, cp.Priority,
+	)
+	if err != nil {
+		return fmt.Errorf("store: UpsertCloudProvider: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteCloudProvider(name string) error {
+	_, err := s.db.Exec(`DELETE FROM cloud_providers WHERE name=?`, name)
+	if err != nil {
+		return fmt.Errorf("store: DeleteCloudProvider: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) AllCloudProviders() ([]CloudProviderRecord, error) {
+	rows, err := s.db.Query(
+		`SELECT name, provider, base_url, api_key, default_model, cost_per_1k_tokens, enabled, priority
+		 FROM cloud_providers ORDER BY priority DESC, name ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllCloudProviders: %w", err)
+	}
+	defer rows.Close()
+
+	var providers []CloudProviderRecord
+	for rows.Next() {
+		var cp CloudProviderRecord
+		var enabled int
+		if err := rows.Scan(
+			&cp.Name, &cp.Provider, &cp.BaseURL, &cp.APIKey, &cp.DefaultModel,
+			&cp.CostPer1KTokens, &enabled, &cp.Priority,
+		); err != nil {
+			return nil, fmt.Errorf("store: AllCloudProviders scan: %w", err)
+		}
+		cp.Enabled = enabled != 0
+		providers = append(providers, cp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllCloudProviders rows: %w", err)
+	}
+	return providers, nil
+}
+
+// --- Warmup configuration ---
+
+func (s *sqliteStore) GetWarmupConfig() (WarmupConfigRecord, error) {
+	var w WarmupConfigRecord
+	var enabled int
+	err := s.db.QueryRow(`SELECT enabled, keep_alive FROM warmup_config WHERE id=1`).Scan(&enabled, &w.KeepAlive)
+	if err == sql.ErrNoRows {
+		return WarmupConfigRecord{}, ErrNotFound
+	}
+	if err != nil {
+		return WarmupConfigRecord{}, fmt.Errorf("store: GetWarmupConfig: %w", err)
+	}
+	w.Enabled = enabled != 0
+	return w, nil
+}
+
+func (s *sqliteStore) SetWarmupConfig(enabled bool, keepAlive string) error {
+	e := 0
+	if enabled {
+		e = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO warmup_config (id, enabled, keep_alive) VALUES (1, ?, ?)`,
+		e, keepAlive,
+	)
+	if err != nil {
+		return fmt.Errorf("store: SetWarmupConfig: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) UpsertWarmupModel(model string, nodes []string) error {
+	nodesJSON, err := json.Marshal(nodes)
+	if err != nil {
+		return fmt.Errorf("store: UpsertWarmupModel marshal: %w", err)
+	}
+	_, err = s.db.Exec(
+		`INSERT OR REPLACE INTO warmup_models (model, nodes_json) VALUES (?, ?)`,
+		model, string(nodesJSON),
+	)
+	if err != nil {
+		return fmt.Errorf("store: UpsertWarmupModel: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteWarmupModel(model string) error {
+	_, err := s.db.Exec(`DELETE FROM warmup_models WHERE model=?`, model)
+	if err != nil {
+		return fmt.Errorf("store: DeleteWarmupModel: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) AllWarmupModels() ([]WarmupModelRecord, error) {
+	rows, err := s.db.Query(`SELECT model, nodes_json FROM warmup_models ORDER BY model ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllWarmupModels: %w", err)
+	}
+	defer rows.Close()
+
+	var models []WarmupModelRecord
+	for rows.Next() {
+		var m WarmupModelRecord
+		var nodesJSON string
+		if err := rows.Scan(&m.Model, &nodesJSON); err != nil {
+			return nil, fmt.Errorf("store: AllWarmupModels scan: %w", err)
+		}
+		if err := json.Unmarshal([]byte(nodesJSON), &m.Nodes); err != nil {
+			m.Nodes = nil
+		}
+		models = append(models, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllWarmupModels rows: %w", err)
+	}
+	return models, nil
 }

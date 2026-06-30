@@ -246,18 +246,28 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// SaveConfig writes cfg to path atomically (temp file + rename) with mode
+// 0600. It is intentionally restricted to bootstrap use (first-run and
+// --validate). Runtime mutations persist to SQLite via the admin API; this
+// function must not be called from handleUpdateSettings or similar paths.
 func SaveConfig(path string, cfg Config) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	// Narrow permissions before writing content so the key is never
+	// transiently world-readable, even on an existing file.
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
-	// os.WriteFile won't chmod an existing file to the new mode, so enforce
-	// 0600 explicitly to prevent re-widening when the file pre-exists at 0644.
-	if err := os.Chmod(path, 0600); err != nil {
+	if err := os.Chmod(tmp, 0600); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("chmod config: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename config: %w", err)
 	}
 	return nil
 }
