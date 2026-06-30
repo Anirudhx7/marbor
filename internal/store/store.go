@@ -254,20 +254,22 @@ func (NopStore) CreateSession(_ string, _ time.Time) error              { return
 func (NopStore) ValidateSession(_ string) (bool, error)                 { return false, nil }
 func (NopStore) DeleteSession(_ string) error                           { return nil }
 func (NopStore) PruneExpiredSessions() error                            { return nil }
-func (NopStore) CreateUser(_ User) (int64, error)                         { return 0, nil }
-func (NopStore) GetUserByUsername(_ string) (User, error)                 { return User{}, ErrUserNotFound }
-func (NopStore) GetUserByID(_ int64) (User, error)                        { return User{}, ErrUserNotFound }
-func (NopStore) ListUsers() ([]User, error)                               { return nil, nil }
-func (NopStore) UpdateUser(_ User) error                                  { return nil }
-func (NopStore) DeleteUser(_ int64) error                                 { return nil }
-func (NopStore) SoftDeleteUser(_ int64, _ string) error                   { return nil }
-func (NopStore) CountAdminUsers() (int, error)                            { return 0, nil }
-func (NopStore) PendingUserCount() (int, error)                           { return 0, nil }
-func (NopStore) CreateUserSession(_ UserSession) error                    { return nil }
-func (NopStore) GetUserSession(_ string) (UserSession, bool, error)       { return UserSession{}, false, nil }
-func (NopStore) DeleteUserSession(_ string) error                         { return nil }
-func (NopStore) DeleteUserSessionsByUserID(_ int64) error                 { return nil }
-func (NopStore) PruneExpiredUserSessions() error                          { return nil }
-func (NopStore) HasAdminCredentials() (bool, error)                       { return false, nil }
-func (NopStore) GetLegacyAdminCreds() (string, string, string, error)     { return "", "", "", ErrNoAdminCreds }
-func (NopStore) Close() error                                             { return nil }
+func (NopStore) CreateUser(_ User) (int64, error)                       { return 0, nil }
+func (NopStore) GetUserByUsername(_ string) (User, error)               { return User{}, ErrUserNotFound }
+func (NopStore) GetUserByID(_ int64) (User, error)                      { return User{}, ErrUserNotFound }
+func (NopStore) ListUsers() ([]User, error)                             { return nil, nil }
+func (NopStore) UpdateUser(_ User) error                                { return nil }
+func (NopStore) DeleteUser(_ int64) error                               { return nil }
+func (NopStore) SoftDeleteUser(_ int64, _ string) error                 { return nil }
+func (NopStore) CountAdminUsers() (int, error)                          { return 0, nil }
+func (NopStore) PendingUserCount() (int, error)                         { return 0, nil }
+func (NopStore) CreateUserSession(_ UserSession) error                  { return nil }
+func (NopStore) GetUserSession(_ string) (UserSession, bool, error)     { return UserSession{}, false, nil }
+func (NopStore) DeleteUserSession(_ string) error                       { return nil }
+func (NopStore) DeleteUserSessionsByUserID(_ int64) error               { return nil }
+func (NopStore) PruneExpiredUserSessions() error                        { return nil }
+func (NopStore) HasAdminCredentials() (bool, error)                     { return false, nil }
+func (NopStore) GetLegacyAdminCreds() (string, string, string, error) {
+	return "", "", "", ErrNoAdminCreds
+}
+func (NopStore) Close() error { return nil }
