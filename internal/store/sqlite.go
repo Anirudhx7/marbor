@@ -146,6 +146,33 @@ func (s *sqliteStore) migrate() error {
 			created_at INTEGER NOT NULL,
 			expires_at INTEGER NOT NULL
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS users (
+			id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+			username             TEXT NOT NULL UNIQUE COLLATE NOCASE,
+			email                TEXT NOT NULL DEFAULT '',
+			password_hash        TEXT NOT NULL DEFAULT '',
+			salt                 TEXT NOT NULL DEFAULT '',
+			role                 TEXT NOT NULL DEFAULT 'user'
+			                     CHECK(role IN ('admin','user')),
+			status               TEXT NOT NULL DEFAULT 'pending'
+			                     CHECK(status IN ('pending','active','suspended')),
+			api_key_name         TEXT NOT NULL DEFAULT '',
+			must_change_password INTEGER NOT NULL DEFAULT 0,
+			created_at           INTEGER NOT NULL,
+			approved_at          INTEGER,
+			approved_by          TEXT NOT NULL DEFAULT ''
+		)`,
+
+		`CREATE TABLE IF NOT EXISTS user_sessions (
+			token                TEXT PRIMARY KEY,
+			user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			role                 TEXT NOT NULL,
+			username             TEXT NOT NULL,
+			must_change_password INTEGER NOT NULL DEFAULT 0,
+			created_at           INTEGER NOT NULL,
+			expires_at           INTEGER NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -721,6 +748,245 @@ func (s *sqliteStore) PruneExpiredSessions() error {
 		return fmt.Errorf("store: PruneExpiredSessions: %w", err)
 	}
 	return nil
+}
+
+// --- Users ---
+
+func (s *sqliteStore) CreateUser(u User) (int64, error) {
+	mcp := 0
+	if u.MustChangePassword {
+		mcp = 1
+	}
+	var approvedAt sql.NullInt64
+	if u.ApprovedAt != nil {
+		approvedAt = sql.NullInt64{Int64: u.ApprovedAt.Unix(), Valid: true}
+	}
+	result, err := s.db.Exec(
+		`INSERT INTO users
+			(username, email, password_hash, salt, role, status, api_key_name,
+			 must_change_password, created_at, approved_at, approved_by)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		u.Username, u.Email, u.PasswordHash, u.Salt, u.Role, u.Status, u.APIKeyName,
+		mcp, u.CreatedAt.Unix(), approvedAt, u.ApprovedBy,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("store: CreateUser: %w", err)
+	}
+	return result.LastInsertId()
+}
+
+func (s *sqliteStore) scanUserRow(row *sql.Row) (User, error) {
+	var u User
+	var mcp int
+	var createdAt int64
+	var approvedAt sql.NullInt64
+	err := row.Scan(
+		&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Salt,
+		&u.Role, &u.Status, &u.APIKeyName, &mcp, &createdAt,
+		&approvedAt, &u.ApprovedBy,
+	)
+	if err == sql.ErrNoRows {
+		return User{}, ErrUserNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("store: scan user: %w", err)
+	}
+	u.MustChangePassword = mcp != 0
+	u.CreatedAt = time.Unix(createdAt, 0).UTC()
+	if approvedAt.Valid {
+		t := time.Unix(approvedAt.Int64, 0).UTC()
+		u.ApprovedAt = &t
+	}
+	return u, nil
+}
+
+const userSelectCols = `id, username, email, password_hash, salt, role, status,
+	api_key_name, must_change_password, created_at, approved_at, approved_by`
+
+func (s *sqliteStore) GetUserByUsername(username string) (User, error) {
+	return s.scanUserRow(s.db.QueryRow(
+		`SELECT `+userSelectCols+` FROM users WHERE username=? COLLATE NOCASE`, username,
+	))
+}
+
+func (s *sqliteStore) GetUserByID(id int64) (User, error) {
+	return s.scanUserRow(s.db.QueryRow(
+		`SELECT `+userSelectCols+` FROM users WHERE id=?`, id,
+	))
+}
+
+func (s *sqliteStore) ListUsers() ([]User, error) {
+	rows, err := s.db.Query(
+		`SELECT ` + userSelectCols + ` FROM users ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: ListUsers: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		var mcp int
+		var createdAt int64
+		var approvedAt sql.NullInt64
+		if err := rows.Scan(
+			&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Salt,
+			&u.Role, &u.Status, &u.APIKeyName, &mcp, &createdAt,
+			&approvedAt, &u.ApprovedBy,
+		); err != nil {
+			return nil, fmt.Errorf("store: ListUsers scan: %w", err)
+		}
+		u.MustChangePassword = mcp != 0
+		u.CreatedAt = time.Unix(createdAt, 0).UTC()
+		if approvedAt.Valid {
+			t := time.Unix(approvedAt.Int64, 0).UTC()
+			u.ApprovedAt = &t
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: ListUsers rows: %w", err)
+	}
+	return users, nil
+}
+
+func (s *sqliteStore) UpdateUser(u User) error {
+	mcp := 0
+	if u.MustChangePassword {
+		mcp = 1
+	}
+	var approvedAt sql.NullInt64
+	if u.ApprovedAt != nil {
+		approvedAt = sql.NullInt64{Int64: u.ApprovedAt.Unix(), Valid: true}
+	}
+	_, err := s.db.Exec(
+		`UPDATE users SET username=?, email=?, password_hash=?, salt=?, role=?, status=?,
+		 api_key_name=?, must_change_password=?, approved_at=?, approved_by=?
+		 WHERE id=?`,
+		u.Username, u.Email, u.PasswordHash, u.Salt, u.Role, u.Status,
+		u.APIKeyName, mcp, approvedAt, u.ApprovedBy, u.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("store: UpdateUser: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteUser(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM users WHERE id=?`, id)
+	if err != nil {
+		return fmt.Errorf("store: DeleteUser: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) CountAdminUsers() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: CountAdminUsers: %w", err)
+	}
+	return n, nil
+}
+
+func (s *sqliteStore) PendingUserCount() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE status='pending'`).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: PendingUserCount: %w", err)
+	}
+	return n, nil
+}
+
+// --- User sessions ---
+
+func (s *sqliteStore) CreateUserSession(us UserSession) error {
+	mcp := 0
+	if us.MustChangePassword {
+		mcp = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO user_sessions
+			(token, user_id, role, username, must_change_password, created_at, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		us.Token, us.UserID, us.Role, us.Username, mcp, time.Now().Unix(), us.ExpiresAt.Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("store: CreateUserSession: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) GetUserSession(token string) (UserSession, bool, error) {
+	var us UserSession
+	var mcp int
+	var expiresAt int64
+	err := s.db.QueryRow(
+		`SELECT token, user_id, role, username, must_change_password, expires_at
+		 FROM user_sessions WHERE token=?`, token,
+	).Scan(&us.Token, &us.UserID, &us.Role, &us.Username, &mcp, &expiresAt)
+	if err == sql.ErrNoRows {
+		return UserSession{}, false, nil
+	}
+	if err != nil {
+		return UserSession{}, false, fmt.Errorf("store: GetUserSession: %w", err)
+	}
+	if time.Now().Unix() >= expiresAt {
+		return UserSession{}, false, nil
+	}
+	us.MustChangePassword = mcp != 0
+	us.ExpiresAt = time.Unix(expiresAt, 0).UTC()
+	return us, true, nil
+}
+
+func (s *sqliteStore) DeleteUserSession(token string) error {
+	_, err := s.db.Exec(`DELETE FROM user_sessions WHERE token=?`, token)
+	if err != nil {
+		return fmt.Errorf("store: DeleteUserSession: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteUserSessionsByUserID(userID int64) error {
+	_, err := s.db.Exec(`DELETE FROM user_sessions WHERE user_id=?`, userID)
+	if err != nil {
+		return fmt.Errorf("store: DeleteUserSessionsByUserID: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) PruneExpiredUserSessions() error {
+	_, err := s.db.Exec(`DELETE FROM user_sessions WHERE expires_at < ?`, time.Now().Unix())
+	if err != nil {
+		return fmt.Errorf("store: PruneExpiredUserSessions: %w", err)
+	}
+	return nil
+}
+
+// --- Migration helpers ---
+
+func (s *sqliteStore) HasAdminCredentials() (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM admin_credentials`).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("store: HasAdminCredentials: %w", err)
+	}
+	return n > 0, nil
+}
+
+func (s *sqliteStore) GetLegacyAdminCreds() (string, string, string, error) {
+	var username, hash, salt string
+	err := s.db.QueryRow(
+		`SELECT username, password_hash, salt FROM admin_credentials WHERE id=1`,
+	).Scan(&username, &hash, &salt)
+	if err == sql.ErrNoRows {
+		return "", "", "", ErrNoAdminCreds
+	}
+	if err != nil {
+		return "", "", "", fmt.Errorf("store: GetLegacyAdminCreds: %w", err)
+	}
+	return username, hash, salt, nil
 }
 
 func (s *sqliteStore) Close() error {

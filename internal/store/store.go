@@ -8,6 +8,9 @@ import (
 // ErrNoAdminCreds is returned by GetAdminCreds when no credentials have been stored yet.
 var ErrNoAdminCreds = errors.New("store: no admin credentials set")
 
+// ErrUserNotFound is returned by GetUserByUsername / GetUserByID when no row matches.
+var ErrUserNotFound = errors.New("store: user not found")
+
 // AdminCreds holds the dashboard administrator's login credentials.
 type AdminCreds struct {
 	Username     string
@@ -67,6 +70,27 @@ type Store interface {
 	ValidateSession(token string) (bool, error)
 	DeleteSession(token string) error
 	PruneExpiredSessions() error
+
+	// Multi-user management
+	CreateUser(u User) (int64, error)
+	GetUserByUsername(username string) (User, error)
+	GetUserByID(id int64) (User, error)
+	ListUsers() ([]User, error)
+	UpdateUser(u User) error
+	DeleteUser(id int64) error
+	CountAdminUsers() (int, error)
+	PendingUserCount() (int, error)
+
+	// User sessions (new auth system)
+	CreateUserSession(s UserSession) error
+	GetUserSession(token string) (UserSession, bool, error)
+	DeleteUserSession(token string) error
+	DeleteUserSessionsByUserID(userID int64) error
+	PruneExpiredUserSessions() error
+
+	// Migration helpers
+	HasAdminCredentials() (bool, error)
+	GetLegacyAdminCreds() (username, passwordHash, salt string, err error)
 
 	Close() error
 }
@@ -170,6 +194,32 @@ type AuditQuery struct {
 	Since time.Time
 }
 
+// User is a dashboard administrator or API-consumer user with role-based access.
+type User struct {
+	ID                 int64      `json:"id"`
+	Username           string     `json:"username"`
+	Email              string     `json:"email"`
+	PasswordHash       string     `json:"-"`
+	Salt               string     `json:"-"`
+	Role               string     `json:"role"`   // "admin" | "user"
+	Status             string     `json:"status"` // "pending" | "active" | "suspended"
+	APIKeyName         string     `json:"api_key_name"`
+	MustChangePassword bool       `json:"must_change_password"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ApprovedAt         *time.Time `json:"approved_at,omitempty"`
+	ApprovedBy         string     `json:"approved_by,omitempty"`
+}
+
+// UserSession is an authenticated session tied to a specific User row.
+type UserSession struct {
+	Token              string
+	UserID             int64
+	Role               string
+	Username           string
+	MustChangePassword bool
+	ExpiresAt          time.Time
+}
+
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
@@ -201,4 +251,19 @@ func (NopStore) CreateSession(_ string, _ time.Time) error              { return
 func (NopStore) ValidateSession(_ string) (bool, error)                 { return false, nil }
 func (NopStore) DeleteSession(_ string) error                           { return nil }
 func (NopStore) PruneExpiredSessions() error                            { return nil }
-func (NopStore) Close() error                                           { return nil }
+func (NopStore) CreateUser(_ User) (int64, error)                         { return 0, nil }
+func (NopStore) GetUserByUsername(_ string) (User, error)                 { return User{}, ErrUserNotFound }
+func (NopStore) GetUserByID(_ int64) (User, error)                        { return User{}, ErrUserNotFound }
+func (NopStore) ListUsers() ([]User, error)                               { return nil, nil }
+func (NopStore) UpdateUser(_ User) error                                  { return nil }
+func (NopStore) DeleteUser(_ int64) error                                 { return nil }
+func (NopStore) CountAdminUsers() (int, error)                            { return 0, nil }
+func (NopStore) PendingUserCount() (int, error)                           { return 0, nil }
+func (NopStore) CreateUserSession(_ UserSession) error                    { return nil }
+func (NopStore) GetUserSession(_ string) (UserSession, bool, error)       { return UserSession{}, false, nil }
+func (NopStore) DeleteUserSession(_ string) error                         { return nil }
+func (NopStore) DeleteUserSessionsByUserID(_ int64) error                 { return nil }
+func (NopStore) PruneExpiredUserSessions() error                          { return nil }
+func (NopStore) HasAdminCredentials() (bool, error)                       { return false, nil }
+func (NopStore) GetLegacyAdminCreds() (string, string, string, error)     { return "", "", "", ErrNoAdminCreds }
+func (NopStore) Close() error                                             { return nil }

@@ -17,9 +17,11 @@ import {
   X,
   ArrowLeft,
   LogOut,
+  Users,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { forcedDemo } from '../hooks/useDemoMode';
+import type { SessionData } from '../types';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,9 +38,11 @@ const navItems = [
 
 interface SidebarProps {
   onLogout?: () => void;
+  session?: SessionData | null;
+  pendingCount?: number;
 }
 
-export function Sidebar({ onLogout }: SidebarProps) {
+export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
@@ -58,6 +62,8 @@ export function Sidebar({ onLogout }: SidebarProps) {
         ? 'bg-primary/10 text-primary'
         : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
     }`;
+
+  const isAdmin = session?.role === 'admin';
 
   const sidebarContent = (
     <>
@@ -88,9 +94,25 @@ export function Sidebar({ onLogout }: SidebarProps) {
             </NavLink>
           );
         })}
+        {isAdmin && (
+          <NavLink to="/users" className={linkClass}>
+            <Users className="w-4 h-4 shrink-0" />
+            <span className="flex-1">Users</span>
+            {pendingCount > 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full leading-none">
+                {pendingCount}
+              </span>
+            )}
+          </NavLink>
+        )}
       </nav>
 
       <div className="p-4 border-t border-border shrink-0 space-y-1">
+        {session?.username && (
+          <div className="px-3 py-2 text-xs text-muted-foreground truncate">
+            Signed in as <span className="font-medium text-foreground">{session.username}</span>
+          </div>
+        )}
         {forcedDemo && (
           <a
             href="/ollama-mesh/"

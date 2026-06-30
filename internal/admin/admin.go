@@ -34,6 +34,10 @@ import (
 //go:embed web/dist
 var webFS embed.FS
 
+type ctxKey string
+
+const ctxKeyUsername ctxKey = "username"
+
 type Server struct {
 	router        *router.Router
 	auth          *auth.Middleware
@@ -266,7 +270,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		analytics:    newAnalyticsStore(refRate),
 		st:           stImpl,
 	}
-	s.ensureAdminCreds()
+	s.ensureAdminUser()
 	return s
 }
 
@@ -331,8 +335,18 @@ func (s *Server) Handler() http.Handler {
 	// Health check and login — no auth required.
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /login", s.cors(s.handleLogin))
+	mux.HandleFunc("POST /admin/login", s.cors(s.handleAdminLogin))
 	reg("POST /admin/logout", s.cors(s.adminAuth(s.handleLogout)))
 	reg("POST /admin/change-password", s.cors(s.adminAuth(s.handleChangePassword)))
+
+	// User management (admin only, no /admin/* duplicate — these are v1-only)
+	mux.HandleFunc("GET /admin/v1/users/pending-count", s.cors(s.adminAuth(s.handlePendingUserCount)))
+	mux.HandleFunc("GET /admin/v1/users", s.cors(s.adminAuth(s.handleListUsers)))
+	mux.HandleFunc("POST /admin/v1/users", s.cors(s.adminAuth(s.handleCreateUser)))
+	mux.HandleFunc("POST /admin/v1/users/{id}/approve", s.cors(s.adminAuth(s.handleApproveUser)))
+	mux.HandleFunc("POST /admin/v1/users/{id}/suspend", s.cors(s.adminAuth(s.handleSuspendUser)))
+	mux.HandleFunc("DELETE /admin/v1/users/{id}", s.cors(s.adminAuth(s.handleDeleteUser)))
+	mux.HandleFunc("PATCH /admin/v1/users/{id}", s.cors(s.adminAuth(s.handlePatchUser)))
 
 	if sub, err := fs.Sub(webFS, "web/dist"); err == nil {
 		mux.Handle("/assets/", s.noCache(http.FileServer(http.FS(sub))))
@@ -341,8 +355,9 @@ func (s *Server) Handler() http.Handler {
 	}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Serve index.html for all non-API routes (SPA fallback)
-		if strings.HasPrefix(r.URL.Path, "/admin") {
+		// Serve index.html for SPA routes; block unknown /admin/* API paths.
+		// /admin/login is a frontend SPA route, not an API path — let it through.
+		if strings.HasPrefix(r.URL.Path, "/admin") && r.URL.Path != "/admin/login" {
 			http.NotFound(w, r)
 			return
 		}
@@ -387,19 +402,36 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		token := strings.TrimPrefix(authHeader, "Bearer ")
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 
-		// Accept dashboard session tokens first.
+		// Check new user_sessions table first.
 		if token != "" {
-			if valid, err := s.st.ValidateSession(token); err == nil && valid {
+			if session, found, err := s.st.GetUserSession(token); err == nil && found {
+				if session.Role != "admin" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					w.Write([]byte(`{"error":"admin role required"}`))
+					return
+				}
+				if session.MustChangePassword {
+					// Only allow change-password and logout during forced change.
+					p := r.URL.Path
+					allowed := p == "/admin/v1/change-password" || p == "/admin/change-password" ||
+						p == "/admin/v1/logout" || p == "/admin/logout"
+					if !allowed {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusForbidden)
+						w.Write([]byte(`{"error":"password_change_required"}`))
+						return
+					}
+				}
+				r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
 				next(w, r)
 				return
 			}
 		}
 
-		// Fall back to the legacy admin_token (config-based or generated at startup).
-		// Constant-time compare so a timing side channel cannot reveal the token.
+		// Fall back to legacy admin_token for API clients and tests.
 		if subtle.ConstantTimeCompare([]byte(token), []byte(s.adminToken)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -833,7 +865,17 @@ func generateAPIKey(name string) string {
 	return "sk-" + name + "-" + hex.EncodeToString(b)
 }
 
+// handleAdminLogin handles POST /admin/login — admin role required.
+func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
+	s.handleLoginForRole(w, r, "admin")
+}
+
+// handleLogin handles POST /login — any active role accepted.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	s.handleLoginForRole(w, r, "")
+}
+
+func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requiredRole string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -851,10 +893,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Demo mode: fixed admin/admin credentials, no DB needed.
 	if s.demoMode {
 		if req.Username == "admin" && req.Password == "admin" {
+			if requiredRole != "" && requiredRole != "admin" {
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":"not an admin account"}`))
+				return
+			}
 			expiry := time.Now().Add(30 * 24 * time.Hour)
-			json.NewEncoder(w).Encode(map[string]string{
-				"token":      "demo-session",
-				"expires_at": expiry.Format(time.RFC3339),
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"token":                "demo-session",
+				"role":                 "admin",
+				"username":             "admin",
+				"must_change_password": false,
+				"expires_at":           expiry.Format(time.RFC3339),
 			})
 			return
 		}
@@ -863,15 +913,32 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	creds, err := s.st.GetAdminCreds()
+	user, err := s.st.GetUserByUsername(req.Username)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
 	}
-	hash := hashPassword(req.Password, creds.Salt)
-	if subtle.ConstantTimeCompare([]byte(req.Username), []byte(creds.Username)) != 1 ||
-		subtle.ConstantTimeCompare([]byte(hash), []byte(creds.PasswordHash)) != 1 {
+
+	if requiredRole != "" && user.Role != requiredRole {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"not an admin account"}`))
+		return
+	}
+
+	switch user.Status {
+	case "pending":
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"account pending approval"}`))
+		return
+	case "suspended":
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"account suspended"}`))
+		return
+	}
+
+	hash := hashPassword(req.Password, user.Salt)
+	if subtle.ConstantTimeCompare([]byte(hash), []byte(user.PasswordHash)) != 1 {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -884,19 +951,31 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	sessionToken := hex.EncodeToString(b)
 	expiry := time.Now().Add(30 * 24 * time.Hour)
-	if err := s.st.CreateSession(sessionToken, expiry); err != nil {
+	if err := s.st.CreateUserSession(store.UserSession{
+		Token:              sessionToken,
+		UserID:             user.ID,
+		Role:               user.Role,
+		Username:           user.Username,
+		MustChangePassword: user.MustChangePassword,
+		ExpiresAt:          expiry,
+	}); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]string{
-		"token":      sessionToken,
-		"expires_at": expiry.Format(time.RFC3339),
+	go s.st.PruneExpiredUserSessions()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"token":                sessionToken,
+		"role":                 user.Role,
+		"username":             user.Username,
+		"must_change_password": user.MustChangePassword,
+		"expires_at":           expiry.Format(time.RFC3339),
 	})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	s.st.DeleteSession(token)
+	_ = s.st.DeleteUserSession(token)
+	_ = s.st.DeleteSession(token) // backward compat: also clear old admin_sessions
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{}`))
 }
@@ -904,8 +983,8 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		CurrentPassword string `json:"current_password"`
-		NewUsername     string `json:"new_username"`
 		NewPassword     string `json:"new_password"`
+		// new_username kept for backward compat but ignored
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -913,26 +992,89 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 
+	// Get calling username from context (set by adminAuth for session logins).
+	username, _ := r.Context().Value(ctxKeyUsername).(string)
+	if username == "" {
+		// Legacy path: called with admin_token (no session context).
+		s.handleChangePasswordLegacy(w, req.CurrentPassword, req.NewPassword)
+		return
+	}
+
+	user, err := s.st.GetUserByUsername(username)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+
+	// Skip current-password check on forced change (first-login flow).
+	if !user.MustChangePassword {
+		if req.CurrentPassword == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"current_password required"}`))
+			return
+		}
+		hash := hashPassword(req.CurrentPassword, user.Salt)
+		if subtle.ConstantTimeCompare([]byte(hash), []byte(user.PasswordHash)) != 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"wrong current password"}`))
+			return
+		}
+	}
+	if req.NewPassword == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"new_password required"}`))
+		return
+	}
+
+	newSalt := generateSalt()
+	newHash := hashPassword(req.NewPassword, newSalt)
+	user.PasswordHash = newHash
+	user.Salt = newSalt
+	user.MustChangePassword = false
+	if err := s.st.UpdateUser(user); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"could not save credentials"}`))
+		return
+	}
+
+	// Invalidate all sessions for this user and issue a fresh one.
+	_ = s.st.DeleteUserSessionsByUserID(user.ID)
+	b := make([]byte, 32)
+	rand.Read(b)
+	newToken := hex.EncodeToString(b)
+	expiry := time.Now().Add(30 * 24 * time.Hour)
+	_ = s.st.CreateUserSession(store.UserSession{
+		Token:              newToken,
+		UserID:             user.ID,
+		Role:               user.Role,
+		Username:           user.Username,
+		MustChangePassword: false,
+		ExpiresAt:          expiry,
+	})
+	json.NewEncoder(w).Encode(map[string]string{
+		"token":      newToken,
+		"expires_at": expiry.Format(time.RFC3339),
+	})
+}
+
+func (s *Server) handleChangePasswordLegacy(w http.ResponseWriter, currentPass, newPass string) {
 	creds, err := s.st.GetAdminCreds()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not load credentials"}`))
 		return
 	}
-	hash := hashPassword(req.CurrentPassword, creds.Salt)
+	hash := hashPassword(currentPass, creds.Salt)
 	if subtle.ConstantTimeCompare([]byte(hash), []byte(creds.PasswordHash)) != 1 {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"wrong current password"}`))
 		return
 	}
-	username := req.NewUsername
-	if username == "" {
-		username = creds.Username
-	}
 	newSalt := generateSalt()
-	newHash := hashPassword(req.NewPassword, newSalt)
+	newHash := hashPassword(newPass, newSalt)
 	if err := s.st.SetAdminCreds(store.AdminCreds{
-		Username:     username,
+		Username:     creds.Username,
 		PasswordHash: newHash,
 		Salt:         newSalt,
 	}); err != nil {
@@ -941,6 +1083,295 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write([]byte(`{}`))
+}
+
+// --- User management ---
+
+func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := s.st.ListUsers()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"failed to list users"}`))
+		return
+	}
+	if users == nil {
+		users = []store.User{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
+}
+
+func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Role     string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"username required"}`))
+		return
+	}
+	if req.Role != "admin" && req.Role != "user" {
+		req.Role = "user"
+	}
+	status := "pending"
+	if req.Role == "admin" {
+		status = "active"
+	}
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	raw := make([]byte, 12)
+	rand.Read(raw)
+	for i := range raw {
+		raw[i] = charset[int(raw[i])%len(charset)]
+	}
+	password := string(raw)
+	salt := generateSalt()
+	hash := hashPassword(password, salt)
+
+	id, err := s.st.CreateUser(store.User{
+		Username:           req.Username,
+		Email:              req.Email,
+		Role:               req.Role,
+		Status:             status,
+		PasswordHash:       hash,
+		Salt:               salt,
+		MustChangePassword: true,
+		CreatedAt:          time.Now(),
+	})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(err.Error(), "UNIQUE") {
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(`{"error":"username already exists"}`))
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":"failed to create user"}`))
+		}
+		return
+	}
+	user, _ := s.st.GetUserByID(id)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	type resp struct {
+		store.User
+		InitialPassword string `json:"initial_password"`
+	}
+	json.NewEncoder(w).Encode(resp{User: user, InitialPassword: password})
+}
+
+func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid user id"}`))
+		return
+	}
+	user, err := s.st.GetUserByID(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	if user.Status != "pending" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"user is not pending approval"}`))
+		return
+	}
+
+	var req struct {
+		APIKeyName string `json:"api_key_name"`
+		CreateKey  *struct {
+			Name         string   `json:"name"`
+			RateLimit    int      `json:"rate_limit_per_hour"`
+			DailyLimit   int      `json:"daily_limit"`
+			MonthlyLimit int      `json:"monthly_limit"`
+			Models       []string `json:"models"`
+		} `json:"create_key"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	approver, _ := r.Context().Value(ctxKeyUsername).(string)
+	now := time.Now()
+	var newKeyValue string
+
+	if req.CreateKey != nil {
+		keyName := req.CreateKey.Name
+		if keyName == "" {
+			keyName = user.Username + "-key"
+		}
+		newKeyValue = generateAPIKey(keyName)
+		kc := config.KeyConfig{
+			Name:         keyName,
+			Key:          newKeyValue,
+			RateLimit:    req.CreateKey.RateLimit,
+			DailyLimit:   req.CreateKey.DailyLimit,
+			MonthlyLimit: req.CreateKey.MonthlyLimit,
+			Models:       req.CreateKey.Models,
+		}
+		if s.auth != nil {
+			s.auth.AddKey(kc)
+		}
+		_ = s.st.UpsertKey(store.KeyRecord{
+			Name:         kc.Name,
+			Key:          kc.Key,
+			RateLimit:    kc.RateLimit,
+			DailyLimit:   kc.DailyLimit,
+			MonthlyLimit: kc.MonthlyLimit,
+			Models:       kc.Models,
+		})
+		req.APIKeyName = keyName
+	}
+
+	user.Status = "active"
+	user.APIKeyName = req.APIKeyName
+	user.ApprovedAt = &now
+	user.ApprovedBy = approver
+	if err := s.st.UpdateUser(user); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"failed to update user"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	type approveResp struct {
+		User        store.User `json:"user"`
+		APIKeyValue string     `json:"api_key_value,omitempty"`
+	}
+	json.NewEncoder(w).Encode(approveResp{User: user, APIKeyValue: newKeyValue})
+}
+
+func (s *Server) handleSuspendUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid user id"}`))
+		return
+	}
+	user, err := s.st.GetUserByID(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	callerUsername, _ := r.Context().Value(ctxKeyUsername).(string)
+	if callerUsername != "" && user.Username == callerUsername {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"cannot suspend yourself"}`))
+		return
+	}
+	user.Status = "suspended"
+	if err := s.st.UpdateUser(user); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"failed to suspend user"}`))
+		return
+	}
+	_ = s.st.DeleteUserSessionsByUserID(id)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{}`))
+}
+
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid user id"}`))
+		return
+	}
+	user, err := s.st.GetUserByID(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	if user.Role == "admin" {
+		if count, _ := s.st.CountAdminUsers(); count <= 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"cannot delete the last admin user"}`))
+			return
+		}
+	}
+	callerUsername, _ := r.Context().Value(ctxKeyUsername).(string)
+	if callerUsername != "" && user.Username == callerUsername {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"cannot delete yourself"}`))
+		return
+	}
+	_ = s.st.DeleteUserSessionsByUserID(id)
+	if err := s.st.DeleteUser(id); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"failed to delete user"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{}`))
+}
+
+func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid user id"}`))
+		return
+	}
+	var req struct {
+		Email string `json:"email"`
+		Role  string `json:"role"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	user, err := s.st.GetUserByID(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	if req.Role != "" && req.Role != user.Role {
+		if user.Role == "admin" && req.Role == "user" {
+			if count, _ := s.st.CountAdminUsers(); count <= 1 {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"error":"cannot demote the last admin"}`))
+				return
+			}
+		}
+		if req.Role == "admin" || req.Role == "user" {
+			user.Role = req.Role
+		}
+	}
+	if req.Email != "" {
+		user.Email = req.Email
+	}
+	if err := s.st.UpdateUser(user); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"failed to update user"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
+func (s *Server) handlePendingUserCount(w http.ResponseWriter, r *http.Request) {
+	count, _ := s.st.PendingUserCount()
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"count":%d}`, count)
 }
 
 // generateAdminToken returns a cryptographically-random 64-char hex token
@@ -976,6 +1407,61 @@ func generateSalt() string {
 		log.Fatalf("admin: failed to generate password salt: %v", err)
 	}
 	return hex.EncodeToString(b)
+}
+
+// ensureAdminUser sets up the initial admin in the users table on first run.
+// If the legacy admin_credentials table has data, it migrates that row.
+// On a completely fresh install it generates a random password and logs it.
+func (s *Server) ensureAdminUser() {
+	if count, err := s.st.CountAdminUsers(); err == nil && count > 0 {
+		return // already set up
+	}
+	// Migrate from legacy single-admin table if present.
+	if has, _ := s.st.HasAdminCredentials(); has {
+		if uname, hash, salt, err := s.st.GetLegacyAdminCreds(); err == nil {
+			if uname == "" {
+				uname = "admin"
+			}
+			if _, err2 := s.st.CreateUser(store.User{
+				Username:           uname,
+				Role:               "admin",
+				Status:             "active",
+				PasswordHash:       hash,
+				Salt:               salt,
+				MustChangePassword: false,
+				CreatedAt:          time.Now(),
+			}); err2 == nil {
+				log.Printf("admin: migrated legacy credentials to users table (username: %s)", uname)
+				return
+			}
+		}
+	}
+	// Fresh install: generate password and force change on first login.
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	raw := make([]byte, 12)
+	if _, err := rand.Read(raw); err != nil {
+		log.Printf("admin: could not generate initial admin password: %v", err)
+		return
+	}
+	for i := range raw {
+		raw[i] = charset[int(raw[i])%len(charset)]
+	}
+	password := string(raw)
+	salt := generateSalt()
+	hash := hashPassword(password, salt)
+	if _, err := s.st.CreateUser(store.User{
+		Username:           "admin",
+		Role:               "admin",
+		Status:             "active",
+		PasswordHash:       hash,
+		Salt:               salt,
+		MustChangePassword: true,
+		CreatedAt:          time.Now(),
+	}); err != nil {
+		log.Printf("admin: could not persist admin user: %v", err)
+		return
+	}
+	log.Printf("admin dashboard - username: admin  password: %s  (you will be prompted to change this on first login)", password)
 }
 
 // ensureAdminCreds creates default admin credentials in the store if none exist.

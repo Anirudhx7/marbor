@@ -20,7 +20,6 @@ export function SettingsPage() {
 
   // Admin credentials change
   const [credCurrentPw, setCredCurrentPw] = useState('');
-  const [credNewUsername, setCredNewUsername] = useState('');
   const [credNewPw, setCredNewPw] = useState('');
   const [credConfirmPw, setCredConfirmPw] = useState('');
   const [credSaving, setCredSaving] = useState(false);
@@ -161,10 +160,9 @@ export function SettingsPage() {
     setCredSaving(true);
     setCredError(null);
     try {
-      await changePassword(credCurrentPw, credNewUsername || '', credNewPw || '');
+      await changePassword(credCurrentPw, credNewPw || '');
       setCredSaved(true);
       setCredCurrentPw('');
-      setCredNewUsername('');
       setCredNewPw('');
       setCredConfirmPw('');
       setTimeout(() => setCredSaved(false), 3000);
@@ -546,7 +544,7 @@ export function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Admin Credentials</h3>
-                <p className="text-xs font-medium text-muted-foreground">Change dashboard login username or password</p>
+                <p className="text-xs font-medium text-muted-foreground">Change your dashboard login password</p>
               </div>
             </div>
 
@@ -558,17 +556,6 @@ export function SettingsPage() {
                   value={credCurrentPw}
                   onChange={(e) => setCredCurrentPw(e.target.value)}
                   placeholder="Required to make changes"
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">New Username <span className="text-muted-foreground/60">(optional)</span></label>
-                <input
-                  type="text"
-                  value={credNewUsername}
-                  onChange={(e) => setCredNewUsername(e.target.value)}
-                  placeholder="Leave blank to keep current"
-                  autoComplete="username"
                   className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
                 />
               </div>

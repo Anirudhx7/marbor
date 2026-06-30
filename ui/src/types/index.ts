@@ -1,3 +1,31 @@
+export interface LoginResponse {
+  token: string;
+  role: string;
+  username: string;
+  must_change_password: boolean;
+  expires_at: string;
+}
+
+export interface SessionData {
+  token: string;
+  role: string;
+  username: string;
+  mustChangePassword: boolean;
+}
+
+export interface UserRecord {
+  id: number;
+  username: string;
+  email: string;
+  role: 'admin' | 'user';
+  status: 'pending' | 'active' | 'suspended';
+  api_key_name: string;
+  must_change_password: boolean;
+  created_at: string;
+  approved_at?: string;
+  approved_by?: string;
+}
+
 export interface GPUNode {
   id: string;
   name: string;

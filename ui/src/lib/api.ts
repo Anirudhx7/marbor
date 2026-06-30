@@ -1,62 +1,151 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord } from '../types';
 
 const BASE = '/admin';
+
+// --- Session management ---
 
 export function getSessionToken(): string {
   return localStorage.getItem('sessionToken') ?? localStorage.getItem('adminToken') ?? '';
 }
 
-export function setSessionToken(token: string): void {
-  localStorage.setItem('sessionToken', token);
+export function saveSession(data: LoginResponse): void {
+  localStorage.setItem('sessionToken', data.token);
+  localStorage.setItem('sessionRole', data.role);
+  localStorage.setItem('sessionUsername', data.username);
+  localStorage.setItem('sessionMustChangePassword', String(data.must_change_password));
 }
 
-export function clearSessionToken(): void {
+export function loadSession(): SessionData | null {
+  const token = localStorage.getItem('sessionToken') ?? localStorage.getItem('adminToken') ?? '';
+  if (!token) return null;
+  return {
+    token,
+    role: localStorage.getItem('sessionRole') ?? 'admin',
+    username: localStorage.getItem('sessionUsername') ?? '',
+    mustChangePassword: localStorage.getItem('sessionMustChangePassword') === 'true',
+  };
+}
+
+export function clearSession(): void {
   localStorage.removeItem('sessionToken');
   localStorage.removeItem('adminToken');
+  localStorage.removeItem('sessionRole');
+  localStorage.removeItem('sessionUsername');
+  localStorage.removeItem('sessionMustChangePassword');
 }
 
-// Kept for backward compat — resolves to the active session token.
+// Backward compat aliases
+export function setSessionToken(token: string): void { localStorage.setItem('sessionToken', token); }
+export function clearSessionToken(): void { clearSession(); }
 export function getAdminToken(): string { return getSessionToken(); }
-export function clearAdminToken(): void { clearSessionToken(); }
+export function clearAdminToken(): void { clearSession(); }
 
-export async function login(username: string, password: string): Promise<{ token: string; expires_at: string }> {
-  // Demo mode: no backend on GitHub Pages - validate admin/admin locally
+// --- Auth ---
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
   if (import.meta.env.VITE_FORCE_DEMO === 'true') {
     if (username === 'admin' && password === 'admin') {
-      return { token: 'demo-session', expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() };
+      return {
+        token: 'demo-session',
+        role: 'admin',
+        username: 'admin',
+        must_change_password: false,
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      };
     }
     throw new Error('Invalid credentials');
   }
-  const r = await fetch('/login', {
+  const r = await fetch('/admin/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  if (!r.ok) throw new Error('Invalid credentials');
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Invalid credentials');
+  }
   return r.json();
 }
 
 export async function logout(): Promise<void> {
   try {
-    await fetch(`${BASE}/v1/logout`, {
-      method: 'POST',
-      headers: authHeaders(),
-    });
+    await fetch(`${BASE}/v1/logout`, { method: 'POST', headers: authHeaders() });
   } finally {
-    clearSessionToken();
+    clearSession();
   }
 }
 
-export async function changePassword(currentPassword: string, newUsername: string, newPassword: string): Promise<void> {
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{ token?: string; expires_at?: string }> {
   const r = await apiFetch(`${BASE}/v1/change-password`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ current_password: currentPassword, new_username: newUsername, new_password: newPassword }),
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
     throw new Error((j as any).error || 'Failed to change password');
   }
+  return r.json();
+}
+
+// --- User management ---
+
+export async function listUsers(): Promise<UserRecord[]> {
+  const res = await apiFetch(`${BASE}/v1/users`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch users');
+  return res.json();
+}
+
+export async function createUser(data: { username: string; email?: string; role?: string }): Promise<{ id: number; username: string; initial_password: string }> {
+  const res = await apiFetch(`${BASE}/v1/users`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Failed to create user');
+  }
+  return res.json();
+}
+
+export async function approveUser(id: number, data: {
+  api_key_name?: string;
+  create_key?: { name: string; rate_limit_per_hour: number; daily_limit: number; monthly_limit: number; models: string[] };
+}): Promise<{ user: UserRecord; api_key_value?: string }> {
+  const res = await apiFetch(`${BASE}/v1/users/${id}/approve`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Failed to approve user');
+  }
+  return res.json();
+}
+
+export async function suspendUser(id: number): Promise<void> {
+  const res = await apiFetch(`${BASE}/v1/users/${id}/suspend`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to suspend user');
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  const res = await apiFetch(`${BASE}/v1/users/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete user');
+}
+
+export async function getPendingUserCount(): Promise<number> {
+  const res = await apiFetch(`${BASE}/v1/users/pending-count`, { headers: authHeaders() });
+  if (!res.ok) return 0;
+  const d = await res.json();
+  return (d as any).count ?? 0;
 }
 
 function authHeaders(): { Authorization: string } {

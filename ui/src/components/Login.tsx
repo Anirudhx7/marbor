@@ -1,9 +1,10 @@
 import { useState, FormEvent } from 'react';
-import { login, setSessionToken } from '../lib/api';
+import { login, saveSession } from '../lib/api';
 import { forcedDemo } from '../hooks/useDemoMode';
+import type { SessionData } from '../types';
 
 interface LoginProps {
-  onSuccess: () => void;
+  onSuccess: (session: SessionData) => void;
 }
 
 export function Login({ onSuccess }: LoginProps) {
@@ -21,8 +22,13 @@ export function Login({ onSuccess }: LoginProps) {
 
     try {
       const data = await login(username.trim(), password.trim());
-      setSessionToken(data.token);
-      onSuccess();
+      saveSession(data);
+      onSuccess({
+        token: data.token,
+        role: data.role,
+        username: data.username,
+        mustChangePassword: data.must_change_password,
+      });
     } catch {
       setError('Invalid username or password');
       setPassword('');

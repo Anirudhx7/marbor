@@ -1,4 +1,4 @@
-import { lazy, Suspense, Component, ReactNode, useState } from 'react';
+import { lazy, Suspense, Component, ReactNode, useState, useEffect } from 'react';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -25,7 +25,9 @@ import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { DemoBanner } from './components/DemoBanner';
 import { Login } from './components/Login';
-import { getSessionToken, logout } from './lib/api';
+import { ForceChangePassword } from './components/ForceChangePassword';
+import { loadSession, logout, saveSession, getPendingUserCount } from './lib/api';
+import type { SessionData } from './types';
 
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const GPUNodes     = lazy(() => import('./pages/GPUNodes').then(m => ({ default: m.GPUNodes })));
@@ -37,23 +39,54 @@ const Analytics    = lazy(() => import('./pages/Analytics').then(m => ({ default
 const Models       = lazy(() => import('./pages/Models').then(m => ({ default: m.Models })));
 const ModelAdvisor = lazy(() => import('./pages/ModelAdvisor').then(m => ({ default: m.ModelAdvisor })));
 const Requests     = lazy(() => import('./pages/Requests').then(m => ({ default: m.Requests })));
+const Users        = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 
 const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
 function App() {
-  const [authed, setAuthed] = useState<boolean>(
-    () => !!getSessionToken()
-  );
+  const [session, setSession] = useState<SessionData | null>(() => loadSession());
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Poll pending user count when admin
+  useEffect(() => {
+    if (!session || session.role !== 'admin' || forcedDemo) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const count = await getPendingUserCount();
+        if (active) setPendingCount(count);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const id = setInterval(poll, 30_000);
+    return () => { active = false; clearInterval(id); };
+  }, [session]);
 
   function handleLogout() {
-    logout(); // fire-and-forget: clears localStorage + invalidates server session
-    setAuthed(false);
+    logout();
+    setSession(null);
   }
 
-  if (!authed) {
+  function handleLoginSuccess(data: SessionData) {
+    setSession(data);
+  }
+
+  function handleForceChangeSuccess(updated: SessionData) {
+    setSession(updated);
+  }
+
+  if (!session) {
     return (
       <ThemeProvider>
-        <Login onSuccess={() => setAuthed(true)} />
+        <Login onSuccess={handleLoginSuccess} />
+      </ThemeProvider>
+    );
+  }
+
+  if (session.mustChangePassword) {
+    return (
+      <ThemeProvider>
+        <ForceChangePassword session={session} onSuccess={handleForceChangeSuccess} />
       </ThemeProvider>
     );
   }
@@ -62,7 +95,7 @@ function App() {
     <ThemeProvider>
       <BrowserRouter basename={basename}>
         <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-          <Sidebar onLogout={handleLogout} />
+          <Sidebar onLogout={handleLogout} session={session} pendingCount={pendingCount} />
           <main className="md:ml-64 min-h-screen">
             <DemoBanner />
             <div className="pt-14 md:pt-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
@@ -79,6 +112,7 @@ function App() {
                   <Route path="/models" element={<Models />} />
                   <Route path="/model-advisor" element={<ModelAdvisor />} />
                   <Route path="/requests" element={<Requests />} />
+                  {session.role === 'admin' && <Route path="/users" element={<Users />} />}
                 </Routes>
               </Suspense>
               </ErrorBoundary>
