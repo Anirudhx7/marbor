@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key } from 'lucide-react';
-import { listUsers, createUser, approveUser, suspendUser, deleteUser } from '../lib/api';
-import type { UserRecord } from '../types';
+import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key, RotateCcw } from 'lucide-react';
+import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserPassword, fetchKeys, fetchModels } from '../lib/api';
+import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
@@ -15,6 +15,8 @@ const ROLE_BADGE: Record<string, { variant: 'primary' | 'muted'; label: string }
   user:  { variant: 'muted',   label: 'User' },
 };
 
+// ── Approve Modal ─────────────────────────────────────────────────────────────
+
 interface ApproveModalProps {
   user: UserRecord;
   onClose: () => void;
@@ -22,16 +24,29 @@ interface ApproveModalProps {
 }
 
 function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
-  const [mode, setMode] = useState<'assign' | 'create'>('create');
+  const [mode, setMode] = useState<'create' | 'assign'>('create');
   const [existingKeyName, setExistingKeyName] = useState('');
   const [newKeyName, setNewKeyName] = useState(`${user.username}-key`);
   const [rateLimit, setRateLimit] = useState(1000);
   const [dailyLimit, setDailyLimit] = useState(0);
   const [monthlyLimit, setMonthlyLimit] = useState(0);
-  const [models, setModels] = useState('');
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [activeKeys, setActiveKeys] = useState<APIKey[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchKeys().then(keys => setActiveKeys(keys.filter(k => k.status === 'active'))).catch(() => {});
+    fetchModels().then((cat: ModelCatalog) => setAvailableModels(cat.models.map(m => m.name))).catch(() => {});
+  }, []);
+
+  function toggleModel(model: string) {
+    setSelectedModels(prev =>
+      prev.includes(model) ? prev.filter(m => m !== model) : [...prev, model]
+    );
+  }
 
   async function handleApprove() {
     setSaving(true);
@@ -45,7 +60,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
               rate_limit_per_hour: rateLimit,
               daily_limit: dailyLimit,
               monthly_limit: monthlyLimit,
-              models: models.split(',').map(m => m.trim()).filter(Boolean),
+              models: selectedModels,
             },
           };
       const res = await approveUser(user.id, payload);
@@ -75,7 +90,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-2">API key for <strong>{user.username}</strong>:</p>
-          <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all mb-4 select-all">
+          <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all mb-2 select-all">
             {createdKey}
           </code>
           <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">This key will not be shown again. Copy it now.</p>
@@ -89,7 +104,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
+      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2 bg-green-500/10 rounded-lg">
             <UserCheck className="w-5 h-5 text-green-600 dark:text-green-400" />
@@ -102,11 +117,8 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
 
         <div className="flex gap-2 mb-4">
           {(['create', 'assign'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${mode === m ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground hover:bg-secondary'}`}
-            >
+            <button key={m} onClick={() => setMode(m)}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${mode === m ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground hover:bg-secondary'}`}>
               {m === 'create' ? 'Create New Key' : 'Assign Existing Key'}
             </button>
           ))}
@@ -114,14 +126,16 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
 
         {mode === 'assign' ? (
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Existing Key Name</label>
-            <input
-              type="text"
-              value={existingKeyName}
-              onChange={e => setExistingKeyName(e.target.value)}
-              placeholder="e.g. team-shared"
-              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-            />
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Select Active Key</label>
+            {activeKeys.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No active keys found.</p>
+            ) : (
+              <select value={existingKeyName} onChange={e => setExistingKeyName(e.target.value)}
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50">
+                <option value="">-- select a key --</option>
+                {activeKeys.map(k => <option key={k.name} value={k.name}>{k.name}</option>)}
+              </select>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -131,27 +145,37 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Rate/hr</label>
-                <input type="number" value={rateLimit} min={0} onChange={e => setRateLimit(+e.target.value)}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Daily limit</label>
-                <input type="number" value={dailyLimit} min={0} onChange={e => setDailyLimit(+e.target.value)}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Monthly</label>
-                <input type="number" value={monthlyLimit} min={0} onChange={e => setMonthlyLimit(+e.target.value)}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-              </div>
+              {([['Rate/hr', rateLimit, setRateLimit], ['Daily', dailyLimit, setDailyLimit], ['Monthly', monthlyLimit, setMonthlyLimit]] as const).map(([label, val, setter]) => (
+                <div key={label}>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1.5">{label}</label>
+                  <input type="number" value={val} min={0} onChange={e => (setter as any)(+e.target.value)}
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                </div>
+              ))}
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Allowed Models <span className="text-muted-foreground/60">(comma-separated, blank = all)</span></label>
-              <input type="text" value={models} onChange={e => setModels(e.target.value)}
-                placeholder="llama3.2,qwen2.5"
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                Allowed Models <span className="text-muted-foreground/60">(none selected = all models)</span>
+              </label>
+              <div className="max-h-36 overflow-y-auto bg-secondary/50 border border-border rounded-lg p-2 space-y-0.5">
+                <label className="flex items-center gap-2 p-1.5 hover:bg-background rounded cursor-pointer">
+                  <input type="checkbox" checked={selectedModels.length === 0}
+                    onChange={() => setSelectedModels([])}
+                    className="rounded border-border bg-background text-primary focus:ring-primary/20" />
+                  <span className="text-xs text-foreground">All models</span>
+                </label>
+                {availableModels.map(model => (
+                  <label key={model} className="flex items-center gap-2 p-1.5 hover:bg-background rounded cursor-pointer">
+                    <input type="checkbox" checked={selectedModels.includes(model)}
+                      onChange={() => toggleModel(model)}
+                      className="rounded border-border bg-background text-primary focus:ring-primary/20" />
+                    <span className="text-xs font-mono text-muted-foreground">{model}</span>
+                  </label>
+                ))}
+                {availableModels.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic p-1">No models loaded on cluster yet.</p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -171,6 +195,59 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
     </div>
   );
 }
+
+// ── Reset Password Modal ──────────────────────────────────────────────────────
+
+interface ResetPasswordModalProps {
+  user: UserRecord;
+  onClose: () => void;
+}
+
+function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
+  const [loading, setLoading] = useState(true);
+  const [password, setPassword] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    resetUserPassword(user.id)
+      .then(r => { setPassword(r.initial_password); setLoading(false); })
+      .catch(err => { setError(err.message || 'Failed'); setLoading(false); });
+  }, [user.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-amber-500/10 rounded-lg">
+            <RotateCcw className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Reset Password</h3>
+            <p className="text-xs text-muted-foreground">{user.username}</p>
+          </div>
+        </div>
+        {loading && <p className="text-sm text-muted-foreground">Generating new password...</p>}
+        {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
+        {password && (
+          <>
+            <p className="text-xs text-muted-foreground mb-2">New temporary password (shown once):</p>
+            <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all mb-2 select-all">
+              {password}
+            </code>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+              User will be prompted to change it on next login. All active sessions revoked.
+            </p>
+          </>
+        )}
+        <button onClick={onClose} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Create User Modal ─────────────────────────────────────────────────────────
 
 interface CreateUserModalProps {
   onClose: () => void;
@@ -208,7 +285,7 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
           <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all mb-2 select-all">
             {created.initial_password}
           </code>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">Share this with the user. They will be prompted to change it on first login.</p>
+          <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">Share with the user. They will be prompted to change it on first login.</p>
           <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
             Done
           </button>
@@ -267,11 +344,14 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
   );
 }
 
+// ── Main Users Page ───────────────────────────────────────────────────────────
+
 export function Users() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<UserRecord | null>(null);
+  const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
@@ -298,7 +378,7 @@ export function Users() {
   }
 
   async function handleDelete(u: UserRecord) {
-    if (!confirm(`Delete user "${u.username}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete user "${u.username}"? They will be soft-deleted and removed from the active list.`)) return;
     try {
       await deleteUser(u.id);
       load();
@@ -358,8 +438,8 @@ export function Users() {
               </thead>
               <tbody className="divide-y divide-border">
                 {users.map(u => {
-                  const sb = STATUS_BADGE[u.status] ?? { variant: 'default', label: u.status };
-                  const rb = ROLE_BADGE[u.role] ?? { variant: 'default', label: u.role };
+                  const sb = STATUS_BADGE[u.status] ?? { variant: 'muted' as const, label: u.status };
+                  const rb = ROLE_BADGE[u.role] ?? { variant: 'muted' as const, label: u.role };
                   return (
                     <tr key={u.id} className="hover:bg-secondary/20 transition-colors">
                       <td className="px-4 py-3 font-medium text-foreground">{u.username}</td>
@@ -379,37 +459,29 @@ export function Users() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           {u.status === 'pending' && (
-                            <button
-                              onClick={() => setApproveTarget(u)}
-                              title="Approve"
-                              className="p-1.5 rounded-md text-green-600 hover:bg-green-500/10 transition-colors"
-                            >
+                            <button onClick={() => setApproveTarget(u)} title="Approve"
+                              className="p-1.5 rounded-md text-green-600 hover:bg-green-500/10 transition-colors">
                               <Check className="w-4 h-4" />
                             </button>
                           )}
                           {u.status === 'active' && (
-                            <button
-                              onClick={() => handleSuspend(u)}
-                              title="Suspend"
-                              className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors"
-                            >
+                            <button onClick={() => handleSuspend(u)} title="Suspend"
+                              className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
                               <Ban className="w-4 h-4" />
                             </button>
                           )}
                           {u.status === 'suspended' && (
-                            <button
-                              onClick={() => setApproveTarget(u)}
-                              title="Reactivate"
-                              className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors"
-                            >
+                            <button onClick={() => setApproveTarget(u)} title="Reactivate"
+                              className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors">
                               <UserCheck className="w-4 h-4" />
                             </button>
                           )}
-                          <button
-                            onClick={() => handleDelete(u)}
-                            title="Delete"
-                            className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors"
-                          >
+                          <button onClick={() => setResetTarget(u)} title="Reset Password"
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(u)} title="Delete"
+                            className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -428,6 +500,12 @@ export function Users() {
           user={approveTarget}
           onClose={() => setApproveTarget(null)}
           onDone={() => { setApproveTarget(null); load(); }}
+        />
+      )}
+      {resetTarget && (
+        <ResetPasswordModal
+          user={resetTarget}
+          onClose={() => setResetTarget(null)}
         />
       )}
       {showCreate && (

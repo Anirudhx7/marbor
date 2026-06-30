@@ -347,6 +347,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/v1/users/{id}/suspend", s.cors(s.adminAuth(s.handleSuspendUser)))
 	mux.HandleFunc("DELETE /admin/v1/users/{id}", s.cors(s.adminAuth(s.handleDeleteUser)))
 	mux.HandleFunc("PATCH /admin/v1/users/{id}", s.cors(s.adminAuth(s.handlePatchUser)))
+	mux.HandleFunc("POST /admin/v1/users/{id}/reset-password", s.cors(s.adminAuth(s.handleResetUserPassword)))
 
 	if sub, err := fs.Sub(webFS, "web/dist"); err == nil {
 		mux.Handle("/assets/", s.noCache(http.FileServer(http.FS(sub))))
@@ -1311,7 +1312,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.st.DeleteUserSessionsByUserID(id)
-	if err := s.st.DeleteUser(id); err != nil {
+	if err := s.st.SoftDeleteUser(id, callerUsername); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"failed to delete user"}`))
@@ -1366,6 +1367,49 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
+}
+
+func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid user id"}`))
+		return
+	}
+	user, err := s.st.GetUserByID(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	const charset = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	raw := make([]byte, 12)
+	if _, err := rand.Read(raw); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"failed to generate password"}`))
+		return
+	}
+	for i := range raw {
+		raw[i] = charset[int(raw[i])%len(charset)]
+	}
+	newPassword := string(raw)
+	salt := generateSalt()
+	hash := hashPassword(newPassword, salt)
+	user.PasswordHash = hash
+	user.Salt = salt
+	user.MustChangePassword = true
+	if err := s.st.UpdateUser(user); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"failed to reset password"}`))
+		return
+	}
+	_ = s.st.DeleteUserSessionsByUserID(id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"initial_password": newPassword})
 }
 
 func (s *Server) handlePendingUserCount(w http.ResponseWriter, r *http.Request) {

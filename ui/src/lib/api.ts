@@ -141,6 +141,18 @@ export async function deleteUser(id: number): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete user');
 }
 
+export async function resetUserPassword(id: number): Promise<{ initial_password: string }> {
+  const res = await apiFetch(`${BASE}/v1/users/${id}/reset-password`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Failed to reset password');
+  }
+  return res.json();
+}
+
 export async function getPendingUserCount(): Promise<number> {
   const res = await apiFetch(`${BASE}/v1/users/pending-count`, { headers: authHeaders() });
   if (!res.ok) return 0;

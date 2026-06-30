@@ -179,6 +179,13 @@ func (s *sqliteStore) migrate() error {
 			return fmt.Errorf("migrate stmt: %w\nSQL: %s", err, stmt)
 		}
 	}
+	// Idempotent column additions for schema upgrades on existing DBs.
+	for _, col := range []string{
+		`ALTER TABLE users ADD COLUMN deleted_at INTEGER`,
+		`ALTER TABLE users ADD COLUMN deleted_by TEXT NOT NULL DEFAULT ''`,
+	} {
+		s.db.Exec(col) // ignore error — column may already exist
+	}
 	return nil
 }
 
@@ -779,11 +786,12 @@ func (s *sqliteStore) scanUserRow(row *sql.Row) (User, error) {
 	var u User
 	var mcp int
 	var createdAt int64
-	var approvedAt sql.NullInt64
+	var approvedAt, deletedAt sql.NullInt64
 	err := row.Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Salt,
 		&u.Role, &u.Status, &u.APIKeyName, &mcp, &createdAt,
 		&approvedAt, &u.ApprovedBy,
+		&deletedAt, &u.DeletedBy,
 	)
 	if err == sql.ErrNoRows {
 		return User{}, ErrUserNotFound
@@ -797,11 +805,16 @@ func (s *sqliteStore) scanUserRow(row *sql.Row) (User, error) {
 		t := time.Unix(approvedAt.Int64, 0).UTC()
 		u.ApprovedAt = &t
 	}
+	if deletedAt.Valid {
+		t := time.Unix(deletedAt.Int64, 0).UTC()
+		u.DeletedAt = &t
+	}
 	return u, nil
 }
 
 const userSelectCols = `id, username, email, password_hash, salt, role, status,
-	api_key_name, must_change_password, created_at, approved_at, approved_by`
+	api_key_name, must_change_password, created_at, approved_at, approved_by,
+	deleted_at, deleted_by`
 
 func (s *sqliteStore) GetUserByUsername(username string) (User, error) {
 	return s.scanUserRow(s.db.QueryRow(
@@ -817,7 +830,7 @@ func (s *sqliteStore) GetUserByID(id int64) (User, error) {
 
 func (s *sqliteStore) ListUsers() ([]User, error) {
 	rows, err := s.db.Query(
-		`SELECT ` + userSelectCols + ` FROM users ORDER BY created_at DESC`,
+		`SELECT ` + userSelectCols + ` FROM users WHERE deleted_at IS NULL ORDER BY created_at DESC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: ListUsers: %w", err)
@@ -829,11 +842,12 @@ func (s *sqliteStore) ListUsers() ([]User, error) {
 		var u User
 		var mcp int
 		var createdAt int64
-		var approvedAt sql.NullInt64
+		var approvedAt, deletedAt sql.NullInt64
 		if err := rows.Scan(
 			&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Salt,
 			&u.Role, &u.Status, &u.APIKeyName, &mcp, &createdAt,
 			&approvedAt, &u.ApprovedBy,
+			&deletedAt, &u.DeletedBy,
 		); err != nil {
 			return nil, fmt.Errorf("store: ListUsers scan: %w", err)
 		}
@@ -881,9 +895,20 @@ func (s *sqliteStore) DeleteUser(id int64) error {
 	return nil
 }
 
+func (s *sqliteStore) SoftDeleteUser(id int64, deletedBy string) error {
+	_, err := s.db.Exec(
+		`UPDATE users SET deleted_at=unixepoch(), deleted_by=?, status='suspended' WHERE id=?`,
+		deletedBy, id,
+	)
+	if err != nil {
+		return fmt.Errorf("store: SoftDeleteUser: %w", err)
+	}
+	return nil
+}
+
 func (s *sqliteStore) CountAdminUsers() (int, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin'`).Scan(&n)
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin' AND deleted_at IS NULL`).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("store: CountAdminUsers: %w", err)
 	}
@@ -892,7 +917,7 @@ func (s *sqliteStore) CountAdminUsers() (int, error) {
 
 func (s *sqliteStore) PendingUserCount() (int, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE status='pending'`).Scan(&n)
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE status='pending' AND deleted_at IS NULL`).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("store: PendingUserCount: %w", err)
 	}

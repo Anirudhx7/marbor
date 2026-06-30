@@ -78,6 +78,7 @@ type Store interface {
 	ListUsers() ([]User, error)
 	UpdateUser(u User) error
 	DeleteUser(id int64) error
+	SoftDeleteUser(id int64, deletedBy string) error
 	CountAdminUsers() (int, error)
 	PendingUserCount() (int, error)
 
@@ -208,6 +209,8 @@ type User struct {
 	CreatedAt          time.Time  `json:"created_at"`
 	ApprovedAt         *time.Time `json:"approved_at,omitempty"`
 	ApprovedBy         string     `json:"approved_by,omitempty"`
+	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
+	DeletedBy          string     `json:"deleted_by,omitempty"`
 }
 
 // UserSession is an authenticated session tied to a specific User row.
@@ -257,6 +260,7 @@ func (NopStore) GetUserByID(_ int64) (User, error)                        { retu
 func (NopStore) ListUsers() ([]User, error)                               { return nil, nil }
 func (NopStore) UpdateUser(_ User) error                                  { return nil }
 func (NopStore) DeleteUser(_ int64) error                                 { return nil }
+func (NopStore) SoftDeleteUser(_ int64, _ string) error                   { return nil }
 func (NopStore) CountAdminUsers() (int, error)                            { return 0, nil }
 func (NopStore) PendingUserCount() (int, error)                           { return 0, nil }
 func (NopStore) CreateUserSession(_ UserSession) error                    { return nil }
