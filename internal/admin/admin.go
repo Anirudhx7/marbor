@@ -338,6 +338,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/login", s.cors(s.handleAdminLogin))
 	reg("POST /admin/logout", s.cors(s.adminAuth(s.handleLogout)))
 	reg("POST /admin/change-password", s.cors(s.adminAuth(s.handleChangePassword)))
+	// Role-agnostic endpoints — any valid session (admin or user).
+	mux.HandleFunc("POST /change-password", s.cors(s.sessionAuth(s.handleChangePassword)))
+	mux.HandleFunc("POST /logout", s.cors(s.sessionAuth(s.handleLogout)))
 
 	// User management (admin only, no /admin/* duplicate — these are v1-only)
 	mux.HandleFunc("GET /admin/v1/users/pending-count", s.cors(s.adminAuth(s.handlePendingUserCount)))
@@ -358,6 +361,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Serve index.html for SPA routes; block unknown /admin/* API paths.
 		// /admin/login is a frontend SPA route, not an API path — let it through.
+		// Block unknown /admin/* API paths; /admin/login is a SPA route.
+		// /login and /change-password are API endpoints registered above — they
+		// never reach this catch-all, so no special-casing needed here.
 		if strings.HasPrefix(r.URL.Path, "/admin") && r.URL.Path != "/admin/login" {
 			http.NotFound(w, r)
 			return
@@ -398,6 +404,36 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		next(w, r)
+	}
+}
+
+// sessionAuth accepts any valid session (any role). Use for endpoints that
+// non-admin users must also reach (change-password, logout).
+func (s *Server) sessionAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if token != "" {
+			if session, found, err := s.st.GetUserSession(token); err == nil && found {
+				if session.MustChangePassword {
+					p := r.URL.Path
+					allowed := p == "/change-password" ||
+						p == "/admin/v1/change-password" || p == "/admin/change-password" ||
+						p == "/logout" || p == "/admin/v1/logout" || p == "/admin/logout"
+					if !allowed {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusForbidden)
+						w.Write([]byte(`{"error":"password_change_required"}`))
+						return
+					}
+				}
+				r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
+				next(w, r)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"unauthorized"}`))
 	}
 }
 

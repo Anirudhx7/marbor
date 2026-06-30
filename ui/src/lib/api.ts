@@ -67,6 +67,19 @@ export async function login(username: string, password: string): Promise<LoginRe
   return r.json();
 }
 
+export async function userLogin(username: string, password: string): Promise<LoginResponse> {
+  const r = await fetch('/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Invalid credentials');
+  }
+  return r.json();
+}
+
 export async function logout(): Promise<void> {
   try {
     await fetch(`${BASE}/v1/logout`, { method: 'POST', headers: authHeaders() });
@@ -76,7 +89,7 @@ export async function logout(): Promise<void> {
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<{ token?: string; expires_at?: string }> {
-  const r = await apiFetch(`${BASE}/v1/change-password`, {
+  const r = await apiFetch(`/change-password`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),

@@ -1,13 +1,14 @@
 import { useState, FormEvent } from 'react';
-import { login, saveSession } from '../lib/api';
+import { login, userLogin, saveSession } from '../lib/api';
 import { forcedDemo } from '../hooks/useDemoMode';
 import type { SessionData } from '../types';
 
 interface LoginProps {
   onSuccess: (session: SessionData) => void;
+  mode?: 'admin' | 'user';
 }
 
-export function Login({ onSuccess }: LoginProps) {
+export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -21,7 +22,9 @@ export function Login({ onSuccess }: LoginProps) {
     setError('');
 
     try {
-      const data = await login(username.trim(), password.trim());
+      const data = mode === 'user'
+        ? await userLogin(username.trim(), password.trim())
+        : await login(username.trim(), password.trim());
       saveSession(data);
       onSuccess({
         token: data.token,
@@ -50,7 +53,9 @@ export function Login({ onSuccess }: LoginProps) {
               </svg>
             </div>
             <h1 className="text-xl font-semibold text-foreground">ollama-mesh</h1>
-            <p className="text-sm text-muted-foreground mt-1">Sign in to the admin dashboard</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {mode === 'user' ? 'Sign in to the user portal' : 'Sign in to the admin dashboard'}
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -63,7 +68,7 @@ export function Login({ onSuccess }: LoginProps) {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
+                placeholder={mode === 'user' ? 'username' : 'admin'}
                 autoFocus
                 autoComplete="username"
                 disabled={loading}

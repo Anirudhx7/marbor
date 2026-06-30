@@ -19,13 +19,14 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return this.props.children;
   }
 }
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { DemoBanner } from './components/DemoBanner';
 import { Login } from './components/Login';
 import { ForceChangePassword } from './components/ForceChangePassword';
+import { UserPortal } from './pages/UserPortal';
 import { loadSession, logout, saveSession, getPendingUserCount } from './lib/api';
 import type { SessionData } from './types';
 
@@ -68,6 +69,10 @@ function App() {
   }
 
   function handleLoginSuccess(data: SessionData) {
+    // Reset URL to / so BrowserRouter doesn't mount at /admin/login or /login
+    if (window.location.pathname !== '/') {
+      window.history.replaceState({}, '', '/');
+    }
     setSession(data);
   }
 
@@ -75,10 +80,14 @@ function App() {
     setSession(updated);
   }
 
+  // Detect if visitor is on the user portal path (/login but not /admin/login)
+  const isUserPath = typeof window !== 'undefined' &&
+    window.location.pathname === '/login';
+
   if (!session) {
     return (
       <ThemeProvider>
-        <Login onSuccess={handleLoginSuccess} />
+        <Login onSuccess={handleLoginSuccess} mode={isUserPath ? 'user' : 'admin'} />
       </ThemeProvider>
     );
   }
@@ -87,6 +96,14 @@ function App() {
     return (
       <ThemeProvider>
         <ForceChangePassword session={session} onSuccess={handleForceChangeSuccess} />
+      </ThemeProvider>
+    );
+  }
+
+  if (session.role === 'user') {
+    return (
+      <ThemeProvider>
+        <UserPortal session={session} onLogout={handleLogout} />
       </ThemeProvider>
     );
   }
@@ -113,6 +130,7 @@ function App() {
                   <Route path="/model-advisor" element={<ModelAdvisor />} />
                   <Route path="/requests" element={<Requests />} />
                   {session.role === 'admin' && <Route path="/users" element={<Users />} />}
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Suspense>
               </ErrorBoundary>
