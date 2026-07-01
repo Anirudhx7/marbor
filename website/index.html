@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>
+  // Apply the saved/preferred theme BEFORE first paint to avoid a flash of the
+  // wrong (dark) palette for light-mode visitors. The rest of the theme wiring
+  // (toggle button, persistence) runs in the deferred script at end of <body>.
+  (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
+</script>
 <title>ollama-mesh - The control plane for self-hosted AI inference</title>
 <meta name="description" content="The control plane and orchestration layer for self-hosted GPU inference fleets. Schedules requests based on warm model VRAM residency across Ollama, vLLM, TGI, and llama.cpp nodes." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -650,7 +656,7 @@ SPCS-FEATURE-END */
 <!-- HERO -->
 <header class="hero">
   <div class="page">
-    <span class="kicker"><span class="dot"></span>v0.10.0: vLLM, TGI, llama.cpp · self-hosted · Apache 2.0</span>
+    <span class="kicker"><span class="dot"></span>{{VERSION}}: vLLM, TGI, llama.cpp · self-hosted · MIT</span>
     <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
       A single-binary orchestration layer that turns your local GPUs into a high-availability inference cluster. 
@@ -692,7 +698,7 @@ SPCS-FEATURE-END */
     <div class="badge-grid">
       <div class="badge-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>License: <strong>Apache-2.0</strong></span>
+        <span>License: <strong>MIT</strong></span>
       </div>
       <div class="badge-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -1105,7 +1111,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
       </div>
     </div>
     <div class="foot-bottom">
-      <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+      <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
       <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span> · <a href="https://github.com/Anirudhx7/ollama-mesh/releases" class="gh-link">releases ↗</a></span>
     </div>
   </div>
@@ -1114,12 +1120,8 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
 <script>
 (function () {
   "use strict";
+  // Theme class is already applied pre-paint by the inline script in <head>.
   var root = document.documentElement;
-  try {
-    var saved = localStorage.getItem("om-theme");
-    if (saved === "light") root.classList.add("light");
-    else if (!saved && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) root.classList.add("light");
-  } catch (e) {}
   var toggle = document.getElementById("themeToggle");
   if (toggle) toggle.addEventListener("click", function () {
     root.classList.toggle("light");

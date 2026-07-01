@@ -252,7 +252,7 @@ function page({ slug, title, contentHtml, headings }) {
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+    <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
     <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
@@ -345,7 +345,7 @@ function docsIndexPage() {
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+    <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
     <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
