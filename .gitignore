@@ -49,4 +49,3 @@ nul
 # Git worktrees
 .worktrees/
 mesh.db
-config-e2e-test.yaml
