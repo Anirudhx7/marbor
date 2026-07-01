@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, PlayCircle, Pencil } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
@@ -247,7 +247,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
             className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
             {s.enabled ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
           </button>
-          <button onClick={startEdit} title="Edit"
+          <button onClick={editing ? () => setEditing(false) : startEdit} title={editing ? 'Close edit' : 'Edit'}
             className={`p-1.5 rounded-md transition-colors ${editing ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
             <Pencil className="w-3.5 h-3.5" />
           </button>
@@ -441,14 +441,6 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
 
 function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (s: Schedule) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState(0);
-
-  useEffect(() => {
-    if (open && contentRef.current) setHeight(contentRef.current.scrollHeight);
-    else setHeight(0);
-  }, [open, paused.length]);
-
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <button onClick={() => setOpen(p => !p)}
@@ -460,15 +452,11 @@ function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (
         </div>
         <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
-      <div
-        ref={contentRef}
-        style={{ maxHeight: height, overflow: 'hidden', transition: 'max-height 250ms ease' }}
-        className="border-t border-border"
-      >
-        <div className="divide-y divide-border opacity-60">
+      {open && (
+        <div className="border-t border-border divide-y divide-border opacity-60">
           {paused.map(renderRow)}
         </div>
-      </div>
+      )}
     </div>
   );
 }
