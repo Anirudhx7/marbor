@@ -398,7 +398,7 @@ section, #install { scroll-margin-top: 80px; }
   flex-shrink: 0;
 }
 
-/* SPCS SECTION */
+/* SPCS-FEATURE-START
 .spcs-section {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -497,6 +497,7 @@ section, #install { scroll-margin-top: 80px; }
   background: rgba(124,185,124,0.15);
   color: var(--accent2);
 }
+SPCS-FEATURE-END */
 
 /* LITELLM ARCHITECTURE DIAGRAM */
 .litellm-section {
@@ -771,7 +772,7 @@ section, #install { scroll-margin-top: 80px; }
   </div>
 </header>
 
-<!-- COLD START ELIMINATION (SPCS) -->
+<!-- SPCS-FEATURE-START
 <section id="spcs" style="padding: 80px 0 40px; border-top: 1px solid var(--border-subtle);">
   <div class="page">
     <div class="spcs-section">
@@ -780,7 +781,7 @@ section, #install { scroll-margin-top: 80px; }
       <p class="sec-sub" style="margin-bottom: 20px;">
         Speculative Prefix-Cached Swapping (SPCS) eliminates the multi-second delay of loading cold model weights into VRAM.
       </p>
-      
+
       <div class="spcs-grid">
         <div class="spcs-text">
           <p style="font-size: 14px; color: var(--text-muted); margin: 0 0 16px; line-height: 1.6;">
@@ -818,6 +819,7 @@ section, #install { scroll-margin-top: 80px; }
     </div>
   </div>
 </section>
+SPCS-FEATURE-END -->
 
 <!-- WHY LOCAL INFERENCE IS HARD -->
 <section id="why-hard" style="padding: 40px 0 80px; border-top: 1px solid var(--border-subtle);">
@@ -1092,6 +1094,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
         <a href="docs/INTEGRATIONS.html">Integrations</a>
         <a href="docs/PRODUCTION.html">Production</a>
         <a href="docs/deploy/aws-ec2.html">Deploy on AWS</a>
+        <a href="docs/LIMITATIONS.html">Known limitations</a>
       </div>
       <div class="foot-col">
         <h4>Integrations</h4>
@@ -1179,6 +1182,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
       decision: "route → gpu-02 · <span style='color:var(--accent2)'>0ms weight load</span> (already warm)",
       reasoning: "Warm hit detected on gpu-02. Scheduled to resident VRAM. Eliminated 12.1s load delay."
     },
+    /* SPCS-FEATURE-START
     {
       model: "qwen2.5-coder:14b",
       statVram: "32.0 GB",
@@ -1191,6 +1195,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
       decision: "route → gpu-03 <span style='color:var(--accent)'>(via SPCS Protocol)</span>",
       reasoning: "Cold request. Activated Speculative Prefix-Cached Swapping (SPCS). Streaming from warm draft model (qwen2.5:7b) [0ms wait] while loading target weights in background. Seamless mid-stream swap scheduled."
     },
+    SPCS-FEATURE-END */
     {
       model: "deepseek-r1:70b",
       statVram: "32.0 GB",
