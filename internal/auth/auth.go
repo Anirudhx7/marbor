@@ -161,9 +161,19 @@ type tokenBucket struct {
 	capacity   float64
 	lastRefill time.Time
 	rate       float64
+	// unlimited disables rate limiting entirely. A configured rate_limit of 0
+	// (or negative) means "no per-key request-rate cap", matching the daily/
+	// monthly-quota convention where 0 == unlimited. Without this flag a zero
+	// rate produced a bucket with capacity 0 and refill rate 0, so allow() could
+	// never reach 1 token and every request was rejected with 429 - the exact
+	// opposite of the intended "unlimited" semantics.
+	unlimited bool
 }
 
 func newTokenBucket(ratePerHour int) *tokenBucket {
+	if ratePerHour <= 0 {
+		return &tokenBucket{unlimited: true, lastRefill: time.Now()}
+	}
 	rate := float64(ratePerHour) / 3600.0
 	return &tokenBucket{
 		tokens:     float64(ratePerHour),
@@ -178,6 +188,10 @@ func newTokenBucket(ratePerHour int) *tokenBucket {
 func (tb *tokenBucket) snapshot() (remaining float64, capacity float64, resetAt int64) {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
+	if tb.unlimited {
+		// -1 signals "no limit" to clients rather than a misleading 0/0.
+		return -1, -1, 0
+	}
 	now := time.Now()
 	elapsed := now.Sub(tb.lastRefill).Seconds()
 	current := tb.tokens + elapsed*tb.rate
@@ -228,6 +242,9 @@ func (tb *tokenBucket) refund() {
 func (tb *tokenBucket) allow() bool {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
+	if tb.unlimited {
+		return true
+	}
 	now := time.Now()
 	elapsed := now.Sub(tb.lastRefill).Seconds()
 	tb.tokens += elapsed * tb.rate

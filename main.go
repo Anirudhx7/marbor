@@ -148,6 +148,20 @@ func main() {
 		log.Printf("  - %s (%s) -> %s", n.Name, n.GPUModel, n.URL)
 	}
 
+	// Loud, unmissable warning when the proxy is running without authentication.
+	// auth.enabled defaults to the bool zero value (false), so a hand-written
+	// config that omits the flag silently exposes an unauthenticated LLM gateway
+	// that forwards to backend GPU nodes. First-run configs always set it true;
+	// this catches the dangerous omit-the-flag case.
+	if !cfg.Auth.IsEnabled() {
+		log.Printf("WARNING: ================================================================")
+		log.Printf("WARNING: AUTHENTICATION IS DISABLED - every request is forwarded with no")
+		log.Printf("WARNING: API key check. Anyone who can reach :%d has full access to your", cfg.Proxy.Port)
+		log.Printf("WARNING: backend models. Set 'auth: {enabled: true}' with at least one key")
+		log.Printf("WARNING: for any non-loopback or shared deployment.")
+		log.Printf("WARNING: ================================================================")
+	}
+
 	// Open the SQLite persistence store. "-" disables; empty defaults to mesh.db.
 	var st store.Store = store.NopStore{}
 	if cfg.Storage.DBPath != "-" {

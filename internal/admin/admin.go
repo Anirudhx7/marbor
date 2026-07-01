@@ -2507,13 +2507,18 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 				vramFreeMB = 0
 			}
 		}
+		// Copy the underlying values under the read lock. Taking the address of
+		// (or aliasing) a NodeState field would let the health-poll goroutine
+		// mutate it while json.Encode dereferences it after RUnlock - a data race.
 		var tempC *float64
 		if n.Temperature != nil {
-			tempC = n.Temperature
+			v := *n.Temperature
+			tempC = &v
 		}
 		var powerW *float64
 		if n.PowerDrawW > 0 {
-			powerW = &n.PowerDrawW
+			v := n.PowerDrawW
+			powerW = &v
 		}
 		gpus[i] = sysGPUEntry{
 			Name:         n.Name,

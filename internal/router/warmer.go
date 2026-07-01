@@ -16,6 +16,14 @@ import (
 // generous. Subsequent pings on a warm model complete in <100ms.
 const warmupPingTimeout = 5 * time.Minute
 
+// warmupHTTPClient is used exclusively for warmup pings. It intentionally has
+// NO client-level Timeout: a cold first-load can take minutes, and the actual
+// per-ping deadline is enforced via the request context (warmupPingTimeout).
+// The router's shared r.client has a 5s Timeout for health probing, which is a
+// hard ceiling that overrides any longer request context - using it here would
+// abort every cold warmup at 5s and silently defeat warmup entirely.
+var warmupHTTPClient = &http.Client{}
+
 // pingWarmupModels sends a zero-token /api/generate with keep_alive to every
 // configured (model, node) pair. Each ping runs in its own goroutine so a slow
 // node can't block others. Safe to call concurrently.
@@ -81,7 +89,7 @@ func (r *Router) pingNode(ctx context.Context, n *NodeState, model, keepAlive st
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := r.client.Do(req)
+	resp, err := warmupHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}

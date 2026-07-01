@@ -342,13 +342,18 @@ func (r *Router) Strategy() string {
 	return r.strategy
 }
 
-// RouteCloud returns the first enabled cloud provider as fallback when no local nodes are available.
+// RouteCloud returns the first enabled cloud provider as fallback when no local
+// nodes are available. It returns a pointer to a *copy* of the provider, never a
+// pointer into the r.clouds slice: SetClouds (SIGHUP reload) replaces that slice
+// under the write lock, so an aliased pointer could be read concurrently or go
+// stale mid-request. The copy is safe to read without holding r.mu.
 func (r *Router) RouteCloud() *config.CloudProvider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for i := range r.clouds {
 		if r.clouds[i].Enabled {
-			return &r.clouds[i]
+			cp := r.clouds[i]
+			return &cp
 		}
 	}
 	return nil

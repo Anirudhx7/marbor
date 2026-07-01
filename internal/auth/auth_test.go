@@ -73,6 +73,34 @@ func TestRateLimit(t *testing.T) {
 	}
 }
 
+// TestRateLimitZeroMeansUnlimited guards the regression where a key with
+// rate_limit:0 (the value the admin API assigns by default, meaning "no cap")
+// was rejected with 429 on every request because the token bucket was built
+// with capacity 0. Zero must mean unlimited, matching daily/monthly quota.
+func TestRateLimitZeroMeansUnlimited(t *testing.T) {
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: true,
+		Keys: []config.KeyConfig{
+			{Name: "unlimited", Key: "sk-unlim", RateLimit: 0},
+		},
+	})
+	handler := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer sk-unlim")
+
+	// Many consecutive requests must all be allowed; none may 429.
+	for i := 0; i < 50; i++ {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d = %d, want 200 (rate_limit:0 must be unlimited)", i+1, rec.Code)
+		}
+	}
+}
+
 func TestRetryAfterHeaderOnRateLimit(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
 		Enabled: true,
