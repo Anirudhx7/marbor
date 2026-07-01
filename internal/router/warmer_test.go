@@ -104,3 +104,42 @@ func TestPingWarmupModelsAllNodes(t *testing.T) {
 		t.Fatal("warmup ping never fired")
 	}
 }
+
+// TestPerNodeRuntimeWarmupPings verifies that per-node warmup (toggled at
+// runtime via the admin API, persisted in the KV store) fires pings even when
+// config-file warmup is disabled.
+func TestPerNodeRuntimeWarmupPings(t *testing.T) {
+	calls := make(chan struct{}, 4)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls <- struct{}{}
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		client:     &http.Client{Timeout: 5 * time.Second},
+		nodes:      []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		nodeWarmup: map[string]NodeWarmup{"n1": {Enabled: true, Models: []string{"llama3.2"}}},
+		// config-file warmup intentionally left disabled.
+	}
+	r.pingWarmupModels(context.Background())
+	select {
+	case <-calls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("per-node runtime warmup ping never fired")
+	}
+}
+
+// TestEffectiveKeepAlive verifies the keep_alive is bumped past the interval so
+// models never unload between pings, and preserved when already long enough.
+func TestEffectiveKeepAlive(t *testing.T) {
+	if got := effectiveKeepAlive("1m", 10*time.Minute); got == "1m" {
+		t.Errorf("effectiveKeepAlive(1m, 10m) = %q, want a value >= interval", got)
+	}
+	if got := effectiveKeepAlive("30m", 10*time.Minute); got != "30m" {
+		t.Errorf("effectiveKeepAlive(30m, 10m) = %q, want 30m (preserved)", got)
+	}
+	if got := effectiveKeepAlive("", 5*time.Minute); got == "" {
+		t.Error("effectiveKeepAlive with empty config returned empty")
+	}
+}

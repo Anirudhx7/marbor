@@ -138,6 +138,17 @@ type Router struct {
 	queueMaxDepth int
 	queueTimeout  time.Duration
 	warmupCfg     config.WarmupConfig
+	// nodeWarmup holds per-node runtime warmup settings toggled via the admin API
+	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
+	// Guarded by r.mu.
+	nodeWarmup map[string]NodeWarmup
+}
+
+// NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
+// enabled for the node and which models to keep resident on it.
+type NodeWarmup struct {
+	Enabled bool     `json:"enabled"`
+	Models  []string `json:"models"`
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
@@ -209,6 +220,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		affinity:           make(map[string]*affinityEntry),
 		affinityTTL:        affinityTTL,
 		sessionAffinity:    cfg.SessionAffinity,
+		nodeWarmup:         make(map[string]NodeWarmup),
 		nvidiaCache:        make(map[int]GPUStats),
 		nvidiaPollInterval: nvidiaPollInterval,
 		notifyCh:           make(chan struct{}),
@@ -227,6 +239,32 @@ func (r *Router) SetWarmupConfig(cfg config.WarmupConfig) {
 // Safe to call concurrently; each (model, node) pair runs in its own goroutine.
 func (r *Router) TriggerWarmup(ctx context.Context) {
 	go r.pingWarmupModels(ctx)
+}
+
+// SetNodeWarmup sets the per-node runtime warmup config (admin-toggled, KV-
+// persisted). Disabling with an empty model list removes the node from the warm
+// set entirely. Safe for concurrent use.
+func (r *Router) SetNodeWarmup(name string, enabled bool, models []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.nodeWarmup == nil {
+		r.nodeWarmup = make(map[string]NodeWarmup)
+	}
+	if !enabled && len(models) == 0 {
+		delete(r.nodeWarmup, name)
+		return
+	}
+	cp := append([]string(nil), models...)
+	r.nodeWarmup[name] = NodeWarmup{Enabled: enabled, Models: cp}
+}
+
+// NodeWarmupSetting returns a copy of the per-node warmup config for name (the
+// zero value if unset).
+func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	nw := r.nodeWarmup[name]
+	return NodeWarmup{Enabled: nw.Enabled, Models: append([]string(nil), nw.Models...)}
 }
 
 func (r *Router) SetDockerConfig(cfg config.DockerConfig) {
@@ -414,22 +452,22 @@ func (r *Router) Start(ctx context.Context) {
 	sweepTicker := time.NewTicker(sweepInterval)
 	defer sweepTicker.Stop()
 
-	// Warmup ticker: only active when warmup is enabled and models are configured.
+	// Warmup ticker: always runs so per-node warmup toggled at runtime via the
+	// admin API (or a scheduled warmup) takes effect without a restart.
+	// pingWarmupModels is a fast no-op when there is nothing to warm, and the
+	// interval is guarded against zero (config.Validate sets 5m in production;
+	// a Router built directly in a test may leave it unset, and NewTicker(0)
+	// would panic).
 	r.mu.RLock()
-	warmupEnabled := r.warmupCfg.Enabled && len(r.warmupCfg.Models) > 0
 	warmupInterval := time.Duration(r.warmupCfg.IntervalMs) * time.Millisecond
 	r.mu.RUnlock()
-	if warmupEnabled {
-		go r.pingWarmupModels(ctx) // initial ping on startup
+	if warmupInterval <= 0 {
+		warmupInterval = 5 * time.Minute
 	}
-	// Only create warmup ticker when warmup is actually enabled; a zero-interval
-	// ticker would fire immediately and continuously, wasting resources (#29).
-	var warmupTickerC <-chan time.Time
-	if warmupEnabled {
-		warmupTicker := time.NewTicker(warmupInterval)
-		defer warmupTicker.Stop()
-		warmupTickerC = warmupTicker.C
-	}
+	go r.pingWarmupModels(ctx) // initial ping on startup
+	warmupTicker := time.NewTicker(warmupInterval)
+	defer warmupTicker.Stop()
+	warmupTickerC := warmupTicker.C
 
 	for {
 		select {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -256,6 +258,26 @@ func main() {
 			if draining {
 				r.DrainNode(name)
 			}
+		}
+	}
+
+	// Load persisted per-node warmup settings (admin-toggled) from the KV store
+	// so proactive warmup survives a restart.
+	if settings, err := st.AllSettings(); err == nil {
+		loaded := 0
+		for k, v := range settings {
+			name, ok := strings.CutPrefix(k, "warmup:node:")
+			if !ok || v == "" {
+				continue
+			}
+			var nw router.NodeWarmup
+			if json.Unmarshal([]byte(v), &nw) == nil && (nw.Enabled || len(nw.Models) > 0) {
+				r.SetNodeWarmup(name, nw.Enabled, nw.Models)
+				loaded++
+			}
+		}
+		if loaded > 0 {
+			log.Printf("store: loaded warmup settings for %d node(s)", loaded)
 		}
 	}
 

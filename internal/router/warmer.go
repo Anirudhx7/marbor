@@ -32,36 +32,98 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 	cfg := r.warmupCfg
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
+	nodeWarmup := make(map[string]NodeWarmup, len(r.nodeWarmup))
+	for k, v := range r.nodeWarmup {
+		nodeWarmup[k] = v
+	}
 	r.mu.RUnlock()
 
-	if !cfg.Enabled || len(cfg.Models) == 0 {
-		return
+	// Build the effective warm set (nodeName -> set of models): the union of the
+	// config-file warmup (optionally node-scoped) and per-node runtime warmup
+	// toggled via the admin API.
+	byNode := map[string]map[string]struct{}{}
+	add := func(nodeName, model string) {
+		if model == "" {
+			return
+		}
+		if byNode[nodeName] == nil {
+			byNode[nodeName] = map[string]struct{}{}
+		}
+		byNode[nodeName][model] = struct{}{}
 	}
-
-	keepAlive := cfg.KeepAlive
-	if keepAlive == "" {
-		keepAlive = "10m"
-	}
-
-	for _, entry := range cfg.Models {
-		targets := nodesForEntry(nodes, entry.Nodes)
-		for _, n := range targets {
-			// Warmup pings use Ollama's /api/generate keep_alive endpoint.
-			// Skip non-Ollama backends — they have no equivalent API.
-			if n.Runtime != "ollama" && n.Runtime != "" {
-				continue
+	if cfg.Enabled {
+		for _, entry := range cfg.Models {
+			for _, n := range nodesForEntry(nodes, entry.Nodes) {
+				add(n.Name, entry.Model)
 			}
-			n := n // capture
-			entry := entry
+		}
+	}
+	for name, nw := range nodeWarmup {
+		if !nw.Enabled {
+			continue
+		}
+		for _, m := range nw.Models {
+			add(name, m)
+		}
+	}
+	if len(byNode) == 0 {
+		return // nothing to warm - fast no-op
+	}
+
+	// The keep_alive we send MUST outlast the warm interval, or the model
+	// unloads between pings and users hit a cold start - defeating the point.
+	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
+
+	nodeByName := make(map[string]*NodeState, len(nodes))
+	for _, n := range nodes {
+		nodeByName[n.Name] = n
+	}
+	for nodeName, models := range byNode {
+		n := nodeByName[nodeName]
+		if n == nil {
+			continue
+		}
+		// Warmup uses Ollama's /api/generate keep_alive; skip non-Ollama backends.
+		if n.Runtime != "ollama" && n.Runtime != "" {
+			continue
+		}
+		// Residency check (real, not cosmetic): record whether each target model
+		// is currently loaded in VRAM on this node, from the latest /api/ps poll.
+		n.mu.RLock()
+		loaded := make(map[string]struct{}, len(n.LoadedModels))
+		for _, m := range n.LoadedModels {
+			loaded[m.Name] = struct{}{}
+		}
+		n.mu.RUnlock()
+		for model := range models {
+			_, resident := loaded[model]
+			metrics.WarmupResident(model, n.Name, resident)
+			n := n
+			model := model
 			go func() {
 				status := "ok"
-				if err := r.pingNode(ctx, n, entry.Model, keepAlive); err != nil {
+				if err := r.pingNode(ctx, n, model, keepAlive); err != nil {
 					status = "error"
 				}
-				metrics.WarmupPing(entry.Model, n.Name, status)
+				metrics.WarmupPing(model, n.Name, status)
 			}()
 		}
 	}
+}
+
+// effectiveKeepAlive returns a keep_alive value guaranteed to outlast the warm
+// interval so a model can never unload between pings. If the configured value is
+// empty or parses to less than the interval, it is bumped to 2x the interval.
+func effectiveKeepAlive(configured string, interval time.Duration) string {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	if configured != "" {
+		if d, err := time.ParseDuration(configured); err == nil && d >= interval {
+			return configured
+		}
+	}
+	return (2 * interval).String()
 }
 
 // pingNode sends a single keep_alive ping for model to the given node.

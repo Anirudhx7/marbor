@@ -283,6 +283,8 @@ func (s *Server) Handler() http.Handler {
 	reg("PATCH /admin/nodes/{name}", s.cors(s.adminAuth(s.handlePatchNode)))
 	reg("POST /admin/nodes", s.cors(s.adminAuth(s.handleAddNode)))
 	reg("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
+	reg("GET /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleGetNodeWarmup)))
+	reg("PUT /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleSetNodeWarmup)))
 
 	reg("GET /admin/keys", s.cors(s.adminAuth(s.handleKeys)))
 	reg("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
@@ -869,7 +871,44 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	s.router.RemoveNode(name)
 	_ = s.st.DeleteNode(name)
+	_ = s.st.SetSetting("warmup:node:"+name, "") // drop any warmup setting for the node
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleGetNodeWarmup returns the per-node runtime warmup setting.
+func (s *Server) handleGetNodeWarmup(w http.ResponseWriter, r *http.Request) {
+	nw := s.router.NodeWarmupSetting(r.PathValue("name"))
+	models := nw.Models
+	if models == nil {
+		models = []string{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": nw.Enabled, "models": models})
+}
+
+// handleSetNodeWarmup enables/disables proactive warmup for a node and sets
+// which models to keep resident. Persisted to the KV store and applied live; an
+// immediate warm cycle fires so the change takes effect now, not next tick.
+func (s *Server) handleSetNodeWarmup(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Enabled bool     `json:"enabled"`
+		Models  []string `json:"models"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid request body"}`))
+		return
+	}
+	raw, _ := json.Marshal(router.NodeWarmup{Enabled: body.Enabled, Models: body.Models})
+	_ = s.st.SetSetting("warmup:node:"+name, string(raw))
+	s.router.SetNodeWarmup(name, body.Enabled, body.Models)
+	if body.Enabled && len(body.Models) > 0 {
+		s.router.TriggerWarmup(context.Background())
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": body.Enabled, "models": body.Models})
 }
 
 func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {

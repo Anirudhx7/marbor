@@ -56,6 +56,11 @@ var (
 		Help: "Node health status (1=healthy, 0=unhealthy)",
 	}, []string{"node"})
 
+	warmupResident = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ollamamesh_warmup_model_resident",
+		Help: "Whether a warmup-target model is currently loaded in VRAM on a node (1=resident/warm, 0=cold). Proves warmup is actually keeping models warm, not just pinging.",
+	}, []string{"model", "node"})
+
 	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "ollamamesh_cache_hits_total",
 		Help: "Total cache hits (warm model routing)",
@@ -170,4 +175,15 @@ func QueueTimeout() {
 // WarmupPing records a keepalive ping. status is "ok" or "error".
 func WarmupPing(model, node, status string) {
 	warmupPingsTotal.WithLabelValues(boundModel(model), node, status).Inc()
+}
+
+// WarmupResident records whether a warmup-target model is currently loaded in
+// VRAM on a node (true=warm/resident). This is the signal that warmup is real:
+// if a targeted model reads 0 here, warmup is failing to keep it warm.
+func WarmupResident(model, node string, resident bool) {
+	v := 0.0
+	if resident {
+		v = 1.0
+	}
+	warmupResident.WithLabelValues(boundModel(model), node).Set(v)
 }
