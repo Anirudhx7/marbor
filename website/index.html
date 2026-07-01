@@ -109,13 +109,13 @@ html.light {
   --border: #ddd8d0;
   --border-subtle: #e8e4dc;
   --text: #1a1815;
-  --text-muted: #6b6558;
-  --text-faint: #a0998a;
+  --text-muted: #534f46;
+  --text-faint: #756f64;
   --accent: #8b6914;
   --accent-dim: #6b5210;
   --accent-bg: rgba(139,105,20,0.06);
-  --accent2: #4a7a4a;
-  --accent3: #a05050;
+  --accent2: #2d662d;
+  --accent3: #943d3d;
 }
 
 * { box-sizing: border-box; }
@@ -347,6 +347,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; 
 /* mobile */
 .mobile-menu { display: none; }
 @media (max-width: 640px) {
+  .page { padding: 0 20px; }
   .nav-links { display: none; }
   .hamburger { display: inline-flex; }
   .routing-body { grid-template-columns: 1fr; }
@@ -618,7 +619,7 @@ SPCS-FEATURE-END */
     <a href="#top" class="brand" aria-label="ollama-mesh home">
       <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
         <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-          <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
           <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
         </svg>
       </div>
@@ -1076,7 +1077,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
         <a href="#top" class="brand" aria-label="ollama-mesh home">
           <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-              <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
               <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
             </svg>
           </div>

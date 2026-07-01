@@ -25,13 +25,13 @@ html.light {
   --border: #ddd8d0;
   --border-subtle: #e8e4dc;
   --text: #1a1815;
-  --text-muted: #6b6558;
-  --text-faint: #a0998a;
+  --text-muted: #534f46;
+  --text-faint: #756f64;
   --accent: #8b6914;
   --accent-dim: #6b5210;
   --accent-bg: rgba(139,105,20,0.06);
-  --accent2: #4a7a4a;
-  --accent3: #a05050;
+  --accent2: #2d662d;
+  --accent3: #943d3d;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
@@ -155,6 +155,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 }
 .mobile-menu { display: none; }
 @media (max-width: 720px) {
+  .page { padding: 0 20px; }
   .nav-links { display: none; }
   .hamburger { display: inline-flex; }
   .doc-shell { grid-template-columns: 1fr; padding: 0 20px; }
