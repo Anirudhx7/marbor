@@ -2,6 +2,37 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, Req
 
 const BASE = '/admin';
 
+// VITE_FORCE_DEMO is set at build time for the GitHub Pages demo (no backend).
+// Vite inlines it, so `if (DEMO)` branches below are dead-code-eliminated and
+// tree-shaken out of the live/self-hosted build.
+const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
+
+// In-memory demo user roster so the Users page is populated and interactive on
+// the static demo. Mutations (create/approve/suspend/delete) update this array
+// so the demo behaves realistically for the session; it resets on reload.
+let demoUsers: UserRecord[] | null = null;
+function demoUserStore(): UserRecord[] {
+  if (!demoUsers) {
+    const now = Date.now();
+    const iso = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toISOString();
+    demoUsers = [
+      { id: 1, username: 'admin',      email: 'admin@acme.io',  role: 'admin', status: 'active',    api_key_name: 'default',    must_change_password: false, created_at: iso(120), approved_at: iso(120), approved_by: 'system' },
+      { id: 2, username: 'dana.rao',   email: 'dana@acme.io',   role: 'user',  status: 'active',    api_key_name: 'dana-key',   must_change_password: false, created_at: iso(40),  approved_at: iso(39),  approved_by: 'admin' },
+      { id: 3, username: 'sam.lee',    email: 'sam@acme.io',    role: 'user',  status: 'active',    api_key_name: 'sam-key',    must_change_password: false, created_at: iso(22),  approved_at: iso(21),  approved_by: 'admin' },
+      { id: 4, username: 'priya.n',    email: 'priya@acme.io',  role: 'user',  status: 'pending',   api_key_name: '',           must_change_password: false, created_at: iso(2) },
+      { id: 5, username: 'marco.b',    email: 'marco@acme.io',  role: 'user',  status: 'pending',   api_key_name: '',           must_change_password: false, created_at: iso(1) },
+      { id: 6, username: 'legacy.svc', email: '',               role: 'user',  status: 'suspended', api_key_name: 'legacy-key', must_change_password: false, created_at: iso(200), approved_at: iso(199), approved_by: 'admin' },
+    ];
+  }
+  return demoUsers;
+}
+function demoDelay<T>(v: T): Promise<T> {
+  return new Promise(resolve => setTimeout(() => resolve(v), 150));
+}
+function demoRandomToken(prefix: string): string {
+  return prefix + Math.random().toString(36).slice(2, 12);
+}
+
 // --- Session management ---
 
 export function getSessionToken(): string {
@@ -104,12 +135,23 @@ export async function changePassword(currentPassword: string, newPassword: strin
 // --- User management ---
 
 export async function listUsers(): Promise<UserRecord[]> {
+  if (DEMO) return demoDelay(demoUserStore().map(u => ({ ...u })));
   const res = await apiFetch(`${BASE}/v1/users`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch users');
   return res.json();
 }
 
 export async function createUser(data: { username: string; email?: string; role?: string }): Promise<{ id: number; username: string; initial_password: string }> {
+  if (DEMO) {
+    const store = demoUserStore();
+    const id = store.reduce((max, u) => Math.max(max, u.id), 0) + 1;
+    store.push({
+      id, username: data.username, email: data.email ?? '',
+      role: (data.role as 'admin' | 'user') ?? 'user', status: 'pending',
+      api_key_name: '', must_change_password: true, created_at: new Date().toISOString(),
+    });
+    return demoDelay({ id, username: data.username, initial_password: demoRandomToken('demo-') });
+  }
   const res = await apiFetch(`${BASE}/v1/users`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -126,6 +168,19 @@ export async function approveUser(id: number, data: {
   api_key_name?: string;
   create_key?: { name: string; rate_limit_per_hour: number; daily_limit: number; monthly_limit: number; models: string[] };
 }): Promise<{ user: UserRecord; api_key_value?: string }> {
+  if (DEMO) {
+    const u = demoUserStore().find(x => x.id === id);
+    if (u) {
+      u.status = 'active';
+      u.api_key_name = data.api_key_name ?? data.create_key?.name ?? u.api_key_name;
+      u.approved_by = 'admin';
+      u.approved_at = new Date().toISOString();
+    }
+    return demoDelay({
+      user: (u ?? demoUserStore()[0]),
+      ...(data.create_key ? { api_key_value: demoRandomToken('sk-demo-') } : {}),
+    });
+  }
   const res = await apiFetch(`${BASE}/v1/users/${id}/approve`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -139,6 +194,12 @@ export async function approveUser(id: number, data: {
 }
 
 export async function suspendUser(id: number): Promise<void> {
+  if (DEMO) {
+    const u = demoUserStore().find(x => x.id === id);
+    if (u) u.status = 'suspended';
+    await demoDelay(null);
+    return;
+  }
   const res = await apiFetch(`${BASE}/v1/users/${id}/suspend`, {
     method: 'POST',
     headers: authHeaders(),
@@ -147,6 +208,11 @@ export async function suspendUser(id: number): Promise<void> {
 }
 
 export async function deleteUser(id: number): Promise<void> {
+  if (DEMO) {
+    demoUsers = demoUserStore().filter(x => x.id !== id);
+    await demoDelay(null);
+    return;
+  }
   const res = await apiFetch(`${BASE}/v1/users/${id}`, {
     method: 'DELETE',
     headers: authHeaders(),
@@ -155,6 +221,11 @@ export async function deleteUser(id: number): Promise<void> {
 }
 
 export async function resetUserPassword(id: number): Promise<{ initial_password: string }> {
+  if (DEMO) {
+    const u = demoUserStore().find(x => x.id === id);
+    if (u) u.must_change_password = true;
+    return demoDelay({ initial_password: demoRandomToken('demo-') });
+  }
   const res = await apiFetch(`${BASE}/v1/users/${id}/reset-password`, {
     method: 'POST',
     headers: authHeaders(),
@@ -167,6 +238,7 @@ export async function resetUserPassword(id: number): Promise<{ initial_password:
 }
 
 export async function getPendingUserCount(): Promise<number> {
+  if (DEMO) return demoUserStore().filter(u => u.status === 'pending').length;
   const res = await apiFetch(`${BASE}/v1/users/pending-count`, { headers: authHeaders() });
   if (!res.ok) return 0;
   const d = await res.json();

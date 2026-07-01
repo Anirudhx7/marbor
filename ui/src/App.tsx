@@ -69,9 +69,14 @@ function App() {
   }
 
   function handleLoginSuccess(data: SessionData) {
-    // Reset URL to / so BrowserRouter doesn't mount at /admin/login or /login
-    if (window.location.pathname !== '/') {
-      window.history.replaceState({}, '', '/');
+    // Reset the URL to the app root so BrowserRouter (mounted under `basename`)
+    // lands on the dashboard rather than /admin/login or /login. This MUST target
+    // the app base, not '/': under the GitHub Pages demo the app is served from
+    // /ollama-mesh/demo/, and resetting to '/' navigates out of the app to the
+    // domain root (the landing page), which looked like a redirect to the site root.
+    const home = basename === '/' ? '/' : basename + '/';
+    if (window.location.pathname !== home) {
+      window.history.replaceState({}, '', home);
     }
     setSession(data);
   }
