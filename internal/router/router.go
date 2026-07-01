@@ -897,6 +897,13 @@ func pickMostFreeVRAM(nodes []*NodeState) *NodeState {
 }
 
 func (r *Router) AddNode(n config.NodeConfig) {
+	// Defense-in-depth: reject invalid or link-local/metadata node URLs even when
+	// they arrive from the store overlay or Docker discovery, which bypass
+	// config.Validate. Prevents an SSRF relay from a persisted/discovered node.
+	if err := config.ValidateNodeURL(n.URL); err != nil {
+		log.Printf("router: rejecting node %q: %v", n.Name, err)
+		return
+	}
 	node := &NodeState{
 		Name:        n.Name,
 		URL:         n.URL,

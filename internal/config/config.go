@@ -2,12 +2,38 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"runtime"
 
 	"gopkg.in/yaml.v3"
 )
+
+// ValidateNodeURL checks that raw is a usable http(s) backend URL and rejects
+// link-local / cloud-metadata hosts (169.254.0.0/16 including the
+// 169.254.169.254 metadata endpoint, and fe80::/10) so an operator- or
+// API-supplied node cannot turn the mesh into an SSRF relay to the host's
+// metadata service. Loopback and RFC1918 private ranges are intentionally
+// ALLOWED: homelab and on-prem fleets legitimately run backends on localhost
+// and LAN addresses (and the test suite uses 127.0.0.1). Hostnames are not
+// resolved here; the literal-IP guard stops the practical add-a-metadata-node
+// attack without breaking DNS-named LAN backends.
+func ValidateNodeURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %w", raw, err)
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("URL must be http(s) with a host: %s", raw)
+	}
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("URL host %q is a link-local/metadata address, which is not allowed", u.Hostname())
+		}
+	}
+	return nil
+}
 
 // WarmupEntry names a model to keep warm and optionally restricts which nodes
 // receive keepalive pings. Empty Nodes means "all healthy nodes".
@@ -360,14 +386,11 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate node name: %s", n.Name)
 		}
 		seenNodeNames[n.Name] = true
-		u, err := url.Parse(n.URL)
-		if err != nil {
-			return fmt.Errorf("invalid node URL %s: %w", n.URL, err)
-		}
-		// url.Parse is lenient (it accepts "garbage"); fail fast at boot on a
-		// URL that is not a usable http(s) endpoint instead of 500ing later.
-		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("node %d (%s) URL must be http(s) with a host: %s", i, n.Name, n.URL)
+		// Validate scheme/host and block link-local/metadata addresses (SSRF).
+		// url.Parse is lenient (accepts "garbage"), so fail fast at boot rather
+		// than 500ing later. Loopback/RFC1918 stay allowed for homelab/LAN.
+		if err := ValidateNodeURL(n.URL); err != nil {
+			return fmt.Errorf("node %d (%s): %w", i, n.Name, err)
 		}
 		if seenNodeURLs[n.URL] {
 			return fmt.Errorf("duplicate node URL: %s", n.URL)

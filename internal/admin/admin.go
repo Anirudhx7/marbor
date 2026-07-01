@@ -833,11 +833,10 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"name and url are required"}`))
 		return
 	}
-	u, err := url.Parse(cfg.URL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err := config.ValidateNodeURL(cfg.URL); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"url must be http(s) with a host"}`))
+		w.Write([]byte(`{"error":"url must be http(s) with a host, and not a link-local/metadata address"}`))
 		return
 	}
 	if cfg.Runtime == "" {
