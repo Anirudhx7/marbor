@@ -1745,6 +1745,16 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"rate_limit, daily_limit, monthly_limit must be >= 0"}`))
 		return
 	}
+	if k.ExpiresAt != "" {
+		_, err1 := time.Parse("2006-01-02", k.ExpiresAt)
+		_, err2 := time.Parse(time.RFC3339, k.ExpiresAt)
+		if err1 != nil && err2 != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"expires_at must be YYYY-MM-DD or RFC3339 format"}`))
+			return
+		}
+	}
 	if k.Key == "" {
 		k.Key = generateAPIKey(k.Name)
 	}
