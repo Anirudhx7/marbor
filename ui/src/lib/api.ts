@@ -245,6 +245,72 @@ export async function getPendingUserCount(): Promise<number> {
   return (d as any).count ?? 0;
 }
 
+// --- Warmup (per-node) & schedules ---
+
+export interface NodeWarmup { enabled: boolean; models: string[] }
+export interface Schedule {
+  id: string;
+  action: 'warmup' | 'drain' | 'undrain';
+  node: string;
+  models?: string[];
+  at: string;      // "HH:MM" 24h, server-local
+  days?: number[]; // 0=Sun..6=Sat; empty = every day
+  enabled: boolean;
+}
+
+// Demo state so the static demo's Warmup page is populated and interactive.
+let demoWarmup: Record<string, NodeWarmup> | null = null;
+function demoWarmupStore(): Record<string, NodeWarmup> {
+  if (!demoWarmup) demoWarmup = { 'gpu-01': { enabled: true, models: ['llama3.1:8b'] } };
+  return demoWarmup;
+}
+let demoSchedules: Schedule[] | null = null;
+function demoScheduleStore(): Schedule[] {
+  if (!demoSchedules) demoSchedules = [
+    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-01', models: ['llama3.1:8b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true },
+    { id: 'sched-demo-2', action: 'drain', node: 'gpu-02', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true },
+  ];
+  return demoSchedules;
+}
+
+export async function getNodeWarmup(name: string): Promise<NodeWarmup> {
+  if (DEMO) return demoDelay(demoWarmupStore()[name] ?? { enabled: false, models: [] });
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/warmup`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch warmup');
+  return res.json();
+}
+
+export async function setNodeWarmup(name: string, nw: NodeWarmup): Promise<NodeWarmup> {
+  if (DEMO) { demoWarmupStore()[name] = nw; return demoDelay(nw); }
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/warmup`, {
+    method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(nw),
+  });
+  if (!res.ok) throw new Error('Failed to save warmup');
+  return res.json();
+}
+
+export async function listSchedules(): Promise<Schedule[]> {
+  if (DEMO) return demoDelay(demoScheduleStore().map(s => ({ ...s })));
+  const res = await apiFetch(`${BASE}/schedules`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch schedules');
+  return res.json();
+}
+
+export async function createSchedule(s: Omit<Schedule, 'id'>): Promise<Schedule> {
+  if (DEMO) { const ns = { ...s, id: 'sched-' + Math.random().toString(36).slice(2, 10) } as Schedule; demoScheduleStore().push(ns); return demoDelay(ns); }
+  const res = await apiFetch(`${BASE}/schedules`, {
+    method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(s),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to create schedule'); }
+  return res.json();
+}
+
+export async function deleteSchedule(id: string): Promise<void> {
+  if (DEMO) { demoSchedules = demoScheduleStore().filter(s => s.id !== id); return; }
+  const res = await apiFetch(`${BASE}/schedules/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to delete schedule');
+}
+
 function authHeaders(): { Authorization: string } {
   return { Authorization: `Bearer ${getSessionToken()}` };
 }

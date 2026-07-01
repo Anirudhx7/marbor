@@ -142,6 +142,11 @@ type Router struct {
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
 	nodeWarmup map[string]NodeWarmup
+	// schedules holds recurring time-of-day warmup/drain/undrain actions (guarded
+	// by r.mu). schedLastFired (guarded by schedMu) dedupes firing within a minute.
+	schedules      []Schedule
+	schedMu        sync.Mutex
+	schedLastFired map[string]string
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -221,6 +226,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		affinityTTL:        affinityTTL,
 		sessionAffinity:    cfg.SessionAffinity,
 		nodeWarmup:         make(map[string]NodeWarmup),
+		schedLastFired:     make(map[string]string),
 		nvidiaCache:        make(map[int]GPUStats),
 		nvidiaPollInterval: nvidiaPollInterval,
 		notifyCh:           make(chan struct{}),
@@ -469,6 +475,12 @@ func (r *Router) Start(ctx context.Context) {
 	defer warmupTicker.Stop()
 	warmupTickerC := warmupTicker.C
 
+	// Schedule ticker: evaluates time-of-day warmup/drain/undrain schedules once
+	// a minute (runSchedules dedupes so it fires each schedule at most once per
+	// matching minute).
+	scheduleTicker := time.NewTicker(1 * time.Minute)
+	defer scheduleTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -483,6 +495,8 @@ func (r *Router) Start(ctx context.Context) {
 			r.sweepAffinity()
 		case <-warmupTickerC:
 			go r.pingWarmupModels(ctx)
+		case <-scheduleTicker.C:
+			r.runSchedules(ctx, time.Now())
 		}
 	}
 }

@@ -281,6 +281,15 @@ func main() {
 		}
 	}
 
+	// Load persisted schedules (warmup/drain/undrain) from the KV store.
+	if raw, err := st.GetSetting("schedules"); err == nil && raw != "" {
+		var scheds []router.Schedule
+		if json.Unmarshal([]byte(raw), &scheds) == nil && len(scheds) > 0 {
+			r.SetSchedules(scheds)
+			log.Printf("store: loaded %d schedule(s)", len(scheds))
+		}
+	}
+
 	// Load persisted routing rules (fixes audit finding #30).
 	if rules, err := st.AllRoutingRules(); err == nil {
 		for _, rule := range rules {

@@ -285,6 +285,9 @@ func (s *Server) Handler() http.Handler {
 	reg("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
 	reg("GET /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleGetNodeWarmup)))
 	reg("PUT /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleSetNodeWarmup)))
+	reg("GET /admin/schedules", s.cors(s.adminAuth(s.handleListSchedules)))
+	reg("POST /admin/schedules", s.cors(s.adminAuth(s.handleCreateSchedule)))
+	reg("DELETE /admin/schedules/{id}", s.cors(s.adminAuth(s.handleDeleteSchedule)))
 
 	reg("GET /admin/keys", s.cors(s.adminAuth(s.handleKeys)))
 	reg("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
@@ -909,6 +912,73 @@ func (s *Server) handleSetNodeWarmup(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": body.Enabled, "models": body.Models})
+}
+
+// --- Schedules: time-of-day warmup / drain / undrain ---
+
+func validHHMM(s string) bool {
+	if len(s) != 5 || s[2] != ':' {
+		return false
+	}
+	h, err1 := strconv.Atoi(s[:2])
+	m, err2 := strconv.Atoi(s[3:])
+	return err1 == nil && err2 == nil && h >= 0 && h < 24 && m >= 0 && m < 60
+}
+
+func (s *Server) persistSchedules(scheds []router.Schedule) {
+	s.router.SetSchedules(scheds)
+	if raw, err := json.Marshal(scheds); err == nil {
+		_ = s.st.SetSetting("schedules", string(raw))
+	}
+}
+
+func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
+	scheds := s.router.Schedules()
+	if scheds == nil {
+		scheds = []router.Schedule{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(scheds)
+}
+
+func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
+	var sc router.Schedule
+	if err := json.NewDecoder(r.Body).Decode(&sc); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid request body"}`))
+		return
+	}
+	if !router.ValidScheduleAction(sc.Action) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"action must be warmup, drain, or undrain"}`))
+		return
+	}
+	if sc.Node == "" || !validHHMM(sc.At) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"node is required and at must be HH:MM (24h)"}`))
+		return
+	}
+	sc.ID = fmt.Sprintf("sched-%d", time.Now().UnixNano())
+	s.persistSchedules(append(s.router.Schedules(), sc))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(sc)
+}
+
+func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	cur := s.router.Schedules()
+	out := make([]router.Schedule, 0, len(cur))
+	for _, sc := range cur {
+		if sc.ID != id {
+			out = append(out, sc)
+		}
+	}
+	s.persistSchedules(out)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {

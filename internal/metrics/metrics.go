@@ -61,6 +61,11 @@ var (
 		Help: "Whether a warmup-target model is currently loaded in VRAM on a node (1=resident/warm, 0=cold). Proves warmup is actually keeping models warm, not just pinging.",
 	}, []string{"model", "node"})
 
+	scheduleFires = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollamamesh_schedule_fires_total",
+		Help: "Scheduled actions fired, by action (warmup/drain/undrain) and node.",
+	}, []string{"action", "node"})
+
 	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "ollamamesh_cache_hits_total",
 		Help: "Total cache hits (warm model routing)",
@@ -186,4 +191,9 @@ func WarmupResident(model, node string, resident bool) {
 		v = 1.0
 	}
 	warmupResident.WithLabelValues(boundModel(model), node).Set(v)
+}
+
+// ScheduleFired records that a scheduled action fired.
+func ScheduleFired(action, node string) {
+	scheduleFires.WithLabelValues(action, node).Inc()
 }

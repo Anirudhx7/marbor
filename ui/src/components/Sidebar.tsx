@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   LogOut,
   Users,
+  Flame,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { forcedDemo } from '../hooks/useDemoMode';
@@ -26,6 +27,7 @@ import type { SessionData } from '../types';
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/gpu-nodes', label: 'GPU Nodes', icon: Cpu },
+  { path: '/warmup', label: 'Warmup', icon: Flame },
   { path: '/models', label: 'Models', icon: Package },
   { path: '/model-advisor', label: 'Model Advisor', icon: Compass },
   { path: '/analytics', label: 'Analytics', icon: TrendingUp },
