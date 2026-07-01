@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -59,6 +60,7 @@ type Server struct {
 	haMonitor     *ha.Monitor // nil when HA disabled
 	st            store.Store // never nil; NopStore when persistence disabled
 	demoMode      bool        // when true, login accepts admin/admin without DB
+	loginLimiter  *loginRateLimiter
 }
 
 // SetVersion sets the version string reported by /health.
@@ -262,6 +264,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		startTime:    time.Now(),
 		analytics:    newAnalyticsStore(refRate),
 		st:           stImpl,
+		loginLimiter: newLoginRateLimiter(),
 	}
 	s.ensureAdminUser()
 	return s
@@ -1127,6 +1130,104 @@ func generateAPIKey(name string) string {
 	return "sk-" + name + "-" + hex.EncodeToString(b)
 }
 
+// loginRateLimiter throttles admin login attempts per client IP to defend
+// against brute-force credential guessing on the admin dashboard (port 8080).
+// State is in-memory only (matches the rest of admin.go's in-process patterns)
+// and resets on process restart — an acceptable tradeoff since a meaningful
+// brute-force run takes far longer than typical restart cycles, and this is a
+// throttle, not durable security state (rotate credentials if you suspect an
+// actual compromise, restart alone doesn't help an attacker).
+//
+// Keyed by IP rather than username: IP-based throttling can't be used to lock
+// out a legitimate admin by hammering their username from elsewhere, and it
+// still slows down both single-source and low-volume distributed attempts.
+type loginRateLimiter struct {
+	mu           sync.RWMutex
+	attempts     map[string]*loginAttemptState
+	maxAttempts  int           // failures allowed within window before lockout
+	window       time.Duration // sliding window in which failures accumulate
+	lockDuration time.Duration // how long an IP stays locked out once tripped
+}
+
+type loginAttemptState struct {
+	failures    int
+	windowStart time.Time
+	lockedUntil time.Time
+}
+
+func newLoginRateLimiter() *loginRateLimiter {
+	return &loginRateLimiter{
+		attempts:     make(map[string]*loginAttemptState),
+		maxAttempts:  5,
+		window:       5 * time.Minute,
+		lockDuration: 15 * time.Minute,
+	}
+}
+
+// allow reports whether a login attempt from ip should proceed. If the IP is
+// currently locked out it returns false and the remaining lockout duration.
+func (l *loginRateLimiter) allow(ip string) (ok bool, retryAfter time.Duration) {
+	now := time.Now()
+	l.mu.RLock()
+	st, exists := l.attempts[ip]
+	l.mu.RUnlock()
+	if !exists {
+		return true, 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if now.Before(st.lockedUntil) {
+		return false, st.lockedUntil.Sub(now)
+	}
+	// Lockout expired (or none active) — if the failure window has also
+	// elapsed, reset so old failures don't count against a fresh window.
+	if now.Sub(st.windowStart) > l.window {
+		st.failures = 0
+		st.windowStart = now
+	}
+	return true, 0
+}
+
+// recordFailure registers a failed login attempt for ip and locks the IP out
+// once maxAttempts is reached within the sliding window.
+func (l *loginRateLimiter) recordFailure(ip string) {
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	st, exists := l.attempts[ip]
+	if !exists {
+		st = &loginAttemptState{windowStart: now}
+		l.attempts[ip] = st
+	}
+	if now.Sub(st.windowStart) > l.window {
+		st.failures = 0
+		st.windowStart = now
+	}
+	st.failures++
+	if st.failures >= l.maxAttempts {
+		st.lockedUntil = now.Add(l.lockDuration)
+	}
+}
+
+// recordSuccess clears any failure history for ip on a successful login.
+func (l *loginRateLimiter) recordSuccess(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.attempts, ip)
+}
+
+// clientIP extracts the client IP from r.RemoteAddr, stripping the port.
+// Falls back to the raw RemoteAddr if it isn't in host:port form (e.g. in
+// unit tests using httptest, which typically sets RemoteAddr as "ip:port"
+// anyway, but this keeps things safe against unexpected formats).
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // handleAdminLogin handles POST /admin/login — admin role required.
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	s.handleLoginForRole(w, r, "admin")
@@ -1152,6 +1253,18 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 
+	ip := clientIP(r)
+	if s.loginLimiter != nil {
+		if ok, retryAfter := s.loginLimiter.allow(ip); !ok {
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())+1))
+			w.WriteHeader(http.StatusTooManyRequests)
+			// Deliberately generic: never reveal whether the username exists,
+			// only that this IP is temporarily blocked from trying.
+			w.Write([]byte(`{"error":"too many failed login attempts, try again later"}`))
+			return
+		}
+	}
+
 	// Demo mode: fixed admin/admin credentials, no DB needed.
 	if s.demoMode {
 		if req.Username == "admin" && req.Password == "admin" {
@@ -1159,6 +1272,9 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 				w.WriteHeader(http.StatusForbidden)
 				w.Write([]byte(`{"error":"not an admin account"}`))
 				return
+			}
+			if s.loginLimiter != nil {
+				s.loginLimiter.recordSuccess(ip)
 			}
 			expiry := time.Now().Add(30 * 24 * time.Hour)
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1170,6 +1286,9 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 			})
 			return
 		}
+		if s.loginLimiter != nil {
+			s.loginLimiter.recordFailure(ip)
+		}
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -1177,6 +1296,9 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 
 	user, err := s.st.GetUserByUsername(req.Username)
 	if err != nil {
+		if s.loginLimiter != nil {
+			s.loginLimiter.recordFailure(ip)
+		}
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -1200,9 +1322,16 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 	}
 
 	if !verifyPassword(user.PasswordHash, req.Password) {
+		if s.loginLimiter != nil {
+			s.loginLimiter.recordFailure(ip)
+		}
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
+	}
+
+	if s.loginLimiter != nil {
+		s.loginLimiter.recordSuccess(ip)
 	}
 
 	b := make([]byte, 32)
