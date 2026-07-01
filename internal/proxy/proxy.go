@@ -29,6 +29,32 @@ import (
 // before extracting the model name. Caps a memory-exhaustion DoS vector.
 const maxRequestBodyBytes = 32 << 20 // 32 MiB
 
+// apiError is the OpenAI-compatible error envelope. Every non-2xx response from
+// the proxy and auth middleware uses this shape so SDK clients can parse errors
+// without a separate error-detection path.
+type apiError struct {
+	Error apiErrorBody `json:"error"`
+}
+
+type apiErrorBody struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Code    string `json:"code"`
+}
+
+// writeAPIError writes an OpenAI-schema error response. It sets Content-Type,
+// calls WriteHeader, then encodes the JSON body. Callers must not write to w
+// after this returns.
+func writeAPIError(w http.ResponseWriter, status int, message, errType, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(apiError{Error: apiErrorBody{
+		Message: message,
+		Type:    errType,
+		Code:    code,
+	}})
+}
+
 type Handler struct {
 	router *router.Router
 	admin  *admin.Server
@@ -139,10 +165,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// unaffected.
 	if !h.allowManagement && isBlockedManagementPath(r.URL.Path) {
 		log.Printf("blocked management endpoint (key=%s path=%s request_id=%s)", keyName, r.URL.Path, requestID)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error":"endpoint not permitted through the mesh proxy"}`))
+		writeAPIError(w, http.StatusForbidden, "endpoint not permitted through the mesh proxy", "invalid_request_error", "endpoint_blocked")
 		metrics.RequestsTotal(keyName, "", "none", "403")
+		return
+	}
+
+	// Reject unsupported OpenAI endpoints with a clear 501 before routing.
+	// DELETE /v1/models/{model} - model deletion is out of scope for an inference proxy.
+	if r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/models/") {
+		writeAPIError(w, http.StatusNotImplemented,
+			"this endpoint is not supported by ollama-mesh; for inference use /v1/chat/completions or /v1/completions",
+			"invalid_request_error", "unsupported_endpoint")
+		return
+	}
+	if isUnsupportedOpenAIPath(r.URL.Path) {
+		writeAPIError(w, http.StatusNotImplemented,
+			"this endpoint is not supported by ollama-mesh; for inference use /v1/chat/completions or /v1/completions",
+			"invalid_request_error", "unsupported_endpoint")
 		return
 	}
 
@@ -150,6 +189,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
 		h.serveModels(w)
 		return
+	}
+
+	// GET /v1/models/{model} - single model lookup.
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/models/") {
+		modelID := strings.TrimPrefix(r.URL.Path, "/v1/models/")
+		if modelID != "" {
+			h.serveModel(w, modelID)
+			return
+		}
 	}
 
 	var body []byte
@@ -160,16 +208,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// base64-encoded images while still capping a DoS vector.
 		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 		if err != nil {
-			status := http.StatusBadRequest
-			msg := `{"error":"read body"}`
 			var maxErr *http.MaxBytesError
 			if errors.As(err, &maxErr) {
-				status = http.StatusRequestEntityTooLarge
-				msg = `{"error":"request body exceeds 32MiB limit"}`
+				writeAPIError(w, http.StatusRequestEntityTooLarge, "request body exceeds 32MiB limit", "invalid_request_error", "request_too_large")
+			} else {
+				writeAPIError(w, http.StatusBadRequest, "failed to read request body", "invalid_request_error", "read_body_error")
 			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(status)
-			w.Write([]byte(msg))
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
@@ -193,9 +237,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if h.auth != nil {
 				h.auth.Refund(keyName)
 			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintf(w, `{"error":"model %q not allowed for this api key"}`, modelName)
+			writeAPIError(w, http.StatusForbidden, fmt.Sprintf("model %q not allowed for this api key", modelName), "invalid_request_error", "model_not_allowed")
 			metrics.RequestsTotal(keyName, modelName, "none", "403")
 			return
 		}
@@ -218,27 +260,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// elapses. On timeout or queue-full it returns nil and we fall through to
 	// cloud fallback or 503 as before. The request context is passed so a
 	// client disconnect aborts the wait immediately.
-	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID)
-
-	// WaitForNode calls Route with an empty runtimeFilter, so it may return a
-	// node whose Runtime does not match the path requirement. Re-check here: if
-	// the path is Ollama-native but the selected node is a non-Ollama runtime
-	// (e.g. "vllm"), treat it as "no Ollama node available" and fall through.
-	//
-	// Note: Runtime=="" only appears in tests that bypass config.Validate().
-	// In production, config.Validate() always sets Runtime="ollama" as the default,
-	// so no node should have Runtime=="" at runtime. A Runtime="" node is therefore
-	// excluded from runtimeFilter="ollama" routes (it falls to cloud/503), which is
-	// the correct behavior - production nodes always go through Validate().
-	if node != nil && runtimeFilter != "" {
-		node.RLock()
-		nodeRuntime := node.Runtime
-		node.RUnlock()
-		if nodeRuntime != runtimeFilter {
-			// Node runtime does not match the path requirement.
-			node = nil
-		}
-	}
+	// WaitForNode threads the runtimeFilter through so the queue only wakes up
+	// and returns nodes that match the path requirement (e.g. "ollama" for /api/*).
+	// This eliminates the previous discard-and-fall-through behavior where a valid
+	// Ollama node could be available but the request still hit 503 because a
+	// non-Ollama node was returned and silently discarded (#3).
+	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
 
 	if node == nil {
 		// Try cloud fallback first - cloud providers support /api/* paths via
@@ -253,15 +280,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// a clear actionable message so the caller knows to use /v1/ for
 		// non-Ollama backends rather than getting a generic 503.
 		if runtimeFilter == "ollama" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"error":"no Ollama nodes available; use /v1/ endpoint for non-Ollama backends"}`))
+			writeAPIError(w, http.StatusServiceUnavailable, "no Ollama nodes available; use /v1/ endpoint for non-Ollama backends", "server_error", "no_nodes_available")
 			metrics.RequestsTotal(keyName, modelName, "none", "503")
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte(`{"error":"no healthy nodes available"}`))
+		writeAPIError(w, http.StatusServiceUnavailable, "no healthy nodes available", "server_error", "no_nodes_available")
 		metrics.RequestsTotal(keyName, modelName, "none", "503")
 		return
 	}
@@ -271,9 +294,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	targetURL, err := url.Parse(node.URL)
 	if err != nil {
 		h.router.DecrConn(node)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"invalid node URL"}`))
+		writeAPIError(w, http.StatusInternalServerError, "invalid node URL", "server_error", "internal_error")
 		return
 	}
 
@@ -348,9 +369,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Log detail server-side; return a generic message so upstream
 			// topology never leaks to the client.
 			log.Printf("upstream error (node=%s request_id=%s): %v", node.Name, requestID, e)
-			rw.Header().Set("Content-Type", "application/json")
-			rw.WriteHeader(http.StatusBadGateway)
-			rw.Write([]byte(`{"error":"upstream unavailable"}`))
+			writeAPIError(rw, http.StatusBadGateway, "upstream unavailable", "server_error", "upstream_error")
 		}
 
 		rec = &statusRecorder{ResponseWriter: w}
@@ -368,9 +387,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			targetURL, err = url.Parse(node.URL)
 			if err != nil {
 				h.router.DecrConn(node)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(`{"error":"invalid node URL"}`))
+				writeAPIError(w, http.StatusInternalServerError, "invalid node URL", "server_error", "internal_error")
 				return
 			}
 			warm = false // retried node may not have model warm
@@ -478,21 +495,75 @@ func buildLocalProxy(targetURL *url.URL, body []byte, orig *http.Request, transp
 	return proxy
 }
 
+// isUnsupportedOpenAIPath returns true for OpenAI API paths that are out of
+// scope for an inference proxy. These return 501 instead of falling through to
+// Ollama, which would return a wrong-shape or confusing error.
+// Each entry is checked both as an exact match and as a path prefix (with
+// trailing slash) so that /v1/files and /v1/files/upload both match.
+func isUnsupportedOpenAIPath(path string) bool {
+	unsupported := []string{
+		"/v1/images",
+		"/v1/audio",
+		"/v1/fine-tuning",
+		"/v1/files",
+		"/v1/assistants",
+		"/v1/threads",
+		"/v1/batches",
+		"/v1/vector-stores",
+	}
+	for _, base := range unsupported {
+		if path == base || strings.HasPrefix(path, base+"/") {
+			return true
+		}
+	}
+	return path == "/v1/moderations"
+}
+
+// modelStatus is the status field added to model entries (ignored by OpenAI clients).
+type modelStatus = string
+
+const (
+	modelStatusLoaded    modelStatus = "loaded"
+	modelStatusAvailable modelStatus = "available"
+)
+
 // serveModels handles GET /v1/models by returning an OpenAI-schema list of
-// models currently loaded across all healthy nodes. Only models actually
-// reported by /api/ps are included - no fabricated entries.
+// ALL models available across healthy nodes: both models currently in VRAM
+// (from /api/ps polling) and models downloaded but not warm (from /api/tags).
+// A "status" field distinguishes loaded vs available; OpenAI clients ignore it.
 func (h *Handler) serveModels(w http.ResponseWriter) {
-	seen := make(map[string]struct{})
+	type modelEntry struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		OwnedBy string `json:"owned_by"`
+		Created int64  `json:"created"`
+		Status  string `json:"status"`
+	}
+
+	// seen tracks best status per model name: loaded beats available.
+	seen := make(map[string]string) // name -> status
 	for _, n := range h.router.Nodes() {
 		n.RLock()
 		healthy := n.Healthy
-		models := n.LoadedModels
+		loaded := n.LoadedModels
+		nodeURL := n.URL
 		n.RUnlock()
 		if !healthy {
 			continue
 		}
-		for _, m := range models {
-			seen[m.Name] = struct{}{}
+		// Warm models (in VRAM).
+		for _, m := range loaded {
+			seen[m.Name] = modelStatusLoaded
+		}
+		// Downloaded models from /api/tags (catalog). FetchModelTags uses a
+		// 30-second cache so this is cheap on repeated calls.
+		tags, err := h.router.FetchModelTags(nodeURL)
+		if err == nil {
+			for _, t := range tags {
+				if _, exists := seen[t.Name]; !exists {
+					seen[t.Name] = modelStatusAvailable
+				}
+			}
 		}
 	}
 
@@ -503,29 +574,88 @@ func (h *Handler) serveModels(w http.ResponseWriter) {
 	}
 	sort.Strings(names)
 
-	type modelEntry struct {
-		ID      string `json:"id"`
-		Object  string `json:"object"`
-		OwnedBy string `json:"owned_by"`
-	}
 	type response struct {
 		Object string       `json:"object"`
 		Data   []modelEntry `json:"data"`
 	}
 
+	now := time.Now().Unix()
 	data := make([]modelEntry, 0, len(names))
 	for _, name := range names {
 		data = append(data, modelEntry{
 			ID:      name,
 			Object:  "model",
 			OwnedBy: "ollama-mesh",
+			Created: now,
+			Status:  seen[name],
 		})
 	}
 
 	out, _ := json.Marshal(response{Object: "list", Data: data})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(out)
+	w.Write(out) //nolint:errcheck
+}
+
+// serveModel handles GET /v1/models/{model} - single model lookup across all
+// healthy nodes. Checks loaded models first, then the /api/tags catalog.
+func (h *Handler) serveModel(w http.ResponseWriter, modelID string) {
+	type modelEntry struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		OwnedBy string `json:"owned_by"`
+		Created int64  `json:"created"`
+		Status  string `json:"status"`
+	}
+
+	status := ""
+	for _, n := range h.router.Nodes() {
+		n.RLock()
+		healthy := n.Healthy
+		loaded := n.LoadedModels
+		nodeURL := n.URL
+		n.RUnlock()
+		if !healthy {
+			continue
+		}
+		for _, m := range loaded {
+			if m.Name == modelID {
+				status = modelStatusLoaded
+				break
+			}
+		}
+		if status == modelStatusLoaded {
+			break
+		}
+		// Check catalog (downloaded but not warm).
+		tags, err := h.router.FetchModelTags(nodeURL)
+		if err == nil {
+			for _, t := range tags {
+				if t.Name == modelID {
+					status = modelStatusAvailable
+					break
+				}
+			}
+		}
+	}
+
+	if status == "" {
+		writeAPIError(w, http.StatusNotFound,
+			"model '"+modelID+"' not found",
+			"invalid_request_error", "model_not_found")
+		return
+	}
+
+	out, _ := json.Marshal(modelEntry{
+		ID:      modelID,
+		Object:  "model",
+		OwnedBy: "ollama-mesh",
+		Created: time.Now().Unix(),
+		Status:  status,
+	})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(out) //nolint:errcheck
 }
 
 // serveAndRecoverAbort runs the reverse proxy and absorbs http.ErrAbortHandler,
@@ -568,9 +698,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 
 	targetURL, err := url.Parse(cloud.BaseURL)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"invalid cloud provider URL"}`))
+		writeAPIError(w, http.StatusInternalServerError, "invalid cloud provider URL", "server_error", "internal_error")
 		return
 	}
 
@@ -611,9 +739,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		// Log the detailed error server-side, but never leak upstream topology
 		// (hostnames, ports, dial/TLS details) to the client.
 		log.Printf("cloud upstream error (provider=%s request_id=%s): %v", cloud.Name, requestID, err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		w.Write([]byte(`{"error":"upstream unavailable"}`))
+		writeAPIError(w, http.StatusBadGateway, "upstream unavailable", "server_error", "upstream_error")
 	}
 
 	rec := &statusRecorder{ResponseWriter: w}

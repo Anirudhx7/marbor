@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -12,6 +13,28 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 )
+
+// authAPIError is the OpenAI-compatible error envelope used by auth middleware.
+type authAPIError struct {
+	Error authAPIErrorBody `json:"error"`
+}
+
+type authAPIErrorBody struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	Code    string `json:"code"`
+}
+
+// writeAuthError writes an OpenAI-schema error response from the auth layer.
+func writeAuthError(w http.ResponseWriter, status int, message, errType, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(authAPIError{Error: authAPIErrorBody{
+		Message: message,
+		Type:    errType,
+		Code:    code,
+	}})
+}
 
 type contextKey string
 
@@ -397,16 +420,14 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		}
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"missing authorization header"}`))
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			writeAuthError(w, http.StatusUnauthorized, "missing authorization header", "authentication_error", "missing_auth_header")
 			return
 		}
 		parts := strings.SplitN(auth, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"invalid authorization format"}`))
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			writeAuthError(w, http.StatusUnauthorized, "invalid authorization format, expected 'Bearer <token>'", "authentication_error", "invalid_auth_format")
 			return
 		}
 		token := parts[1]
@@ -414,25 +435,21 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		ks, ok := m.keys[token]
 		m.mu.RUnlock()
 		if !ok {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"invalid api key"}`))
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			writeAuthError(w, http.StatusUnauthorized, "invalid api key", "authentication_error", "invalid_api_key")
 			return
 		}
 		// Enforce key expiry before consuming any rate-limit/quota budget. The
 		// expires_at field was loaded and surfaced in the UI but never checked, so
 		// expired keys authenticated forever.
 		if keyExpired(ks.expiresAt, time.Now()) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":"api key expired"}`))
+			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			writeAuthError(w, http.StatusUnauthorized, "api key has expired", "authentication_error", "api_key_expired")
 			return
 		}
 		if !ks.limiter.allow() {
-			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", ks.limiter.retryAfterSeconds()))
-			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte(`{"error":"rate limit exceeded"}`))
+			writeAuthError(w, http.StatusTooManyRequests, "rate limit exceeded", "insufficient_quota", "rate_limit_exceeded")
 			return
 		}
 		// Expose rate-limit state to callers.
@@ -451,12 +468,10 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				metrics.QuotaRejection(ks.name, "daily")
 				now := time.Now()
 				midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
-				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", ks.dailyLimit))
 				w.Header().Set("X-Quota-Reset", fmt.Sprintf("%d", midnight.Unix()))
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(math.Ceil(time.Until(midnight).Seconds()))))
-				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error":"daily quota exceeded"}`))
+				writeAuthError(w, http.StatusTooManyRequests, "daily request quota exceeded", "insufficient_quota", "daily_quota_exceeded")
 				return
 			}
 			if ks.monthlyLimit > 0 && month > ks.monthlyLimit {
@@ -465,12 +480,10 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				metrics.QuotaRejection(ks.name, "monthly")
 				now := time.Now()
 				nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
-				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", ks.monthlyLimit))
 				w.Header().Set("X-Quota-Reset", fmt.Sprintf("%d", nextMonth.Unix()))
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(math.Ceil(time.Until(nextMonth).Seconds()))))
-				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error":"monthly quota exceeded"}`))
+				writeAuthError(w, http.StatusTooManyRequests, "monthly request quota exceeded", "insufficient_quota", "monthly_quota_exceeded")
 				return
 			}
 		}

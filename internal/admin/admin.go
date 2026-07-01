@@ -1724,7 +1724,10 @@ func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.router.SetStrategy(req.Strategy)
+	if err := s.router.SetStrategy(req.Strategy); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2117,18 +2120,20 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 5 * time.Minute}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, nodeURL+"/api/pull", bytes.NewReader(pullBody))
 	if err != nil {
+		log.Printf("handleNodePull: build request for node %s: %v", nodeName, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `{"error":"pull node %s: %s"}`, nodeName, err.Error())
+		fmt.Fprintf(w, `{"error":"pull failed for node %s"}`, nodeName)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("handleNodePull: request to node %s failed: %v", nodeName, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		fmt.Fprintf(w, `{"error":"pull node %s: %s"}`, nodeName, err.Error())
+		fmt.Fprintf(w, `{"error":"pull failed for node %s"}`, nodeName)
 		return
 	}
 	defer resp.Body.Close()

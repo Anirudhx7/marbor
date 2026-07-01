@@ -317,10 +317,22 @@ func (r *Router) ToggleRule(id string) {
 	}
 }
 
-func (r *Router) SetStrategy(strategy string) {
+// validStrategies is the set of accepted routing strategy values.
+var validStrategies = map[string]bool{
+	"warm-first":        true,
+	"least-connections": true,
+	"round-robin":       true,
+	"vram-aware":        true,
+}
+
+func (r *Router) SetStrategy(strategy string) error {
+	if !validStrategies[strategy] {
+		return fmt.Errorf("unknown routing strategy %q (valid: warm-first, least-connections, round-robin, vram-aware)", strategy)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.strategy = strategy
+	return nil
 }
 
 // Strategy returns the current routing strategy.
@@ -401,8 +413,14 @@ func (r *Router) Start(ctx context.Context) {
 	if warmupEnabled {
 		go r.pingWarmupModels(ctx) // initial ping on startup
 	}
-	warmupTicker := time.NewTicker(warmupInterval)
-	defer warmupTicker.Stop()
+	// Only create warmup ticker when warmup is actually enabled; a zero-interval
+	// ticker would fire immediately and continuously, wasting resources (#29).
+	var warmupTickerC <-chan time.Time
+	if warmupEnabled {
+		warmupTicker := time.NewTicker(warmupInterval)
+		defer warmupTicker.Stop()
+		warmupTickerC = warmupTicker.C
+	}
 
 	for {
 		select {
@@ -416,10 +434,8 @@ func (r *Router) Start(ctx context.Context) {
 			r.pollNvidiaAll()
 		case <-sweepTicker.C:
 			r.sweepAffinity()
-		case <-warmupTicker.C:
-			if warmupEnabled {
-				go r.pingWarmupModels(ctx)
-			}
+		case <-warmupTickerC:
+			go r.pingWarmupModels(ctx)
 		}
 	}
 }
@@ -1078,6 +1094,7 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
 	strategy := r.strategy
+	fallback := r.fallback // read here to avoid a second lock acquisition (#17)
 	r.mu.RUnlock()
 
 	var healthy []*NodeState
@@ -1116,10 +1133,6 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 			return pickLeastConns(warm), true
 		}
 	}
-
-	r.mu.RLock()
-	fallback := r.fallback
-	r.mu.RUnlock()
 
 	switch fallback {
 	case "vram-aware":
@@ -1162,11 +1175,14 @@ func (r *Router) DecrConn(node *NodeState) {
 // by DecrConn). Returns nil after timeout or context cancellation, at which point
 // the caller should fall through to cloud fallback or 503.
 //
+// runtimeFilter, when non-empty, restricts candidates to nodes whose Runtime
+// matches exactly (e.g. "ollama"). Pass "" to allow any runtime.
+//
 // If the queue is already at queueMaxDepth, returns nil immediately without queuing
 // to prevent unbounded memory growth under sustained overload.
-func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (*NodeState, bool) {
+func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeFilter string) (*NodeState, bool) {
 	// Fast path: immediate route.
-	if node, warm := r.Route(modelName, sessionID, ""); node != nil {
+	if node, warm := r.Route(modelName, sessionID, runtimeFilter); node != nil {
 		return node, warm
 	}
 
@@ -1192,9 +1208,9 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (
 	timer := time.NewTimer(r.queueTimeout)
 	defer timer.Stop()
 	// Periodic safety-net retry: coalesced notifyCh signals can miss concurrent
-	// DecrConn bursts (channel capacity 1). 100ms poll adds negligible CPU but
-	// ensures waiters are never stuck longer than one polling interval.
-	retryTick := time.NewTicker(100 * time.Millisecond)
+	// DecrConn bursts (channel capacity 1). 500ms poll is the fallback safety net;
+	// immediate wakeups are handled via the notifyCh channel (#15).
+	retryTick := time.NewTicker(500 * time.Millisecond)
 	defer retryTick.Stop()
 
 	for {
@@ -1209,11 +1225,11 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID string) (
 			metrics.QueueTimeout()
 			return nil, false
 		case <-ch:
-			if node, warm := r.Route(modelName, sessionID, ""); node != nil {
+			if node, warm := r.Route(modelName, sessionID, runtimeFilter); node != nil {
 				return node, warm
 			}
 		case <-retryTick.C:
-			if node, warm := r.Route(modelName, sessionID, ""); node != nil {
+			if node, warm := r.Route(modelName, sessionID, runtimeFilter); node != nil {
 				return node, warm
 			}
 		}
@@ -1266,34 +1282,38 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 	r.tagsInflight[nodeURL] = entry
 	r.tagsMu.Unlock()
 
-	// This goroutine is the sole fetcher; all others wait on entry.done.
+	// Panic safety: always close entry.done so waiters are never blocked forever
+	// even if a panic occurs mid-fetch (#14).
+	defer func() {
+		r.tagsMu.Lock()
+		delete(r.tagsInflight, nodeURL)
+		r.tagsMu.Unlock()
+		// close is idempotent-safe here because we only reach this defer once;
+		// the channel is unbuffered and only this path closes it.
+		select {
+		case <-entry.done:
+			// already closed (shouldn't happen, but guard against double-close)
+		default:
+			close(entry.done)
+		}
+	}()
+
+	// This function is the sole fetcher; all others wait on entry.done.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", nodeURL+"/api/tags", nil)
 	if err != nil {
 		entry.err = fmt.Errorf("build request: %w", err)
-		r.tagsMu.Lock()
-		delete(r.tagsInflight, nodeURL)
-		r.tagsMu.Unlock()
-		close(entry.done)
 		return nil, entry.err
 	}
 	resp, err := r.client.Do(req)
 	if err != nil {
 		entry.err = fmt.Errorf("fetch tags from %s: %w", nodeURL, err)
-		r.tagsMu.Lock()
-		delete(r.tagsInflight, nodeURL)
-		r.tagsMu.Unlock()
-		close(entry.done)
 		return nil, entry.err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		entry.err = fmt.Errorf("tags %s: status %d", nodeURL, resp.StatusCode)
-		r.tagsMu.Lock()
-		delete(r.tagsInflight, nodeURL)
-		r.tagsMu.Unlock()
-		close(entry.done)
 		return nil, entry.err
 	}
 
@@ -1302,10 +1322,6 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
 		entry.err = fmt.Errorf("decode tags: %w", err)
-		r.tagsMu.Lock()
-		delete(r.tagsInflight, nodeURL)
-		r.tagsMu.Unlock()
-		close(entry.done)
 		return nil, entry.err
 	}
 
@@ -1315,9 +1331,7 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 		Models:    tagsResp.Models,
 		FetchedAt: time.Now(),
 	}
-	delete(r.tagsInflight, nodeURL)
 	r.tagsMu.Unlock()
-	close(entry.done)
 
 	models := make([]TagModel, len(tagsResp.Models))
 	copy(models, tagsResp.Models)

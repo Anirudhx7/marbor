@@ -37,7 +37,7 @@ func TestWaitForNodeImmediateRoute(t *testing.T) {
 	n.Healthy = true
 	n.mu.Unlock()
 
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "")
+	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -79,7 +79,7 @@ func TestWaitForNodeUnblocksOnDecrConn(t *testing.T) {
 		n.Healthy = false
 		n.mu.Unlock()
 
-		result, _ = r.WaitForNode(context.Background(), "llama3.2", "")
+		result, _ = r.WaitForNode(context.Background(), "llama3.2", "", "")
 		close(done)
 	}()
 
@@ -125,7 +125,7 @@ func TestWaitForNodeTimeout(t *testing.T) {
 	n.mu.Unlock()
 
 	start := time.Now()
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "")
+	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	elapsed := time.Since(start)
 
 	if node != nil {
@@ -164,7 +164,7 @@ func TestWaitForNodeContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		r.WaitForNode(ctx, "llama3.2", "")
+		r.WaitForNode(ctx, "llama3.2", "", "")
 		close(done)
 	}()
 
@@ -205,7 +205,7 @@ func TestWaitForNodeQueueFullRejectsImmediately(t *testing.T) {
 	defer atomic.StoreInt32(&r.queueDepth, 0)
 
 	start := time.Now()
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "")
+	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	elapsed := time.Since(start)
 
 	if node != nil {
