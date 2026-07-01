@@ -18,6 +18,16 @@ type dockerContainer struct {
 		PublicPort  int    `json:"PublicPort"`
 		Type        string `json:"Type"`
 	} `json:"Ports"`
+	// NetworkSettings carries the container's per-network IP addresses as
+	// reported by the Docker API's list endpoint. This is populated for
+	// containers on bridge/custom networks; it is empty for containers
+	// running with --network host (they share the host's network
+	// namespace and have no container-private IP).
+	NetworkSettings struct {
+		Networks map[string]struct {
+			IPAddress string `json:"IPAddress"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
 }
 
 // parseDockerContainers converts a decoded container list to NodeConfig entries.
@@ -34,11 +44,33 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 		}
 		nodes = append(nodes, config.NodeConfig{
 			Name:     containerNodeName(c),
-			URL:      fmt.Sprintf("http://127.0.0.1:%d", port),
+			URL:      fmt.Sprintf("http://%s:%d", containerHost(c), port),
 			GPUModel: "docker",
 		})
 	}
 	return nodes
+}
+
+// containerHost returns the address ollama-mesh should use to reach the
+// container: the container's own IP address on the first Docker network it
+// reports, if one is present. This is correct whether ollama-mesh runs on
+// bare metal (routable via the bridge network) or inside another container
+// on the same Docker network (container-to-container traffic on a bridge
+// network uses container IPs, not 127.0.0.1).
+//
+// Falls back to 127.0.0.1 only when no container IP can be determined —
+// e.g. the container was started with --network host, where it shares the
+// host's network namespace and the mapped port is genuinely reachable via
+// loopback. We do not attempt to detect ollama-mesh's own network mode here;
+// this is a best-effort choice based only on what the Docker API reports for
+// the discovered container, not a guarantee of reachability in every topology.
+func containerHost(c dockerContainer) string {
+	for _, net := range c.NetworkSettings.Networks {
+		if net.IPAddress != "" {
+			return net.IPAddress
+		}
+	}
+	return "127.0.0.1"
 }
 
 // isOllamaContainer returns true if the container's image name contains "ollama".

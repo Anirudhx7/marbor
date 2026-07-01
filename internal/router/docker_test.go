@@ -62,6 +62,96 @@ func TestContainerNodeName(t *testing.T) {
 	}
 }
 
+func TestContainerHost(t *testing.T) {
+	// No NetworkSettings at all (zero value) — falls back to loopback.
+	c := dockerContainer{}
+	if got := containerHost(c); got != "127.0.0.1" {
+		t.Errorf("containerHost(no networks) = %q, want 127.0.0.1", got)
+	}
+
+	// Bridge network with a container IP — must use the container IP,
+	// not loopback, so container-to-container traffic on the bridge works.
+	c2 := dockerContainer{}
+	c2.NetworkSettings.Networks = map[string]struct {
+		IPAddress string `json:"IPAddress"`
+	}{
+		"bridge": {IPAddress: "172.17.0.5"},
+	}
+	if got := containerHost(c2); got != "172.17.0.5" {
+		t.Errorf("containerHost(bridge) = %q, want 172.17.0.5", got)
+	}
+
+	// Network present but IPAddress empty (e.g. --network host: container
+	// shares the host's namespace and has no container-private IP) — falls
+	// back to loopback since the mapped port is reachable there.
+	c3 := dockerContainer{}
+	c3.NetworkSettings.Networks = map[string]struct {
+		IPAddress string `json:"IPAddress"`
+	}{
+		"host": {IPAddress: ""},
+	}
+	if got := containerHost(c3); got != "127.0.0.1" {
+		t.Errorf("containerHost(host network, empty IP) = %q, want 127.0.0.1", got)
+	}
+}
+
+func TestParseDockerContainersUsesContainerIP(t *testing.T) {
+	c := dockerContainer{
+		ID:    "abc123",
+		Names: []string{"/ollama-bridge"},
+		Image: "ollama/ollama:latest",
+		Ports: []struct {
+			IP          string `json:"IP"`
+			PrivatePort int    `json:"PrivatePort"`
+			PublicPort  int    `json:"PublicPort"`
+			Type        string `json:"Type"`
+		}{
+			{IP: "0.0.0.0", PrivatePort: 11434, PublicPort: 32100, Type: "tcp"},
+		},
+	}
+	c.NetworkSettings.Networks = map[string]struct {
+		IPAddress string `json:"IPAddress"`
+	}{
+		"ollama-mesh_default": {IPAddress: "172.18.0.7"},
+	}
+
+	nodes := parseDockerContainers([]dockerContainer{c})
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	want := "http://172.18.0.7:32100"
+	if nodes[0].URL != want {
+		t.Errorf("URL = %q, want %q", nodes[0].URL, want)
+	}
+}
+
+func TestParseDockerContainersFallsBackToLoopback(t *testing.T) {
+	// No container IP available (e.g. host network mode) — must fall back
+	// to 127.0.0.1 rather than emit an empty/broken host.
+	c := dockerContainer{
+		ID:    "def456",
+		Names: []string{"/ollama-host-net"},
+		Image: "ollama/ollama:latest",
+		Ports: []struct {
+			IP          string `json:"IP"`
+			PrivatePort int    `json:"PrivatePort"`
+			PublicPort  int    `json:"PublicPort"`
+			Type        string `json:"Type"`
+		}{
+			{IP: "0.0.0.0", PrivatePort: 11434, PublicPort: 11434, Type: "tcp"},
+		},
+	}
+
+	nodes := parseDockerContainers([]dockerContainer{c})
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	want := "http://127.0.0.1:11434"
+	if nodes[0].URL != want {
+		t.Errorf("URL = %q, want %q", nodes[0].URL, want)
+	}
+}
+
 func TestDiscoverDockerNodesHTTP(t *testing.T) {
 	// Fake Docker API server (HTTP, not Unix socket) for unit testing.
 	// We test the HTTP parsing logic by temporarily pointing at a test HTTP server.
