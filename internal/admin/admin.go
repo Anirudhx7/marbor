@@ -138,6 +138,16 @@ func (s *Server) LoadFromStore() error {
 	} else {
 		log.Printf("store: could not load request log: %v", err)
 	}
+	// Restore hourly analytics buckets so the dashboard's traffic chart shows
+	// continuous history immediately after a restart instead of a gap (see
+	// docs/LIMITATIONS.md "Analytics dashboard shows a gap after restart").
+	// 24h matches the window rendered by last24hBuckets()/handleAnalytics.
+	since := time.Now().UTC().Add(-24 * time.Hour)
+	if buckets, err := s.st.HourlyBuckets(since); err == nil {
+		s.analytics.restoreFromStore(buckets)
+	} else {
+		log.Printf("store: could not load hourly analytics buckets: %v", err)
+	}
 	return nil
 }
 

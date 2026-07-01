@@ -3,6 +3,8 @@ package admin
 import (
 	"sync"
 	"time"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 // HourlyBucket tracks request counts and costs for one UTC hour.
@@ -103,6 +105,36 @@ func (a *analyticsStore) recordCloud(model string, costPer1K float64, tokens int
 		a.byModel[model] = &ModelStat{Model: model}
 	}
 	a.byModel[model].Cloud++
+}
+
+// restoreFromStore backfills the in-memory hourly buckets from persisted
+// SQLite records read at startup. It is intended to be called once, before
+// the server starts accepting traffic, so the dashboard's traffic chart shows
+// continuous history immediately after a restart instead of a gap.
+//
+// Only hourly buckets are restored. store.HourlyBucket persists a genuine
+// Local/Cloud split (LocalRequests/CloudRequests) plus cloud spend (CostUSD),
+// so it can be mapped onto admin.HourlyBucket without inventing data —
+// SavedUSD is intentionally left at zero since per-hour local savings are not
+// persisted. store.ModelStat, by contrast, only persists an aggregate
+// Requests count with no local/cloud split; attributing that total to either
+// admin.ModelStat.Local or .Cloud would fabricate a 100%-local or 100%-cloud
+// breakdown that never happened, so model stats are deliberately NOT
+// backfilled here (see docs/LIMITATIONS.md).
+func (a *analyticsStore) restoreFromStore(buckets []store.HourlyBucket) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	for _, b := range buckets {
+		key := b.Hour.UTC().Format("2006-01-02T15")
+		a.hourly[key] = &HourlyBucket{
+			Hour:     key,
+			Local:    int64(b.LocalRequests),
+			Cloud:    int64(b.CloudRequests),
+			SpentUSD: b.CostUSD,
+		}
+	}
+	a.pruneHourlyLocked(time.Now().UTC())
 }
 
 // last24hBuckets returns 24 ordered hourly buckets (oldest first).

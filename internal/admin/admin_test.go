@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 func newTestServer() *Server {
@@ -65,6 +68,84 @@ func TestTrackCloudCostModelUnknownTokensAddsNoCost(t *testing.T) {
 	s.mu.RUnlock()
 	if gotSpent != 0 {
 		t.Errorf("cloudSpentUSD = %f, want 0 (no fabricated cost)", gotSpent)
+	}
+}
+
+// TestLoadFromStoreRestoresAnalytics verifies that LoadFromStore backfills
+// the in-memory hourly analytics buckets from SQLite on startup, so the
+// dashboard's traffic chart shows continuous history immediately after a
+// restart instead of a gap (docs/LIMITATIONS.md "Analytics dashboard shows a
+// gap after restart").
+func TestLoadFromStoreRestoresAnalytics(t *testing.T) {
+	tmpDB := filepath.Join(t.TempDir(), "analytics-restore.db")
+	st, err := store.Open(tmpDB)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	// Write two hourly buckets directly to the store, simulating traffic
+	// recorded by a prior process before a restart.
+	hourA := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Hour)
+	hourB := time.Now().UTC().Add(-1 * time.Hour).Truncate(time.Hour)
+	if err := st.UpsertHourlyBucket(store.HourlyBucket{
+		Hour:          hourA,
+		LocalRequests: 5,
+		CloudRequests: 2,
+		Tokens:        1000,
+		CostUSD:       0.004,
+	}); err != nil {
+		t.Fatalf("UpsertHourlyBucket A: %v", err)
+	}
+	if err := st.UpsertHourlyBucket(store.HourlyBucket{
+		Hour:          hourB,
+		LocalRequests: 3,
+		CloudRequests: 1,
+		Tokens:        500,
+		CostUSD:       0.002,
+	}); err != nil {
+		t.Fatalf("UpsertHourlyBucket B: %v", err)
+	}
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, nil, config.Config{}, st)
+
+	// Sanity check: before restore, the in-memory store is cold.
+	for _, b := range s.analytics.last24hBuckets() {
+		if b.Local != 0 || b.Cloud != 0 {
+			t.Fatalf("expected cold analytics store before LoadFromStore, got %+v", b)
+		}
+	}
+
+	if err := s.LoadFromStore(); err != nil {
+		t.Fatalf("LoadFromStore: %v", err)
+	}
+
+	buckets := s.analytics.last24hBuckets()
+	var gotA, gotB *HourlyBucket
+	keyA := hourA.Format("2006-01-02T15")
+	keyB := hourB.Format("2006-01-02T15")
+	for i := range buckets {
+		switch buckets[i].Hour {
+		case keyA:
+			gotA = &buckets[i]
+		case keyB:
+			gotB = &buckets[i]
+		}
+	}
+
+	if gotA == nil {
+		t.Fatalf("hour %s not found in restored buckets", keyA)
+	}
+	if gotA.Local != 5 || gotA.Cloud != 2 || gotA.SpentUSD != 0.004 {
+		t.Errorf("bucket A = %+v, want Local=5 Cloud=2 SpentUSD=0.004", gotA)
+	}
+
+	if gotB == nil {
+		t.Fatalf("hour %s not found in restored buckets", keyB)
+	}
+	if gotB.Local != 3 || gotB.Cloud != 1 || gotB.SpentUSD != 0.002 {
+		t.Errorf("bucket B = %+v, want Local=3 Cloud=1 SpentUSD=0.002", gotB)
 	}
 }
 
