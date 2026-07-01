@@ -2,6 +2,8 @@ package router
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -127,6 +129,79 @@ func TestPerNodeRuntimeWarmupPings(t *testing.T) {
 	case <-calls:
 	case <-time.After(2 * time.Second):
 		t.Fatal("per-node runtime warmup ping never fired")
+	}
+}
+
+// TestPingNodeRequestBody verifies pingNode sends the correct JSON body to
+// /api/generate: model name, keep_alive string, and stream:false. This is the
+// critical correctness test — a malformed body would silently fail to keep the
+// model warm even though the HTTP call succeeded.
+func TestPingNodeRequestBody(t *testing.T) {
+	type reqBody struct {
+		Model     string `json:"model"`
+		KeepAlive string `json:"keep_alive"`
+		Stream    bool   `json:"stream"`
+	}
+	received := make(chan reqBody, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var b reqBody
+		if err := json.Unmarshal(raw, &b); err != nil {
+			t.Errorf("unmarshal body: %v", err)
+		}
+		received <- b
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	router := &Router{client: &http.Client{Timeout: 5 * time.Second}}
+	n := &NodeState{Name: "test", URL: srv.URL, Healthy: true}
+	if err := router.pingNode(context.Background(), n, "llama3.2:8b", "15m"); err != nil {
+		t.Fatalf("pingNode error: %v", err)
+	}
+	select {
+	case b := <-received:
+		if b.Model != "llama3.2:8b" {
+			t.Errorf("model = %q, want %q", b.Model, "llama3.2:8b")
+		}
+		if b.KeepAlive != "15m" {
+			t.Errorf("keep_alive = %q, want %q", b.KeepAlive, "15m")
+		}
+		if b.Stream {
+			t.Error("stream should be false")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler not called")
+	}
+}
+
+// TestPingNodeDrainBody verifies that a keep_alive of "0" (drain/unload) is
+// forwarded verbatim — sending any other value would prevent the model from
+// being evicted from VRAM during a scheduled drain.
+func TestPingNodeDrainBody(t *testing.T) {
+	received := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var b map[string]any
+		_ = json.Unmarshal(raw, &b)
+		ka, _ := b["keep_alive"].(string)
+		received <- ka
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	router := &Router{client: &http.Client{Timeout: 5 * time.Second}}
+	n := &NodeState{Name: "test", URL: srv.URL, Healthy: true}
+	if err := router.pingNode(context.Background(), n, "llama3.2:8b", "0"); err != nil {
+		t.Fatalf("pingNode drain error: %v", err)
+	}
+	select {
+	case ka := <-received:
+		if ka != "0" {
+			t.Errorf("keep_alive = %q, want \"0\" for drain", ka)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler not called")
 	}
 }
 
