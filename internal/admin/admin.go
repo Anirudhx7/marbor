@@ -290,6 +290,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/schedules", s.cors(s.adminAuth(s.handleListSchedules)))
 	reg("POST /admin/schedules", s.cors(s.adminAuth(s.handleCreateSchedule)))
 	reg("DELETE /admin/schedules/{id}", s.cors(s.adminAuth(s.handleDeleteSchedule)))
+	reg("PATCH /admin/schedules/{id}", s.cors(s.adminAuth(s.handlePatchSchedule)))
 
 	reg("GET /admin/keys", s.cors(s.adminAuth(s.handleKeys)))
 	reg("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
@@ -354,6 +355,11 @@ func (s *Server) Handler() http.Handler {
 
 	if sub, err := fs.Sub(webFS, "web/dist"); err == nil {
 		mux.Handle("/assets/", s.noCache(http.FileServer(http.FS(sub))))
+		// Serve root-level static files (favicon, manifest, etc.) that would
+		// otherwise fall through to the SPA catch-all and return index.html.
+		for _, f := range []string{"/favicon.svg", "/favicon.ico", "/manifest.json", "/robots.txt"} {
+			mux.Handle(f, s.noCache(http.FileServer(http.FS(sub))))
+		}
 	} else {
 		fmt.Println("warn: failed to embed web UI:", err)
 	}
@@ -996,6 +1002,64 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	s.persistSchedules(append(s.router.Schedules(), sc))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(sc)
+}
+
+func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var patch struct {
+		Enabled *bool     `json:"enabled"`
+		Action  *string   `json:"action"`
+		Node    *string   `json:"node"`
+		Models  *[]string `json:"models"`
+		At      *string   `json:"at"`
+		Days    *[]int    `json:"days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
+		return
+	}
+	cur := s.router.Schedules()
+	idx := -1
+	for i, sc := range cur {
+		if sc.ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"schedule %q not found"}`, id), http.StatusNotFound)
+		return
+	}
+	sc := cur[idx]
+	if patch.Enabled != nil {
+		sc.Enabled = *patch.Enabled
+	}
+	if patch.Action != nil {
+		if !router.ValidScheduleAction(*patch.Action) {
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, fmt.Sprintf(`{"error":"invalid action %q"}`, *patch.Action), http.StatusBadRequest)
+			return
+		}
+		sc.Action = *patch.Action
+	}
+	if patch.Node != nil {
+		sc.Node = *patch.Node
+	}
+	if patch.Models != nil {
+		sc.Models = *patch.Models
+	}
+	if patch.At != nil {
+		sc.At = *patch.At
+	}
+	if patch.Days != nil {
+		sc.Days = *patch.Days
+	}
+	cur[idx] = sc
+	s.persistSchedules(cur)
+	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(sc)
 }
 

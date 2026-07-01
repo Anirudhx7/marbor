@@ -261,14 +261,20 @@ export interface Schedule {
 // Demo state so the static demo's Warmup page is populated and interactive.
 let demoWarmup: Record<string, NodeWarmup> | null = null;
 function demoWarmupStore(): Record<string, NodeWarmup> {
-  if (!demoWarmup) demoWarmup = { 'gpu-01': { enabled: true, models: ['llama3.1:8b'] } };
+  if (!demoWarmup) demoWarmup = {
+    'gpu-node-01': { enabled: true,  models: ['llama3.1:8b', 'mistral:7b'] },
+    'gpu-node-02': { enabled: false, models: [] },
+    'gpu-node-03': { enabled: true,  models: ['codellama:13b'] },
+    'gpu-node-04': { enabled: false, models: [] },
+  };
   return demoWarmup;
 }
 let demoSchedules: Schedule[] | null = null;
 function demoScheduleStore(): Schedule[] {
   if (!demoSchedules) demoSchedules = [
-    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-01', models: ['llama3.1:8b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true },
-    { id: 'sched-demo-2', action: 'drain', node: 'gpu-02', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true },
+    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['llama3.1:8b', 'mistral:7b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true },
+    { id: 'sched-demo-2', action: 'drain',  node: 'gpu-node-03', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true },
+    { id: 'sched-demo-3', action: 'warmup', node: 'gpu-node-02', models: ['llama3.1:70b'], at: '09:00', days: [1, 2, 3, 4, 5], enabled: false },
   ];
   return demoSchedules;
 }
@@ -329,6 +335,21 @@ export async function deleteSchedule(id: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete schedule');
 }
 
+export async function updateSchedule(id: string, patch: Partial<Omit<Schedule, 'id'>>): Promise<Schedule> {
+  if (DEMO) {
+    const s = demoScheduleStore().find(x => x.id === id);
+    if (s) Object.assign(s, patch);
+    return demoDelay({ ...(s ?? demoScheduleStore()[0]), ...patch });
+  }
+  const res = await apiFetch(`${BASE}/schedules/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to update schedule'); }
+  return res.json();
+}
+
 function authHeaders(): { Authorization: string } {
   return { Authorization: `Bearer ${getSessionToken()}` };
 }
@@ -344,8 +365,10 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
 
 export async function fetchNodes(): Promise<GPUNode[]> {
   if (DEMO) return demoDelay([
-    { id: 'gpu-01', name: 'gpu-01', gpuModel: 'NVIDIA RTX 4090', port: 11434, vramTotalMB: 24576, vramUsedMB: 8192, vramSource: 'nvidia', powerDrawW: 180, cpuPercent: 12, temperature: 58, health: 'healthy', runtime: 'ollama', draining: false, uptime: '5d 3h', loadedModels: [{ name: 'llama3.1:8b', sizeVram: 8192 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-02', name: 'gpu-02', gpuModel: 'NVIDIA RTX 3080', port: 11434, vramTotalMB: 10240, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 95,  cpuPercent: 3,  temperature: 42, health: 'healthy', runtime: 'ollama', draining: false, uptime: '5d 3h', loadedModels: [],                                          healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-node-01', name: 'gpu-node-01', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 14336, vramSource: 'nvidia', powerDrawW: 280, cpuPercent: 18, temperature: 52, health: 'healthy',  runtime: 'ollama', draining: false, uptime: '12d 6h', loadedModels: [{ name: 'llama3.1:8b', sizeVram: 8192 }, { name: 'mistral:7b', sizeVram: 6144 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-node-02', name: 'gpu-node-02', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 0,     vramSource: 'nvidia', powerDrawW: 210, cpuPercent: 4,  temperature: 44, health: 'healthy',  runtime: 'ollama', draining: false, uptime: '12d 6h', loadedModels: [],                                                                                            healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-node-03', name: 'gpu-node-03', gpuModel: 'NVIDIA RTX 4090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 9216, vramSource: 'nvidia', powerDrawW: 195, cpuPercent: 22, temperature: 61, health: 'healthy',  runtime: 'ollama', draining: false, uptime: '5d 3h',  loadedModels: [{ name: 'codellama:13b', sizeVram: 9216 }],                                                   healthHistory: [1,1,1,1,1,1,0,1,1,1] },
+    { id: 'gpu-node-04', name: 'gpu-node-04', gpuModel: 'NVIDIA RTX 3090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 0,   cpuPercent: 0,  temperature: null, health: 'down', runtime: 'ollama', draining: false, uptime: '—',      loadedModels: [],                                                                                            healthHistory: [1,1,0,0,0,1,0,0,0,0] },
   ]);
   const res = await apiFetch(`${BASE}/nodes`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch nodes');
