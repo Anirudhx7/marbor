@@ -289,6 +289,24 @@ export async function setNodeWarmup(name: string, nw: NodeWarmup): Promise<NodeW
   return res.json();
 }
 
+export async function getPinned(nodeName: string): Promise<string[]> {
+  if (DEMO) return demoDelay(['llama3.2:3b', 'nomic-embed-text']);
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(nodeName)}/pinned`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch pinned models');
+  const j = await res.json();
+  return j.models ?? [];
+}
+
+export async function setPinned(nodeName: string, models: string[]): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(nodeName)}/pinned`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models }),
+  });
+  if (!res.ok) throw new Error('Failed to set pinned models');
+}
+
 export async function listSchedules(): Promise<Schedule[]> {
   if (DEMO) return demoDelay(demoScheduleStore().map(s => ({ ...s })));
   const res = await apiFetch(`${BASE}/schedules`, { headers: authHeaders() });

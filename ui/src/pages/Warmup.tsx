@@ -1,35 +1,41 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Flame, Plus, Trash2, Clock, Server } from 'lucide-react';
+import { Flame, Plus, Trash2, Clock, Server, Pin } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule,
+  fetchModels, getPinned, setPinned,
 } from '../lib/api';
 import type { GPUNode } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
+import { useDemoMode } from '../hooks/useDemoMode';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function parseModels(s: string): string[] {
-  return s.split(',').map(m => m.trim()).filter(Boolean);
-}
-
 // ── Per-node warmup row ───────────────────────────────────────────────────────
 
-function WarmupRow({ node, initial, onSave }: {
+function WarmupRow({ node, initial, availableModels, onSave }: {
   node: GPUNode;
   initial: NodeWarmup;
+  availableModels: string[];
   onSave: (name: string, nw: NodeWarmup) => Promise<void>;
 }) {
   const [enabled, setEnabled] = useState(initial.enabled);
-  const [modelsText, setModelsText] = useState((initial.models || []).join(', '));
+  const [selectedModels, setSelectedModels] = useState<string[]>(initial.models || []);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setEnabled(initial.enabled);
+    setSelectedModels(initial.models || []);
+  }, [initial]);
 
   async function save() {
     setSaving(true);
-    await onSave(node.name, { enabled, models: parseModels(modelsText) });
+    await onSave(node.name, { enabled, models: selectedModels });
     setSaving(false);
   }
+
+  const shownModels = Array.from(new Set([...availableModels, ...selectedModels]));
 
   return (
     <div className="bg-card border border-border rounded-xl p-4">
@@ -46,27 +52,165 @@ function WarmupRow({ node, initial, onSave }: {
         </label>
       </div>
       <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-        Models to keep warm <span className="text-muted-foreground/60">(comma-separated)</span>
+        Models to keep warm
       </label>
-      <div className="flex gap-2">
-        <input type="text" value={modelsText} onChange={e => setModelsText(e.target.value)}
-          placeholder="llama3.1:8b, mistral:7b"
-          className="flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground font-mono focus:outline-none focus:border-primary/50" />
-        <button onClick={save} disabled={saving}
-          className="px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex-1 max-h-32 overflow-y-auto bg-secondary/50 border border-border rounded-lg p-2 w-full">
+          {shownModels.length === 0 ? (
+            <p className="text-xs text-muted-foreground p-1">No models available</p>
+          ) : (
+            shownModels.map((model) => (
+              <label key={model} className="flex items-center gap-2 p-1.5 hover:bg-secondary rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedModels.includes(model)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedModels([...selectedModels, model]);
+                    } else {
+                      setSelectedModels(selectedModels.filter(m => m !== model));
+                    }
+                  }}
+                  className="rounded border-border bg-background text-primary focus:ring-primary/20"
+                />
+                <span className="text-sm font-mono text-muted-foreground">{model}</span>
+              </label>
+            ))
+          )}
+        </div>
+        <div className="flex items-end justify-end shrink-0 w-full sm:w-auto">
+          <button onClick={save} disabled={saving}
+            className="w-full sm:w-auto px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 h-10">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ── Per-node pinned-models row ────────────────────────────────────────────────
+
+function PinnedRow({ node, availableModels }: {
+  node: GPUNode;
+  availableModels: string[];
+}) {
+  const [pinnedModels, setPinnedModels] = useState<string[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getPinned(node.name)
+      .then(models => { if (!cancelled) { setPinnedModels(models); setLoading(false); } })
+      .catch(e => { if (!cancelled) { setError(e.message || 'Failed to load pinned'); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [node.name]);
+
+  function addModel() {
+    const trimmed = input.trim();
+    if (!trimmed || pinnedModels.includes(trimmed)) { setInput(''); return; }
+    setPinnedModels(prev => [...prev, trimmed]);
+    setInput('');
+  }
+
+  function removeModel(model: string) {
+    setPinnedModels(prev => prev.filter(m => m !== model));
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await setPinned(node.name, pinnedModels);
+    } catch (e: any) {
+      setError(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-4 mt-2">
+      <div className="flex items-center gap-2 mb-3">
+        <Pin className="w-4 h-4 text-primary" />
+        <span className="text-sm font-medium text-foreground">Pinned models</span>
+        <span className="text-xs text-muted-foreground ml-1" title="Pinned models are never evicted from VRAM">
+          - never evicted from VRAM
+        </span>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+            {pinnedModels.length === 0 ? (
+              <span className="text-xs text-muted-foreground">No pinned models</span>
+            ) : (
+              pinnedModels.map(model => (
+                <span key={model} className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 text-primary text-xs rounded-md font-mono">
+                  {model}
+                  <button
+                    onClick={() => removeModel(model)}
+                    className="ml-0.5 hover:text-destructive transition-colors leading-none"
+                    aria-label={`Remove ${model}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addModel(); }}
+              placeholder="model:tag"
+              list={`pinned-models-${node.name}`}
+              className="flex-1 px-3 py-1.5 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+            <datalist id={`pinned-models-${node.name}`}>
+              {availableModels.map(m => <option key={m} value={m} />)}
+            </datalist>
+            <button
+              onClick={addModel}
+              className="px-3 py-1.5 bg-secondary border border-border text-sm text-foreground rounded-lg hover:bg-secondary/80 flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add
+            </button>
+            <button
+              onClick={save}
+              disabled={saving}
+              className="px-4 py-1.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+
+          {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Schedule create form ──────────────────────────────────────────────────────
 
-function ScheduleForm({ nodes, onCreate }: { nodes: GPUNode[]; onCreate: (s: Omit<Schedule, 'id'>) => Promise<void> }) {
+function ScheduleForm({ nodes, availableModels, onCreate }: {
+  nodes: GPUNode[];
+  availableModels: string[];
+  onCreate: (s: Omit<Schedule, 'id'>) => Promise<void>;
+}) {
   const [action, setAction] = useState<Schedule['action']>('warmup');
   const [node, setNode] = useState(nodes[0]?.name ?? '');
-  const [modelsText, setModelsText] = useState('');
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [at, setAt] = useState('08:30');
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [saving, setSaving] = useState(false);
@@ -81,8 +225,8 @@ function ScheduleForm({ nodes, onCreate }: { nodes: GPUNode[]; onCreate: (s: Omi
     if (!/^\d{2}:\d{2}$/.test(at)) { setError('Time must be HH:MM'); return; }
     setSaving(true); setError(null);
     try {
-      await onCreate({ action, node, models: action === 'warmup' ? parseModels(modelsText) : undefined, at, days, enabled: true });
-      setModelsText('');
+      await onCreate({ action, node, models: action === 'warmup' ? selectedModels : undefined, at, days, enabled: true });
+      setSelectedModels([]);
     } catch (e: any) { setError(e.message || 'Create failed'); }
     finally { setSaving(false); }
   }
@@ -120,9 +264,30 @@ function ScheduleForm({ nodes, onCreate }: { nodes: GPUNode[]; onCreate: (s: Omi
       </div>
       {action === 'warmup' && (
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1.5">Models <span className="text-muted-foreground/60">(comma-separated)</span></label>
-          <input type="text" value={modelsText} onChange={e => setModelsText(e.target.value)} placeholder="llama3.1:8b"
-            className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm font-mono text-foreground" />
+          <label className="block text-xs font-medium text-muted-foreground mb-1.5">Models to warm up</label>
+          <div className="max-h-32 overflow-y-auto bg-secondary/50 border border-border rounded-lg p-2">
+            {availableModels.length === 0 ? (
+              <p className="text-xs text-muted-foreground p-1">No models available</p>
+            ) : (
+              availableModels.map((model) => (
+                <label key={model} className="flex items-center gap-2 p-1.5 hover:bg-secondary rounded cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedModels.includes(model)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedModels([...selectedModels, model]);
+                      } else {
+                        setSelectedModels(selectedModels.filter(m => m !== model));
+                      }
+                    }}
+                    className="rounded border-border bg-background text-primary focus:ring-primary/20"
+                  />
+                  <span className="text-sm font-mono text-muted-foreground">{model}</span>
+                </label>
+              ))
+            )}
+          </div>
         </div>
       )}
       <div>
@@ -145,9 +310,11 @@ function ScheduleForm({ nodes, onCreate }: { nodes: GPUNode[]; onCreate: (s: Omi
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function Warmup() {
+  const { demoMode } = useDemoMode();
   const [nodes, setNodes] = useState<GPUNode[]>([]);
   const [warmup, setWarmup] = useState<Record<string, NodeWarmup>>({});
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,10 +328,23 @@ export function Warmup() {
       }));
       setWarmup(w);
       setSchedules(await listSchedules());
+
+      if (demoMode) {
+        setAvailableModels(['llama3.1:8b', 'mistral:7b', 'llama3.1:70b', 'codellama:13b', 'gemma2:9b', 'phi3:medium']);
+      } else {
+        try {
+          const data = await fetchModels();
+          setAvailableModels((data.models || []).map((m: any) => m.name));
+        } catch {
+          setAvailableModels([]);
+        }
+      }
+
       setError(null);
     } catch (e: any) { setError(e.message || 'Failed to load'); }
     finally { setLoading(false); }
-  }, []);
+  }, [demoMode]);
+  
   useEffect(() => { load(); }, [load]);
 
   async function saveWarmup(name: string, nw: NodeWarmup) {
@@ -203,7 +383,12 @@ export function Warmup() {
         ) : nodes.length === 0 ? (
           <p className="text-sm text-muted-foreground">No nodes registered.</p>
         ) : (
-          nodes.map(n => <WarmupRow key={n.name} node={n} initial={warmup[n.name] ?? { enabled: false, models: [] }} onSave={saveWarmup} />)
+          nodes.map(n => (
+            <div key={n.name} className="space-y-0">
+              <WarmupRow node={n} initial={warmup[n.name] ?? { enabled: false, models: [] }} availableModels={availableModels} onSave={saveWarmup} />
+              <PinnedRow node={n} availableModels={availableModels} />
+            </div>
+          ))
         )}
       </section>
 
@@ -212,7 +397,7 @@ export function Warmup() {
           <Clock className="w-4 h-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Schedules</h2>
         </div>
-        <ScheduleForm nodes={nodes} onCreate={addSchedule} />
+        <ScheduleForm nodes={nodes} availableModels={availableModels} onCreate={addSchedule} />
         {schedules.length === 0 ? (
           <p className="text-sm text-muted-foreground">No schedules yet.</p>
         ) : (
