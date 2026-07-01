@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	oeTestModel  = "llama3.2:8b"
-	oeTestKey    = "sk-oe-test-key-001"
+	oeTestModel   = "llama3.2:8b"
+	oeTestKey     = "sk-oe-test-key-001"
 	oeTestKeyName = "oe-test"
 )
 

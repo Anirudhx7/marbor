@@ -332,19 +332,21 @@ func (NopStore) HasAdminCredentials() (bool, error)                     { return
 func (NopStore) GetLegacyAdminCreds() (string, string, string, error) {
 	return "", "", "", ErrNoAdminCreds
 }
-func (NopStore) UpsertRoutingRule(_ RoutingRuleRecord) error              { return nil }
-func (NopStore) DeleteRoutingRule(_ string) error                         { return nil }
-func (NopStore) SetRoutingRuleEnabled(_ string, _ bool) error             { return nil }
-func (NopStore) AllRoutingRules() ([]RoutingRuleRecord, error)            { return nil, nil }
-func (NopStore) GetSetting(_ string) (string, error)                     { return "", ErrNotFound }
-func (NopStore) SetSetting(_, _ string) error                            { return nil }
-func (NopStore) AllSettings() (map[string]string, error)                 { return nil, nil }
-func (NopStore) UpsertCloudProvider(_ CloudProviderRecord) error          { return nil }
-func (NopStore) DeleteCloudProvider(_ string) error                      { return nil }
-func (NopStore) AllCloudProviders() ([]CloudProviderRecord, error)        { return nil, nil }
-func (NopStore) GetWarmupConfig() (WarmupConfigRecord, error)             { return WarmupConfigRecord{}, ErrNotFound }
-func (NopStore) SetWarmupConfig(_ bool, _ string) error                  { return nil }
-func (NopStore) UpsertWarmupModel(_ string, _ []string) error            { return nil }
-func (NopStore) DeleteWarmupModel(_ string) error                        { return nil }
-func (NopStore) AllWarmupModels() ([]WarmupModelRecord, error)            { return nil, nil }
-func (NopStore) Close() error                                            { return nil }
+func (NopStore) UpsertRoutingRule(_ RoutingRuleRecord) error       { return nil }
+func (NopStore) DeleteRoutingRule(_ string) error                  { return nil }
+func (NopStore) SetRoutingRuleEnabled(_ string, _ bool) error      { return nil }
+func (NopStore) AllRoutingRules() ([]RoutingRuleRecord, error)     { return nil, nil }
+func (NopStore) GetSetting(_ string) (string, error)               { return "", ErrNotFound }
+func (NopStore) SetSetting(_, _ string) error                      { return nil }
+func (NopStore) AllSettings() (map[string]string, error)           { return nil, nil }
+func (NopStore) UpsertCloudProvider(_ CloudProviderRecord) error   { return nil }
+func (NopStore) DeleteCloudProvider(_ string) error                { return nil }
+func (NopStore) AllCloudProviders() ([]CloudProviderRecord, error) { return nil, nil }
+func (NopStore) GetWarmupConfig() (WarmupConfigRecord, error) {
+	return WarmupConfigRecord{}, ErrNotFound
+}
+func (NopStore) SetWarmupConfig(_ bool, _ string) error        { return nil }
+func (NopStore) UpsertWarmupModel(_ string, _ []string) error  { return nil }
+func (NopStore) DeleteWarmupModel(_ string) error              { return nil }
+func (NopStore) AllWarmupModels() ([]WarmupModelRecord, error) { return nil, nil }
+func (NopStore) Close() error                                  { return nil }
