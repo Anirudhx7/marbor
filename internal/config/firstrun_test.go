@@ -79,28 +79,28 @@ func TestFirstRunGeneratedValues(t *testing.T) {
 		t.Errorf("port = %d, want %d", fr.Config.Proxy.Port, FirstRunProxyPort)
 	}
 
-	// API key: "sk-mesh-" + 24 hex chars.
+	// API key: "sk-mesh-" + 64 hex chars (256-bit).
 	if !strings.HasPrefix(fr.APIKey, "sk-mesh-") {
 		t.Errorf("api key %q missing sk-mesh- prefix", fr.APIKey)
 	}
 	suffix := strings.TrimPrefix(fr.APIKey, "sk-mesh-")
-	if len(suffix) != 24 {
-		t.Errorf("api key suffix length = %d, want 24", len(suffix))
+	if len(suffix) != 64 {
+		t.Errorf("api key suffix length = %d, want 64", len(suffix))
 	}
 	if _, err := hex.DecodeString(suffix); err != nil {
 		t.Errorf("api key suffix %q is not hex: %v", suffix, err)
 	}
 
-	// Admin token: 16 hex chars.
-	if len(fr.AdminToken) != 16 {
-		t.Errorf("admin token length = %d, want 16", len(fr.AdminToken))
+	// Admin token: 32 hex chars (128-bit).
+	if len(fr.AdminToken) != 32 {
+		t.Errorf("admin token length = %d, want 32", len(fr.AdminToken))
 	}
 	if _, err := hex.DecodeString(fr.AdminToken); err != nil {
 		t.Errorf("admin token %q is not hex: %v", fr.AdminToken, err)
 	}
 
 	// Auth must be enabled with one key named "default".
-	if !fr.Config.Auth.Enabled {
+	if !fr.Config.Auth.IsEnabled() {
 		t.Error("auth not enabled in generated config")
 	}
 	if len(fr.Config.Auth.Keys) != 1 || fr.Config.Auth.Keys[0].Name != "default" {

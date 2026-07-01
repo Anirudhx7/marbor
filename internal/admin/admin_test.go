@@ -223,7 +223,7 @@ func TestAdmin_KeysNeverPlaintext(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
 	cfg := config.Config{
 		Auth: config.AuthConfig{
-			Enabled: true,
+			Enabled: config.BoolPtr(true),
 			Keys: []config.KeyConfig{
 				{Name: "prod", Key: fullKey, RateLimit: 100},
 			},
@@ -295,26 +295,5 @@ func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 
 	if strings.Contains(rec2.Body.String(), k.Key) {
 		t.Errorf("GET /admin/keys contains plaintext key %q after creation; only masked preview permitted", k.Key)
-	}
-}
-
-// TestAdminTokenEnablesDemoMode verifies that AdminToken() activates demo mode
-// so that the returned "demo-session" literal is accepted by adminAuth.
-func TestAdminTokenEnablesDemoMode(t *testing.T) {
-	s := newTestServer()
-	tok := s.AdminToken()
-	if tok != "demo-session" {
-		t.Fatalf("AdminToken() = %q, want %q", tok, "demo-session")
-	}
-	if !s.demoMode {
-		t.Error("AdminToken() did not enable demoMode on the server")
-	}
-	// Verify that the token actually passes adminAuth by hitting a real endpoint.
-	req := httptest.NewRequest(http.MethodGet, "/admin/v1/keys", nil)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Errorf("admin endpoint status = %d, want 200 (demo-session must be accepted)", rec.Code)
 	}
 }

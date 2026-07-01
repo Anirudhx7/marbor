@@ -9,7 +9,7 @@ import (
 
 func TestReloadPreservesCounterForUnchangedKey(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "alice", Key: "sk-alice", RateLimit: 1000}},
 	})
 
@@ -28,7 +28,7 @@ func TestReloadPreservesCounterForUnchangedKey(t *testing.T) {
 
 	// Reload with same key value - counter must survive.
 	mw.Reload(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "alice", Key: "sk-alice", RateLimit: 500, DailyLimit: 100},
 		},
@@ -53,7 +53,7 @@ func TestReloadPreservesCounterForUnchangedKey(t *testing.T) {
 
 func TestReloadRotatedKeyStartsFresh(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "bob", Key: "sk-bob-old", RateLimit: 100}},
 	})
 
@@ -65,7 +65,7 @@ func TestReloadRotatedKeyStartsFresh(t *testing.T) {
 
 	// Reload with ROTATED key value (same name, different token).
 	mw.Reload(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "bob", Key: "sk-bob-new", RateLimit: 100}},
 	})
 
@@ -85,7 +85,7 @@ func TestReloadRotatedKeyStartsFresh(t *testing.T) {
 
 func TestReloadDropsRemovedKeys(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "keep", Key: "sk-keep", RateLimit: 100},
 			{Name: "drop", Key: "sk-drop", RateLimit: 100},
@@ -93,7 +93,7 @@ func TestReloadDropsRemovedKeys(t *testing.T) {
 	})
 
 	mw.Reload(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "keep", Key: "sk-keep", RateLimit: 100}},
 	})
 
@@ -112,12 +112,12 @@ func TestReloadDropsRemovedKeys(t *testing.T) {
 
 func TestReloadAddsNewKey(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "existing", Key: "sk-existing", RateLimit: 100}},
 	})
 
 	mw.Reload(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "existing", Key: "sk-existing", RateLimit: 100},
 			{Name: "newkey", Key: "sk-new", RateLimit: 200},
@@ -138,11 +138,11 @@ func TestReloadAddsNewKey(t *testing.T) {
 
 func TestReloadTogglesEnabled(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "k", Key: "sk-k", RateLimit: 100}},
 	})
 
-	mw.Reload(config.AuthConfig{Enabled: false})
+	mw.Reload(config.AuthConfig{Enabled: config.BoolPtr(false)})
 
 	mw.mu.RLock()
 	enabled := mw.enabled

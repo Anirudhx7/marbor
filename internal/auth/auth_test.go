@@ -11,7 +11,7 @@ import (
 
 func TestAuthMiddleware(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "test", Key: "sk-test", RateLimit: 1000},
 		},
@@ -48,7 +48,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "limited", Key: "sk-lim", RateLimit: 1},
 		},
@@ -79,7 +79,7 @@ func TestRateLimit(t *testing.T) {
 // with capacity 0. Zero must mean unlimited, matching daily/monthly quota.
 func TestRateLimitZeroMeansUnlimited(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "unlimited", Key: "sk-unlim", RateLimit: 0},
 		},
@@ -103,7 +103,7 @@ func TestRateLimitZeroMeansUnlimited(t *testing.T) {
 
 func TestRetryAfterHeaderOnRateLimit(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "retry-test", Key: "sk-retry", RateLimit: 1},
 		},
@@ -140,7 +140,7 @@ func TestRetryAfterHeaderOnRateLimit(t *testing.T) {
 
 func TestRateLimitHeaders(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "header-test", Key: "sk-hdr", RateLimit: 100},
 		},
@@ -173,7 +173,7 @@ func TestRateLimitHeaders(t *testing.T) {
 
 func TestKeyStats(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "counter", Key: "sk-cnt", RateLimit: 100, Models: []string{"llama3.2:8b"}},
 		},
@@ -204,7 +204,7 @@ func TestKeyStats(t *testing.T) {
 
 func TestPatchKey(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "pkey", Key: "sk-patch", RateLimit: 10, DailyLimit: 100, MonthlyLimit: 1000, Models: []string{"llama3"}},
 		},
@@ -236,7 +236,7 @@ func TestPatchKey(t *testing.T) {
 }
 
 func TestPatchKeyNotFound(t *testing.T) {
-	mw := NewMiddleware(config.AuthConfig{Enabled: true})
+	mw := NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true)})
 	rate := 10
 	if mw.PatchKey("nonexistent", KeyPatch{RateLimit: &rate}) {
 		t.Error("PatchKey should return false for unknown key")
@@ -245,7 +245,7 @@ func TestPatchKeyNotFound(t *testing.T) {
 
 func TestPatchKeyPreservesCounters(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "cnt", Key: "sk-cnt2", RateLimit: 100},
 		},

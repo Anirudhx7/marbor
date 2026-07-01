@@ -17,7 +17,7 @@ func TestHandleKeysReportsTokensAndCost(t *testing.T) {
 	cfg := config.Config{
 		Savings: config.SavingsConfig{ReferenceCostPer1K: 0.01},
 		Auth: config.AuthConfig{
-			Enabled:    true,
+			Enabled:    config.BoolPtr(true),
 			AdminToken: "admin-tok",
 			Keys:       []config.KeyConfig{{Name: "team", Key: "sk-team", RateLimit: 1000}},
 		},

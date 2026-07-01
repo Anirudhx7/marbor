@@ -16,7 +16,7 @@ func TestAuthBypassRejection(t *testing.T) {
 	const validKey = "sk-secret"
 
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "regression-key", Key: validKey, RateLimit: 1000},
 		},
@@ -73,7 +73,7 @@ func TestAuthBypassRejection(t *testing.T) {
 // TestAuthDisabledPassthrough confirms that when auth is disabled, all requests
 // pass through regardless of the Authorization header value.
 func TestAuthDisabledPassthrough(t *testing.T) {
-	mw := NewMiddleware(config.AuthConfig{Enabled: false})
+	mw := NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(false)})
 	handler := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -96,7 +96,7 @@ func TestAuthDisabledPassthrough(t *testing.T) {
 func TestAddKeyAndRevokeBypass(t *testing.T) {
 	const key = "sk-dynamic"
 
-	mw := NewMiddleware(config.AuthConfig{Enabled: true})
+	mw := NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true)})
 	handler := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))

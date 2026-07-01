@@ -57,13 +57,13 @@ func ProbeOllama(baseURL string, timeout time.Duration) bool {
 // FirstRunProxyPort. The caller is responsible for saving the config
 // (SaveConfig) and printing the banner.
 func GenerateFirstRun(ollamaURL string, probeTimeout time.Duration) (*FirstRunResult, error) {
-	keySuffix, err := randomHex(12) // 24 hex chars
+	keySuffix, err := randomHex(32) // 64 hex chars (256-bit)
 	if err != nil {
 		return nil, fmt.Errorf("generate api key: %w", err)
 	}
 	apiKey := "sk-mesh-" + keySuffix
 
-	adminToken, err := randomHex(8) // 16 hex chars
+	adminToken, err := randomHex(16) // 32 hex chars (128-bit)
 	if err != nil {
 		return nil, fmt.Errorf("generate admin token: %w", err)
 	}
@@ -72,7 +72,7 @@ func GenerateFirstRun(ollamaURL string, probeTimeout time.Duration) (*FirstRunRe
 
 	cfg := &Config{
 		Proxy: ProxyConfig{Port: FirstRunProxyPort},
-		Auth: AuthConfig{Enabled: true,
+		Auth: AuthConfig{Enabled: BoolPtr(true),
 			AdminToken: adminToken,
 			Keys: []KeyConfig{
 				{Name: "default", Key: apiKey, RateLimit: 1000},

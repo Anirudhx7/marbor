@@ -212,7 +212,7 @@ func buildDemoConfig(node1URL, node2URL string, apiKey, adminToken string) confi
 			Port: 11437,
 		},
 		Auth: config.AuthConfig{
-			Enabled: true,
+			Enabled: config.BoolPtr(true),
 			Keys: []config.KeyConfig{
 				{
 					Name:      "demo",

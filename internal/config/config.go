@@ -121,7 +121,10 @@ type AdminConfig struct {
 }
 
 type AuthConfig struct {
-	Enabled bool        `yaml:"enabled"`
+	// Enabled turns auth enforcement on. Defaults to true (enabled) when the
+	// key is absent from the config file; set to false to explicitly disable.
+	// Read via IsEnabled(), never the field directly.
+	Enabled *bool       `yaml:"enabled,omitempty"`
 	Keys    []KeyConfig `yaml:"keys"`
 	// AdminToken is the bearer token for the admin dashboard API.
 	// Optional: when empty, the first auth key (or "admin") is used,
@@ -273,10 +276,15 @@ func SaveConfig(path string, cfg Config) error {
 }
 
 // IsEnabled reports whether auth enforcement is on.
-// Defaults to true when the field is absent from the config file.
+// Defaults to true when the field is absent (nil) from the config file.
 func (c AuthConfig) IsEnabled() bool {
-	return c.Enabled
+	return c.Enabled == nil || *c.Enabled
 }
+
+// BoolPtr returns a pointer to b. Used to construct explicit *bool config
+// values (e.g. AuthConfig.Enabled) in code and tests, including from other
+// packages.
+func BoolPtr(b bool) *bool { return &b }
 
 func (c *Config) Validate() error {
 	if c.Proxy.Port == 0 {
@@ -324,6 +332,11 @@ func (c *Config) Validate() error {
 		c.Storage.DBPath = "mesh.db"
 	}
 
+	// Auth defaults to enabled: make an absent key explicit so a saved config
+	// records the real default rather than relying on nil semantics.
+	if c.Auth.Enabled == nil {
+		c.Auth.Enabled = BoolPtr(true)
+	}
 	if c.Auth.IsEnabled() {
 		seen := make(map[string]bool)
 		for _, k := range c.Auth.Keys {

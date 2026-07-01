@@ -16,7 +16,7 @@ func okHandler() http.Handler {
 
 func TestAddKeyTokensAccumulates(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "k", Key: "sk-k", RateLimit: 1000}},
 	})
 	mw.AddKeyTokens("k", 100)
@@ -37,7 +37,7 @@ func TestAddKeyTokensAccumulates(t *testing.T) {
 func TestDailyQuotaEnforced(t *testing.T) {
 	const limit = 3
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "d", Key: "sk-d", RateLimit: 100000, DailyLimit: limit}},
 	})
 	h := mw.Handler(okHandler())
@@ -58,7 +58,7 @@ func TestDailyQuotaEnforced(t *testing.T) {
 func TestMonthlyQuotaEnforced(t *testing.T) {
 	const limit = 2
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "m", Key: "sk-m", RateLimit: 100000, MonthlyLimit: limit}},
 	})
 	h := mw.Handler(okHandler())
@@ -75,7 +75,7 @@ func TestMonthlyQuotaEnforced(t *testing.T) {
 
 func TestNoQuotaMeansUnlimited(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "u", Key: "sk-u", RateLimit: 100000}}, // no limits
 	})
 	h := mw.Handler(okHandler())
@@ -94,7 +94,7 @@ func TestNoQuotaMeansUnlimited(t *testing.T) {
 func TestQuotaRejectionDoesNotDriftCounter(t *testing.T) {
 	const limit = 2
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "drift", Key: "sk-drift", RateLimit: 100000, DailyLimit: limit}},
 	})
 	h := mw.Handler(okHandler())

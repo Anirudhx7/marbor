@@ -16,7 +16,7 @@ func newPullTestServer(t *testing.T, nodes []config.NodeConfig) *Server {
 	t.Helper()
 	cfg := config.Config{
 		Auth: config.AuthConfig{
-			Enabled: true,
+			Enabled: config.BoolPtr(true),
 			Keys: []config.KeyConfig{
 				{Name: "test", Key: "test-token"},
 			},

@@ -18,7 +18,7 @@ import (
 // requests.
 func TestAllowlistRejectionDoesNotConsumeBudget(t *testing.T) {
 	authMw := auth.NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "k", Key: "sk-k", RateLimit: 2, Models: []string{"allowed-model"}},
 		},

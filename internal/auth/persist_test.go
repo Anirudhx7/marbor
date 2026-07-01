@@ -9,7 +9,7 @@ import (
 
 func TestSaveLoadStateRoundTrip(t *testing.T) {
 	authCfg := config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys:    []config.KeyConfig{{Name: "team", Key: "sk-team", RateLimit: 100000}},
 	}
 	mw := NewMiddleware(authCfg)

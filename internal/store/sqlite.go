@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -42,6 +43,20 @@ func Open(path string) (Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
+
+	// The DB stores secrets (API keys, session tokens, cloud provider keys).
+	// By default SQLite creates the file with the process umask (often
+	// world-readable 0644). Best-effort tighten to 0600 to match SaveConfig.
+	// A failed chmod (e.g. on a filesystem that doesn't support it, or on
+	// Windows where os.Chmod only toggles the read-only bit) must NOT break
+	// startup, so errors are ignored. The pragmas/migrations above have
+	// already forced the file (and WAL sidecars) to exist on disk.
+	if path != "" && path != ":memory:" {
+		_ = os.Chmod(path, 0o600)
+		_ = os.Chmod(path+"-wal", 0o600)
+		_ = os.Chmod(path+"-shm", 0o600)
+	}
+
 	return s, nil
 }
 

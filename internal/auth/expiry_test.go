@@ -39,7 +39,7 @@ func TestKeyExpired(t *testing.T) {
 // loaded and shown in the UI but never enforced.
 func TestExpiredKeyRejected(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
-		Enabled: true,
+		Enabled: config.BoolPtr(true),
 		Keys: []config.KeyConfig{
 			{Name: "expired", Key: "sk-old", RateLimit: 1000, ExpiresAt: "2020-01-01"},
 			{Name: "valid", Key: "sk-new", RateLimit: 1000, ExpiresAt: "2099-01-01"},

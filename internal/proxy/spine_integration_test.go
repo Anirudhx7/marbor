@@ -78,7 +78,7 @@ func buildSpineStack(t *testing.T) (handler http.Handler, adminSrv *admin.Server
 	// 3. Admin server.
 	cfg := config.Config{
 		Auth: config.AuthConfig{
-			Enabled:    true,
+			Enabled:    config.BoolPtr(true),
 			AdminToken: "admin-spine-token",
 			Keys: []config.KeyConfig{
 				{Name: spineTestKeyName, Key: spineTestKeyVal, RateLimit: 1000},
