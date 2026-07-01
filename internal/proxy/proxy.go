@@ -290,6 +290,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.router.IncrConn(node)
+	h.router.RecordModelUse(node.Name, modelName) // LRU signal for model eviction
 
 	targetURL, err := url.Parse(node.URL)
 	if err != nil {

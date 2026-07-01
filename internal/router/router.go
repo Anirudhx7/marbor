@@ -147,6 +147,12 @@ type Router struct {
 	schedules      []Schedule
 	schedMu        sync.Mutex
 	schedLastFired map[string]string
+	// lastUsed tracks the last-request time per node+model (LRU eviction key),
+	// guarded by lruMu (hot path). pinned holds never-evict models per node,
+	// guarded by r.mu.
+	lastUsed map[string]time.Time
+	lruMu    sync.Mutex
+	pinned   map[string]map[string]bool
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -227,6 +233,8 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		sessionAffinity:    cfg.SessionAffinity,
 		nodeWarmup:         make(map[string]NodeWarmup),
 		schedLastFired:     make(map[string]string),
+		lastUsed:           make(map[string]time.Time),
+		pinned:             make(map[string]map[string]bool),
 		nvidiaCache:        make(map[int]GPUStats),
 		nvidiaPollInterval: nvidiaPollInterval,
 		notifyCh:           make(chan struct{}),

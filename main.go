@@ -266,6 +266,13 @@ func main() {
 	if settings, err := st.AllSettings(); err == nil {
 		loaded := 0
 		for k, v := range settings {
+			if pn, ok := strings.CutPrefix(k, "pinned:node:"); ok {
+				var models []string
+				if v != "" && json.Unmarshal([]byte(v), &models) == nil && len(models) > 0 {
+					r.SetPinnedModels(pn, models)
+				}
+				continue
+			}
 			name, ok := strings.CutPrefix(k, "warmup:node:")
 			if !ok || v == "" {
 				continue

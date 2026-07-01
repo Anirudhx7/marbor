@@ -285,6 +285,8 @@ func (s *Server) Handler() http.Handler {
 	reg("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
 	reg("GET /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleGetNodeWarmup)))
 	reg("PUT /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleSetNodeWarmup)))
+	reg("GET /admin/nodes/{name}/pinned", s.cors(s.adminAuth(s.handleGetPinned)))
+	reg("PUT /admin/nodes/{name}/pinned", s.cors(s.adminAuth(s.handleSetPinned)))
 	reg("GET /admin/schedules", s.cors(s.adminAuth(s.handleListSchedules)))
 	reg("POST /admin/schedules", s.cors(s.adminAuth(s.handleCreateSchedule)))
 	reg("DELETE /admin/schedules/{id}", s.cors(s.adminAuth(s.handleDeleteSchedule)))
@@ -912,6 +914,35 @@ func (s *Server) handleSetNodeWarmup(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": body.Enabled, "models": body.Models})
+}
+
+// handleGetPinned returns the node's never-evict (pinned) model list.
+func (s *Server) handleGetPinned(w http.ResponseWriter, r *http.Request) {
+	models := s.router.PinnedModels(r.PathValue("name"))
+	if models == nil {
+		models = []string{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"models": models})
+}
+
+// handleSetPinned sets the node's never-evict model list (persisted + applied live).
+func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Models []string `json:"models"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid request body"}`))
+		return
+	}
+	raw, _ := json.Marshal(body.Models)
+	_ = s.st.SetSetting("pinned:node:"+name, string(raw))
+	s.router.SetPinnedModels(name, body.Models)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"models": body.Models})
 }
 
 // --- Schedules: time-of-day warmup / drain / undrain ---

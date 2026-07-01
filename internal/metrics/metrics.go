@@ -66,6 +66,11 @@ var (
 		Help: "Scheduled actions fired, by action (warmup/drain/undrain) and node.",
 	}, []string{"action", "node"})
 
+	modelEvictions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollamamesh_model_evictions_total",
+		Help: "Models unloaded from a node to free VRAM (LRU eviction), by node.",
+	}, []string{"node"})
+
 	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "ollamamesh_cache_hits_total",
 		Help: "Total cache hits (warm model routing)",
@@ -196,4 +201,9 @@ func WarmupResident(model, node string, resident bool) {
 // ScheduleFired records that a scheduled action fired.
 func ScheduleFired(action, node string) {
 	scheduleFires.WithLabelValues(action, node).Inc()
+}
+
+// ModelEvicted records that a model was unloaded from a node to free VRAM.
+func ModelEvicted(node string) {
+	modelEvictions.WithLabelValues(node).Inc()
 }
