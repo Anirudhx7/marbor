@@ -172,3 +172,67 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName string, neededBy
 	}
 	return evicted
 }
+
+// evictCooldown bounds how often auto-eviction runs per node, so a node under
+// sustained pressure can't thrash (rapid load/evict oscillation).
+const evictCooldown = 15 * time.Second
+
+// estimateModelSizeBytes estimates the VRAM a not-yet-loaded model needs from the
+// node's /api/tags on-disk size (a good proxy for GGUF weights). Returns 0 when
+// the size is unknown so callers can decline to evict blindly.
+func (r *Router) estimateModelSizeBytes(nodeURL, model string) int64 {
+	tags, err := r.FetchModelTags(nodeURL)
+	if err != nil {
+		return 0
+	}
+	for _, t := range tags {
+		if t.Name == model {
+			return t.Size
+		}
+	}
+	return 0
+}
+
+// ensureHeadroom makes room on a node before it proactively loads `model`. If the
+// model isn't already resident and its estimated size won't fit in free VRAM, it
+// evicts the coldest non-pinned models first. It is a no-op when the model is
+// already loaded, the size or node capacity is unknown, it already fits, or a
+// recent auto-eviction on this node is still within the cooldown (thrash guard).
+//
+// It runs ONLY on the proactive warm/load path — never on the streaming request
+// path — so it never adds latency to a client request.
+func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string) {
+	n.mu.RLock()
+	nodeURL := n.URL
+	nodeName := n.Name
+	totalBytes := n.VRAMTotalMB * 1024 * 1024
+	var usedBytes int64
+	resident := false
+	for _, m := range n.LoadedModels {
+		usedBytes += m.SizeVRAM
+		if m.Name == model {
+			resident = true
+		}
+	}
+	n.mu.RUnlock()
+	if resident || totalBytes <= 0 {
+		return
+	}
+	est := r.estimateModelSizeBytes(nodeURL, model)
+	if est <= 0 || totalBytes-usedBytes >= est {
+		return // unknown size, or it already fits
+	}
+	// Thrash guard: at most one auto-eviction per node per cooldown window.
+	r.evictMu.Lock()
+	if r.lastEvictAt == nil {
+		r.lastEvictAt = make(map[string]time.Time)
+	}
+	if last, ok := r.lastEvictAt[nodeName]; ok && time.Since(last) < evictCooldown {
+		r.evictMu.Unlock()
+		return
+	}
+	r.lastEvictAt[nodeName] = time.Now()
+	r.evictMu.Unlock()
+
+	r.EvictForHeadroom(ctx, nodeName, est)
+}

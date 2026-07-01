@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/config"
 )
 
 const mib = 1024 * 1024
@@ -125,5 +127,69 @@ func TestEvictForHeadroomUnknownVRAMNoop(t *testing.T) {
 	}
 	if n := r.EvictForHeadroom(context.Background(), "n1", 40*mib); n != 0 {
 		t.Errorf("evicted %d, want 0 (unknown VRAM)", n)
+	}
+}
+
+// TestEnsureHeadroomEvictsWhenModelWontFit verifies the load-path gate evicts the
+// coldest model when a not-yet-loaded model's estimated size won't fit.
+func TestEnsureHeadroomEvictsWhenModelWontFit(t *testing.T) {
+	var mu sync.Mutex
+	evicted := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			w.Write([]byte(`{"models":[{"name":"newmodel","size":41943040}]}`)) // 40 MiB on disk
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		if strings.Contains(string(b), `"cold"`) {
+			evicted["cold"] = true
+		}
+		mu.Unlock()
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n1", URL: srv.URL}}, nil)
+	n := r.nodes[0]
+	n.Healthy = true
+	n.VRAMTotalMB = 100                                                                                  // ~104.8 MB
+	n.LoadedModels = []ModelInfo{{Name: "cold", SizeVRAM: 50 * mib}, {Name: "warm", SizeVRAM: 40 * mib}} // 90 MB used
+	r.lastUsed[modelKey("n1", "cold")] = time.Now().Add(-time.Hour)
+	r.lastUsed[modelKey("n1", "warm")] = time.Now()
+
+	// free ~14.8 MB, newmodel needs 40 MB -> must evict the coldest ("cold").
+	r.ensureHeadroom(context.Background(), n, "newmodel")
+	time.Sleep(150 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !evicted["cold"] {
+		t.Error("ensureHeadroom should have evicted coldest 'cold' to fit newmodel")
+	}
+}
+
+// TestEnsureHeadroomNoopWhenFits verifies no eviction when the model already fits.
+func TestEnsureHeadroomNoopWhenFits(t *testing.T) {
+	var hit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			w.Write([]byte(`{"models":[{"name":"newmodel","size":41943040}]}`))
+			return
+		}
+		hit = true // an /api/generate call here would be an unload
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n1", URL: srv.URL}}, nil)
+	n := r.nodes[0]
+	n.Healthy = true
+	n.VRAMTotalMB = 500 // plenty
+	n.LoadedModels = []ModelInfo{{Name: "warm", SizeVRAM: 40 * mib}}
+
+	r.ensureHeadroom(context.Background(), n, "newmodel")
+	time.Sleep(100 * time.Millisecond)
+	if hit {
+		t.Error("ensureHeadroom evicted despite ample free VRAM")
 	}
 }

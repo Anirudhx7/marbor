@@ -101,6 +101,9 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			n := n
 			model := model
 			go func() {
+				// Make VRAM room (evict coldest non-pinned) before loading, so
+				// warming several models on a tight node can't OOM.
+				r.ensureHeadroom(ctx, n, model)
 				status := "ok"
 				if err := r.pingNode(ctx, n, model, keepAlive); err != nil {
 					status = "error"

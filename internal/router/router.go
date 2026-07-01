@@ -153,6 +153,9 @@ type Router struct {
 	lastUsed map[string]time.Time
 	lruMu    sync.Mutex
 	pinned   map[string]map[string]bool
+	// lastEvictAt throttles auto-eviction per node (thrash guard), guarded by evictMu.
+	evictMu     sync.Mutex
+	lastEvictAt map[string]time.Time
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -235,6 +238,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		schedLastFired:     make(map[string]string),
 		lastUsed:           make(map[string]time.Time),
 		pinned:             make(map[string]map[string]bool),
+		lastEvictAt:        make(map[string]time.Time),
 		nvidiaCache:        make(map[int]GPUStats),
 		nvidiaPollInterval: nvidiaPollInterval,
 		notifyCh:           make(chan struct{}),
