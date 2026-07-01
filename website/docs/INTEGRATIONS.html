@@ -208,7 +208,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link active" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Use cases</a>
+      <a class="doc-nav-link active" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Use cases</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deploy</div>
@@ -344,7 +344,7 @@ print(response.content)</code></pre>
 <ul><li>Your <code>sk-mesh-...</code> key never leaves the mesh. The client <code>Authorization</code> header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured <code>api_key</code> when a request overflows to cloud. Provider credentials live only in the mesh config.</li><li>If your key has a <code>models:</code> allow-list in config, requests for any other model return <code>403 Forbidden</code>.</li><li>Rate limit headers (<code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>) are present on every response and follow the same conventions as the OpenAI API.</li><li><code>GET /v1/models</code> returns the union of models loaded or downloaded across all healthy nodes.</li></ul>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/INTEGRATIONS.md" target="_blank" rel="noopener">Edit this page on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/INTEGRATIONS.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -357,7 +357,7 @@ print(response.content)</code></pre>
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+    <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
     <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>

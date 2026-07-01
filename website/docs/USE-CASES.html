@@ -208,7 +208,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link active" href="../docs/USE-CASES.html">Use cases</a>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link active" href="../docs/USE-CASES.html">Use cases</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deploy</div>
@@ -266,7 +266,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <ul><li>GPU metrics (VRAM/temperature/power) come from <code>nvidia-smi</code> on the mesh host only. Remote node GPUs are not visible yet - per-node telemetry is on the roadmap. Warm-model detection works for all nodes regardless (it uses Ollama's own <code>/api/ps</code>).</li><li>Analytics and the request log are in-memory and reset on restart. Prometheus metrics and the audit log file persist.</li><li>Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "—", never an estimate.</li></ul>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/USE-CASES.md" target="_blank" rel="noopener">Edit this page on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/USE-CASES.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -279,7 +279,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+    <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
     <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>

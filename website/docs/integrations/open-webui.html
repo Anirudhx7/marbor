@@ -208,7 +208,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a>
+      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deploy</div>
@@ -311,7 +311,7 @@ curl http://&lt;mesh-host&gt;:11434/v1/models \
 <p>If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's <code>routing.upstream_timeout_ms</code> in <code>config.yaml</code>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">Edit this page on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -324,7 +324,7 @@ curl http://&lt;mesh-host&gt;:11434/v1/models \
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+    <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
     <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>

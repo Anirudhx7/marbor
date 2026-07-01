@@ -144,6 +144,7 @@ const GH_SVG = `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentCol
 const DOC_GROUPS = [
   { title: "Guides", items: [
     { slug: "INTEGRATIONS", label: "Integrations" },
+    { slug: "LIMITATIONS", label: "Known limitations" },
     { slug: "PRODUCTION", label: "Production" },
     { slug: "SAVINGS-MATH", label: "Savings math" },
     { slug: "USE-CASES", label: "Use cases" },
@@ -239,7 +240,7 @@ function page({ slug, title, contentHtml, headings }) {
     <article class="doc-content">
       ${contentHtml}
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/${slug}.md" target="_blank" rel="noopener">Edit this page on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
