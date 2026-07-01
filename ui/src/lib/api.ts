@@ -343,6 +343,10 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
 }
 
 export async function fetchNodes(): Promise<GPUNode[]> {
+  if (DEMO) return demoDelay([
+    { id: 'gpu-01', name: 'gpu-01', gpuModel: 'NVIDIA RTX 4090', port: 11434, vramTotalMB: 24576, vramUsedMB: 8192, vramSource: 'nvidia', powerDrawW: 180, cpuPercent: 12, temperature: 58, health: 'healthy', runtime: 'ollama', draining: false, uptime: '5d 3h', loadedModels: [{ name: 'llama3.1:8b', sizeVram: 8192 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-02', name: 'gpu-02', gpuModel: 'NVIDIA RTX 3080', port: 11434, vramTotalMB: 10240, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 95,  cpuPercent: 3,  temperature: 42, health: 'healthy', runtime: 'ollama', draining: false, uptime: '5d 3h', loadedModels: [],                                          healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+  ]);
   const res = await apiFetch(`${BASE}/nodes`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch nodes');
   return res.json();
