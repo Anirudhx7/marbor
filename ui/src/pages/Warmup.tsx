@@ -320,6 +320,7 @@ export function Warmup() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<'warmup' | 'schedules'>('warmup');
 
   const load = useCallback(async () => {
     try {
@@ -367,46 +368,56 @@ export function Warmup() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
-      <div className="flex items-center gap-3">
-        <Flame className="w-5 h-5 text-primary" />
-        <div>
+    <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
+      {/* Header + tab toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <Flame className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-bold text-foreground">Warmup &amp; Scheduling</h1>
-          <p className="text-xs text-muted-foreground">Keep models resident in VRAM. Schedule warmup / drain events.</p>
+        </div>
+        <div className="flex items-center bg-secondary rounded-lg p-0.5 text-sm">
+          <button onClick={() => setTab('warmup')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'warmup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Flame className="w-3.5 h-3.5" /> Warmup
+          </button>
+          <button onClick={() => setTab('schedules')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'schedules' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Clock className="w-3.5 h-3.5" /> Schedules
+            {schedules.length > 0 && (
+              <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{schedules.length}</span>
+            )}
+          </button>
         </div>
       </div>
 
       {error && <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-sm text-destructive">{error}</div>}
 
-      {/* Per-node cards */}
-      <section className="space-y-2">
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Per-node warmup</h2>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : nodes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No nodes registered.</p>
-        ) : (
-          nodes.map(n => (
-            <NodeCard
-              key={n.name}
-              node={n}
-              initial={warmup[n.name] ?? { enabled: false, models: [] }}
-              availableModels={availableModels}
-              onSave={saveWarmup}
-            />
-          ))
-        )}
-      </section>
+      {/* Warmup tab */}
+      {tab === 'warmup' && (
+        <section className="space-y-2">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : nodes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No nodes registered.</p>
+          ) : (
+            nodes.map(n => (
+              <NodeCard
+                key={n.name}
+                node={n}
+                initial={warmup[n.name] ?? { enabled: false, models: [] }}
+                availableModels={availableModels}
+                onSave={saveWarmup}
+              />
+            ))
+          )}
+        </section>
+      )}
 
-      {/* Schedules */}
-      <section className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Schedules</h2>
-        </div>
-
-        {schedules.length > 0 && (
-          <div className="bg-card border border-border rounded-xl divide-y divide-border mb-2">
+      {/* Schedules tab */}
+      {tab === 'schedules' && (
+        <section className="space-y-2">
+          {schedules.length > 0 && (
+          <div className="bg-card border border-border rounded-xl divide-y divide-border">
             {schedules.map(s => (
               <div key={s.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -429,7 +440,8 @@ export function Warmup() {
         )}
 
         <ScheduleForm nodes={nodes} availableModels={availableModels} onCreate={addSchedule} />
-      </section>
+        </section>
+      )}
     </div>
   );
 }
