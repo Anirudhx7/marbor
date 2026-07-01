@@ -211,6 +211,10 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
   const [action, setAction] = useState<Schedule['action']>('warmup');
   const [node, setNode] = useState(nodes[0]?.name ?? '');
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!node && nodes.length > 0) setNode(nodes[0].name);
+  }, [nodes, node]);
   const [at, setAt] = useState('08:30');
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [saving, setSaving] = useState(false);

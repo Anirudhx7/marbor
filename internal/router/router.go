@@ -307,7 +307,11 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 		return
 	}
 	go func() {
-		defer func() { if r := recover(); r != nil { log.Printf("[router] panic in goroutine: %v", r) } }()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[router] panic in goroutine: %v", r)
+			}
+		}()
 		payload := map[string]string{
 			"event": event,
 			"node":  nodeName,
