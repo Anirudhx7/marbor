@@ -113,6 +113,7 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		}
 		m := m
 		go func() {
+			defer func() { if r := recover(); r != nil { log.Printf("[router] panic in goroutine: %v", r) } }()
 			r.ensureHeadroom(ctx, target, m)
 			status := "ok"
 			if err := r.pingNode(ctx, target, m, keepAlive); err != nil {

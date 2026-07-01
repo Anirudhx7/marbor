@@ -307,6 +307,7 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 		return
 	}
 	go func() {
+		defer func() { if r := recover(); r != nil { log.Printf("[router] panic in goroutine: %v", r) } }()
 		payload := map[string]string{
 			"event": event,
 			"node":  nodeName,
@@ -818,7 +819,9 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 
 	if sticky == nil {
 		r.affinityMu.Lock()
-		delete(r.affinity, sessionID)
+		if e, ok := r.affinity[sessionID]; ok && time.Since(time.Unix(0, e.lastSeen.Load())) >= r.affinityTTL {
+			delete(r.affinity, sessionID)
+		}
 		r.affinityMu.Unlock()
 		return nil
 	}
@@ -828,7 +831,9 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 	sticky.mu.RUnlock()
 	if !healthy || draining {
 		r.affinityMu.Lock()
-		delete(r.affinity, sessionID)
+		if e, ok := r.affinity[sessionID]; ok && time.Since(time.Unix(0, e.lastSeen.Load())) >= r.affinityTTL {
+			delete(r.affinity, sessionID)
+		}
 		r.affinityMu.Unlock()
 		return nil
 	}

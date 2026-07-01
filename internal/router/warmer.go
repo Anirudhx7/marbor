@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -101,6 +102,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			n := n
 			model := model
 			go func() {
+				defer func() { if r := recover(); r != nil { log.Printf("[router] panic in goroutine: %v", r) } }()
 				// Make VRAM room (evict coldest non-pinned) before loading, so
 				// warming several models on a tight node can't OOM.
 				r.ensureHeadroom(ctx, n, model)
