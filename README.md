@@ -85,7 +85,7 @@ Client Application (Agent / RAG / Copilot)
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
-| | HA peer health monitoring | Multiple instances poll each other's `/health` and expose peer reachability at `/admin/ha/peers`. Autonomous failover is delegated to an external TCP load balancer (HAProxy/nginx) in front of all instances. |
+| | Peer health monitoring | Optional observability: report whether peer instances' `/health` endpoints are reachable at `/admin/ha/peers`. ollama-mesh is single-instance — there is **no** failover, shared state, or leader election. Distributing traffic across instances is an external TCP load balancer's (HAProxy/nginx) job. |
 | | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-reads config in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: operator-declared `vram_total_mb`. Every figure labelled with its source (nvidia/api/declared). |

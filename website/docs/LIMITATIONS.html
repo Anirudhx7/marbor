@@ -300,7 +300,7 @@ html.light .theme-toggle .moon { display: block; }
       <hr/>
 
       <h2 id="session-affinity">Session Affinity<a class="anchor" href="#session-affinity" aria-label="Link to section">#</a></h2>
-      <p>The <code>routing.session_affinity</code> config flag exists but is not currently consulted by the router. All routing decisions use warm-first or least-connections logic regardless of this setting. Session affinity (routing a given client consistently to the same node) is not implemented. If you set this flag, it has no effect.</p>
+      <p>Session affinity is implemented and gated by the <code>routing.session_affinity</code> flag. When enabled, requests carrying an <code>X-Session-ID</code> header are pinned to the same backend node (within <code>routing.session_affinity_ttl</code>) so the node's KV-cache context stays warm across turns; the pin falls back to normal routing if that node becomes unhealthy or the TTL lapses. When disabled (the default), routing is stateless and the header is ignored.</p>
 
       <hr/>
 

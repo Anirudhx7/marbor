@@ -1,8 +1,14 @@
 package ha
 
-// Monitor polls configured peers' /health endpoints and tracks reachability.
-// Intended for active/active HA: two mesh instances pointing at each other's
-// admin port. Clients use a TCP LB (HAProxy/nginx) in front of both.
+// Monitor is a passive peer-health observer. It polls the /health endpoint of
+// each configured peer and records reachability so operators running more than
+// one mesh instance behind their own TCP load balancer can observe peer status.
+//
+// It is NOT high availability. There is no leader election, no shared state, no
+// failover, and no coordination between instances. ollama-mesh is a
+// single-instance control plane; this module only reports whether peers are
+// reachable. Distributing or failing over traffic, if desired, is entirely the
+// external load balancer's responsibility.
 
 import (
 	"context"
@@ -61,9 +67,9 @@ func (m *Monitor) checkAll() {
 		m.mu.Unlock()
 		if changed {
 			if reachable {
-				log.Printf("[HA] peer %s reachable", peer)
+				log.Printf("[peer-monitor] peer %s reachable", peer)
 			} else {
-				log.Printf("[HA] peer %s UNREACHABLE", peer)
+				log.Printf("[peer-monitor] peer %s UNREACHABLE", peer)
 			}
 		}
 	}
@@ -108,6 +114,6 @@ func (m *Monitor) PeerCount() int { return len(m.peers) }
 
 // String returns a human-readable summary for startup logging.
 func (m *Monitor) String() string {
-	return fmt.Sprintf("HA monitor: %d peers, interval %s, timeout %s",
+	return fmt.Sprintf("peer-health monitor: %d peers, interval %s, timeout %s",
 		len(m.peers), m.interval, m.client.Timeout)
 }

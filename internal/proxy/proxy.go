@@ -684,6 +684,18 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	metrics.CloudFallback(cloud.Name)
 	path := translateCloudPath(r.URL.Path)
 
+	// Anthropic's API only exposes /v1/messages — it has no /v1/completions or
+	// /v1/chat/completions. ollama-mesh does not translate those to the Anthropic
+	// Messages schema, so rather than proxy a request Anthropic will reject with a
+	// confusing raw error, return a clear 501 before the request leaves the mesh.
+	if strings.EqualFold(cloud.Provider, "anthropic") && (path == "/v1/completions" || path == "/v1/chat/completions") {
+		writeAPIError(w, http.StatusNotImplemented,
+			"the Anthropic cloud provider does not support "+path+" through ollama-mesh; use an OpenAI-compatible overflow provider for this endpoint",
+			"invalid_request_error", "unsupported_cloud_endpoint")
+		metrics.RequestsTotal(keyName, modelName, "cloud:"+cloud.Name, "501")
+		return
+	}
+
 	outBody := body
 	// loggedModel makes model rewriting visible: "<original> -> <cloud model>"
 	// in the request log when the cloud provider's default_model replaced the

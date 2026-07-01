@@ -310,7 +310,7 @@ func main() {
 		haMonitor := ha.New(cfg.HA)
 		adminSrv.SetHAMonitor(haMonitor)
 		go haMonitor.Start(ctx)
-		log.Printf("HA enabled: monitoring %d peer(s)", haMonitor.PeerCount())
+		log.Printf("Peer health monitor enabled: %d peer(s) (observability only; not failover/HA)", haMonitor.PeerCount())
 	}
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)

@@ -126,10 +126,12 @@ routing:
   queue_max_depth: 100
   queue_timeout_ms: 30000
 
-# HA (active/active): run two mesh instances pointing at each other.
-# Clients use HAProxy/nginx in front of both on :11434.
-# Each instance independently routes to the same Ollama node pool.
-# Usage state (usage-state.json) is NOT shared between instances.
+# Peer-health monitor (observability only - NOT high availability).
+# When enabled, reports whether the listed peer instances' /health endpoints are
+# reachable, surfaced at /admin/ha/peers and in logs. It performs NO failover,
+# NO shared state, and NO leader election: ollama-mesh is a single-instance
+# control plane. If you run more than one instance, distributing traffic across
+# them is your external TCP load balancer's (HAProxy/nginx) job, not the mesh's.
 ha:
   enabled: false
   peers: []           # admin port URLs of peer instances, e.g. http://host-b:8080

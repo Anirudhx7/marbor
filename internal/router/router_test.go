@@ -291,7 +291,7 @@ func TestRouteCloudFallsBackWhenAllNodesUnhealthy(t *testing.T) {
 }
 
 func TestSessionAffinitySticksToBestNode(t *testing.T) {
-	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000, SessionAffinity: true}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434"},
 		{Name: "node-b", URL: "http://node-b:11434"},
 	}, nil)
@@ -327,7 +327,7 @@ func TestSessionAffinitySticksToBestNode(t *testing.T) {
 }
 
 func TestSessionAffinityFallsBackOnUnhealthyNode(t *testing.T) {
-	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000, SessionAffinity: true}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434"},
 		{Name: "node-b", URL: "http://node-b:11434"},
 	}, nil)
@@ -371,7 +371,7 @@ func TestSessionAffinityFallsBackOnUnhealthyNode(t *testing.T) {
 }
 
 func TestSessionAffinityNoIDIsStateless(t *testing.T) {
-	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000, SessionAffinity: true}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434"},
 	}, nil)
 	r.nodes[0].mu.Lock()
@@ -385,6 +385,28 @@ func TestSessionAffinityNoIDIsStateless(t *testing.T) {
 	r.affinityMu.RUnlock()
 	if count != 0 {
 		t.Errorf("affinity map has %d entries after stateless Route(), want 0", count)
+	}
+}
+
+// TestSessionAffinityDisabledIgnoresSessionID verifies the flag actually gates
+// pinning: with session_affinity off (the default), a session ID must be
+// ignored and create no sticky entry.
+func TestSessionAffinityDisabledIgnoresSessionID(t *testing.T) {
+	// Note: SessionAffinity defaults to false here (not set).
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434"},
+	}, nil)
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].mu.Unlock()
+
+	r.Route("llama3", "sess-x", "")
+	r.Route("llama3", "sess-x", "")
+	r.affinityMu.RLock()
+	count := len(r.affinity)
+	r.affinityMu.RUnlock()
+	if count != 0 {
+		t.Errorf("affinity map has %d entries with session_affinity disabled, want 0", count)
 	}
 }
 

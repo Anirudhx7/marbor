@@ -122,6 +122,9 @@ type Router struct {
 	affinity    map[string]*affinityEntry
 	affinityMu  sync.RWMutex
 	affinityTTL time.Duration
+	// sessionAffinity gates sticky-session pinning on routing.session_affinity.
+	// When false (default), session IDs are ignored and routing is stateless.
+	sessionAffinity bool
 	// nvidiaCache holds the last nvidia-smi result per GPU index for local nodes.
 	// Populated by a separate ticker (nvidiaPollInterval) so that nvidia-smi is
 	// never invoked on every /api/ps poll cycle.
@@ -205,6 +208,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		maxRetries:         maxRetries,
 		affinity:           make(map[string]*affinityEntry),
 		affinityTTL:        affinityTTL,
+		sessionAffinity:    cfg.SessionAffinity,
 		nvidiaCache:        make(map[int]GPUStats),
 		nvidiaPollInterval: nvidiaPollInterval,
 		notifyCh:           make(chan struct{}),
@@ -683,6 +687,13 @@ func (r *Router) markFailure(n *NodeState) {
 // runtimeFilter, when non-empty, restricts candidates to nodes whose Runtime
 // field matches exactly. Pass "" to allow any runtime (existing behaviour).
 func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, bool) {
+	// Session affinity is opt-in (routing.session_affinity). When disabled,
+	// ignore any client-supplied X-Session-ID so routing is fully stateless —
+	// no sticky pinning. Previously the session ID was honored unconditionally,
+	// so the config flag had no effect.
+	if !r.sessionAffinity {
+		sessionID = ""
+	}
 	if sessionID != "" {
 		if node := r.stickyNode(sessionID); node != nil {
 			// Honour runtime filter even for sticky nodes.

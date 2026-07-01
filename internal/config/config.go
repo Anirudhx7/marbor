@@ -84,11 +84,13 @@ type HuggingFaceConfig struct {
 	Token string `yaml:"token" json:"token"`
 }
 
-// HAConfig controls peer-awareness for active/active HA deployments.
-// Two mesh instances point at each other's admin port; a TCP LB (HAProxy/nginx)
-// sits in front of both. The monitor polls each peer's /health endpoint and
-// logs reachability transitions so operators can observe split-brain or partial
-// failure without any external monitoring tool.
+// HAConfig controls the peer-health monitor: passive observability only.
+// When enabled, mesh reports whether the configured peers' /health endpoints
+// are reachable (surfaced at /admin/ha/peers and in logs). It performs NO
+// failover, NO shared state, and NO leader election - ollama-mesh is a
+// single-instance control plane. Distributing traffic across instances, if you
+// run more than one, is an external TCP load balancer's job, not this module's.
+// (The "ha" name is retained for config compatibility.)
 type HAConfig struct {
 	Enabled             bool     `yaml:"enabled" json:"enabled"`
 	Peers               []string `yaml:"peers" json:"peers"`

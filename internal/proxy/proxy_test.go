@@ -148,6 +148,44 @@ func TestProxyFallsBackToCloud(t *testing.T) {
 	}
 }
 
+// TestAnthropicCompletionsReturns501 verifies that a /v1/completions request
+// routed to an Anthropic overflow provider is rejected with a clean 501 by the
+// mesh, rather than being proxied to Anthropic (which has no such endpoint) and
+// returning a confusing raw error to the client.
+func TestAnthropicCompletionsReturns501(t *testing.T) {
+	hit := false
+	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer cloudSrv.Close()
+
+	clouds := []config.CloudProvider{
+		{Name: "claude", Provider: "anthropic", BaseURL: cloudSrv.URL, APIKey: "sk-ant", DefaultModel: "claude-3-5-sonnet", Enabled: true},
+	}
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "V100"},
+	}, clouds)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = false
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+	req := httptest.NewRequest("POST", "/v1/completions", bytes.NewReader([]byte(`{"model":"x","prompt":"hi"}`)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Errorf("Anthropic /v1/completions: got %d, want 501; body: %s", rec.Code, rec.Body.String())
+	}
+	if hit {
+		t.Error("request reached the Anthropic backend; it must be rejected before proxying")
+	}
+}
+
 func TestProxyNoFallbackWhenCloudDisabled(t *testing.T) {
 	clouds := []config.CloudProvider{
 		{Name: "openai", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-x", Enabled: false},
