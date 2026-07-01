@@ -439,7 +439,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
 
 // ── Paused schedules collapsible section ─────────────────────────────────────
 
-function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (s: Schedule) => JSX.Element }) {
+function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (s: Schedule) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(0);
