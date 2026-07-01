@@ -14,6 +14,30 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // ── Combined per-node card (warmup + pinned) ──────────────────────────────────
 
+function ModelPills({ allModels, selected, onChange }: {
+  allModels: string[];
+  selected: string[];
+  onChange: (models: string[]) => void;
+}) {
+  if (allModels.length === 0) return <p className="text-xs text-muted-foreground">No models available.</p>;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {allModels.map(model => {
+        const active = selected.includes(model);
+        return (
+          <button key={model} type="button"
+            onClick={() => onChange(active ? selected.filter(m => m !== model) : [...selected, model])}
+            className={`px-2 py-1 rounded-md border text-xs font-mono transition-colors ${
+              active ? 'bg-primary/10 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:bg-secondary'
+            }`}>
+            {model}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function NodeCard({ node, initial, availableModels, onSave }: {
   node: GPUNode;
   initial: NodeWarmup;
@@ -23,6 +47,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [selectedModels, setSelectedModels] = useState<string[]>(initial.models || []);
   const [saving, setSaving] = useState(false);
+  const [showModels, setShowModels] = useState(false);
 
   // Pinned state
   const [pinnedModels, setPinnedModels] = useState<string[]>([]);
@@ -66,101 +91,82 @@ function NodeCard({ node, initial, availableModels, onSave }: {
     finally { setPinnedSaving(false); }
   }
 
-  const shownModels = Array.from(new Set([...availableModels, ...selectedModels]));
+  const allModels = Array.from(new Set([...availableModels, ...selectedModels]));
+  // Models that are pinned but not in availableModels (custom entries)
+  const extraPinned = pinnedModels.filter(m => !availableModels.includes(m));
+  const allPinnedModels = Array.from(new Set([...availableModels, ...extraPinned]));
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
-      {/* Warmup section */}
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-primary" />
-            <span className="font-medium text-foreground">{node.name}</span>
-            {initial.enabled && <Badge variant="success">warm</Badge>}
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-              <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)}
-                className="rounded border-border bg-background text-primary focus:ring-primary/20" />
-              Warmup
-            </label>
-            <button onClick={saveWarmup} disabled={saving}
-              className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
+      {/* Node header */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Server className="w-4 h-4 text-primary" />
+          <span className="font-medium text-foreground">{node.name}</span>
+          {initial.enabled && <Badge variant="success">warm</Badge>}
+          {selectedModels.length > 0 && (
+            <span className="text-xs text-muted-foreground font-mono">{selectedModels.length} model{selectedModels.length !== 1 ? 's' : ''}</span>
+          )}
         </div>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+            <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)}
+              className="rounded border-border bg-background text-primary focus:ring-primary/20" />
+            Warmup
+          </label>
+          <button onClick={saveWarmup} disabled={saving}
+            className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
 
-        {/* Model checkboxes - compact grid */}
-        {shownModels.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {shownModels.map(model => (
-              <label key={model}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-mono cursor-pointer transition-colors ${
-                  selectedModels.includes(model)
-                    ? 'bg-primary/10 border-primary/40 text-primary'
-                    : 'border-border text-muted-foreground hover:bg-secondary'
-                }`}>
-                <input type="checkbox" checked={selectedModels.includes(model)}
-                  onChange={e => {
-                    if (e.target.checked) setSelectedModels(p => [...p, model]);
-                    else setSelectedModels(p => p.filter(m => m !== model));
-                  }}
-                  className="sr-only" />
-                {model}
-              </label>
-            ))}
+      {/* Models to keep warm - collapsible */}
+      <div className="border-t border-border">
+        <button onClick={() => setShowModels(p => !p)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/40 transition-colors">
+          <div className="flex items-center gap-1.5">
+            <Flame className="w-3.5 h-3.5" />
+            <span>Models to keep warm</span>
+            {selectedModels.length > 0 && (
+              <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{selectedModels.length}</span>
+            )}
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">No models available on this node.</p>
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showModels ? 'rotate-180' : ''}`} />
+        </button>
+        {showModels && (
+          <div className="px-4 pb-3">
+            <ModelPills allModels={allModels} selected={selectedModels} onChange={setSelectedModels} />
+          </div>
         )}
       </div>
 
-      {/* Pinned section - collapsible */}
+      {/* Pinned models - collapsible */}
       <div className="border-t border-border">
-        <button
-          onClick={() => setShowPinned(p => !p)}
-          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/40 transition-colors"
-        >
+        <button onClick={() => setShowPinned(p => !p)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/40 transition-colors">
           <div className="flex items-center gap-1.5">
             <Pin className="w-3.5 h-3.5" />
             <span>Pinned models</span>
             {pinnedModels.length > 0 && (
-              <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">
-                {pinnedModels.length}
-              </span>
+              <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{pinnedModels.length}</span>
             )}
           </div>
           <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showPinned ? 'rotate-180' : ''}`} />
         </button>
-
         {showPinned && (
-          <div className="px-4 pb-3 space-y-2">
+          <div className="px-4 pb-3 space-y-2.5">
             {pinnedLoading ? (
               <p className="text-xs text-muted-foreground">Loading…</p>
             ) : (
               <>
-                <div className="flex flex-wrap gap-1.5 min-h-[24px]">
-                  {pinnedModels.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">None — pinned models are never evicted from VRAM.</span>
-                  ) : (
-                    pinnedModels.map(m => (
-                      <span key={m} className="flex items-center gap-1 px-2 py-0.5 bg-primary/10 border border-primary/20 text-primary text-xs rounded font-mono">
-                        {m}
-                        <button onClick={() => setPinnedModels(p => p.filter(x => x !== m))}
-                          className="hover:text-destructive transition-colors" aria-label={`Remove ${m}`}>×</button>
-                      </span>
-                    ))
-                  )}
-                </div>
-                <div className="flex gap-2">
+                <ModelPills allModels={allPinnedModels} selected={pinnedModels} onChange={setPinnedModels} />
+                {/* Input for custom model names not in the available list */}
+                <div className="flex gap-2 pt-0.5">
                   <input type="text" value={pinnedInput} onChange={e => setPinnedInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') addPinned(); }}
-                    placeholder="model:tag" list={`pinned-dl-${node.name}`}
+                    placeholder="custom model:tag"
                     className="flex-1 px-2.5 py-1.5 bg-secondary/50 border border-border rounded-lg text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30" />
-                  <datalist id={`pinned-dl-${node.name}`}>
-                    {availableModels.map(m => <option key={m} value={m} />)}
-                  </datalist>
                   <button onClick={addPinned}
                     className="px-2.5 py-1.5 bg-secondary border border-border text-xs text-foreground rounded-lg hover:bg-secondary/80 flex items-center gap-1">
                     <Plus className="w-3 h-3" /> Add
@@ -170,6 +176,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
                     {pinnedSaving ? 'Saving…' : 'Save'}
                   </button>
                 </div>
+                <p className="text-[10px] text-muted-foreground/60">Pinned models are never evicted from VRAM.</p>
                 {pinnedError && <p className="text-xs text-destructive">{pinnedError}</p>}
               </>
             )}
