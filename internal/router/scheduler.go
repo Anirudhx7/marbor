@@ -15,9 +15,9 @@ import (
 // empty Days means every day.
 type Schedule struct {
 	ID      string   `json:"id"`
-	Action  string   `json:"action"` // "warmup" | "drain" | "undrain"
+	Action  string   `json:"action"` // "warmup" | "unload" | "drain" | "undrain"
 	Node    string   `json:"node"`
-	Models  []string `json:"models,omitempty"` // used by the "warmup" action
+	Models  []string `json:"models,omitempty"` // used by the "warmup" and "unload" actions
 	At      string   `json:"at"`               // "HH:MM", server-local time
 	Days    []int    `json:"days,omitempty"`   // 0=Sun..6=Sat; empty = every day
 	Enabled bool     `json:"enabled"`
@@ -25,7 +25,7 @@ type Schedule struct {
 
 // ValidScheduleAction reports whether a is a supported schedule action.
 func ValidScheduleAction(a string) bool {
-	return a == "warmup" || a == "drain" || a == "undrain"
+	return a == "warmup" || a == "unload" || a == "drain" || a == "undrain"
 }
 
 // SetSchedules replaces the in-memory schedule set (persistence is the caller's
@@ -80,6 +80,8 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	switch s.Action {
 	case "warmup":
 		r.WarmModels(ctx, s.Node, s.Models)
+	case "unload":
+		r.UnloadModels(ctx, s.Node, s.Models)
 	case "drain":
 		r.DrainNode(s.Node)
 	case "undrain":

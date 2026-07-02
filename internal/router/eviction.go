@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -81,8 +82,10 @@ func (r *Router) isPinned(node, model string) bool {
 
 // unloadModel evicts a model from a node's VRAM immediately via Ollama's
 // keep_alive:0 on /api/generate (the inverse of a warmup preload). Only Ollama
-// backends support this; others are a no-op.
-func (r *Router) unloadModel(ctx context.Context, n *NodeState, model string) error {
+// backends support this; others are a no-op. reason is a short tag for the log
+// line (e.g. "LRU headroom", "manual", "scheduled") so operators can tell an
+// automatic eviction from an operator-triggered one.
+func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason string) error {
 	n.mu.RLock()
 	nodeURL, rt := n.URL, n.Runtime
 	n.mu.RUnlock()
@@ -102,9 +105,57 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model string) er
 		return err
 	}
 	resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("node %s returned %d unloading %q", n.Name, resp.StatusCode, model)
+	}
 	metrics.ModelEvicted(n.Name)
-	log.Printf("evicted model %q from node %s (LRU headroom)", model, n.Name)
+	log.Printf("unloaded model %q from node %s (%s)", model, n.Name, reason)
 	return nil
+}
+
+// findNode returns the node with the given name, or nil.
+func (r *Router) findNode(name string) *NodeState {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.Name == name {
+			return n
+		}
+	}
+	return nil
+}
+
+// UnloadModel unloads a single model from a node's VRAM on operator request
+// (keep_alive:0). Returns false if the node is unknown. A no-op unload against a
+// model that isn't resident is harmless (Ollama returns success).
+func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool, error) {
+	n := r.findNode(nodeName)
+	if n == nil {
+		return false, nil
+	}
+	return true, r.unloadModel(ctx, n, model, "manual")
+}
+
+// UnloadModels unloads several models from a node immediately (used by the
+// scheduled "unload"/drain-at-night action). Each unload runs in its own
+// goroutine so a slow node can't block the scheduler tick. Unknown nodes and
+// non-Ollama backends are skipped.
+func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) {
+	n := r.findNode(nodeName)
+	if n == nil {
+		return
+	}
+	for _, m := range models {
+		if m == "" {
+			continue
+		}
+		m := m
+		go func() {
+			if err := r.unloadModel(ctx, n, m, "scheduled"); err != nil {
+				log.Printf("scheduled unload of %q on %s failed: %v", m, nodeName, err)
+			}
+		}()
+	}
 }
 
 // EvictForHeadroom unloads the coldest non-pinned models on nodeName until at
@@ -162,7 +213,7 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName string, neededBy
 			break
 		}
 		victim := loaded[coldIdx]
-		if err := r.unloadModel(ctx, target, victim.name); err != nil {
+		if err := r.unloadModel(ctx, target, victim.name, "LRU headroom"); err != nil {
 			log.Printf("headroom: failed to evict %q from %s: %v", victim.name, nodeName, err)
 			break
 		}

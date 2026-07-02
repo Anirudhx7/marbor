@@ -219,7 +219,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
     if (!/^\d{2}:\d{2}$/.test(at)) { setError('Time must be HH:MM'); return; }
     setSaving(true); setError(null);
     try {
-      await onSave({ action, node, models: action === 'warmup' ? selectedModels : undefined, at, days });
+      await onSave({ action, node, models: (action === 'warmup' || action === 'unload') ? selectedModels : undefined, at, days });
       setEditing(false);
     } catch (e: any) { setError(e.message || 'Save failed'); }
     finally { setSaving(false); }
@@ -233,7 +233,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
       {/* View row */}
       <div className="flex items-center justify-between px-4 py-2.5 text-sm">
         <div className="flex items-center gap-3 flex-wrap">
-          <Badge variant={s.action === 'warmup' ? 'success' : s.action === 'drain' ? 'warning' : 'muted'}>{s.action}</Badge>
+          <Badge variant={s.action === 'warmup' ? 'success' : s.action === 'unload' ? 'destructive' : s.action === 'drain' ? 'warning' : 'muted'}>{s.action}</Badge>
           <span className="font-medium text-foreground">{s.node}</span>
           {s.models && s.models.length > 0 && (
             <span className="font-mono text-xs text-muted-foreground">{s.models.join(', ')}</span>
@@ -266,6 +266,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
               <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
               <select value={action} onChange={e => setAction(e.target.value as Schedule['action'])} className={sel}>
                 <option value="warmup">Warm up</option>
+                <option value="unload">Unload</option>
                 <option value="drain">Drain</option>
                 <option value="undrain">Undrain</option>
               </select>
@@ -293,7 +294,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
               <span className="text-xs text-muted-foreground/60 self-center ml-1">none = every day</span>
             </div>
           </div>
-          {action === 'warmup' && availableModels.length > 0 && (
+          {(action === 'warmup' || action === 'unload') && availableModels.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Models</label>
               <ModelPills allModels={availableModels} selected={selectedModels} onChange={setSelectedModels} />
@@ -343,7 +344,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
     if (!/^\d{2}:\d{2}$/.test(at)) { setError('Time must be HH:MM'); return; }
     setSaving(true); setError(null);
     try {
-      await onCreate({ action, node, models: action === 'warmup' ? selectedModels : undefined, at, days, enabled: true });
+      await onCreate({ action, node, models: (action === 'warmup' || action === 'unload') ? selectedModels : undefined, at, days, enabled: true });
       setSelectedModels([]);
       setOpen(false);
     } catch (e: any) { setError(e.message || 'Create failed'); }
@@ -365,6 +366,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
               <select value={action} onChange={e => setAction(e.target.value as Schedule['action'])}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground">
                 <option value="warmup">Warm up</option>
+                <option value="unload">Unload</option>
                 <option value="drain">Drain</option>
                 <option value="undrain">Undrain</option>
               </select>
@@ -393,9 +395,9 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
             </div>
           </div>
 
-          {action === 'warmup' && availableModels.length > 0 && (
+          {(action === 'warmup' || action === 'unload') && availableModels.length > 0 && (
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Models to warm up</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">{action === 'unload' ? 'Models to unload' : 'Models to warm up'}</label>
               <div className="flex flex-wrap gap-1.5">
                 {availableModels.map(model => (
                   <label key={model}

@@ -300,6 +300,7 @@ func (s *Server) Handler() http.Handler {
 	reg("PUT /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleSetNodeWarmup)))
 	reg("GET /admin/nodes/{name}/pinned", s.cors(s.adminAuth(s.handleGetPinned)))
 	reg("PUT /admin/nodes/{name}/pinned", s.cors(s.adminAuth(s.handleSetPinned)))
+	reg("POST /admin/nodes/{name}/unload", s.cors(s.adminAuth(s.handleUnloadModel)))
 	reg("GET /admin/schedules", s.cors(s.adminAuth(s.handleListSchedules)))
 	reg("POST /admin/schedules", s.cors(s.adminAuth(s.handleCreateSchedule)))
 	reg("DELETE /admin/schedules/{id}", s.cors(s.adminAuth(s.handleDeleteSchedule)))
@@ -964,7 +965,38 @@ func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"models": body.Models})
 }
 
-// --- Schedules: time-of-day warmup / drain / undrain ---
+// handleUnloadModel evicts a single model from a node's VRAM on operator request
+// (Ollama keep_alive:0). It frees VRAM immediately without draining the node or
+// waiting for LRU pressure — the manual counterpart to auto-eviction.
+func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Model string `json:"model"`
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid request body"}`))
+		return
+	}
+	if body.Model == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"model is required"}`))
+		return
+	}
+	found, err := s.router.UnloadModel(r.Context(), name, body.Model)
+	if !found {
+		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadGateway)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "model": body.Model, "unloaded": true})
+}
+
+// --- Schedules: time-of-day warmup / unload / drain / undrain ---
 
 func validHHMM(s string) bool {
 	if len(s) != 5 || s[2] != ':' {
@@ -1002,7 +1034,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	if !router.ValidScheduleAction(sc.Action) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"action must be warmup, drain, or undrain"}`))
+		w.Write([]byte(`{"error":"action must be warmup, unload, drain, or undrain"}`))
 		return
 	}
 	if sc.Node == "" || !validHHMM(sc.At) {

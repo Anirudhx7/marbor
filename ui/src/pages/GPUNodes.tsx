@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil } from 'lucide-react';
+import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
@@ -7,7 +7,7 @@ import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, patchNode, fetchModelFit } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, patchNode, fetchModelFit, unloadModel } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -102,12 +102,13 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
   );
 }
 
-function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit }: {
+function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit, onUnload }: {
   node: GPUNode;
   onRemove: (name: string) => void;
   onDrain: (name: string) => void;
   onUndrain: (name: string) => void;
   onEdit: (node: GPUNode) => void;
+  onUnload: (nodeName: string, model: string) => void;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -226,18 +227,29 @@ function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit }: {
       <div className="border-t border-border pt-3">
         <p className="text-xs font-medium text-muted-foreground mb-2">Loaded Models</p>
         <div className="flex flex-wrap gap-1.5">
-          {(node.loadedModels || []).map((model) => (
-            <Badge
-              key={model.name}
-              variant="success"
-              size="sm"
-            >
-              {model.name}
-              <span className="ml-1.5 opacity-70 font-mono">
-                {(model.sizeVram / 1024 / 1024 / 1024).toFixed(1)}GB
-              </span>
-            </Badge>
-          ))}
+          {(node.loadedModels || []).length === 0 ? (
+            <span className="text-xs text-muted-foreground/60">None resident</span>
+          ) : (
+            (node.loadedModels || []).map((model) => (
+              <Badge
+                key={model.name}
+                variant="success"
+                size="sm"
+              >
+                {model.name}
+                <span className="ml-1.5 opacity-70 font-mono">
+                  {(model.sizeVram / 1024 / 1024 / 1024).toFixed(1)}GB
+                </span>
+                <button
+                  onClick={() => onUnload(node.name, model.name)}
+                  title={`Unload ${model.name} from VRAM`}
+                  className="ml-1.5 -mr-0.5 opacity-50 hover:opacity-100 hover:text-destructive transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -367,6 +379,22 @@ export function GPUNodes() {
     }
   };
 
+  const handleUnloadModel = async (nodeName: string, model: string) => {
+    try {
+      await unloadModel(nodeName, model);
+      if (demoMode) {
+        // Reflect the unload immediately in the static demo (no backend to re-poll).
+        setNodes(prev => prev.map(n => n.name === nodeName
+          ? { ...n, loadedModels: (n.loadedModels || []).filter(m => m.name !== model) }
+          : n));
+      } else {
+        await loadNodes();
+      }
+    } catch {
+      // unload failed; leave the model list unchanged
+    }
+  };
+
   const [editNode, setEditNode] = useState<GPUNode | null>(null);
   const [editVRAM, setEditVRAM] = useState('');
   const [editGPUModel, setEditGPUModel] = useState('');
@@ -450,7 +478,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onEdit={openEditModal} />
+          <NodeCard key={node.id} node={node} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onEdit={openEditModal} onUnload={handleUnloadModel} />
         ))}
       </div>
 

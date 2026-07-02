@@ -68,7 +68,7 @@ var (
 
 	modelEvictions = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "ollamamesh_model_evictions_total",
-		Help: "Models unloaded from a node to free VRAM (LRU eviction), by node.",
+		Help: "Models unloaded from a node's VRAM (LRU headroom eviction, scheduled, or manual), by node.",
 	}, []string{"node"})
 
 	cacheHits = promauto.NewCounter(prometheus.CounterOpts{

@@ -250,7 +250,7 @@ export async function getPendingUserCount(): Promise<number> {
 export interface NodeWarmup { enabled: boolean; models: string[] }
 export interface Schedule {
   id: string;
-  action: 'warmup' | 'drain' | 'undrain';
+  action: 'warmup' | 'unload' | 'drain' | 'undrain';
   node: string;
   models?: string[];
   at: string;      // "HH:MM" 24h, server-local
@@ -311,6 +311,17 @@ export async function setPinned(nodeName: string, models: string[]): Promise<voi
     body: JSON.stringify({ models }),
   });
   if (!res.ok) throw new Error('Failed to set pinned models');
+}
+
+// unloadModel evicts a single model from a node's VRAM immediately (keep_alive:0).
+export async function unloadModel(nodeName: string, model: string): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(nodeName)}/unload`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model }),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to unload model'); }
 }
 
 export async function listSchedules(): Promise<Schedule[]> {

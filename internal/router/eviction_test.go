@@ -15,6 +15,68 @@ import (
 
 const mib = 1024 * 1024
 
+// TestUnloadModelManual verifies the operator-facing UnloadModel: it reports the
+// node as found and sends a keep_alive:0 for the model, and reports not-found for
+// an unknown node without erroring.
+func TestUnloadModelManual(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{nodes: []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}}}
+
+	found, err := r.UnloadModel(context.Background(), "n1", "llama3")
+	if err != nil {
+		t.Fatalf("UnloadModel: %v", err)
+	}
+	if !found {
+		t.Fatal("expected node n1 to be found")
+	}
+	if !strings.Contains(body, `"keep_alive":0`) || !strings.Contains(body, `"llama3"`) {
+		t.Errorf("unload body missing keep_alive:0 or model: %s", body)
+	}
+
+	found, err = r.UnloadModel(context.Background(), "ghost", "llama3")
+	if err != nil {
+		t.Errorf("unknown node should not error, got %v", err)
+	}
+	if found {
+		t.Error("unknown node should report found=false")
+	}
+}
+
+// TestUnloadModelsScheduled verifies the scheduled multi-model unload fires a
+// keep_alive:0 per model on the target node.
+func TestUnloadModelsScheduled(t *testing.T) {
+	var mu sync.Mutex
+	got := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		for _, m := range []string{"a", "b"} {
+			if strings.Contains(string(b), `"`+m+`"`) && strings.Contains(string(b), `"keep_alive":0`) {
+				got[m] = true
+			}
+		}
+		mu.Unlock()
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{nodes: []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}}}
+	r.UnloadModels(context.Background(), "n1", []string{"a", "b", ""})
+	time.Sleep(150 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !got["a"] || !got["b"] {
+		t.Errorf("expected both models unloaded, got %v", got)
+	}
+}
+
 // TestUnloadModelSendsKeepAliveZero verifies eviction hits /api/generate with
 // keep_alive:0 (the real Ollama unload).
 func TestUnloadModelSendsKeepAliveZero(t *testing.T) {
@@ -29,7 +91,7 @@ func TestUnloadModelSendsKeepAliveZero(t *testing.T) {
 
 	r := &Router{}
 	n := &NodeState{Name: "n1", URL: srv.URL, Healthy: true}
-	if err := r.unloadModel(context.Background(), n, "llama3"); err != nil {
+	if err := r.unloadModel(context.Background(), n, "llama3", "test"); err != nil {
 		t.Fatalf("unloadModel: %v", err)
 	}
 	if path != "/api/generate" {
