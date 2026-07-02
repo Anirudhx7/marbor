@@ -1,6 +1,6 @@
 module github.com/ollama-mesh/ollama-mesh
 
-go 1.25.0
+go 1.25.11
 
 require (
 	github.com/prometheus/client_golang v1.19.1
