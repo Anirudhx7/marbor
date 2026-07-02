@@ -52,6 +52,7 @@ type Middleware struct {
 }
 
 type keyState struct {
+	mu           sync.RWMutex
 	name         string
 	key          string
 	rateLimit    int
@@ -302,6 +303,7 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 	if !ok {
 		return false
 	}
+	ks.mu.Lock()
 	if patch.RateLimit != nil {
 		ks.rateLimit = *patch.RateLimit
 		ks.limiter = newTokenBucket(*patch.RateLimit)
@@ -315,6 +317,7 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 	if patch.Models != nil {
 		ks.models = patch.Models
 	}
+	ks.mu.Unlock()
 	return true
 }
 
@@ -354,11 +357,13 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 		existing, sameName := oldByName[k.Name]
 		if sameName && existing.key == k.Key {
 			// Same key value — preserve counter + limiter, update policy fields.
+			existing.mu.Lock()
 			existing.models = k.Models
 			existing.dailyLimit = k.DailyLimit
 			existing.monthlyLimit = k.MonthlyLimit
 			existing.rateLimit = k.RateLimit
 			existing.expiresAt = k.ExpiresAt
+			existing.mu.Unlock()
 			newKeys[k.Key] = existing
 			newByName[k.Name] = existing
 		} else {
@@ -412,7 +417,10 @@ func (m *Middleware) Refund(name string) {
 	if !ok {
 		return
 	}
-	ks.limiter.refund()
+	ks.mu.RLock()
+	limiter := ks.limiter
+	ks.mu.RUnlock()
+	limiter.refund()
 	ks.counter.decrement()
 }
 
@@ -456,21 +464,26 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			writeAuthError(w, http.StatusUnauthorized, "invalid api key", "authentication_error", "invalid_api_key")
 			return
 		}
-		// Enforce key expiry before consuming any rate-limit/quota budget. The
-		// expires_at field was loaded and surfaced in the UI but never checked, so
-		// expired keys authenticated forever.
-		if keyExpired(ks.expiresAt, time.Now()) {
+		ks.mu.RLock()
+		expiresAt := ks.expiresAt
+		limiter := ks.limiter
+		dailyLimit := ks.dailyLimit
+		monthlyLimit := ks.monthlyLimit
+		modelsList := ks.models
+		ks.mu.RUnlock()
+
+		if keyExpired(expiresAt, time.Now()) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
 			writeAuthError(w, http.StatusUnauthorized, "api key has expired", "authentication_error", "api_key_expired")
 			return
 		}
-		if !ks.limiter.allow() {
-			w.Header().Set("Retry-After", fmt.Sprintf("%d", ks.limiter.retryAfterSeconds()))
+		if !limiter.allow() {
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", limiter.retryAfterSeconds()))
 			writeAuthError(w, http.StatusTooManyRequests, "rate limit exceeded", "insufficient_quota", "rate_limit_exceeded")
 			return
 		}
 		// Expose rate-limit state to callers.
-		remaining, capacity, resetAt := ks.limiter.snapshot()
+		remaining, capacity, resetAt := limiter.snapshot()
 		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", int64(capacity)))
 		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", int64(remaining)))
 		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetAt))
@@ -478,26 +491,26 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		// allowed request is the limit; the next one is rejected with 429.
 		// Increment and read counts atomically to avoid a near-limit TOCTOU.
 		today, month := ks.counter.incrementAndStats()
-		if ks.dailyLimit > 0 || ks.monthlyLimit > 0 {
-			if ks.dailyLimit > 0 && today > ks.dailyLimit {
+		if dailyLimit > 0 || monthlyLimit > 0 {
+			if dailyLimit > 0 && today > dailyLimit {
 				ks.counter.decrement()
-				ks.limiter.refund()
+				limiter.refund()
 				metrics.QuotaRejection(ks.name, "daily")
 				now := time.Now()
 				midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
-				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", ks.dailyLimit))
+				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", dailyLimit))
 				w.Header().Set("X-Quota-Reset", fmt.Sprintf("%d", midnight.Unix()))
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(math.Ceil(time.Until(midnight).Seconds()))))
 				writeAuthError(w, http.StatusTooManyRequests, "daily request quota exceeded", "insufficient_quota", "daily_quota_exceeded")
 				return
 			}
-			if ks.monthlyLimit > 0 && month > ks.monthlyLimit {
+			if monthlyLimit > 0 && month > monthlyLimit {
 				ks.counter.decrement()
-				ks.limiter.refund()
+				limiter.refund()
 				metrics.QuotaRejection(ks.name, "monthly")
 				now := time.Now()
 				nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
-				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", ks.monthlyLimit))
+				w.Header().Set("X-Quota-Limit", fmt.Sprintf("%d", monthlyLimit))
 				w.Header().Set("X-Quota-Reset", fmt.Sprintf("%d", nextMonth.Unix()))
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(math.Ceil(time.Until(nextMonth).Seconds()))))
 				writeAuthError(w, http.StatusTooManyRequests, "monthly request quota exceeded", "insufficient_quota", "monthly_quota_exceeded")
@@ -505,7 +518,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			}
 		}
 		ctx := context.WithValue(r.Context(), KeyNameContextKey, ks.name)
-		ctx = context.WithValue(ctx, AllowedModelsContextKey, ks.models)
+		ctx = context.WithValue(ctx, AllowedModelsContextKey, modelsList)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -547,6 +560,8 @@ func (m *Middleware) KeyStats(name string) (today, month int, tokensMonth int64,
 		return 0, 0, 0, nil, "", 0, time.Time{}, false
 	}
 	today, month, tokensMonth = ks.counter.stats()
+	ks.mu.RLock()
+	defer ks.mu.RUnlock()
 	return today, month, tokensMonth, ks.models, ks.expiresAt, ks.rateLimit, ks.createdAt, true
 }
 

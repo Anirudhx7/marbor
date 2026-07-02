@@ -49,3 +49,17 @@ nul
 # Git worktrees
 .worktrees/
 mesh.db
+mesh.db-journal
+mesh.db-wal
+mesh.db-shm
+
+# Go testing/coverage
+*.test
+*.out
+*.prof
+
+# General Node / NPM
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

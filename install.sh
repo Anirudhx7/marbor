@@ -198,15 +198,17 @@ if [ ! -f config.yaml ]; then
 
       i=1
       while [ $i -le 254 ]; do
-        (
-          TARGET_IP="${PREFIX}${i}"
-          verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
-          verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
-          verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
+        TARGET_IP="${PREFIX}${i}"
+        verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
+        verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
+        verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
+
+        if [ $((i % 15)) -eq 0 ]; then
           wait
-        ) &
+        fi
         i=$((i+1))
       done
+      wait
     done
     wait
 

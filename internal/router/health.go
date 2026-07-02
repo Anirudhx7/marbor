@@ -109,7 +109,11 @@ func (r *Router) pollNode(n *NodeState) {
 		log.Printf("auto-detect: node %s resolved to runtime %q", n.Name, detected)
 	}
 
-	result, err := n.probe.Probe(ctx, n.URL)
+	n.mu.RLock()
+	probe := n.probe
+	n.mu.RUnlock()
+
+	result, err := probe.Probe(ctx, n.URL)
 	if err != nil {
 		r.markFailure(n)
 		return

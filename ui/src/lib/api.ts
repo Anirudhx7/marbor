@@ -365,11 +365,16 @@ function authHeaders(): { Authorization: string } {
   return { Authorization: `Bearer ${getSessionToken()}` };
 }
 
+let isRedirectingToLogin = false;
+
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, init);
   if (res.status === 401) {
     clearSessionToken();
-    window.location.reload();
+    if (!isRedirectingToLogin) {
+      isRedirectingToLogin = true;
+      window.location.reload();
+    }
   }
   return res;
 }

@@ -40,6 +40,14 @@ type ctxKey string
 
 const ctxKeyUsername ctxKey = "username"
 
+func extractBearerToken(hdr string) string {
+	parts := strings.SplitN(hdr, " ", 2)
+	if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+		return parts[1]
+	}
+	return ""
+}
+
 type Server struct {
 	router        *router.Router
 	auth          *auth.Middleware
@@ -61,6 +69,7 @@ type Server struct {
 	st            store.Store // never nil; NopStore when persistence disabled
 	demoMode      bool        // when true, login accepts admin/admin without DB
 	loginLimiter  *loginRateLimiter
+	logChan       chan store.RequestRecord
 }
 
 // SetVersion sets the version string reported by /health.
@@ -275,10 +284,27 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		analytics:    newAnalyticsStore(refRate),
 		st:           stImpl,
 		loginLimiter: newLoginRateLimiter(),
+		logChan:      make(chan store.RequestRecord, 5000),
 	}
 	s.ensureAdminUser()
+	go s.startAsyncLogger()
+	go s.startPeriodicCleanup()
 	return s
 }
+
+func (s *Server) startAsyncLogger() {
+	for rec := range s.logChan {
+		_ = s.st.AppendRequest(rec)
+	}
+}
+
+func (s *Server) startPeriodicCleanup() {
+	ticker := time.NewTicker(12 * time.Hour)
+	for range ticker.C {
+		s.st.PruneExpiredUserSessions()
+	}
+}
+
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -431,7 +457,7 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 // non-admin users must also reach (change-password, logout).
 func (s *Server) sessionAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		token := extractBearerToken(r.Header.Get("Authorization"))
 		if token != "" {
 			if session, found, err := s.st.GetUserSession(token); err == nil && found {
 				if session.MustChangePassword {
@@ -459,7 +485,7 @@ func (s *Server) sessionAuth(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		token := extractBearerToken(r.Header.Get("Authorization"))
 
 		// Demo mode: accept the literal "demo-session" token so the GitHub Pages
 		// demo works without a DB. Not a security concern — demo mode is opt-in,
@@ -1434,7 +1460,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	token := extractBearerToken(r.Header.Get("Authorization"))
 	_ = s.st.DeleteUserSession(token)
 	_ = s.st.DeleteSession(token) // backward compat: also clear old admin_sessions
 	w.Header().Set("Content-Type", "application/json")
@@ -2218,7 +2244,6 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		id = fmt.Sprintf("req-%x", now.UnixNano())
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.requests = append(s.requests, RequestLog{
 		ID:           id,
 		ApiKey:       apiKey,
@@ -2234,6 +2259,8 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
 	}
+	s.mu.Unlock()
+
 	// Parse status code for the store record.
 	statusCode := 200
 	if status != "" && status != "200" {
@@ -2241,7 +2268,9 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 			statusCode = code
 		}
 	}
-	_ = s.st.AppendRequest(store.RequestRecord{
+
+	select {
+	case s.logChan <- store.RequestRecord{
 		ID:         id,
 		KeyName:    apiKey,
 		Model:      model,
@@ -2250,7 +2279,11 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		LatencyMs:  int64(latencyMs),
 		TokensUsed: tokens,
 		TS:         now,
-	})
+	}:
+	default:
+		// Prevent blocking the proxy path if SQLite writes are completely backed up.
+		log.Printf("async logger: queue full, dropped request log %s", id)
+	}
 }
 
 // TrackLocalRequestModel tracks a local request with model-level granularity.
