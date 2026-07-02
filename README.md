@@ -13,6 +13,68 @@ One endpoint for all your LLM traffic. Every request routes to the GPU node that
 
 ---
 
+## Quick Start
+
+### Try it in 5 minutes (No GPU/Ollama required)
+
+Experience the complete gateway and monitoring stack locally in 5 minutes using mock backends:
+
+1. **Clone and start the demo stack**:
+   ```bash
+   git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
+   make demo
+   ```
+   This spins up `ollama-mesh`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
+
+2. **Access the dashboards**:
+   * **ollama-mesh Dashboard**: [http://localhost:8080](http://localhost:8080) (Token: `demo-admin-token`)
+   * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
+
+3. **Run a manual benchmark**:
+   Test the cold-vs-warm latency gap through the mesh proxy:
+   ```bash
+   go run ./cmd/bench --target http://localhost:11434
+   ```
+
+4. **Clean up**:
+   ```bash
+   make demo-down
+   ```
+
+---
+
+### Quick Installer (Linux & macOS)
+
+Choose between installing the binary only, or installing and immediately launching it in the background:
+
+*   **Option 1: Download & Install only (Recommended)**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
+    ```
+    Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `ollama-mesh` manually to start.
+
+*   **Option 2: Install & Run background service**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh
+    ```
+    Installs the binary, probes `localhost:11434` for a local Ollama instance (generating a default `config.yaml` if found), launches `ollama-mesh` as a background service, and prints the operational proxy and dashboard ports.
+
+---
+
+### Docker Compose (Production Deployment)
+
+Run a production-ready gateway + metrics stack scraping the proxy:
+```bash
+git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
+docker compose up -d
+```
+This starts:
+* **ollama-mesh** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
+* **Prometheus**: Automatically scraping the mesh metrics endpoint.
+* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [ollama-mesh dashboard](grafana/ollama-mesh.json).
+
+---
+
 ## The Problem: Uncontrolled LLM Cloud Spend at Scale
 
 Enterprise teams deploying LLM-powered applications — coding agents, RAG pipelines, internal copilots — face a compounding cost problem:
@@ -173,65 +235,6 @@ nodes:
 
 ---
 
-## Quick Start
-
-### Try it in 5 minutes (No GPU/Ollama required)
-
-Experience the complete gateway and monitoring stack locally in 5 minutes using mock backends:
-
-1. **Clone and start the demo stack**:
-   ```bash
-   git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
-   make demo
-   ```
-   This spins up `ollama-mesh`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
-
-2. **Access the dashboards**:
-   * **ollama-mesh Dashboard**: [http://localhost:8080](http://localhost:8080) (Token: `demo-admin-token`)
-   * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
-
-3. **Run a manual benchmark**:
-   Test the cold-vs-warm latency gap through the mesh proxy:
-   ```bash
-   go run ./cmd/bench --target http://localhost:11434
-   ```
-
-4. **Clean up**:
-   ```bash
-   make demo-down
-   ```
-
----
-
-### Quick Installer (Linux & macOS)
-
-Choose between installing the binary only, or installing and immediately launching it in the background:
-
-*   **Option 1: Download & Install only (Recommended)**
-    ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
-    ```
-    Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `ollama-mesh` manually to start.
-
-*   **Option 2: Install & Run background service**
-    ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh
-    ```
-    Installs the binary, probes `localhost:11434` for a local Ollama instance (generating a default `config.yaml` if found), launches `ollama-mesh` as a background service, and prints the operational proxy and dashboard ports.
-
----
-
-### Docker Compose (Production Deployment)
-
-Run a production-ready gateway + metrics stack scraping the proxy:
-```bash
-git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
-docker compose up -d
-```
-This starts:
-* **ollama-mesh** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
-* **Prometheus**: Automatically scraping the mesh metrics endpoint.
-* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [ollama-mesh dashboard](grafana/ollama-mesh.json).
 
 
 **Supported platforms** (single static binary per target + multi-arch Docker image):
