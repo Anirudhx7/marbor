@@ -3,7 +3,6 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch:
 
 # Required for actions/deploy-pages
@@ -75,9 +74,6 @@ jobs:
 
   deploy:
     needs: build
-    # The github-pages environment only permits deploys from main branch.
-    # Tag pushes trigger build (to get the right git-describe version) but skip deploy.
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
