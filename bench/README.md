@@ -123,6 +123,28 @@ restart Ollama before each request if you want N independent cold samples.
 Fill this table in from a real run and paste the numbers into the README or a
 GitHub Discussions post.  Do not publish fabricated or mock-derived numbers.
 
+## Reference run (v0.13.1, real hardware)
+
+Measured 2026-07-02 through a deployed ollama-mesh v0.13.1 routing to a single
+consumer-GPU Ollama node.  Model: 8B Q4_K_M (~9.6 GB on disk; only ~3.3 GB of its
+~10.6 GB runtime footprint fit in VRAM, so warm TTFT was partly CPU-bound - expect
+tighter warm numbers on a GPU that fully fits the model).  Cold samples each
+preceded by a real `keep_alive: 0` eviction confirmed via `/api/ps`.
+
+| Scenario | n | p50 TTFT | min | max |
+|----------|---|----------|-----|-----|
+| Cold via mesh | 3 | 17,325 ms | 11,466 ms | 18,128 ms |
+| Warm via mesh (spaced 20 s apart) | 10 | 8,079 ms | 1,915 ms | 13,785 ms |
+| Warm direct-to-node (control) | 5 | 8,595 ms | 1,921 ms | 15,842 ms |
+
+Fastest warm sample via mesh: 401 ms.  The direct-to-node control shows the same
+warm profile as via-mesh, i.e. mesh proxy overhead is negligible.
+
+Measurement notes: back-to-back `--n 10` runs overlap with the previous request's
+still-draining generation (the tool drains responses in a background goroutine),
+which skews TTFT samples - space independent samples apart (e.g. one `--n 1` run
+every 20 s) for clean warm numbers.
+
 ## Flags reference
 
 | Flag | Default | Description |

@@ -776,6 +776,16 @@ SPCS-FEATURE-END */
         </div>
       </div>
     </div>
+
+    <!-- Measured benchmark - real numbers from a deployed instance, not simulation -->
+    <p style="margin:14px 2px 0;font-size:13px;color:var(--muted);line-height:1.6;">
+      Measured, not simulated: on a deployed v0.13.1 instance routing to a single consumer-GPU node
+      (8B Q4_K_M model, ~9.6&nbsp;GB), cold TTFT was <strong>11.5–18.1&nbsp;s</strong> (median 17.3&nbsp;s)
+      vs a warm median of <strong>8.1&nbsp;s</strong> and a fastest warm response of
+      <strong>0.4&nbsp;s</strong> — up to <strong>43×</strong> faster than the median cold start.
+      Reproduce it on your hardware with the
+      <a href="https://github.com/Anirudhx7/ollama-mesh/tree/main/bench" style="color:var(--accent2);">open benchmark harness</a>.
+    </p>
   </div>
 </header>
 
