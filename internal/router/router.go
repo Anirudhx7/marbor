@@ -55,10 +55,12 @@ type NodeState struct {
 	// Runtime identifies the backend type: "ollama", "vllm", "tgi", "llamacpp".
 	// Empty string is treated as "ollama" for backwards compatibility.
 	// "auto" means detection is pending; resolved to a real runtime on first poll.
-	Runtime    string
-	autoDetect bool                    // true if config said runtime: auto; cleared after first detection
-	probe      runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
-	mu         sync.RWMutex
+	Runtime        string
+	autoDetect     bool                    // true if config said runtime: auto; cleared after first detection
+	probe          runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
+	LastErrorAt    time.Time
+	SuccessHistory []bool
+	mu             sync.RWMutex
 }
 
 // TagsCache holds a cached result from /api/tags for a single node.
@@ -831,4 +833,22 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 	models := make([]TagModel, len(tagsResp.Models))
 	copy(models, tagsResp.Models)
 	return models, nil
+}
+
+// RecordRequestOutcome logs whether a request routed to a node succeeded or failed.
+// Failure marks LastErrorAt, which triggers node cooldown.
+func (r *Router) RecordRequestOutcome(nodeName string, success bool) {
+	n := r.findNode(nodeName)
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.SuccessHistory = append(n.SuccessHistory, success)
+	if len(n.SuccessHistory) > 50 {
+		n.SuccessHistory = n.SuccessHistory[len(n.SuccessHistory)-50:]
+	}
+	if !success {
+		n.LastErrorAt = time.Now()
+	}
 }

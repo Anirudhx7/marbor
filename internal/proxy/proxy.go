@@ -340,6 +340,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.router.DecrConn(node)
 			errHandled = true
 			tried[node.URL] = true
+			h.router.RecordRequestOutcome(node.Name, false)
 
 			// If the client already disconnected, do not burn an alternate node
 			// or a cloud call on a request nobody is waiting for.
@@ -399,6 +400,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// ErrorHandler already released this node's slot.
 		if !errHandled {
 			h.router.DecrConn(node)
+			status := rec.statusCode
+			if status == 0 {
+				status = 200
+			}
+			success := status < 500 && !aborted
+			h.router.RecordRequestOutcome(node.Name, success)
 		}
 		break
 	}
