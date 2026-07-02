@@ -227,7 +227,12 @@ h1.headline em { font-style: italic; color: var(--accent); }
 .copy-btn.copied { color: var(--accent2); }
 /* code block with copy button */
 .code-wrap { position: relative; max-width: 680px; }
-.code-wrap .copy-btn { position: absolute; top: 8px; right: 8px; }
+.code-wrap pre.code { padding-right: 90px; }
+.code-wrap .copy-btn {
+  position: absolute; top: 8px; right: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 5px 10px; line-height: 1;
+}
 
 .trust-row { display: flex; flex-direction: column; gap: 7px; }
 .trust-item { display: flex; align-items: center; gap: 9px; color: var(--text-muted); font-size: 13px; }
