@@ -19,6 +19,16 @@ for arg in "$@"; do
   fi
 done
 
+PROBE_NETWORK=false
+if [ "$PROBE" = "1" ]; then
+  PROBE_NETWORK=true
+fi
+for arg in "$@"; do
+  if [ "$arg" = "--probe" ] || [ "$arg" = "-p" ]; then
+    PROBE_NETWORK=true
+  fi
+done
+
 # Detect OS
 OS="$(uname -s)"
 case "$OS" in
@@ -163,56 +173,57 @@ verify_endpoint() {
   fi
 }
 
-# Scan local subnets for running LLM nodes
-echo "Scanning local subnet for active GPU nodes (Ollama, vLLM, TGI, llama.cpp)..."
-PRIMARY_IP=$(get_primary_ip)
-IP_LIST=""
-if [ -n "$PRIMARY_IP" ]; then
-  IP_LIST="$PRIMARY_IP"
-else
-  IP_LIST=$(get_local_subnets)
-fi
-
-TEMP_FOUND="$(mktemp)"
-for ip in $IP_LIST; do
-  case "$ip" in
-    127.*|172.17.*|172.18.*|172.19.*) continue ;;
-  esac
-  PREFIX=$(echo "$ip" | cut -d. -f1-3)"."
-  
-  i=1
-  while [ $i -le 254 ]; do
-    (
-      TARGET_IP="${PREFIX}${i}"
-      verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
-      verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
-      verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
-      wait
-    ) &
-    i=$((i+1))
-  done
-done
-wait
-
-# Also check localhost specifically
-(
-  verify_endpoint "localhost" "11434" >> "$TEMP_FOUND" &
-  verify_endpoint "localhost" "8000"  >> "$TEMP_FOUND" &
-  verify_endpoint "localhost" "8080"  >> "$TEMP_FOUND" &
-  wait
-) &
-wait
-
-FOUND_IPS=$(sort -u "$TEMP_FOUND" 2>/dev/null || cat "$TEMP_FOUND" | sort -u)
-rm -f "$TEMP_FOUND"
-
 # Write default config.yaml
 if [ ! -f config.yaml ]; then
-  echo "Writing config.yaml with discovered nodes..."
   ADMIN_TOKEN=$(generate_hex 16)
   API_KEY="sk-mesh-$(generate_hex 32)"
-  
-  cat << EOF > config.yaml
+
+  if [ "$PROBE_NETWORK" = true ]; then
+    # Scan local subnets for running LLM nodes (Ollama :11434, vLLM :8000, TGI/llama.cpp :8080)
+    echo "Scanning local subnet for active GPU nodes (Ollama, vLLM, TGI, llama.cpp)..."
+    PRIMARY_IP=$(get_primary_ip)
+    IP_LIST=""
+    if [ -n "$PRIMARY_IP" ]; then
+      IP_LIST="$PRIMARY_IP"
+    else
+      IP_LIST=$(get_local_subnets)
+    fi
+
+    TEMP_FOUND="$(mktemp)"
+    for ip in $IP_LIST; do
+      case "$ip" in
+        127.*|172.17.*|172.18.*|172.19.*) continue ;;
+      esac
+      PREFIX=$(echo "$ip" | cut -d. -f1-3)"."
+
+      i=1
+      while [ $i -le 254 ]; do
+        (
+          TARGET_IP="${PREFIX}${i}"
+          verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
+          verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
+          verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
+          wait
+        ) &
+        i=$((i+1))
+      done
+    done
+    wait
+
+    # Also check localhost specifically
+    (
+      verify_endpoint "localhost" "11434" >> "$TEMP_FOUND" &
+      verify_endpoint "localhost" "8000"  >> "$TEMP_FOUND" &
+      verify_endpoint "localhost" "8080"  >> "$TEMP_FOUND" &
+      wait
+    ) &
+    wait
+
+    FOUND_IPS=$(sort -u "$TEMP_FOUND" 2>/dev/null || cat "$TEMP_FOUND" | sort -u)
+    rm -f "$TEMP_FOUND"
+
+    echo "Writing config.yaml with discovered nodes..."
+    cat <<EOF > config.yaml
 proxy:
   port: 11435
 auth:
@@ -226,26 +237,46 @@ metrics:
   enabled: true
 nodes:
 EOF
-
-  if [ -n "$FOUND_IPS" ]; then
-    NODE_COUNT=1
-    for entry in $FOUND_IPS; do
-      IP=$(echo "$entry" | cut -d: -f1)
-      PORT=$(echo "$entry" | cut -d: -f2)
-      RUNTIME=$(echo "$entry" | cut -d: -f3)
-      
-      echo "  - name: discovered-${RUNTIME}-${NODE_COUNT}" >> config.yaml
-      echo "    url: http://${IP}:${PORT}" >> config.yaml
-      echo "    runtime: ${RUNTIME}" >> config.yaml
-      echo "  [ok] Discovered ${RUNTIME} node at http://${IP}:${PORT} (added to config.yaml)"
-      NODE_COUNT=$((NODE_COUNT+1))
-    done
-  else
-    cat << EOF >> config.yaml
+    if [ -n "$FOUND_IPS" ]; then
+      NODE_COUNT=1
+      for entry in $FOUND_IPS; do
+        IP=$(echo "$entry" | cut -d: -f1)
+        PORT=$(echo "$entry" | cut -d: -f2)
+        RUNTIME=$(echo "$entry" | cut -d: -f3)
+        echo "  - name: discovered-${RUNTIME}-${NODE_COUNT}" >> config.yaml
+        echo "    url: http://${IP}:${PORT}" >> config.yaml
+        echo "    runtime: ${RUNTIME}" >> config.yaml
+        echo "  [ok] Discovered ${RUNTIME} node at http://${IP}:${PORT} (added to config.yaml)"
+        NODE_COUNT=$((NODE_COUNT+1))
+      done
+    else
+      cat <<EOF >> config.yaml
   - name: local
     url: http://localhost:11434
 EOF
-    echo "  [!] No active LLM nodes found. Defaulted config.yaml to http://localhost:11434."
+      echo "  [!] No active LLM nodes found on subnet. Defaulted config.yaml to http://localhost:11434."
+    fi
+
+  else
+    # No probe — write a minimal default config pointing at localhost
+    echo "Writing default config.yaml (run with PROBE=1 to auto-discover network nodes)..."
+    cat <<EOF > config.yaml
+proxy:
+  port: 11435
+auth:
+  enabled: true
+  admin_token: ${ADMIN_TOKEN}
+  keys:
+    - name: default
+      key: ${API_KEY}
+      rate_limit: 1000
+metrics:
+  enabled: true
+nodes:
+  - name: local
+    url: http://localhost:11434
+EOF
+    echo "  Edit config.yaml to add your GPU nodes, then run: ollama-mesh"
   fi
 else
   echo "config.yaml already exists, using existing configuration."
