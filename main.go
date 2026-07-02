@@ -20,6 +20,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
+	"github.com/ollama-mesh/ollama-mesh/internal/bench"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/ha"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
@@ -80,6 +81,13 @@ func main() {
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nWith no config file present, the first run auto-detects local Ollama,\ngenerates keys, and writes config.yaml.\n")
 	}
+	// Subcommand dispatch: check before flag.Parse() so each subcommand
+	// owns its own flag set and does not pollute the main flag namespace.
+	if len(os.Args) > 1 && os.Args[1] == "bench" {
+		bench.Run(os.Args[2:])
+		return
+	}
+
 	flag.Parse()
 
 	if *showVersion {
