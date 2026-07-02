@@ -62,6 +62,49 @@ else
   echo "Installed to $INSTALL_DIR/$BIN_NAME"
 fi
 
+# Probe local Ollama
+echo "Probing localhost:11434 for Ollama..."
+OLLAMA_FOUND=false
+if command -v curl > /dev/null 2>&1; then
+  if curl -fs http://localhost:11434/api/tags > /dev/null 2>&1; then
+    OLLAMA_FOUND=true
+  fi
+elif command -v wget > /dev/null 2>&1; then
+  if wget -qO- http://localhost:11434/api/tags > /dev/null 2>&1; then
+    OLLAMA_FOUND=true
+  fi
+fi
+
+if [ "$OLLAMA_FOUND" = true ]; then
+  echo "  [ok] Local Ollama detected at http://localhost:11434"
+else
+  echo "  [!] No local Ollama detected at http://localhost:11434"
+  echo "      ollama-mesh will start with zero nodes configured. You can add nodes to config.yaml later."
+fi
+
 echo ""
-echo "Run: ollama-mesh --help"
-echo "Docs: https://github.com/$REPO"
+echo "Starting ollama-mesh in the background..."
+nohup "$INSTALL_DIR/$BIN_NAME" > ollama-mesh.log 2>&1 &
+PID=$!
+
+sleep 2
+
+if kill -0 $PID >/dev/null 2>&1; then
+  echo "ollama-mesh successfully started (PID: $PID)!"
+  echo "--------------------------------------------------------"
+  echo "  Proxy Endpoint:   http://localhost:11435"
+  echo "  Admin Dashboard:  http://localhost:8080"
+  echo "  Metrics:          http://localhost:9090/metrics"
+  echo "  Logs:             ollama-mesh.log"
+  if [ -f config.yaml ]; then
+    echo "  Config:           config.yaml"
+  fi
+  echo "--------------------------------------------------------"
+else
+  echo "Error: ollama-mesh failed to start. Check ollama-mesh.log for details."
+  if [ -f ollama-mesh.log ]; then
+    cat ollama-mesh.log
+  fi
+  exit 1
+fi
+

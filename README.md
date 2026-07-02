@@ -175,30 +175,61 @@ nodes:
 
 ## Quick Start
 
-**Try it with no Ollama needed:**
+### Try it in 5 minutes (No GPU/Ollama required)
 
-```bash
-git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh && make demo
-```
+Experience the complete gateway and monitoring stack locally in 5 minutes using mock backends:
 
-`make demo` builds two mock Ollama nodes and the mesh control plane in Docker, sends 20 real HTTP requests through the endpoint, and prints the dashboard URL. Open `http://localhost:8080` with token `demo-admin-token`. Use `make demo-down` to stop.
+1. **Clone and start the demo stack**:
+   ```bash
+   git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
+   make demo
+   ```
+   This spins up `ollama-mesh`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
+
+2. **Access the dashboards**:
+   * **ollama-mesh Dashboard**: [http://localhost:8080](http://localhost:8080) (Token: `demo-admin-token`)
+   * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
+
+3. **Run a manual benchmark**:
+   Test the cold-vs-warm latency gap through the mesh proxy:
+   ```bash
+   go run ./cmd/bench --target http://localhost:11434
+   ```
+
+4. **Clean up**:
+   ```bash
+   make demo-down
+   ```
 
 ---
 
-**Zero-config production start (Ollama already running):**
+### Quick Installer (Linux & macOS)
+
+Download, configure, and launch `ollama-mesh` as a background service with one command:
 ```bash
-./ollama-mesh
+curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
 ```
-If no `config.yaml` exists, ollama-mesh auto-detects `localhost:11434`, generates API keys, and prints a curl example.
+This script:
+1. Detects your platform/architecture (`linux`/`darwin` and `amd64`/`arm64`).
+2. Downloads the matching official release binary.
+3. Installs it into `/usr/local/bin`.
+4. Probes `localhost:11434` for a local Ollama instance (creating a default `config.yaml` pointing to it if found).
+5. Runs `ollama-mesh` in the background and prints proxy/dashboard access credentials.
 
 ---
 
-**Install (Linux amd64):**
+### Docker Compose (Production Deployment)
+
+Run a production-ready gateway + metrics stack scraping the proxy:
 ```bash
-curl -Lo ollama-mesh https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
-chmod +x ollama-mesh
-./ollama-mesh
+git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
+docker compose up -d
 ```
+This starts:
+* **ollama-mesh** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
+* **Prometheus**: Automatically scraping the mesh metrics endpoint.
+* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [ollama-mesh dashboard](grafana/ollama-mesh.json).
+
 
 **Supported platforms** (single static binary per target + multi-arch Docker image):
 
@@ -215,13 +246,6 @@ chmod +x ollama-mesh
 
 All builds and `checksums.txt` on the [releases page](https://github.com/Anirudhx7/ollama-mesh/releases/latest).
 
-**Docker Compose:**
-```bash
-git clone https://github.com/Anirudhx7/ollama-mesh
-cd ollama-mesh
-cp config.example.yaml config.yaml
-docker-compose up -d
-```
 
 **Build from source:**
 ```bash

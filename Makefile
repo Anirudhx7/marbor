@@ -25,13 +25,14 @@ demo-build: ## Build demo Docker images (mockollama nodes + mesh)
 	docker compose -f docker-compose.demo.yml build
 
 demo: demo-build ## Spin up demo stack, send 20 real requests, show dashboard URL (Docker only, no Go needed)
-	@echo "Starting demo stack (mock Ollama nodes + mesh)..."
-	docker compose -f docker-compose.demo.yml up -d ollama-node-a ollama-node-b mesh
+	@echo "Starting demo stack (mock Ollama nodes + mesh + Prometheus + Grafana)..."
+	docker compose -f docker-compose.demo.yml up -d ollama-node-a ollama-node-b mesh prometheus grafana
 	@echo "Sending demo traffic (20 requests, runs in Docker - no local Go needed)..."
 	docker compose -f docker-compose.demo.yml run --rm demotraffic
 	@echo ""
 	@echo "Dashboard: http://localhost:8080  (token: demo-admin-token)"
 	@echo "Proxy:     http://localhost:11434 (key:   demo-api-key)"
+	@echo "Grafana:   http://localhost:3000"
 
 demo-down: ## Stop and remove demo stack
 	docker compose -f docker-compose.demo.yml down -v

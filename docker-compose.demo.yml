@@ -75,3 +75,24 @@ services:
       API_KEY: demo-api-key
       REQUEST_COUNT: "20"
     restart: "no"
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      mesh:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/ollama-mesh.json:/var/lib/grafana/dashboards/ollama-mesh.json:ro
+    depends_on:
+      - prometheus
+
