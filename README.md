@@ -53,11 +53,11 @@ Choose between installing the binary only, or installing and immediately launchi
     ```
     Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `ollama-mesh` manually to start.
 
-*   **Option 2: Install & Run background service**
+*   **Option 2: Install, Auto-Discover & Run in background**
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | PROBE=1 START=1 sh
     ```
-    Installs the binary, probes `localhost:11434` for a local Ollama instance (generating a default `config.yaml` if found), launches `ollama-mesh` as a background service, and prints the operational proxy and dashboard ports.
+    Installs the binary, scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) to auto-configure `config.yaml`, starts the gateway in the background, and prints operational access details.
 
 ---
 
