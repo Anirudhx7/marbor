@@ -257,6 +257,8 @@ export function Models() {
   }, [demoMode]);
 
   const models = catalog?.models ?? [];
+  // total_models is the full catalog (warm + on-disk); "warm" means loaded in VRAM somewhere.
+  const warmModelCount = models.filter((m) => m.warm_count > 0).length;
   const filteredModels = models.filter((m) =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -268,12 +270,13 @@ export function Models() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Model Catalog</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Models currently loaded in VRAM across all nodes
+            All models across your nodes — warm (loaded in VRAM) and available on disk
           </p>
         </div>
         <div className="flex items-center gap-4">
           {catalog && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-xs font-medium text-foreground">
+              <span className="text-primary font-semibold">{warmModelCount}</span> of
               <span className="text-primary font-semibold">{catalog.total_models}</span> models warm across
               <span className="text-primary font-semibold">{catalog.healthy_nodes}</span> nodes
             </span>
