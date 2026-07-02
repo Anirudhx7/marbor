@@ -69,6 +69,27 @@ func (r *Router) persistResidencyDiff(node string, prev, current []ModelInfo) {
 	}
 }
 
+// reconcileNodeResidency calls ReconcileNodeWarmState so that after the first
+// successful /api/ps poll for a node, every warm_state row for that node
+// exactly matches what Ollama says is resident. Stale rows left by a previous
+// process run (or by a restore that ran after a poll that saw nothing) are
+// pruned here deterministically, regardless of restore/poll ordering.
+//
+// Must be called WITHOUT holding n.mu or r.mu (it performs blocking store I/O).
+func (r *Router) reconcileNodeResidency(node string, current []ModelInfo) {
+	st := r.warmStore()
+	if st == nil {
+		return
+	}
+	names := make([]string, len(current))
+	for i, m := range current {
+		names[i] = m.Name
+	}
+	if err := st.ReconcileNodeWarmState(node, names); err != nil {
+		log.Printf("warmstate: reconcile %s: %v", node, err)
+	}
+}
+
 // snapshotNode flushes one node's current residency snapshot immediately (Tier 1
 // for the node-unhealthy transition: capture the last-known warm set before the
 // node potentially goes away). Best-effort; must be called without holding r.mu.

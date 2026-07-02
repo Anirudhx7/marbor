@@ -1442,3 +1442,34 @@ func (s *sqliteStore) AllWarmState() ([]WarmStateRecord, error) {
 	}
 	return out, nil
 }
+
+// ReconcileNodeWarmState makes the persisted residency for a node exactly match
+// the live /api/ps truth by deleting every warm_state row for the node whose
+// model is NOT in residentModels. When residentModels is empty every row for
+// that node is deleted. A single SQL statement is used; no row-by-row loop.
+func (s *sqliteStore) ReconcileNodeWarmState(node string, residentModels []string) error {
+	if len(residentModels) == 0 {
+		// Fast path: node is fully cold — clear it entirely.
+		_, err := s.db.Exec(`DELETE FROM warm_state WHERE node = ?`, node)
+		if err != nil {
+			return fmt.Errorf("store: ReconcileNodeWarmState clear %s: %w", node, err)
+		}
+		return nil
+	}
+
+	// Build a single DELETE … WHERE node = ? AND model NOT IN (?, ?, …).
+	// We build the placeholder list once; SQLite handles the IN clause natively.
+	placeholders := make([]string, len(residentModels))
+	args := make([]any, 0, 1+len(residentModels))
+	args = append(args, node)
+	for i, m := range residentModels {
+		placeholders[i] = "?"
+		args = append(args, m)
+	}
+	query := `DELETE FROM warm_state WHERE node = ? AND model NOT IN (` +
+		strings.Join(placeholders, ",") + `)`
+	if _, err := s.db.Exec(query, args...); err != nil {
+		return fmt.Errorf("store: ReconcileNodeWarmState %s: %w", node, err)
+	}
+	return nil
+}

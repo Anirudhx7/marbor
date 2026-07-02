@@ -697,6 +697,12 @@ func (r *Router) pollNode(n *NodeState) {
 	// immediately — Tier 1 lifecycle events must not wait for the background flush.
 	r.persistResidencyDiff(nodeName, prevModels, models)
 
+	// Reconcile SQLite against live /api/ps truth: delete any warm_state row for
+	// this node whose model is not currently resident. This runs on every
+	// successful poll so stale rows from a prior process run are pruned
+	// deterministically, regardless of restore/poll ordering.
+	r.reconcileNodeResidency(nodeName, models)
+
 	// Fire webhook on recovery (unhealthy -> healthy transition).
 	r.mu.Lock()
 	prev, seen := r.prevHealthy[nodeName]
