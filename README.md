@@ -1,8 +1,8 @@
 # ollama-mesh
 
-**Enterprise-Grade, Hardware-Aware GPU Routing Control Plane and Scheduler for Ollama, vLLM, TGI, and llama.cpp**
+**High-Availability Ollama Load Balancer, API Gateway, and GPU Routing Control Plane for Ollama, vLLM, TGI, and llama.cpp**
 
-One endpoint for all your LLM traffic. Every request routes to the GPU node that already holds the model warm in VRAM - across any OpenAI-compatible backend. Cloud overflow activates only when local capacity is exhausted - consent-first, never silent. Local hardware first. Cloud second. Full financial receipts.
+One endpoint for all your self-hosted LLM traffic. ollama-mesh is a hardware-aware load balancer that schedules each request to the GPU node that already holds the model warm in VRAM. Protect your local GPUs with Bearer token authentication and rate limits. Cloud overflow/failover activates only when local capacity is fully saturated—with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
 
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
