@@ -9,6 +9,16 @@ REPO="Anirudhx7/ollama-mesh"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BIN_NAME="ollama-mesh"
 
+START_DAEMON=false
+if [ "$START" = "1" ]; then
+  START_DAEMON=true
+fi
+for arg in "$@"; do
+  if [ "$arg" = "--start" ] || [ "$arg" = "-s" ]; then
+    START_DAEMON=true
+  fi
+done
+
 # Detect OS
 OS="$(uname -s)"
 case "$OS" in
@@ -60,6 +70,14 @@ else
   echo "No write permission to $INSTALL_DIR. Trying with sudo..."
   sudo mv "$TMP" "$INSTALL_DIR/$BIN_NAME"
   echo "Installed to $INSTALL_DIR/$BIN_NAME"
+fi
+
+if [ "$START_DAEMON" = false ]; then
+  echo ""
+  echo "ollama-mesh successfully installed to $INSTALL_DIR/$BIN_NAME"
+  echo "Run: ollama-mesh"
+  echo "Docs: https://github.com/$REPO"
+  exit 0
 fi
 
 # Probe local Ollama

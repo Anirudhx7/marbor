@@ -205,16 +205,19 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 ### Quick Installer (Linux & macOS)
 
-Download, configure, and launch `ollama-mesh` as a background service with one command:
-```bash
-curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
-```
-This script:
-1. Detects your platform/architecture (`linux`/`darwin` and `amd64`/`arm64`).
-2. Downloads the matching official release binary.
-3. Installs it into `/usr/local/bin`.
-4. Probes `localhost:11434` for a local Ollama instance (creating a default `config.yaml` pointing to it if found).
-5. Runs `ollama-mesh` in the background and prints proxy/dashboard access credentials.
+Choose between installing the binary only, or installing and immediately launching it in the background:
+
+*   **Option 1: Download & Install only (Recommended)**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
+    ```
+    Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `ollama-mesh` manually to start.
+
+*   **Option 2: Install & Run background service**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh
+    ```
+    Installs the binary, probes `localhost:11434` for a local Ollama instance (generating a default `config.yaml` if found), launches `ollama-mesh` as a background service, and prints the operational proxy and dashboard ports.
 
 ---
 
