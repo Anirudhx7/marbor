@@ -123,8 +123,48 @@ get_local_subnets() {
   fi
 }
 
-# Scan local subnets for any running Ollama instances on port 11434
-echo "Scanning local subnet for Ollama GPU nodes..."
+verify_endpoint() {
+  IP=$1
+  PORT=$2
+  
+  if [ "$PORT" = "11434" ]; then
+    if curl -fs -m 0.5 "http://$IP:11434/api/tags" >/dev/null 2>&1; then
+      echo "$IP:11434:ollama"
+    elif wget -T 0.5 -t 1 -qO- "http://$IP:11434/api/tags" >/dev/null 2>&1; then
+      echo "$IP:11434:ollama"
+    fi
+  elif [ "$PORT" = "8000" ]; then
+    if curl -fs -m 0.5 "http://$IP:8000/v1/models" >/dev/null 2>&1; then
+      echo "$IP:8000:vllm"
+    elif wget -T 0.5 -t 1 -qO- "http://$IP:8000/v1/models" >/dev/null 2>&1; then
+      echo "$IP:8000:vllm"
+    fi
+  elif [ "$PORT" = "8080" ]; then
+    IS_TGI=false
+    if curl -fs -m 0.5 "http://$IP:8080/info" >/dev/null 2>&1; then
+      IS_TGI=true
+    elif wget -T 0.5 -t 1 -qO- "http://$IP:8080/info" >/dev/null 2>&1; then
+      IS_TGI=true
+    fi
+    
+    if [ "$IS_TGI" = true ]; then
+      echo "$IP:8080:tgi"
+    else
+      IS_LLAMACPP=false
+      if curl -fs -m 0.5 "http://$IP:8080/health" >/dev/null 2>&1; then
+        IS_LLAMACPP=true
+      elif wget -T 0.5 -t 1 -qO- "http://$IP:8080/health" >/dev/null 2>&1; then
+        IS_LLAMACPP=true
+      fi
+      if [ "$IS_LLAMACPP" = true ]; then
+        echo "$IP:8080:llamacpp"
+      fi
+    fi
+  fi
+}
+
+# Scan local subnets for running LLM nodes
+echo "Scanning local subnet for active GPU nodes (Ollama, vLLM, TGI, llama.cpp)..."
 PRIMARY_IP=$(get_primary_ip)
 IP_LIST=""
 if [ -n "$PRIMARY_IP" ]; then
@@ -144,11 +184,10 @@ for ip in $IP_LIST; do
   while [ $i -le 254 ]; do
     (
       TARGET_IP="${PREFIX}${i}"
-      if curl -fs -m 0.5 "http://$TARGET_IP:11434/api/tags" >/dev/null 2>&1; then
-        echo "$TARGET_IP" >> "$TEMP_FOUND"
-      elif wget -T 0.5 -t 1 -qO- "http://$TARGET_IP:11434/api/tags" >/dev/null 2>&1; then
-        echo "$TARGET_IP" >> "$TEMP_FOUND"
-      fi
+      verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
+      verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
+      verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
+      wait
     ) &
     i=$((i+1))
   done
@@ -157,11 +196,10 @@ wait
 
 # Also check localhost specifically
 (
-  if curl -fs -m 0.5 "http://localhost:11434/api/tags" >/dev/null 2>&1; then
-    echo "localhost" >> "$TEMP_FOUND"
-  elif wget -T 0.5 -t 1 -qO- "http://localhost:11434/api/tags" >/dev/null 2>&1; then
-    echo "localhost" >> "$TEMP_FOUND"
-  fi
+  verify_endpoint "localhost" "11434" >> "$TEMP_FOUND" &
+  verify_endpoint "localhost" "8000"  >> "$TEMP_FOUND" &
+  verify_endpoint "localhost" "8080"  >> "$TEMP_FOUND" &
+  wait
 ) &
 wait
 
@@ -191,10 +229,15 @@ EOF
 
   if [ -n "$FOUND_IPS" ]; then
     NODE_COUNT=1
-    for ip in $FOUND_IPS; do
-      echo "  - name: discovered-node-${NODE_COUNT}" >> config.yaml
-      echo "    url: http://${ip}:11434" >> config.yaml
-      echo "  [ok] Discovered Ollama node at http://${ip}:11434 (added to config.yaml)"
+    for entry in $FOUND_IPS; do
+      IP=$(echo "$entry" | cut -d: -f1)
+      PORT=$(echo "$entry" | cut -d: -f2)
+      RUNTIME=$(echo "$entry" | cut -d: -f3)
+      
+      echo "  - name: discovered-${RUNTIME}-${NODE_COUNT}" >> config.yaml
+      echo "    url: http://${IP}:${PORT}" >> config.yaml
+      echo "    runtime: ${RUNTIME}" >> config.yaml
+      echo "  [ok] Discovered ${RUNTIME} node at http://${IP}:${PORT} (added to config.yaml)"
       NODE_COUNT=$((NODE_COUNT+1))
     done
   else
@@ -202,7 +245,7 @@ EOF
   - name: local
     url: http://localhost:11434
 EOF
-    echo "  [!] No active Ollama nodes found. Defaulted config.yaml to http://localhost:11434."
+    echo "  [!] No active LLM nodes found. Defaulted config.yaml to http://localhost:11434."
   fi
 else
   echo "config.yaml already exists, using existing configuration."
