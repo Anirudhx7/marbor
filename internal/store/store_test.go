@@ -304,6 +304,47 @@ func TestNodeOverrides(t *testing.T) {
 }
 
 // TestNopStore verifies NopStore satisfies the interface with no panics.
+// TestHourlyBucketAccumulates verifies that repeated per-request writes to the
+// same hour sum (not clobber) so cumulative totals survive a restart. This is
+// the regression guard for the INSERT-OR-REPLACE bug that persisted only the
+// last request's counts.
+func TestHourlyBucketAccumulates(t *testing.T) {
+	s := openTestDB(t)
+	hour := time.Date(2026, 7, 2, 14, 0, 0, 0, time.UTC)
+
+	// Simulate 3 local requests in the same hour, each a delta of 1.
+	for i := 0; i < 3; i++ {
+		if err := s.UpsertHourlyBucket(store.HourlyBucket{Hour: hour, LocalRequests: 1, Tokens: 100}); err != nil {
+			t.Fatalf("UpsertHourlyBucket: %v", err)
+		}
+	}
+	buckets, err := s.HourlyBuckets(hour.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("HourlyBuckets: %v", err)
+	}
+	if len(buckets) != 1 {
+		t.Fatalf("got %d buckets, want 1", len(buckets))
+	}
+	if buckets[0].LocalRequests != 3 || buckets[0].Tokens != 300 {
+		t.Errorf("bucket = {local:%d tokens:%d}, want {local:3 tokens:300}",
+			buckets[0].LocalRequests, buckets[0].Tokens)
+	}
+
+	// Model stats accumulate the same way.
+	for i := 0; i < 4; i++ {
+		if err := s.UpsertModelStat(store.ModelStat{Model: "llama3", Requests: 1, Tokens: 50}); err != nil {
+			t.Fatalf("UpsertModelStat: %v", err)
+		}
+	}
+	stats, err := s.AllModelStats()
+	if err != nil {
+		t.Fatalf("AllModelStats: %v", err)
+	}
+	if len(stats) != 1 || stats[0].Requests != 4 || stats[0].Tokens != 200 {
+		t.Errorf("model stats = %+v, want one row {requests:4 tokens:200}", stats)
+	}
+}
+
 func TestNopStore(t *testing.T) {
 	var s store.Store = store.NopStore{}
 

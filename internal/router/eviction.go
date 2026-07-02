@@ -151,6 +151,11 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 		}
 		m := m
 		go func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("[router] panic in goroutine: %v", rec)
+				}
+			}()
 			if err := r.unloadModel(ctx, n, m, "scheduled"); err != nil {
 				log.Printf("scheduled unload of %q on %s failed: %v", m, nodeName, err)
 			}

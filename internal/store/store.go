@@ -28,7 +28,9 @@ type Store interface {
 	AppendRequest(r RequestRecord) error
 	LastRequests(n int) ([]RequestRecord, error)
 
-	// Analytics
+	// Analytics. UpsertHourlyBucket/UpsertModelStat ACCUMULATE the passed
+	// counts into the existing row (callers pass a per-request delta), so
+	// totals survive a restart intact.
 	UpsertHourlyBucket(b HourlyBucket) error
 	HourlyBuckets(since time.Time) ([]HourlyBucket, error)
 	UpsertModelStat(s ModelStat) error

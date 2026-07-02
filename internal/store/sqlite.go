@@ -308,12 +308,23 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 
 // --- Analytics ---
 
+// UpsertHourlyBucket ADDS the given counts to the bucket for its hour. Callers
+// pass a single request's delta (e.g. local_requests:1); the values accumulate
+// per hour so that after a restart restoreFromStore reads real cumulative totals
+// rather than the last request's values. (INSERT OR REPLACE previously clobbered
+// the row on every request, persisting only the final request's counts.)
 func (s *sqliteStore) UpsertHourlyBucket(b HourlyBucket) error {
 	hourUnix := b.Hour.Truncate(time.Hour).Unix()
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO hourly_buckets
+		`INSERT INTO hourly_buckets
 			(hour, requests, tokens, cloud_requests, local_requests, cost_usd)
-			VALUES (?, ?, ?, ?, ?, ?)`,
+			VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(hour) DO UPDATE SET
+			requests       = requests + excluded.requests,
+			tokens         = tokens + excluded.tokens,
+			cloud_requests = cloud_requests + excluded.cloud_requests,
+			local_requests = local_requests + excluded.local_requests,
+			cost_usd       = cost_usd + excluded.cost_usd`,
 		hourUnix, b.Requests, b.Tokens, b.CloudRequests, b.LocalRequests, b.CostUSD,
 	)
 	if err != nil {
@@ -349,10 +360,16 @@ func (s *sqliteStore) HourlyBuckets(since time.Time) ([]HourlyBucket, error) {
 	return buckets, nil
 }
 
+// UpsertModelStat ADDS the given counts to the per-model row (same accumulate
+// semantics as UpsertHourlyBucket — callers pass a single request's delta).
 func (s *sqliteStore) UpsertModelStat(ms ModelStat) error {
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO model_stats (model, requests, tokens, cost_usd)
-		 VALUES (?, ?, ?, ?)`,
+		`INSERT INTO model_stats (model, requests, tokens, cost_usd)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(model) DO UPDATE SET
+			requests = requests + excluded.requests,
+			tokens   = tokens + excluded.tokens,
+			cost_usd = cost_usd + excluded.cost_usd`,
 		ms.Model, ms.Requests, ms.Tokens, ms.CostUSD,
 	)
 	if err != nil {

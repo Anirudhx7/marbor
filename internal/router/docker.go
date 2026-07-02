@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
@@ -65,9 +66,18 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 // this is a best-effort choice based only on what the Docker API reports for
 // the discovered container, not a guarantee of reachability in every topology.
 func containerHost(c dockerContainer) string {
-	for _, net := range c.NetworkSettings.Networks {
-		if net.IPAddress != "" {
-			return net.IPAddress
+	// Iterate networks in sorted name order for a deterministic choice: Go map
+	// iteration is randomized, so a multi-network container could otherwise
+	// resolve to a different IP on each discovery poll and be registered as two
+	// separate nodes over time.
+	names := make([]string, 0, len(c.NetworkSettings.Networks))
+	for name := range c.NetworkSettings.Networks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if ip := c.NetworkSettings.Networks[name].IPAddress; ip != "" {
+			return ip
 		}
 	}
 	return "127.0.0.1"

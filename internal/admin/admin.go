@@ -986,11 +986,13 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	}
 	found, err := s.router.UnloadModel(r.Context(), name, body.Model)
 	if !found {
-		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, `{"error":"node %q not found"}`, name)
 		return
 	}
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadGateway)
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "model": body.Model, "unloaded": true})
@@ -1112,10 +1114,18 @@ func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	cur := s.router.Schedules()
 	out := make([]router.Schedule, 0, len(cur))
+	found := false
 	for _, sc := range cur {
-		if sc.ID != id {
-			out = append(out, sc)
+		if sc.ID == id {
+			found = true
+			continue
 		}
+		out = append(out, sc)
+	}
+	if !found {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"schedule %q not found"}`, id), http.StatusNotFound)
+		return
 	}
 	s.persistSchedules(out)
 	w.WriteHeader(http.StatusNoContent)
@@ -1189,6 +1199,7 @@ type loginRateLimiter struct {
 	maxAttempts  int           // failures allowed within window before lockout
 	window       time.Duration // sliding window in which failures accumulate
 	lockDuration time.Duration // how long an IP stays locked out once tripped
+	lastPrune    time.Time     // last time stale entries were swept
 }
 
 type loginAttemptState struct {
@@ -1236,6 +1247,7 @@ func (l *loginRateLimiter) recordFailure(ip string) {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.pruneLocked(now)
 	st, exists := l.attempts[ip]
 	if !exists {
 		st = &loginAttemptState{windowStart: now}
@@ -1248,6 +1260,23 @@ func (l *loginRateLimiter) recordFailure(ip string) {
 	st.failures++
 	if st.failures >= l.maxAttempts {
 		st.lockedUntil = now.Add(l.lockDuration)
+	}
+}
+
+// pruneLocked drops entries that are neither currently locked out nor within an
+// active failure window, so a brute-force flood from many unique IPs can't grow
+// the map without bound. Cheap: runs at most once per minute (caller holds the
+// write lock). A dropped entry is harmless — the next failure just re-creates a
+// fresh window for that IP.
+func (l *loginRateLimiter) pruneLocked(now time.Time) {
+	if now.Sub(l.lastPrune) < time.Minute {
+		return
+	}
+	l.lastPrune = now
+	for ip, st := range l.attempts {
+		if now.After(st.lockedUntil) && now.Sub(st.windowStart) > l.window {
+			delete(l.attempts, ip)
+		}
 	}
 }
 
@@ -1981,12 +2010,23 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if k.ExpiresAt != "" {
-		_, err1 := time.Parse("2006-01-02", k.ExpiresAt)
-		_, err2 := time.Parse(time.RFC3339, k.ExpiresAt)
-		if err1 != nil && err2 != nil {
+		exp, err1 := time.Parse("2006-01-02", k.ExpiresAt)
+		if err1 != nil {
+			exp, err1 = time.Parse(time.RFC3339, k.ExpiresAt)
+		}
+		if err1 != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(`{"error":"expires_at must be YYYY-MM-DD or RFC3339 format"}`))
+			return
+		}
+		// Reject an already-past expiry: it would mint a key that can never
+		// authenticate (keyExpired treats it as expired immediately), which is a
+		// silent footgun rather than an intended action.
+		if !exp.After(time.Now()) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"expires_at is in the past"}`))
 			return
 		}
 	}
