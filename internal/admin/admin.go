@@ -305,7 +305,6 @@ func (s *Server) startPeriodicCleanup() {
 	}
 }
 
-
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
