@@ -310,6 +310,19 @@ h2.sec em { font-style: italic; color: var(--accent); }
 pre.code {
   background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 12px 14px; font-size: 12.5px; overflow-x: auto; margin: 0; line-height: 1.7; color: var(--text);
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+pre.code::-webkit-scrollbar, .table-scroll::-webkit-scrollbar {
+  height: 6px; width: 6px;
+}
+pre.code::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+pre.code::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--border); border-radius: var(--radius);
+}
+pre.code::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
 }
 pre.code .c { color: var(--text-faint); }
 pre.code .g { color: var(--accent2); }
