@@ -120,6 +120,11 @@ var (
 		Name: "ollamamesh_warmup_pings_total",
 		Help: "Proactive keepalive pings sent to prevent model eviction from VRAM",
 	}, []string{"model", "node", "status"})
+
+	predictionAccuracyRatio = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "ollamamesh_prediction_accuracy_ratio",
+		Help: "Ratio of successful prewarming predictions (0.0 to 1.0)",
+	})
 )
 
 func RequestsTotal(key, model, node, status string) {
@@ -206,4 +211,9 @@ func ScheduleFired(action, node string) {
 // ModelEvicted records that a model was unloaded from a node to free VRAM.
 func ModelEvicted(node string) {
 	modelEvictions.WithLabelValues(node).Inc()
+}
+
+// PredictionAccuracyRatio records the rolling prewarming prediction accuracy.
+func PredictionAccuracyRatio(v float64) {
+	predictionAccuracyRatio.Set(v)
 }

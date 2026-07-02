@@ -262,6 +262,7 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	if sessionID != "" {
 		if node := r.stickyNode(sessionID); node != nil {
 			if runtimeFilter == "" || node.Runtime == runtimeFilter {
+				r.RecordTransition(modelName, time.Now())
 				return node, isModelWarm(node, modelName)
 			}
 			r.affinityMu.Lock()
@@ -271,14 +272,17 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	}
 
 	node, warm := r.routeInternal(modelName, runtimeFilter)
-	if node != nil && sessionID != "" {
-		r.affinityMu.Lock()
-		if len(r.affinity) < maxAffinityEntries {
-			entry := &affinityEntry{nodeURL: node.URL}
-			entry.lastSeen.Store(time.Now().UnixNano())
-			r.affinity[sessionID] = entry
+	if node != nil {
+		r.RecordTransition(modelName, time.Now())
+		if sessionID != "" {
+			r.affinityMu.Lock()
+			if len(r.affinity) < maxAffinityEntries {
+				entry := &affinityEntry{nodeURL: node.URL}
+				entry.lastSeen.Store(time.Now().UnixNano())
+				r.affinity[sessionID] = entry
+			}
+			r.affinityMu.Unlock()
 		}
-		r.affinityMu.Unlock()
 	}
 	return node, warm
 }

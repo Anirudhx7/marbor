@@ -1,0 +1,211 @@
+package router
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/config"
+)
+
+// mockStore implementing Store just to return empty tags for headroom estimation in tests.
+type mockTagsStore struct{}
+
+func (s *mockTagsStore) EstimateSize(nodeURL, model string) int64 {
+	return 4000 * 1024 * 1024 // 4GB
+}
+
+func TestPredictivePrewarming(t *testing.T) {
+	newTestRouter := func(nodesCfg []config.NodeConfig) *Router {
+		r := New(config.RoutingConfig{
+			Strategy: "warm-first",
+		}, nodesCfg, nil)
+		r.SetWarmupConfig(config.WarmupConfig{
+			Enabled:    true,
+			IntervalMs: 300000,
+		})
+		return r
+	}
+
+	t.Run("Transition logging & Ring buffer cap", func(t *testing.T) {
+		r := newTestRouter([]config.NodeConfig{
+			{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 8192},
+		})
+
+		now := time.Now()
+		// Log 510 transitions
+		for i := 0; i < 510; i++ {
+			r.RecordTransition("model-x", now)
+		}
+
+		r.predictiveMu.Lock()
+		historyLen := len(r.predictiveHistory)
+		r.predictiveMu.Unlock()
+
+		if historyLen != 500 {
+			t.Errorf("expected predictive history length to cap at 500, got %d", historyLen)
+		}
+	})
+
+	t.Run("Prediction cycle triggers prewarm with headroom", func(t *testing.T) {
+		r := newTestRouter([]config.NodeConfig{
+			{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384}, // 16GB
+		})
+
+		// Make node-a warm for trigger model-w
+		r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-w", SizeVRAM: 2000 * 1024 * 1024}}
+		r.nodes[0].VRAMTotalMB = 16384
+		r.nodes[0].VRAMUsedMB = 2000
+
+		// Mock tags for size estimation: make predicted cold model-x need 4GB, model-y need 4GB, model-z need 4GB, model-other need 4GB.
+		// Since node-a has 16GB total and 2GB used, free VRAM is 14GB.
+		// W is warm.
+		// Set transitions for hour 14:
+		// model-w -> model-x (10 times)
+		// model-w -> model-y (5 times)
+		// model-w -> model-z (3 times)
+		// model-w -> model-other (1 time)
+		now := time.Date(2026, 7, 2, 14, 0, 0, 0, time.UTC)
+
+		r.RecordTransition("model-w", now)
+		for i := 0; i < 10; i++ {
+			r.RecordTransition("model-x", now)
+			r.RecordTransition("model-w", now)
+		}
+		for i := 0; i < 5; i++ {
+			r.RecordTransition("model-y", now)
+			r.RecordTransition("model-w", now)
+		}
+		for i := 0; i < 3; i++ {
+			r.RecordTransition("model-z", now)
+			r.RecordTransition("model-w", now)
+		}
+		r.RecordTransition("model-other", now)
+
+		// Set up mock tag caching on the router
+		r.tagsCache["http://localhost:11434"] = &TagsCache{
+			Models: []TagModel{
+				{Name: "model-x", Size: 4000 * 1024 * 1024},
+				{Name: "model-y", Size: 4000 * 1024 * 1024},
+				{Name: "model-z", Size: 4000 * 1024 * 1024},
+			},
+			FetchedAt: time.Now(),
+		}
+
+		// Run prediction cycle
+		ctx := context.Background()
+		r.RunPredictionCycle(ctx, now)
+
+		// Verify predictions were added to activePredictions
+		r.predictiveMu.Lock()
+		activeCount := len(r.activePredictions)
+		predictions := append([]ActivePrediction(nil), r.activePredictions...)
+		r.predictiveMu.Unlock()
+
+		// Top 3 next models are model-x, model-y, model-z.
+		// All 3 should fit in headroom (4GB * 3 = 12GB < 14GB free).
+		// So all 3 should be predicted and warmups triggered.
+		if activeCount < 3 {
+			t.Errorf("expected at least 3 active predictions, got %d (list: %+v)", activeCount, predictions)
+		}
+	})
+
+	t.Run("Time-of-day prewarming across 3+ days", func(t *testing.T) {
+		r := newTestRouter([]config.NodeConfig{
+			{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 8192},
+		})
+		r.nodes[0].VRAMTotalMB = 8192
+
+		// Log request for model-tod in hour 15 across 3 distinct days:
+		// Day 1 (July 2), Day 2 (July 3), Day 3 (July 4)
+		day1 := time.Date(2026, 7, 2, 15, 30, 0, 0, time.UTC)
+		day2 := time.Date(2026, 7, 3, 15, 45, 0, 0, time.UTC)
+		day3 := time.Date(2026, 7, 4, 15, 15, 0, 0, time.UTC)
+
+		r.RecordTransition("model-tod", day1)
+		r.RecordTransition("model-tod", day2)
+		r.RecordTransition("model-tod", day3)
+
+		// Set up mock tag cache
+		r.tagsCache["http://localhost:11434"] = &TagsCache{
+			Models: []TagModel{
+				{Name: "model-tod", Size: 1000 * 1024 * 1024},
+			},
+			FetchedAt: time.Now(),
+		}
+
+		// Run prediction cycle at 14:50 (which is 10 minutes before target hour 15 starts)
+		runTime := time.Date(2026, 7, 5, 14, 50, 0, 0, time.UTC)
+		ctx := context.Background()
+
+		// Let's hook a channel or verify execution: we can check if it logs or triggers warmup
+		r.RunPredictionCycle(ctx, runTime)
+
+		// Clean up and verify lastTimeOfDayPrewarmHour was set to 15
+		r.predictiveMu.Lock()
+		targetHour := r.lastTimeOfDayPrewarmHour
+		r.predictiveMu.Unlock()
+
+		if targetHour != 15 {
+			t.Errorf("expected lastTimeOfDayPrewarmHour to be 15, got %d", targetHour)
+		}
+	})
+
+	t.Run("Accuracy tracking logic", func(t *testing.T) {
+		r := newTestRouter([]config.NodeConfig{
+			{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 8192},
+		})
+
+		now := time.Now()
+
+		r.predictiveMu.Lock()
+		r.activePredictions = append(r.activePredictions, ActivePrediction{
+			Model:     "model-x",
+			ExpiresAt: now.Add(10 * time.Minute),
+			Met:       false,
+		})
+		r.predictiveMu.Unlock()
+
+		// Model is actually requested (met)
+		r.RecordTransition("model-x", now.Add(2*time.Minute))
+
+		// Clean expired predictions at expiration time + 1s
+		r.predictiveMu.Lock()
+		r.cleanExpiredPredictions(now.Add(11 * time.Minute))
+		made := r.predictionsMadeTotal
+		met := r.predictionsMetTotal
+		r.predictiveMu.Unlock()
+
+		if made != 1 {
+			t.Errorf("expected 1 prediction made, got %d", made)
+		}
+		if met != 1 {
+			t.Errorf("expected 1 prediction met, got %d", met)
+		}
+	})
+}
+
+// Ensure thread safety of predictive prewarming under concurrent load
+func TestPredictiveConcurrency(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 8192},
+	}, nil)
+
+	var wg sync.WaitGroup
+	ctx := context.Background()
+	now := time.Now()
+
+	// Spin up goroutines concurrently writing transitions and running predictions
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			r.RecordTransition("model-a", now)
+			r.RecordTransition("model-b", now)
+			r.RunPredictionCycle(ctx, now)
+		}(i)
+	}
+
+	wg.Wait()
+}

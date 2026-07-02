@@ -160,6 +160,16 @@ type Router struct {
 	// a restart instead of cold (Phase 1). Set once via SetStore before Start; nil
 	// disables all warm-state persistence (the default for tests). Guarded by r.mu.
 	store store.Store
+
+	// Predictive prewarming fields (Step 5)
+	predictiveMu             sync.Mutex
+	predictiveHistory        []TransitionEntry
+	lastModelRequested       string
+	activePredictions        []ActivePrediction
+	predictionsMadeTotal     int64
+	predictionsMetTotal      int64
+	lastAccuracyLogAt        time.Time
+	lastTimeOfDayPrewarmHour int
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -222,32 +232,34 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	queueTimeout := time.Duration(cfg.QueueTimeoutMs) * time.Millisecond
 	queueMaxDepth := cfg.QueueMaxDepth
 	return &Router{
-		nodes:              nodes,
-		strategy:           cfg.Strategy,
-		fallback:           cfg.Fallback,
-		interval:           time.Duration(cfg.PollIntervalMs) * time.Millisecond,
-		client:             client,
-		rules:              cfg.Rules,
-		clouds:             cloudsCopy,
-		discoveredURLs:     make(map[string]struct{}),
-		prevHealthy:        prev,
-		tagsCache:          make(map[string]*TagsCache),
-		tagsInflight:       make(map[string]*tagsInflightEntry),
-		upstreamTimeout:    upstreamTimeout,
-		maxRetries:         maxRetries,
-		affinity:           make(map[string]*affinityEntry),
-		affinityTTL:        affinityTTL,
-		sessionAffinity:    cfg.SessionAffinity,
-		nodeWarmup:         make(map[string]NodeWarmup),
-		schedLastFired:     make(map[string]string),
-		lastUsed:           make(map[string]time.Time),
-		pinned:             make(map[string]map[string]bool),
-		lastEvictAt:        make(map[string]time.Time),
-		nvidiaCache:        make(map[int]GPUStats),
-		nvidiaPollInterval: nvidiaPollInterval,
-		notifyCh:           make(chan struct{}),
-		queueMaxDepth:      queueMaxDepth,
-		queueTimeout:       queueTimeout,
+		nodes:                    nodes,
+		strategy:                 cfg.Strategy,
+		fallback:                 cfg.Fallback,
+		interval:                 time.Duration(cfg.PollIntervalMs) * time.Millisecond,
+		client:                   client,
+		rules:                    cfg.Rules,
+		clouds:                   cloudsCopy,
+		discoveredURLs:           make(map[string]struct{}),
+		prevHealthy:              prev,
+		tagsCache:                make(map[string]*TagsCache),
+		tagsInflight:             make(map[string]*tagsInflightEntry),
+		upstreamTimeout:          upstreamTimeout,
+		maxRetries:               maxRetries,
+		affinity:                 make(map[string]*affinityEntry),
+		affinityTTL:              affinityTTL,
+		sessionAffinity:          cfg.SessionAffinity,
+		nodeWarmup:               make(map[string]NodeWarmup),
+		schedLastFired:           make(map[string]string),
+		lastUsed:                 make(map[string]time.Time),
+		pinned:                   make(map[string]map[string]bool),
+		lastEvictAt:              make(map[string]time.Time),
+		nvidiaCache:              make(map[int]GPUStats),
+		nvidiaPollInterval:       nvidiaPollInterval,
+		notifyCh:                 make(chan struct{}),
+		queueMaxDepth:            queueMaxDepth,
+		queueTimeout:             queueTimeout,
+		lastAccuracyLogAt:        time.Now(),
+		lastTimeOfDayPrewarmHour: -1,
 	}
 }
 
@@ -508,6 +520,9 @@ func (r *Router) Start(ctx context.Context) {
 	warmStateTicker := time.NewTicker(warmStateFlushInterval)
 	defer warmStateTicker.Stop()
 
+	predictiveTicker := time.NewTicker(5 * time.Minute)
+	defer predictiveTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -526,6 +541,8 @@ func (r *Router) Start(ctx context.Context) {
 			r.runSchedules(ctx, time.Now())
 		case <-warmStateTicker.C:
 			go r.FlushWarmState()
+		case <-predictiveTicker.C:
+			r.RunPredictionCycle(ctx, time.Now())
 		}
 	}
 }
