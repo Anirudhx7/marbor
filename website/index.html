@@ -9,7 +9,7 @@
   // (toggle button, persistence) runs in the deferred script at end of <body>.
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Ollama & vLLM Load Balancer, High Availability Multi-GPU Routing | ollama-mesh</title>
+<title>ollama-mesh - The control plane for self-hosted AI inference</title>
 <meta name="description" content="A lightweight, high-availability load balancer, API gateway, and control plane for self-hosted GPU fleets. Schedules requests based on warm model VRAM residency across Ollama, vLLM, TGI, and llama.cpp nodes." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="canonical" href="https://anirudh.social/ollama-mesh/" />
@@ -19,7 +19,7 @@
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="ollama-mesh" />
 <meta property="og:locale" content="en_US" />
-<meta property="og:title" content="Ollama & vLLM Load Balancer, High Availability Multi-GPU Routing | ollama-mesh" />
+<meta property="og:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
 <meta property="og:description" content="Turn your local GPUs into a high-availability inference cluster. Warm-state scheduling, multi-runtime load balancing, and cost-aware cloud overflow." />
 <meta property="og:url" content="https://anirudh.social/ollama-mesh/" />
 <meta property="og:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
@@ -27,7 +27,7 @@
 <meta property="og:image:height" content="630" />
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Ollama & vLLM Load Balancer, High Availability Multi-GPU Routing | ollama-mesh" />
+<meta name="twitter:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
 <meta name="twitter:description" content="Turn your local GPUs into a high-availability inference cluster. Warm-state scheduling, multi-runtime load balancing, and cost-aware cloud overflow." />
 <meta name="twitter:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
 <script type="application/ld+json">
@@ -687,7 +687,7 @@ SPCS-FEATURE-END */
 <header class="hero">
   <div class="page">
     <span class="kicker"><span class="dot"></span>{{VERSION}}: vLLM, TGI, llama.cpp · self-hosted · MIT</span>
-    <h1 class="headline">Ollama & vLLM load balancing & control plane for <em>self-hosted AI inference.</em></h1>
+    <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
       A single-binary load balancer and API gateway that turns your local GPUs into a high-availability Ollama, vLLM, and llama.cpp cluster. 
       ollama-mesh routes requests dynamically based on real-time model residency in VRAM, eliminating cold starts, 
