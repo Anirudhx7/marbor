@@ -1,0 +1,29 @@
+# Enforce LF line endings for all text files in the repo.
+# This prevents CRLF from Windows checkouts breaking gofmt on Linux CI.
+* text=auto eol=lf
+
+# Go source files always LF
+*.go text eol=lf
+
+# Shell scripts always LF
+*.sh text eol=lf
+
+# YAML/JSON/Markdown always LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+
+# Binaries — no eol conversion
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

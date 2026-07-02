@@ -375,14 +375,14 @@ func (NopStore) AllCloudProviders() ([]CloudProviderRecord, error) { return nil,
 func (NopStore) GetWarmupConfig() (WarmupConfigRecord, error) {
 	return WarmupConfigRecord{}, ErrNotFound
 }
-func (NopStore) SetWarmupConfig(_ bool, _ string) error        { return nil }
-func (NopStore) UpsertWarmupModel(_ string, _ []string) error  { return nil }
-func (NopStore) DeleteWarmupModel(_ string) error              { return nil }
-func (NopStore) AllWarmupModels() ([]WarmupModelRecord, error) { return nil, nil }
-func (NopStore) RecordWarmLoad(_ WarmStateRecord) error        { return nil }
-func (NopStore) SnapshotWarmState(_ WarmStateRecord) error     { return nil }
-func (NopStore) DeleteWarmState(_, _ string) error             { return nil }
-func (NopStore) DeleteWarmStateByNode(_ string) error          { return nil }
-func (NopStore) AllWarmState() ([]WarmStateRecord, error)                    { return nil, nil }
-func (NopStore) ReconcileNodeWarmState(_ string, _ []string) error           { return nil }
-func (NopStore) Close() error                                                { return nil }
+func (NopStore) SetWarmupConfig(_ bool, _ string) error            { return nil }
+func (NopStore) UpsertWarmupModel(_ string, _ []string) error      { return nil }
+func (NopStore) DeleteWarmupModel(_ string) error                  { return nil }
+func (NopStore) AllWarmupModels() ([]WarmupModelRecord, error)     { return nil, nil }
+func (NopStore) RecordWarmLoad(_ WarmStateRecord) error            { return nil }
+func (NopStore) SnapshotWarmState(_ WarmStateRecord) error         { return nil }
+func (NopStore) DeleteWarmState(_, _ string) error                 { return nil }
+func (NopStore) DeleteWarmStateByNode(_ string) error              { return nil }
+func (NopStore) AllWarmState() ([]WarmStateRecord, error)          { return nil, nil }
+func (NopStore) ReconcileNodeWarmState(_ string, _ []string) error { return nil }
+func (NopStore) Close() error                                      { return nil }

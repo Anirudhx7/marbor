@@ -44,9 +44,9 @@ func Run(args []string) {
 		fs.PrintDefaults()
 	}
 
-	target  := fs.String("target", "http://localhost:11435", "Mesh proxy base URL (not the Ollama backend)")
-	model   := fs.String("model", "", "Model to benchmark (auto-detected from /v1/models if omitted)")
-	apiKey  := fs.String("key", "", "Bearer API key (required if auth is enabled on the mesh)")
+	target := fs.String("target", "http://localhost:11435", "Mesh proxy base URL (not the Ollama backend)")
+	model := fs.String("model", "", "Model to benchmark (auto-detected from /v1/models if omitted)")
+	apiKey := fs.String("key", "", "Bearer API key (required if auth is enabled on the mesh)")
 	jsonOut := fs.Bool("json", false, "Emit JSON output instead of the human-readable table")
 	timeout := fs.Duration("timeout", 300*time.Second, "Per-request timeout (cold load can take minutes on a large model)")
 	if err := fs.Parse(args); err != nil {
