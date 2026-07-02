@@ -229,6 +229,17 @@ func (s *sqliteStore) migrate() error {
 			model      TEXT PRIMARY KEY,
 			nodes_json TEXT NOT NULL DEFAULT '[]'
 		)`,
+
+		// warm_state is the persisted model residency map (Phase 1: Persistent
+		// Warm State). Rows survive a restart so the router starts warm.
+		`CREATE TABLE IF NOT EXISTS warm_state (
+			model      TEXT NOT NULL,
+			node       TEXT NOT NULL,
+			last_used  INTEGER NOT NULL DEFAULT 0,
+			vram_bytes INTEGER NOT NULL DEFAULT 0,
+			load_count INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (model, node)
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -1336,4 +1347,98 @@ func (s *sqliteStore) AllWarmupModels() ([]WarmupModelRecord, error) {
 		return nil, fmt.Errorf("store: AllWarmupModels rows: %w", err)
 	}
 	return models, nil
+}
+
+// --- Warm state (model residency map) ---
+
+// warmUsedToUnix encodes a last-used time as a Unix second count, mapping the
+// zero time (never used) to 0 so it round-trips through the INTEGER column.
+func warmUsedToUnix(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
+// warmUnixToUsed is the inverse of warmUsedToUnix.
+func warmUnixToUsed(v int64) time.Time {
+	if v == 0 {
+		return time.Time{}
+	}
+	return time.Unix(v, 0)
+}
+
+func (s *sqliteStore) RecordWarmLoad(w WarmStateRecord) error {
+	_, err := s.db.Exec(
+		`INSERT INTO warm_state (model, node, last_used, vram_bytes, load_count)
+			VALUES (?, ?, ?, ?, 1)
+			ON CONFLICT(model, node) DO UPDATE SET
+				last_used  = excluded.last_used,
+				vram_bytes = excluded.vram_bytes,
+				load_count = warm_state.load_count + 1`,
+		w.Model, w.Node, warmUsedToUnix(w.LastUsed), w.VRAMBytes,
+	)
+	if err != nil {
+		return fmt.Errorf("store: RecordWarmLoad: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) SnapshotWarmState(w WarmStateRecord) error {
+	// Refresh residency/last-used/vram without bumping load_count — this is the
+	// periodic snapshot flush, not a load event. Inserts a fresh row (load_count
+	// 0) only if the pair is not already present.
+	_, err := s.db.Exec(
+		`INSERT INTO warm_state (model, node, last_used, vram_bytes, load_count)
+			VALUES (?, ?, ?, ?, 0)
+			ON CONFLICT(model, node) DO UPDATE SET
+				last_used  = excluded.last_used,
+				vram_bytes = excluded.vram_bytes`,
+		w.Model, w.Node, warmUsedToUnix(w.LastUsed), w.VRAMBytes,
+	)
+	if err != nil {
+		return fmt.Errorf("store: SnapshotWarmState: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteWarmState(model, node string) error {
+	_, err := s.db.Exec(`DELETE FROM warm_state WHERE model=? AND node=?`, model, node)
+	if err != nil {
+		return fmt.Errorf("store: DeleteWarmState: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteWarmStateByNode(node string) error {
+	_, err := s.db.Exec(`DELETE FROM warm_state WHERE node=?`, node)
+	if err != nil {
+		return fmt.Errorf("store: DeleteWarmStateByNode: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) AllWarmState() ([]WarmStateRecord, error) {
+	rows, err := s.db.Query(
+		`SELECT model, node, last_used, vram_bytes, load_count FROM warm_state`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllWarmState: %w", err)
+	}
+	defer rows.Close()
+
+	var out []WarmStateRecord
+	for rows.Next() {
+		var w WarmStateRecord
+		var lastUsed int64
+		if err := rows.Scan(&w.Model, &w.Node, &lastUsed, &w.VRAMBytes, &w.LoadCount); err != nil {
+			return nil, fmt.Errorf("store: AllWarmState scan: %w", err)
+		}
+		w.LastUsed = warmUnixToUsed(lastUsed)
+		out = append(out, w)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllWarmState rows: %w", err)
+	}
+	return out, nil
 }

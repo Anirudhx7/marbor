@@ -208,6 +208,7 @@ func main() {
 	}
 
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
+	r.SetStore(st)
 	r.SetDockerConfig(cfg.Docker)
 	if cfg.Docker.Enabled {
 		log.Printf("Docker auto-discovery enabled (socket: %s)", cfg.Docker.Socket)
@@ -259,6 +260,16 @@ func main() {
 				r.DrainNode(name)
 			}
 		}
+	}
+
+	// Restore the warm-state residency map so the router starts warm, not cold:
+	// LRU last-used history is re-seeded for every persisted (model, node) pair,
+	// and each node's residency is seeded until the first live poll refreshes it.
+	// Runs after all nodes are registered and before the proxy serves traffic.
+	if n, err := r.RestoreWarmState(); err != nil {
+		log.Printf("WARNING: could not restore warm state from store: %v", err)
+	} else if n > 0 {
+		log.Printf("store: restored warm state for %d (model,node) pair(s)", n)
 	}
 
 	// Load persisted per-node warmup settings (admin-toggled) from the KV store
@@ -458,5 +469,8 @@ func main() {
 	if err := authMw.SaveToStore(st); err != nil {
 		log.Printf("WARNING: final usage state flush failed: %v", err)
 	}
+	// Tier 3: flush the full warm-state residency snapshot on graceful shutdown so
+	// the router restores its warm set on the next start.
+	r.FlushWarmState()
 	log.Println("Shutdown complete")
 }

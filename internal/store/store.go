@@ -121,6 +121,22 @@ type Store interface {
 	DeleteWarmupModel(model string) error
 	AllWarmupModels() ([]WarmupModelRecord, error)
 
+	// Warm state — the model residency map (which model is resident on which
+	// node), its LRU last-used time, VRAM footprint, and load count. Persisted so
+	// the router starts warm after a restart instead of cold (Phase 1). RecordWarmLoad
+	// bumps load_count (a model was loaded); SnapshotWarmState refreshes the
+	// residency snapshot without touching load_count (the background flush).
+	RecordWarmLoad(w WarmStateRecord) error
+	SnapshotWarmState(w WarmStateRecord) error
+	DeleteWarmState(model, node string) error
+	DeleteWarmStateByNode(node string) error
+	// ReconcileNodeWarmState makes the persisted residency for a node match the
+	// live truth: it deletes every row for the node whose model is NOT in
+	// residentModels. An empty residentModels clears the node entirely. This is how
+	// stale rows (left by a prior run) are pruned once a live poll reveals the truth.
+	ReconcileNodeWarmState(node string, residentModels []string) error
+	AllWarmState() ([]WarmStateRecord, error)
+
 	Close() error
 }
 
@@ -285,6 +301,18 @@ type WarmupModelRecord struct {
 	Nodes []string `json:"nodes"` // empty = all nodes
 }
 
+// WarmStateRecord is one (model, node) entry of the warm-state residency map:
+// which model is resident on which node, when it was last used (the LRU eviction
+// key), its VRAM footprint, and how many times it has been loaded. Persisted so
+// the router can restore its warm set on startup instead of starting cold.
+type WarmStateRecord struct {
+	Model     string    `json:"model"`
+	Node      string    `json:"node"`
+	LastUsed  time.Time `json:"last_used"`  // zero time = never used since load
+	VRAMBytes int64     `json:"vram_bytes"` // 0 = unknown
+	LoadCount int64     `json:"load_count"`
+}
+
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
@@ -351,4 +379,9 @@ func (NopStore) SetWarmupConfig(_ bool, _ string) error        { return nil }
 func (NopStore) UpsertWarmupModel(_ string, _ []string) error  { return nil }
 func (NopStore) DeleteWarmupModel(_ string) error              { return nil }
 func (NopStore) AllWarmupModels() ([]WarmupModelRecord, error) { return nil, nil }
+func (NopStore) RecordWarmLoad(_ WarmStateRecord) error        { return nil }
+func (NopStore) SnapshotWarmState(_ WarmStateRecord) error     { return nil }
+func (NopStore) DeleteWarmState(_, _ string) error             { return nil }
+func (NopStore) DeleteWarmStateByNode(_ string) error          { return nil }
+func (NopStore) AllWarmState() ([]WarmStateRecord, error)      { return nil, nil }
 func (NopStore) Close() error                                  { return nil }

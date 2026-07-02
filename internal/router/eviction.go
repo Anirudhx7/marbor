@@ -109,6 +109,14 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 		return fmt.Errorf("node %s returned %d unloading %q", n.Name, resp.StatusCode, model)
 	}
 	metrics.ModelEvicted(n.Name)
+	// Drop the unloaded model from warm state immediately (Tier 1): a manual,
+	// scheduled, or LRU-headroom unload is a residency change that must not wait
+	// for the background flush, else a crash could restore an evicted model.
+	if st := r.warmStore(); st != nil {
+		if err := st.DeleteWarmState(model, n.Name); err != nil {
+			log.Printf("warmstate: delete %q on %s after unload: %v", model, n.Name, err)
+		}
+	}
 	log.Printf("unloaded model %q from node %s (%s)", model, n.Name, reason)
 	return nil
 }

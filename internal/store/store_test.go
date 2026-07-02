@@ -366,3 +366,109 @@ func TestNopStore(t *testing.T) {
 		t.Errorf("NopStore Close: %v", err)
 	}
 }
+
+// TestWarmStatePersistsAndRestores verifies the warm-state residency map
+// survives a reopen: RecordWarmLoad accumulates load_count, SnapshotWarmState
+// refreshes residency without bumping it, and last_used round-trips.
+func TestWarmStatePersistsAndRestores(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "warm.db")
+	used := time.Unix(1700000000, 0).UTC()
+
+	s := openTestDBAt(t, path)
+	// Two loads of the same pair -> load_count should reach 2.
+	if err := s.RecordWarmLoad(store.WarmStateRecord{Model: "llama3", Node: "n1", LastUsed: used, VRAMBytes: 4096}); err != nil {
+		t.Fatalf("RecordWarmLoad 1: %v", err)
+	}
+	if err := s.RecordWarmLoad(store.WarmStateRecord{Model: "llama3", Node: "n1", LastUsed: used, VRAMBytes: 5000}); err != nil {
+		t.Fatalf("RecordWarmLoad 2: %v", err)
+	}
+	// A different pair, never used (zero time).
+	if err := s.RecordWarmLoad(store.WarmStateRecord{Model: "mistral", Node: "n2", VRAMBytes: 8000}); err != nil {
+		t.Fatalf("RecordWarmLoad mistral: %v", err)
+	}
+	// Snapshot must refresh vram/last_used but NOT bump load_count.
+	if err := s.SnapshotWarmState(store.WarmStateRecord{Model: "llama3", Node: "n1", LastUsed: used, VRAMBytes: 6000}); err != nil {
+		t.Fatalf("SnapshotWarmState: %v", err)
+	}
+	s.Close()
+
+	// Reopen and verify state survived.
+	s2 := openTestDBAt(t, path)
+	defer s2.Close()
+	rows, err := s2.AllWarmState()
+	if err != nil {
+		t.Fatalf("AllWarmState: %v", err)
+	}
+	got := map[string]store.WarmStateRecord{}
+	for _, w := range rows {
+		got[w.Model+"@"+w.Node] = w
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 rows, got %d: %+v", len(got), rows)
+	}
+	l := got["llama3@n1"]
+	if l.LoadCount != 2 {
+		t.Errorf("llama3 load_count = %d, want 2", l.LoadCount)
+	}
+	if l.VRAMBytes != 6000 {
+		t.Errorf("llama3 vram = %d, want 6000 (snapshot refresh)", l.VRAMBytes)
+	}
+	if !l.LastUsed.Equal(used) {
+		t.Errorf("llama3 last_used = %v, want %v", l.LastUsed, used)
+	}
+	m := got["mistral@n2"]
+	if m.LoadCount != 1 {
+		t.Errorf("mistral load_count = %d, want 1", m.LoadCount)
+	}
+	if !m.LastUsed.IsZero() {
+		t.Errorf("mistral last_used = %v, want zero", m.LastUsed)
+	}
+}
+
+// TestWarmStateDeletes verifies per-pair and per-node deletion.
+func TestWarmStateDeletes(t *testing.T) {
+	s := openTestDB(t)
+	for _, r := range []store.WarmStateRecord{
+		{Model: "a", Node: "n1"}, {Model: "b", Node: "n1"}, {Model: "a", Node: "n2"},
+	} {
+		if err := s.RecordWarmLoad(r); err != nil {
+			t.Fatalf("RecordWarmLoad: %v", err)
+		}
+	}
+	if err := s.DeleteWarmState("a", "n1"); err != nil {
+		t.Fatalf("DeleteWarmState: %v", err)
+	}
+	rows, _ := s.AllWarmState()
+	if len(rows) != 2 {
+		t.Fatalf("after single delete want 2, got %d", len(rows))
+	}
+	if err := s.DeleteWarmStateByNode("n1"); err != nil {
+		t.Fatalf("DeleteWarmStateByNode: %v", err)
+	}
+	rows, _ = s.AllWarmState()
+	if len(rows) != 1 || rows[0].Node != "n2" {
+		t.Fatalf("after node delete want 1 row on n2, got %+v", rows)
+	}
+}
+
+// TestNopStoreWarmState verifies the no-op store satisfies the warm-state API.
+func TestNopStoreWarmState(t *testing.T) {
+	var s store.Store = store.NopStore{}
+	if err := s.RecordWarmLoad(store.WarmStateRecord{}); err != nil {
+		t.Errorf("NopStore RecordWarmLoad: %v", err)
+	}
+	if err := s.SnapshotWarmState(store.WarmStateRecord{}); err != nil {
+		t.Errorf("NopStore SnapshotWarmState: %v", err)
+	}
+	if err := s.DeleteWarmState("m", "n"); err != nil {
+		t.Errorf("NopStore DeleteWarmState: %v", err)
+	}
+	if err := s.DeleteWarmStateByNode("n"); err != nil {
+		t.Errorf("NopStore DeleteWarmStateByNode: %v", err)
+	}
+	rows, err := s.AllWarmState()
+	if err != nil || rows != nil {
+		t.Errorf("NopStore AllWarmState: rows=%v err=%v", rows, err)
+	}
+}

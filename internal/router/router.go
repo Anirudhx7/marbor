@@ -20,6 +20,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 type ModelInfo struct {
@@ -156,6 +157,10 @@ type Router struct {
 	// lastEvictAt throttles auto-eviction per node (thrash guard), guarded by evictMu.
 	evictMu     sync.Mutex
 	lastEvictAt map[string]time.Time
+	// store persists the warm-state residency map so the router starts warm after
+	// a restart instead of cold (Phase 1). Set once via SetStore before Start; nil
+	// disables all warm-state persistence (the default for tests). Guarded by r.mu.
+	store store.Store
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -498,6 +503,12 @@ func (r *Router) Start(ctx context.Context) {
 	scheduleTicker := time.NewTicker(1 * time.Minute)
 	defer scheduleTicker.Stop()
 
+	// Warm-state flush ticker: Tier 2 of persistence — snapshots the full residency
+	// map to SQLite every 60s so drift the immediate lifecycle writes miss (VRAM,
+	// last-used) is captured even without a load/unload event.
+	warmStateTicker := time.NewTicker(warmStateFlushInterval)
+	defer warmStateTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -514,6 +525,8 @@ func (r *Router) Start(ctx context.Context) {
 			go r.pingWarmupModels(ctx)
 		case <-scheduleTicker.C:
 			r.runSchedules(ctx, time.Now())
+		case <-warmStateTicker.C:
+			go r.FlushWarmState()
 		}
 	}
 }
@@ -638,6 +651,7 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 
 	n.mu.Lock()
+	prevModels := n.LoadedModels
 	n.LoadedModels = models
 	n.Healthy = true
 	n.Failures = 0
@@ -678,6 +692,10 @@ func (r *Router) pollNode(n *NodeState) {
 	nodeURL := n.URL
 	n.mu.Unlock()
 	metrics.NodeHealthy(n.Name, 1)
+
+	// Persist any residency change (models loaded/unloaded since the last poll)
+	// immediately — Tier 1 lifecycle events must not wait for the background flush.
+	r.persistResidencyDiff(nodeName, prevModels, models)
 
 	// Fire webhook on recovery (unhealthy -> healthy transition).
 	r.mu.Lock()
@@ -739,6 +757,9 @@ func (r *Router) markFailure(n *NodeState) {
 	n.mu.Unlock()
 
 	if becameUnhealthy {
+		// Capture the node's last-known warm set immediately (Tier 1): once it is
+		// unhealthy, polling can no longer refresh its residency.
+		r.snapshotNode(n)
 		// Fire webhook on node_down transition.
 		r.mu.Lock()
 		r.prevHealthy[nodeName] = false
@@ -1012,7 +1033,6 @@ func (r *Router) AddNode(n config.NodeConfig) {
 
 func (r *Router) RemoveNode(name string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	var urlToRemove string
 	for i, n := range r.nodes {
 		if n.Name == name {
@@ -1027,6 +1047,16 @@ func (r *Router) RemoveNode(name string) {
 		r.tagsMu.Lock()
 		delete(r.tagsCache, urlToRemove)
 		r.tagsMu.Unlock()
+	}
+	st := r.store
+	r.mu.Unlock()
+
+	// Drop the removed node's warm state immediately (Tier 1): its residency is
+	// no longer meaningful and must not be restored on the next start.
+	if st != nil {
+		if err := st.DeleteWarmStateByNode(name); err != nil {
+			log.Printf("warmstate: delete node %s: %v", name, err)
+		}
 	}
 }
 
