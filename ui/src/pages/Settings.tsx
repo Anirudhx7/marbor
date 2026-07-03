@@ -19,6 +19,36 @@ const timezones: string[] = (() => {
   }
 })();
 
+const getTimezoneLabel = (tz: string): string => {
+  if (tz === 'Local') return 'Local (Server Timezone)';
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const offsetPart = parts.find(p => p.type === 'timeZoneName');
+    const offset = offsetPart ? offsetPart.value : '';
+
+    let formattedOffset = offset;
+    if (offset === 'GMT' || offset === 'UTC') {
+      formattedOffset = 'UTC+00:00';
+    } else {
+      const match = offset.match(/(?:GMT|UTC)([+-])(\d+)(?::(\d+))?/);
+      if (match) {
+        const sign = match[1];
+        const hours = match[2].padStart(2, '0');
+        const minutes = match[3] || '00';
+        formattedOffset = `UTC${sign}${hours}:${minutes}`;
+      }
+    }
+    const displayOffset = formattedOffset ? `(${formattedOffset}) ` : '';
+    return `${displayOffset}${tz.replace(/_/g, ' ')}`;
+  } catch {
+    return tz.replace(/_/g, ' ');
+  }
+};
+
 export function SettingsPage() {
   const { demoMode, setDemoMode } = useDemoMode();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -305,7 +335,7 @@ export function SettingsPage() {
               >
                 {timezones.map(tz => (
                   <option key={tz} value={tz}>
-                    {tz === 'Local' ? 'Local (Server Timezone)' : tz.replace('_', ' ')}
+                    {getTimezoneLabel(tz)}
                   </option>
                 ))}
               </select>
