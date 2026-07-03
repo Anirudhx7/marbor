@@ -276,6 +276,12 @@ func (r *Router) SetTimezone(tz string) {
 	r.mu.Unlock()
 }
 
+func (r *Router) Timezone() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.timezone
+}
+
 // TriggerWarmup fires an immediate warmup ping cycle for all configured models.
 // Safe to call concurrently; each (model, node) pair runs in its own goroutine.
 func (r *Router) TriggerWarmup(ctx context.Context) {
