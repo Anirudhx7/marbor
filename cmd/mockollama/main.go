@@ -10,7 +10,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+)
+
+var (
+	stateMu    sync.RWMutex
+	warmModels = make(map[string]bool)
+	allModels  []string
 )
 
 type modelInfo struct {
@@ -74,16 +81,27 @@ func splitModels(s string) []string {
 
 func main() {
 	nodeName := envOrDefault("NODE_NAME", "mock-node")
-	warmModels := splitModels(envOrDefault("WARM_MODELS", "llama3.2:3b,qwen2.5:7b"))
-	allModels := splitModels(envOrDefault("ALL_MODELS", "llama3.2:3b,qwen2.5:7b,mistral:7b"))
+	for _, m := range splitModels(envOrDefault("WARM_MODELS", "llama3.2:3b,qwen2.5:7b")) {
+		warmModels[m] = true
+	}
+	allModels = splitModels(envOrDefault("ALL_MODELS", "llama3.2:3b,qwen2.5:7b,mistral:7b"))
 	port := envOrDefault("PORT", "11434")
 	latencyMs, err := strconv.Atoi(envOrDefault("LATENCY_MS", "150"))
 	if err != nil {
 		latencyMs = 150
 	}
 
+	stateMu.RLock()
+	var warmList []string
+	for m, warm := range warmModels {
+		if warm {
+			warmList = append(warmList, m)
+		}
+	}
+	stateMu.RUnlock()
+
 	log.Printf("[%s] mock-ollama starting on :%s  warm=%v  all=%v  latency=%dms",
-		nodeName, port, warmModels, allModels, latencyMs)
+		nodeName, port, warmList, allModels, latencyMs)
 
 	mux := http.NewServeMux()
 
@@ -122,8 +140,12 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		stateMu.RLock()
 		ps := make([]psModel, 0, len(warmModels))
-		for _, m := range warmModels {
+		for m, warm := range warmModels {
+			if !warm {
+				continue
+			}
 			sz := sizeFor(m)
 			ps = append(ps, psModel{
 				Name:      m,
@@ -134,6 +156,7 @@ func main() {
 				ExpiresAt: time.Now().Add(5 * time.Minute),
 			})
 		}
+		stateMu.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"models": ps})
 	})
@@ -186,9 +209,10 @@ func tokensFor(model string) []string {
 
 func handleGenerate(w http.ResponseWriter, r *http.Request, nodeName string, latencyMs int) {
 	var req struct {
-		Model  string `json:"model"`
-		Prompt string `json:"prompt"`
-		Stream *bool  `json:"stream"`
+		Model     string  `json:"model"`
+		Prompt    string  `json:"prompt"`
+		Stream    *bool   `json:"stream"`
+		KeepAlive *string `json:"keep_alive"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -196,6 +220,32 @@ func handleGenerate(w http.ResponseWriter, r *http.Request, nodeName string, lat
 	}
 	if req.Model == "" {
 		req.Model = "llama3.2:3b"
+	}
+
+	if req.KeepAlive != nil && (*req.KeepAlive == "0" || *req.KeepAlive == "0s") {
+		stateMu.Lock()
+		delete(warmModels, req.Model)
+		stateMu.Unlock()
+		log.Printf("[%s] Evicted model %q from VRAM via keep_alive=0s", nodeName, req.Model)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+		})
+		return
+	}
+
+	stateMu.RLock()
+	isWarm := warmModels[req.Model]
+	stateMu.RUnlock()
+
+	if !isWarm {
+		coldDelay := 2000
+		log.Printf("[%s] Cold start: loading model %q into VRAM (adding %dms delay)", nodeName, req.Model, coldDelay)
+		time.Sleep(time.Duration(coldDelay) * time.Millisecond)
+		stateMu.Lock()
+		warmModels[req.Model] = true
+		stateMu.Unlock()
 	}
 
 	tokens := tokensFor(req.Model)
@@ -255,7 +305,8 @@ func handleChat(w http.ResponseWriter, r *http.Request, nodeName string, latency
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
-		Stream *bool `json:"stream"`
+		Stream    *bool   `json:"stream"`
+		KeepAlive *string `json:"keep_alive"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -263,6 +314,32 @@ func handleChat(w http.ResponseWriter, r *http.Request, nodeName string, latency
 	}
 	if req.Model == "" {
 		req.Model = "llama3.2:3b"
+	}
+
+	if req.KeepAlive != nil && (*req.KeepAlive == "0" || *req.KeepAlive == "0s") {
+		stateMu.Lock()
+		delete(warmModels, req.Model)
+		stateMu.Unlock()
+		log.Printf("[%s] Evicted model %q from VRAM via keep_alive=0s", nodeName, req.Model)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+		})
+		return
+	}
+
+	stateMu.RLock()
+	isWarm := warmModels[req.Model]
+	stateMu.RUnlock()
+
+	if !isWarm {
+		coldDelay := 2000
+		log.Printf("[%s] Cold start: loading model %q into VRAM (adding %dms delay)", nodeName, req.Model, coldDelay)
+		time.Sleep(time.Duration(coldDelay) * time.Millisecond)
+		stateMu.Lock()
+		warmModels[req.Model] = true
+		stateMu.Unlock()
 	}
 
 	tokens := tokensFor(req.Model)
