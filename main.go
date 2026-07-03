@@ -473,6 +473,10 @@ func main() {
 	}
 	cancel()
 
+	// Drain the async request-log queue before the store closes (deferred
+	// above), so the logger goroutine can't write through a closed store.
+	adminSrv.Shutdown()
+
 	// Final flush so the just-served requests are not lost on restart.
 	if err := authMw.SaveToStore(st); err != nil {
 		log.Printf("WARNING: final usage state flush failed: %v", err)
