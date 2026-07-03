@@ -49,7 +49,14 @@ func (r *Router) Schedules() []Schedule {
 func (r *Router) runSchedules(ctx context.Context, now time.Time) {
 	r.mu.RLock()
 	scheds := append([]Schedule(nil), r.schedules...)
+	tz := r.timezone
 	r.mu.RUnlock()
+
+	if tz != "" && tz != "Local" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			now = now.In(l)
+		}
+	}
 
 	hhmm := fmt.Sprintf("%02d:%02d", now.Hour(), now.Minute())
 	stamp := now.Format("2006-01-02T15:04")
