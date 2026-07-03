@@ -378,3 +378,40 @@ func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 		t.Errorf("GET /admin/keys contains plaintext key %q after creation; only masked preview permitted", k.Key)
 	}
 }
+
+// TestShutdownDrainsAsyncLogQueue verifies that Shutdown() flushes any
+// buffered request logs to the store before returning, so LogRequest calls
+// made just before shutdown are not lost. Also verifies that a LogRequest
+// call arriving after Shutdown() has returned does not panic (logChan is
+// never closed, so a late send is dropped, not a crash) — this is the
+// scenario that motivated the fix: the store used to be closed out from
+// under the async logger goroutine.
+func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
+	tmpDB := filepath.Join(t.TempDir(), "shutdown-drain.db")
+	st, err := store.Open(tmpDB)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, nil, config.Config{}, st)
+
+	for i := 0; i < 10; i++ {
+		s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 12, 100)
+	}
+
+	s.Shutdown()
+
+	recs, err := st.LastRequests(10)
+	if err != nil {
+		t.Fatalf("LastRequests: %v", err)
+	}
+	if len(recs) != 10 {
+		t.Errorf("LastRequests returned %d records after Shutdown, want 10 (queue should be fully drained)", len(recs))
+	}
+
+	// A LogRequest call after Shutdown must not panic (send on closed
+	// channel) even though the async logger has already exited.
+	s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 12, 100)
+}

@@ -56,6 +56,9 @@ For defense in depth, still put a reverse proxy in front of the admin port (`808
 
 Rate limiting on the proxy port (`11434`) is implemented per API key via a token bucket, separately from the admin login throttle above.
 
+### Demo-mode auth bypass exists in the binary, but is not reachable in a real deployment
+`admin.Server` has a `demoMode` flag that, when set, accepts a static `demo-session` bearer token in place of a real DB-backed session. It is set only by test code (`SetDemoMode` / `AdminToken`, called exclusively from `_test.go` files) — no CLI flag, config field, or environment variable in the shipped binary or `main.go` ever enables it, so a normally built and run `ollama-mesh` process has no code path that turns it on. (The public `/demo/` dashboard on the website is unrelated: it's a pure frontend flag, `VITE_FORCE_DEMO`, that makes the React app render entirely client-side mocked data — it never talks to a real `admin.Server` and never uses this token.) The flag stays in the shipped binary as dead code rather than being compiled out behind a build tag, since doing so cleanly requires reworking the ~20 test call sites that use it to authenticate against the real DB-backed session path instead.
+
 ---
 
 ## Data Persistence
