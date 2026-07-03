@@ -6,6 +6,101 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **License: relicensed from MIT to Apache-2.0** (adds an explicit patent grant). Added a `NOTICE` file; every license reference (JSON-LD, `llms.txt`, README badge, site, docs footers) updated to match.
+- Website, README, and `llms.txt` repositioned around the **self-hosted, multi-runtime inference control plane** (Ollama, vLLM, TGI, llama.cpp). Visible FAQ reconciled with the JSON-LD `FAQPage`; sitemap refreshed.
+- `ROADMAP.md` rewritten as a technical, single-instance roadmap organized around the router-moat progression; pricing/commercial detail moved out of the public repo.
+- Removed the internal `docs/design/` doc from the repository.
+
+### Added
+- **DCO (Developer Certificate of Origin) sign-off requirement** — CONTRIBUTING guidance, a PR-template checkbox, and a CI check.
+
+## [0.14.2] - 2026-07-03
+
+### Fixed
+- Resolved 7 security, concurrency, performance, and UI issues surfaced by a codebase audit.
+- Website polish: custom thin scrollbars on code/table blocks, code-block copy-button layout, mobile step layout, and split installer options with separate copy buttons.
+
+## [0.14.1] - 2026-07-02
+
+### Fixed
+- GitHub Pages deploy pipeline — Actions workflow mode, tag-push handling, version derived from the git tag.
+- `install.sh` subnet scan is now gated behind `PROBE=1`; `START=1` alone writes a localhost config without scanning.
+
+## [0.14.0] - 2026-07-02
+
+### Added
+- **Persistent warm state** - the warm-model map is persisted and reconciled against live `/api/ps` on startup, so routing intelligence survives restarts.
+- **`ollama-mesh bench`** - reproducible cold-vs-warm TTFT measured through the mesh proxy.
+- **Weighted placement scoring** - multi-factor routing (warm / free VRAM / queue depth / health / success) with model pinning and post-failure node cooldown.
+- **Predictive prewarming** - an in-memory transition ring buffer plus time-of-day patterns warm the next likely model before it is requested; accuracy metrics included.
+- **Manual + scheduled model unload** - `POST /admin/nodes/{name}/unload` and a new "unload" schedule action.
+- Installer subnet probing detects Ollama, vLLM, TGI, and llama.cpp nodes; optional Prometheus + Grafana provisioning.
+
+### Changed
+- Router decomposed into `placement` / `health` / `queue` behind interfaces (pure refactor, no behavior change).
+- Go toolchain upgraded to 1.25.11 for standard-library security patches.
+
+## [0.13.1] - 2026-07-02
+
+### Fixed
+- Admin login is now rate-limited per client IP to prevent brute-force.
+- Hourly analytics are backfilled from SQLite on startup, so the dashboard shows continuous history after a restart.
+- Docker auto-discovery uses the container's own network IP.
+
+## [0.13.0] - 2026-07-01
+
+### Added
+- **Model lifecycle / LRU eviction** - eviction primitives plus operator-pinned never-evict models (B1), headroom-gated auto-eviction on the load path (B2), and a pinned-models control in the Warmup page (B3).
+
+### Fixed
+- Affinity deletions guarded under a write lock; `recover()` added to background goroutines.
+- Warmup/schedule UI: edit/pause split, styling, and decluttering.
+
+## [0.12.2] - 2026-07-01
+
+### Added
+- Scheduled warmup and a per-node warmup dashboard (W2 + W3).
+
+## [0.12.1] - 2026-07-01
+
+### Added
+- Real per-node warmup with a keep-alive guard and a model-residency metric (W1).
+
+### Changed
+- Session affinity is gated behind `routing.session_affinity`; honest peer-monitor reporting; Anthropic overflow returns 501 where unsupported.
+- Added the LIMITATIONS docs page; removed the unshipped SPCS section from the website.
+
+### Security
+- Block link-local / cloud-metadata node URLs (SSRF protection).
+- Auth on by default, stronger key entropy, database file mode `0600`.
+
+## [0.12.0] - 2026-07-01
+
+### Added
+- **Enterprise multi-user auth** - separate admin/user login paths, a user portal, and user management (approve, soft-delete, reset password).
+
+### Security
+- bcrypt-hashed passwords, DB-backed admin auth, and SQLite schema hardening.
+
+## [0.11.1] - 2026-06-25
+
+### Added
+- Username/password login with sessions and change-password; installed-models view in the dashboard; API key name shown in the request log.
+
+### Changed
+- Auth on by default.
+
+## [0.11.0] - 2026-06-25
+
+### Added
+- **SQLite persistence for all operational state.**
+- **Node runtime auto-detection** (Ollama / vLLM / TGI / llama.cpp) with runtime badges in the UI.
+- `vram_used_bytes` in the model catalog.
+
+### Fixed
+- Unique request IDs (fallback prevents empty/duplicate IDs); admin token validated before login, with a route guard.
+
 ## [0.10.0] - 2026-06-23
 
 ### Added

@@ -1,12 +1,12 @@
 # ollama-mesh
 
-**High-Availability Ollama Load Balancer, API Gateway, and GPU Routing Control Plane for Ollama, vLLM, TGI, and llama.cpp**
+**The self-hosted control plane for AI inference — warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, and llama.cpp**
 
-One endpoint for all your self-hosted LLM traffic. ollama-mesh is a hardware-aware load balancer that schedules each request to the GPU node that already holds the model warm in VRAM. Protect your local GPUs with Bearer token authentication and rate limits. Cloud overflow/failover activates only when local capacity is fully saturated—with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
+One OpenAI-compatible endpoint for all your self-hosted LLM traffic. ollama-mesh routes every request to the GPU node that already holds the model warm in VRAM — across Ollama, vLLM, TGI, and llama.cpp — turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
 
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ![ollama-mesh dashboard](website/screenshots/dashboard.png)
 *Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings — all from real parsed token counts.*
@@ -538,4 +538,4 @@ See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). The open-source core is free for any use, including commercial. Enterprise governance/compliance features are offered separately under a commercial license (see [ROADMAP.md](ROADMAP.md)).
