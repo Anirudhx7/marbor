@@ -7,16 +7,49 @@ import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig, chang
 import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
-const timezones: string[] = (() => {
+const getTimezoneOffsetMinutes = (tz: string): number => {
+  if (tz === 'Local') return -999999;
   try {
-    return ['Local', ...Intl.supportedValuesOf('timeZone')];
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const offsetPart = parts.find(p => p.type === 'timeZoneName');
+    const offset = offsetPart ? offsetPart.value : '';
+    if (offset === 'GMT' || offset === 'UTC') return 0;
+    const match = offset.match(/(?:GMT|UTC)([+-])(\d+)(?::(\d+))?/);
+    if (match) {
+      const sign = match[1] === '+' ? 1 : -1;
+      const hours = parseInt(match[2], 10);
+      const minutes = parseInt(match[3] || '0', 10);
+      return sign * (hours * 60 + minutes);
+    }
+    return 0;
   } catch {
-    return [
+    return 0;
+  }
+};
+
+const timezones: string[] = (() => {
+  let list = ['Local'];
+  try {
+    list = ['Local', ...Intl.supportedValuesOf('timeZone')];
+  } catch {
+    list = [
       'Local', 'UTC', 'America/New_York', 'America/Los_Angeles', 'America/Chicago',
       'Europe/London', 'Europe/Paris', 'Asia/Kolkata', 'Asia/Tokyo', 'Asia/Shanghai',
       'Asia/Singapore', 'Australia/Sydney'
     ];
   }
+  return list.sort((a, b) => {
+    const offsetA = getTimezoneOffsetMinutes(a);
+    const offsetB = getTimezoneOffsetMinutes(b);
+    if (offsetA !== offsetB) {
+      return offsetA - offsetB;
+    }
+    return a.localeCompare(b);
+  });
 })();
 
 const getTimezoneLabel = (tz: string): string => {
