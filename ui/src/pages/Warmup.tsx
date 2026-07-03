@@ -3,7 +3,7 @@ import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, Play
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule, updateSchedule,
-  fetchModels, getPinned, setPinned,
+  fetchModels, getPinned, setPinned, fetchSystemInfo,
 } from '../lib/api';
 import type { GPUNode } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
@@ -480,6 +480,8 @@ export function Warmup() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'warmup' | 'schedules'>('warmup');
+  const [serverTime, setServerTime] = useState<Date | null>(null);
+  const [serverTimezone, setServerTimezone] = useState<string>('');
 
   const load = useCallback(async () => {
     try {
@@ -491,6 +493,25 @@ export function Warmup() {
       }));
       setWarmup(w);
       setSchedules(await listSchedules());
+
+      const sys = await fetchSystemInfo().catch(() => null);
+      if (sys && sys.server_time && sys.timezone) {
+        const parts = sys.server_time.split(' ');
+        if (parts.length === 2) {
+          const dParts = parts[0].split('-');
+          const tParts = parts[1].split(':');
+          const date = new Date(
+            parseInt(dParts[0], 10),
+            parseInt(dParts[1], 10) - 1,
+            parseInt(dParts[2], 10),
+            parseInt(tParts[0], 10),
+            parseInt(tParts[1], 10),
+            parseInt(tParts[2], 10)
+          );
+          setServerTime(date);
+        }
+        setServerTimezone(sys.timezone);
+      }
 
       if (demoMode) {
         setAvailableModels(['llama3.1:8b', 'mistral:7b', 'llama3.1:70b', 'codellama:13b', 'gemma2:9b', 'phi3:medium']);
@@ -508,6 +529,26 @@ export function Warmup() {
   }, [demoMode]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!serverTime) return;
+    const timer = setInterval(() => {
+      setServerTime(prev => prev ? new Date(prev.getTime() + 1000) : null);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [serverTime]);
+
+  const formatServerTime = (d: Date | null) => {
+    if (!d) return 'Loading clock...';
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const mm = pad(d.getMonth() + 1);
+    const dd = pad(d.getDate());
+    const hh = pad(d.getHours());
+    const min = pad(d.getMinutes());
+    const ss = pad(d.getSeconds());
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  };
 
   async function saveWarmup(name: string, nw: NodeWarmup) {
     try {
@@ -580,6 +621,22 @@ export function Warmup() {
       {/* Schedules tab */}
       {tab === 'schedules' && (
         <section className="space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-secondary/35 border border-border/80 rounded-xl px-4 py-3 gap-2.5 text-xs text-muted-foreground shadow-sm">
+            <div className="flex items-center gap-2">
+              <div className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </div>
+              <span className="font-medium text-foreground/80">Server Clock:</span>
+              <span className="font-semibold text-foreground font-mono bg-secondary/85 px-2 py-0.5 rounded border border-border/50">
+                {serverTime ? `${formatServerTime(serverTime)} ${serverTimezone}` : 'Loading server time…'}
+              </span>
+            </div>
+            <span className="text-[10px] text-muted-foreground/70">
+              * Schedules run on server time. Check server/container timezone configuration.
+            </span>
+          </div>
+
           {(() => {
             const active = schedules.filter(s => s.enabled);
             const paused = schedules.filter(s => !s.enabled);

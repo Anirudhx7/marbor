@@ -237,6 +237,8 @@ type SystemInfo struct {
 	RAMTotalMB int64         `json:"ram_total_mb"`
 	RAMFreeMB  int64         `json:"ram_free_mb"`
 	GPUs       []sysGPUEntry `json:"gpus"`
+	ServerTime string        `json:"server_time"`
+	Timezone   string        `json:"timezone"`
 }
 
 type sysGPUEntry struct {
@@ -3096,6 +3098,9 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		n.RUnlock()
 	}
 
+	nowTime := time.Now()
+	zone, _ := nowTime.Zone()
+
 	info := SystemInfo{
 		CPUCores:   runtime.NumCPU(),
 		OS:         runtime.GOOS,
@@ -3103,6 +3108,8 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		RAMTotalMB: totalMB,
 		RAMFreeMB:  freeMB,
 		GPUs:       gpus,
+		ServerTime: nowTime.Format("2006-01-02 15:04:05"),
+		Timezone:   zone,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
