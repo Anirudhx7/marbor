@@ -70,6 +70,8 @@ type Server struct {
 	demoMode      bool        // when true, login accepts admin/admin without DB
 	loginLimiter  *loginRateLimiter
 	logChan       chan store.RequestRecord
+	logDone       chan struct{} // closed by Shutdown to signal drain-and-stop
+	logWg         sync.WaitGroup
 }
 
 // SetVersion sets the version string reported by /health.
@@ -285,17 +287,46 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		st:           stImpl,
 		loginLimiter: newLoginRateLimiter(),
 		logChan:      make(chan store.RequestRecord, 5000),
+		logDone:      make(chan struct{}),
 	}
 	s.ensureAdminUser()
+	s.logWg.Add(1)
 	go s.startAsyncLogger()
 	go s.startPeriodicCleanup()
 	return s
 }
 
 func (s *Server) startAsyncLogger() {
-	for rec := range s.logChan {
-		_ = s.st.AppendRequest(rec)
+	defer s.logWg.Done()
+	for {
+		select {
+		case rec := <-s.logChan:
+			_ = s.st.AppendRequest(rec)
+		case <-s.logDone:
+			// Drain whatever is already buffered, then stop. logChan is
+			// never closed (LogRequest keeps sending on it via a
+			// non-blocking select even after Shutdown), so this only
+			// races benignly: any record enqueued after the drain below
+			// just sits unread, it never panics on a closed channel.
+			for {
+				select {
+				case rec := <-s.logChan:
+					_ = s.st.AppendRequest(rec)
+				default:
+					return
+				}
+			}
+		}
 	}
+}
+
+// Shutdown drains any in-flight request logs and stops the async logger.
+// Call this after the HTTP servers have stopped accepting new requests
+// and before closing the store, or the logger can still be writing
+// through s.st after it's been closed.
+func (s *Server) Shutdown() {
+	close(s.logDone)
+	s.logWg.Wait()
 }
 
 func (s *Server) startPeriodicCleanup() {
