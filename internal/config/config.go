@@ -7,6 +7,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
+	_ "time/tzdata"
 
 	"gopkg.in/yaml.v3"
 )
@@ -76,6 +78,7 @@ type WarmupConfig struct {
 }
 
 type Config struct {
+	Timezone       string            `yaml:"timezone" json:"timezone"`
 	Proxy          ProxyConfig       `yaml:"proxy"`
 	Admin          AdminConfig       `yaml:"admin" json:"admin"`
 	Auth           AuthConfig        `yaml:"auth"`
@@ -336,6 +339,15 @@ func (c AuthConfig) IsEnabled() bool {
 func BoolPtr(b bool) *bool { return &b }
 
 func (c *Config) Validate() error {
+	if c.Timezone == "" {
+		c.Timezone = "Local"
+	}
+	if c.Timezone != "Local" {
+		if _, err := time.LoadLocation(c.Timezone); err != nil {
+			return fmt.Errorf("invalid timezone %q: %w", c.Timezone, err)
+		}
+	}
+
 	if c.Proxy.Port == 0 {
 		c.Proxy.Port = 11434
 	}
