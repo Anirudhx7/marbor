@@ -216,6 +216,7 @@ func main() {
 	}
 
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
+	r.SetTimezone(cfg.Timezone)
 	r.SetStore(st)
 	r.SetDockerConfig(cfg.Docker)
 	if cfg.Docker.Enabled {
@@ -305,6 +306,13 @@ func main() {
 		if loaded > 0 {
 			log.Printf("store: loaded warmup settings for %d node(s)", loaded)
 		}
+	}
+
+	// Load persisted timezone from the KV store.
+	if tzVal, err := st.GetSetting("timezone"); err == nil && tzVal != "" {
+		cfg.Timezone = tzVal
+		r.SetTimezone(tzVal)
+		log.Printf("store: loaded timezone %q", tzVal)
 	}
 
 	// Load persisted schedules (warmup/drain/undrain) from the KV store.

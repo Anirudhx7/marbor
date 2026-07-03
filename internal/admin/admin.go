@@ -862,6 +862,7 @@ func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auth.Reload(newCfg.Auth)
 	s.router.SetWarmupConfig(newCfg.Warmup)
+	s.router.SetTimezone(newCfg.Timezone)
 	s.mu.Lock()
 	s.cfg = *newCfg
 	s.mu.Unlock()
@@ -2252,6 +2253,12 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 	s.cfg = incoming
 	s.mu.Unlock()
+
+	s.router.SetTimezone(incoming.Timezone)
+	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
+		log.Printf("admin: failed to persist timezone setting: %v", err)
+	}
+
 	// Settings now persist to SQLite routing_rules/runtime_nodes/runtime_keys
 	// tables on each mutation. Scalar settings migration to the settings table
 	// completes in Phase 2. config.SaveConfig removed (audit findings #2, #10).

@@ -137,6 +137,7 @@ type Router struct {
 	queueDepth    int32 // atomic, current waiters in WaitForNode
 	queueMaxDepth int
 	queueTimeout  time.Duration
+	timezone      string // timezone location name (e.g. "UTC", "Asia/Kolkata", "Local")
 	warmupCfg     config.WarmupConfig
 	// nodeWarmup holds per-node runtime warmup settings toggled via the admin API
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
@@ -266,6 +267,12 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 func (r *Router) SetWarmupConfig(cfg config.WarmupConfig) {
 	r.mu.Lock()
 	r.warmupCfg = cfg
+	r.mu.Unlock()
+}
+
+func (r *Router) SetTimezone(tz string) {
+	r.mu.Lock()
+	r.timezone = tz
 	r.mu.Unlock()
 }
 
