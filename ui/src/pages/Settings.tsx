@@ -7,6 +7,18 @@ import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig, chang
 import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
+const timezones: string[] = (() => {
+  try {
+    return ['Local', ...Intl.supportedValuesOf('timeZone')];
+  } catch {
+    return [
+      'Local', 'UTC', 'America/New_York', 'America/Los_Angeles', 'America/Chicago',
+      'Europe/London', 'Europe/Paris', 'Asia/Kolkata', 'Asia/Tokyo', 'Asia/Shanghai',
+      'Asia/Singapore', 'Australia/Sydney'
+    ];
+  }
+})();
+
 export function SettingsPage() {
   const { demoMode, setDemoMode } = useDemoMode();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -291,18 +303,11 @@ export function SettingsPage() {
                 onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               >
-                <option value="Local">Local (Server Timezone)</option>
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">America/New York (EST/EDT)</option>
-                <option value="America/Los_Angeles">America/Los Angeles (PST/PDT)</option>
-                <option value="America/Chicago">America/Chicago (CST/CDT)</option>
-                <option value="Europe/London">Europe/London (GMT/BST)</option>
-                <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
-                <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
-                <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
-                <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
-                <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+                {timezones.map(tz => (
+                  <option key={tz} value={tz}>
+                    {tz === 'Local' ? 'Local (Server Timezone)' : tz.replace('_', ' ')}
+                  </option>
+                ))}
               </select>
               <p className="text-[10px] text-muted-foreground mt-1">
                 Scheduler and prediction cycles will evaluate relative to this timezone.
