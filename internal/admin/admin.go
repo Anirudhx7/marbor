@@ -3029,8 +3029,24 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		n.RUnlock()
 	}
 
+	tzName := s.router.Timezone()
+	if tzName == "" {
+		tzName = "Local"
+	}
+
 	nowTime := time.Now()
+	if tzName != "Local" {
+		loc, err := time.LoadLocation(tzName)
+		if err == nil {
+			nowTime = nowTime.In(loc)
+		}
+	}
 	zone, _ := nowTime.Zone()
+
+	displayTz := tzName
+	if tzName == "Local" {
+		displayTz = zone
+	}
 
 	info := SystemInfo{
 		CPUCores:   runtime.NumCPU(),
@@ -3040,7 +3056,7 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		RAMFreeMB:  freeMB,
 		GPUs:       gpus,
 		ServerTime: nowTime.Format("2006-01-02 15:04:05"),
-		Timezone:   zone,
+		Timezone:   displayTz,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
