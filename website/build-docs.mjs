@@ -256,7 +256,7 @@ function page({ slug, title, contentHtml, headings }) {
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
+    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
     <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
@@ -352,7 +352,7 @@ function docsIndexPage() {
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
+    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
     <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
@@ -406,7 +406,8 @@ function titleFromMd(md, slug) {
 }
 
 function main() {
-  const slugs = listMd(DOCS_SRC).filter((s) => s !== "prometheus-alerts");
+  // Exclude internal/design docs from the public site — these stay local (never published).
+  const slugs = listMd(DOCS_SRC).filter((s) => s !== "prometheus-alerts" && !s.startsWith("design/"));
   let count = 0;
   for (const slug of slugs) {
     const md = readFileSync(join(DOCS_SRC, slug + ".md"), "utf8");
