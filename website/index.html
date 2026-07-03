@@ -10,7 +10,7 @@
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
 <title>ollama-mesh - The control plane for self-hosted AI inference</title>
-<meta name="description" content="A lightweight, high-availability load balancer, API gateway, and control plane for self-hosted GPU fleets. Schedules requests based on warm model VRAM residency across Ollama, vLLM, TGI, and llama.cpp nodes." />
+<meta name="description" content="The control plane for self-hosted AI inference. Turn your own GPUs into a high-availability alternative to cloud LLM APIs — warm, VRAM-aware routing across Ollama, vLLM, TGI, and llama.cpp, one OpenAI-compatible gateway, and cost-metered cloud overflow." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="canonical" href="https://anirudh.social/ollama-mesh/" />
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
@@ -20,7 +20,7 @@
 <meta property="og:site_name" content="ollama-mesh" />
 <meta property="og:locale" content="en_US" />
 <meta property="og:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
-<meta property="og:description" content="Turn your local GPUs into a high-availability inference cluster. Warm-state scheduling, multi-runtime load balancing, and cost-aware cloud overflow." />
+<meta property="og:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI & llama.cpp, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
 <meta property="og:url" content="https://anirudh.social/ollama-mesh/" />
 <meta property="og:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
 <meta property="og:image:width" content="1200" />
@@ -28,7 +28,7 @@
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
-<meta name="twitter:description" content="Turn your local GPUs into a high-availability inference cluster. Warm-state scheduling, multi-runtime load balancing, and cost-aware cloud overflow." />
+<meta name="twitter:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI & llama.cpp, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
 <meta name="twitter:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
 <script type="application/ld+json">
 [
@@ -36,7 +36,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "ollama-mesh",
-    "description": "A high-availability Ollama load balancer, API gateway, and control plane for self-hosted GPU fleets. Schedules requests based on warm model VRAM residency across Ollama, vLLM, TGI, and llama.cpp nodes. Falls back to OpenAI or Anthropic only when the cluster is saturated.",
+    "description": "The control plane for self-hosted AI inference. ollama-mesh schedules each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, and llama.cpp, exposing one OpenAI-compatible endpoint with authentication, rate limiting, and cost-metered cloud overflow to OpenAI or Anthropic — a self-hosted alternative to cloud LLM APIs.",
     "url": "https://anirudh.social/ollama-mesh/",
     "downloadUrl": "https://github.com/Anirudhx7/ollama-mesh/releases",
     "applicationCategory": "DeveloperApplication",
@@ -46,7 +46,7 @@
     "programmingLanguage": "Go",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "Anirudh Mehandru", "url": "https://anirudh.social" },
-    "keywords": "Ollama load balancer, Ollama load balancing, load balance Ollama multiple GPUs, Ollama high availability, Ollama clustering, vLLM load balancing, llama.cpp load balancing, Ollama rate limiting, Ollama API gateway, Ollama authentication, GPU-aware LLM routing, Ollama scheduler, warm model routing, local LLM gateway"
+    "keywords": "self-hosted LLM inference, self-hosted LLM gateway, on-prem LLM serving, private LLM inference, self-hosted OpenAI API alternative, GPU-aware LLM routing, warm model VRAM routing, LLM inference control plane, multi-runtime inference, Ollama load balancer, vLLM load balancing, llama.cpp, TGI, LLM cost control"
   },
   {
     "@context": "https://schema.org",
@@ -55,27 +55,32 @@
       {
         "@type": "Question",
         "name": "What is ollama-mesh?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single static Go binary that acts as a control plane and scheduling layer for your self-hosted GPU inference fleet (Ollama, vLLM, TGI, llama.cpp). It routes each request to the GPU node that already has the model warm in VRAM, eliminating cold-start latency. When all nodes are saturated, it falls back to OpenAI or Anthropic and tracks the cost." }
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, and llama.cpp, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs." }
       },
       {
         "@type": "Question",
-        "name": "How does warm-state scheduling work?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh polls each node's state and VRAM allocations every 2 seconds. When a request arrives, it schedules it to the node that already has the requested model resident in VRAM, skipping the multi-second model load time and preventing VRAM thrashing." }
+        "name": "How is ollama-mesh different from a plain load balancer like nginx or HAProxy?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. ollama-mesh reads live model residency and VRAM state on every node and schedules each request to a warm GPU." }
       },
       {
         "@type": "Question",
-        "name": "Does ollama-mesh support vLLM, TGI, and llama.cpp?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. ollama-mesh provides a unified OpenAI-compatible endpoint that transparently orchestrates Ollama, vLLM, TGI, and llama.cpp nodes, translating protocols automatically." }
+        "name": "Does ollama-mesh work with vLLM, TGI, and llama.cpp — or only Ollama?",
+        "acceptedAnswer": { "@type": "Answer", "text": "All four. Despite the name, ollama-mesh is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, and llama.cpp, so you can mix runtimes behind a single URL." }
       },
       {
         "@type": "Question",
-        "name": "What happens when the local cluster is busy?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh automatically overflows to backup cloud providers (OpenAI or Anthropic) only when all local nodes are fully saturated. The scheduler pulls traffic back to local hardware the instant capacity frees up, tracking token-level spend so you only pay for cloud compute when genuinely necessary." }
+        "name": "Can ollama-mesh replace cloud LLM APIs like OpenAI?",
+        "acceptedAnswer": { "@type": "Answer", "text": "That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend." }
       },
       {
         "@type": "Question",
-        "name": "Do I need Docker or Python to run ollama-mesh?",
-        "acceptedAnswer": { "@type": "Answer", "text": "No. ollama-mesh is a single static Go binary with zero runtime dependencies. Install it with one command and it starts in under 10ms. No Python runtime, no Node.js, no Docker container overhead required." }
+        "name": "How does high-availability failover work?",
+        "acceptedAnswer": { "@type": "Answer", "text": "If a node goes offline, ollama-mesh marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA." }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I add authentication and rate limiting in front of my models?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. ollama-mesh acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas — protecting self-hosted GPUs from abuse without changing your application code." }
       }
     ]
   }
@@ -686,13 +691,13 @@ SPCS-FEATURE-END */
 <!-- HERO -->
 <header class="hero">
   <div class="page">
-    <span class="kicker"><span class="dot"></span>{{VERSION}}: vLLM, TGI, llama.cpp · self-hosted · MIT</span>
+    <span class="kicker"><span class="dot"></span>{{VERSION}}: vLLM, TGI, llama.cpp · self-hosted · Apache-2.0</span>
     <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
-      A single-binary load balancer and API gateway that turns your local GPUs into a high-availability Ollama, vLLM, and llama.cpp cluster. 
-      ollama-mesh routes requests dynamically based on real-time model residency in VRAM, eliminating cold starts, 
-      balancing multi-node queue depths, and providing cost-aware cloud failover with full token usage observability. 
-      Works with Ollama, vLLM, TGI, and llama.cpp.
+      A single-binary control plane that turns your own GPUs into a high-availability alternative to cloud LLM APIs.
+      ollama-mesh routes each request to the node already holding the model warm in VRAM — eliminating cold starts,
+      balancing queue depth across nodes, and metering cost-aware cloud overflow with full token accounting.
+      One OpenAI-compatible endpoint for Ollama, vLLM, TGI, and llama.cpp.
     </p>
 
     <div class="cta-row">
@@ -728,7 +733,7 @@ SPCS-FEATURE-END */
     <div class="badge-grid">
       <div class="badge-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>License: <strong>MIT</strong></span>
+        <span>License: <strong>Apache-2.0</strong></span>
       </div>
       <div class="badge-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -871,8 +876,8 @@ SPCS-FEATURE-END -->
 <section id="why-hard" style="padding: 40px 0 80px; border-top: 1px solid var(--border-subtle);">
   <div class="page">
     <p class="eyebrow">The Scheduling Problem</p>
-    <h2 class="sec">Why local LLM load balancing is <em>operationally hard.</em></h2>
-    <p class="sec-sub">Load balancing LLM requests across a self-hosted GPU fleet introduces unique bottlenecks that standard network balancers miss.</p>
+    <h2 class="sec">Why self-hosted LLM inference is <em>operationally hard.</em></h2>
+    <p class="sec-sub">Serving LLMs across your own GPU fleet creates silent bottlenecks that generic load balancers can't see — wasting VRAM, wearing hardware, and breaking reliability.</p>
     
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 32px;">
       <div style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated);">
@@ -905,8 +910,8 @@ SPCS-FEATURE-END -->
 <section id="features">
   <div class="page">
     <p class="eyebrow">Built for platform engineers</p>
-    <h2 class="sec">Everything you need to build a <em>high-availability Ollama cluster.</em></h2>
-    <p class="sec-sub">Abstract all your GPU servers under one URL. ollama-mesh handles warm-state load balancing, failover scheduling, rate limiting, and analytics.</p>
+    <h2 class="sec">Everything you need to run <em>production AI on your own infrastructure.</em></h2>
+    <p class="sec-sub">Point every app at one OpenAI-compatible URL. ollama-mesh handles warm-state routing, high-availability failover, authentication, rate limiting, and cost analytics — across Ollama, vLLM, TGI, and llama.cpp.</p>
 
     <div class="features">
       <div class="feat warm">
@@ -966,7 +971,7 @@ SPCS-FEATURE-END -->
 <section id="how">
   <div class="page">
     <p class="eyebrow">From zero to routed in three steps</p>
-    <h2 class="sec">A unified control plane. <em>Zero-agent Ollama load balancing.</em></h2>
+    <h2 class="sec">A unified control plane. <em>Zero-agent deployment.</em></h2>
     <p class="sec-sub">No complex cluster agents or sidecars on your GPU nodes. ollama-mesh acts as a centralized control plane, communicating directly with your runtimes over standard HTTP APIs.</p>
 
     <div class="steps">
@@ -1016,8 +1021,8 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
 <section id="compare">
   <div class="page">
     <p class="eyebrow">Where it fits</p>
-    <h2 class="sec">Ollama load balancer comparison: ollama-mesh vs. <em>Nginx & HAProxy</em></h2>
-    <p class="sec-sub">Traditional load balancers (like Nginx, HAProxy, or Traefik) route LLM requests blindly. ollama-mesh is built specifically to balance based on GPU and VRAM states. Here is the comparison.</p>
+    <h2 class="sec">Why a GPU-aware scheduler beats a <em>plain load balancer.</em></h2>
+    <p class="sec-sub">Nginx, HAProxy, and Traefik balance TCP connections — they can't see which GPU holds your model warm. ollama-mesh schedules on live GPU and VRAM state instead. Here's the honest breakdown.</p>
 
     <div class="table-wrap"><div class="table-scroll">
       <table class="compare">
@@ -1025,7 +1030,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
           <tr>
             <th>Capability</th>
             <th class="us">ollama-mesh</th>
-            <th>Plain Ollama + nginx load balancer</th>
+            <th>Plain load balancer (nginx / HAProxy)</th>
           </tr>
         </thead>
         <tbody>
@@ -1091,6 +1096,17 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
         <div class="stack-node runtime" style="border-color: var(--accent); color: var(--text);">GPUs<br><span style="font-size: 10px; color: var(--text-muted)">On-Premise / Private Cloud</span></div>
       </div>
     </div>
+
+    <!-- self-hosted vs cloud APIs -->
+    <div style="margin-top: 32px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--accent-bg); display: flex; gap: 16px; align-items: flex-start;">
+      <svg style="width: 20px; height: 20px; color: var(--accent); flex-shrink: 0; margin-top: 2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      <div>
+        <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: bold; color: var(--text);">Self-hosted vs. cloud LLM APIs</h4>
+        <p style="margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6;">
+          Every request ollama-mesh keeps on your own GPUs is a request you don't pay OpenAI or Anthropic for. It meters each cloud-overflow token against your configured reference rate, so you see the exact dollar difference between local and cloud on every response — see the <a href="docs/SAVINGS-MATH.html">savings math</a>.
+        </p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1098,24 +1114,32 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
 <section id="faq" style="padding: 80px 0 40px; border-top: 1px solid var(--border-subtle);">
   <div class="page">
     <p class="eyebrow">Frequently Asked Questions</p>
-    <h2 class="sec">Ollama load balancing & clustering <em>explained.</em></h2>
-    
+    <h2 class="sec">Common questions about <em>self-hosted inference.</em></h2>
+
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; margin-top: 32px;">
       <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">How do you load balance Ollama across multiple GPUs?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Traditional HTTP load balancers like Nginx or HAProxy route requests round-robin, which causes Ollama to constantly reload models in VRAM (VRAM thrashing). <code>ollama-mesh</code> solves this by reading `/api/ps` model state and scheduling requests dynamically to the GPU node where the model is already warm.</p>
+        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">What is ollama-mesh?</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;"><code>ollama-mesh</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, and llama.cpp, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
       </div>
       <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Does ollama-mesh support vLLM, TGI, and llama.cpp?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Yes. It abstracts Ollama, vLLM, TGI, and llama.cpp under a single, unified OpenAI-compatible API endpoint. The load balancer translates requests dynamically based on which model runtime is active on each node.</p>
+        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">How is ollama-mesh different from a plain load balancer like nginx or HAProxy?</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. <code>ollama-mesh</code> reads live model residency and VRAM state on every node and schedules each request to a warm GPU.</p>
       </div>
       <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">How does high availability failover work?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">If a GPU server goes offline, <code>ollama-mesh</code> immediately marks it as unhealthy and routes subsequent requests to other active local nodes. If the entire local GPU cluster becomes saturated or offline, it can optionally fail over to OpenAI or Anthropic seamlessly.</p>
+        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Does ollama-mesh work with vLLM, TGI, and llama.cpp — or only Ollama?</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">All four. Despite the name, <code>ollama-mesh</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, and llama.cpp, so you can mix runtimes behind a single URL.</p>
       </div>
       <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Can I add API keys and rate limiting to Ollama?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Yes. <code>ollama-mesh</code> acts as an API gateway in front of Ollama. It enables Bearer token authentication, restricts keys to specific allowed models, and enforces daily, monthly, or rate-per-hour quotas to protect your self-hosted GPUs from abuse.</p>
+        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Can ollama-mesh replace cloud LLM APIs like OpenAI?</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend.</p>
+      </div>
+      <div>
+        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">How does high-availability failover work?</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">If a node goes offline, <code>ollama-mesh</code> marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA.</p>
+      </div>
+      <div>
+        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Can I add authentication and rate limiting in front of my models?</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Yes. <code>ollama-mesh</code> acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas — protecting self-hosted GPUs from abuse without changing your application code.</p>
       </div>
     </div>
   </div>
@@ -1181,7 +1205,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
       </div>
     </div>
     <div class="foot-bottom">
-      <span>© <span id="year">2026</span> ollama-mesh contributors · MIT</span>
+      <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
       <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span> · <a href="https://github.com/Anirudhx7/ollama-mesh/releases" class="gh-link">releases ↗</a></span>
     </div>
   </div>

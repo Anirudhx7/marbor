@@ -1,0 +1,31 @@
+name: DCO
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  dco:
+    name: Check commit sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify Signed-off-by on every commit
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          missing=0
+          for c in $(git rev-list "$base..$head"); do
+            if ! git show -s --format=%B "$c" | grep -qiE '^Signed-off-by: .+ <.+@.+>'; then
+              echo "::error::Commit is missing a Signed-off-by line (DCO):"
+              git show -s --format='  %h %s' "$c"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "All commits must be signed off. Fix with: git rebase --signoff $base && git push --force-with-lease"
+            exit 1
+          fi
+          echo "All commits are signed off."

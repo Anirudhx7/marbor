@@ -1,10 +1,10 @@
 # ollama-mesh
 
-GPU-aware control plane and scheduler for Ollama. Routes LLM requests to the GPU node that already holds the requested model warm in VRAM, eliminating cold-start latency. Cost-aware cloud overflow to OpenAI or Anthropic when the local cluster is saturated. Single static Go binary with zero runtime dependencies.
+The control plane for self-hosted AI inference — a GPU-aware scheduler and OpenAI-compatible gateway for Ollama, vLLM, TGI, and llama.cpp. Routes each LLM request to the GPU node that already holds the requested model warm in VRAM, eliminating cold-start latency, and turns your own hardware into a high-availability alternative to cloud LLM APIs. Cost-aware cloud overflow to OpenAI or Anthropic only when the local cluster is saturated. Single static Go binary with zero runtime dependencies.
 
 ## What it does
 
-- Warm-first routing: polls each Ollama node's /api/ps every 2 seconds; routes to the node with the model already loaded in VRAM
+- Warm-first routing: polls each node's runtime state every 2 seconds (e.g. Ollama's /api/ps); routes to the node with the model already loaded in VRAM
 - Least-connections tiebreaker across warm nodes
 - Cost-aware cloud overflow: if all local nodes are busy or unreachable, routes to configured OpenAI or Anthropic endpoint
 - Ollama-native response translation: /api/* requests that fall back to cloud get the OpenAI response translated back to Ollama NDJSON format
@@ -48,7 +48,7 @@ export OPENAI_API_KEY=sk-mesh-<generated>
 ## Key facts
 
 - Language: Go (single static binary, no CGO, no Python)
-- License: Apache-2.0
+- License: Apache-2.0 (open-source core); enterprise features under a separate commercial license
 - Ports: :11434 (endpoint), :8080 (admin), :9090 (metrics)
 - Compatible with: any OpenAI SDK, Ollama client, LangChain, llama-index
 - Platforms: Linux, macOS, Windows (amd64, arm64)
@@ -60,4 +60,4 @@ https://github.com/Anirudhx7/ollama-mesh
 
 ## Keywords
 
-Ollama control plane, GPU-aware LLM routing, Ollama scheduler, warm model routing, local LLM gateway, Ollama cluster, OpenAI overflow, Anthropic overflow, cost-aware cloud overflow, VRAM routing
+self-hosted LLM inference, self-hosted LLM gateway, on-prem LLM serving, private LLM inference, self-hosted OpenAI API alternative, GPU-aware LLM routing, warm model VRAM routing, LLM inference control plane, multi-runtime inference, Ollama load balancer, vLLM load balancing, llama.cpp, TGI, cost-aware cloud overflow
