@@ -634,6 +634,8 @@ export interface SystemInfo {
     power_draw_w: number | null;
     healthy: boolean;
   }>;
+  server_time?: string;
+  timezone?: string;
 }
 
 export async function fetchSystemInfo(): Promise<SystemInfo> {
