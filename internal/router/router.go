@@ -490,6 +490,24 @@ func (n *NodeState) GetRuntime() string {
 	return n.Runtime
 }
 
+// localNow converts now into the configured timezone (routing.timezone), or
+// returns it unchanged if unset/"Local"/invalid. Shared by every caller that
+// needs the operator-configured wall-clock hour/day (RecordTransition,
+// RunPredictionCycle, runSchedules) so they can never diverge from each
+// other or from the OS-local zone the binary happens to run under.
+func (r *Router) localNow(now time.Time) time.Time {
+	r.mu.RLock()
+	tz := r.timezone
+	r.mu.RUnlock()
+
+	if tz != "" && tz != "Local" {
+		if l, err := time.LoadLocation(tz); err == nil {
+			now = now.In(l)
+		}
+	}
+	return now
+}
+
 func (r *Router) Start(ctx context.Context) {
 	r.pollNvidiaAll()
 	r.pollAll()
