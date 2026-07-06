@@ -217,6 +217,9 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
   async function save() {
     if (!node) { setError('Pick a node'); return; }
     if (!/^\d{2}:\d{2}$/.test(at)) { setError('Time must be HH:MM'); return; }
+    if ((action === 'warmup' || action === 'unload') && selectedModels.length === 0) {
+      setError('Pick at least one model'); return;
+    }
     setSaving(true); setError(null);
     try {
       await onSave({ action, node, models: (action === 'warmup' || action === 'unload') ? selectedModels : undefined, at, days });
@@ -274,8 +277,23 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Node</label>
               <select value={node} onChange={e => setNode(e.target.value)} className={sel}>
+                {/* If the schedule's stored node is no longer registered (renamed/removed),
+                    render it as an explicit option so the <select>'s displayed value always
+                    matches the `node` state that will actually be submitted. Without this,
+                    the browser silently falls back to visually showing the first real
+                    <option> while `node` state still holds the stale name — so Save appears
+                    to target a live node but actually submits the dead one and gets
+                    rejected by the backend. */}
+                {node && !nodes.some(n => n.name === node) && (
+                  <option value={node}>{node} (not found)</option>
+                )}
                 {nodes.map(n => <option key={n.name} value={n.name}>{n.name}</option>)}
               </select>
+              {node && !nodes.some(n => n.name === node) && (
+                <p className="text-[10px] text-destructive mt-1">
+                  Node "{node}" is no longer registered. Pick a live node to fix this schedule.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Time (24h)</label>
@@ -331,8 +349,13 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Keep `node` pointed at a live node: also self-heal if the previously
+  // selected node disappears from the list (e.g. removed/renamed) while this
+  // form is open, not just when it starts out empty — otherwise the <select>
+  // could fall into the same display/state divergence as ScheduleRow (see
+  // that component's Node <select> for the full explanation).
   useEffect(() => {
-    if (!node && nodes.length > 0) setNode(nodes[0].name);
+    if (nodes.length > 0 && !nodes.some(n => n.name === node)) setNode(nodes[0].name);
   }, [nodes, node]);
 
   function toggleDay(d: number) {
@@ -342,6 +365,9 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
   async function submit() {
     if (!node) { setError('Pick a node'); return; }
     if (!/^\d{2}:\d{2}$/.test(at)) { setError('Time must be HH:MM'); return; }
+    if ((action === 'warmup' || action === 'unload') && selectedModels.length === 0) {
+      setError('Pick at least one model'); return;
+    }
     setSaving(true); setError(null);
     try {
       await onCreate({ action, node, models: (action === 'warmup' || action === 'unload') ? selectedModels : undefined, at, days, enabled: true });

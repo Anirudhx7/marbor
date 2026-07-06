@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -26,8 +27,10 @@ const warmupPingTimeout = 5 * time.Minute
 var warmupHTTPClient = &http.Client{}
 
 // pingWarmupModels sends a zero-token /api/generate with keep_alive to every
-// configured (model, node) pair. Each ping runs in its own goroutine so a slow
-// node can't block others. Safe to call concurrently.
+// configured (model, node) pair. Each node warms in its own goroutine so a
+// slow node can't block others, but multiple models on the same node are
+// pinged one at a time (see the loop below for why). Safe to call
+// concurrently.
 func (r *Router) pingWarmupModels(ctx context.Context) {
 	r.mu.RLock()
 	cfg := r.warmupCfg
@@ -96,17 +99,32 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			loaded[m.Name] = struct{}{}
 		}
 		n.mu.RUnlock()
+		// Collect this node's models into a slice so they can be warmed
+		// sequentially within a single goroutine (see below for why).
+		nodeModels := make([]string, 0, len(models))
 		for model := range models {
 			_, resident := loaded[model]
 			metrics.WarmupResident(model, n.Name, resident)
-			n := n
-			model := model
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("[router] panic in goroutine: %v", r)
-					}
-				}()
+			nodeModels = append(nodeModels, model)
+		}
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[router] panic in goroutine: %v", r)
+				}
+			}()
+			// Different nodes still warm fully in parallel (this goroutine is
+			// per-node, so a slow node can't block others). But models on the
+			// SAME node are warmed one at a time, not fired concurrently:
+			// n.LoadedModels only reflects the last /api/ps poll, so firing
+			// several cold /api/generate loads at once against one node makes
+			// ensureHeadroom's capacity check race (each sees the identical
+			// pre-warmup snapshot) and hands the real runtime two competing
+			// concurrent loads it must arbitrate itself. Loading one model
+			// fully before starting the next keeps headroom accounting honest
+			// and avoids the runtime evicting one warmed model to satisfy the
+			// other.
+			for _, model := range nodeModels {
 				// Make VRAM room (evict coldest non-pinned) before loading, so
 				// warming several models on a tight node can't OOM.
 				r.ensureHeadroom(ctx, n, model)
@@ -115,8 +133,8 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 					status = "error"
 				}
 				metrics.WarmupPing(model, n.Name, status)
-			}()
-		}
+			}
+		}()
 	}
 }
 
@@ -145,16 +163,51 @@ func (r *Router) pingNode(ctx context.Context, n *NodeState, model, keepAlive st
 		return fmt.Errorf("node %s unhealthy", n.Name)
 	}
 
-	body, _ := json.Marshal(map[string]any{
+	err := r.pingEndpoint(ctx, nodeURL, "/api/generate", map[string]any{
 		"model":      model,
 		"keep_alive": keepAlive,
 		"stream":     false,
 	})
+	if err == nil {
+		return nil
+	}
+	var se *statusError
+	if !errors.As(err, &se) || se.status != http.StatusBadRequest {
+		return err
+	}
+	// Embedding-only models (e.g. hf.co/mixedbread-ai/mxbai-embed-large-v1)
+	// reject /api/generate outright with a 400 "does not support generate" -
+	// Ollama only special-cases that capability check away for the
+	// keep_alive:0 unload path, not a warming ping. Retry via /api/embed,
+	// which loads the model into VRAM the same way. Any other status (auth,
+	// 5xx, network) is returned as-is - a 400 is the specific, well-known
+	// signature of "wrong endpoint for this model type", not a generic
+	// failure worth masking with a second request.
+	if embedErr := r.pingEndpoint(ctx, nodeURL, "/api/embed", map[string]any{
+		"model":      model,
+		"input":      "",
+		"keep_alive": keepAlive,
+	}); embedErr != nil {
+		return fmt.Errorf("node %s: generate: %v; embed: %v", n.Name, err, embedErr)
+	}
+	return nil
+}
+
+// statusError wraps a non-2xx HTTP response so callers can branch on the
+// status code without parsing the error string.
+type statusError struct{ status int }
+
+func (e *statusError) Error() string { return fmt.Sprintf("returned %d", e.status) }
+
+// pingEndpoint POSTs payload to path on nodeURL and treats any 4xx/5xx
+// response as a *statusError.
+func (r *Router) pingEndpoint(ctx context.Context, nodeURL, path string, payload map[string]any) error {
+	body, _ := json.Marshal(payload)
 
 	reqCtx, cancel := context.WithTimeout(ctx, warmupPingTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, nodeURL+"/api/generate", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, nodeURL+path, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -166,7 +219,7 @@ func (r *Router) pingNode(ctx context.Context, n *NodeState, model, keepAlive st
 	}
 	resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("node %s returned %d", n.Name, resp.StatusCode)
+		return &statusError{status: resp.StatusCode}
 	}
 	return nil
 }
