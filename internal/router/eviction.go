@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,14 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 )
+
+// ErrModelPinned is returned by UnloadModel when the requested model is on the
+// node's never-evict (pinned) list. Pinning means "never evict or unload
+// without an explicit unpin first" — it must be honored on every unload path
+// (manual and scheduled), not just the automatic LRU eviction path. Callers
+// that want to override this must unpin the model first; there is no
+// force-unload bypass.
+var ErrModelPinned = errors.New("model is pinned; unpin before unloading")
 
 // modelKey composes the lastUsed map key for a (node, model) pair.
 func modelKey(node, model string) string { return node + "\x00" + model }
@@ -135,11 +144,17 @@ func (r *Router) findNode(name string) *NodeState {
 
 // UnloadModel unloads a single model from a node's VRAM on operator request
 // (keep_alive:0). Returns false if the node is unknown. A no-op unload against a
-// model that isn't resident is harmless (Ollama returns success).
+// model that isn't resident is harmless (Ollama returns success). Returns
+// ErrModelPinned without contacting the node if the model is on the node's
+// never-evict list — pinning blocks manual unload the same as auto-eviction;
+// the operator must unpin first.
 func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool, error) {
 	n := r.findNode(nodeName)
 	if n == nil {
 		return false, nil
+	}
+	if r.isPinned(nodeName, model) {
+		return true, ErrModelPinned
 	}
 	return true, r.unloadModel(ctx, n, model, "manual")
 }
@@ -147,7 +162,8 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 // UnloadModels unloads several models from a node immediately (used by the
 // scheduled "unload"/drain-at-night action). Each unload runs in its own
 // goroutine so a slow node can't block the scheduler tick. Unknown nodes and
-// non-Ollama backends are skipped.
+// non-Ollama backends are skipped. Pinned models are skipped (not unloaded)
+// with a log line, same policy as the manual UnloadModel path.
 func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) {
 	n := r.findNode(nodeName)
 	if n == nil {
@@ -156,6 +172,10 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 	}
 	for _, m := range models {
 		if m == "" {
+			continue
+		}
+		if r.isPinned(nodeName, m) {
+			log.Printf("scheduled unload of %q on %s skipped: %v", m, nodeName, ErrModelPinned)
 			continue
 		}
 		m := m
