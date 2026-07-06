@@ -452,7 +452,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		latencyMs = 0 // error requests show as instant fail in UI
 	}
 	if h.admin != nil {
-		tokens := rec.tokenCount()
+		tokens := rec.tokenCount(aborted)
+		logTokens := tokens
+		if logTokens < 0 {
+			logTokens = 0
+		}
 		clientIP := r.RemoteAddr
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 			if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
@@ -461,8 +465,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
 			clientIP = fwd2
 		}
-		h.admin.LogRequest(keyName, clientIP, modelName, node.Name, status, latencyMs, tokens)
-		h.admin.TrackLocalRequestModel(modelName, tokens)
+		h.admin.LogRequest(keyName, clientIP, modelName, node.Name, status, latencyMs, logTokens)
+		if tokens >= 0 {
+			h.admin.TrackLocalRequestModel(modelName, tokens)
+		}
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
@@ -796,7 +802,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
-		tokens := rec.tokenCount()
+		tokens := rec.tokenCount(aborted)
+		logTokens := tokens
+		if logTokens < 0 {
+			logTokens = 0
+		}
 		clientIP := r.RemoteAddr
 		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 			if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
@@ -805,8 +815,10 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
 			clientIP = fwd2
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, tokens)
-		h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
+		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, logTokens)
+		if tokens >= 0 {
+			h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
+		}
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
@@ -888,8 +900,12 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 // tokenCount parses real token usage from the response tail. It scans lines
 // from the end looking for Ollama's final object (eval_count +
 // prompt_eval_count) or an OpenAI-style usage block (total_tokens).
-// Returns 0 when no count is present — callers treat 0 as "unknown".
-func (r *statusRecorder) tokenCount() int64 {
+// Returns 0 when no count is present on a normally-completed response.
+// Returns -1 when aborted is true and no count is present — the terminal
+// chunk carrying the real count was never sent by upstream, so this is a
+// genuinely unknown value, not a real zero-token response; callers must
+// skip cost/analytics accumulation for -1 rather than storing it as 0.
+func (r *statusRecorder) tokenCount(aborted bool) int64 {
 	lines := bytes.Split(r.tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := bytes.TrimSpace(lines[i])
@@ -913,6 +929,9 @@ func (r *statusRecorder) tokenCount() int64 {
 		if t.Usage.TotalTokens > 0 {
 			return t.Usage.TotalTokens
 		}
+	}
+	if aborted {
+		return -1
 	}
 	return 0
 }
