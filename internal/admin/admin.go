@@ -2559,6 +2559,19 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// nodePullTimeout bounds how long ollama-mesh waits for a model pull to
+// finish on the target node before giving up and returning 502. handleNodePull
+// calls Ollama's /api/pull with "stream":false, so — unlike a normal chat/
+// generate request — the upstream sends no response at all (not even
+// headers) until the *entire* download completes. Model pulls, especially
+// Hugging Face-sourced GGUF files (fetched directly from huggingface.co
+// rather than Ollama's CDN-backed registry), routinely take much longer than
+// a typical multi-GB-per-minute registry pull. A short client timeout here
+// aborts an otherwise-successful pull mid-download and surfaces to the admin
+// UI as a spurious "Bad Gateway", even though the node is still working.
+// A var (not const) so tests can override it to keep test runtimes short.
+var nodePullTimeout = 2 * time.Hour
+
 // handleNodePull triggers a model pull on a specific node via POST /api/pull.
 // Accepts: {"model": "llama3:8b"}
 // Returns 200 {"ok":true,"node":"...","model":"..."} on success.
@@ -2604,7 +2617,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := &http.Client{Timeout: nodePullTimeout}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, nodeURL+"/api/pull", bytes.NewReader(pullBody))
 	if err != nil {
 		log.Printf("handleNodePull: build request for node %s: %v", nodeName, err)
