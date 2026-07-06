@@ -426,23 +426,30 @@ func (m *Middleware) Refund(name string) {
 
 func (m *Middleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !m.enabled {
+		// enabled and keys are read under one RLock/RUnlock pair so the closure
+		// never sees enabled from one reload generation alongside keys/byName
+		// from another (a torn read across two Reload() swaps).
+		m.mu.RLock()
+		enabled := m.enabled
+		if !enabled {
 			// Auth enforcement is off, but still extract the key name from the
 			// Authorization header so the request log shows which key was used.
+			var ks *keyState
+			var ok bool
 			if hdr := r.Header.Get("Authorization"); hdr != "" {
 				parts := strings.SplitN(hdr, " ", 2)
 				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-					m.mu.RLock()
-					ks, ok := m.keys[parts[1]]
-					m.mu.RUnlock()
-					if ok {
-						r = r.WithContext(context.WithValue(r.Context(), KeyNameContextKey, ks.name))
-					}
+					ks, ok = m.keys[parts[1]]
 				}
+			}
+			m.mu.RUnlock()
+			if ok {
+				r = r.WithContext(context.WithValue(r.Context(), KeyNameContextKey, ks.name))
 			}
 			next.ServeHTTP(w, r)
 			return
 		}
+		m.mu.RUnlock()
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
