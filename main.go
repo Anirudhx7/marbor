@@ -370,6 +370,7 @@ func main() {
 		log.Printf("WARNING: could not restore analytics from store: %v", err)
 	}
 	adminSrv.StartCounterFlush(ctx)
+	adminSrv.StartPeriodicCleanup(ctx)
 
 	if cfg.HA.Enabled && len(cfg.HA.Peers) > 0 {
 		haMonitor := ha.New(cfg.HA)
