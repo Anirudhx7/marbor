@@ -294,7 +294,6 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 	s.ensureAdminUser()
 	s.logWg.Add(1)
 	go s.startAsyncLogger()
-	go s.startPeriodicCleanup()
 	return s
 }
 
@@ -331,11 +330,22 @@ func (s *Server) Shutdown() {
 	s.logWg.Wait()
 }
 
-func (s *Server) startPeriodicCleanup() {
-	ticker := time.NewTicker(12 * time.Hour)
-	for range ticker.C {
-		s.st.PruneExpiredUserSessions()
-	}
+// StartPeriodicCleanup launches a background goroutine that prunes expired
+// user sessions every 12 hours. Call once after construction; ctx
+// cancellation stops the ticker, mirroring StartCounterFlush.
+func (s *Server) StartPeriodicCleanup(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(12 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.st.PruneExpiredUserSessions()
+			}
+		}
+	}()
 }
 
 func (s *Server) Handler() http.Handler {
