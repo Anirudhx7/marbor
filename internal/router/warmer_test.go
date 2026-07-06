@@ -279,6 +279,67 @@ func TestPingNodeRequestBody(t *testing.T) {
 	}
 }
 
+// TestPingNodeFallsBackToEmbedForEmbeddingOnlyModels reproduces the reported
+// bug: an embedding-only model (e.g. hf.co/mixedbread-ai/mxbai-embed-large-v1)
+// never warmed because /api/generate is the only endpoint pingNode ever used,
+// and Ollama rejects /api/generate for embedding-only models with a 400. It
+// should retry via /api/embed and succeed.
+func TestPingNodeFallsBackToEmbedForEmbeddingOnlyModels(t *testing.T) {
+	var generateHit, embedHit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/generate":
+			generateHit = true
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"\"mxbai-embed-large\" does not support generate"}`))
+		case "/api/embed":
+			embedHit = true
+			w.Write([]byte(`{"embeddings":[[0.1]]}`))
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	router := &Router{client: &http.Client{Timeout: 5 * time.Second}}
+	n := &NodeState{Name: "test", URL: srv.URL, Healthy: true}
+	if err := router.pingNode(context.Background(), n, "mxbai-embed-large", "10m"); err != nil {
+		t.Fatalf("expected fallback to /api/embed to succeed, got: %v", err)
+	}
+	if !generateHit {
+		t.Error("expected /api/generate to be tried first")
+	}
+	if !embedHit {
+		t.Error("expected fallback to /api/embed after /api/generate 400")
+	}
+}
+
+// TestPingNodeDoesNotFallBackOnNon400Errors verifies that only a 400 from
+// /api/generate triggers the /api/embed fallback - any other failure (node
+// down, auth, 5xx) should surface directly instead of masking it behind a
+// second doomed request.
+func TestPingNodeDoesNotFallBackOnNon400Errors(t *testing.T) {
+	var embedHit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/generate":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/api/embed":
+			embedHit = true
+		}
+	}))
+	defer srv.Close()
+
+	router := &Router{client: &http.Client{Timeout: 5 * time.Second}}
+	n := &NodeState{Name: "test", URL: srv.URL, Healthy: true}
+	if err := router.pingNode(context.Background(), n, "llama3.2", "10m"); err == nil {
+		t.Fatal("expected error for 500 response, got nil")
+	}
+	if embedHit {
+		t.Error("should not retry via /api/embed on a non-400 error")
+	}
+}
+
 // TestPingNodeDrainBody verifies that a keep_alive of "0" (drain/unload) is
 // forwarded verbatim — sending any other value would prevent the model from
 // being evicted from VRAM during a scheduled drain.
