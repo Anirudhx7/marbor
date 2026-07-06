@@ -57,7 +57,13 @@ Choose between installing the binary only, or installing and immediately launchi
     ```bash
     curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | PROBE=1 START=1 sh
     ```
-    Installs the binary, scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) to auto-configure `config.yaml`, starts the gateway in the background, and prints operational access details.
+    Installs the binary, scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) to auto-configure `config.yaml`, starts the gateway in the background, and prints operational access details. This starts a plain background process (`nohup`) — it won't survive a reboot.
+
+*   **Option 3: Install, Auto-Discover & Run as a systemd service (production)**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | SERVICE=1 PROBE=1 sh
+    ```
+    Same as Option 2, but instead of a background process it installs and enables an `ollama-mesh.service` systemd unit (`Restart=on-failure`, starts on boot). Requires systemd and root/sudo. Logs via `journalctl -u ollama-mesh -f`.
 
 ---
 

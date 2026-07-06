@@ -26,8 +26,10 @@ const warmupPingTimeout = 5 * time.Minute
 var warmupHTTPClient = &http.Client{}
 
 // pingWarmupModels sends a zero-token /api/generate with keep_alive to every
-// configured (model, node) pair. Each ping runs in its own goroutine so a slow
-// node can't block others. Safe to call concurrently.
+// configured (model, node) pair. Each node warms in its own goroutine so a
+// slow node can't block others, but multiple models on the same node are
+// pinged one at a time (see the loop below for why). Safe to call
+// concurrently.
 func (r *Router) pingWarmupModels(ctx context.Context) {
 	r.mu.RLock()
 	cfg := r.warmupCfg
@@ -96,17 +98,32 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			loaded[m.Name] = struct{}{}
 		}
 		n.mu.RUnlock()
+		// Collect this node's models into a slice so they can be warmed
+		// sequentially within a single goroutine (see below for why).
+		nodeModels := make([]string, 0, len(models))
 		for model := range models {
 			_, resident := loaded[model]
 			metrics.WarmupResident(model, n.Name, resident)
-			n := n
-			model := model
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Printf("[router] panic in goroutine: %v", r)
-					}
-				}()
+			nodeModels = append(nodeModels, model)
+		}
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[router] panic in goroutine: %v", r)
+				}
+			}()
+			// Different nodes still warm fully in parallel (this goroutine is
+			// per-node, so a slow node can't block others). But models on the
+			// SAME node are warmed one at a time, not fired concurrently:
+			// n.LoadedModels only reflects the last /api/ps poll, so firing
+			// several cold /api/generate loads at once against one node makes
+			// ensureHeadroom's capacity check race (each sees the identical
+			// pre-warmup snapshot) and hands the real runtime two competing
+			// concurrent loads it must arbitrate itself. Loading one model
+			// fully before starting the next keeps headroom accounting honest
+			// and avoids the runtime evicting one warmed model to satisfy the
+			// other.
+			for _, model := range nodeModels {
 				// Make VRAM room (evict coldest non-pinned) before loading, so
 				// warming several models on a tight node can't OOM.
 				r.ensureHeadroom(ctx, n, model)
@@ -115,8 +132,8 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 					status = "error"
 				}
 				metrics.WarmupPing(model, n.Name, status)
-			}()
-		}
+			}
+		}()
 	}
 }
 

@@ -2,6 +2,13 @@
 # ollama-mesh installer
 # Downloads the latest release binary from GitHub for your OS and architecture.
 # Usage: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
+#
+# Modes (opt in via env vars):
+#   PROBE=1    scan the local subnet for GPU nodes and write config.yaml
+#   START=1    start ollama-mesh in the background (nohup) after install
+#   SERVICE=1  install+enable a systemd unit instead of nohup (implies START=1);
+#              persists across reboots and restarts on failure. Requires systemd
+#              + root/sudo. Example: curl ... | SERVICE=1 PROBE=1 sh
 
 set -e
 
@@ -28,6 +35,20 @@ for arg in "$@"; do
     PROBE_NETWORK=true
   fi
 done
+
+SERVICE_MODE=false
+if [ "$SERVICE" = "1" ]; then
+  SERVICE_MODE=true
+fi
+for arg in "$@"; do
+  if [ "$arg" = "--service" ]; then
+    SERVICE_MODE=true
+  fi
+done
+# A persistent service implies it should actually be running.
+if [ "$SERVICE_MODE" = true ]; then
+  START_DAEMON=true
+fi
 
 # Detect OS
 OS="$(uname -s)"
@@ -156,20 +177,107 @@ verify_endpoint() {
     elif wget -T 0.5 -t 1 -qO- "http://$IP:8080/info" >/dev/null 2>&1; then
       IS_TGI=true
     fi
-    
+
     if [ "$IS_TGI" = true ]; then
       echo "$IP:8080:tgi"
     else
-      IS_LLAMACPP=false
-      if curl -fs -m 0.5 "http://$IP:8080/health" >/dev/null 2>&1; then
-        IS_LLAMACPP=true
-      elif wget -T 0.5 -t 1 -qO- "http://$IP:8080/health" >/dev/null 2>&1; then
-        IS_LLAMACPP=true
+      HEALTH_BODY=""
+      if command -v curl >/dev/null 2>&1; then
+        HEALTH_BODY=$(curl -fs -m 0.5 "http://$IP:8080/health" 2>/dev/null || true)
+      else
+        HEALTH_BODY=$(wget -T 0.5 -t 1 -qO- "http://$IP:8080/health" 2>/dev/null || true)
       fi
-      if [ "$IS_LLAMACPP" = true ]; then
-        echo "$IP:8080:llamacpp"
+      if [ -n "$HEALTH_BODY" ]; then
+        # ollama-mesh's own /health returns {"proxy_port":...}; a real
+        # llama.cpp server never does. Skip it — it's a mesh instance
+        # (possibly this one), not a raw inference backend to route to.
+        case "$HEALTH_BODY" in
+          *proxy_port*) : ;;
+          *) echo "$IP:8080:llamacpp" ;;
+        esac
       fi
     fi
+  fi
+}
+
+# Install a systemd unit for ollama-mesh so it persists across restarts/
+# reboots, instead of the plain `nohup` background process used otherwise.
+# Requires systemd + root (or sudo). Falls back to the caller starting a
+# plain background process if systemd isn't available.
+setup_systemd_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "  [!] systemd (systemctl) not found; SERVICE=1 requires systemd."
+    return 1
+  fi
+
+  # A pre-existing hand-started (nohup) or otherwise-owned process already
+  # bound to the admin port would make the new systemd unit fail to bind on
+  # restart — warn up front rather than leaving that as a confusing failure.
+  if curl -fs -m 0.5 "http://localhost:8080/health" >/dev/null 2>&1; then
+    echo "  [!] Something is already listening on :8080 (possibly an old"
+    echo "      hand-started ollama-mesh process). Stop it first, or the"
+    echo "      systemd service may fail to bind."
+  fi
+
+  UNIT_PATH="/etc/systemd/system/ollama-mesh.service"
+  WORKDIR="$(pwd)"
+  RUN_USER="${SERVICE_USER:-$(id -un)}"
+  BIN_PATH="$INSTALL_DIR/$BIN_NAME"
+  CONFIG_PATH="$WORKDIR/config.yaml"
+
+  UNIT_CONTENT="[Unit]
+Description=ollama-mesh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${RUN_USER}
+WorkingDirectory=${WORKDIR}
+ExecStart=${BIN_PATH} -config ${CONFIG_PATH}
+Restart=on-failure
+RestartSec=2
+StandardOutput=append:${WORKDIR}/ollama-mesh.log
+StandardError=append:${WORKDIR}/ollama-mesh.log
+
+[Install]
+WantedBy=multi-user.target
+"
+
+  if [ "$(id -u)" = "0" ]; then
+    printf '%s' "$UNIT_CONTENT" > "$UNIT_PATH"
+    if [ "$RUN_USER" != "root" ]; then
+      chown "$RUN_USER" "$CONFIG_PATH" 2>/dev/null || true
+    fi
+    systemctl daemon-reload
+    systemctl enable ollama-mesh >/dev/null 2>&1
+    systemctl restart ollama-mesh
+  elif command -v sudo >/dev/null 2>&1; then
+    printf '%s' "$UNIT_CONTENT" | sudo tee "$UNIT_PATH" >/dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl enable ollama-mesh >/dev/null 2>&1
+    sudo systemctl restart ollama-mesh
+  else
+    echo "  [!] Writing $UNIT_PATH requires root, and sudo is not available."
+    return 1
+  fi
+
+  sleep 1
+  if systemctl is-active --quiet ollama-mesh 2>/dev/null; then
+    echo "ollama-mesh installed as a systemd service and running!"
+    echo "--------------------------------------------------------"
+    echo "  Proxy Endpoint:   http://localhost:11435"
+    echo "  Admin Dashboard:  http://localhost:8080"
+    echo "  Metrics:          http://localhost:9090/metrics"
+    echo "  Unit file:        $UNIT_PATH"
+    echo "  Logs:             journalctl -u ollama-mesh -f  (also ${WORKDIR}/ollama-mesh.log)"
+    echo "  Config:           ${CONFIG_PATH}"
+    echo "--------------------------------------------------------"
+    echo "Enabled — will restart on failure and on reboot."
+    return 0
+  else
+    echo "  [!] ollama-mesh.service failed to start. Check: journalctl -u ollama-mesh -n 50"
+    return 1
   fi
 }
 
@@ -189,6 +297,11 @@ if [ ! -f config.yaml ]; then
       IP_LIST=$(get_local_subnets)
     fi
 
+    # Own addresses are probed separately via the "localhost" check below;
+    # skipping them here avoids discovering this same host twice under two
+    # different names (once by LAN IP, once as "localhost").
+    SELF_IPS=" $(get_local_subnets) "
+
     TEMP_FOUND="$(mktemp)"
     for ip in $IP_LIST; do
       case "$ip" in
@@ -199,6 +312,9 @@ if [ ! -f config.yaml ]; then
       i=1
       while [ $i -le 254 ]; do
         TARGET_IP="${PREFIX}${i}"
+        case "$SELF_IPS" in
+          *" $TARGET_IP "*) i=$((i+1)); continue ;;
+        esac
         verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
         verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
         verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
@@ -282,6 +398,15 @@ EOF
   fi
 else
   echo "config.yaml already exists, using existing configuration."
+fi
+
+if [ "$SERVICE_MODE" = true ]; then
+  echo ""
+  echo "Setting up ollama-mesh as a systemd service..."
+  if setup_systemd_service; then
+    exit 0
+  fi
+  echo "  Falling back to a plain background start (not persistent across reboots)."
 fi
 
 echo ""

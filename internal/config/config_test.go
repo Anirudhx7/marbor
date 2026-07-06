@@ -105,6 +105,53 @@ savings:
 	}
 }
 
+// TestDuplicateNodeURLNormalized verifies that two nodes with the same
+// backend URL are rejected even when they differ only cosmetically (case of
+// scheme/host, trailing slash) and are registered under different names —
+// e.g. a statically-configured "pve" and an auto-discovered
+// "discovered-ollama-1" that both point at the same physical GPU box. Before
+// NormalizeNodeURL, Validate() only caught byte-for-byte identical URL
+// strings, so this exact real-world case slipped through.
+func TestDuplicateNodeURLNormalized(t *testing.T) {
+	yaml := `
+nodes:
+  - name: pve
+    url: http://192.168.1.115:11434
+  - name: discovered-ollama-1
+    url: HTTP://192.168.1.115:11434/
+`
+	tmp, _ := os.CreateTemp("", "config-*.yaml")
+	tmp.WriteString(yaml)
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+
+	_, err := LoadConfig(tmp.Name())
+	if err == nil {
+		t.Fatal("expected error for duplicate node URL under different names")
+	}
+}
+
+func TestNormalizeNodeURL(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool // true if a and b should normalize equal
+	}{
+		{"http://192.168.1.115:11434", "http://192.168.1.115:11434", true},
+		{"http://192.168.1.115:11434", "http://192.168.1.115:11434/", true},
+		{"HTTP://192.168.1.115:11434", "http://192.168.1.115:11434", true},
+		{"http://Host:11434", "http://host:11434", true},
+		{"http://192.168.1.115:11434", "http://192.168.1.116:11434", false},
+		{"http://192.168.1.115:11434", "https://192.168.1.115:11434", false},
+	}
+	for _, c := range cases {
+		gotA, gotB := NormalizeNodeURL(c.a), NormalizeNodeURL(c.b)
+		if (gotA == gotB) != c.want {
+			t.Errorf("NormalizeNodeURL(%q)=%q vs NormalizeNodeURL(%q)=%q: equal=%v, want %v",
+				c.a, gotA, c.b, gotB, gotA == gotB, c.want)
+		}
+	}
+}
+
 func TestDuplicateKeyName(t *testing.T) {
 	yaml := `
 auth:
