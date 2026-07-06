@@ -694,6 +694,56 @@ func TestSyncNodes(t *testing.T) {
 	}
 }
 
+// TestAddNode_RejectsDuplicateURLUnderDifferentName reproduces a real-world
+// bug scenario: a node ("pve") is already registered (as if loaded from
+// config.yaml at router construction time), and a second source — the SQLite
+// store overlay in main.go, the admin "add node" API, or Docker
+// auto-discovery, all of which funnel through Router.AddNode — later tries to
+// register the exact same physical backend under a different auto-generated
+// name ("discovered-ollama-1", the name install.sh's PROBE-based discovery
+// writes into a freshly generated config.yaml). Without a URL-based dedup
+// check, both survive as independent, fully-routable NodeStates that appear
+// to double the mesh's real capacity and split that node's usage/eviction
+// accounting in two. AddNode must reject the second registration and keep
+// only the first-seen node.
+func TestAddNode_RejectsDuplicateURLUnderDifferentName(t *testing.T) {
+	cfg := config.RoutingConfig{}
+	// Simulates router.New(cfg.Nodes, ...) loading "pve" from config.yaml.
+	initial := []config.NodeConfig{
+		{Name: "pve", URL: "http://192.168.1.115:11434"},
+	}
+	r := New(cfg, initial, nil)
+
+	// Simulates the DB-store overlay in main.go calling r.AddNode() for a
+	// runtime/discovered node whose URL is cosmetically different (trailing
+	// slash) but resolves to the identical backend.
+	r.AddNode(config.NodeConfig{Name: "discovered-ollama-1", URL: "http://192.168.1.115:11434/"})
+
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		names := make([]string, len(nodes))
+		for i, n := range nodes {
+			names[i] = n.Name
+		}
+		t.Fatalf("expected 1 live node after duplicate-URL AddNode, got %d: %v", len(nodes), names)
+	}
+	if nodes[0].Name != "pve" {
+		t.Errorf("expected first-seen node %q to survive, got %q", "pve", nodes[0].Name)
+	}
+}
+
+// TestAddNode_AllowsDistinctURLs is the negative case: two genuinely
+// different backends must both be added normally.
+func TestAddNode_AllowsDistinctURLs(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "pve", URL: "http://192.168.1.115:11434"},
+	}, nil)
+	r.AddNode(config.NodeConfig{Name: "other-box", URL: "http://192.168.1.116:11434"})
+	if len(r.Nodes()) != 2 {
+		t.Fatalf("expected 2 live nodes for distinct URLs, got %d", len(r.Nodes()))
+	}
+}
+
 func TestDrainNodeNotFound(t *testing.T) {
 	r := New(config.RoutingConfig{}, nil, nil)
 	if r.DrainNode("nonexistent") {

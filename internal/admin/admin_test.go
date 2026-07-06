@@ -512,3 +512,50 @@ func TestHandlePatchScheduleRejectsUnknownNode(t *testing.T) {
 		t.Errorf("schedule node should remain unchanged after a rejected patch, got %+v", scheds)
 	}
 }
+
+// TestHandleAddNode_RejectsDuplicateURL verifies the admin "add node" API
+// (POST /admin/nodes) refuses to register a URL that already belongs to a
+// different, existing node instead of silently creating a second live
+// NodeState for the same physical backend (see Router.AddNode /
+// FindNodeByURL). This is the admin-API-facing half of the fix; the
+// router-level check itself is covered by
+// TestAddNode_RejectsDuplicateURLUnderDifferentName in internal/router.
+func TestHandleAddNode_RejectsDuplicateURL(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "pve", URL: "http://192.168.1.115:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"name":"discovered-ollama-1","url":"http://192.168.1.115:11434/"}`))
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes", body)
+	rec := httptest.NewRecorder()
+	s.handleAddNode(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 for a URL that duplicates existing node %q", rec.Code, "pve")
+	}
+	if got := len(r.Nodes()); got != 1 {
+		t.Fatalf("router has %d nodes after rejected duplicate add, want 1", got)
+	}
+}
+
+// TestHandleAddNode_AllowsNewURL is the negative case: a genuinely new URL
+// must still be accepted and registered normally.
+func TestHandleAddNode_AllowsNewURL(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "pve", URL: "http://192.168.1.115:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"name":"other-box","url":"http://192.168.1.116:11434"}`))
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes", body)
+	rec := httptest.NewRecorder()
+	s.handleAddNode(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 for a distinct URL", rec.Code)
+	}
+	if got := len(r.Nodes()); got != 2 {
+		t.Fatalf("router has %d nodes after adding a distinct URL, want 2", got)
+	}
+}
