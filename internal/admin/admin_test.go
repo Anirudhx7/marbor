@@ -513,6 +513,44 @@ func TestHandlePatchScheduleRejectsUnknownNode(t *testing.T) {
 	}
 }
 
+// TestHandlePatchScheduleUnknownNodeErrorBodyIsValidJSON is a regression test
+// for a bug where the "node not registered" error body was built with
+// fmt.Sprintf(`{"error":"node %q is not registered"}`, name): %q already
+// wraps its argument in its own literal quote characters, so splicing it into
+// a template that is itself already inside a JSON string produced invalid
+// JSON (the embedded quotes prematurely closed the JSON string value). The
+// frontend's res.json() would throw on that body and silently fall back to a
+// generic "Failed to update schedule" message instead of surfacing the real,
+// actionable error. This asserts the body is valid JSON with the expected
+// "error" field so that regression can't reappear silently.
+func TestHandlePatchScheduleUnknownNodeErrorBodyIsValidJSON(t *testing.T) {
+	s := newScheduleTestServer()
+	rec := doScheduleRequest(s, http.MethodPost, "/admin/schedules", `{"action":"drain","node":"n1","at":"09:00","enabled":true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup: status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	rec = doScheduleRequest(s, http.MethodPatch, "/admin/schedules/"+created.ID, `{"node":"pve"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	var parsed struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+		t.Fatalf("error response body is not valid JSON: %v; body=%q", err, rec.Body.String())
+	}
+	if !strings.Contains(parsed.Error, "pve") || !strings.Contains(parsed.Error, "not registered") {
+		t.Errorf("error = %q, want it to mention the unregistered node %q", parsed.Error, "pve")
+	}
+}
+
 // TestHandleAddNode_RejectsDuplicateURL verifies the admin "add node" API
 // (POST /admin/nodes) refuses to register a URL that already belongs to a
 // different, existing node instead of silently creating a second live
