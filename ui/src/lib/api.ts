@@ -639,6 +639,22 @@ export interface SystemInfo {
 }
 
 export async function fetchSystemInfo(): Promise<SystemInfo> {
+  if (DEMO) {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const serverTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const tzMatch = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(now).find(p => p.type === 'timeZoneName');
+    return demoDelay({
+      cpu_cores: 16,
+      os: 'linux',
+      arch: 'amd64',
+      ram_total_mb: 65536,
+      ram_free_mb: 24576,
+      gpus: [],
+      server_time: serverTime,
+      timezone: tzMatch?.value ?? 'UTC',
+    });
+  }
   const res = await apiFetch(`${BASE}/system-info`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch system info');
   return res.json();
