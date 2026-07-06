@@ -85,7 +85,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			continue
 		}
 		// Warmup uses Ollama's /api/generate keep_alive; skip non-Ollama backends.
-		if n.Runtime != "ollama" && n.Runtime != "" {
+		if rt := n.GetRuntime(); rt != "ollama" && rt != "" {
 			continue
 		}
 		// Residency check (real, not cosmetic): record whether each target model

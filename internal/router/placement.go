@@ -238,7 +238,7 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 
 	var healthy []*NodeState
 	for _, n := range nodes {
-		if runtimeFilter != "" && n.Runtime != runtimeFilter {
+		if runtimeFilter != "" && n.GetRuntime() != runtimeFilter {
 			continue // skip nodes that don't match the requested runtime
 		}
 		n.mu.RLock()
@@ -261,7 +261,7 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	}
 	if sessionID != "" {
 		if node := r.stickyNode(sessionID); node != nil {
-			if runtimeFilter == "" || node.Runtime == runtimeFilter {
+			if runtimeFilter == "" || node.GetRuntime() == runtimeFilter {
 				r.RecordTransition(modelName, time.Now())
 				return node, isModelWarm(node, modelName)
 			}
@@ -300,7 +300,7 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 		if exclude[n.URL] {
 			continue
 		}
-		if runtimeFilter != "" && n.Runtime != runtimeFilter {
+		if runtimeFilter != "" && n.GetRuntime() != runtimeFilter {
 			continue // skip nodes that don't match the requested runtime
 		}
 		n.mu.RLock()
