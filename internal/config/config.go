@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 	_ "time/tzdata"
 
@@ -35,6 +36,26 @@ func ValidateNodeURL(raw string) error {
 		}
 	}
 	return nil
+}
+
+// NormalizeNodeURL returns a canonical form of a node backend URL suitable for
+// identity comparison: lowercase scheme and host (so "HTTP://Host:11434" and
+// "http://host:11434" compare equal) with any trailing slash on the path
+// stripped (so "http://host:11434" and "http://host:11434/" compare equal).
+// Query strings and fragments are dropped since a backend URL should never
+// carry them; this keeps the comparison focused on "same physical endpoint".
+// If raw does not parse as a URL, the lowercased and trailing-slash-trimmed
+// raw string is returned as a best-effort fallback so callers always get a
+// usable comparison key instead of an error.
+func NormalizeNodeURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return strings.ToLower(strings.TrimRight(strings.TrimSpace(raw), "/"))
+	}
+	scheme := strings.ToLower(u.Scheme)
+	host := strings.ToLower(u.Host)
+	path := strings.TrimRight(u.Path, "/")
+	return scheme + "://" + host + path
 }
 
 // WarmupEntry names a model to keep warm and optionally restricts which nodes
@@ -406,10 +427,11 @@ func (c *Config) Validate() error {
 		if err := ValidateNodeURL(n.URL); err != nil {
 			return fmt.Errorf("node %d (%s): %w", i, n.Name, err)
 		}
-		if seenNodeURLs[n.URL] {
-			return fmt.Errorf("duplicate node URL: %s", n.URL)
+		normURL := NormalizeNodeURL(n.URL)
+		if seenNodeURLs[normURL] {
+			return fmt.Errorf("duplicate node URL (same backend under a different name): %s", n.URL)
 		}
-		seenNodeURLs[n.URL] = true
+		seenNodeURLs[normURL] = true
 		if c.Nodes[i].Runtime == "" {
 			c.Nodes[i].Runtime = "ollama"
 		}
