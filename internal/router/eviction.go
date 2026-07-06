@@ -151,6 +151,7 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) {
 	n := r.findNode(nodeName)
 	if n == nil {
+		log.Printf("scheduled unload skipped: node %q not found", nodeName)
 		return
 	}
 	for _, m := range models {

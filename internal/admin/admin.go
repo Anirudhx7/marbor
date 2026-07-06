@@ -1072,6 +1072,19 @@ func (s *Server) persistSchedules(scheds []router.Schedule) {
 	}
 }
 
+// scheduleNodeExists reports whether name matches a currently registered node.
+// Schedules against an unknown node silently no-op every time they fire (the
+// scheduler can't find a target), so both create and patch reject them up
+// front instead of accepting a schedule that will never do anything.
+func (s *Server) scheduleNodeExists(name string) bool {
+	for _, n := range s.router.Nodes() {
+		if n.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 	scheds := s.router.Schedules()
 	if scheds == nil {
@@ -1099,6 +1112,18 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"node is required and at must be HH:MM (24h)"}`))
+		return
+	}
+	if !s.scheduleNodeExists(sc.Node) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf(`{"error":"node %q is not registered"}`, sc.Node)))
+		return
+	}
+	if (sc.Action == "warmup" || sc.Action == "unload") && len(sc.Models) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"at least one model is required for warmup and unload schedules"}`))
 		return
 	}
 	sc.ID = fmt.Sprintf("sched-%d", time.Now().UnixNano())
@@ -1155,10 +1180,29 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 		sc.Models = *patch.Models
 	}
 	if patch.At != nil {
+		if !validHHMM(*patch.At) {
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"at must be HH:MM (24h)"}`, http.StatusBadRequest)
+			return
+		}
 		sc.At = *patch.At
 	}
 	if patch.Days != nil {
 		sc.Days = *patch.Days
+	}
+	// Re-validate the merged schedule so an edit can't leave it pointing at a
+	// node that doesn't exist, or a warmup/unload schedule with no models —
+	// both of which would fire "successfully" every tick and silently do
+	// nothing (see fireSchedule).
+	if !s.scheduleNodeExists(sc.Node) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"node %q is not registered"}`, sc.Node), http.StatusBadRequest)
+		return
+	}
+	if (sc.Action == "warmup" || sc.Action == "unload") && len(sc.Models) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"error":"at least one model is required for warmup and unload schedules"}`, http.StatusBadRequest)
+		return
 	}
 	cur[idx] = sc
 	s.persistSchedules(cur)
