@@ -561,6 +561,31 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		log.Printf("router: rejecting node %q: %v", n.Name, err)
 		return
 	}
+	// Reject a node whose URL already resolves to an existing, differently-named
+	// node. config.Validate() only catches duplicate URLs within a single
+	// config.yaml; it cannot see nodes that arrived from the DB store overlay,
+	// the admin "add node" API, or Docker auto-discovery, all of which funnel
+	// through AddNode. Without this check, the SAME physical backend can end up
+	// registered twice under two names (e.g. a statically-configured "pve" and
+	// an auto-discovered "discovered-ollama-1" both pointing at
+	// 192.168.1.115:11434), which silently doubles perceived capacity and splits
+	// that node's usage/eviction accounting across two independent NodeStates.
+	// Comparison is normalized (case-insensitive scheme/host, trailing-slash
+	// agnostic) so cosmetic differences don't defeat the check. First-seen wins;
+	// the duplicate is logged loudly and dropped rather than silently added.
+	normURL := config.NormalizeNodeURL(n.URL)
+	r.mu.RLock()
+	for _, existing := range r.nodes {
+		if existing.Name == n.Name {
+			continue
+		}
+		if config.NormalizeNodeURL(existing.URL) == normURL {
+			r.mu.RUnlock()
+			log.Printf("router: WARNING: rejecting node %q (%s): URL already registered as node %q — refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
+			return
+		}
+	}
+	r.mu.RUnlock()
 	node := &NodeState{
 		Name:        n.Name,
 		URL:         n.URL,
@@ -740,6 +765,29 @@ func (r *Router) NodeURLs() map[string]string {
 		m[s.Name] = s.URL
 	}
 	return m
+}
+
+// FindNodeByURL returns the name of an existing node whose URL matches url
+// under normalized comparison (case-insensitive scheme/host, trailing-slash
+// agnostic), and true if found. excludeName is skipped so callers can check
+// "does this URL belong to some OTHER node" (e.g. an admin API update that
+// re-submits the same node's own URL is not a collision). Used to reject
+// admin "add node" requests that would silently duplicate an already-known
+// backend under a second name — see AddNode for the same check applied to
+// the DB store overlay and Docker discovery paths.
+func (r *Router) FindNodeByURL(url string, excludeName string) (string, bool) {
+	norm := config.NormalizeNodeURL(url)
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.Name == excludeName {
+			continue
+		}
+		if config.NormalizeNodeURL(n.URL) == norm {
+			return n.Name, true
+		}
+	}
+	return "", false
 }
 
 // UpstreamTimeout returns the configured upstream response-header timeout.
