@@ -171,6 +171,11 @@ type Router struct {
 	predictionsMetTotal      int64
 	lastAccuracyLogAt        time.Time
 	lastTimeOfDayPrewarmHour int
+
+	// pollInFlight guards against overlapping pollAll cycles: if a node hangs
+	// past its 5s timeout, the next ticker tick skips rather than stacking a
+	// second concurrent pollAll goroutine.
+	pollInFlight atomic.Bool
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -541,7 +546,15 @@ func (r *Router) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			r.pollAll()
+			// Run asynchronously, but skip this tick if the previous pollAll
+			// (bounded by each pollNode's 5s timeout) hasn't finished yet -
+			// otherwise a hung node would let poll cycles stack goroutines.
+			if r.pollInFlight.CompareAndSwap(false, true) {
+				go func() {
+					defer r.pollInFlight.Store(false)
+					r.pollAll()
+				}()
+			}
 		case <-dockerTicker.C:
 			r.discoverAndAddDockerNodes()
 		case <-nvidiaTicker.C:
