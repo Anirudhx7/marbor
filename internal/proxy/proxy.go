@@ -75,6 +75,14 @@ type Handler struct {
 	// only the wait for response headers, never the streaming body, so R2 holds.
 	cloudTransportOnce sync.Once
 	cloudTransport     *http.Transport
+
+	// localTransportOnce guards lazy construction of localTransport, a single
+	// shared *http.Transport for local node proxying. Mirrors cloudTransport:
+	// one instance per Handler keeps a live idle-connection pool keyed by
+	// scheme+host+port instead of allocating a fresh, poolless transport (and
+	// therefore a fresh TCP/TLS handshake) on every request.
+	localTransportOnce sync.Once
+	localTransport     *http.Transport
 }
 
 // cloudRoundTripper returns the shared cloud transport, constructing it once.
@@ -87,6 +95,18 @@ func (h *Handler) cloudRoundTripper() *http.Transport {
 		h.cloudTransport = t
 	})
 	return h.cloudTransport
+}
+
+// localRoundTripper returns the shared local-node transport, constructing it
+// once. ResponseHeaderTimeout bounds only the wait for response headers
+// (never the streaming body), so R2 holds.
+func (h *Handler) localRoundTripper() *http.Transport {
+	h.localTransportOnce.Do(func() {
+		h.localTransport = &http.Transport{
+			ResponseHeaderTimeout: h.router.UpstreamTimeout(),
+		}
+	})
+	return h.localTransport
 }
 
 func NewHandler(r *router.Router, a *admin.Server, al *audit.Logger) *Handler {
@@ -303,9 +323,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// accepts the connection but hangs (model load stall, GPU OOM) does not
 	// block the client or leak goroutines. This covers only the wait for
 	// response headers - NOT the streaming body - so R2 (no buffering) is safe.
-	transport := &http.Transport{
-		ResponseHeaderTimeout: h.router.UpstreamTimeout(),
-	}
+	transport := h.localRoundTripper()
 
 	// Feature 1: retry/failover loop. The ErrorHandler fires only when the
 	// upstream failed before sending any response bytes, so retrying a
