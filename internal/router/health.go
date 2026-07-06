@@ -100,7 +100,14 @@ func (r *Router) pollNode(n *NodeState) {
 	needsDetect := n.autoDetect && n.Runtime == "auto"
 	n.mu.RUnlock()
 	if needsDetect {
-		detected := runtimepkg.DetectRuntime(ctx, n.URL, r.client)
+		detected, reached := runtimepkg.DetectRuntime(ctx, n.URL, r.client)
+		if !reached {
+			// Node was never actually contacted (transport-level failure) -
+			// leave autoDetect pending so the next poll interval retries,
+			// instead of permanently committing the "ollama" fallback.
+			r.markFailure(n)
+			return
+		}
 		n.mu.Lock()
 		n.Runtime = detected
 		n.probe = runtimepkg.NewProbe(detected, r.client)
