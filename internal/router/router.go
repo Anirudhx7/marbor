@@ -156,6 +156,11 @@ type Router struct {
 	// lastEvictAt throttles auto-eviction per node (thrash guard), guarded by evictMu.
 	evictMu     sync.Mutex
 	lastEvictAt map[string]time.Time
+	// warmReserved tracks VRAM bytes reserved for warmup loads that have started
+	// but aren't yet reflected in a node's LoadedModels (populated only by the
+	// next /api/ps poll). Keyed by node -> model. Guarded by evictMu. See
+	// reserveWarmBytes in eviction.go for why this exists.
+	warmReserved map[string]map[string]warmReservation
 	// store persists the warm-state residency map so the router starts warm after
 	// a restart instead of cold (Phase 1). Set once via SetStore before Start; nil
 	// disables all warm-state persistence (the default for tests). Guarded by r.mu.
@@ -253,6 +258,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		lastUsed:                 make(map[string]time.Time),
 		pinned:                   make(map[string]map[string]bool),
 		lastEvictAt:              make(map[string]time.Time),
+		warmReserved:             make(map[string]map[string]warmReservation),
 		nvidiaCache:              make(map[int]GPUStats),
 		nvidiaPollInterval:       nvidiaPollInterval,
 		notifyCh:                 make(chan struct{}),

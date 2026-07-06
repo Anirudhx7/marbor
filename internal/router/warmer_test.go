@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -129,6 +131,108 @@ func TestPerNodeRuntimeWarmupPings(t *testing.T) {
 	case <-calls:
 	case <-time.After(2 * time.Second):
 		t.Fatal("per-node runtime warmup ping never fired")
+	}
+}
+
+// TestPingWarmupModelsSequentialPerNode verifies that when multiple models are
+// warmed on the SAME node, their pings are never in flight at the same time.
+// Firing them concurrently races ensureHeadroom's headroom check (both calls
+// would see the identical pre-warmup LoadedModels snapshot) and hands the
+// real runtime two competing cold loads to arbitrate itself - which is how a
+// node ends up with only one of the two requested models actually resident.
+func TestPingWarmupModelsSequentialPerNode(t *testing.T) {
+	var inFlight int32
+	var maxInFlight int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		for {
+			old := atomic.LoadInt32(&maxInFlight)
+			if cur <= old || atomic.CompareAndSwapInt32(&maxInFlight, old, cur) {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond) // simulate a slow cold load
+		atomic.AddInt32(&inFlight, -1)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes: []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		nodeWarmup: map[string]NodeWarmup{
+			"n1": {Enabled: true, Models: []string{"llama3", "mistral"}},
+		},
+	}
+	r.pingWarmupModels(context.Background())
+	time.Sleep(400 * time.Millisecond) // both pings should have completed by now
+
+	if got := atomic.LoadInt32(&maxInFlight); got > 1 {
+		t.Errorf("models on the same node were pinged concurrently (max in-flight = %d), want sequential (1)", got)
+	}
+}
+
+// TestWarmupBothModelsStayResidentOnNodeWithHeadroom reproduces the reported
+// bug end to end: a node with two distinct models selected for warmup, and
+// enough combined VRAM for both, should end up with BOTH resident. The fake
+// node below models a runtime that can only complete one concurrent cold
+// load at a time (an observed real-world characteristic): if a second load
+// request arrives while an earlier one on a different model is still being
+// processed, the earlier one is aborted rather than becoming resident. That
+// is the actual failure mode this bug produces. Sequential per-node dispatch
+// (the fix) never presents the node with two overlapping loads, so both
+// models end up resident.
+func TestWarmupBothModelsStayResidentOnNodeWithHeadroom(t *testing.T) {
+	var mu sync.Mutex
+	inFlightModel := ""
+	aborted := map[string]bool{}
+	resident := map[string]bool{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body struct {
+			Model string `json:"model"`
+		}
+		_ = json.Unmarshal(raw, &body)
+
+		mu.Lock()
+		if inFlightModel != "" && inFlightModel != body.Model {
+			// A different model started loading while this node already had
+			// one in flight: a real GPU can't hold two uncommitted cold
+			// loads' worth of VRAM at once, so the earlier one is aborted.
+			aborted[inFlightModel] = true
+		}
+		inFlightModel = body.Model
+		mu.Unlock()
+
+		time.Sleep(50 * time.Millisecond) // simulate a slow cold load
+
+		mu.Lock()
+		if inFlightModel == body.Model {
+			inFlightModel = ""
+		}
+		if !aborted[body.Model] {
+			resident[body.Model] = true
+		}
+		mu.Unlock()
+
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes: []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		nodeWarmup: map[string]NodeWarmup{
+			"n1": {Enabled: true, Models: []string{"llama3", "mistral"}},
+		},
+	}
+	r.pingWarmupModels(context.Background())
+	time.Sleep(400 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !resident["llama3"] || !resident["mistral"] {
+		t.Fatalf("expected both models to stay resident after warmup, got %v", resident)
 	}
 }
 
