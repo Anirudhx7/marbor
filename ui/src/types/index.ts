@@ -121,6 +121,7 @@ export interface Settings {
   prometheusEnabled: boolean;
   prometheusPort: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  timezone: string;
 }
 
 export interface Savings {
