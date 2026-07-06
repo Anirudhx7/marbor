@@ -123,6 +123,7 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 		var (
 			completionTokens int64
 			promptTokens     int64
+			sawDone          bool
 		)
 
 		for scanner.Scan() {
@@ -134,6 +135,7 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 			}
 			payload := strings.TrimPrefix(raw, "data: ")
 			if payload == "[DONE]" {
+				sawDone = true
 				break
 			}
 
@@ -180,6 +182,20 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 					return
 				}
 			}
+		}
+
+		// A genuine [DONE] sentinel means the upstream finished normally.
+		// Anything else (scanner error, or the loop exiting because the
+		// connection dropped before [DONE] arrived) is a truncated stream -
+		// report it as an error instead of fabricating a done:true success
+		// line that would hide the truncation from the client.
+		if err := scanner.Err(); err != nil || !sawDone {
+			if err == nil {
+				err = io.ErrUnexpectedEOF
+			}
+			pw.Write(append(buildErrorNDJSON(err.Error()), '\n')) //nolint:errcheck -- CloseWithError below reports it
+			pw.CloseWithError(err)
+			return
 		}
 
 		// Final done:true line.
@@ -335,6 +351,16 @@ func buildChatNDJSON(model, content string, done bool, evalCount, promptEvalCoun
 		line.Message = &ollamaMessage{Role: "assistant", Content: content}
 	}
 	b, _ := json.Marshal(line)
+	return b
+}
+
+// buildErrorNDJSON builds a distinct NDJSON error line for a truncated
+// stream, so a client scanning for "done":true never mistakes it for a
+// successful completion.
+func buildErrorNDJSON(message string) []byte {
+	b, _ := json.Marshal(struct {
+		Error string `json:"error"`
+	}{Error: message})
 	return b
 }
 
