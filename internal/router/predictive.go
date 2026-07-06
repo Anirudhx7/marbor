@@ -34,6 +34,7 @@ func (r *Router) RecordTransition(toModel string, now time.Time) {
 	if toModel == "" {
 		return
 	}
+	now = r.localNow(now)
 	r.predictiveMu.Lock()
 	defer r.predictiveMu.Unlock()
 
@@ -62,15 +63,7 @@ func (r *Router) RecordTransition(toModel string, now time.Time) {
 
 // RunPredictionCycle executes the prediction and accuracy check.
 func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
-	r.mu.RLock()
-	tz := r.timezone
-	r.mu.RUnlock()
-
-	if tz != "" && tz != "Local" {
-		if l, err := time.LoadLocation(tz); err == nil {
-			now = now.In(l)
-		}
-	}
+	now = r.localNow(now)
 
 	r.predictiveMu.Lock()
 	r.cleanExpiredPredictions(now)
