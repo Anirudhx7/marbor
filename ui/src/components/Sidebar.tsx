@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { forcedDemo } from '../hooks/useDemoMode';
+import { fetchHealth } from '../lib/api';
 import type { SessionData } from '../types';
 
 const navItems = [
@@ -48,10 +49,17 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  const [version, setVersion] = useState<string>(__APP_VERSION__);
 
   useEffect(() => {
     setIsOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    fetchHealth().then(h => {
+      if (h.version) setVersion(h.version);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : '';
@@ -81,7 +89,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
             <span className="font-semibold text-foreground text-sm tracking-tight">
               ollama<span className="text-primary">-mesh</span>
             </span>
-            <span className="text-[10px] font-medium text-muted-foreground leading-none">v{__APP_VERSION__}</span>
+            <span className="text-[10px] font-medium text-muted-foreground leading-none">v{version}</span>
           </div>
         </div>
       </div>

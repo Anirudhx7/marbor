@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,14 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 )
+
+// ErrModelPinned is returned by UnloadModel when the requested model is on the
+// node's never-evict (pinned) list. Pinning means "never evict or unload
+// without an explicit unpin first" — it must be honored on every unload path
+// (manual and scheduled), not just the automatic LRU eviction path. Callers
+// that want to override this must unpin the model first; there is no
+// force-unload bypass.
+var ErrModelPinned = errors.New("model is pinned; unpin before unloading")
 
 // modelKey composes the lastUsed map key for a (node, model) pair.
 func modelKey(node, model string) string { return node + "\x00" + model }
@@ -146,11 +155,17 @@ func (r *Router) nodeExistsLocked(name string) bool {
 
 // UnloadModel unloads a single model from a node's VRAM on operator request
 // (keep_alive:0). Returns false if the node is unknown. A no-op unload against a
-// model that isn't resident is harmless (Ollama returns success).
+// model that isn't resident is harmless (Ollama returns success). Returns
+// ErrModelPinned without contacting the node if the model is on the node's
+// never-evict list — pinning blocks manual unload the same as auto-eviction;
+// the operator must unpin first.
 func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool, error) {
 	n := r.findNode(nodeName)
 	if n == nil {
 		return false, nil
+	}
+	if r.isPinned(nodeName, model) {
+		return true, ErrModelPinned
 	}
 	return true, r.unloadModel(ctx, n, model, "manual")
 }
@@ -158,14 +173,20 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 // UnloadModels unloads several models from a node immediately (used by the
 // scheduled "unload"/drain-at-night action). Each unload runs in its own
 // goroutine so a slow node can't block the scheduler tick. Unknown nodes and
-// non-Ollama backends are skipped.
+// non-Ollama backends are skipped. Pinned models are skipped (not unloaded)
+// with a log line, same policy as the manual UnloadModel path.
 func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) {
 	n := r.findNode(nodeName)
 	if n == nil {
+		log.Printf("scheduled unload skipped: node %q not found", nodeName)
 		return
 	}
 	for _, m := range models {
 		if m == "" {
+			continue
+		}
+		if r.isPinned(nodeName, m) {
+			log.Printf("scheduled unload of %q on %s skipped: %v", m, nodeName, ErrModelPinned)
 			continue
 		}
 		m := m
@@ -268,6 +289,69 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string) int64 {
 	return 0
 }
 
+// warmReservation records that a warmup load for a (node, model) pair has
+// started but isn't yet confirmed resident by the poller.
+type warmReservation struct {
+	bytes int64
+	at    time.Time
+}
+
+// warmReservationTTL bounds how long an in-flight warmup reservation can
+// influence headroom accounting. It mirrors warmupPingTimeout (the longest a
+// cold load is allowed to take) so a reservation naturally decays once the
+// load could plausibly be finished, even if nothing explicitly clears it
+// (e.g. a one-shot caller like predictive prewarm that never rechecks
+// residency for that model).
+const warmReservationTTL = warmupPingTimeout
+
+// reserveWarmBytes records that `model` on `node` is about to consume estBytes
+// of VRAM and returns the bytes already reserved for OTHER models on the same
+// node whose warmup is still in flight. Expired reservations (older than
+// warmReservationTTL) are dropped opportunistically. Guarded by evictMu.
+//
+// This exists because n.LoadedModels only reflects the last /api/ps poll: when
+// two models are warmed on the same node close together, the second model's
+// headroom check would otherwise see the exact same pre-warmup snapshot as the
+// first and conclude — wrongly — that it has the whole node to itself.
+func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
+	r.evictMu.Lock()
+	defer r.evictMu.Unlock()
+	if r.warmReserved == nil {
+		r.warmReserved = make(map[string]map[string]warmReservation)
+	}
+	byModel := r.warmReserved[node]
+	if byModel == nil {
+		byModel = make(map[string]warmReservation)
+		r.warmReserved[node] = byModel
+	}
+	now := time.Now()
+	var others int64
+	for m, res := range byModel {
+		if now.Sub(res.at) > warmReservationTTL {
+			delete(byModel, m)
+			continue
+		}
+		if m == model {
+			continue
+		}
+		others += res.bytes
+	}
+	byModel[model] = warmReservation{bytes: estBytes, at: now}
+	return others
+}
+
+// clearWarmReservation drops any in-flight VRAM reservation for (node, model).
+// Called once the poller confirms the model is actually resident, so a stale
+// reservation can't keep double-counting against the now-real usedBytes on
+// later headroom checks. Guarded by evictMu.
+func (r *Router) clearWarmReservation(node, model string) {
+	r.evictMu.Lock()
+	if byModel := r.warmReserved[node]; byModel != nil {
+		delete(byModel, model)
+	}
+	r.evictMu.Unlock()
+}
+
 // ensureHeadroom makes room on a node before it proactively loads `model`. If the
 // model isn't already resident and its estimated size won't fit in free VRAM, it
 // evicts the coldest non-pinned models first. It is a no-op when the model is
@@ -290,12 +374,29 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 		}
 	}
 	n.mu.RUnlock()
+	if resident {
+		// The poller has confirmed this model is loaded; drop any leftover
+		// in-flight reservation so it stops double-counting against the real
+		// usedBytes above on a later headroom check for a sibling model.
+		r.clearWarmReservation(nodeName, model)
+	}
 	if resident || totalBytes <= 0 {
 		return
 	}
 	est := r.estimateModelSizeBytes(nodeURL, model)
-	if est <= 0 || totalBytes-usedBytes >= est {
-		return // unknown size, or it already fits
+	if est <= 0 {
+		return // unknown size
+	}
+
+	// Reserve this model's estimated footprint now, and pick up whatever other
+	// models on this node are still mid-warmup (started, not yet poll-confirmed).
+	// Without this, warming two models on the same node races: both read the
+	// identical pre-warmup snapshot and each independently — and wrongly —
+	// concludes it has the entire node's free VRAM to itself.
+	reservedByOthers := r.reserveWarmBytes(nodeName, model, est)
+
+	if totalBytes-usedBytes-reservedByOthers >= est {
+		return // fits alongside real usage and any other in-flight loads
 	}
 	// Thrash guard: at most one auto-eviction per node per cooldown window.
 	r.evictMu.Lock()
@@ -309,5 +410,5 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	r.lastEvictAt[nodeName] = time.Now()
 	r.evictMu.Unlock()
 
-	r.EvictForHeadroom(ctx, nodeName, est)
+	r.EvictForHeadroom(ctx, nodeName, est+reservedByOthers)
 }
