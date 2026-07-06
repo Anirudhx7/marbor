@@ -237,6 +237,8 @@ type SystemInfo struct {
 	RAMTotalMB int64         `json:"ram_total_mb"`
 	RAMFreeMB  int64         `json:"ram_free_mb"`
 	GPUs       []sysGPUEntry `json:"gpus"`
+	ServerTime string        `json:"server_time"`
+	Timezone   string        `json:"timezone"`
 }
 
 type sysGPUEntry struct {
@@ -861,6 +863,7 @@ func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	}
 	s.auth.Reload(newCfg.Auth)
 	s.router.SetWarmupConfig(newCfg.Warmup)
+	s.router.SetTimezone(newCfg.Timezone)
 	s.mu.Lock()
 	s.cfg = *newCfg
 	s.mu.Unlock()
@@ -2313,6 +2316,12 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 	s.cfg = incoming
 	s.mu.Unlock()
+
+	s.router.SetTimezone(incoming.Timezone)
+	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
+		log.Printf("admin: failed to persist timezone setting: %v", err)
+	}
+
 	// Settings now persist to SQLite routing_rules/runtime_nodes/runtime_keys
 	// tables on each mutation. Scalar settings migration to the settings table
 	// completes in Phase 2. config.SaveConfig removed (audit findings #2, #10).
@@ -3096,6 +3105,25 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		n.RUnlock()
 	}
 
+	tzName := s.router.Timezone()
+	if tzName == "" {
+		tzName = "Local"
+	}
+
+	nowTime := time.Now()
+	if tzName != "Local" {
+		loc, err := time.LoadLocation(tzName)
+		if err == nil {
+			nowTime = nowTime.In(loc)
+		}
+	}
+	zone, _ := nowTime.Zone()
+
+	displayTz := tzName
+	if tzName == "Local" {
+		displayTz = zone
+	}
+
 	info := SystemInfo{
 		CPUCores:   runtime.NumCPU(),
 		OS:         runtime.GOOS,
@@ -3103,6 +3131,8 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		RAMTotalMB: totalMB,
 		RAMFreeMB:  freeMB,
 		GPUs:       gpus,
+		ServerTime: nowTime.Format("2006-01-02 15:04:05"),
+		Timezone:   displayTz,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

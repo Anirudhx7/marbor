@@ -184,6 +184,7 @@ export const defaultSettings: Settings = {
   prometheusEnabled: true,
   prometheusPort: 9090,
   logLevel: 'info',
+  timezone: 'Local',
 };
 
 export const mockSavings: Savings = {

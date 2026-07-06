@@ -7,6 +7,81 @@ import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig, chang
 import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 
+const getTimezoneOffsetMinutes = (tz: string): number => {
+  if (tz === 'Local') return -999999;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const offsetPart = parts.find(p => p.type === 'timeZoneName');
+    const offset = offsetPart ? offsetPart.value : '';
+    if (offset === 'GMT' || offset === 'UTC') return 0;
+    const match = offset.match(/(?:GMT|UTC)([+-])(\d+)(?::(\d+))?/);
+    if (match) {
+      const sign = match[1] === '+' ? 1 : -1;
+      const hours = parseInt(match[2], 10);
+      const minutes = parseInt(match[3] || '0', 10);
+      return sign * (hours * 60 + minutes);
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+};
+
+const timezones: string[] = (() => {
+  let list = ['Local'];
+  try {
+    list = ['Local', ...Intl.supportedValuesOf('timeZone')];
+  } catch {
+    list = [
+      'Local', 'UTC', 'America/New_York', 'America/Los_Angeles', 'America/Chicago',
+      'Europe/London', 'Europe/Paris', 'Asia/Kolkata', 'Asia/Tokyo', 'Asia/Shanghai',
+      'Asia/Singapore', 'Australia/Sydney'
+    ];
+  }
+  return list.sort((a, b) => {
+    const offsetA = getTimezoneOffsetMinutes(a);
+    const offsetB = getTimezoneOffsetMinutes(b);
+    if (offsetA !== offsetB) {
+      return offsetA - offsetB;
+    }
+    return a.localeCompare(b);
+  });
+})();
+
+const getTimezoneLabel = (tz: string): string => {
+  if (tz === 'Local') return 'Local (Server Timezone)';
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const offsetPart = parts.find(p => p.type === 'timeZoneName');
+    const offset = offsetPart ? offsetPart.value : '';
+
+    let formattedOffset = offset;
+    if (offset === 'GMT' || offset === 'UTC') {
+      formattedOffset = 'UTC+00:00';
+    } else {
+      const match = offset.match(/(?:GMT|UTC)([+-])(\d+)(?::(\d+))?/);
+      if (match) {
+        const sign = match[1];
+        const hours = match[2].padStart(2, '0');
+        const minutes = match[3] || '00';
+        formattedOffset = `UTC${sign}${hours}:${minutes}`;
+      }
+    }
+    const displayOffset = formattedOffset ? `(${formattedOffset}) ` : '';
+    return `${displayOffset}${tz.replace(/_/g, ' ')}`;
+  } catch {
+    return tz.replace(/_/g, ' ');
+  }
+};
+
 export function SettingsPage() {
   const { demoMode, setDemoMode } = useDemoMode();
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -46,6 +121,7 @@ export function SettingsPage() {
           prometheusEnabled: settingsData.metrics?.enabled || false,
           prometheusPort: settingsData.metrics?.port || 9090,
           logLevel: settingsData.proxy?.log_level || 'info',
+          timezone: settingsData.timezone || 'Local',
         });
         setCloudProviders(providersData || []);
         setError(null);
@@ -67,6 +143,7 @@ export function SettingsPage() {
     try {
       // Map UI settings to backend config format
       const payload = {
+        timezone: settings.timezone,
         proxy: { port: settings.proxyPort, log_level: settings.logLevel },
         auth: { enabled: settings.authMode === 'api-key' },
         routing: { poll_interval_ms: settings.pollingInterval },
@@ -278,6 +355,26 @@ export function SettingsPage() {
                 onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) })}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Timezone
+              </label>
+              <select
+                value={settings.timezone}
+                onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              >
+                {timezones.map(tz => (
+                  <option key={tz} value={tz}>
+                    {getTimezoneLabel(tz)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Scheduler and prediction cycles will evaluate relative to this timezone.
+              </p>
             </div>
 
             <div>
