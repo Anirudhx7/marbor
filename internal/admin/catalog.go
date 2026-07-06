@@ -12,6 +12,12 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
+// hfHTTPClient is shared across all Hugging Face search/browse requests.
+// http.Client is safe for concurrent use, and a single instance keeps a live
+// idle-connection pool instead of forcing a fresh TCP/TLS handshake (and
+// TIME_WAIT churn) on every admin browsing request.
+var hfHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 // CatalogModel is a curated, popular Ollama model baked into the binary.
 type CatalogModel struct {
 	Name        string         `json:"name"`         // e.g. "llama3.2:3b"
@@ -448,8 +454,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := hfHTTPClient.Do(req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"fetch from Hugging Face: %s"}`, err.Error()), http.StatusBadGateway)
 		return
@@ -500,8 +505,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := hfHTTPClient.Do(req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"fetch from Hugging Face: %s"}`, err.Error()), http.StatusBadGateway)
 		return
