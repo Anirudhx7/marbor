@@ -481,6 +481,15 @@ func (n *NodeState) RUnlock() {
 	n.mu.RUnlock()
 }
 
+// GetRuntime returns n.Runtime under RLock. Runtime is written under Lock by
+// pollNode's auto-detect path, so every read site must go through this
+// accessor rather than a bare field read.
+func (n *NodeState) GetRuntime() string {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.Runtime
+}
+
 func (r *Router) Start(ctx context.Context) {
 	r.pollNvidiaAll()
 	r.pollAll()

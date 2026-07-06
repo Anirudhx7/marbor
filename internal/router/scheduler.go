@@ -112,7 +112,10 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		}
 	}
 	r.mu.RUnlock()
-	if target == nil || (target.Runtime != "ollama" && target.Runtime != "") {
+	if target == nil {
+		return
+	}
+	if rt := target.GetRuntime(); rt != "ollama" && rt != "" {
 		return
 	}
 	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
