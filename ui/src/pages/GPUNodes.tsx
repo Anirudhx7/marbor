@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X } from 'lucide-react';
+import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
@@ -7,7 +7,7 @@ import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, patchNode, fetchModelFit, unloadModel } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, patchNode, fetchModelFit, unloadModel, getPinned } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -102,8 +102,9 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
   );
 }
 
-function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit, onUnload }: {
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onEdit, onUnload }: {
   node: GPUNode;
+  pinnedModels: string[];
   onRemove: (name: string) => void;
   onDrain: (name: string) => void;
   onUndrain: (name: string) => void;
@@ -230,25 +231,37 @@ function NodeCard({ node, onRemove, onDrain, onUndrain, onEdit, onUnload }: {
           {(node.loadedModels || []).length === 0 ? (
             <span className="text-xs text-muted-foreground/60">None resident</span>
           ) : (
-            (node.loadedModels || []).map((model) => (
-              <Badge
-                key={model.name}
-                variant="success"
-                size="sm"
-              >
-                {model.name}
-                <span className="ml-1.5 opacity-70 font-mono">
-                  {(model.sizeVram / 1024 / 1024 / 1024).toFixed(1)}GB
-                </span>
-                <button
-                  onClick={() => onUnload(node.name, model.name)}
-                  title={`Unload ${model.name} from VRAM`}
-                  className="ml-1.5 -mr-0.5 opacity-50 hover:opacity-100 hover:text-destructive transition-opacity"
+            (node.loadedModels || []).map((model) => {
+              const pinned = pinnedModels.includes(model.name);
+              return (
+                <Badge
+                  key={model.name}
+                  variant="success"
+                  size="sm"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              </Badge>
-            ))
+                  {model.name}
+                  <span className="ml-1.5 opacity-70 font-mono">
+                    {(model.sizeVram / 1024 / 1024 / 1024).toFixed(1)}GB
+                  </span>
+                  {pinned ? (
+                    <span
+                      title="Pinned — never evicted or unloaded. Unpin on the Warmup page first."
+                      className="ml-1.5 -mr-0.5 opacity-60 cursor-not-allowed"
+                    >
+                      <Pin className="w-3 h-3" />
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => onUnload(node.name, model.name)}
+                      title={`Unload ${model.name} from VRAM`}
+                      className="ml-1.5 -mr-0.5 opacity-50 hover:opacity-100 hover:text-destructive transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </Badge>
+              );
+            })
           )}
         </div>
       </div>
@@ -274,6 +287,20 @@ export function GPUNodes() {
   const [modelFit, setModelFit] = useState<ModelFitResponse | null>(null);
   const [modelFitError, setModelFitError] = useState<string | null>(null);
   const [modelFitLoading, setModelFitLoading] = useState(false);
+  const [pinnedByNode, setPinnedByNode] = useState<Record<string, string[]>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const loadPinned = async (nodeList: GPUNode[]) => {
+    if (demoMode || nodeList.length === 0) return;
+    const entries = await Promise.all(nodeList.map(async (n) => {
+      try {
+        return [n.name, await getPinned(n.name)] as const;
+      } catch {
+        return [n.name, []] as const; // pinned-fetch failure just means no badges for this node
+      }
+    }));
+    setPinnedByNode(Object.fromEntries(entries));
+  };
 
   const loadNodes = async () => {
     if (demoMode) {
@@ -287,6 +314,7 @@ export function GPUNodes() {
       setNodes(data || []);
       setIsLive(true);
       setError(null);
+      await loadPinned(data || []);
     } catch (e: any) {
       setIsLive(false);
       setNodes([]);
@@ -382,6 +410,7 @@ export function GPUNodes() {
   const handleUnloadModel = async (nodeName: string, model: string) => {
     try {
       await unloadModel(nodeName, model);
+      setActionError(null);
       if (demoMode) {
         // Reflect the unload immediately in the static demo (no backend to re-poll).
         setNodes(prev => prev.map(n => n.name === nodeName
@@ -390,8 +419,12 @@ export function GPUNodes() {
       } else {
         await loadNodes();
       }
-    } catch {
-      // unload failed; leave the model list unchanged
+    } catch (e: any) {
+      // The unload button is already hidden for models we know are pinned, but
+      // pinned state can go stale between polls (e.g. pinned from another tab
+      // right after this page loaded) — the backend still enforces it (409),
+      // so surface that clearly instead of silently dropping the click.
+      setActionError(e?.message || `Failed to unload ${model} from ${nodeName}`);
     }
   };
 
@@ -466,6 +499,19 @@ export function GPUNodes() {
         </div>
       )}
 
+      {actionError && (
+        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium flex items-center justify-between gap-3">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            className="text-destructive/70 hover:text-destructive shrink-0"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Search */}
       <div className="max-w-md">
         <SearchInput
@@ -478,7 +524,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onEdit={openEditModal} onUnload={handleUnloadModel} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onEdit={openEditModal} onUnload={handleUnloadModel} />
         ))}
       </div>
 

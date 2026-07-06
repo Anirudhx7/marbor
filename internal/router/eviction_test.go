@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -46,6 +47,105 @@ func TestUnloadModelManual(t *testing.T) {
 	}
 	if found {
 		t.Error("unknown node should report found=false")
+	}
+}
+
+// TestUnloadModelManualPinnedRejected verifies that a pinned model cannot be
+// unloaded via the manual/operator UnloadModel path: pinning means "never
+// evict or unload without an explicit unpin first", and that guarantee must
+// hold on every unload path, not just auto-eviction. No request should reach
+// the node at all.
+func TestUnloadModelManualPinnedRejected(t *testing.T) {
+	hit := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes:  []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		pinned: map[string]map[string]bool{},
+	}
+	r.SetPinnedModels("n1", []string{"guarded-model"})
+
+	found, err := r.UnloadModel(context.Background(), "n1", "guarded-model")
+	if !found {
+		t.Fatal("expected node n1 to be found")
+	}
+	if !errors.Is(err, ErrModelPinned) {
+		t.Fatalf("UnloadModel err = %v, want ErrModelPinned", err)
+	}
+	if hit {
+		t.Error("pinned model unload must not contact the node at all")
+	}
+}
+
+// TestUnloadModelManualNonPinnedStillWorks verifies the fix doesn't regress
+// the existing behavior: unloading a model that isn't pinned still sends
+// keep_alive:0 exactly as before.
+func TestUnloadModelManualNonPinnedStillWorks(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes:  []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		pinned: map[string]map[string]bool{},
+	}
+	r.SetPinnedModels("n1", []string{"other-model"}) // pinned set is non-empty, but not this model
+
+	found, err := r.UnloadModel(context.Background(), "n1", "llama3")
+	if err != nil {
+		t.Fatalf("UnloadModel: %v", err)
+	}
+	if !found {
+		t.Fatal("expected node n1 to be found")
+	}
+	if !strings.Contains(body, `"keep_alive":0`) || !strings.Contains(body, `"llama3"`) {
+		t.Errorf("unload body missing keep_alive:0 or model: %s", body)
+	}
+}
+
+// TestUnloadModelsScheduledSkipsPinned verifies the scheduled "unload" action
+// shares the same pinned-model guard as the manual path: a pinned model in the
+// schedule's model list is skipped (never sent to the node) while sibling
+// non-pinned models still unload normally.
+func TestUnloadModelsScheduledSkipsPinned(t *testing.T) {
+	var mu sync.Mutex
+	got := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		for _, m := range []string{"a", "guarded"} {
+			if strings.Contains(string(b), `"`+m+`"`) && strings.Contains(string(b), `"keep_alive":0`) {
+				got[m] = true
+			}
+		}
+		mu.Unlock()
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes:  []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		pinned: map[string]map[string]bool{},
+	}
+	r.SetPinnedModels("n1", []string{"guarded"})
+
+	r.UnloadModels(context.Background(), "n1", []string{"a", "guarded"})
+	time.Sleep(150 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !got["a"] {
+		t.Error("expected non-pinned model 'a' to be unloaded")
+	}
+	if got["guarded"] {
+		t.Error("pinned model 'guarded' must not be unloaded by the scheduled action")
 	}
 }
 
