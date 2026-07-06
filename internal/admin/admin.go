@@ -923,6 +923,16 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"url must be http(s) with a host, and not a link-local/metadata address"}`))
 		return
 	}
+	// Reject a URL that already belongs to a different, existing node rather
+	// than silently registering the same physical backend twice under two
+	// names (see Router.AddNode / FindNodeByURL for the normalized-URL
+	// comparison and why this matters for capacity/eviction accounting).
+	if existing, dup := s.router.FindNodeByURL(cfg.URL, cfg.Name); dup {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprintf(w, `{"error":"url already registered as node %q"}`, existing)
+		return
+	}
 	if cfg.Runtime == "" {
 		cfg.Runtime = "ollama"
 	}
