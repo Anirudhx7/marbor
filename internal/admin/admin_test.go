@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -414,4 +415,147 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 	// A LogRequest call after Shutdown must not panic (send on closed
 	// channel) even though the async logger has already exited.
 	s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 12, 100)
+}
+
+// newScheduleTestServer builds an admin Server with one registered node
+// ("n1"), for exercising the /admin/schedules handlers end to end.
+func newScheduleTestServer() *Server {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n1", URL: "http://127.0.0.1:0"}}, nil)
+	cfg := config.Config{}
+	a := auth.NewMiddleware(cfg.Auth)
+	return NewServer(r, a, cfg)
+}
+
+func doScheduleRequest(s *Server, method, path, body string) *httptest.ResponseRecorder {
+	var r io.Reader
+	if body != "" {
+		r = strings.NewReader(body)
+	}
+	req := httptest.NewRequest(method, path, r)
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+// TestHandleCreateScheduleRejectsUnknownNode verifies a schedule against a
+// node name that isn't registered is rejected at creation time (400) instead
+// of being silently accepted and then no-oping every time it fires.
+func TestHandleCreateScheduleRejectsUnknownNode(t *testing.T) {
+	s := newScheduleTestServer()
+	rec := doScheduleRequest(s, http.MethodPost, "/admin/schedules", `{"action":"drain","node":"ghost","at":"09:00","enabled":true}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(s.router.Schedules()) != 0 {
+		t.Error("schedule against an unknown node should not have been persisted")
+	}
+}
+
+// TestHandleCreateScheduleRequiresModelsForWarmupUnload verifies a warmup or
+// unload schedule with no models selected is rejected — such a schedule would
+// otherwise fire "successfully" every tick while its models loop runs zero
+// times, i.e. it would never actually warm up or unload anything.
+func TestHandleCreateScheduleRequiresModelsForWarmupUnload(t *testing.T) {
+	s := newScheduleTestServer()
+	for _, action := range []string{"warmup", "unload"} {
+		rec := doScheduleRequest(s, http.MethodPost, "/admin/schedules", `{"action":"`+action+`","node":"n1","at":"09:00","enabled":true}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("action=%s: status = %d, want 400; body=%s", action, rec.Code, rec.Body.String())
+		}
+	}
+	if len(s.router.Schedules()) != 0 {
+		t.Error("model-less warmup/unload schedules should not have been persisted")
+	}
+}
+
+// TestHandleCreateScheduleSucceedsForValidNode is the positive control for
+// the two rejection tests above: a schedule against a real node, with models
+// where required, is accepted and persisted.
+func TestHandleCreateScheduleSucceedsForValidNode(t *testing.T) {
+	s := newScheduleTestServer()
+	rec := doScheduleRequest(s, http.MethodPost, "/admin/schedules", `{"action":"drain","node":"n1","at":"09:00","enabled":true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	rec = doScheduleRequest(s, http.MethodPost, "/admin/schedules", `{"action":"warmup","node":"n1","models":["llama3"],"at":"09:30","enabled":true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	if got := len(s.router.Schedules()); got != 2 {
+		t.Errorf("Schedules() len = %d, want 2", got)
+	}
+}
+
+// TestHandlePatchScheduleRejectsUnknownNode verifies editing a schedule to
+// point at an unregistered node is rejected, mirroring the create-time check.
+func TestHandlePatchScheduleRejectsUnknownNode(t *testing.T) {
+	s := newScheduleTestServer()
+	rec := doScheduleRequest(s, http.MethodPost, "/admin/schedules", `{"action":"drain","node":"n1","at":"09:00","enabled":true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup: status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	rec = doScheduleRequest(s, http.MethodPatch, "/admin/schedules/"+created.ID, `{"node":"ghost"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	scheds := s.router.Schedules()
+	if len(scheds) != 1 || scheds[0].Node != "n1" {
+		t.Errorf("schedule node should remain unchanged after a rejected patch, got %+v", scheds)
+	}
+}
+
+// TestHandleAddNode_RejectsDuplicateURL verifies the admin "add node" API
+// (POST /admin/nodes) refuses to register a URL that already belongs to a
+// different, existing node instead of silently creating a second live
+// NodeState for the same physical backend (see Router.AddNode /
+// FindNodeByURL). This is the admin-API-facing half of the fix; the
+// router-level check itself is covered by
+// TestAddNode_RejectsDuplicateURLUnderDifferentName in internal/router.
+func TestHandleAddNode_RejectsDuplicateURL(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "pve", URL: "http://192.168.1.115:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"name":"discovered-ollama-1","url":"http://192.168.1.115:11434/"}`))
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes", body)
+	rec := httptest.NewRecorder()
+	s.handleAddNode(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 for a URL that duplicates existing node %q", rec.Code, "pve")
+	}
+	if got := len(r.Nodes()); got != 1 {
+		t.Fatalf("router has %d nodes after rejected duplicate add, want 1", got)
+	}
+}
+
+// TestHandleAddNode_AllowsNewURL is the negative case: a genuinely new URL
+// must still be accepted and registered normally.
+func TestHandleAddNode_AllowsNewURL(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "pve", URL: "http://192.168.1.115:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"name":"other-box","url":"http://192.168.1.116:11434"}`))
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes", body)
+	rec := httptest.NewRecorder()
+	s.handleAddNode(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 for a distinct URL", rec.Code)
+	}
+	if got := len(r.Nodes()); got != 2 {
+		t.Fatalf("router has %d nodes after adding a distinct URL, want 2", got)
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -922,6 +923,16 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"url must be http(s) with a host, and not a link-local/metadata address"}`))
 		return
 	}
+	// Reject a URL that already belongs to a different, existing node rather
+	// than silently registering the same physical backend twice under two
+	// names (see Router.AddNode / FindNodeByURL for the normalized-URL
+	// comparison and why this matters for capacity/eviction accounting).
+	if existing, dup := s.router.FindNodeByURL(cfg.URL, cfg.Name); dup {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprintf(w, `{"error":"url already registered as node %q"}`, existing)
+		return
+	}
 	if cfg.Runtime == "" {
 		cfg.Runtime = "ollama"
 	}
@@ -1046,6 +1057,14 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"error":"node %q not found"}`, name)
 		return
 	}
+	if errors.Is(err, router.ErrModelPinned) {
+		// Pinning means "never evict/unload without an explicit unpin first" —
+		// this must be honored on the manual unload path exactly like it is on
+		// auto-eviction. There is no force-override; unpin, then unload.
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -1070,6 +1089,19 @@ func (s *Server) persistSchedules(scheds []router.Schedule) {
 	if raw, err := json.Marshal(scheds); err == nil {
 		_ = s.st.SetSetting("schedules", string(raw))
 	}
+}
+
+// scheduleNodeExists reports whether name matches a currently registered node.
+// Schedules against an unknown node silently no-op every time they fire (the
+// scheduler can't find a target), so both create and patch reject them up
+// front instead of accepting a schedule that will never do anything.
+func (s *Server) scheduleNodeExists(name string) bool {
+	for _, n := range s.router.Nodes() {
+		if n.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
@@ -1099,6 +1131,18 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"node is required and at must be HH:MM (24h)"}`))
+		return
+	}
+	if !s.scheduleNodeExists(sc.Node) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf(`{"error":"node %q is not registered"}`, sc.Node)))
+		return
+	}
+	if (sc.Action == "warmup" || sc.Action == "unload") && len(sc.Models) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"at least one model is required for warmup and unload schedules"}`))
 		return
 	}
 	sc.ID = fmt.Sprintf("sched-%d", time.Now().UnixNano())
@@ -1155,10 +1199,29 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 		sc.Models = *patch.Models
 	}
 	if patch.At != nil {
+		if !validHHMM(*patch.At) {
+			w.Header().Set("Content-Type", "application/json")
+			http.Error(w, `{"error":"at must be HH:MM (24h)"}`, http.StatusBadRequest)
+			return
+		}
 		sc.At = *patch.At
 	}
 	if patch.Days != nil {
 		sc.Days = *patch.Days
+	}
+	// Re-validate the merged schedule so an edit can't leave it pointing at a
+	// node that doesn't exist, or a warmup/unload schedule with no models —
+	// both of which would fire "successfully" every tick and silently do
+	// nothing (see fireSchedule).
+	if !s.scheduleNodeExists(sc.Node) {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, fmt.Sprintf(`{"error":"node %q is not registered"}`, sc.Node), http.StatusBadRequest)
+		return
+	}
+	if (sc.Action == "warmup" || sc.Action == "unload") && len(sc.Models) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, `{"error":"at least one model is required for warmup and unload schedules"}`, http.StatusBadRequest)
+		return
 	}
 	cur[idx] = sc
 	s.persistSchedules(cur)
@@ -2559,6 +2622,19 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// nodePullTimeout bounds how long ollama-mesh waits for a model pull to
+// finish on the target node before giving up and returning 502. handleNodePull
+// calls Ollama's /api/pull with "stream":false, so — unlike a normal chat/
+// generate request — the upstream sends no response at all (not even
+// headers) until the *entire* download completes. Model pulls, especially
+// Hugging Face-sourced GGUF files (fetched directly from huggingface.co
+// rather than Ollama's CDN-backed registry), routinely take much longer than
+// a typical multi-GB-per-minute registry pull. A short client timeout here
+// aborts an otherwise-successful pull mid-download and surfaces to the admin
+// UI as a spurious "Bad Gateway", even though the node is still working.
+// A var (not const) so tests can override it to keep test runtimes short.
+var nodePullTimeout = 2 * time.Hour
+
 // handleNodePull triggers a model pull on a specific node via POST /api/pull.
 // Accepts: {"model": "llama3:8b"}
 // Returns 200 {"ok":true,"node":"...","model":"..."} on success.
@@ -2604,7 +2680,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := &http.Client{Timeout: nodePullTimeout}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, nodeURL+"/api/pull", bytes.NewReader(pullBody))
 	if err != nil {
 		log.Printf("handleNodePull: build request for node %s: %v", nodeName, err)
