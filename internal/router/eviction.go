@@ -133,6 +133,17 @@ func (r *Router) findNode(name string) *NodeState {
 	return nil
 }
 
+// nodeExistsLocked reports whether a node with the given name is currently
+// in r.nodes. Caller must already hold r.mu (Lock or RLock).
+func (r *Router) nodeExistsLocked(name string) bool {
+	for _, n := range r.nodes {
+		if n.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // UnloadModel unloads a single model from a node's VRAM on operator request
 // (keep_alive:0). Returns false if the node is unknown. A no-op unload against a
 // model that isn't resident is harmless (Ollama returns success).
