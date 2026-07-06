@@ -45,25 +45,37 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 ### Quick Installer (Linux & macOS)
 
-Choose between installing the binary only, or installing and immediately launching it in the background:
-
-*   **Option 1: Download & Install only (Recommended)**
+*   **Install only**
     ```bash
     curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
     ```
-    Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `ollama-mesh` manually to start.
+    Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `ollama-mesh` manually to start. If a version is already installed, this reports old → new instead of upgrading silently.
 
-*   **Option 2: Install, Auto-Discover & Run in background**
+*   **Quick demo — Auto-Discover & Run in background**
     ```bash
     curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | PROBE=1 START=1 sh
     ```
-    Installs the binary, scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) to auto-configure `config.yaml`, starts the gateway in the background, and prints operational access details. This starts a plain background process (`nohup`) — it won't survive a reboot.
+    Installs the binary, scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) to auto-configure `config.yaml`, starts the gateway in the background, and prints operational access details. This starts a plain background process (`nohup`) — it won't survive a reboot, so treat this as a way to try ollama-mesh, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate — it detects the existing process and re-verifies its health instead.
 
-*   **Option 3: Install, Auto-Discover & Run as a systemd service (production)**
+*   **Production — Auto-Discover & Run as a managed service (recommended for real deployments)**
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | SERVICE=1 PROBE=1 sh
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | PROBE=1 SERVICE=1 sh
     ```
-    Same as Option 2, but instead of a background process it installs and enables an `ollama-mesh.service` systemd unit (`Restart=on-failure`, starts on boot). Requires systemd and root/sudo. Logs via `journalctl -u ollama-mesh -f`.
+    Same as the quick-demo command, but instead of a background process it installs and enables a proper OS service (`Restart=on-failure`, starts on boot) — this is what you want for anything you intend to keep running. Currently implemented via `systemd` on Linux (requires root/sudo; logs via `journalctl -u ollama-mesh -f`). `SERVICE=1` is deliberately OS-agnostic — on macOS or any host without a supported service manager, it prints a notice and falls back to the same background mode as the quick-demo command rather than failing the install.
+
+### Uninstalling
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh | sh
+```
+
+Run this from the same directory `install.sh` was run in (it looks for `config.yaml`, `mesh.db`, and the pidfile there). It stops and removes the systemd service or background process and removes the binary. `config.yaml` and `mesh.db` are always kept by default when piped like this (stdin isn't a terminal, so the keep/remove prompt never runs) — pass `KEEP_DB=0` and/or `KEEP_CONFIG=0` to remove them instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh | KEEP_DB=0 KEEP_CONFIG=0 sh
+```
+
+To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying on the env vars, download the script first so it runs with a real terminal attached: `curl -fsSL .../uninstall.sh -o uninstall.sh && sh uninstall.sh`.
 
 ---
 

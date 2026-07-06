@@ -6,9 +6,14 @@
 # Modes (opt in via env vars):
 #   PROBE=1    scan the local subnet for GPU nodes and write config.yaml
 #   START=1    start ollama-mesh in the background (nohup) after install
-#   SERVICE=1  install+enable a systemd unit instead of nohup (implies START=1);
-#              persists across reboots and restarts on failure. Requires systemd
-#              + root/sudo. Example: curl ... | SERVICE=1 PROBE=1 sh
+#   SERVICE=1  install+enable a proper OS service instead of nohup (implies
+#              START=1); persists across reboots and restarts on failure.
+#              Currently implemented via systemd on Linux (root/sudo
+#              required); on macOS or any host without systemd it falls back
+#              to a plain background process rather than failing the install.
+#              Recommended for production. Example: curl ... | PROBE=1 SERVICE=1 sh
+#
+# Uninstall: https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh
 
 set -e
 
@@ -74,20 +79,63 @@ case "$ARCH" in
     ;;
 esac
 
+# Service-mode abstraction: SERVICE=1 means "run as a proper OS service",
+# not "use systemd" specifically. This picks the right backend per OS so
+# the same env var stays meaningful as more platforms are supported.
+#   linux  -> systemd (implemented)
+#   darwin -> launchd (planned, not yet implemented)
+#   other  -> no known service manager
+# Anything other than "systemd" falls back to a plain background process.
+detect_service_manager() {
+  case "$OS" in
+    linux)
+      if command -v systemctl >/dev/null 2>&1; then
+        echo "systemd"
+        return
+      fi
+      ;;
+    darwin)
+      : # launchd support not implemented yet; falls through to "none"
+      ;;
+  esac
+  echo "none"
+}
+
 BINARY="${BIN_NAME}-${OS}-${ARCH}"
 URL="https://github.com/${REPO}/releases/latest/download/${BINARY}"
+BIN_PATH="$INSTALL_DIR/$BIN_NAME"
+
+# Capture the currently-installed version (if any) before we touch anything,
+# so upgrades can report old -> new instead of installing silently over it.
+OLD_VERSION=""
+if [ -x "$BIN_PATH" ]; then
+  OLD_VERSION=$("$BIN_PATH" -version 2>/dev/null | awk '{print $2}')
+fi
 
 echo "Downloading ollama-mesh for ${OS}/${ARCH}..."
 echo "  $URL"
 
 # Download to temp file
 TMP="$(mktemp)"
+DOWNLOAD_OK=true
 if command -v curl > /dev/null 2>&1; then
-  curl -fsSL "$URL" -o "$TMP"
+  curl -fsSL "$URL" -o "$TMP" || DOWNLOAD_OK=false
 elif command -v wget > /dev/null 2>&1; then
-  wget -qO "$TMP" "$URL"
+  wget -qO "$TMP" "$URL" || DOWNLOAD_OK=false
 else
   echo "Error: curl or wget required"
+  rm -f "$TMP"
+  exit 1
+fi
+
+if [ "$DOWNLOAD_OK" = false ] || [ ! -s "$TMP" ]; then
+  echo ""
+  echo "Error: failed to download $URL"
+  echo "  This usually means one of:"
+  echo "    - no internet connection, or a proxy/firewall is blocking github.com"
+  echo "    - no release exists yet for ${OS}/${ARCH}"
+  echo "  Check releases manually: https://github.com/$REPO/releases/latest"
+  rm -f "$TMP"
   exit 1
 fi
 
@@ -95,19 +143,27 @@ chmod +x "$TMP"
 
 # Install
 if [ -w "$INSTALL_DIR" ]; then
-  mv "$TMP" "$INSTALL_DIR/$BIN_NAME"
-  echo "Installed to $INSTALL_DIR/$BIN_NAME"
+  mv "$TMP" "$BIN_PATH"
 else
   echo "No write permission to $INSTALL_DIR. Trying with sudo..."
-  sudo mv "$TMP" "$INSTALL_DIR/$BIN_NAME"
-  echo "Installed to $INSTALL_DIR/$BIN_NAME"
+  sudo mv "$TMP" "$BIN_PATH"
+fi
+
+NEW_VERSION=$("$BIN_PATH" -version 2>/dev/null | awk '{print $2}')
+if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+  echo "Upgraded ollama-mesh: $OLD_VERSION -> $NEW_VERSION ($BIN_PATH)"
+elif [ -n "$OLD_VERSION" ]; then
+  echo "Reinstalled ollama-mesh $NEW_VERSION ($BIN_PATH, already up to date)"
+else
+  echo "Installed ollama-mesh $NEW_VERSION to $BIN_PATH"
 fi
 
 if [ "$START_DAEMON" = false ]; then
   echo ""
-  echo "ollama-mesh successfully installed to $INSTALL_DIR/$BIN_NAME"
+  echo "ollama-mesh successfully installed to $BIN_PATH"
   echo "Run: ollama-mesh"
   echo "Docs: https://github.com/$REPO"
+  echo "Uninstall: https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
   exit 0
 fi
 
@@ -210,9 +266,22 @@ setup_systemd_service() {
     return 1
   fi
 
-  # A pre-existing hand-started (nohup) or otherwise-owned process already
-  # bound to the admin port would make the new systemd unit fail to bind on
-  # restart — warn up front rather than leaving that as a confusing failure.
+  # A pre-existing nohup-managed instance (tracked via pidfile) would fight
+  # the new systemd unit for the same ports. Since we're switching this host
+  # to service-managed mode, stop it rather than leaving the port conflict
+  # for the operator to debug.
+  if [ -f ollama-mesh.pid ]; then
+    OLD_PID=$(cat ollama-mesh.pid 2>/dev/null || true)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+      echo "  Stopping existing background (nohup) instance (PID $OLD_PID)..."
+      kill "$OLD_PID" 2>/dev/null || true
+      sleep 1
+    fi
+    rm -f ollama-mesh.pid
+  fi
+
+  # Anything else already bound to the admin port (unmanaged process, another
+  # tool) would still make the new unit fail to bind on restart — warn.
   if curl -fs -m 0.5 "http://localhost:8080/health" >/dev/null 2>&1; then
     echo "  [!] Something is already listening on :8080 (possibly an old"
     echo "      hand-started ollama-mesh process). Stop it first, or the"
@@ -274,10 +343,105 @@ WantedBy=multi-user.target
     echo "  Config:           ${CONFIG_PATH}"
     echo "--------------------------------------------------------"
     echo "Enabled — will restart on failure and on reboot."
+    echo "Uninstall:        https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
     return 0
   else
     echo "  [!] ollama-mesh.service failed to start. Check: journalctl -u ollama-mesh -n 50"
     return 1
+  fi
+}
+
+# Poll a URL until it responds (any HTTP status counts as "up" — we're
+# checking the port is bound and serving, not asserting a particular route).
+# Non-fatal to the caller: prints [ok]/[FAIL] and returns 0/1.
+wait_for_http() {
+  URL="$1"
+  NAME="$2"
+  TRIES=8
+  i=0
+  while [ "$i" -lt "$TRIES" ]; do
+    CODE="000"
+    if command -v curl >/dev/null 2>&1; then
+      # curl itself prints "000" on connection failure and exits non-zero;
+      # under `set -e` that non-zero status on a bare assignment would abort
+      # the whole installer, so it's neutralized with `|| true`. Don't also
+      # append a fallback "000" on top of curl's own output, or a real
+      # failure reads as two values concatenated (e.g. "000000"), which no
+      # longer matches "000" and would be misreported as reachable.
+      CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 2 "$URL" 2>/dev/null) || true
+      CODE="${CODE:-000}"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -T 2 -t 1 -qO- "$URL" >/dev/null 2>&1 && CODE="200"
+    fi
+    if [ "$CODE" != "000" ]; then
+      echo "  [ok]   $NAME responding ($URL -> HTTP $CODE)"
+      return 0
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+  echo "  [FAIL] $NAME not responding at $URL"
+  return 1
+}
+
+# Real post-install verification: config validity, the three listeners the
+# binary starts, and reachability of whatever backend nodes are configured.
+# Never fails the install — this is diagnostics for the operator, since a
+# backend node being offline at install time is expected/acceptable.
+run_health_checks() {
+  CONFIG_FILE="$1"
+  LOG_HINT="$2"
+  HEALTH_OK=true
+
+  echo ""
+  echo "Verifying installation..."
+
+  if [ -f "$CONFIG_FILE" ]; then
+    if "$BIN_PATH" -validate -config "$CONFIG_FILE" >/dev/null 2>&1; then
+      echo "  [ok]   config.yaml is valid"
+    else
+      echo "  [FAIL] config.yaml failed validation"
+      HEALTH_OK=false
+    fi
+  fi
+
+  PROXY_PORT=$(awk '/^proxy:/{f=1;next} /^[^ ]/{f=0} f && /^[[:space:]]*port:/{print $2; exit}' "$CONFIG_FILE" 2>/dev/null)
+  [ -z "$PROXY_PORT" ] && PROXY_PORT=11434
+  wait_for_http "http://localhost:${PROXY_PORT}/" "Proxy" || HEALTH_OK=false
+  wait_for_http "http://localhost:8080/health" "Admin dashboard" || HEALTH_OK=false
+
+  METRICS_ENABLED=$(awk '/^metrics:/{f=1;next} /^[^ ]/{f=0} f && /^[[:space:]]*enabled:/{print $2; exit}' "$CONFIG_FILE" 2>/dev/null)
+  if [ "$METRICS_ENABLED" != "false" ]; then
+    wait_for_http "http://localhost:9090/metrics" "Metrics" || HEALTH_OK=false
+  else
+    echo "  [skip] Metrics disabled in config.yaml"
+  fi
+
+  if [ -f "$CONFIG_FILE" ]; then
+    NODE_URLS=$(grep -E '^[[:space:]]*url:' "$CONFIG_FILE" | awk '{print $2}')
+    for u in $NODE_URLS; do
+      CODE="000"
+      if command -v curl >/dev/null 2>&1; then
+        CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 2 "$u" 2>/dev/null) || true
+        CODE="${CODE:-000}"
+      elif command -v wget >/dev/null 2>&1; then
+        wget -T 2 -t 1 -qO- "$u" >/dev/null 2>&1 && CODE="200"
+      fi
+      if [ "$CODE" != "000" ]; then
+        echo "  [ok]   backend node reachable: $u"
+      else
+        echo "  [warn] backend node not reachable: $u (mesh will retry; edit config.yaml if unexpected)"
+      fi
+    done
+  fi
+
+  if [ "$HEALTH_OK" = false ]; then
+    echo ""
+    echo "  [!] One or more core health checks failed."
+    echo "      Troubleshooting:"
+    echo "        - Logs:            $LOG_HINT"
+    echo "        - Validate config: $BIN_PATH -validate -config $CONFIG_FILE"
+    echo "        - Port conflicts:  confirm nothing else is bound to ${PROXY_PORT}, 8080, or 9090"
   fi
 }
 
@@ -400,19 +564,56 @@ else
   echo "config.yaml already exists, using existing configuration."
 fi
 
+PIDFILE="ollama-mesh.pid"
+
 if [ "$SERVICE_MODE" = true ]; then
   echo ""
-  echo "Setting up ollama-mesh as a systemd service..."
-  if setup_systemd_service; then
+  SVC_MANAGER=$(detect_service_manager)
+  case "$SVC_MANAGER" in
+    systemd)
+      echo "Setting up ollama-mesh as a systemd service..."
+      if setup_systemd_service; then
+        run_health_checks config.yaml "journalctl -u ollama-mesh -f  (also $(pwd)/ollama-mesh.log)"
+        exit 0
+      fi
+      ;;
+    *)
+      if [ "$OS" = "darwin" ]; then
+        echo "  [!] launchd service support isn't implemented yet on macOS (SERVICE=1 currently supports systemd on Linux)."
+      else
+        echo "  [!] No supported service manager found for $OS."
+      fi
+      ;;
+  esac
+  echo "  Falling back to a plain background start (not persistent across reboots)."
+fi
+
+# Idempotency: if a previous nohup-managed instance is still running, don't
+# start a second one competing for the same ports — report it and verify
+# health instead. A stale pidfile (process no longer running) is cleaned up
+# and a fresh instance is started normally.
+if [ -f "$PIDFILE" ]; then
+  EXISTING_PID=$(cat "$PIDFILE" 2>/dev/null || true)
+  if [ -n "$EXISTING_PID" ] && kill -0 "$EXISTING_PID" 2>/dev/null; then
+    echo ""
+    echo "ollama-mesh is already running in the background (PID $EXISTING_PID)."
+    echo "Skipping duplicate start. To restart: kill $EXISTING_PID and re-run this installer,"
+    echo "or re-run with SERVICE=1 to switch to a managed systemd service."
+    if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+      echo "Note: the binary on disk was just upgraded to $NEW_VERSION, but the running"
+      echo "process (PID $EXISTING_PID) is still $OLD_VERSION until it's restarted."
+    fi
+    run_health_checks config.yaml "$(pwd)/ollama-mesh.log"
     exit 0
   fi
-  echo "  Falling back to a plain background start (not persistent across reboots)."
+  rm -f "$PIDFILE"
 fi
 
 echo ""
 echo "Starting ollama-mesh in the background..."
 nohup "$INSTALL_DIR/$BIN_NAME" > ollama-mesh.log 2>&1 &
 PID=$!
+echo "$PID" > "$PIDFILE"
 
 sleep 2
 
@@ -427,7 +628,11 @@ if kill -0 $PID >/dev/null 2>&1; then
     echo "  Config:           config.yaml"
   fi
   echo "--------------------------------------------------------"
+  run_health_checks config.yaml "$(pwd)/ollama-mesh.log"
+  echo ""
+  echo "Uninstall: https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
 else
+  rm -f "$PIDFILE"
   echo "Error: ollama-mesh failed to start. Check ollama-mesh.log for details."
   if [ -f ollama-mesh.log ]; then
     cat ollama-mesh.log

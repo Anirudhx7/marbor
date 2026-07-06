@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`uninstall.sh`**: removes the binary, the systemd service (if installed), and a background (nohup) instance; prompts before deleting `config.yaml`/`mesh.db` (kept by default, including in non-interactive/piped runs — `KEEP_DB=0`/`KEEP_CONFIG=0` to remove without prompting).
+- **`install.sh` post-install health checks**: after starting (either mode), validates `config.yaml` (`-validate`), confirms the proxy/admin/metrics ports are actually responding (not just that the process exists), and reports reachability of configured backend nodes.
+- **`install.sh` upgrade reporting**: prints old → new version on reinstall/upgrade via the binary's own `-version` flag; warns when the binary on disk was upgraded but the running background process hasn't been restarted yet.
+- **`install.sh` idempotent background start**: re-running the installer while a `nohup`-started instance is already running no longer starts a competing second process — it detects the existing one (via a new `ollama-mesh.pid`) and re-verifies its health instead. A stale pidfile (process no longer running, e.g. after a crash) is cleaned up and a fresh instance starts normally.
+
+### Changed
+- **`SERVICE=1` is now a generic service-mode abstraction**, not systemd-specific: it dispatches through a `detect_service_manager` step (systemd on Linux today; launchd on macOS is a planned but not-yet-implemented backend) and falls back to the existing background mode with a clear message on any host without a supported service manager, instead of only degrading silently on non-systemd Linux.
+- **`install.sh` download failures** now print an actionable message (connectivity/firewall/no-release-yet) instead of a bare `curl`/`wget` error trace.
+
 ## [0.14.3] - 2026-07-06
 
 ### Changed
