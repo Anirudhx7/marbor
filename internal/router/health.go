@@ -197,8 +197,14 @@ func (r *Router) pollNode(n *NodeState) {
 	// deterministically, regardless of restore/poll ordering.
 	r.reconcileNodeResidency(nodeName, models)
 
-	// Fire webhook on recovery (unhealthy -> healthy transition).
+	// Fire webhook on recovery (unhealthy -> healthy transition). Guarded by
+	// a pool-membership check so a poll racing RemoveNode cannot resurrect a
+	// prevHealthy entry for a node that was just removed.
 	r.mu.Lock()
+	if !r.nodeExistsLocked(nodeName) {
+		r.mu.Unlock()
+		return
+	}
 	prev, seen := r.prevHealthy[nodeName]
 	if seen && !prev {
 		r.prevHealthy[nodeName] = true
@@ -260,10 +266,17 @@ func (r *Router) markFailure(n *NodeState) {
 		// Capture the node's last-known warm set immediately (Tier 1): once it is
 		// unhealthy, polling can no longer refresh its residency.
 		r.snapshotNode(n)
-		// Fire webhook on node_down transition.
+		// Fire webhook on node_down transition. Guarded by a pool-membership
+		// check so a poll racing RemoveNode cannot resurrect a prevHealthy
+		// entry for a node that was just removed.
 		r.mu.Lock()
-		r.prevHealthy[nodeName] = false
+		exists := r.nodeExistsLocked(nodeName)
+		if exists {
+			r.prevHealthy[nodeName] = false
+		}
 		r.mu.Unlock()
-		r.fireWebhook("node_down", nodeName, nodeURL)
+		if exists {
+			r.fireWebhook("node_down", nodeName, nodeURL)
+		}
 	}
 }
