@@ -465,7 +465,10 @@ func main() {
 	}
 	log.Println("Shutting down gracefully...")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// Derived from proxySrv's own WriteTimeout (not a bare literal) so a
+	// SIGINT/SIGTERM during an active long-running stream isn't cut off
+	// before the request could have finished on its own.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), proxySrv.WriteTimeout+5*time.Second)
 	defer shutdownCancel()
 
 	if err := proxySrv.Shutdown(shutdownCtx); err != nil {
