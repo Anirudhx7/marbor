@@ -6,13 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-07-06
+
 ### Changed
 - **License: relicensed from MIT to Apache-2.0** (adds an explicit patent grant). Added a `NOTICE` file; every license reference (JSON-LD, `llms.txt`, README badge, site, docs footers) updated to match.
 - Website, README, and `llms.txt` repositioned around the **self-hosted, multi-runtime inference control plane** (Ollama, vLLM, TGI, llama.cpp). Visible FAQ reconciled with the JSON-LD `FAQPage`; sitemap refreshed.
 - `ROADMAP.md` rewritten as a technical, single-instance roadmap organized around the router-moat progression; pricing/commercial detail moved out of the public repo.
 - Removed the internal `docs/design/` doc from the repository.
 
+### Fixed
+- **Warmup**: warming 2+ models on one node raced concurrent cold-load goroutines, and headroom accounting didn't see in-flight (not-yet-polled) loads, so a second model would falsely be evicted or never load.
+- **Scheduler**: `fireSchedule` logged "fired" success even when the target node was missing or a warmup/unload schedule had zero models, making broken schedules indistinguishable from working ones. Now validates node existence + non-empty model list at creation/patch time (400), and logs skips explicitly.
+- **Scheduler timezone mismatch**: schedules never fired for operators outside UTC — the scheduler evaluated `HH:MM` against the server/container clock (typically UTC in Docker), while the admin UI's time input implicitly meant the operator's local time. Added a persisted, configurable timezone; the scheduler and predictive prewarmer now evaluate against it, and the Warmup page shows a live server clock so operators can see exactly what time schedules are evaluated against.
+- **HuggingFace model pull returning Bad Gateway**: the pull proxy waits for the whole download before responding; a hardcoded 5-minute client timeout killed any pull over 5 minutes (routine for multi-GB HF files). Raised to 2 hours.
+- **Pinned models could still be unloaded**: the pin check only guarded auto-eviction, never the manual/scheduled unload path. Now blocked (409) on both, and the GPU Nodes page disables the unload button for pinned models.
+- **Duplicate node registration**: nodes loaded from config.yaml, the DB store, and Docker discovery were merged with no URL-based dedup — only by exact name — so the same physical node could end up registered twice under different names, splitting its usage/eviction accounting.
+- **`install.sh` self-discovery**: the port-8080 probe treated any 200 response on `/health` as a foreign llama.cpp node, so it discovered ollama-mesh's own admin API as a separate node; it now recognizes and skips itself via the unique `proxy_port` field, and skips the host's own IP during the subnet scan.
+- **Sidebar/Dashboard version mismatch**: the sidebar showed a stale build-time version while the Dashboard showed the live one; the sidebar now fetches `/health` too.
+- **Demo site server clock stuck on "Loading server time…"**: the static GitHub Pages demo (no backend) called the real `/admin/system-info` endpoint, which doesn't exist there, and swallowed the failure. It now returns mock system info like every other demo endpoint.
+
 ### Added
+- **`SERVICE=1` install mode**: `install.sh` can now set up a systemd unit (`Restart=on-failure`) so ollama-mesh persists across reboots, in addition to the existing install-only and install+probe+run modes.
 - **DCO (Developer Certificate of Origin) sign-off requirement** — CONTRIBUTING guidance, a PR-template checkbox, and a CI check.
 
 ## [0.14.2] - 2026-07-03
