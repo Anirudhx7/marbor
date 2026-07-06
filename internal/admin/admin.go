@@ -8,6 +8,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -1044,6 +1045,14 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	if !found {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintf(w, `{"error":"node %q not found"}`, name)
+		return
+	}
+	if errors.Is(err, router.ErrModelPinned) {
+		// Pinning means "never evict/unload without an explicit unpin first" —
+		// this must be honored on the manual unload path exactly like it is on
+		// auto-eviction. There is no force-override; unpin, then unload.
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	if err != nil {
