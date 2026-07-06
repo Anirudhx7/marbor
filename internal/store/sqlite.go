@@ -23,8 +23,11 @@ func Open(path string) (Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-	// Serialize all writers through a single connection.
-	db.SetMaxOpenConns(1)
+	// WAL mode allows concurrent readers alongside a single writer; give the
+	// pool enough connections to actually use that (SQLITE_BUSY on write
+	// contention is absorbed by busy_timeout below).
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
 
 	for _, pragma := range []string{
 		"PRAGMA journal_mode=WAL",
