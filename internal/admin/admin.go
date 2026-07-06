@@ -49,6 +49,25 @@ func extractBearerToken(hdr string) string {
 	return ""
 }
 
+// writeJSONError writes a well-formed {"error": msg} JSON body with the given
+// status code. Use this (rather than hand-building JSON with fmt.Sprintf and
+// %q) whenever msg embeds a runtime value: %q already wraps its argument in
+// its own literal quote characters, so splicing it into a template that is
+// itself already inside a JSON string (e.g. `{"error":"node %q not found"}`)
+// produces invalid JSON — the embedded quotes prematurely close the JSON
+// string and the frontend's res.json() throws, silently swallowing the real
+// error message and falling back to a generic one. json.Marshal here escapes
+// msg correctly no matter what it contains.
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	b, err := json.Marshal(map[string]string{"error": msg})
+	if err != nil {
+		b = []byte(`{"error":"internal error"}`)
+	}
+	w.Write(b)
+}
+
 type Server struct {
 	router        *router.Router
 	auth          *auth.Middleware
@@ -651,9 +670,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(out)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotFound)
-	fmt.Fprintf(w, `{"error":"node %q not found"}`, name)
+	writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 }
 
 func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
@@ -931,9 +948,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	// names (see Router.AddNode / FindNodeByURL for the normalized-URL
 	// comparison and why this matters for capacity/eviction accounting).
 	if existing, dup := s.router.FindNodeByURL(cfg.URL, cfg.Name); dup {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		fmt.Fprintf(w, `{"error":"url already registered as node %q"}`, existing)
+		writeJSONError(w, http.StatusConflict, fmt.Sprintf("url already registered as node %q", existing))
 		return
 	}
 	if cfg.Runtime == "" {
@@ -942,9 +957,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	switch cfg.Runtime {
 	case "ollama", "vllm", "tgi", "llamacpp", "auto":
 	default:
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `{"error":"unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)"}`, cfg.Runtime)
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)", cfg.Runtime))
 		return
 	}
 	s.router.AddNode(cfg)
@@ -1056,8 +1069,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	}
 	found, err := s.router.UnloadModel(r.Context(), name, body.Model)
 	if !found {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, `{"error":"node %q not found"}`, name)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
 	if errors.Is(err, router.ErrModelPinned) {
@@ -1137,9 +1149,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.scheduleNodeExists(sc.Node) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf(`{"error":"node %q is not registered"}`, sc.Node)))
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q is not registered", sc.Node))
 		return
 	}
 	if (sc.Action == "warmup" || sc.Action == "unload") && len(sc.Models) == 0 {
@@ -1179,8 +1189,7 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if idx < 0 {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":"schedule %q not found"}`, id), http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("schedule %q not found", id))
 		return
 	}
 	sc := cur[idx]
@@ -1189,8 +1198,7 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.Action != nil {
 		if !router.ValidScheduleAction(*patch.Action) {
-			w.Header().Set("Content-Type", "application/json")
-			http.Error(w, fmt.Sprintf(`{"error":"invalid action %q"}`, *patch.Action), http.StatusBadRequest)
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid action %q", *patch.Action))
 			return
 		}
 		sc.Action = *patch.Action
@@ -1217,8 +1225,7 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 	// both of which would fire "successfully" every tick and silently do
 	// nothing (see fireSchedule).
 	if !s.scheduleNodeExists(sc.Node) {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":"node %q is not registered"}`, sc.Node), http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q is not registered", sc.Node))
 		return
 	}
 	if (sc.Action == "warmup" || sc.Action == "unload") && len(sc.Models) == 0 {
@@ -1245,8 +1252,7 @@ func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 		out = append(out, sc)
 	}
 	if !found {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":"schedule %q not found"}`, id), http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("schedule %q not found", id))
 		return
 	}
 	s.persistSchedules(out)
@@ -1256,8 +1262,7 @@ func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !s.router.DrainNode(name) {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
 	_ = s.st.SetNodeDrain(name, true)
@@ -1268,8 +1273,7 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if !s.router.UndrainNode(name) {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
 	_ = s.st.SetNodeDrain(name, false)
@@ -1288,8 +1292,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.router.PatchNode(name, patch) {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":"node %q not found"}`, name), http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
 	_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel)
@@ -2193,8 +2196,7 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.auth == nil || !s.auth.PatchKey(name, patch) {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":"key %q not found"}`, name), http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -2672,9 +2674,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	urls := s.router.NodeURLs()
 	nodeURL, ok := urls[nodeName]
 	if !ok {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, `{"error":"node %q not found"}`, nodeName)
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
 		return
 	}
 
