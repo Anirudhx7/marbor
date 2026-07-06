@@ -17,9 +17,12 @@ func TestDetectRuntime_Ollama(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got := DetectRuntime(context.Background(), srv.URL, srv.Client())
+	got, reached := DetectRuntime(context.Background(), srv.URL, srv.Client())
 	if got != "ollama" {
 		t.Errorf("expected ollama, got %q", got)
+	}
+	if !reached {
+		t.Error("expected reached=true")
 	}
 }
 
@@ -38,7 +41,7 @@ func TestDetectRuntime_TGI(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got := DetectRuntime(context.Background(), srv.URL, srv.Client())
+	got, _ := DetectRuntime(context.Background(), srv.URL, srv.Client())
 	if got != "tgi" {
 		t.Errorf("expected tgi, got %q", got)
 	}
@@ -61,7 +64,7 @@ func TestDetectRuntime_VLLM(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got := DetectRuntime(context.Background(), srv.URL, srv.Client())
+	got, _ := DetectRuntime(context.Background(), srv.URL, srv.Client())
 	if got != "vllm" {
 		t.Errorf("expected vllm, got %q", got)
 	}
@@ -84,7 +87,7 @@ func TestDetectRuntime_LlamaCpp(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got := DetectRuntime(context.Background(), srv.URL, srv.Client())
+	got, _ := DetectRuntime(context.Background(), srv.URL, srv.Client())
 	if got != "llamacpp" {
 		t.Errorf("expected llamacpp, got %q", got)
 	}
@@ -96,8 +99,27 @@ func TestDetectRuntime_Fallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got := DetectRuntime(context.Background(), srv.URL, srv.Client())
+	got, reached := DetectRuntime(context.Background(), srv.URL, srv.Client())
 	if got != "ollama" {
 		t.Errorf("expected ollama fallback, got %q", got)
+	}
+	if !reached {
+		t.Error("expected reached=true: node responded 404, it was contacted")
+	}
+}
+
+func TestDetectRuntime_Unreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	url := srv.URL
+	srv.Close() // closed server: connections fail at the transport level
+
+	got, reached := DetectRuntime(context.Background(), url, srv.Client())
+	if got != "ollama" {
+		t.Errorf("expected ollama fallback, got %q", got)
+	}
+	if reached {
+		t.Error("expected reached=false: node was never actually contacted")
 	}
 }
