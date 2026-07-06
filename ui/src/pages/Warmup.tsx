@@ -217,6 +217,9 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
   async function save() {
     if (!node) { setError('Pick a node'); return; }
     if (!/^\d{2}:\d{2}$/.test(at)) { setError('Time must be HH:MM'); return; }
+    if ((action === 'warmup' || action === 'unload') && selectedModels.length === 0) {
+      setError('Pick at least one model'); return;
+    }
     setSaving(true); setError(null);
     try {
       await onSave({ action, node, models: (action === 'warmup' || action === 'unload') ? selectedModels : undefined, at, days });
@@ -342,6 +345,9 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
   async function submit() {
     if (!node) { setError('Pick a node'); return; }
     if (!/^\d{2}:\d{2}$/.test(at)) { setError('Time must be HH:MM'); return; }
+    if ((action === 'warmup' || action === 'unload') && selectedModels.length === 0) {
+      setError('Pick at least one model'); return;
+    }
     setSaving(true); setError(null);
     try {
       await onCreate({ action, node, models: (action === 'warmup' || action === 'unload') ? selectedModels : undefined, at, days, enabled: true });
