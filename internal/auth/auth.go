@@ -351,7 +351,6 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 
 	m.mu.RLock()
 	oldByName := m.byName
-	m.mu.RUnlock()
 
 	for _, k := range cfg.Keys {
 		existing, sameName := oldByName[k.Name]
@@ -384,6 +383,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 			newByName[k.Name] = ks
 		}
 	}
+	m.mu.RUnlock()
 
 	m.mu.Lock()
 	m.enabled = cfg.IsEnabled()
