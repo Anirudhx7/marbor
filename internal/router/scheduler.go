@@ -77,17 +77,28 @@ func (r *Router) runSchedules(ctx context.Context, now time.Time) {
 }
 
 func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
+	// found tracks whether the target node actually exists so a schedule
+	// pointed at a stale/renamed/removed node doesn't log a misleading
+	// "fired" line every tick while silently doing nothing. warmup/unload
+	// dispatch to goroutines and log their own "node not found" diagnostic
+	// (see WarmModels/UnloadModels), so only drain/undrain — whose result is
+	// available synchronously — gate the summary log here.
+	found := true
 	switch s.Action {
 	case "warmup":
 		r.WarmModels(ctx, s.Node, s.Models)
 	case "unload":
 		r.UnloadModels(ctx, s.Node, s.Models)
 	case "drain":
-		r.DrainNode(s.Node)
+		found = r.DrainNode(s.Node)
 	case "undrain":
-		r.UndrainNode(s.Node)
+		found = r.UndrainNode(s.Node)
 	}
 	metrics.ScheduleFired(s.Action, s.Node)
+	if !found {
+		log.Printf("schedule %q fired but node %q was not found: action=%s did nothing", s.ID, s.Node, s.Action)
+		return
+	}
 	log.Printf("schedule %q fired: action=%s node=%s models=%v", s.ID, s.Action, s.Node, s.Models)
 }
 
@@ -105,7 +116,12 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		}
 	}
 	r.mu.RUnlock()
-	if target == nil || (target.Runtime != "ollama" && target.Runtime != "") {
+	if target == nil {
+		log.Printf("scheduled warmup skipped: node %q not found", nodeName)
+		return
+	}
+	if target.Runtime != "ollama" && target.Runtime != "" {
+		log.Printf("scheduled warmup skipped: node %q runtime %q does not support keep_alive warmup", nodeName, target.Runtime)
 		return
 	}
 	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
