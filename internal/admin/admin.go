@@ -2464,6 +2464,48 @@ func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int
 	})
 }
 
+// cloudSpendSince sums real CostUSD from persisted hourly buckets since the
+// given time - the same figures already used for /admin/analytics, never an
+// estimate. Returns 0 on a store error (fails open: a budget check that
+// can't read its own data must not block cloud fallback).
+func (s *Server) cloudSpendSince(since time.Time) float64 {
+	buckets, err := s.st.HourlyBuckets(since)
+	if err != nil {
+		return 0
+	}
+	var total float64
+	for _, b := range buckets {
+		total += b.CostUSD
+	}
+	return total
+}
+
+// CloudBudgetExceeded reports whether cumulative cloud spend has reached the
+// configured daily or monthly cap (routing.cloud_budget in config), and a
+// human-readable reason if so. Both caps default to 0 (disabled) - returns
+// false immediately in that case without touching the store.
+func (s *Server) CloudBudgetExceeded() (bool, string) {
+	dailyCap := s.cfg.CloudBudget.DailyUSDCap
+	monthlyCap := s.cfg.CloudBudget.MonthlyUSDCap
+	if dailyCap <= 0 && monthlyCap <= 0 {
+		return false, ""
+	}
+	now := time.Now().UTC()
+	if dailyCap > 0 {
+		dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		if spent := s.cloudSpendSince(dayStart); spent >= dailyCap {
+			return true, fmt.Sprintf("daily cloud spend cap of $%.2f reached (spent $%.2f)", dailyCap, spent)
+		}
+	}
+	if monthlyCap > 0 {
+		monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+		if spent := s.cloudSpendSince(monthStart); spent >= monthlyCap {
+			return true, fmt.Sprintf("monthly cloud spend cap of $%.2f reached (spent $%.2f)", monthlyCap, spent)
+		}
+	}
+	return false, ""
+}
+
 func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	hourly := s.analytics.last24hBuckets()
 	models := s.analytics.topModels()
