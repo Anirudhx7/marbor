@@ -43,6 +43,9 @@ export interface GPUNode {
   health: 'healthy' | 'degraded' | 'down';
   runtime: string;
   draining: boolean;
+  // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
+  // false (prewarm enabled) on restart.
+  prewarmDisabled?: boolean;
   uptime: string;
   loadedModels: LoadedModel[];
   healthHistory: number[];

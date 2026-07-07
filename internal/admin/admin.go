@@ -232,23 +232,24 @@ type RequestLog struct {
 }
 
 type nodeResp struct {
-	ID            string             `json:"id"`
-	Name          string             `json:"name"`
-	Port          int                `json:"port"`
-	GPUModel      string             `json:"gpuModel"`
-	VRAMTotalMB   int64              `json:"vramTotalMB"`
-	VRAMUsedMB    int64              `json:"vramUsedMB"`
-	VRAMSource    string             `json:"vramSource"`
-	PowerDrawW    float64            `json:"powerDrawW"`
-	Temperature   *float64           `json:"temperature"`
-	Runtime       string             `json:"runtime"`
-	Health        string             `json:"health"`
-	Draining      bool               `json:"draining"`
-	Uptime        string             `json:"uptime"`
-	LoadedModels  []router.ModelInfo `json:"loadedModels"`
-	ActiveConns   int32              `json:"activeConns"`
-	RequestsTotal int64              `json:"requestsTotal"`
-	HealthHistory []float64          `json:"healthHistory"`
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Port            int                `json:"port"`
+	GPUModel        string             `json:"gpuModel"`
+	VRAMTotalMB     int64              `json:"vramTotalMB"`
+	VRAMUsedMB      int64              `json:"vramUsedMB"`
+	VRAMSource      string             `json:"vramSource"`
+	PowerDrawW      float64            `json:"powerDrawW"`
+	Temperature     *float64           `json:"temperature"`
+	Runtime         string             `json:"runtime"`
+	Health          string             `json:"health"`
+	Draining        bool               `json:"draining"`
+	PrewarmDisabled bool               `json:"prewarmDisabled"`
+	Uptime          string             `json:"uptime"`
+	LoadedModels    []router.ModelInfo `json:"loadedModels"`
+	ActiveConns     int32              `json:"activeConns"`
+	RequestsTotal   int64              `json:"requestsTotal"`
+	HealthHistory   []float64          `json:"healthHistory"`
 	// PendingPrewarmMB is real in-flight warmup VRAM reservation data (never
 	// a separate estimate) from the same accounting used for headroom checks.
 	// 0 means no prewarm currently in flight for this node.
@@ -427,6 +428,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
 	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
+	reg("POST /admin/nodes/{name}/prewarm", s.cors(s.adminAuth(s.handleSetNodePrewarm)))
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
@@ -632,6 +634,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			Runtime:          n.Runtime,
 			Health:           health,
 			Draining:         n.Draining,
+			PrewarmDisabled:  n.PrewarmDisabled,
 			Uptime:           n.Uptime,
 			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
 			ActiveConns:      atomic.LoadInt32(&n.ActiveConns),
@@ -680,6 +683,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			Runtime:          n.Runtime,
 			Health:           health,
 			Draining:         n.Draining,
+			PrewarmDisabled:  n.PrewarmDisabled,
 			Uptime:           n.Uptime,
 			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
 			ActiveConns:      atomic.LoadInt32(&n.ActiveConns),
@@ -1312,6 +1316,30 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 	_ = s.st.SetNodeDrain(name, false)
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"node":%q,"draining":false}`, name)
+}
+
+// handleSetNodePrewarm toggles whether the predictive engine may warm new
+// models onto a node. Accepts {"disabled": true|false}. Live, in-memory only
+// - unlike drain, this is never persisted to SQLite and always reverts to
+// enabled (false) on restart.
+func (s *Server) handleSetNodePrewarm(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var body struct {
+		Disabled bool `json:"disabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if !s.router.SetPrewarmDisabled(name, body.Disabled) {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"node":             name,
+		"prewarm_disabled": body.Disabled,
+	})
 }
 
 // handlePatchNode applies runtime metadata overrides to a node.
