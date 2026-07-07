@@ -133,6 +133,10 @@ type Router struct {
 	// (flapping hysteresis). Immutable after construction.
 	healthFailureThreshold int
 	healthSuccessThreshold int
+	// fallbackChains maps a model to an ordered list of already-downloaded
+	// alternates to try when the primary model doesn't fit anywhere. Opt-in,
+	// immutable after construction (config-only, not runtime-toggleable).
+	fallbackChains map[string][]string
 	// affinity maps session ID → sticky node. Populated and swept by Route / sweepAffinity.
 	affinity    map[string]*affinityEntry
 	affinityMu  sync.RWMutex
@@ -287,6 +291,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		maxRetries:               maxRetries,
 		healthFailureThreshold:   healthFailureThreshold,
 		healthSuccessThreshold:   healthSuccessThreshold,
+		fallbackChains:           cfg.FallbackChains,
 		affinity:                 make(map[string]*affinityEntry),
 		affinityTTL:              affinityTTL,
 		sessionAffinity:          cfg.SessionAffinity,
