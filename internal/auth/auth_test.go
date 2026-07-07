@@ -235,6 +235,36 @@ func TestPatchKey(t *testing.T) {
 	}
 }
 
+func TestPatchKeyUsdCaps(t *testing.T) {
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: config.BoolPtr(true),
+		Keys: []config.KeyConfig{
+			{Name: "ukey", Key: "sk-usdcap", RateLimit: 10},
+		},
+	})
+
+	if daily, monthly, ok := mw.KeyUsdCaps("ukey"); !ok || daily != 0 || monthly != 0 {
+		t.Fatalf("pre-patch KeyUsdCaps = (%v, %v, %v), want (0, 0, true)", daily, monthly, ok)
+	}
+
+	newDailyCap := 5.0
+	newMonthlyCap := 50.0
+	if !mw.PatchKey("ukey", KeyPatch{DailyUsdCap: &newDailyCap, MonthlyUsdCap: &newMonthlyCap}) {
+		t.Fatal("PatchKey returned false for existing key")
+	}
+
+	daily, monthly, ok := mw.KeyUsdCaps("ukey")
+	if !ok {
+		t.Fatal("key not found after patch")
+	}
+	if daily != 5.0 {
+		t.Errorf("dailyUsdCap = %v, want 5.0", daily)
+	}
+	if monthly != 50.0 {
+		t.Errorf("monthlyUsdCap = %v, want 50.0", monthly)
+	}
+}
+
 func TestPatchKeyNotFound(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true)})
 	rate := 10

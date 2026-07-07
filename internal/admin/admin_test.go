@@ -688,6 +688,58 @@ func TestCloudBudgetExceeded_MonthlyCapReached(t *testing.T) {
 	}
 }
 
+func TestCloudBudgetExceeded_PerKeyDailyCap(t *testing.T) {
+	tmpDB := filepath.Join(t.TempDir(), "cloud-budget-perkey.db")
+	st, err := store.Open(tmpDB)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	mw := auth.NewMiddleware(config.AuthConfig{
+		Enabled: config.BoolPtr(true),
+		Keys: []config.KeyConfig{
+			{Name: "capped", Key: "sk-capped", DailyUsdCap: 1.0},
+		},
+	})
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, mw, config.Config{}, st)
+
+	if exceeded, _ := s.CloudBudgetExceeded("capped"); exceeded {
+		t.Fatal("CloudBudgetExceeded = true before any per-key spend")
+	}
+
+	// A different key's spend must never count against "capped".
+	if err := st.AppendRequest(store.RequestRecord{ID: "r-other", KeyName: "other", CostUSD: 5.0, IsCloud: true, TS: time.Now()}); err != nil {
+		t.Fatalf("AppendRequest: %v", err)
+	}
+	if exceeded, _ := s.CloudBudgetExceeded("capped"); exceeded {
+		t.Fatal("CloudBudgetExceeded = true after a different key's spend, want false")
+	}
+
+	// "capped" spends $1.00 - $0.50 over half an hour ago, $0.50 just now - both within today (UTC).
+	if err := st.AppendRequest(store.RequestRecord{ID: "r1", KeyName: "capped", CostUSD: 0.5, IsCloud: true, TS: time.Now()}); err != nil {
+		t.Fatalf("AppendRequest: %v", err)
+	}
+	if err := st.AppendRequest(store.RequestRecord{ID: "r2", KeyName: "capped", CostUSD: 0.5, IsCloud: true, TS: time.Now()}); err != nil {
+		t.Fatalf("AppendRequest: %v", err)
+	}
+
+	exceeded, reason := s.CloudBudgetExceeded("capped")
+	if !exceeded {
+		t.Fatal("CloudBudgetExceeded = false after per-key spend reached the daily cap")
+	}
+	if reason == "" {
+		t.Error("expected a non-empty reason when the per-key daily cap is exceeded")
+	}
+
+	// An uncapped key must never be blocked regardless of spend.
+	if exceeded, reason := s.CloudBudgetExceeded("uncapped-key"); exceeded {
+		t.Errorf("CloudBudgetExceeded(uncapped-key) = true (%q), want false", reason)
+	}
+}
+
 func TestHandlePredictiveDecisions_ReturnsRecordedDecisions(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
 	r.RecordTransition("model-a", time.Now())
