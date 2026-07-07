@@ -164,6 +164,11 @@ type HourlyBucket struct {
 	CloudRequests int       `json:"cloud_requests"`
 	LocalRequests int       `json:"local_requests"`
 	CostUSD       float64   `json:"cost_usd"`
+	// GenDurationMs is Ollama's real eval_duration summed across requests in
+	// this hour, in milliseconds. 0 for hours with no local Ollama-native
+	// responses (cloud requests never report it). tokens/GenDurationMs gives
+	// a real average tokens-per-second for the hour.
+	GenDurationMs int64 `json:"gen_duration_ms"`
 }
 
 // ModelStat tracks aggregate stats per model.

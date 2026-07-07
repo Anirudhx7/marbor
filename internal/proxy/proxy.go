@@ -470,7 +470,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		h.admin.LogRequest(keyName, clientIP, modelName, node.Name, status, latencyMs, logTokens)
 		if tokens >= 0 {
-			h.admin.TrackLocalRequestModel(modelName, tokens)
+			h.admin.TrackLocalRequestModel(modelName, tokens, rec.evalDurationMs())
 		}
 	}
 	if h.audit != nil {
@@ -953,6 +953,34 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 	}
 	if aborted {
 		return -1
+	}
+	return 0
+}
+
+// evalDurationMs parses Ollama's real eval_duration (nanoseconds spent
+// generating completion tokens, excluding prompt processing) from the
+// response tail. This is only present on Ollama-native responses — cloud
+// providers don't report it — so it returns 0 (unavailable) for anything
+// else, including OpenAI usage blocks. 0 always means "not present": unlike
+// tokenCount, a genuine eval_duration is never 0, so no aborted-vs-zero
+// sentinel distinction is needed here.
+func (r *statusRecorder) evalDurationMs() int64 {
+	lines := bytes.Split(r.tail, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		line = bytes.TrimPrefix(line, []byte("data: ")) // SSE framing
+		if len(line) == 0 || line[0] != '{' {
+			continue
+		}
+		var t struct {
+			EvalDuration int64 `json:"eval_duration"`
+		}
+		if err := json.Unmarshal(line, &t); err != nil {
+			continue
+		}
+		if t.EvalDuration > 0 {
+			return t.EvalDuration / int64(time.Millisecond)
+		}
 	}
 	return 0
 }

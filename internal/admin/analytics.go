@@ -14,6 +14,15 @@ type HourlyBucket struct {
 	Cloud    int64   `json:"cloud"`
 	SavedUSD float64 `json:"saved_usd"`
 	SpentUSD float64 `json:"spent_usd"`
+	// Tokens and GenDurationMs are raw accumulators for local (Ollama-native)
+	// requests, real eval_count/eval_duration parsed from responses.
+	// TokensPerSec is derived from them (Tokens / GenDurationMs) only when
+	// GenDurationMs > 0 for the hour; otherwise 0, meaning no real
+	// generation-time data was available for this hour — never a fabricated
+	// rate.
+	Tokens        int64   `json:"tokens"`
+	GenDurationMs int64   `json:"gen_duration_ms"`
+	TokensPerSec  float64 `json:"tokens_per_sec"`
 }
 
 // ModelStat tracks aggregate stats per model.
@@ -61,8 +70,10 @@ func (a *analyticsStore) pruneHourlyLocked(now time.Time) {
 }
 
 // recordLocal records a local request. tokens is the real token count parsed
-// from the response; 0 contributes nothing to savings.
-func (a *analyticsStore) recordLocal(model string, tokens int64) {
+// from the response; 0 contributes nothing to savings. genDurationMs is
+// Ollama's real eval_duration in milliseconds; 0 means unavailable and is
+// excluded from the hourly tokens-per-second rollup.
+func (a *analyticsStore) recordLocal(model string, tokens, genDurationMs int64) {
 	now := time.Now().UTC()
 	key := now.Format("2006-01-02T15")
 	saved := a.refCostPer1K * float64(tokens) / 1000.0
@@ -76,6 +87,8 @@ func (a *analyticsStore) recordLocal(model string, tokens int64) {
 	}
 	a.hourly[key].Local++
 	a.hourly[key].SavedUSD += saved
+	a.hourly[key].Tokens += tokens
+	a.hourly[key].GenDurationMs += genDurationMs
 
 	if a.byModel[model] == nil {
 		a.byModel[model] = &ModelStat{Model: model}
@@ -125,6 +138,14 @@ func (a *analyticsStore) restoreFromStore(buckets []store.HourlyBucket) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	// Tokens/TokensPerSec are deliberately NOT restored here: store.HourlyBucket.Tokens
+	// is a combined local+cloud total (both TrackLocalRequestModel and
+	// TrackCloudCostModel add to the same column), so it cannot be attributed
+	// to local-only generation without fabricating a split - same reasoning
+	// as the SavedUSD omission below. GenDurationMs is local-only by
+	// construction but restoring it alone (with Tokens left at 0) would
+	// render as a bogus 0 tokens/sec instead of "no data yet"; both are left
+	// zero until fresh local traffic repopulates them post-restart.
 	for _, b := range buckets {
 		key := b.Hour.UTC().Format("2006-01-02T15")
 		a.hourly[key] = &HourlyBucket{
@@ -151,6 +172,9 @@ func (a *analyticsStore) last24hBuckets() []HourlyBucket {
 			buckets[i] = *b
 		} else {
 			buckets[i] = HourlyBucket{Hour: key}
+		}
+		if buckets[i].GenDurationMs > 0 {
+			buckets[i].TokensPerSec = float64(buckets[i].Tokens) / (float64(buckets[i].GenDurationMs) / 1000.0)
 		}
 	}
 	return buckets

@@ -26,15 +26,43 @@ func newTestServer() *Server {
 func TestTrackLocalRequestModel(t *testing.T) {
 	s := newTestServer()
 
-	s.TrackLocalRequestModel("llama3", 100)
-	s.TrackLocalRequestModel("llama3", 200)
-	s.TrackLocalRequestModel("llama3", 0) // token count unavailable
+	s.TrackLocalRequestModel("llama3", 100, 0)
+	s.TrackLocalRequestModel("llama3", 200, 0)
+	s.TrackLocalRequestModel("llama3", 0, 0) // token count unavailable
 
 	if got := atomic.LoadInt64(&s.localCount); got != 3 {
 		t.Errorf("localCount = %d, want 3", got)
 	}
 	if got := atomic.LoadInt64(&s.localTokens); got != 300 {
 		t.Errorf("localTokens = %d, want 300", got)
+	}
+}
+
+func TestTrackLocalRequestModelComputesTokensPerSec(t *testing.T) {
+	s := newTestServer()
+
+	// 100 tokens in 2000ms, then 100 more in 2000ms: 200 tokens / 4s = 50 tok/s.
+	s.TrackLocalRequestModel("llama3", 100, 2000)
+	s.TrackLocalRequestModel("llama3", 100, 2000)
+
+	buckets := s.analytics.last24hBuckets()
+	last := buckets[len(buckets)-1]
+	if last.TokensPerSec != 50 {
+		t.Errorf("TokensPerSec = %v, want 50", last.TokensPerSec)
+	}
+}
+
+func TestTrackLocalRequestModelZeroDurationExcludedFromTPS(t *testing.T) {
+	s := newTestServer()
+
+	// Cloud-shaped response with tokens but no real generation duration must
+	// not be divided by zero or rendered as a fabricated rate.
+	s.TrackLocalRequestModel("llama3", 100, 0)
+
+	buckets := s.analytics.last24hBuckets()
+	last := buckets[len(buckets)-1]
+	if last.TokensPerSec != 0 {
+		t.Errorf("TokensPerSec = %v, want 0 when GenDurationMs is 0", last.TokensPerSec)
 	}
 }
 
@@ -154,9 +182,9 @@ func TestHandleSavings(t *testing.T) {
 	s := newTestServer()
 
 	// 3 local requests totaling 1500 tokens, 2 cloud at $0.002/1K tokens
-	s.TrackLocalRequestModel("llama3", 500)
-	s.TrackLocalRequestModel("llama3", 500)
-	s.TrackLocalRequestModel("llama3", 500)
+	s.TrackLocalRequestModel("llama3", 500, 0)
+	s.TrackLocalRequestModel("llama3", 500, 0)
+	s.TrackLocalRequestModel("llama3", 500, 0)
 	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
 	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
 
@@ -209,7 +237,7 @@ func TestHandleSavingsCustomReferenceRate(t *testing.T) {
 	cfg := config.Config{Savings: config.SavingsConfig{ReferenceCostPer1K: 0.01}}
 	s := NewServer(r, nil, cfg)
 
-	s.TrackLocalRequestModel("llama3", 1500)
+	s.TrackLocalRequestModel("llama3", 1500, 0)
 
 	rec := httptest.NewRecorder()
 	s.handleSavings(rec, httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil))
@@ -239,7 +267,7 @@ func TestHandleSavingsNullWhenNoTokenData(t *testing.T) {
 	s := newTestServer()
 
 	// Requests happened but no token counts could be parsed.
-	s.TrackLocalRequestModel("llama3", 0)
+	s.TrackLocalRequestModel("llama3", 0, 0)
 	s.TrackCloudCostModel("gpt-4o", 0.002, 0)
 
 	rec := httptest.NewRecorder()
