@@ -70,7 +70,16 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeF
 		metrics.QueueDepth(float64(d))
 	}()
 
-	timer := time.NewTimer(r.queueTimeout)
+	// SLA-driven cloud overflow: an operator-set overflow_sla_ms caps how long
+	// this request waits for local capacity before falling through to cloud
+	// fallback (or 503), overriding the longer queue_timeout_ms for that
+	// purpose only. This never changes which nodes Route() considers - it is
+	// a queue-wait timing knob, not a Hard-Constraint bypass.
+	waitTimeout := r.queueTimeout
+	if r.overflowSLA > 0 && r.overflowSLA < waitTimeout {
+		waitTimeout = r.overflowSLA
+	}
+	timer := time.NewTimer(waitTimeout)
 	defer timer.Stop()
 	// Periodic safety-net retry: coalesced notifyCh signals can miss concurrent
 	// DecrConn bursts (channel capacity 1). 500ms poll is the fallback safety net;
