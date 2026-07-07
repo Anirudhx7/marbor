@@ -413,7 +413,7 @@ func TestModelFitsAnyHealthyNode(t *testing.T) {
 	r.nodes[0].VRAMUsedMB = 2000
 	r.tagsCache["http://localhost:11434"] = &TagsCache{
 		Models: []TagModel{
-			{Name: "big-model", Size: 20000 * mib}, // 20GB > 14GB free - doesn't fit
+			{Name: "big-model", Size: 20000 * mib},  // 20GB > 14GB free - doesn't fit
 			{Name: "small-model", Size: 4000 * mib}, // 4GB < 14GB free - fits
 		},
 		FetchedAt: time.Now(),
