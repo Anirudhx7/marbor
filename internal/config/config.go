@@ -301,6 +301,14 @@ type RoutingConfig struct {
 	// pre-scoring Hard-Constraint filter; it does not touch weighted
 	// placement scoring.
 	FallbackChains map[string][]string `yaml:"fallback_chains" json:"fallback_chains"`
+	// OverflowSLAMs, when > 0, caps how long a request waits in the local
+	// capacity queue before falling through to cloud fallback (or 503),
+	// overriding the longer queue_timeout_ms for that purpose only. It never
+	// bypasses a genuine Hard Constraint (health, runtime compatibility) -
+	// Route() itself is unaffected; this only shortens how long a request
+	// waits for local capacity to free up. Default 0 (disabled): the full
+	// queue_timeout_ms applies as before.
+	OverflowSLAMs int `yaml:"overflow_sla_ms" json:"overflow_sla_ms"`
 }
 
 type MetricsConfig struct {

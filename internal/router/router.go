@@ -137,6 +137,11 @@ type Router struct {
 	// alternates to try when the primary model doesn't fit anywhere. Opt-in,
 	// immutable after construction (config-only, not runtime-toggleable).
 	fallbackChains map[string][]string
+	// overflowSLA, when > 0, caps how long WaitForNode waits in the local
+	// capacity queue before returning nil (triggering cloud fallback or 503)
+	// - see config.RoutingConfig.OverflowSLAMs. It never affects Route()'s
+	// Hard-Constraint filtering, only how long a request waits for capacity.
+	overflowSLA time.Duration
 	// affinity maps session ID → sticky node. Populated and swept by Route / sweepAffinity.
 	affinity    map[string]*affinityEntry
 	affinityMu  sync.RWMutex
@@ -292,6 +297,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		healthFailureThreshold:   healthFailureThreshold,
 		healthSuccessThreshold:   healthSuccessThreshold,
 		fallbackChains:           cfg.FallbackChains,
+		overflowSLA:              time.Duration(cfg.OverflowSLAMs) * time.Millisecond,
 		affinity:                 make(map[string]*affinityEntry),
 		affinityTTL:              affinityTTL,
 		sessionAffinity:          cfg.SessionAffinity,

@@ -139,6 +139,67 @@ func TestWaitForNodeTimeout(t *testing.T) {
 	}
 }
 
+// TestWaitForNodeOverflowSLACapsWaitBelowQueueTimeout verifies that a
+// configured overflow_sla_ms shortens the effective wait below the longer
+// queue_timeout_ms, so a request falls through to cloud fallback sooner
+// under sustained local saturation.
+func TestWaitForNodeOverflowSLACapsWaitBelowQueueTimeout(t *testing.T) {
+	cfg := config.RoutingConfig{
+		Strategy:       "warm-first",
+		QueueMaxDepth:  10,
+		QueueTimeoutMs: 5000, // long queue timeout
+		OverflowSLAMs:  150,  // SLA is much shorter - should win
+	}
+	r := New(cfg, []config.NodeConfig{{Name: "n1", URL: "http://localhost:11434"}}, nil)
+	r.mu.RLock()
+	n := r.nodes[0]
+	r.mu.RUnlock()
+	n.mu.Lock()
+	n.Healthy = false
+	n.mu.Unlock()
+
+	start := time.Now()
+	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	elapsed := time.Since(start)
+
+	if node != nil {
+		t.Error("expected nil node (still unhealthy), got non-nil")
+	}
+	if elapsed >= 1*time.Second {
+		t.Errorf("elapsed = %v, expected the ~150ms overflow SLA to cap the wait well under the 5s queue timeout", elapsed)
+	}
+}
+
+// TestWaitForNodeOverflowSLADisabledByDefault verifies that with
+// overflow_sla_ms unset (0), the full queue_timeout_ms still applies -
+// existing behavior for anyone who hasn't opted in.
+func TestWaitForNodeOverflowSLADisabledByDefault(t *testing.T) {
+	cfg := config.RoutingConfig{
+		Strategy:       "warm-first",
+		QueueMaxDepth:  10,
+		QueueTimeoutMs: 200,
+		// OverflowSLAMs left at 0 (disabled).
+	}
+	r := New(cfg, []config.NodeConfig{{Name: "n1", URL: "http://localhost:11434"}}, nil)
+	r.mu.RLock()
+	n := r.nodes[0]
+	r.mu.RUnlock()
+	n.mu.Lock()
+	n.Healthy = false
+	n.mu.Unlock()
+
+	start := time.Now()
+	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	elapsed := time.Since(start)
+
+	if node != nil {
+		t.Error("expected nil node (still unhealthy), got non-nil")
+	}
+	if elapsed < 150*time.Millisecond {
+		t.Errorf("returned too fast (%v), expected the full ~200ms queue timeout with overflow SLA disabled", elapsed)
+	}
+}
+
 // TestWaitForNodeContextCancel verifies that WaitForNode respects context
 // cancellation and returns immediately when the caller disconnects.
 func TestWaitForNodeContextCancel(t *testing.T) {
