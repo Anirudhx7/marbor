@@ -194,6 +194,15 @@ cloud_providers:
     cost_per_1k_tokens: 0.00025
     enabled: false
 
+# Global cloud spend cap: blocks new cloud-fallback dispatch once cumulative
+# spend (from real per-request CostUSD, already tracked for savings/analytics)
+# hits either cap. Both default to 0 (disabled). A request that would have
+# gone to cloud instead gets a 503 - it never silently degrades to a
+# different, cheaper model.
+cloud_budget:
+  daily_usd_cap: 0
+  monthly_usd_cap: 0
+
 # Webhook notifications: POST JSON to a URL when a node transitions
 # between healthy and unhealthy states. Useful for Slack, PagerDuty, etc.
 # If secret is set, each request includes X-Ollama-Mesh-Signature: sha256=<hmac>.

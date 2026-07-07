@@ -293,6 +293,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// cloud when no local Ollama node is available.
 		cloud := h.router.RouteCloud()
 		if cloud != nil {
+			if h.admin != nil {
+				if exceeded, reason := h.admin.CloudBudgetExceeded(); exceeded {
+					writeAPIError(w, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
+					metrics.RequestsTotal(keyName, modelName, "none", "503")
+					return
+				}
+			}
 			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, cloud)
 			return
 		}
@@ -379,6 +386,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// No alternate nodes - try cloud fallback.
 			cloud := h.router.RouteCloud()
 			if cloud != nil {
+				if h.admin != nil {
+					if exceeded, reason := h.admin.CloudBudgetExceeded(); exceeded {
+						retryErr = errCloudHandled
+						writeAPIError(rw, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
+						metrics.RequestsTotal(keyName, modelName, "none", "503")
+						return
+					}
+				}
 				// Signal cloud path via sentinel before calling proxyToCloud,
 				// which writes the response. The outer loop checks this after
 				// serveAndRecoverAbort returns.

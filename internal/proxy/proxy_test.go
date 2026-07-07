@@ -148,6 +148,65 @@ func TestProxyFallsBackToCloud(t *testing.T) {
 	}
 }
 
+// TestProxyCloudBudgetExceededBlocksFallback verifies that once cumulative
+// cloud spend has reached the configured daily cap, a request that would
+// otherwise overflow to cloud gets a clean 503 instead of reaching the
+// provider - the mesh must never keep spending past an operator-set cap.
+func TestProxyCloudBudgetExceededBlocksFallback(t *testing.T) {
+	hit := false
+	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"test","choices":[]}`))
+	}))
+	defer cloudSrv.Close()
+
+	tmpDB := filepath.Join(t.TempDir(), "cloud-budget-proxy.db")
+	st, err := store.Open(tmpDB)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	clouds := []config.CloudProvider{
+		{
+			Name:            "fake-openai",
+			Provider:        "openai",
+			BaseURL:         cloudSrv.URL,
+			APIKey:          "test-key",
+			DefaultModel:    "gpt-4o",
+			CostPer1KTokens: 2.0,
+			Enabled:         true,
+		},
+	}
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "V100"},
+	}, clouds)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = false
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{
+		CloudBudget: config.CloudBudgetConfig{DailyUSDCap: 1.0},
+	}, st)
+	// $2.00 spent already, over the $1.00 daily cap.
+	a.TrackCloudCostModel("gpt-4o", 2.0, 1000)
+
+	h := NewHandler(r, a, nil)
+	req := httptest.NewRequest("POST", "/api/chat", bytes.NewReader([]byte(`{"model":"llama3.2:8b","messages":[]}`)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503 when cloud budget is exceeded; body: %s", rec.Code, rec.Body.String())
+	}
+	if hit {
+		t.Error("request reached the cloud provider; cloud budget cap must block dispatch before it is called")
+	}
+}
+
 // TestAnthropicCompletionsReturns501 verifies that a /v1/completions request
 // routed to an Anthropic overflow provider is rejected with a clean 501 by the
 // mesh, rather than being proxied to Anthropic (which has no such endpoint) and
