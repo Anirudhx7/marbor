@@ -392,7 +392,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(rw, http.StatusBadGateway, "upstream unavailable", "server_error", "upstream_error")
 		}
 
-		rec = &statusRecorder{ResponseWriter: w}
+		rec = &statusRecorder{ResponseWriter: w, start: start}
 		aborted = serveAndRecoverAbort(proxy, rec, r)
 
 		if retryErr == errCloudHandled {
@@ -435,6 +435,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.RequestsTotal(keyName, modelName, node.Name, metricStatus)
 	metrics.RequestDuration(modelName, node.Name, duration)
+	if ttft := rec.ttft(); ttft > 0 {
+		metrics.RequestTTFT(modelName, node.Name, ttft.Seconds())
+	}
 
 	// Log to admin live requests
 	status := "warm"
@@ -786,7 +789,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		writeAPIError(w, http.StatusBadGateway, "upstream unavailable", "server_error", "upstream_error")
 	}
 
-	rec := &statusRecorder{ResponseWriter: w}
+	rec := &statusRecorder{ResponseWriter: w, start: start}
 	aborted := serveAndRecoverAbort(proxy, rec, r)
 
 	duration := time.Since(start).Seconds()
@@ -799,6 +802,9 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 	metrics.RequestsTotal(keyName, modelName, nodeName, metricStatus)
 	metrics.RequestDuration(modelName, nodeName, duration)
+	if ttft := rec.ttft(); ttft > 0 {
+		metrics.RequestTTFT(modelName, nodeName, ttft.Seconds())
+	}
 
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
@@ -877,8 +883,10 @@ func rewriteModelField(body []byte, model string) []byte {
 
 type statusRecorder struct {
 	http.ResponseWriter
-	statusCode int
-	tail       []byte // last tailMax bytes written, for token-count parsing
+	statusCode  int
+	tail        []byte    // last tailMax bytes written, for token-count parsing
+	start       time.Time // request start, for TTFT; zero value means TTFT is unavailable
+	firstByteAt time.Time // set on the first Write(); zero until then
 }
 
 // tailMax bounds the retained response tail. Token counts live in the final
@@ -889,12 +897,25 @@ const tailMax = 8192
 func (r *statusRecorder) Write(b []byte) (int, error) {
 	n, err := r.ResponseWriter.Write(b)
 	if n > 0 {
+		if r.firstByteAt.IsZero() {
+			r.firstByteAt = time.Now()
+		}
 		r.tail = append(r.tail, b[:n]...)
 		if len(r.tail) > tailMax {
 			r.tail = r.tail[len(r.tail)-tailMax:]
 		}
 	}
 	return n, err
+}
+
+// ttft returns time-to-first-byte: the real wall-clock gap between request
+// start and the first response byte written. Returns 0 (unavailable) if no
+// byte was ever written (immediate error response, or start was never set).
+func (r *statusRecorder) ttft() time.Duration {
+	if r.start.IsZero() || r.firstByteAt.IsZero() {
+		return 0
+	}
+	return r.firstByteAt.Sub(r.start)
 }
 
 // tokenCount parses real token usage from the response tail. It scans lines
