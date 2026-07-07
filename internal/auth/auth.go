@@ -335,16 +335,18 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 
 func (m *Middleware) AddKey(k config.KeyConfig) {
 	ks := &keyState{
-		name:         k.Name,
-		key:          k.Key,
-		rateLimit:    k.RateLimit,
-		limiter:      newTokenBucket(k.RateLimit),
-		counter:      &keyCounter{lastReset: time.Now()},
-		models:       k.Models,
-		expiresAt:    k.ExpiresAt,
-		createdAt:    time.Now(),
-		dailyLimit:   k.DailyLimit,
-		monthlyLimit: k.MonthlyLimit,
+		name:          k.Name,
+		key:           k.Key,
+		rateLimit:     k.RateLimit,
+		limiter:       newTokenBucket(k.RateLimit),
+		counter:       &keyCounter{lastReset: time.Now()},
+		models:        k.Models,
+		expiresAt:     k.ExpiresAt,
+		createdAt:     time.Now(),
+		dailyLimit:    k.DailyLimit,
+		monthlyLimit:  k.MonthlyLimit,
+		dailyUsdCap:   k.DailyUsdCap,
+		monthlyUsdCap: k.MonthlyUsdCap,
 	}
 	m.mu.Lock()
 	m.keys[k.Key] = ks
