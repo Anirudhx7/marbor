@@ -534,7 +534,7 @@ export function Warmup() {
       }
 
       if (demoMode) {
-        setAvailableModels(['llama3.1:8b', 'mistral:7b', 'llama3.1:70b', 'codellama:13b', 'gemma2:9b', 'phi3:medium']);
+        setAvailableModels(['llama3.3:8b', 'mistral:7b', 'llama3.3:70b', 'qwen2.5-coder:14b', 'gemma2:9b', 'phi3:medium']);
       } else {
         try {
           const data = await fetchModels();
