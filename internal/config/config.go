@@ -264,6 +264,15 @@ type RoutingConfig struct {
 	// before giving up and falling through to cloud fallback or 503. Default
 	// 30000 (30s).
 	QueueTimeoutMs int `yaml:"queue_timeout_ms" json:"queue_timeout_ms"`
+	// HealthFailureThreshold is how many consecutive failed polls mark a node
+	// unhealthy. Default 3 (unchanged from the prior hardcoded behavior).
+	HealthFailureThreshold int `yaml:"health_failure_threshold" json:"health_failure_threshold"`
+	// HealthSuccessThreshold is how many consecutive successful polls are
+	// required to mark a previously-unhealthy node healthy again. Default 2:
+	// asymmetric with the failure threshold so a node isn't put back into
+	// rotation on a single lucky poll after a real outage (flapping), while
+	// still recovering faster than it took to be marked down.
+	HealthSuccessThreshold int `yaml:"health_success_threshold" json:"health_success_threshold"`
 }
 
 type MetricsConfig struct {
@@ -384,6 +393,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Routing.QueueTimeoutMs == 0 {
 		c.Routing.QueueTimeoutMs = 30000
+	}
+	if c.Routing.HealthFailureThreshold == 0 {
+		c.Routing.HealthFailureThreshold = 3
+	}
+	if c.Routing.HealthSuccessThreshold == 0 {
+		c.Routing.HealthSuccessThreshold = 2
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090

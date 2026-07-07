@@ -147,8 +147,16 @@ func (r *Router) pollNode(n *NodeState) {
 	n.mu.Lock()
 	prevModels := n.LoadedModels
 	n.LoadedModels = models
-	n.Healthy = true
 	n.Failures = 0
+	if !n.Healthy {
+		// Flapping hysteresis: require N consecutive successes before putting
+		// a previously-unhealthy node back into rotation, so one lucky poll
+		// after a real outage doesn't immediately re-route traffic to it.
+		n.ConsecutiveSuccesses++
+		if n.ConsecutiveSuccesses >= r.healthSuccessThreshold {
+			n.Healthy = true
+		}
+	}
 	n.LastPollAt = time.Now()
 	n.Uptime = formatUptime(time.Since(n.FirstSeenAt))
 	switch {
@@ -184,8 +192,13 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 	nodeName := n.Name
 	nodeURL := n.URL
+	nowHealthy := n.Healthy
 	n.mu.Unlock()
-	metrics.NodeHealthy(n.Name, 1)
+	if nowHealthy {
+		metrics.NodeHealthy(n.Name, 1)
+	} else {
+		metrics.NodeHealthy(n.Name, 0)
+	}
 
 	// Persist any residency change (models loaded/unloaded since the last poll)
 	// immediately — Tier 1 lifecycle events must not wait for the background flush.
@@ -197,9 +210,14 @@ func (r *Router) pollNode(n *NodeState) {
 	// deterministically, regardless of restore/poll ordering.
 	r.reconcileNodeResidency(nodeName, models)
 
-	// Fire webhook on recovery (unhealthy -> healthy transition). Guarded by
-	// a pool-membership check so a poll racing RemoveNode cannot resurrect a
-	// prevHealthy entry for a node that was just removed.
+	// Fire webhook on recovery (unhealthy -> healthy transition). Gated on
+	// nowHealthy so a successful poll during the hysteresis window (node not
+	// yet past HealthSuccessThreshold) doesn't fire node_up prematurely.
+	// Guarded by a pool-membership check so a poll racing RemoveNode cannot
+	// resurrect a prevHealthy entry for a node that was just removed.
+	if !nowHealthy {
+		return
+	}
 	r.mu.Lock()
 	if !r.nodeExistsLocked(nodeName) {
 		r.mu.Unlock()
@@ -245,12 +263,13 @@ func formatUptime(d time.Duration) string {
 func (r *Router) markFailure(n *NodeState) {
 	n.mu.Lock()
 	n.Failures++
+	n.ConsecutiveSuccesses = 0
 	becameUnhealthy := false
-	if n.Failures >= 3 && n.Healthy {
+	if n.Failures >= r.healthFailureThreshold && n.Healthy {
 		n.Healthy = false
 		becameUnhealthy = true
 		metrics.NodeHealthy(n.Name, 0)
-	} else if n.Failures >= 3 {
+	} else if n.Failures >= r.healthFailureThreshold {
 		metrics.NodeHealthy(n.Name, 0)
 	}
 	healthScore := 0.0

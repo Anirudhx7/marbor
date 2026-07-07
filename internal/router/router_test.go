@@ -233,6 +233,64 @@ func TestPollNodeMarksUnhealthyOnFailure(t *testing.T) {
 	}
 }
 
+func TestPollNodeRecoveryRequiresConsecutiveSuccessThreshold(t *testing.T) {
+	var failing atomic.Bool
+	failing.Store(true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"models":[]}`))
+	}))
+	defer srv.Close()
+
+	r := New(config.RoutingConfig{
+		PollIntervalMs:         2000,
+		HealthFailureThreshold: 3,
+		HealthSuccessThreshold: 2,
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: srv.URL},
+	}, nil)
+
+	r.pollNode(r.nodes[0])
+	r.pollNode(r.nodes[0])
+	r.pollNode(r.nodes[0])
+	r.nodes[0].mu.RLock()
+	healthy := r.nodes[0].Healthy
+	r.nodes[0].mu.RUnlock()
+	if healthy {
+		t.Fatal("expected node unhealthy after 3 failed polls")
+	}
+
+	failing.Store(false)
+
+	// First successful poll after the outage: still under the 2-poll
+	// threshold, must stay unhealthy (not put back into rotation on one
+	// lucky poll).
+	r.pollNode(r.nodes[0])
+	r.nodes[0].mu.RLock()
+	healthy = r.nodes[0].Healthy
+	successes := r.nodes[0].ConsecutiveSuccesses
+	r.nodes[0].mu.RUnlock()
+	if healthy {
+		t.Error("expected node still unhealthy after only 1 consecutive success (threshold=2)")
+	}
+	if successes != 1 {
+		t.Errorf("ConsecutiveSuccesses = %d, want 1", successes)
+	}
+
+	// Second consecutive success crosses the threshold.
+	r.pollNode(r.nodes[0])
+	r.nodes[0].mu.RLock()
+	healthy = r.nodes[0].Healthy
+	r.nodes[0].mu.RUnlock()
+	if !healthy {
+		t.Error("expected node healthy after 2 consecutive successes (threshold=2)")
+	}
+}
+
 func TestRouteCloudNilWhenNoProviders(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
 	if got := r.RouteCloud(); got != nil {
