@@ -114,6 +114,9 @@ type CloudBudgetConfig struct {
 	// month's (UTC) cumulative cloud spend reaches this amount. 0 disables
 	// the check.
 	MonthlyUSDCap float64 `yaml:"monthly_usd_cap" json:"monthly_usd_cap"`
+	// SoftBudgetPct is the fraction (0-1) of either cap at which a warning
+	// should surface without blocking cloud fallback. 0 disables the warning.
+	SoftBudgetPct float64 `yaml:"soft_budget_pct,omitempty" json:"soft_budget_pct,omitempty"`
 }
 
 // StorageConfig controls the SQLite persistence layer.
@@ -213,6 +216,12 @@ type KeyConfig struct {
 	// current day/month. 0 means unlimited. Exceeding either returns 429.
 	DailyLimit   int `yaml:"daily_limit,omitempty" json:"dailyLimit,omitempty"`
 	MonthlyLimit int `yaml:"monthly_limit,omitempty" json:"monthlyLimit,omitempty"`
+	// DailyUsdCap and MonthlyUsdCap are per-key cloud-fallback spend caps in
+	// USD, distinct from the request-count limits above. 0 means unlimited.
+	// Checked the same way as the global CloudBudgetConfig caps, against this
+	// key's real cost_usd in request_log.
+	DailyUsdCap   float64 `yaml:"daily_usd_cap,omitempty" json:"dailyUsdCap,omitempty"`
+	MonthlyUsdCap float64 `yaml:"monthly_usd_cap,omitempty" json:"monthlyUsdCap,omitempty"`
 }
 
 type NodeConfig struct {

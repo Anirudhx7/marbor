@@ -40,6 +40,12 @@ auth:
       # period succeeds; the next returns 429. Separate from rate_limit (per hour).
       daily_limit: 50000
       monthly_limit: 1000000
+      # Optional per-key cloud-fallback spend caps in USD (0 or omitted =
+      # unlimited). Distinct from daily_limit/monthly_limit above, which are
+      # request counts, not dollars. Checked the same way as the global
+      # cloud_budget caps below, against this key's real cost_usd.
+      daily_usd_cap: 0
+      monthly_usd_cap: 0
       models: []
     - name: agent-runner
       key: sk-mesh-agent001
@@ -229,6 +235,9 @@ cloud_providers:
 cloud_budget:
   daily_usd_cap: 0
   monthly_usd_cap: 0
+  # Fraction (0-1) of either cap at which the admin dashboard shows a warning
+  # banner without blocking cloud fallback. 0 disables the warning.
+  soft_budget_pct: 0.8
 
 # Context-length admission guard: reject a request fast (400) if it clearly
 # exceeds a model's context window, instead of letting it fail mid-generation

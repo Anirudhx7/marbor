@@ -61,6 +61,9 @@ type Store interface {
 	UpsertKey(k KeyRecord) error
 	RevokeKey(name string) error
 	AllKeys() ([]KeyRecord, error)
+	// KeySpendSince sums real cloud-fallback cost_usd for keyName since the
+	// given time, for per-key cloud spend cap checks.
+	KeySpendSince(keyName string, since time.Time) (float64, error)
 
 	// Audit log (replaces audit/audit.go file-based logger)
 	AppendAuditLog(e AuditEntry) error
@@ -213,13 +216,15 @@ type NodeOverride struct {
 
 // KeyRecord is a runtime API key that should survive a process restart.
 type KeyRecord struct {
-	Name         string   `json:"name"`
-	Key          string   `json:"key"`
-	RateLimit    int      `json:"rate_limit"`
-	DailyLimit   int      `json:"daily_limit"`
-	MonthlyLimit int      `json:"monthly_limit"`
-	Models       []string `json:"models"`
-	Revoked      bool     `json:"revoked"`
+	Name          string   `json:"name"`
+	Key           string   `json:"key"`
+	RateLimit     int      `json:"rate_limit"`
+	DailyLimit    int      `json:"daily_limit"`
+	MonthlyLimit  int      `json:"monthly_limit"`
+	DailyUsdCap   float64  `json:"daily_usd_cap"`
+	MonthlyUsdCap float64  `json:"monthly_usd_cap"`
+	Models        []string `json:"models"`
+	Revoked       bool     `json:"revoked"`
 }
 
 // AuditEntry is one structured audit log record persisted to SQLite.
@@ -341,6 +346,7 @@ func (NopStore) NodeDrainStates() (map[string]bool, error)              { return
 func (NopStore) UpsertKey(_ KeyRecord) error                            { return nil }
 func (NopStore) RevokeKey(_ string) error                               { return nil }
 func (NopStore) AllKeys() ([]KeyRecord, error)                          { return nil, nil }
+func (NopStore) KeySpendSince(_ string, _ time.Time) (float64, error)   { return 0, nil }
 func (NopStore) AppendAuditLog(_ AuditEntry) error                      { return nil }
 func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)       { return nil, nil }
 func (NopStore) GetAdminCreds() (AdminCreds, error)                     { return AdminCreds{}, ErrNoAdminCreds }
