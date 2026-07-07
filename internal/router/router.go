@@ -185,6 +185,12 @@ type Router struct {
 	predictionsMetTotal      int64
 	lastAccuracyLogAt        time.Time
 	lastTimeOfDayPrewarmHour int
+	// decisionLog is a capped ring buffer of the most recent predictive
+	// decisions, exposed read-only via GET /api/predictive/decisions for
+	// dashboard visibility. The engine has no scheduled queue to inspect -
+	// it's a stateless tick-and-act loop - so this is the log of what it
+	// actually decided on each tick, not a plan of what it will do next.
+	decisionLog []PredictiveDecision
 
 	// pollInFlight guards against overlapping pollAll cycles: if a node hangs
 	// past its 5s timeout, the next ticker tick skips rather than stacking a

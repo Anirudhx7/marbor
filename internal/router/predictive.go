@@ -29,6 +29,42 @@ type ActivePrediction struct {
 	Met       bool
 }
 
+// PredictiveDecision is one entry in the read-only decision-visibility ring
+// buffer (last 50), surfaced via GET /api/predictive/decisions.
+type PredictiveDecision struct {
+	Timestamp       time.Time `json:"timestamp"`
+	PredictedModel  string    `json:"predicted_model"`
+	TriggerModel    string    `json:"trigger_model"`
+	Node            string    `json:"node"`
+	WasAlreadyWarm  bool      `json:"was_already_warm"`
+	WarmupTriggered bool      `json:"warmup_triggered"`
+	TransitionCount int       `json:"transition_count"`
+	Hour            int       `json:"hour"`
+}
+
+const maxDecisionLogSize = 50
+
+// recordDecision appends d to the capped ring buffer of recent predictive
+// decisions. Ephemeral, in-memory only - never persisted to SQLite.
+func (r *Router) recordDecision(d PredictiveDecision) {
+	r.predictiveMu.Lock()
+	defer r.predictiveMu.Unlock()
+	r.decisionLog = append(r.decisionLog, d)
+	if len(r.decisionLog) > maxDecisionLogSize {
+		r.decisionLog = r.decisionLog[len(r.decisionLog)-maxDecisionLogSize:]
+	}
+}
+
+// RecentPredictiveDecisions returns a copy of the last 50 predictive
+// decisions, newest last.
+func (r *Router) RecentPredictiveDecisions() []PredictiveDecision {
+	r.predictiveMu.Lock()
+	defer r.predictiveMu.Unlock()
+	out := make([]PredictiveDecision, len(r.decisionLog))
+	copy(out, r.decisionLog)
+	return out
+}
+
 // RecordTransition logs a transition in the ring buffer.
 func (r *Router) RecordTransition(toModel string, now time.Time) {
 	if toModel == "" {
@@ -183,6 +219,16 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				// Log prediction decision
 				log.Printf("[predictive] decision: predicted_model=%s trigger_model=%s was_already_warm=%t warmup_triggered=%t transition_count=%d hour=%d",
 					P, W, wasAlreadyWarm, warmupTriggered, count, currentHour)
+				r.recordDecision(PredictiveDecision{
+					Timestamp:       now,
+					PredictedModel:  P,
+					TriggerModel:    W,
+					Node:            n.Name,
+					WasAlreadyWarm:  wasAlreadyWarm,
+					WarmupTriggered: warmupTriggered,
+					TransitionCount: count,
+					Hour:            currentHour,
+				})
 			}
 		}
 	}

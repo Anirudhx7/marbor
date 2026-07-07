@@ -429,6 +429,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/models/search", s.cors(s.adminAuth(s.handleModelSearch)))
 	reg("GET /admin/models/repo", s.cors(s.adminAuth(s.handleModelRepo)))
 
+	reg("GET /admin/predictive/decisions", s.cors(s.adminAuth(s.handlePredictiveDecisions)))
+
 	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
 	reg("GET /admin/system-info", s.cors(s.adminAuth(s.handleSystemInfo)))
 
@@ -865,6 +867,18 @@ func (s *Server) handleWarmupStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfg)
+}
+
+// handlePredictiveDecisions returns the last 50 predictive-engine decisions,
+// newest last. The engine is a stateless tick-and-act loop with no scheduled
+// queue, so this is a log of what it actually decided on each tick, not a
+// plan of what it will do next. Read-only; no config or routing change.
+func (s *Server) handlePredictiveDecisions(w http.ResponseWriter, r *http.Request) {
+	decisions := s.router.RecentPredictiveDecisions()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"decisions": decisions,
+	})
 }
 
 func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {

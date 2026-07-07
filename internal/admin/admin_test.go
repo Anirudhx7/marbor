@@ -688,6 +688,31 @@ func TestCloudBudgetExceeded_MonthlyCapReached(t *testing.T) {
 	}
 }
 
+func TestHandlePredictiveDecisions_ReturnsRecordedDecisions(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	r.RecordTransition("model-a", time.Now())
+	s := NewServer(r, nil, config.Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/predictive/decisions", nil)
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Decisions []map[string]interface{} `json:"decisions"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Decisions == nil {
+		t.Error("expected a decisions field (possibly empty), got nil")
+	}
+}
+
 func TestContextWindowFor_UndeclaredModelHasNoCheck(t *testing.T) {
 	s := newTestServer()
 

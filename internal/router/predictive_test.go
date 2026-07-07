@@ -186,6 +186,51 @@ func TestPredictivePrewarming(t *testing.T) {
 	})
 }
 
+// TestRecentPredictiveDecisions_RecordsAndCaps verifies that RunPredictionCycle
+// records a decision per evaluated (model, node) pair into the read-only
+// visibility ring buffer, and that the buffer stays capped at 50 entries.
+func TestRecentPredictiveDecisions_RecordsAndCaps(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384},
+	}, nil)
+	r.SetWarmupConfig(config.WarmupConfig{Enabled: true, IntervalMs: 300000})
+
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-w", SizeVRAM: 2000 * 1024 * 1024}}
+	r.nodes[0].VRAMTotalMB = 16384
+	r.nodes[0].VRAMUsedMB = 2000
+
+	now := time.Date(2026, 7, 2, 14, 0, 0, 0, time.UTC)
+	r.RecordTransition("model-w", now)
+	r.RecordTransition("model-x", now)
+	r.RecordTransition("model-w", now)
+
+	ctx := context.Background()
+	r.RunPredictionCycle(ctx, now)
+
+	decisions := r.RecentPredictiveDecisions()
+	if len(decisions) == 0 {
+		t.Fatal("expected at least one recorded predictive decision after a prediction cycle")
+	}
+	found := false
+	for _, d := range decisions {
+		if d.PredictedModel == "model-x" && d.TriggerModel == "model-w" && d.Node == "node-a" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a decision for predicted=model-x trigger=model-w node=node-a, got %+v", decisions)
+	}
+
+	// Filling the buffer well past its cap must never grow it past 50.
+	for i := 0; i < 100; i++ {
+		r.recordDecision(PredictiveDecision{PredictedModel: "filler", TriggerModel: "filler"})
+	}
+	if got := len(r.RecentPredictiveDecisions()); got != maxDecisionLogSize {
+		t.Errorf("decision log length = %d, want capped at %d", got, maxDecisionLogSize)
+	}
+}
+
 // Ensure thread safety of predictive prewarming under concurrent load
 func TestPredictiveConcurrency(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
