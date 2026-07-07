@@ -193,6 +193,8 @@ export const defaultSettings: Settings = {
   prometheusPort: 9090,
   logLevel: 'info',
   timezone: 'Local',
+  cloudDailyUsdCap: 25,
+  cloudMonthlyUsdCap: 500,
 };
 
 export const mockSavings: Savings = {

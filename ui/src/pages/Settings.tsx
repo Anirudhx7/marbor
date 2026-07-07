@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound } from 'lucide-react';
+import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
@@ -122,6 +122,8 @@ export function SettingsPage() {
           prometheusPort: settingsData.metrics?.port || 9090,
           logLevel: settingsData.proxy?.log_level || 'info',
           timezone: settingsData.timezone || 'Local',
+          cloudDailyUsdCap: settingsData.cloud_budget?.daily_usd_cap || 0,
+          cloudMonthlyUsdCap: settingsData.cloud_budget?.monthly_usd_cap || 0,
         });
         setCloudProviders(providersData || []);
         setError(null);
@@ -148,7 +150,8 @@ export function SettingsPage() {
         auth: { enabled: settings.authMode === 'api-key' },
         routing: { poll_interval_ms: settings.pollingInterval },
         metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
-        litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint }
+        litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint },
+        cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap },
       };
       
       await updateSettings(payload);
@@ -199,6 +202,10 @@ export function SettingsPage() {
       `litellm:`,
       `  enabled: ${settings.liteLLMEnabled}`,
       settings.liteLLMEnabled ? `  url: ${settings.liteLLMEndpoint}` : null,
+      ``,
+      `cloud_budget:`,
+      `  daily_usd_cap: ${settings.cloudDailyUsdCap}`,
+      `  monthly_usd_cap: ${settings.cloudMonthlyUsdCap}`,
     ].filter(line => line !== null).join('\n');
   };
 
@@ -543,6 +550,54 @@ export function SettingsPage() {
                 <option value="error">Error</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        {/* Cloud Spend Cap */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-emerald-500/10 rounded-lg">
+              <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Cloud Spend Cap</h3>
+              <p className="text-xs font-medium text-muted-foreground">Block cloud fallback once spend hits these limits</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Daily Cap (USD)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={settings.cloudDailyUsdCap}
+                onChange={(e) => setSettings({ ...settings, cloudDailyUsdCap: parseFloat(e.target.value) || 0 })}
+                placeholder="0 = disabled"
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Monthly Cap (USD)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={settings.cloudMonthlyUsdCap}
+                onChange={(e) => setSettings({ ...settings, cloudMonthlyUsdCap: parseFloat(e.target.value) || 0 })}
+                placeholder="0 = disabled"
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Checked against real cumulative cloud spend (UTC day/month). 0 disables the check.
+            </p>
           </div>
         </div>
 

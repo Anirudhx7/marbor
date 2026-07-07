@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, PlayCircle, Pencil } from 'lucide-react';
+import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, PlayCircle, Pencil, BrainCircuit } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule, updateSchedule,
-  fetchModels, getPinned, setPinned, fetchSystemInfo,
+  fetchModels, getPinned, setPinned, fetchSystemInfo, fetchPredictiveDecisions,
 } from '../lib/api';
-import type { GPUNode } from '../types';
+import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
 import { useDemoMode } from '../hooks/useDemoMode';
@@ -496,10 +496,11 @@ export function Warmup() {
   const [nodes, setNodes] = useState<GPUNode[]>([]);
   const [warmup, setWarmup] = useState<Record<string, NodeWarmup>>({});
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'warmup' | 'schedules'>('warmup');
+  const [tab, setTab] = useState<'warmup' | 'schedules' | 'predictions'>('warmup');
   const [serverTime, setServerTime] = useState<Date | null>(null);
   const [serverTimezone, setServerTimezone] = useState<string>('');
 
@@ -513,6 +514,7 @@ export function Warmup() {
       }));
       setWarmup(w);
       setSchedules(await listSchedules());
+      setDecisions(await fetchPredictiveDecisions().catch(() => []));
 
       const sys = await fetchSystemInfo().catch(() => null);
       if (sys && sys.server_time && sys.timezone) {
@@ -612,6 +614,10 @@ export function Warmup() {
               <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{schedules.length}</span>
             )}
           </button>
+          <button onClick={() => setTab('predictions')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'predictions' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            <BrainCircuit className="w-3.5 h-3.5" /> Predictions
+          </button>
         </div>
       </div>
 
@@ -689,6 +695,46 @@ export function Warmup() {
             );
           })()}
           <ScheduleForm nodes={nodes} availableModels={availableModels} onCreate={addSchedule} />
+        </section>
+      )}
+
+      {/* Predictions tab */}
+      {tab === 'predictions' && (
+        <section className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Last {decisions.length} predictive-warmup decisions. Newest first - this is a log of what the engine actually did on each tick, not a schedule.
+          </p>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : decisions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No predictive decisions recorded yet.</p>
+          ) : (
+            <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
+              {[...decisions].reverse().map((d, i) => (
+                <div key={i} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <BrainCircuit className="w-4 h-4 text-primary shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-foreground font-medium truncate">
+                        {d.predicted_model} <span className="text-muted-foreground font-normal">on</span> {d.node}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        triggered by {d.trigger_model} - seen together {d.transition_count}x at hour {d.hour}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={d.was_already_warm ? 'muted' : d.warmup_triggered ? 'success' : 'muted'} size="sm">
+                      {d.was_already_warm ? 'already warm' : d.warmup_triggered ? 'warmup triggered' : 'skipped'}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {new Date(d.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>

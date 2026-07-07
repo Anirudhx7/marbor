@@ -26,6 +26,17 @@ export interface UserRecord {
   approved_by?: string;
 }
 
+export interface PredictiveDecision {
+  timestamp: string;
+  predicted_model: string;
+  trigger_model: string;
+  node: string;
+  was_already_warm: boolean;
+  warmup_triggered: boolean;
+  transition_count: number;
+  hour: number;
+}
+
 export interface GPUNode {
   id: string;
   name: string;
@@ -128,6 +139,8 @@ export interface Settings {
   prometheusPort: number;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   timezone: string;
+  cloudDailyUsdCap: number;
+  cloudMonthlyUsdCap: number;
 }
 
 export interface Savings {

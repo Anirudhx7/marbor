@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision } from '../types';
 
 const BASE = '/admin';
 
@@ -619,6 +619,21 @@ export async function fetchModelCatalog(): Promise<ModelCatalogResponse> {
   const res = await apiFetch(`${BASE}/v1/models/catalog`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch model catalog');
   return res.json();
+}
+
+export async function fetchPredictiveDecisions(): Promise<PredictiveDecision[]> {
+  if (DEMO) {
+    const now = Date.now();
+    return demoDelay([
+      { timestamp: new Date(now - 2 * 60_000).toISOString(), predicted_model: 'qwen2.5:7b',        trigger_model: 'deepseek-r1:8b', node: 'gpu-node-01', was_already_warm: false, warmup_triggered: true,  transition_count: 14, hour: new Date(now - 2 * 60_000).getHours() },
+      { timestamp: new Date(now - 9 * 60_000).toISOString(), predicted_model: 'qwen2.5-coder:14b', trigger_model: 'llama3.3:8b',    node: 'gpu-node-02', was_already_warm: false, warmup_triggered: true,  transition_count: 9,  hour: new Date(now - 9 * 60_000).getHours() },
+      { timestamp: new Date(now - 21 * 60_000).toISOString(), predicted_model: 'deepseek-r1:8b',   trigger_model: 'qwen2.5:7b',     node: 'gpu-node-01', was_already_warm: true,  warmup_triggered: false, transition_count: 14, hour: new Date(now - 21 * 60_000).getHours() },
+    ]);
+  }
+  const res = await apiFetch(`${BASE}/predictive/decisions`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch predictive decisions');
+  const j = await res.json();
+  return j.decisions ?? [];
 }
 
 export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {
