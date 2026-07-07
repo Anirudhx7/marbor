@@ -309,6 +309,23 @@ type RoutingConfig struct {
 	// waits for local capacity to free up. Default 0 (disabled): the full
 	// queue_timeout_ms applies as before.
 	OverflowSLAMs int `yaml:"overflow_sla_ms" json:"overflow_sla_ms"`
+	// ThermalWatchdog implements "Sustained Degradation Auto-Drain": reuses
+	// the already-polled NVIDIA temperature data to auto-drain a node (via
+	// the existing DrainNode path) after sustained thermal breach.
+	// One-directional - recovery always requires an admin to undrain
+	// manually. Disabled by default.
+	ThermalWatchdog ThermalWatchdogConfig `yaml:"thermal_watchdog" json:"thermal_watchdog"`
+}
+
+// ThermalWatchdogConfig gates the auto-drain-on-sustained-overheat behavior.
+type ThermalWatchdogConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// MaxTempCelsius is the temperature threshold. 0 (even with
+	// Enabled=true) is treated as disabled - never invent a threshold.
+	MaxTempCelsius float64 `yaml:"max_temp_celsius" json:"max_temp_celsius"`
+	// ConsecutiveBreaches is how many consecutive polls at/above the
+	// threshold trigger a drain. Default 3 (see router.New()).
+	ConsecutiveBreaches int `yaml:"consecutive_breaches" json:"consecutive_breaches"`
 }
 
 type MetricsConfig struct {
