@@ -135,6 +135,8 @@ func (s *sqliteStore) migrate() error {
 			rate_limit    INTEGER,
 			daily_limit   INTEGER,
 			monthly_limit INTEGER,
+			daily_usd_cap REAL NOT NULL DEFAULT 0,
+			monthly_usd_cap REAL NOT NULL DEFAULT 0,
 			models        TEXT,
 			revoked       INTEGER
 		)`,
@@ -252,6 +254,8 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE users ADD COLUMN deleted_at INTEGER`,
 		`ALTER TABLE users ADD COLUMN deleted_by TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE hourly_buckets ADD COLUMN gen_duration_ms INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE runtime_keys ADD COLUMN daily_usd_cap REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
 	} {
 		s.db.Exec(col) // ignore error — column may already exist
 	}
@@ -645,9 +649,9 @@ func (s *sqliteStore) UpsertKey(k KeyRecord) error {
 	}
 	_, err = s.db.Exec(
 		`INSERT OR REPLACE INTO runtime_keys
-			(name, key, rate_limit, daily_limit, monthly_limit, models, revoked)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		k.Name, k.Key, k.RateLimit, k.DailyLimit, k.MonthlyLimit, string(modelsJSON), revoked,
+			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.Name, k.Key, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
@@ -667,7 +671,7 @@ func (s *sqliteStore) RevokeKey(name string) error {
 
 func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT name, key, rate_limit, daily_limit, monthly_limit, models, revoked FROM runtime_keys`,
+		`SELECT name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked FROM runtime_keys`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllKeys: %w", err)
@@ -679,7 +683,7 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 		var k KeyRecord
 		var modelsJSON string
 		var revoked int
-		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &modelsJSON, &revoked); err != nil {
+		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked); err != nil {
 			return nil, fmt.Errorf("store: AllKeys scan: %w", err)
 		}
 		k.Revoked = revoked != 0
@@ -694,6 +698,28 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 		return nil, fmt.Errorf("store: AllKeys rows: %w", err)
 	}
 	return keys, nil
+}
+
+// KeySpendSince sums real cloud-fallback cost_usd for keyName since the
+// given time, for per-key cloud spend cap checks.
+//
+// Caveat: request_log is trimmed to the last 1000 rows (see AppendRequest),
+// unlike the global check which sums from untrimmed hourly_buckets. On a
+// very busy mesh with many keys, a key's true monthly spend could exceed
+// what's summed here if older rows already fell out of the 1000-row window.
+// Acceptable for now (daily caps are the primary use case and rarely see
+// 1000+ requests across all keys in a day); revisit with a per-key hourly
+// aggregation table if monthly caps need to be exact.
+func (s *sqliteStore) KeySpendSince(keyName string, since time.Time) (float64, error) {
+	var total float64
+	err := s.db.QueryRow(
+		`SELECT COALESCE(SUM(cost_usd), 0) FROM request_log WHERE key_name = ? AND is_cloud = 1 AND ts >= ?`,
+		keyName, since.Unix(),
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("store: KeySpendSince: %w", err)
+	}
+	return total, nil
 }
 
 // --- Audit log ---

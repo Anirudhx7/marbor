@@ -52,17 +52,19 @@ type Middleware struct {
 }
 
 type keyState struct {
-	mu           sync.RWMutex
-	name         string
-	key          string
-	rateLimit    int
-	limiter      *tokenBucket
-	counter      *keyCounter
-	models       []string
-	expiresAt    string
-	createdAt    time.Time
-	dailyLimit   int
-	monthlyLimit int
+	mu            sync.RWMutex
+	name          string
+	key           string
+	rateLimit     int
+	limiter       *tokenBucket
+	counter       *keyCounter
+	models        []string
+	expiresAt     string
+	createdAt     time.Time
+	dailyLimit    int
+	monthlyLimit  int
+	dailyUsdCap   float64
+	monthlyUsdCap float64
 }
 
 type keyCounter struct {
@@ -268,16 +270,18 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 	}
 	for _, k := range cfg.Keys {
 		ks := &keyState{
-			name:         k.Name,
-			key:          k.Key,
-			rateLimit:    k.RateLimit,
-			limiter:      newTokenBucket(k.RateLimit),
-			counter:      &keyCounter{lastReset: time.Now()},
-			models:       k.Models,
-			expiresAt:    k.ExpiresAt,
-			createdAt:    time.Now(),
-			dailyLimit:   k.DailyLimit,
-			monthlyLimit: k.MonthlyLimit,
+			name:          k.Name,
+			key:           k.Key,
+			rateLimit:     k.RateLimit,
+			limiter:       newTokenBucket(k.RateLimit),
+			counter:       &keyCounter{lastReset: time.Now()},
+			models:        k.Models,
+			expiresAt:     k.ExpiresAt,
+			createdAt:     time.Now(),
+			dailyLimit:    k.DailyLimit,
+			monthlyLimit:  k.MonthlyLimit,
+			dailyUsdCap:   k.DailyUsdCap,
+			monthlyUsdCap: k.MonthlyUsdCap,
 		}
 		m.keys[k.Key] = ks
 		m.byName[k.Name] = ks
@@ -288,10 +292,12 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 // KeyPatch holds optional runtime-mutable key settings.
 // Only non-nil fields are applied; counters are preserved.
 type KeyPatch struct {
-	RateLimit    *int     `json:"rate_limit"`
-	DailyLimit   *int     `json:"daily_limit"`
-	MonthlyLimit *int     `json:"monthly_limit"`
-	Models       []string `json:"models"`
+	RateLimit     *int     `json:"rate_limit"`
+	DailyLimit    *int     `json:"daily_limit"`
+	MonthlyLimit  *int     `json:"monthly_limit"`
+	DailyUsdCap   *float64 `json:"daily_usd_cap"`
+	MonthlyUsdCap *float64 `json:"monthly_usd_cap"`
+	Models        []string `json:"models"`
 }
 
 // PatchKey updates mutable fields of an existing key without rotating it.
@@ -313,6 +319,12 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 	}
 	if patch.MonthlyLimit != nil {
 		ks.monthlyLimit = *patch.MonthlyLimit
+	}
+	if patch.DailyUsdCap != nil {
+		ks.dailyUsdCap = *patch.DailyUsdCap
+	}
+	if patch.MonthlyUsdCap != nil {
+		ks.monthlyUsdCap = *patch.MonthlyUsdCap
 	}
 	if patch.Models != nil {
 		ks.models = patch.Models
@@ -360,6 +372,8 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 			existing.models = k.Models
 			existing.dailyLimit = k.DailyLimit
 			existing.monthlyLimit = k.MonthlyLimit
+			existing.dailyUsdCap = k.DailyUsdCap
+			existing.monthlyUsdCap = k.MonthlyUsdCap
 			existing.rateLimit = k.RateLimit
 			existing.expiresAt = k.ExpiresAt
 			existing.mu.Unlock()
@@ -401,6 +415,22 @@ func (m *Middleware) RevokeKey(name string) {
 	}
 	delete(m.keys, ks.key)
 	delete(m.byName, name)
+}
+
+// KeyUsdCaps returns the live (possibly patched) per-key cloud-spend caps for
+// name. This reads from the in-memory key state rather than config.Config,
+// because PatchKey mutates only this state - config.Config goes stale after
+// a patch. ok is false if no key with this name exists.
+func (m *Middleware) KeyUsdCaps(name string) (daily, monthly float64, ok bool) {
+	m.mu.RLock()
+	ks, found := m.byName[name]
+	m.mu.RUnlock()
+	if !found {
+		return 0, 0, false
+	}
+	ks.mu.RLock()
+	defer ks.mu.RUnlock()
+	return ks.dailyUsdCap, ks.monthlyUsdCap, true
 }
 
 // Refund restores one request's rate-limit token and quota count for a key,

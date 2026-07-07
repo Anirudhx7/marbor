@@ -334,7 +334,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cloud := h.router.RouteCloud()
 		if cloud != nil {
 			if h.admin != nil {
-				if exceeded, reason := h.admin.CloudBudgetExceeded(); exceeded {
+				if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 					writeAPIError(w, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
 					metrics.RequestsTotal(keyName, modelName, "none", "503")
 					return
@@ -427,7 +427,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			cloud := h.router.RouteCloud()
 			if cloud != nil {
 				if h.admin != nil {
-					if exceeded, reason := h.admin.CloudBudgetExceeded(); exceeded {
+					if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 						retryErr = errCloudHandled
 						writeAPIError(rw, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
 						metrics.RequestsTotal(keyName, modelName, "none", "503")

@@ -288,6 +288,8 @@ type keyResp struct {
 	TokensThisMonth   int64    `json:"tokensThisMonth"`
 	EstimatedCostUsd  float64  `json:"estimatedCostUsd"`
 	RateLimit         int      `json:"rateLimit"`
+	DailyUsdCap       float64  `json:"dailyUsdCap,omitempty"`
+	MonthlyUsdCap     float64  `json:"monthlyUsdCap,omitempty"`
 	Status            string   `json:"status"`
 	AllowedModels     []string `json:"allowedModels"`
 	ExpiresAt         string   `json:"expiresAt,omitempty"`
@@ -439,6 +441,7 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
 	reg("GET /admin/system-info", s.cors(s.adminAuth(s.handleSystemInfo)))
+	reg("GET /admin/cloud-budget-status", s.cors(s.adminAuth(s.handleCloudBudgetStatus)))
 
 	reg("GET /admin/warmup", s.cors(s.adminAuth(s.handleWarmupStatus)))
 	reg("POST /admin/warmup/ping", s.cors(s.adminAuth(s.handleWarmupPing)))
@@ -718,12 +721,14 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			keys = append(keys, config.KeyConfig{
-				Name:         rk.Name,
-				Key:          rk.Key,
-				RateLimit:    rk.RateLimit,
-				DailyLimit:   rk.DailyLimit,
-				MonthlyLimit: rk.MonthlyLimit,
-				Models:       rk.Models,
+				Name:          rk.Name,
+				Key:           rk.Key,
+				RateLimit:     rk.RateLimit,
+				DailyLimit:    rk.DailyLimit,
+				MonthlyLimit:  rk.MonthlyLimit,
+				DailyUsdCap:   rk.DailyUsdCap,
+				MonthlyUsdCap: rk.MonthlyUsdCap,
+				Models:        rk.Models,
 			})
 		}
 	}
@@ -741,6 +746,12 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			models = k.Models
 			expires = k.ExpiresAt
 			rateLimit = k.RateLimit
+		}
+		dailyUsdCap, monthlyUsdCap := k.DailyUsdCap, k.MonthlyUsdCap
+		if s.auth != nil {
+			if kd, km, kok := s.auth.KeyUsdCaps(k.Name); kok {
+				dailyUsdCap, monthlyUsdCap = kd, km
+			}
 		}
 
 		// Determine status: revoked if not present in auth, expired if past expiresAt, else active.
@@ -777,6 +788,8 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			TokensThisMonth:   tokensMonth,
 			EstimatedCostUsd:  estimatedCost,
 			RateLimit:         rateLimit,
+			DailyUsdCap:       dailyUsdCap,
+			MonthlyUsdCap:     monthlyUsdCap,
 			Status:            status,
 			AllowedModels:     models,
 			ExpiresAt:         expires,
@@ -1870,12 +1883,14 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 			s.auth.AddKey(kc)
 		}
 		_ = s.st.UpsertKey(store.KeyRecord{
-			Name:         kc.Name,
-			Key:          kc.Key,
-			RateLimit:    kc.RateLimit,
-			DailyLimit:   kc.DailyLimit,
-			MonthlyLimit: kc.MonthlyLimit,
-			Models:       kc.Models,
+			Name:          kc.Name,
+			Key:           kc.Key,
+			RateLimit:     kc.RateLimit,
+			DailyLimit:    kc.DailyLimit,
+			MonthlyLimit:  kc.MonthlyLimit,
+			DailyUsdCap:   kc.DailyUsdCap,
+			MonthlyUsdCap: kc.MonthlyUsdCap,
+			Models:        kc.Models,
 		})
 		req.APIKeyName = keyName
 	}
@@ -2189,10 +2204,10 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"name is required"}`))
 		return
 	}
-	if k.RateLimit < 0 || k.DailyLimit < 0 || k.MonthlyLimit < 0 {
+	if k.RateLimit < 0 || k.DailyLimit < 0 || k.MonthlyLimit < 0 || k.DailyUsdCap < 0 || k.MonthlyUsdCap < 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"rate_limit, daily_limit, monthly_limit must be >= 0"}`))
+		w.Write([]byte(`{"error":"rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap must be >= 0"}`))
 		return
 	}
 	if k.ExpiresAt != "" {
@@ -2223,13 +2238,15 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		s.auth.AddKey(k)
 	}
 	_ = s.st.UpsertKey(store.KeyRecord{
-		Name:         k.Name,
-		Key:          k.Key,
-		RateLimit:    k.RateLimit,
-		DailyLimit:   k.DailyLimit,
-		MonthlyLimit: k.MonthlyLimit,
-		Models:       k.Models,
-		Revoked:      false,
+		Name:          k.Name,
+		Key:           k.Key,
+		RateLimit:     k.RateLimit,
+		DailyLimit:    k.DailyLimit,
+		MonthlyLimit:  k.MonthlyLimit,
+		DailyUsdCap:   k.DailyUsdCap,
+		MonthlyUsdCap: k.MonthlyUsdCap,
+		Models:        k.Models,
+		Revoked:       false,
 	})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -2532,29 +2549,135 @@ func (s *Server) cloudSpendSince(since time.Time) float64 {
 }
 
 // CloudBudgetExceeded reports whether cumulative cloud spend has reached the
-// configured daily or monthly cap (routing.cloud_budget in config), and a
-// human-readable reason if so. Both caps default to 0 (disabled) - returns
-// false immediately in that case without touching the store.
-func (s *Server) CloudBudgetExceeded() (bool, string) {
+// configured daily or monthly cap - the global cap (routing.cloud_budget in
+// config) or, if keyName has its own cap set, that key's cap - and a
+// human-readable reason if so. Global caps default to 0 (disabled); a key
+// with no cap configured is only subject to the global check.
+func (s *Server) CloudBudgetExceeded(keyName string) (bool, string) {
 	dailyCap := s.cfg.CloudBudget.DailyUSDCap
 	monthlyCap := s.cfg.CloudBudget.MonthlyUSDCap
-	if dailyCap <= 0 && monthlyCap <= 0 {
-		return false, ""
-	}
 	now := time.Now().UTC()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
 	if dailyCap > 0 {
-		dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 		if spent := s.cloudSpendSince(dayStart); spent >= dailyCap {
 			return true, fmt.Sprintf("daily cloud spend cap of $%.2f reached (spent $%.2f)", dailyCap, spent)
 		}
 	}
 	if monthlyCap > 0 {
-		monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 		if spent := s.cloudSpendSince(monthStart); spent >= monthlyCap {
 			return true, fmt.Sprintf("monthly cloud spend cap of $%.2f reached (spent $%.2f)", monthlyCap, spent)
 		}
 	}
+
+	if keyName == "" || s.auth == nil {
+		return false, ""
+	}
+	keyDailyCap, keyMonthlyCap, ok := s.auth.KeyUsdCaps(keyName)
+	if !ok || (keyDailyCap <= 0 && keyMonthlyCap <= 0) {
+		return false, ""
+	}
+	if keyDailyCap > 0 {
+		if spent, err := s.st.KeySpendSince(keyName, dayStart); err == nil && spent >= keyDailyCap {
+			return true, fmt.Sprintf("key %q daily cloud spend cap of $%.2f reached (spent $%.2f)", keyName, keyDailyCap, spent)
+		}
+	}
+	if keyMonthlyCap > 0 {
+		if spent, err := s.st.KeySpendSince(keyName, monthStart); err == nil && spent >= keyMonthlyCap {
+			return true, fmt.Sprintf("key %q monthly cloud spend cap of $%.2f reached (spent $%.2f)", keyName, keyMonthlyCap, spent)
+		}
+	}
 	return false, ""
+}
+
+// BudgetEntry is one cloud-spend budget's current standing (global or a
+// single key), used by the soft-budget warning banner. Pct is 0 when its
+// cap is unset (0/disabled) - never divides by zero.
+type BudgetEntry struct {
+	Name         string  `json:"name,omitempty"`
+	DailySpent   float64 `json:"dailySpent"`
+	DailyCap     float64 `json:"dailyCap"`
+	DailyPct     float64 `json:"dailyPct"`
+	MonthlySpent float64 `json:"monthlySpent"`
+	MonthlyCap   float64 `json:"monthlyCap"`
+	MonthlyPct   float64 `json:"monthlyPct"`
+}
+
+// CloudBudgetStatusResp is the /admin/cloud-budget-status response: the
+// global budget plus every key that has its own cap set. Keys with no cap
+// configured are omitted - nothing to warn about.
+type CloudBudgetStatusResp struct {
+	SoftBudgetPct float64       `json:"softBudgetPct"`
+	Global        BudgetEntry   `json:"global"`
+	PerKey        []BudgetEntry `json:"perKey"`
+}
+
+func budgetPct(spent, cap float64) float64 {
+	if cap <= 0 {
+		return 0
+	}
+	return spent / cap
+}
+
+// handleCloudBudgetStatus reports current cloud spend against configured
+// caps for the dashboard's soft-budget warning banner. Read-only; reuses the
+// same spend figures CloudBudgetExceeded already computes - no new spend
+// tracking, just packaging.
+func (s *Server) handleCloudBudgetStatus(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	s.mu.RLock()
+	cfgKeys := s.cfg.Auth.Keys
+	dailyCap, monthlyCap, softPct := s.cfg.CloudBudget.DailyUSDCap, s.cfg.CloudBudget.MonthlyUSDCap, s.cfg.CloudBudget.SoftBudgetPct
+	s.mu.RUnlock()
+
+	global := BudgetEntry{
+		DailyCap:   dailyCap,
+		MonthlyCap: monthlyCap,
+	}
+	global.DailySpent = s.cloudSpendSince(dayStart)
+	global.MonthlySpent = s.cloudSpendSince(monthStart)
+	global.DailyPct = budgetPct(global.DailySpent, global.DailyCap)
+	global.MonthlyPct = budgetPct(global.MonthlySpent, global.MonthlyCap)
+
+	var perKey []BudgetEntry
+	seen := make(map[string]bool)
+	addKeyStatus := func(name string) {
+		if seen[name] || s.auth == nil {
+			return
+		}
+		seen[name] = true
+		daily, monthly, ok := s.auth.KeyUsdCaps(name)
+		if !ok || (daily <= 0 && monthly <= 0) {
+			return
+		}
+		e := BudgetEntry{Name: name, DailyCap: daily, MonthlyCap: monthly}
+		e.DailySpent, _ = s.st.KeySpendSince(name, dayStart)
+		e.MonthlySpent, _ = s.st.KeySpendSince(name, monthStart)
+		e.DailyPct = budgetPct(e.DailySpent, e.DailyCap)
+		e.MonthlyPct = budgetPct(e.MonthlySpent, e.MonthlyCap)
+		perKey = append(perKey, e)
+	}
+	for _, k := range cfgKeys {
+		addKeyStatus(k.Name)
+	}
+	if runtimeKeys, err := s.st.AllKeys(); err == nil {
+		for _, rk := range runtimeKeys {
+			if !rk.Revoked {
+				addKeyStatus(rk.Name)
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(CloudBudgetStatusResp{
+		SoftBudgetPct: softPct,
+		Global:        global,
+		PerKey:        perKey,
+	})
 }
 
 // ContextWindowFor returns the operator-declared context window (in tokens)
