@@ -249,6 +249,10 @@ type nodeResp struct {
 	ActiveConns   int32              `json:"activeConns"`
 	RequestsTotal int64              `json:"requestsTotal"`
 	HealthHistory []float64          `json:"healthHistory"`
+	// PendingPrewarmMB is real in-flight warmup VRAM reservation data (never
+	// a separate estimate) from the same accounting used for headroom checks.
+	// 0 means no prewarm currently in flight for this node.
+	PendingPrewarmMB int64 `json:"pendingPrewarmMB"`
 }
 
 type SystemInfo struct {
@@ -616,23 +620,24 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		hist := make([]float64, len(n.HealthHistory))
 		copy(hist, n.HealthHistory)
 		out[i] = nodeResp{
-			ID:            fmt.Sprintf("gpu-%d", i),
-			Name:          n.Name,
-			Port:          port,
-			GPUModel:      n.GPUModel,
-			VRAMTotalMB:   n.VRAMTotalMB,
-			VRAMUsedMB:    n.VRAMUsedMB,
-			VRAMSource:    n.VRAMSource,
-			PowerDrawW:    n.PowerDrawW,
-			Temperature:   n.Temperature,
-			Runtime:       n.Runtime,
-			Health:        health,
-			Draining:      n.Draining,
-			Uptime:        n.Uptime,
-			LoadedModels:  safeModelInfoSlice(n.LoadedModels),
-			ActiveConns:   atomic.LoadInt32(&n.ActiveConns),
-			RequestsTotal: atomic.LoadInt64(&n.RequestsTotal),
-			HealthHistory: hist,
+			ID:               fmt.Sprintf("gpu-%d", i),
+			Name:             n.Name,
+			Port:             port,
+			GPUModel:         n.GPUModel,
+			VRAMTotalMB:      n.VRAMTotalMB,
+			VRAMUsedMB:       n.VRAMUsedMB,
+			VRAMSource:       n.VRAMSource,
+			PowerDrawW:       n.PowerDrawW,
+			Temperature:      n.Temperature,
+			Runtime:          n.Runtime,
+			Health:           health,
+			Draining:         n.Draining,
+			Uptime:           n.Uptime,
+			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
+			ActiveConns:      atomic.LoadInt32(&n.ActiveConns),
+			RequestsTotal:    atomic.LoadInt64(&n.RequestsTotal),
+			HealthHistory:    hist,
+			PendingPrewarmMB: s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
 		}
 		n.RUnlock()
 	}
@@ -663,22 +668,23 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		hist := make([]float64, len(n.HealthHistory))
 		copy(hist, n.HealthHistory)
 		out := nodeResp{
-			ID:            fmt.Sprintf("gpu-%d", i),
-			Name:          n.Name,
-			Port:          port,
-			GPUModel:      n.GPUModel,
-			VRAMTotalMB:   n.VRAMTotalMB,
-			VRAMUsedMB:    n.VRAMUsedMB,
-			VRAMSource:    n.VRAMSource,
-			PowerDrawW:    n.PowerDrawW,
-			Temperature:   n.Temperature,
-			Runtime:       n.Runtime,
-			Health:        health,
-			Draining:      n.Draining,
-			Uptime:        n.Uptime,
-			LoadedModels:  safeModelInfoSlice(n.LoadedModels),
-			ActiveConns:   atomic.LoadInt32(&n.ActiveConns),
-			HealthHistory: hist,
+			ID:               fmt.Sprintf("gpu-%d", i),
+			Name:             n.Name,
+			Port:             port,
+			GPUModel:         n.GPUModel,
+			VRAMTotalMB:      n.VRAMTotalMB,
+			VRAMUsedMB:       n.VRAMUsedMB,
+			VRAMSource:       n.VRAMSource,
+			PowerDrawW:       n.PowerDrawW,
+			Temperature:      n.Temperature,
+			Runtime:          n.Runtime,
+			Health:           health,
+			Draining:         n.Draining,
+			Uptime:           n.Uptime,
+			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
+			ActiveConns:      atomic.LoadInt32(&n.ActiveConns),
+			HealthHistory:    hist,
+			PendingPrewarmMB: s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
 		}
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")

@@ -340,6 +340,29 @@ func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 	return others
 }
 
+// PendingPrewarmBytes returns the sum of VRAM bytes reserved for in-flight
+// warmups on node that haven't yet been confirmed resident by the poller.
+// Backed by the same real warmReserved bookkeeping used for headroom
+// accounting (reserveWarmBytes) - never a separate estimate - so it decays
+// via warmReservationTTL exactly like the accounting it mirrors.
+func (r *Router) PendingPrewarmBytes(node string) int64 {
+	r.evictMu.Lock()
+	defer r.evictMu.Unlock()
+	byModel := r.warmReserved[node]
+	if byModel == nil {
+		return 0
+	}
+	now := time.Now()
+	var total int64
+	for _, res := range byModel {
+		if now.Sub(res.at) > warmReservationTTL {
+			continue
+		}
+		total += res.bytes
+	}
+	return total
+}
+
 // clearWarmReservation drops any in-flight VRAM reservation for (node, model).
 // Called once the poller confirms the model is actually resident, so a stale
 // reservation can't keep double-counting against the now-real usedBytes on

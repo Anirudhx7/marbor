@@ -46,6 +46,9 @@ export interface GPUNode {
   uptime: string;
   loadedModels: LoadedModel[];
   healthHistory: number[];
+  // Real in-flight warmup VRAM reservation (never a separate estimate) from
+  // the same accounting used for headroom checks. 0 = nothing pending.
+  pendingPrewarmMB?: number;
 }
 
 export interface LoadedModel {

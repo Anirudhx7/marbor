@@ -355,6 +355,53 @@ func TestReserveWarmBytesAccountsForInFlightSiblings(t *testing.T) {
 	}
 }
 
+// TestPendingPrewarmBytes_SumsLiveReservations verifies that
+// PendingPrewarmBytes reports the real, live warm-reservation bookkeeping -
+// the same data used for headroom accounting - scoped per node, and that a
+// cleared reservation no longer contributes.
+func TestPendingPrewarmBytes_SumsLiveReservations(t *testing.T) {
+	r := &Router{}
+
+	if got := r.PendingPrewarmBytes("n1"); got != 0 {
+		t.Fatalf("no reservations yet: got %d, want 0", got)
+	}
+
+	r.reserveWarmBytes("n1", "llama3", 40*mib)
+	r.reserveWarmBytes("n1", "mistral", 30*mib)
+	r.reserveWarmBytes("n2", "gemma", 999*mib)
+
+	if got := r.PendingPrewarmBytes("n1"); got != 70*mib {
+		t.Errorf("n1 pending = %d, want %d (40+30 MiB)", got, 70*mib)
+	}
+	if got := r.PendingPrewarmBytes("n2"); got != 999*mib {
+		t.Errorf("n2 pending = %d, want %d", got, 999*mib)
+	}
+
+	r.clearWarmReservation("n1", "llama3")
+	if got := r.PendingPrewarmBytes("n1"); got != 30*mib {
+		t.Errorf("after clearing llama3, n1 pending = %d, want %d (mistral only)", got, 30*mib)
+	}
+}
+
+// TestPendingPrewarmBytes_ExpiredReservationExcluded verifies that a
+// reservation older than warmReservationTTL is treated as decayed and does
+// not contribute to the reported pending total, matching the same TTL used
+// by reserveWarmBytes for headroom accounting.
+func TestPendingPrewarmBytes_ExpiredReservationExcluded(t *testing.T) {
+	r := &Router{}
+	r.reserveWarmBytes("n1", "llama3", 40*mib)
+
+	r.evictMu.Lock()
+	stale := r.warmReserved["n1"]["llama3"]
+	stale.at = time.Now().Add(-warmReservationTTL - time.Minute)
+	r.warmReserved["n1"]["llama3"] = stale
+	r.evictMu.Unlock()
+
+	if got := r.PendingPrewarmBytes("n1"); got != 0 {
+		t.Errorf("expired reservation should be excluded: got %d, want 0", got)
+	}
+}
+
 // TestEnsureHeadroomAccountsForConcurrentSiblingLoad verifies the fix for the
 // warmup headroom race: when one model's warmup is already in flight
 // (reserved, but not yet confirmed by a poll) on a node, a second model's
