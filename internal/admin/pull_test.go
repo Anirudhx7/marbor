@@ -89,6 +89,92 @@ func TestHandleNodePull_Success(t *testing.T) {
 	}
 }
 
+// TestHandleNodePull_DedupsConcurrentPullsOfSameModel verifies that two
+// concurrent pull requests for the same model on the same node do not both
+// proceed - the second must be rejected with 409 rather than racing the
+// first's multi-GB download. The dedup state is ephemeral and in-memory only.
+func TestHandleNodePull_DedupsConcurrentPullsOfSameModel(t *testing.T) {
+	reachedUpstream := make(chan struct{})
+	release := make(chan struct{})
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(reachedUpstream) // signal the first request has reached the upstream call
+		<-release
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+
+	body := `{"model":"llama3:8b"}`
+	newPullReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+		req.Header.Set("Content-Type", "application/json")
+		req.SetPathValue("name", "gpu-0")
+		return req
+	}
+
+	firstDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, newPullReq())
+		firstDone <- w
+	}()
+
+	<-reachedUpstream // first request is now blocked inside the upstream call
+
+	w2 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w2, newPullReq())
+	if w2.Result().StatusCode != http.StatusConflict {
+		t.Fatalf("second concurrent pull: expected 409, got %d", w2.Result().StatusCode)
+	}
+
+	close(release)
+	w1 := <-firstDone
+	if w1.Result().StatusCode != http.StatusOK {
+		t.Fatalf("first pull: expected 200, got %d", w1.Result().StatusCode)
+	}
+}
+
+// TestHandleNodePull_SlotFreedAfterCompletion verifies that once a pull
+// finishes, its dedup slot is released so a subsequent pull of the same
+// model on the same node is allowed to proceed.
+func TestHandleNodePull_SlotFreedAfterCompletion(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+
+	body := `{"model":"llama3:8b"}`
+	newPullReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+		req.Header.Set("Content-Type", "application/json")
+		req.SetPathValue("name", "gpu-0")
+		return req
+	}
+
+	w1 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w1, newPullReq())
+	if w1.Result().StatusCode != http.StatusOK {
+		t.Fatalf("first pull: expected 200, got %d", w1.Result().StatusCode)
+	}
+
+	w2 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w2, newPullReq())
+	if w2.Result().StatusCode != http.StatusOK {
+		t.Fatalf("second pull after first completed: expected 200, got %d", w2.Result().StatusCode)
+	}
+}
+
 func TestHandleNodePull_NodeNotFound(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
