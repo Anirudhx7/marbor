@@ -144,6 +144,13 @@ routing:
   #   llama3.1:70b: [llama3.1:70b-q4_K_M, llama3.1:70b-q3_K_M]
   fallback_chains: {}
 
+  # SLA-driven cloud overflow: when > 0, caps how long a request waits in the
+  # local capacity queue before falling through to cloud fallback (or 503),
+  # overriding the longer queue_timeout_ms for that purpose only. Never
+  # bypasses a Hard Constraint (health, runtime match) - Route() itself is
+  # unaffected. Default 0 (disabled): the full queue_timeout_ms applies.
+  overflow_sla_ms: 0
+
 # Peer-health monitor (observability only - NOT high availability).
 # When enabled, reports whether the listed peer instances' /health endpoints are
 # reachable, surfaced at /admin/ha/peers and in logs. It performs NO failover,
