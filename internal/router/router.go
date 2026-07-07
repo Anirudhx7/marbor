@@ -37,6 +37,10 @@ type NodeState struct {
 	Draining      bool
 	LastPollAt    time.Time
 	Failures      int
+	// ConsecutiveSuccesses counts successful polls in a row while the node is
+	// unhealthy, gating the unhealthy->healthy transition (flapping
+	// hysteresis). Reset to 0 on any failure; irrelevant once Healthy is true.
+	ConsecutiveSuccesses int
 	CPUPercent    float64
 	Temperature   *float64
 	VRAMTotalMB   int64
@@ -118,6 +122,11 @@ type Router struct {
 	tagsInflight    map[string]*tagsInflightEntry
 	upstreamTimeout time.Duration // ResponseHeaderTimeout for upstream Transport
 	maxRetries      int           // max alternate nodes to try on upstream failure
+	// healthFailureThreshold/healthSuccessThreshold are the asymmetric
+	// consecutive-poll thresholds for the healthy<->unhealthy transition
+	// (flapping hysteresis). Immutable after construction.
+	healthFailureThreshold int
+	healthSuccessThreshold int
 	// affinity maps session ID → sticky node. Populated and swept by Route / sweepAffinity.
 	affinity    map[string]*affinityEntry
 	affinityMu  sync.RWMutex
@@ -242,6 +251,14 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	// no queue, which is correct — they test 503/cloud paths, not queuing.
 	queueTimeout := time.Duration(cfg.QueueTimeoutMs) * time.Millisecond
 	queueMaxDepth := cfg.QueueMaxDepth
+	healthFailureThreshold := cfg.HealthFailureThreshold
+	if healthFailureThreshold <= 0 {
+		healthFailureThreshold = 3
+	}
+	healthSuccessThreshold := cfg.HealthSuccessThreshold
+	if healthSuccessThreshold <= 0 {
+		healthSuccessThreshold = 2
+	}
 	return &Router{
 		nodes:                    nodes,
 		strategy:                 cfg.Strategy,
@@ -256,6 +273,8 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		tagsInflight:             make(map[string]*tagsInflightEntry),
 		upstreamTimeout:          upstreamTimeout,
 		maxRetries:               maxRetries,
+		healthFailureThreshold:   healthFailureThreshold,
+		healthSuccessThreshold:   healthSuccessThreshold,
 		affinity:                 make(map[string]*affinityEntry),
 		affinityTTL:              affinityTTL,
 		sessionAffinity:          cfg.SessionAffinity,
