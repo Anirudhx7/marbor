@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin } from 'lucide-react';
+import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
@@ -7,7 +7,7 @@ import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, patchNode, fetchModelFit, unloadModel, getPinned } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -102,12 +102,13 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onEdit, onUnload }: {
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload }: {
   node: GPUNode;
   pinnedModels: string[];
   onRemove: (name: string) => void;
   onDrain: (name: string) => void;
   onUndrain: (name: string) => void;
+  onTogglePrewarm: (name: string, disabled: boolean) => void;
   onEdit: (node: GPUNode) => void;
   onUnload: (nodeName: string, model: string) => void;
 }) {
@@ -134,6 +135,14 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onEdit, on
                   DRAINING
                 </span>
               )}
+              {node.prewarmDisabled && (
+                <span
+                  title="Predictive engine will not warm new models onto this node until re-enabled or the mesh restarts"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border"
+                >
+                  PREWARM OFF
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <p className="text-sm text-muted-foreground">{node.gpuModel}</p>
@@ -155,6 +164,13 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onEdit, on
             className={`p-1.5 transition-colors ${node.draining ? 'text-amber-400 hover:text-primary' : 'text-muted-foreground hover:text-amber-400'}`}
           >
             <Activity className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onTogglePrewarm(node.name, !node.prewarmDisabled)}
+            title={node.prewarmDisabled ? 'Re-enable predictive prewarm on this node' : 'Disable predictive prewarm on this node (does not stop live traffic)'}
+            className={`p-1.5 transition-colors ${node.prewarmDisabled ? 'text-muted-foreground/40 hover:text-primary' : 'text-primary hover:text-muted-foreground'}`}
+          >
+            <Flame className="w-4 h-4" />
           </button>
           <button
             onClick={() => onRemove(node.name)}
@@ -412,6 +428,16 @@ export function GPUNodes() {
     }
   };
 
+  const handleTogglePrewarm = async (name: string, disabled: boolean) => {
+    if (!isLive) return;
+    try {
+      await setNodePrewarm(name, disabled);
+      await loadNodes();
+    } catch {
+      // toggle failed; node list unchanged
+    }
+  };
+
   const handleUnloadModel = async (nodeName: string, model: string) => {
     try {
       await unloadModel(nodeName, model);
@@ -529,7 +555,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onEdit={openEditModal} onUnload={handleUnloadModel} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={handleUnloadModel} />
         ))}
       </div>
 

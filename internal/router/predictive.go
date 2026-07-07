@@ -132,8 +132,11 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 		n.mu.RLock()
 		isHealthy := n.Healthy
 		isDraining := n.Draining
+		prewarmDisabled := n.PrewarmDisabled
 		n.mu.RUnlock()
-		if isHealthy && !isDraining {
+		// A prewarm-disabled node still serves live traffic (unlike Draining) -
+		// it is simply excluded from the predictive engine's warmup targets.
+		if isHealthy && !isDraining && !prewarmDisabled {
 			healthy = append(healthy, n)
 		}
 	}

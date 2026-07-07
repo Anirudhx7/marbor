@@ -175,6 +175,50 @@ func TestHandleNodePull_SlotFreedAfterCompletion(t *testing.T) {
 	}
 }
 
+func TestHandleSetNodePrewarm_TogglesFlag(t *testing.T) {
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:11434"},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/prewarm", strings.NewReader(`{"disabled":true}`))
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("name", "gpu-0")
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["prewarm_disabled"] != true {
+		t.Errorf("expected prewarm_disabled=true, got %v", resp["prewarm_disabled"])
+	}
+}
+
+func TestHandleSetNodePrewarm_NodeNotFound(t *testing.T) {
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:11434"},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/does-not-exist/prewarm", strings.NewReader(`{"disabled":true}`))
+	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("name", "does-not-exist")
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Result().StatusCode)
+	}
+}
+
 func TestHandleNodePull_NodeNotFound(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},

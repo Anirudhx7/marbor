@@ -35,16 +35,22 @@ type NodeState struct {
 	RequestsTotal int64 // atomic: lifetime requests routed to this node
 	Healthy       bool
 	Draining      bool
-	LastPollAt    time.Time
-	Failures      int
+	// PrewarmDisabled is a live, admin-toggleable, in-memory-only flag: when
+	// true, the predictive engine skips this node for new warmup triggers.
+	// Never persisted - it always reverts to false (prewarm enabled) on
+	// restart, unlike Draining which is an operational state the admin
+	// deliberately sets and expects to persist across a reload.
+	PrewarmDisabled bool
+	LastPollAt      time.Time
+	Failures        int
 	// ConsecutiveSuccesses counts successful polls in a row while the node is
 	// unhealthy, gating the unhealthy->healthy transition (flapping
 	// hysteresis). Reset to 0 on any failure; irrelevant once Healthy is true.
 	ConsecutiveSuccesses int
-	CPUPercent    float64
-	Temperature   *float64
-	VRAMTotalMB   int64
-	VRAMUsedMB    int64
+	CPUPercent           float64
+	Temperature          *float64
+	VRAMTotalMB          int64
+	VRAMUsedMB           int64
 	// VRAMTotalMBConfig is the operator-declared total VRAM (config vram_total_mb),
 	// used for remote nodes nvidia-smi cannot reach. 0 = not declared.
 	VRAMTotalMBConfig int64
@@ -787,6 +793,24 @@ func (r *Router) UndrainNode(name string) bool {
 			nodeURL := n.URL
 			n.mu.Unlock()
 			r.fireWebhook("node_undrain", name, nodeURL)
+			return true
+		}
+	}
+	return false
+}
+
+// SetPrewarmDisabled toggles whether the predictive engine may warm new
+// models onto this node. Live, in-memory only - it is never persisted and
+// always reverts to enabled on restart. Returns false if the node is not
+// found.
+func (r *Router) SetPrewarmDisabled(name string, disabled bool) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.Name == name {
+			n.mu.Lock()
+			n.PrewarmDisabled = disabled
+			n.mu.Unlock()
 			return true
 		}
 	}
