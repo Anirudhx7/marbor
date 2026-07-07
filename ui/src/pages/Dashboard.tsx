@@ -355,7 +355,12 @@ export function Dashboard() {
                 </div>
 
                 <div className="mb-4">
-                  <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} size="sm" />
+                  <VramBar
+                    used={node.vramUsedMB / 1024}
+                    total={node.vramTotalMB / 1024}
+                    size="sm"
+                    pending={(node.pendingPrewarmMB ?? 0) / 1024}
+                  />
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">

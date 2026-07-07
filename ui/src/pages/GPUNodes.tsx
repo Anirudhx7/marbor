@@ -192,7 +192,12 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onEdit, on
 
       {/* VRAM */}
       <div className="mb-4">
-        <VramBar used={node.vramUsedMB / 1024} total={node.vramTotalMB / 1024} source={node.vramSource} />
+        <VramBar
+          used={node.vramUsedMB / 1024}
+          total={node.vramTotalMB / 1024}
+          source={node.vramSource}
+          pending={(node.pendingPrewarmMB ?? 0) / 1024}
+        />
       </div>
 
       {/* Health History */}
