@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -809,6 +810,53 @@ func TestDrainNodeNotFound(t *testing.T) {
 	}
 	if r.UndrainNode("nonexistent") {
 		t.Error("UndrainNode should return false for unknown node")
+	}
+}
+
+func TestSetPrewarmDisabled_NotFound(t *testing.T) {
+	r := New(config.RoutingConfig{}, nil, nil)
+	if r.SetPrewarmDisabled("nonexistent", true) {
+		t.Error("SetPrewarmDisabled should return false for unknown node")
+	}
+}
+
+// TestSetPrewarmDisabled_ExcludesFromPredictionCycle verifies that a node
+// with prewarm disabled is skipped by the predictive engine as a warmup
+// target, while remaining otherwise unaffected (live traffic is untouched -
+// this is not the same as Draining).
+func TestSetPrewarmDisabled_ExcludesFromPredictionCycle(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384},
+	}, nil)
+	r.SetWarmupConfig(config.WarmupConfig{Enabled: true, IntervalMs: 300000})
+
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Healthy = true
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-w", SizeVRAM: 2000 * 1024 * 1024}}
+	r.nodes[0].VRAMTotalMB = 16384
+	r.nodes[0].VRAMUsedMB = 2000
+	r.nodes[0].mu.Unlock()
+
+	if !r.SetPrewarmDisabled("node-a", true) {
+		t.Fatal("SetPrewarmDisabled returned false for existing node")
+	}
+
+	now := time.Date(2026, 7, 2, 14, 0, 0, 0, time.UTC)
+	r.RecordTransition("model-w", now)
+	r.RecordTransition("model-x", now)
+	r.RecordTransition("model-w", now)
+
+	r.RunPredictionCycle(context.Background(), now)
+
+	decisions := r.RecentPredictiveDecisions()
+	for _, d := range decisions {
+		if d.Node == "node-a" {
+			t.Errorf("expected no predictive decisions for prewarm-disabled node-a, got %+v", d)
+		}
+	}
+
+	if !r.SetPrewarmDisabled("node-a", false) {
+		t.Fatal("SetPrewarmDisabled(false) returned false for existing node")
 	}
 }
 
