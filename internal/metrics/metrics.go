@@ -46,6 +46,14 @@ var (
 		Buckets: prometheus.DefBuckets,
 	}, []string{"model", "node"})
 
+	requestTTFT = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ollamamesh_request_ttft_seconds",
+		Help: "Time to first response byte, from real Write() timing (cold-start vs warm-residency signal)",
+		// Finer-grained than DefBuckets in the sub-second range where TTFT
+		// actually differentiates warm (fast) from cold-loading (slow) nodes.
+		Buckets: []float64{.05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60},
+	}, []string{"model", "node"})
+
 	activeConns = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "ollamamesh_active_connections",
 		Help: "Current active connections per node",
@@ -133,6 +141,13 @@ func RequestsTotal(key, model, node, status string) {
 
 func RequestDuration(model, node string, seconds float64) {
 	requestDuration.WithLabelValues(boundModel(model), node).Observe(seconds)
+}
+
+// RequestTTFT records real time-to-first-byte. Callers must skip this for
+// requests where no byte was ever written (immediate error, full abort) -
+// there is no real TTFT to report in that case, per R1.
+func RequestTTFT(model, node string, seconds float64) {
+	requestTTFT.WithLabelValues(boundModel(model), node).Observe(seconds)
 }
 
 func ActiveConnections(node string, count float64) {
