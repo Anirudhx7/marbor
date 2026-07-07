@@ -292,6 +292,15 @@ type RoutingConfig struct {
 	// rotation on a single lucky poll after a real outage (flapping), while
 	// still recovering faster than it took to be marked down.
 	HealthSuccessThreshold int `yaml:"health_success_threshold" json:"health_success_threshold"`
+	// FallbackChains maps a model name to an ordered list of already-downloaded
+	// alternates to try when the primary model provably does not fit in free
+	// VRAM on any healthy node. Opt-in and empty by default - there is no
+	// silent substitution outside a chain the operator explicitly declared,
+	// and a candidate is only used if it is already present on a node (never
+	// triggers a fresh multi-GB download on the hot path). This is a
+	// pre-scoring Hard-Constraint filter; it does not touch weighted
+	// placement scoring.
+	FallbackChains map[string][]string `yaml:"fallback_chains" json:"fallback_chains"`
 }
 
 type MetricsConfig struct {

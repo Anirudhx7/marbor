@@ -263,6 +263,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// VRAM-aware quantization fallback. Opt-in via routing.fallback_chains -
+	// no silent auto-substitution outside a chain the operator explicitly
+	// declared. Only triggers when the requested model provably does not fit
+	// in free VRAM on any healthy node (real headroom data, never guessed),
+	// and only substitutes an alternate that is already downloaded (never
+	// triggers a fresh multi-GB download on the hot path). Pre-scoring
+	// Hard-Constraint filter - does not touch weighted placement scoring.
+	requestedModelName := modelName
+	if chain := h.router.FallbackChainFor(modelName); len(chain) > 0 && !h.router.ModelFitsAnyHealthyNode(modelName) {
+		for _, alt := range chain {
+			if h.router.ModelDownloadedAnyNode(alt) && h.router.ModelFitsAnyHealthyNode(alt) {
+				modelName = alt
+				break
+			}
+		}
+	}
+	if modelName != requestedModelName {
+		w.Header().Set("X-Ollama-Mesh-Model-Fallback", requestedModelName+" -> "+modelName)
+		body = rewriteModelField(body, modelName)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
 	// Context-length vs. model-window admission check. Cheap char-count/4
 	// heuristic - no tokenizer dependency. A model's context window is
 	// identical across every node, so this can't discriminate routing
@@ -501,7 +523,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
 			clientIP = fwd2
 		}
-		h.admin.LogRequest(keyName, clientIP, modelName, node.Name, status, latencyMs, logTokens)
+		loggedModel := modelName
+		if modelName != requestedModelName {
+			loggedModel = requestedModelName + " -> " + modelName
+		}
+		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, logTokens)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(modelName, tokens, rec.evalDurationMs())
 		}
@@ -511,7 +537,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Time:      time.Now(),
 			RequestID: requestID,
 			KeyName:   keyName,
-			Model:     modelName,
+			Model:     requestedModelName,
 			Node:      node.Name,
 			Status:    status,
 			LatencyMs: latencyMs,

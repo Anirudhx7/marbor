@@ -134,6 +134,16 @@ routing:
   health_failure_threshold: 3
   health_success_threshold: 2
 
+  # VRAM-aware quantization fallback: opt-in, empty by default. When a
+  # request's model provably does not fit in free VRAM on any healthy node,
+  # the mesh tries each listed alternate in order and uses the first one that
+  # is BOTH already downloaded on some node AND fits. Never triggers a fresh
+  # download. The substitution is surfaced via an X-Ollama-Mesh-Model-Fallback
+  # response header and the live request log ("requested -> actual").
+  # fallback_chains:
+  #   llama3.1:70b: [llama3.1:70b-q4_K_M, llama3.1:70b-q3_K_M]
+  fallback_chains: {}
+
 # Peer-health monitor (observability only - NOT high availability).
 # When enabled, reports whether the listed peer instances' /health endpoints are
 # reachable, surfaced at /admin/ha/peers and in logs. It performs NO failover,
