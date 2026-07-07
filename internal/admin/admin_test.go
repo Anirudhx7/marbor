@@ -630,7 +630,7 @@ func TestCloudBudgetExceeded_DisabledByDefault(t *testing.T) {
 	s := newTestServer()
 	s.TrackCloudCostModel("gpt-4o", 1000.0, 1000) // huge cost, caps still 0/disabled
 
-	if exceeded, reason := s.CloudBudgetExceeded(); exceeded {
+	if exceeded, reason := s.CloudBudgetExceeded(""); exceeded {
 		t.Errorf("CloudBudgetExceeded = true (%q), want false when both caps are 0", reason)
 	}
 }
@@ -648,14 +648,14 @@ func TestCloudBudgetExceeded_DailyCapReached(t *testing.T) {
 		CloudBudget: config.CloudBudgetConfig{DailyUSDCap: 1.0},
 	}, st)
 
-	if exceeded, _ := s.CloudBudgetExceeded(); exceeded {
+	if exceeded, _ := s.CloudBudgetExceeded(""); exceeded {
 		t.Fatal("CloudBudgetExceeded = true before any spend")
 	}
 
 	// costPer1K * tokens/1000 = 2.0 * 1000/1000 = $1.00, hits the $1.00 cap.
 	s.TrackCloudCostModel("gpt-4o", 2.0, 1000)
 
-	exceeded, reason := s.CloudBudgetExceeded()
+	exceeded, reason := s.CloudBudgetExceeded("")
 	if !exceeded {
 		t.Fatal("CloudBudgetExceeded = false after spend reached the daily cap")
 	}
@@ -679,7 +679,7 @@ func TestCloudBudgetExceeded_MonthlyCapReached(t *testing.T) {
 
 	s.TrackCloudCostModel("gpt-4o", 1.0, 1000) // $1.00 spent, over the $0.50 monthly cap
 
-	exceeded, reason := s.CloudBudgetExceeded()
+	exceeded, reason := s.CloudBudgetExceeded("")
 	if !exceeded {
 		t.Fatal("CloudBudgetExceeded = false after spend reached the monthly cap")
 	}
@@ -751,7 +751,7 @@ func TestCloudBudgetExceeded_UnderCapAllowsFallback(t *testing.T) {
 
 	s.TrackCloudCostModel("gpt-4o", 1.0, 1000) // $0.001, well under the $100 cap
 
-	if exceeded, reason := s.CloudBudgetExceeded(); exceeded {
+	if exceeded, reason := s.CloudBudgetExceeded(""); exceeded {
 		t.Errorf("CloudBudgetExceeded = true (%q), want false when spend is under the cap", reason)
 	}
 }
