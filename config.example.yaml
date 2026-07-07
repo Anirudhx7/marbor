@@ -203,6 +203,16 @@ cloud_budget:
   daily_usd_cap: 0
   monthly_usd_cap: 0
 
+# Context-length admission guard: reject a request fast (400) if it clearly
+# exceeds a model's context window, instead of letting it fail mid-generation
+# on the backend node. Uses a cheap char-count/4 heuristic (no tokenizer
+# dependency) against an operator-declared window in tokens. A model absent
+# from this map gets no check - never guessed. Example:
+# context_windows:
+#   llama3.2:8b: 131072
+#   codellama:13b: 16384
+context_windows: {}
+
 # Webhook notifications: POST JSON to a URL when a node transitions
 # between healthy and unhealthy states. Useful for Slack, PagerDuty, etc.
 # If secret is set, each request includes X-Ollama-Mesh-Signature: sha256=<hmac>.

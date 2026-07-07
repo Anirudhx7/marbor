@@ -2506,6 +2506,16 @@ func (s *Server) CloudBudgetExceeded() (bool, string) {
 	return false, ""
 }
 
+// ContextWindowFor returns the operator-declared context window (in tokens)
+// for model from config.context_windows, and whether one is configured. A
+// model with no declared window means the proxy performs no admission-time
+// context-length check for it (fails open - R1: never guess a value that
+// wasn't declared).
+func (s *Server) ContextWindowFor(model string) (int, bool) {
+	window, ok := s.cfg.ContextWindows[model]
+	return window, ok
+}
+
 func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	hourly := s.analytics.last24hBuckets()
 	models := s.analytics.topModels()
