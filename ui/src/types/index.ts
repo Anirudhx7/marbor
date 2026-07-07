@@ -94,6 +94,8 @@ export interface APIKey {
   rateLimit: number;
   dailyLimit?: number;
   monthlyLimit?: number;
+  dailyUsdCap?: number;
+  monthlyUsdCap?: number;
   status: 'active' | 'suspended' | 'rate-limited';
   allowedModels: string[];
   models?: string[];
@@ -141,6 +143,7 @@ export interface Settings {
   timezone: string;
   cloudDailyUsdCap: number;
   cloudMonthlyUsdCap: number;
+  cloudSoftBudgetPct: number;
 }
 
 export interface Savings {
@@ -285,4 +288,20 @@ export interface CatalogNodeEntry {
 export interface ModelCatalogResponse {
   catalog: CatalogModel[];
   nodes: CatalogNodeEntry[];
+}
+
+export interface BudgetEntry {
+  name?: string;
+  dailySpent: number;
+  dailyCap: number;
+  dailyPct: number;
+  monthlySpent: number;
+  monthlyCap: number;
+  monthlyPct: number;
+}
+
+export interface CloudBudgetStatus {
+  softBudgetPct: number;
+  global: BudgetEntry;
+  perKey: BudgetEntry[];
 }
