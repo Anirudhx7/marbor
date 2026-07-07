@@ -126,6 +126,14 @@ routing:
   queue_max_depth: 100
   queue_timeout_ms: 30000
 
+  # Health flapping hysteresis: asymmetric thresholds so a node isn't marked
+  # unhealthy on one bad poll or put back into rotation on one lucky poll.
+  # health_failure_threshold: consecutive failed polls before unhealthy. Default 3.
+  # health_success_threshold: consecutive successful polls before healthy again
+  #   after an outage. Default 2.
+  health_failure_threshold: 3
+  health_success_threshold: 2
+
 # Peer-health monitor (observability only - NOT high availability).
 # When enabled, reports whether the listed peer instances' /health endpoints are
 # reachable, surfaced at /admin/ha/peers and in logs. It performs NO failover,
