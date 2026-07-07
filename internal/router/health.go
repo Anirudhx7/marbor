@@ -159,6 +159,7 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 	n.LastPollAt = time.Now()
 	n.Uptime = formatUptime(time.Since(n.FirstSeenAt))
+	shouldThermalDrain := false
 	switch {
 	case hasGPU:
 		// Richest source: live local nvidia-smi (total, used, temp, power).
@@ -168,6 +169,23 @@ func (r *Router) pollNode(n *NodeState) {
 		temp := gpu.TempCelsius
 		n.Temperature = &temp
 		n.VRAMSource = "nvidia"
+
+		// Sustained Degradation Auto-Drain: count consecutive polls at/above
+		// the configured threshold and drain via the existing DrainNode path
+		// once met. One-directional - recovery requires an admin to undrain
+		// manually, since a temperature dip doesn't confirm the underlying
+		// hardware issue is resolved. Only flips the existing Draining bool
+		// (already a Hard-Constraint exclusion) - no routing/scoring change.
+		if r.thermalWatchdog.Enabled && r.thermalWatchdog.MaxTempCelsius > 0 {
+			if temp >= r.thermalWatchdog.MaxTempCelsius {
+				n.ThermalBreaches++
+				if n.ThermalBreaches >= r.thermalWatchdog.ConsecutiveBreaches && !n.Draining {
+					shouldThermalDrain = true
+				}
+			} else {
+				n.ThermalBreaches = 0
+			}
+		}
 	default:
 		// Remote node (or no local GPU): used-VRAM is real, summed from the node's
 		// own /api/ps. Total is operator-declared if present. Temp/power unknown.
@@ -198,6 +216,12 @@ func (r *Router) pollNode(n *NodeState) {
 		metrics.NodeHealthy(n.Name, 1)
 	} else {
 		metrics.NodeHealthy(n.Name, 0)
+	}
+
+	if shouldThermalDrain {
+		r.DrainNode(nodeName)
+		log.Printf("thermal watchdog: node %s auto-drained after %d consecutive polls at/above %.1f°C",
+			nodeName, r.thermalWatchdog.ConsecutiveBreaches, r.thermalWatchdog.MaxTempCelsius)
 	}
 
 	// Persist any residency change (models loaded/unloaded since the last poll)

@@ -41,6 +41,10 @@ type NodeState struct {
 	// restart, unlike Draining which is an operational state the admin
 	// deliberately sets and expects to persist across a reload.
 	PrewarmDisabled bool
+	// ThermalBreaches counts consecutive polls at/above the configured
+	// thermal_watchdog threshold; reset to 0 on any poll below it. Drives
+	// Sustained Degradation Auto-Drain.
+	ThermalBreaches int
 	LastPollAt      time.Time
 	Failures        int
 	// ConsecutiveSuccesses counts successful polls in a row while the node is
@@ -142,6 +146,9 @@ type Router struct {
 	// - see config.RoutingConfig.OverflowSLAMs. It never affects Route()'s
 	// Hard-Constraint filtering, only how long a request waits for capacity.
 	overflowSLA time.Duration
+	// thermalWatchdog gates Sustained Degradation Auto-Drain. Immutable after
+	// construction (config-only, not runtime-toggleable).
+	thermalWatchdog config.ThermalWatchdogConfig
 	// affinity maps session ID → sticky node. Populated and swept by Route / sweepAffinity.
 	affinity    map[string]*affinityEntry
 	affinityMu  sync.RWMutex
@@ -280,6 +287,10 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	if healthSuccessThreshold <= 0 {
 		healthSuccessThreshold = 2
 	}
+	thermalWatchdog := cfg.ThermalWatchdog
+	if thermalWatchdog.Enabled && thermalWatchdog.ConsecutiveBreaches <= 0 {
+		thermalWatchdog.ConsecutiveBreaches = 3
+	}
 	return &Router{
 		nodes:                    nodes,
 		strategy:                 cfg.Strategy,
@@ -298,6 +309,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		healthSuccessThreshold:   healthSuccessThreshold,
 		fallbackChains:           cfg.FallbackChains,
 		overflowSLA:              time.Duration(cfg.OverflowSLAMs) * time.Millisecond,
+		thermalWatchdog:          thermalWatchdog,
 		affinity:                 make(map[string]*affinityEntry),
 		affinityTTL:              affinityTTL,
 		sessionAffinity:          cfg.SessionAffinity,

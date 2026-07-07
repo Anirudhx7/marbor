@@ -151,6 +151,16 @@ routing:
   # unaffected. Default 0 (disabled): the full queue_timeout_ms applies.
   overflow_sla_ms: 0
 
+  # Sustained Degradation Auto-Drain: reuses the already-polled nvidia-smi
+  # temperature data to auto-drain a node (via the same DrainNode path the
+  # admin API uses) after N consecutive polls at/above max_temp_celsius.
+  # One-directional - recovery always requires an admin to undrain manually.
+  # Disabled by default.
+  thermal_watchdog:
+    enabled: false
+    max_temp_celsius: 90
+    consecutive_breaches: 3
+
 # Peer-health monitor (observability only - NOT high availability).
 # When enabled, reports whether the listed peer instances' /health endpoints are
 # reachable, surfaced at /admin/ha/peers and in logs. It performs NO failover,
