@@ -3,6 +3,7 @@ package proxy
 import (
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func recorderWith(body string) *statusRecorder {
@@ -46,6 +47,37 @@ func TestTokenCountMissingReturnsZero(t *testing.T) {
 func TestTokenCountAbortedReturnsUnknownSentinel(t *testing.T) {
 	if got := recorderWith(`{"models":[]}`).tokenCount(true); got != -1 {
 		t.Errorf("tokenCount = %d, want -1 (unknown) when aborted with no final chunk", got)
+	}
+}
+
+func TestTTFTMeasuresFirstWrite(t *testing.T) {
+	start := time.Now()
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder(), start: start}
+	time.Sleep(5 * time.Millisecond)
+	rec.Write([]byte("first chunk"))
+	firstTTFT := rec.ttft()
+	if firstTTFT <= 0 {
+		t.Fatalf("ttft = %v, want > 0 after first write", firstTTFT)
+	}
+	time.Sleep(5 * time.Millisecond)
+	rec.Write([]byte("second chunk"))
+	if got := rec.ttft(); got != firstTTFT {
+		t.Errorf("ttft = %v after second write, want unchanged %v (only first byte counts)", got, firstTTFT)
+	}
+}
+
+func TestTTFTZeroWhenNoBytesWritten(t *testing.T) {
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder(), start: time.Now()}
+	if got := rec.ttft(); got != 0 {
+		t.Errorf("ttft = %v, want 0 when no byte was ever written", got)
+	}
+}
+
+func TestTTFTZeroWhenStartUnset(t *testing.T) {
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+	rec.Write([]byte("chunk"))
+	if got := rec.ttft(); got != 0 {
+		t.Errorf("ttft = %v, want 0 when start was never set", got)
 	}
 }
 
