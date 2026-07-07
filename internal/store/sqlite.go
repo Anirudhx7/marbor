@@ -19,27 +19,25 @@ type sqliteStore struct {
 // Open opens (or creates) a SQLite database at path, runs migrations, and
 // returns a Store. The driver name is "sqlite" (modernc.org/sqlite, no CGO).
 func Open(path string) (Store, error) {
-	db, err := sql.Open("sqlite", path)
+	// Pragmas are encoded in the DSN (not run via db.Exec after Open) because
+	// database/sql opens multiple physical connections under the hood; an
+	// Exec-based PRAGMA only lands on whichever single connection ran it,
+	// leaving the rest at driver defaults (busy_timeout=0), which caused
+	// spurious SQLITE_BUSY under write contention. DSN pragmas are applied by
+	// modernc.org/sqlite to every connection it opens.
+	dsn := path
+	if path != ":memory:" {
+		dsn = path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	// WAL mode allows concurrent readers alongside a single writer; give the
 	// pool enough connections to actually use that (SQLITE_BUSY on write
-	// contention is absorbed by busy_timeout below).
+	// contention is absorbed by busy_timeout above).
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(4)
-
-	for _, pragma := range []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA synchronous=NORMAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA foreign_keys=ON",
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("store: pragma %q: %w", pragma, err)
-		}
-	}
 
 	s := &sqliteStore{db: db}
 	if err := s.migrate(); err != nil {
