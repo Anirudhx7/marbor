@@ -262,9 +262,9 @@ export interface Schedule {
 let demoWarmup: Record<string, NodeWarmup> | null = null;
 function demoWarmupStore(): Record<string, NodeWarmup> {
   if (!demoWarmup) demoWarmup = {
-    'gpu-node-01': { enabled: true,  models: ['llama3.1:8b', 'mistral:7b'] },
+    'gpu-node-01': { enabled: true,  models: ['deepseek-r1:8b', 'qwen2.5:7b'] },
     'gpu-node-02': { enabled: false, models: [] },
-    'gpu-node-03': { enabled: true,  models: ['codellama:13b'] },
+    'gpu-node-03': { enabled: true,  models: ['qwen2.5-coder:14b'] },
     'gpu-node-04': { enabled: false, models: [] },
   };
   return demoWarmup;
@@ -272,9 +272,9 @@ function demoWarmupStore(): Record<string, NodeWarmup> {
 let demoSchedules: Schedule[] | null = null;
 function demoScheduleStore(): Schedule[] {
   if (!demoSchedules) demoSchedules = [
-    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['llama3.1:8b', 'mistral:7b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true },
+    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['deepseek-r1:8b', 'qwen2.5:7b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true },
     { id: 'sched-demo-2', action: 'drain',  node: 'gpu-node-03', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true },
-    { id: 'sched-demo-3', action: 'warmup', node: 'gpu-node-02', models: ['llama3.1:70b'], at: '09:00', days: [1, 2, 3, 4, 5], enabled: false },
+    { id: 'sched-demo-3', action: 'warmup', node: 'gpu-node-02', models: ['llama3.3:70b'], at: '09:00', days: [1, 2, 3, 4, 5], enabled: false },
   ];
   return demoSchedules;
 }
@@ -296,7 +296,7 @@ export async function setNodeWarmup(name: string, nw: NodeWarmup): Promise<NodeW
 }
 
 export async function getPinned(nodeName: string): Promise<string[]> {
-  if (DEMO) return demoDelay(['llama3.2:3b', 'nomic-embed-text']);
+  if (DEMO) return demoDelay(['qwen2.5:3b', 'nomic-embed-text']);
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(nodeName)}/pinned`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch pinned models');
   const j = await res.json();
@@ -381,10 +381,10 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
 
 export async function fetchNodes(): Promise<GPUNode[]> {
   if (DEMO) return demoDelay([
-    { id: 'gpu-node-01', name: 'gpu-node-01', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 14336, vramSource: 'nvidia', powerDrawW: 280, cpuPercent: 18, temperature: 52, health: 'healthy',  runtime: 'ollama', draining: false, uptime: '12d 6h', loadedModels: [{ name: 'llama3.1:8b', sizeVram: 8192 }, { name: 'mistral:7b', sizeVram: 6144 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-02', name: 'gpu-node-02', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 0,     vramSource: 'nvidia', powerDrawW: 210, cpuPercent: 4,  temperature: 44, health: 'healthy',  runtime: 'ollama', draining: false, uptime: '12d 6h', loadedModels: [],                                                                                            healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-03', name: 'gpu-node-03', gpuModel: 'NVIDIA RTX 4090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 9216, vramSource: 'nvidia', powerDrawW: 195, cpuPercent: 22, temperature: 61, health: 'healthy',  runtime: 'ollama', draining: false, uptime: '5d 3h',  loadedModels: [{ name: 'codellama:13b', sizeVram: 9216 }],                                                   healthHistory: [1,1,1,1,1,1,0,1,1,1] },
-    { id: 'gpu-node-04', name: 'gpu-node-04', gpuModel: 'NVIDIA RTX 3090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 0,   cpuPercent: 0,  temperature: null, health: 'down', runtime: 'ollama', draining: false, uptime: '—',      loadedModels: [],                                                                                            healthHistory: [1,1,0,0,0,1,0,0,0,0] },
+    { id: 'gpu-node-01', name: 'gpu-node-01', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 14336, vramSource: 'nvidia', powerDrawW: 280, cpuPercent: 18, temperature: 52, health: 'healthy',  runtime: 'ollama', draining: false, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: '12d 6h', loadedModels: [{ name: 'deepseek-r1:8b', sizeVram: 8192 }, { name: 'qwen2.5:7b', sizeVram: 6144 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-node-02', name: 'gpu-node-02', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 0,     vramSource: 'nvidia', powerDrawW: 210, cpuPercent: 4,  temperature: 44, health: 'healthy',  runtime: 'ollama', draining: false, prewarmDisabled: false, pendingPrewarmMB: 6144, uptime: '12d 6h', loadedModels: [],                                                                                                    healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-node-03', name: 'gpu-node-03', gpuModel: 'NVIDIA RTX 4090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 9216, vramSource: 'nvidia', powerDrawW: 195, cpuPercent: 22, temperature: 61, health: 'healthy',  runtime: 'ollama', draining: false, prewarmDisabled: true,  pendingPrewarmMB: 0,    uptime: '5d 3h',  loadedModels: [{ name: 'qwen2.5-coder:14b', sizeVram: 9216 }],                                                          healthHistory: [1,1,1,1,1,1,0,1,1,1] },
+    { id: 'gpu-node-04', name: 'gpu-node-04', gpuModel: 'NVIDIA RTX 3090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 0,   cpuPercent: 0,  temperature: null, health: 'down', runtime: 'ollama', draining: false, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: '—',      loadedModels: [],                                                                                                    healthHistory: [1,1,0,0,0,1,0,0,0,0] },
   ]);
   const res = await apiFetch(`${BASE}/nodes`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch nodes');

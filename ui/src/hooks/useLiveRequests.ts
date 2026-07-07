@@ -4,15 +4,15 @@ import { fetchLiveRequests } from '../lib/api';
 
 const MODELS = [
   'llama3.2:3b',
-  'llama3.1:8b',
-  'llama3.1:70b',
+  'llama3.3:8b',
+  'llama3.3:70b',
   'mistral:7b',
-  'mixtral:8x7b',
+  'deepseek-r1:7b',
   'qwen2.5:7b',
   'qwen2.5:14b',
   'gemma2:9b',
-  'phi3:medium',
-  'codellama:13b',
+  'phi4:14b',
+  'qwen2.5-coder:14b',
 ];
 
 const NODES = [
