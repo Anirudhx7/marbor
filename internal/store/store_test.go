@@ -83,6 +83,38 @@ func TestAppendRequestPersists(t *testing.T) {
 	}
 }
 
+// TestKeySpendSince verifies per-key cloud spend is summed correctly,
+// excludes local (non-cloud) requests, other keys, and rows before `since`.
+func TestKeySpendSince(t *testing.T) {
+	s := openTestDB(t)
+
+	base := time.Unix(1_700_000_000, 0).UTC()
+	rows := []store.RequestRecord{
+		{ID: "r1", KeyName: "alice", CostUSD: 1.00, IsCloud: true, TS: base.Add(1 * time.Hour)},
+		{ID: "r2", KeyName: "alice", CostUSD: 2.50, IsCloud: true, TS: base.Add(2 * time.Hour)},
+		{ID: "r3", KeyName: "alice", CostUSD: 5.00, IsCloud: false, TS: base.Add(3 * time.Hour)}, // local, excluded
+		{ID: "r4", KeyName: "bob", CostUSD: 9.00, IsCloud: true, TS: base.Add(2 * time.Hour)},    // other key, excluded
+		{ID: "r5", KeyName: "alice", CostUSD: 3.00, IsCloud: true, TS: base.Add(-1 * time.Hour)}, // before `since`, excluded
+	}
+	for _, r := range rows {
+		if err := s.AppendRequest(r); err != nil {
+			t.Fatalf("AppendRequest(%s): %v", r.ID, err)
+		}
+	}
+
+	got, err := s.KeySpendSince("alice", base)
+	if err != nil {
+		t.Fatalf("KeySpendSince: %v", err)
+	}
+	if want := 3.50; got != want {
+		t.Errorf("KeySpendSince(alice, base) = %v, want %v", got, want)
+	}
+
+	if got, err := s.KeySpendSince("carol", base); err != nil || got != 0 {
+		t.Errorf("KeySpendSince(carol, base) = (%v, %v), want (0, nil)", got, err)
+	}
+}
+
 // TestUpsertDeleteNode verifies UpsertNode + AllNodes + DeleteNode.
 func TestUpsertDeleteNode(t *testing.T) {
 	s := openTestDB(t)
