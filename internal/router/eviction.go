@@ -340,6 +340,75 @@ func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 	return others
 }
 
+// FallbackChainFor returns the operator-declared, ordered list of alternate
+// models to try for model, or nil if none is configured. Opt-in only - a
+// model absent from routing.fallback_chains has no substitution behavior.
+func (r *Router) FallbackChainFor(model string) []string {
+	return r.fallbackChains[model]
+}
+
+// ModelFitsAnyHealthyNode reports whether model could fit in free VRAM on at
+// least one healthy, non-draining node, using the same real size/headroom
+// data (tags-cache size, live VRAM) as predictive prewarm and eviction. If no
+// healthy node has both a known VRAM total and a known size for model, there
+// is no real data to say it doesn't fit, so this fails open (true) - R1:
+// never guess a value that wasn't observed.
+func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
+	r.mu.RLock()
+	nodes := make([]*NodeState, len(r.nodes))
+	copy(nodes, r.nodes)
+	r.mu.RUnlock()
+
+	sawKnownSize := false
+	for _, n := range nodes {
+		n.mu.RLock()
+		healthy := n.Healthy && !n.Draining
+		freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
+		nodeURL := n.URL
+		vramKnown := n.VRAMTotalMB > 0
+		n.mu.RUnlock()
+		if !healthy || !vramKnown {
+			continue
+		}
+		size := r.estimateModelSizeBytes(nodeURL, model)
+		if size <= 0 {
+			continue
+		}
+		sawKnownSize = true
+		if freeBytes >= size {
+			return true
+		}
+	}
+	return !sawKnownSize
+}
+
+// ModelDownloadedAnyNode reports whether model is already present (per
+// /api/tags) on at least one node. Used to restrict quantization fallback
+// candidates to alternates that are already downloaded - substitution never
+// triggers a fresh multi-GB download on the hot path.
+func (r *Router) ModelDownloadedAnyNode(model string) bool {
+	r.mu.RLock()
+	nodes := make([]*NodeState, len(r.nodes))
+	copy(nodes, r.nodes)
+	r.mu.RUnlock()
+
+	for _, n := range nodes {
+		n.mu.RLock()
+		nodeURL := n.URL
+		n.mu.RUnlock()
+		tags, err := r.FetchModelTags(nodeURL)
+		if err != nil {
+			continue
+		}
+		for _, t := range tags {
+			if t.Name == model {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // PendingPrewarmBytes returns the sum of VRAM bytes reserved for in-flight
 // warmups on node that haven't yet been confirmed resident by the poller.
 // Backed by the same real warmReserved bookkeeping used for headroom

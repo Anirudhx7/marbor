@@ -402,6 +402,69 @@ func TestPendingPrewarmBytes_ExpiredReservationExcluded(t *testing.T) {
 	}
 }
 
+// TestModelFitsAnyHealthyNode covers the three real-data cases: fits, doesn't
+// fit anywhere, and unknown size (fails open - never guessed).
+func TestModelFitsAnyHealthyNode(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384},
+	}, nil)
+	r.nodes[0].Healthy = true
+	r.nodes[0].VRAMTotalMB = 16384
+	r.nodes[0].VRAMUsedMB = 2000
+	r.tagsCache["http://localhost:11434"] = &TagsCache{
+		Models: []TagModel{
+			{Name: "big-model", Size: 20000 * mib}, // 20GB > 14GB free - doesn't fit
+			{Name: "small-model", Size: 4000 * mib}, // 4GB < 14GB free - fits
+		},
+		FetchedAt: time.Now(),
+	}
+
+	if !r.ModelFitsAnyHealthyNode("small-model") {
+		t.Error("small-model should fit in 14GB free VRAM")
+	}
+	if r.ModelFitsAnyHealthyNode("big-model") {
+		t.Error("big-model (20GB) should not fit in 14GB free VRAM")
+	}
+	if !r.ModelFitsAnyHealthyNode("unknown-model") {
+		t.Error("a model with no known size anywhere should fail open (fit=true) - never guess")
+	}
+}
+
+// TestModelDownloadedAnyNode verifies presence is checked against real
+// /api/tags data, not guessed.
+func TestModelDownloadedAnyNode(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434"},
+	}, nil)
+	r.tagsCache["http://localhost:11434"] = &TagsCache{
+		Models:    []TagModel{{Name: "llama3.1:70b-q4_K_M", Size: 4000 * mib}},
+		FetchedAt: time.Now(),
+	}
+
+	if !r.ModelDownloadedAnyNode("llama3.1:70b-q4_K_M") {
+		t.Error("expected llama3.1:70b-q4_K_M to be reported as downloaded")
+	}
+	if r.ModelDownloadedAnyNode("llama3.1:70b-q3_K_M") {
+		t.Error("expected llama3.1:70b-q3_K_M (not in tags) to be reported as not downloaded")
+	}
+}
+
+// TestFallbackChainFor verifies the config-only, immutable-after-construction
+// accessor: declared models return their chain, undeclared models return nil.
+func TestFallbackChainFor(t *testing.T) {
+	r := New(config.RoutingConfig{
+		Strategy:       "warm-first",
+		FallbackChains: map[string][]string{"llama3.1:70b": {"llama3.1:70b-q4_K_M", "llama3.1:70b-q3_K_M"}},
+	}, nil, nil)
+
+	if got := r.FallbackChainFor("llama3.1:70b"); len(got) != 2 || got[0] != "llama3.1:70b-q4_K_M" {
+		t.Errorf("FallbackChainFor(declared) = %v, want [llama3.1:70b-q4_K_M llama3.1:70b-q3_K_M]", got)
+	}
+	if got := r.FallbackChainFor("undeclared-model"); got != nil {
+		t.Errorf("FallbackChainFor(undeclared) = %v, want nil", got)
+	}
+}
+
 // TestEnsureHeadroomAccountsForConcurrentSiblingLoad verifies the fix for the
 // warmup headroom race: when one model's warmup is already in flight
 // (reserved, but not yet confirmed by a poll) on a node, a second model's

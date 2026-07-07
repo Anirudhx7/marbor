@@ -273,6 +273,111 @@ func TestProxyContextLengthGuardAllowsUndeclaredModel(t *testing.T) {
 	}
 }
 
+// TestProxyQuantizationFallback_SubstitutesWhenPrimaryDoesNotFit verifies the
+// end-to-end opt-in fallback path: when the requested model provably does
+// not fit anywhere and a declared, already-downloaded, fitting alternate
+// exists, the request is served with the alternate, the substitution is
+// surfaced via a response header, and the actual model reaches the backend.
+func TestProxyQuantizationFallback_SubstitutesWhenPrimaryDoesNotFit(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			w.Write([]byte(`{"models":[
+				{"name":"llama3.1:70b","size":41943040000},
+				{"name":"llama3.1:70b-q4_K_M","size":4194304000}
+			]}`))
+			return
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		gotModel, _ = body["model"].(string)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"llama3.1:70b-q4_K_M","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{
+		Strategy:       "warm-first",
+		FallbackChains: map[string][]string{"llama3.1:70b": {"llama3.1:70b-q4_K_M"}},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama", VRAMTotalMB: 8192},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.VRAMTotalMB = 8192
+		n.VRAMUsedMB = 0
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"llama3.1:70b","prompt":"hi"}`)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	if want := "llama3.1:70b -> llama3.1:70b-q4_K_M"; rec.Header().Get("X-Ollama-Mesh-Model-Fallback") != want {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want %q", rec.Header().Get("X-Ollama-Mesh-Model-Fallback"), want)
+	}
+	if gotModel != "llama3.1:70b-q4_K_M" {
+		t.Errorf("backend received model = %q, want llama3.1:70b-q4_K_M", gotModel)
+	}
+}
+
+// TestProxyQuantizationFallback_NoSubstitutionWhenPrimaryFits verifies that
+// the fallback chain is never consulted when the primary model already fits
+// - no header, no substitution, even though a chain is configured.
+func TestProxyQuantizationFallback_NoSubstitutionWhenPrimaryFits(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			w.Write([]byte(`{"models":[{"name":"llama3.1:70b","size":41943040000}]}`))
+			return
+		}
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		gotModel, _ = body["model"].(string)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"llama3.1:70b","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{
+		Strategy:       "warm-first",
+		FallbackChains: map[string][]string{"llama3.1:70b": {"llama3.1:70b-q4_K_M"}},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama", VRAMTotalMB: 65536},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.VRAMTotalMB = 65536
+		n.VRAMUsedMB = 0
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"llama3.1:70b","prompt":"hi"}`)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (primary model fits)", got)
+	}
+	if gotModel != "llama3.1:70b" {
+		t.Errorf("backend received model = %q, want llama3.1:70b (no substitution)", gotModel)
+	}
+}
+
 // TestAnthropicCompletionsReturns501 verifies that a /v1/completions request
 // routed to an Anthropic overflow provider is rejected with a clean 501 by the
 // mesh, rather than being proxied to Anthropic (which has no such endpoint) and
