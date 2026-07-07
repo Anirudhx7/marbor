@@ -19,10 +19,12 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 72,
     health: 'healthy',
     draining: false,
+    prewarmDisabled: false,
+    pendingPrewarmMB: 0,
     uptime: '14d 6h',
     loadedModels: [
       { name: 'llama3.2', sizeVram: Math.round(2.2 * GiB) },
-      { name: 'mistral', sizeVram: Math.round(4.8 * GiB) },
+      { name: 'qwen2.5', sizeVram: Math.round(4.8 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 95 + Math.random() * 5),
   },
@@ -40,9 +42,11 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 68,
     health: 'healthy',
     draining: false,
+    prewarmDisabled: false,
+    pendingPrewarmMB: 8192,
     uptime: '12d 14h',
     loadedModels: [
-      { name: 'meta-llama/Llama-3.1-8B-Instruct', sizeVram: Math.round(16.0 * GiB) },
+      { name: 'meta-llama/Llama-3.3-8B-Instruct', sizeVram: Math.round(16.0 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 92 + Math.random() * 8),
   },
@@ -60,9 +64,11 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 78,
     health: 'healthy',
     draining: false,
+    prewarmDisabled: true,
+    pendingPrewarmMB: 0,
     uptime: '8d 2h',
     loadedModels: [
-      { name: 'mistralai/Mistral-7B-Instruct-v0.2', sizeVram: Math.round(14.8 * GiB) },
+      { name: 'mistralai/Mistral-Small-24B-Instruct-2501', sizeVram: Math.round(14.8 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 88 + Math.random() * 10),
   },
@@ -80,6 +86,8 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 45,
     health: 'degraded',
     draining: false,
+    prewarmDisabled: false,
+    pendingPrewarmMB: 0,
     uptime: '3d 8h',
     loadedModels: [
       { name: 'llama-3.2-3b-instruct.Q4_K_M.gguf', sizeVram: Math.round(4.2 * GiB) },
@@ -114,7 +122,7 @@ export const mockAPIKeys: APIKey[] = [
     estimatedCostUsd: 894.50,
     rateLimit: 5000,
     status: 'active',
-    allowedModels: ['qwen2.5:14b', 'llama3.1:70b', 'deepseek-r1:7b'],
+    allowedModels: ['qwen2.5:14b', 'llama3.3:70b', 'deepseek-r1:7b'],
     expiresAt: null,
   },
   {
@@ -128,7 +136,7 @@ export const mockAPIKeys: APIKey[] = [
     estimatedCostUsd: 311.70,
     rateLimit: 3000,
     status: 'active',
-    allowedModels: ['llama3.1:8b', 'deepseek-r1:7b'],
+    allowedModels: ['llama3.3:8b', 'deepseek-r1:7b'],
     expiresAt: null,
   },
   {
@@ -142,7 +150,7 @@ export const mockAPIKeys: APIKey[] = [
     estimatedCostUsd: 140.80,
     rateLimit: 2000,
     status: 'active',
-    allowedModels: ['codellama:13b', 'llama3.1:8b'],
+    allowedModels: ['qwen2.5-coder:14b', 'llama3.3:8b'],
     expiresAt: null,
   },
   {
@@ -156,7 +164,7 @@ export const mockAPIKeys: APIKey[] = [
     estimatedCostUsd: 79.20,
     rateLimit: 1000,
     status: 'active',
-    allowedModels: ['qwen2.5:14b', 'llama3.1:8b'],
+    allowedModels: ['qwen2.5:14b', 'llama3.3:8b'],
     expiresAt: null,
   },
   {
@@ -170,7 +178,7 @@ export const mockAPIKeys: APIKey[] = [
     estimatedCostUsd: 21.99,
     rateLimit: 500,
     status: 'suspended',
-    allowedModels: ['llama3.1:8b'],
+    allowedModels: ['llama3.3:8b'],
     expiresAt: null,
   },
 ];
@@ -201,7 +209,7 @@ export const mockModelCatalog: ModelCatalog = {
   healthy_nodes: 3,
   models: [
     {
-      name: 'llama3.1:8b',
+      name: 'llama3.3:8b',
       size_vram: Math.round(16.2 * 1024 * 1024 * 1024),
       warm_count: 2,
       total_nodes: 3,
@@ -221,7 +229,7 @@ export const mockModelCatalog: ModelCatalog = {
       ],
     },
     {
-      name: 'llama3.1:70b',
+      name: 'llama3.3:70b',
       size_vram: Math.round(40.2 * 1024 * 1024 * 1024),
       warm_count: 1,
       total_nodes: 3,
@@ -230,7 +238,7 @@ export const mockModelCatalog: ModelCatalog = {
       ],
     },
     {
-      name: 'codellama:13b',
+      name: 'qwen2.5-coder:14b',
       size_vram: Math.round(26.5 * 1024 * 1024 * 1024),
       warm_count: 1,
       total_nodes: 3,
@@ -284,19 +292,19 @@ const secs = (n: number) => new Date(now - n * 1000).toISOString();
 
 export const mockRequests: RequestEntry[] = [
   { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Engineering Team',  model: 'deepseek-r1:7b',  node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false },
-  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.1:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false },
+  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.3:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false },
   { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false },
   { id: 'req-d4e5f6a1b2c3', time: secs(51),  key_name: 'Engineering Team',  model: 'gpt-4o',           node: '',            status: 200, latency_ms: 312,  cloud: true  },
-  { id: 'req-e5f6a1b2c3d4', time: mins(1),   key_name: 'CI/CD Pipeline',    model: 'codellama:13b',   node: 'gpu-node-01', status: 200, latency_ms: 29,   cloud: false },
+  { id: 'req-e5f6a1b2c3d4', time: mins(1),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 29,   cloud: false },
   { id: 'req-f6a1b2c3d4e5', time: mins(2),   key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-03', status: 200, latency_ms: 67,   cloud: false },
-  { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.1:70b',    node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false },
+  { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.3:70b',    node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false },
   { id: 'req-b8c9d0e1f2a7', time: mins(5),   key_name: 'Support Bot',       model: 'deepseek-r1:7b',  node: 'gpu-node-02', status: 200, latency_ms: 55,   cloud: false },
   { id: 'req-c9d0e1f2a7b8', time: mins(6),   key_name: 'Engineering Team',  model: 'claude-sonnet-4', node: '',            status: 200, latency_ms: 521,  cloud: true  },
-  { id: 'req-d0e1f2a7b8c9', time: mins(8),   key_name: 'CI/CD Pipeline',    model: 'codellama:13b',   node: 'gpu-node-01', status: 200, latency_ms: 24,   cloud: false },
+  { id: 'req-d0e1f2a7b8c9', time: mins(8),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 24,   cloud: false },
   { id: 'req-e1f2a7b8c9d0', time: mins(10),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 81,   cloud: false },
-  { id: 'req-f2a7b8c9d0e1', time: mins(11),  key_name: 'Support Bot',       model: 'llama3.1:8b',     node: 'gpu-node-03', status: 200, latency_ms: 44,   cloud: false },
+  { id: 'req-f2a7b8c9d0e1', time: mins(11),  key_name: 'Support Bot',       model: 'llama3.3:8b',     node: 'gpu-node-03', status: 200, latency_ms: 44,   cloud: false },
   { id: 'req-a3b8c9d0e1f2', time: mins(13),  key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-04', status: 429, latency_ms: 3,    cloud: false },
-  { id: 'req-b4c9d0e1f2a3', time: mins(15),  key_name: 'Data Platform',     model: 'llama3.1:70b',    node: 'gpu-node-01', status: 500, latency_ms: 1104, cloud: false },
+  { id: 'req-b4c9d0e1f2a3', time: mins(15),  key_name: 'Data Platform',     model: 'llama3.3:70b',    node: 'gpu-node-01', status: 500, latency_ms: 1104, cloud: false },
   { id: 'req-c5d0e1f2a3b4', time: mins(17),  key_name: 'Engineering Team',  model: 'gemma4:12b',      node: 'gpu-node-03', status: 200, latency_ms: 91,   cloud: false },
   { id: 'req-d6e1f2a3b4c5', time: mins(19),  key_name: 'Support Bot',       model: 'mistral:7b',      node: 'gpu-node-04', status: 200, latency_ms: 47,   cloud: false },
 ];
@@ -330,11 +338,11 @@ export const mockAnalytics: Analytics = {
   })),
   by_model: [
     { model: 'deepseek-r1:7b', local: 1830, cloud: 60, saved_usd: 18.30 },
-    { model: 'llama3.1:8b',    local: 1305, cloud: 42, saved_usd: 13.05 },
+    { model: 'llama3.3:8b',    local: 1305, cloud: 42, saved_usd: 13.05 },
     { model: 'qwen3:8b',       local:  932, cloud: 32, saved_usd:  9.32 },
     { model: 'qwen2.5:14b',    local:  520, cloud: 18, saved_usd:  5.20 },
-    { model: 'llama3.1:70b',   local:  215, cloud:  8, saved_usd:  6.45 },
-    { model: 'codellama:13b',  local:  148, cloud:  6, saved_usd:  1.48 },
+    { model: 'llama3.3:70b',   local:  215, cloud:  8, saved_usd:  6.45 },
+    { model: 'qwen2.5-coder:14b',  local:  148, cloud:  6, saved_usd:  1.48 },
     { model: 'gemma4:12b',     local:  312, cloud: 12, saved_usd:  3.12 },
     { model: 'mistral:7b',     local:  203, cloud:  8, saved_usd:  2.03 },
   ],
@@ -422,7 +430,7 @@ export const mockSystemInfo: SystemInfo = {
 };
 
 // Mock ModelCatalogResponse for ModelAdvisor demo mode
-// Demo node: NVIDIA RTX 4090 24GB, 10240MB free (14336MB in use - llama3.1:8b + deepseek-r1:7b loaded)
+// Demo node: NVIDIA RTX 4090 24GB, 10240MB free (14336MB in use - llama3.3:8b + deepseek-r1:7b loaded)
 // Fit logic: green = fits free VRAM (<10240MB), yellow = fits total VRAM (needs eviction, <24576MB), red = too large
 export const mockModelCatalogResponse: ModelCatalogResponse = {
   catalog: [
@@ -441,17 +449,17 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       ],
     },
     {
-      name: 'llama3.1:8b',
-      display_name: 'Llama 3.1 8B',
+      name: 'llama3.3:8b',
+      display_name: 'Llama 3.3 8B',
       description: 'Meta\'s flagship small model. Most-pulled model on Ollama with 116M downloads. Excellent general-purpose workhorse.',
       param_count: '8B',
       categories: ['chat', 'coding', 'general'],
       popular: true,
       rank: 2,
       variants: [
-        { tag: 'llama3.1:8b', quantization: 'Q4_K_M', vram_est_mb: 5500, size_mb: 4700, recommended: true },
-        { tag: 'llama3.1:8b-q2_k', quantization: 'Q2_K', vram_est_mb: 3400, size_mb: 2900, recommended: false },
-        { tag: 'llama3.1:8b-fp16', quantization: 'F16', vram_est_mb: 16000, size_mb: 15500, recommended: false },
+        { tag: 'llama3.3:8b', quantization: 'Q4_K_M', vram_est_mb: 5500, size_mb: 4700, recommended: true },
+        { tag: 'llama3.3:8b-q2_k', quantization: 'Q2_K', vram_est_mb: 3400, size_mb: 2900, recommended: false },
+        { tag: 'llama3.3:8b-fp16', quantization: 'F16', vram_est_mb: 16000, size_mb: 15500, recommended: false },
       ],
     },
     {
