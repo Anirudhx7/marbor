@@ -253,6 +253,7 @@ func (s *sqliteStore) migrate() error {
 	for _, col := range []string{
 		`ALTER TABLE users ADD COLUMN deleted_at INTEGER`,
 		`ALTER TABLE users ADD COLUMN deleted_by TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE hourly_buckets ADD COLUMN gen_duration_ms INTEGER NOT NULL DEFAULT 0`,
 	} {
 		s.db.Exec(col) // ignore error — column may already exist
 	}
@@ -331,15 +332,16 @@ func (s *sqliteStore) UpsertHourlyBucket(b HourlyBucket) error {
 	hourUnix := b.Hour.Truncate(time.Hour).Unix()
 	_, err := s.db.Exec(
 		`INSERT INTO hourly_buckets
-			(hour, requests, tokens, cloud_requests, local_requests, cost_usd)
-			VALUES (?, ?, ?, ?, ?, ?)
+			(hour, requests, tokens, cloud_requests, local_requests, cost_usd, gen_duration_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(hour) DO UPDATE SET
-			requests       = requests + excluded.requests,
-			tokens         = tokens + excluded.tokens,
-			cloud_requests = cloud_requests + excluded.cloud_requests,
-			local_requests = local_requests + excluded.local_requests,
-			cost_usd       = cost_usd + excluded.cost_usd`,
-		hourUnix, b.Requests, b.Tokens, b.CloudRequests, b.LocalRequests, b.CostUSD,
+			requests        = requests + excluded.requests,
+			tokens          = tokens + excluded.tokens,
+			cloud_requests  = cloud_requests + excluded.cloud_requests,
+			local_requests  = local_requests + excluded.local_requests,
+			cost_usd        = cost_usd + excluded.cost_usd,
+			gen_duration_ms = gen_duration_ms + excluded.gen_duration_ms`,
+		hourUnix, b.Requests, b.Tokens, b.CloudRequests, b.LocalRequests, b.CostUSD, b.GenDurationMs,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertHourlyBucket: %w", err)
@@ -349,7 +351,7 @@ func (s *sqliteStore) UpsertHourlyBucket(b HourlyBucket) error {
 
 func (s *sqliteStore) HourlyBuckets(since time.Time) ([]HourlyBucket, error) {
 	rows, err := s.db.Query(
-		`SELECT hour, requests, tokens, cloud_requests, local_requests, cost_usd
+		`SELECT hour, requests, tokens, cloud_requests, local_requests, cost_usd, gen_duration_ms
 		 FROM hourly_buckets WHERE hour >= ? ORDER BY hour ASC`,
 		since.Unix(),
 	)
@@ -362,7 +364,7 @@ func (s *sqliteStore) HourlyBuckets(since time.Time) ([]HourlyBucket, error) {
 	for rows.Next() {
 		var b HourlyBucket
 		var hourUnix int64
-		if err := rows.Scan(&hourUnix, &b.Requests, &b.Tokens, &b.CloudRequests, &b.LocalRequests, &b.CostUSD); err != nil {
+		if err := rows.Scan(&hourUnix, &b.Requests, &b.Tokens, &b.CloudRequests, &b.LocalRequests, &b.CostUSD, &b.GenDurationMs); err != nil {
 			return nil, fmt.Errorf("store: HourlyBuckets scan: %w", err)
 		}
 		b.Hour = time.Unix(hourUnix, 0).UTC()
