@@ -2403,11 +2403,14 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 // TrackLocalRequestModel tracks a local request with model-level granularity.
 // tokens is the real token count parsed from the response (eval_count +
 // prompt_eval_count); 0 means the count was unavailable and contributes
-// nothing to savings.
-func (s *Server) TrackLocalRequestModel(model string, tokens int64) {
+// nothing to savings. genDurationMs is Ollama's real eval_duration in
+// milliseconds (generation time only, excluding prompt processing); 0 means
+// unavailable (cloud responses never report it) and is excluded from the
+// hourly tokens-per-second rollup rather than skewing it toward infinity.
+func (s *Server) TrackLocalRequestModel(model string, tokens, genDurationMs int64) {
 	atomic.AddInt64(&s.localCount, 1)
 	atomic.AddInt64(&s.localTokens, tokens)
-	s.analytics.recordLocal(model, tokens)
+	s.analytics.recordLocal(model, tokens, genDurationMs)
 	// Persist hourly bucket and model stat for this request.
 	now := time.Now().UTC().Truncate(time.Hour)
 	saved := s.refCostPer1K * float64(tokens) / 1000.0
@@ -2416,6 +2419,7 @@ func (s *Server) TrackLocalRequestModel(model string, tokens int64) {
 		LocalRequests: 1,
 		Tokens:        tokens,
 		CostUSD:       0,
+		GenDurationMs: genDurationMs,
 	})
 	_ = s.st.UpsertModelStat(store.ModelStat{
 		Model:    model,
