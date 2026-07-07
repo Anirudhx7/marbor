@@ -95,6 +95,21 @@ type Config struct {
 	Warmup         WarmupConfig      `yaml:"warmup" json:"warmup"`
 	HuggingFace    HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
 	Storage        StorageConfig     `yaml:"storage" json:"storage"`
+	CloudBudget    CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
+}
+
+// CloudBudgetConfig caps total cloud-fallback spend using the real CostUSD
+// already persisted per hourly bucket. Both caps default to 0 (disabled) -
+// an absent or zero cap never blocks cloud fallback, preserving existing
+// behavior for anyone who hasn't opted in.
+type CloudBudgetConfig struct {
+	// DailyUSDCap blocks new cloud-fallback dispatch once today's (UTC)
+	// cumulative cloud spend reaches this amount. 0 disables the check.
+	DailyUSDCap float64 `yaml:"daily_usd_cap" json:"daily_usd_cap"`
+	// MonthlyUSDCap blocks new cloud-fallback dispatch once this calendar
+	// month's (UTC) cumulative cloud spend reaches this amount. 0 disables
+	// the check.
+	MonthlyUSDCap float64 `yaml:"monthly_usd_cap" json:"monthly_usd_cap"`
 }
 
 // StorageConfig controls the SQLite persistence layer.
