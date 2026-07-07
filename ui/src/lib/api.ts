@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus } from '../types';
 
 const BASE = '/admin';
 
@@ -419,7 +419,7 @@ export async function fetchSummary() {
   };
 }
 
-export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string }): Promise<{ key: string }> {
+export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string; dailyUsdCap?: number; monthlyUsdCap?: number }): Promise<{ key: string }> {
   const res = await apiFetch(`${BASE}/keys`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -489,7 +489,7 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
   return res.json() as Promise<import('../types').GPUNode>;
 }
 
-export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; models?: string[] }) {
+export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[] }) {
   const res = await apiFetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -634,6 +634,21 @@ export async function fetchPredictiveDecisions(): Promise<PredictiveDecision[]> 
   if (!res.ok) throw new Error('Failed to fetch predictive decisions');
   const j = await res.json();
   return j.decisions ?? [];
+}
+
+export async function fetchCloudBudgetStatus(): Promise<CloudBudgetStatus> {
+  if (DEMO) {
+    return demoDelay({
+      softBudgetPct: 0.8,
+      global: { dailySpent: 4.2, dailyCap: 25, dailyPct: 4.2 / 25, monthlySpent: 61.5, monthlyCap: 500, monthlyPct: 61.5 / 500 },
+      perKey: [
+        { name: 'team-shared', dailySpent: 3.1, dailyCap: 5, dailyPct: 3.1 / 5, monthlySpent: 42.0, monthlyCap: 50, monthlyPct: 42.0 / 50 },
+      ],
+    });
+  }
+  const res = await apiFetch(`${BASE}/cloud-budget-status`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch cloud budget status');
+  return res.json();
 }
 
 export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {

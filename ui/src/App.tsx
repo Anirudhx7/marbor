@@ -24,6 +24,7 @@ import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { DemoBanner } from './components/DemoBanner';
+import { BudgetBanner } from './components/BudgetBanner';
 import { Login } from './components/Login';
 import { ForceChangePassword } from './components/ForceChangePassword';
 import { UserPortal } from './pages/UserPortal';
@@ -121,6 +122,7 @@ function App() {
           <Sidebar onLogout={handleLogout} session={session} pendingCount={pendingCount} />
           <main className="md:ml-64 min-h-screen">
             <DemoBanner />
+            <BudgetBanner />
             <div className="pt-14 md:pt-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
               <ErrorBoundary>
               <Suspense fallback={<div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Loading...</div>}>

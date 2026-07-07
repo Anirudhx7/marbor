@@ -195,6 +195,7 @@ export const defaultSettings: Settings = {
   timezone: 'Local',
   cloudDailyUsdCap: 25,
   cloudMonthlyUsdCap: 500,
+  cloudSoftBudgetPct: 0.8,
 };
 
 export const mockSavings: Savings = {

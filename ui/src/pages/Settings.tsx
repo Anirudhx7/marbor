@@ -6,6 +6,7 @@ import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mock
 import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig, changePassword } from '../lib/api';
 import type { Settings, CloudProvider } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
+import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
 
 const getTimezoneOffsetMinutes = (tz: string): number => {
   if (tz === 'Local') return -999999;
@@ -84,6 +85,8 @@ const getTimezoneLabel = (tz: string): string => {
 
 export function SettingsPage() {
   const { demoMode, setDemoMode } = useDemoMode();
+  const { currency, setCurrency, toDisplay, toUSD } = useCurrency();
+  const roundDisplay = (n: number) => Math.round(n * 100) / 100;
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>(demoMode ? mockCloudProviders : []);
   const [cloudLoading, setCloudLoading] = useState(!demoMode);
@@ -124,6 +127,7 @@ export function SettingsPage() {
           timezone: settingsData.timezone || 'Local',
           cloudDailyUsdCap: settingsData.cloud_budget?.daily_usd_cap || 0,
           cloudMonthlyUsdCap: settingsData.cloud_budget?.monthly_usd_cap || 0,
+          cloudSoftBudgetPct: settingsData.cloud_budget?.soft_budget_pct || 0,
         });
         setCloudProviders(providersData || []);
         setError(null);
@@ -151,7 +155,7 @@ export function SettingsPage() {
         routing: { poll_interval_ms: settings.pollingInterval },
         metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
         litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint },
-        cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap },
+        cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap, soft_budget_pct: settings.cloudSoftBudgetPct },
       };
       
       await updateSettings(payload);
@@ -566,16 +570,50 @@ export function SettingsPage() {
           </div>
 
           <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                  Display Currency
+                </label>
+                <select
+                  value={currency.code}
+                  onChange={(e) => {
+                    const preset = CURRENCY_PRESETS.find(c => c.code === e.target.value);
+                    setCurrency({ ...currency, code: e.target.value, symbol: preset?.symbol || currency.symbol });
+                  }}
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                >
+                  {CURRENCY_PRESETS.map(c => (
+                    <option key={c.code} value={c.code}>{c.code}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                  FX Rate (1 USD =)
+                </label>
+                <input
+                  type="number"
+                  min={0.0001}
+                  step="0.0001"
+                  value={currency.fxRate}
+                  onChange={(e) => setCurrency({ ...currency, fxRate: parseFloat(e.target.value) || 1 })}
+                  disabled={currency.code === 'USD'}
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 disabled:opacity-50"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-                Daily Cap (USD)
+                Daily Cap ({currency.code})
               </label>
               <input
                 type="number"
                 min={0}
                 step="0.01"
-                value={settings.cloudDailyUsdCap}
-                onChange={(e) => setSettings({ ...settings, cloudDailyUsdCap: parseFloat(e.target.value) || 0 })}
+                value={roundDisplay(toDisplay(settings.cloudDailyUsdCap))}
+                onChange={(e) => setSettings({ ...settings, cloudDailyUsdCap: toUSD(parseFloat(e.target.value) || 0) })}
                 placeholder="0 = disabled"
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
@@ -583,20 +621,38 @@ export function SettingsPage() {
 
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-                Monthly Cap (USD)
+                Monthly Cap ({currency.code})
               </label>
               <input
                 type="number"
                 min={0}
                 step="0.01"
-                value={settings.cloudMonthlyUsdCap}
-                onChange={(e) => setSettings({ ...settings, cloudMonthlyUsdCap: parseFloat(e.target.value) || 0 })}
+                value={roundDisplay(toDisplay(settings.cloudMonthlyUsdCap))}
+                onChange={(e) => setSettings({ ...settings, cloudMonthlyUsdCap: toUSD(parseFloat(e.target.value) || 0) })}
                 placeholder="0 = disabled"
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Warn at (% of cap)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="1"
+                value={Math.round(settings.cloudSoftBudgetPct * 100)}
+                onChange={(e) => setSettings({ ...settings, cloudSoftBudgetPct: (parseFloat(e.target.value) || 0) / 100 })}
+                placeholder="0 = disabled"
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+
             <p className="text-[10px] text-muted-foreground">
               Checked against real cumulative cloud spend (UTC day/month). 0 disables the check.
+              Amounts stored and enforced in USD - currency above is display-only, converted at the manual FX rate you set.
             </p>
           </div>
         </div>

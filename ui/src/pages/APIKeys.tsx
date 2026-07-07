@@ -17,9 +17,12 @@ function maskKey(key: string): string {
 }
 
 import { useDemoMode } from '../hooks/useDemoMode';
+import { useCurrency } from '../hooks/useCurrency';
 
 export function APIKeys() {
   const { demoMode } = useDemoMode();
+  const { currency, toDisplay, toUSD } = useCurrency();
+  const roundDisplay = (n: number) => Math.round(n * 100) / 100;
   const [keys, setKeys] = useState<APIKey[]>(demoMode ? mockAPIKeys : []);
   const [isLive, setIsLive] = useState(!demoMode);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,7 +35,7 @@ export function APIKeys() {
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [editKey, setEditKey] = useState<APIKey | null>(null);
-  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; models: string[] }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', models: [] });
+  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[] }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [] });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -42,6 +45,8 @@ export function APIKeys() {
       rateLimit: key.rateLimit != null ? String(key.rateLimit) : '',
       dailyLimit: key.dailyLimit != null ? String(key.dailyLimit) : '',
       monthlyLimit: key.monthlyLimit != null ? String(key.monthlyLimit) : '',
+      dailyUsdCap: key.dailyUsdCap != null ? String(key.dailyUsdCap) : '',
+      monthlyUsdCap: key.monthlyUsdCap != null ? String(key.monthlyUsdCap) : '',
       models: key.allowedModels ?? [],
     });
     setEditError('');
@@ -49,7 +54,7 @@ export function APIKeys() {
 
   const handleSaveKeyPatch = async () => {
     if (!editKey || !isLive) return;
-    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; models?: string[] } = {};
+    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[] } = {};
     if (editForm.rateLimit.trim()) {
       const v = parseInt(editForm.rateLimit, 10);
       if (isNaN(v) || v < 0) { setEditError('Rate limit must be a non-negative integer'); return; }
@@ -64,6 +69,16 @@ export function APIKeys() {
       const v = parseInt(editForm.monthlyLimit, 10);
       if (isNaN(v) || v < 0) { setEditError('Monthly limit must be a non-negative integer'); return; }
       patch.monthly_limit = v;
+    }
+    if (editForm.dailyUsdCap.trim()) {
+      const v = parseFloat(editForm.dailyUsdCap);
+      if (isNaN(v) || v < 0) { setEditError('Daily USD cap must be a non-negative number'); return; }
+      patch.daily_usd_cap = v;
+    }
+    if (editForm.monthlyUsdCap.trim()) {
+      const v = parseFloat(editForm.monthlyUsdCap);
+      if (isNaN(v) || v < 0) { setEditError('Monthly USD cap must be a non-negative number'); return; }
+      patch.monthly_usd_cap = v;
     }
     if (editForm.models.length > 0) {
       patch.models = editForm.models;
@@ -575,6 +590,26 @@ export function APIKeys() {
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Monthly Limit</label>
               <input type="number" min="0" value={editForm.monthlyLimit}
                 onChange={e => setEditForm({ ...editForm, monthlyLimit: e.target.value })}
+                placeholder="0 = unlimited"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Daily Cloud Spend Cap ({currency.code})</label>
+              <input type="number" min="0" step="0.01"
+                value={editForm.dailyUsdCap.trim() === '' ? '' : roundDisplay(toDisplay(parseFloat(editForm.dailyUsdCap) || 0))}
+                onChange={e => setEditForm({ ...editForm, dailyUsdCap: e.target.value.trim() === '' ? '' : String(toUSD(parseFloat(e.target.value) || 0)) })}
+                placeholder="0 = unlimited"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Monthly Cloud Spend Cap ({currency.code})</label>
+              <input type="number" min="0" step="0.01"
+                value={editForm.monthlyUsdCap.trim() === '' ? '' : roundDisplay(toDisplay(parseFloat(editForm.monthlyUsdCap) || 0))}
+                onChange={e => setEditForm({ ...editForm, monthlyUsdCap: e.target.value.trim() === '' ? '' : String(toUSD(parseFloat(e.target.value) || 0)) })}
                 placeholder="0 = unlimited"
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
