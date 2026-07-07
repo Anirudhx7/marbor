@@ -92,6 +92,8 @@ type Server struct {
 	logChan       chan store.RequestRecord
 	logDone       chan struct{} // closed by Shutdown to signal drain-and-stop
 	logWg         sync.WaitGroup
+	pullsMu       sync.Mutex      // guards pullsInFlight
+	pullsInFlight map[string]bool // "node|model" -> in progress; ephemeral, never persisted
 }
 
 // SetVersion sets the version string reported by /health.
@@ -298,18 +300,19 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		stImpl = st[0]
 	}
 	s := &Server{
-		router:       r,
-		auth:         a,
-		cfg:          cfg,
-		version:      "dev",
-		configPath:   "config.yaml",
-		refCostPer1K: refRate,
-		startTime:    time.Now(),
-		analytics:    newAnalyticsStore(refRate),
-		st:           stImpl,
-		loginLimiter: newLoginRateLimiter(),
-		logChan:      make(chan store.RequestRecord, 5000),
-		logDone:      make(chan struct{}),
+		router:        r,
+		auth:          a,
+		cfg:           cfg,
+		version:       "dev",
+		configPath:    "config.yaml",
+		refCostPer1K:  refRate,
+		startTime:     time.Now(),
+		analytics:     newAnalyticsStore(refRate),
+		st:            stImpl,
+		loginLimiter:  newLoginRateLimiter(),
+		logChan:       make(chan store.RequestRecord, 5000),
+		logDone:       make(chan struct{}),
+		pullsInFlight: make(map[string]bool),
 	}
 	s.ensureAdminUser()
 	s.logWg.Add(1)
@@ -2743,6 +2746,25 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
 		return
 	}
+
+	// Dedup concurrent pulls of the same model on the same node. State is
+	// ephemeral and in-memory only - it is never persisted and never wired
+	// into placement/warm-residency scoring, it just prevents two admin
+	// clicks from racing the same multi-GB download.
+	pullKey := nodeName + "|" + body.Model
+	s.pullsMu.Lock()
+	if s.pullsInFlight[pullKey] {
+		s.pullsMu.Unlock()
+		writeJSONError(w, http.StatusConflict, fmt.Sprintf("pull already in progress for %q on node %q", body.Model, nodeName))
+		return
+	}
+	s.pullsInFlight[pullKey] = true
+	s.pullsMu.Unlock()
+	defer func() {
+		s.pullsMu.Lock()
+		delete(s.pullsInFlight, pullKey)
+		s.pullsMu.Unlock()
+	}()
 
 	pullBody, err := json.Marshal(map[string]interface{}{
 		"model":  body.Model,
