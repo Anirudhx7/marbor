@@ -96,6 +96,10 @@ type Config struct {
 	HuggingFace    HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
 	Storage        StorageConfig     `yaml:"storage" json:"storage"`
 	CloudBudget    CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
+	// ContextWindows maps a model name to its max context window in tokens.
+	// Operator-declared, like a node's vram_total_mb - never guessed. A model
+	// absent from this map has no admission-time context-length check.
+	ContextWindows map[string]int `yaml:"context_windows" json:"context_windows"`
 }
 
 // CloudBudgetConfig caps total cloud-fallback spend using the real CostUSD

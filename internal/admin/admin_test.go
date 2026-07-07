@@ -688,6 +688,29 @@ func TestCloudBudgetExceeded_MonthlyCapReached(t *testing.T) {
 	}
 }
 
+func TestContextWindowFor_UndeclaredModelHasNoCheck(t *testing.T) {
+	s := newTestServer()
+
+	if window, ok := s.ContextWindowFor("llama3.2:8b"); ok {
+		t.Errorf("ContextWindowFor(undeclared) = (%d, true), want ok=false", window)
+	}
+}
+
+func TestContextWindowFor_DeclaredModelReturnsWindow(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, nil, config.Config{
+		ContextWindows: map[string]int{"llama3.2:8b": 8192},
+	})
+
+	window, ok := s.ContextWindowFor("llama3.2:8b")
+	if !ok {
+		t.Fatal("ContextWindowFor(declared model) ok = false, want true")
+	}
+	if window != 8192 {
+		t.Errorf("ContextWindowFor window = %d, want 8192", window)
+	}
+}
+
 func TestCloudBudgetExceeded_UnderCapAllowsFallback(t *testing.T) {
 	tmpDB := filepath.Join(t.TempDir(), "cloud-budget-undercap.db")
 	st, err := store.Open(tmpDB)

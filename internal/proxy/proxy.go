@@ -263,6 +263,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Context-length vs. model-window admission check. Cheap char-count/4
+	// heuristic - no tokenizer dependency. A model's context window is
+	// identical across every node, so this can't discriminate routing
+	// candidates and is checked here, before routing, rather than in
+	// placement scoring. Only runs for models with an operator-declared
+	// window (config.context_windows); an undeclared model is never guessed.
+	if h.admin != nil {
+		if window, ok := h.admin.ContextWindowFor(modelName); ok {
+			if estTokens := len(body) / 4; estTokens > window {
+				writeAPIError(w, http.StatusBadRequest,
+					fmt.Sprintf("request (~%d estimated tokens) exceeds %q's %d-token context window", estTokens, modelName, window),
+					"invalid_request_error", "context_length_exceeded")
+				metrics.RequestsTotal(keyName, modelName, "none", "400")
+				return
+			}
+		}
+	}
+
 	// Extract session ID for KV-cache affinity. The header is optional; an
 	// absent or empty value means stateless routing (no sticky session).
 	sessionID := strings.TrimSpace(r.Header.Get("X-Session-ID"))

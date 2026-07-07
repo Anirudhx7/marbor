@@ -3,9 +3,11 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -204,6 +206,70 @@ func TestProxyCloudBudgetExceededBlocksFallback(t *testing.T) {
 	}
 	if hit {
 		t.Error("request reached the cloud provider; cloud budget cap must block dispatch before it is called")
+	}
+}
+
+// TestProxyContextLengthGuardRejectsOversizedRequest verifies that a request
+// whose estimated token count (char-count/4 heuristic) exceeds the model's
+// operator-declared context window is rejected with 400 before it ever
+// reaches a backend node.
+func TestProxyContextLengthGuardRejectsOversizedRequest(t *testing.T) {
+	hit := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"llama3.2:8b","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+
+	a := admin.NewServer(r, nil, config.Config{
+		ContextWindows: map[string]int{"llama3.2:8b": 8},
+	})
+	h := NewHandler(r, a, nil)
+
+	// 100 chars / 4 = 25 estimated tokens, well over the 8-token test window.
+	longPrompt := strings.Repeat("x", 100)
+	body := []byte(fmt.Sprintf(`{"model":"llama3.2:8b","prompt":%q}`, longPrompt))
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 when estimated tokens exceed the context window; body: %s", rec.Code, rec.Body.String())
+	}
+	if hit {
+		t.Error("request reached the backend node; the context-length guard must reject before routing")
+	}
+}
+
+// TestProxyContextLengthGuardAllowsUndeclaredModel verifies that a model with
+// no configured context window is never blocked - the guard fails open.
+func TestProxyContextLengthGuardAllowsUndeclaredModel(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"llama3.2:8b","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	longPrompt := strings.Repeat("x", 100)
+	body := []byte(fmt.Sprintf(`{"model":"llama3.2:8b","prompt":%q}`, longPrompt))
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 when the model has no declared context window; body: %s", rec.Code, rec.Body.String())
 	}
 }
 
