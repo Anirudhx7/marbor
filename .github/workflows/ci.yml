@@ -7,7 +7,9 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-and-test:
+  # Fastest signal first: vet + gofmt + race tests. Independent of the UI build —
+  # Go compiles against the committed internal/admin/web embed, not ui/dist.
+  go-checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -17,24 +19,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install UI Dependencies and Build
-        working-directory: ./ui
-        run: |
-          npm ci
-          npm run build
-
-      - name: Build demo mode (GitHub Pages regression check)
-        working-directory: ./ui
-        run: npm run build
-        env:
-          VITE_FORCE_DEMO: 'true'
-          VITE_APP_VERSION: ${{ github.ref_name }}
 
       - name: Go vet
         run: go vet ./...
@@ -54,6 +38,41 @@ jobs:
         # Timeout guards against hangs in integration tests.
         run: go test -race -timeout 120s ./...
 
+  ui-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install UI Dependencies and Build
+        working-directory: ./ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build demo mode (GitHub Pages regression check)
+        working-directory: ./ui
+        run: npm run build
+        env:
+          VITE_FORCE_DEMO: 'true'
+          VITE_APP_VERSION: ${{ github.ref_name }}
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
@@ -65,8 +84,9 @@ jobs:
   docker-main:
     # Bleeding-edge image for testing: ghcr.io/anirudhx7/ollama-mesh:main
     # Stable releases keep :latest and :vX.Y.Z via goreleaser on v* tags.
+    # Runs only after all check lanes are green, and only on pushes to main.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-and-test
+    needs: [go-checks, ui-build, govulncheck]
     runs-on: ubuntu-latest
     permissions:
       contents: read
