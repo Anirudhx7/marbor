@@ -4,7 +4,6 @@ ui/node_modules/
 internal/admin/web/dist/
 *.exe
 config.yaml
-CLAUDE.md
 
 # Audit logs
 *.log
@@ -27,9 +26,6 @@ Thumbs.db
 # Build artifacts
 dist/
 
-# Internal development files - never commit
-.local/
-
 # Runtime per-key usage/quota state
 usage-state.json
 usage-state.json.tmp
@@ -39,12 +35,6 @@ usage-state.json.tmp
 /mockollama
 /demo
 nul
-
-# Claude Code local working dirs
-.claude/
-
-# Codex local working dirs
-.codex/
 
 # Git worktrees
 .worktrees/
