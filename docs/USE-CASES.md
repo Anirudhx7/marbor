@@ -72,4 +72,4 @@ This stack offers the best of both worlds:
 
 - GPU metrics (VRAM/temperature/power) come from `nvidia-smi` on the mesh host only. Remote node GPUs are not visible yet - per-node telemetry is on the roadmap. Warm-model detection works for all nodes regardless (it uses Ollama's own `/api/ps`).
 - Analytics and the request log are in-memory and reset on restart. Prometheus metrics and the audit log file persist.
-- Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "—", never an estimate.
+- Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "-", never an estimate.

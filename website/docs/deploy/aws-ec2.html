@@ -228,14 +228,14 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>deploy</span><span class="sep">/</span><span class="current">Deploy ollama-mesh on AWS EC2</span></div>
     <article class="doc-content">
       <h1 id="deploy-ollama-mesh-on-aws-ec2">Deploy ollama-mesh on AWS EC2<a class="anchor" href="#deploy-ollama-mesh-on-aws-ec2" aria-label="Link to section">#</a></h1>
-<p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2. ollama-mesh is a single static binary — no runtime, no dependencies — so an EC2 deploy is "download, drop a config, start a service."</p>
+<p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2. ollama-mesh is a single static binary - no runtime, no dependencies - so an EC2 deploy is "download, drop a config, start a service."</p>
 <p>This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing, node-failure route-around, and self-healing recovery all verified live).</p>
 <h2 id="architecture">Architecture<a class="anchor" href="#architecture" aria-label="Link to section">#</a></h2>
 <pre class="code"><code>clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
                  │  warm-first routing + auth + dashboard + metrics
                  ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
                  └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre>
-<p>The mesh box does <strong>not</strong> need a GPU — it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
+<p>The mesh box does <strong>not</strong> need a GPU - it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
 <h2 id="1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)<a class="anchor" href="#1-gpu-instances-the-ollama-nodes" aria-label="Link to section">#</a></h2>
 <p>Cheapest CUDA option is <code>g4dn.xlarge</code> (NVIDIA T4 16GB). <code>g5.xlarge</code> (A10G) and <code>g6.xlarge</code> (L4) are faster. Use a Deep Learning AMI or install the NVIDIA driver on Amazon Linux 2023, then install Ollama and bind it to the VPC:</p>
 <pre class="code" data-lang="bash"><code>curl -fsSL https://ollama.com/install.sh | sh
@@ -277,9 +277,9 @@ Restart=always
 WantedBy=multi-user.target</code></pre>
 <pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh</code></pre>
 <h2 id="3-security-group">3. Security group<a class="anchor" href="#3-security-group" aria-label="Link to section">#</a></h2>
-<ul><li><strong>Endpoint <code>:11434</code></strong> — open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> — keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
+<ul><li><strong>Endpoint <code>:11434</code></strong> - open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> - keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
 <p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. The admin token is sensitive.</p>
-<ul><li><strong>Node <code>:11434</code></strong> — open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
+<ul><li><strong>Node <code>:11434</code></strong> - open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
 <h2 id="4-verify">4. Verify<a class="anchor" href="#4-verify" aria-label="Link to section">#</a></h2>
 <pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}
 curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/tags
@@ -287,7 +287,7 @@ curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/genera
      -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'</code></pre>
 <p>Point any OpenAI-compatible client at <code>http://&lt;mesh&gt;:11434/v1</code> with your key.</p>
 <h2 id="cost-tip">Cost tip<a class="anchor" href="#cost-tip" aria-label="Link to section">#</a></h2>
-<p>Only the GPU nodes are expensive. Stop them when idle — the mesh box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
+<p>Only the GPU nodes are expensive. Stop them when idle - the mesh box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
 
       <div class="doc-foot-edit">
         <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/deploy/aws-ec2.md" target="_blank" rel="noopener">View on GitHub →</a>

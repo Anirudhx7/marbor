@@ -42,7 +42,7 @@ Run `./ollama-mesh` (or `make backend`) first so there is a backend to hit.
 
 ## Developer Certificate of Origin (DCO)
 
-ollama-mesh uses the [Developer Certificate of Origin](https://developercertificate.org/) (DCO) rather than a CLA. The DCO is a lightweight, per-commit statement that you wrote the contribution — or otherwise have the right to submit it under the project's license (Apache-2.0).
+ollama-mesh uses the [Developer Certificate of Origin](https://developercertificate.org/) (DCO) rather than a CLA. The DCO is a lightweight, per-commit statement that you wrote the contribution - or otherwise have the right to submit it under the project's license (Apache-2.0).
 
 **Every commit must be signed off.** Add the `Signed-off-by` trailer automatically with:
 

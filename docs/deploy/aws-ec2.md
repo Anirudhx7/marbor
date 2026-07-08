@@ -1,7 +1,7 @@
 # Deploy ollama-mesh on AWS EC2
 
 Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2.
-ollama-mesh is a single static binary — no runtime, no dependencies — so an EC2
+ollama-mesh is a single static binary - no runtime, no dependencies - so an EC2
 deploy is "download, drop a config, start a service."
 
 This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing,
@@ -16,7 +16,7 @@ clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
                  └──► GPU node 2  (g4dn/g5/g6, running Ollama)
 ```
 
-The mesh box does **not** need a GPU — it only routes. Put it on a small,
+The mesh box does **not** need a GPU - it only routes. Put it on a small,
 always-on instance; put Ollama on GPU instances you can scale or stop.
 
 ## 1. GPU instances (the Ollama nodes)
@@ -88,10 +88,10 @@ sudo systemctl daemon-reload && sudo systemctl enable --now ollama-mesh
 
 ## 3. Security group
 
-- **Endpoint `:11434`** — open only to your app servers / SG, never `0.0.0.0/0`.
-- **Admin `:8080`** — keep on `127.0.0.1` and reach it via SSH tunnel
+- **Endpoint `:11434`** - open only to your app servers / SG, never `0.0.0.0/0`.
+- **Admin `:8080`** - keep on `127.0.0.1` and reach it via SSH tunnel
   (`ssh -L 8080:localhost:8080 ...`), or a private SG. The admin token is sensitive.
-- **Node `:11434`** — open only from the mesh box's SG, not the internet.
+- **Node `:11434`** - open only from the mesh box's SG, not the internet.
 - Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.
 
 ## 4. Verify
@@ -107,6 +107,6 @@ Point any OpenAI-compatible client at `http://<mesh>:11434/v1` with your key.
 
 ## Cost tip
 
-Only the GPU nodes are expensive. Stop them when idle — the mesh box detects the
+Only the GPU nodes are expensive. Stop them when idle - the mesh box detects the
 drop, routes around it, and auto-rejoins them when they come back (verified). Run
 the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.
