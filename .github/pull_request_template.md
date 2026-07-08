@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] All commits are signed off (DCO) — `git commit -s`
+- [ ] All commits are signed off (DCO) - `git commit -s`
 - [ ] `go test ./...` passes
 - [ ] New code has tests (happy path + one failure case)
 - [ ] No fake/mock/random data in production paths

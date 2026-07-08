@@ -2,13 +2,13 @@
 
 This document is the financial model behind ollama-mesh's savings tracking. It is designed for infrastructure directors and finance teams evaluating the ROI of shifting LLM inference from third-party cloud APIs to owned GPU hardware routed through ollama-mesh.
 
-Every figure in the ollama-mesh dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "—" rather than an estimate. No number is ever fabricated.
+Every figure in the ollama-mesh dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "-" rather than an estimate. No number is ever fabricated.
 
 ---
 
 ## Executive Summary
 
-An engineering organization running multi-agent LLM workflows at scale — coding copilots, RAG pipelines, automated code review, internal search — consumes millions of tokens per day. At cloud API rates, this translates to $5,000–$50,000/month in direct API spend, depending on model tier and volume.
+An engineering organization running multi-agent LLM workflows at scale - coding copilots, RAG pipelines, automated code review, internal search - consumes millions of tokens per day. At cloud API rates, this translates to $5,000–$50,000/month in direct API spend, depending on model tier and volume.
 
 ollama-mesh enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.
 
@@ -31,7 +31,7 @@ Savings for each locally-served request:
 saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k
 ```
 
-The `reference_cost_per_1k` is operator-configured and represents the blended cloud rate the organization would otherwise pay. Default: **$0.002/1K tokens** (deliberately conservative — adjust to match your actual cloud provider rate).
+The `reference_cost_per_1k` is operator-configured and represents the blended cloud rate the organization would otherwise pay. Default: **$0.002/1K tokens** (deliberately conservative - adjust to match your actual cloud provider rate).
 
 ### Cloud Overflow Spend
 
@@ -141,17 +141,17 @@ After break-even, every locally-served token is pure cost deflection. The hardwa
 
 ### Data Sources
 
-1. **Local token counts** — parsed from the real upstream Ollama response, not estimated. ollama-mesh reads `eval_count` and `prompt_eval_count` from the final NDJSON object (Ollama native) or `usage.total_tokens` from the terminal SSE chunk (OpenAI-compatible).
+1. **Local token counts** - parsed from the real upstream Ollama response, not estimated. ollama-mesh reads `eval_count` and `prompt_eval_count` from the final NDJSON object (Ollama native) or `usage.total_tokens` from the terminal SSE chunk (OpenAI-compatible).
 
-2. **Cloud token counts** — parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.
+2. **Cloud token counts** - parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.
 
-3. **Reference rate** — operator-configured in `config.yaml` under `savings.reference_cost_per_1k`. Single flat rate applied to all locally-served tokens.
+3. **Reference rate** - operator-configured in `config.yaml` under `savings.reference_cost_per_1k`. Single flat rate applied to all locally-served tokens.
 
-4. **Cloud rates** — per-provider `cost_per_1k_tokens` in the `cloud_providers` config block.
+4. **Cloud rates** - per-provider `cost_per_1k_tokens` in the `cloud_providers` config block.
 
-### What "—" Means
+### What "-" Means
 
-If requests were served but no token counts could be parsed from any response — for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk — the API returns `null` and the dashboard renders "—". ollama-mesh **never** substitutes an estimated or random number for missing token data.
+If requests were served but no token counts could be parsed from any response - for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk - the API returns `null` and the dashboard renders "-". ollama-mesh **never** substitutes an estimated or random number for missing token data.
 
 ### Counter Lifecycle
 

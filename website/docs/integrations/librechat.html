@@ -228,7 +228,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">LibreChat</span></div>
     <article class="doc-content">
       <h1 id="librechat">LibreChat<a class="anchor" href="#librechat" aria-label="Link to section">#</a></h1>
-<p><a href="https://librechat.ai" target="_blank" rel="noopener">LibreChat</a> supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging — with no changes to how LibreChat works.</p>
+<p><a href="https://librechat.ai" target="_blank" rel="noopener">LibreChat</a> supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging - with no changes to how LibreChat works.</p>
 <hr/>
 <h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to section">#</a></h2>
 <ul><li>LibreChat running (Docker or bare-metal)</li><li>ollama-mesh running and reachable from the LibreChat host</li><li>An API key from the ollama-mesh admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
@@ -287,11 +287,11 @@ services:
       - librechat_default</code></pre>
 <hr/>
 <h2 id="model-discovery">Model discovery<a class="anchor" href="#model-discovery" aria-label="Link to section">#</a></h2>
-<p>With <code>fetch: true</code>, LibreChat calls <code>GET /v1/models</code> on startup to populate the model list. ollama-mesh implements this endpoint — it returns all models currently loaded across healthy nodes.</p>
+<p>With <code>fetch: true</code>, LibreChat calls <code>GET /v1/models</code> on startup to populate the model list. ollama-mesh implements this endpoint - it returns all models currently loaded across healthy nodes.</p>
 <p>If <code>fetch: true</code> returns no models (nodes not yet ready), fall back to a static <code>default</code> list.</p>
 <hr/>
 <h2 id="verification">Verification<a class="anchor" href="#verification" aria-label="Link to section">#</a></h2>
-<ol><li>Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.</li><li>Send a test message.</li><li>Check the ollama-mesh request log at <code>http://&lt;mesh-host&gt;:8080</code> — the request should appear with model, node, and latency.</li></ol>
+<ol><li>Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.</li><li>Send a test message.</li><li>Check the ollama-mesh request log at <code>http://&lt;mesh-host&gt;:8080</code> - the request should appear with model, node, and latency.</li></ol>
 <p>If you see a 401, the <code>Authorization</code> header in <code>librechat.yaml</code> is missing or the key has been revoked. Regenerate from the admin dashboard.</p>
 <hr/>
 <h2 id="per-user-keys">Per-user keys<a class="anchor" href="#per-user-keys" aria-label="Link to section">#</a></h2>

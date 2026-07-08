@@ -1,6 +1,6 @@
 # LibreChat
 
-[LibreChat](https://librechat.ai) supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging — with no changes to how LibreChat works.
+[LibreChat](https://librechat.ai) supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging - with no changes to how LibreChat works.
 
 ---
 
@@ -91,7 +91,7 @@ services:
 
 ## Model discovery
 
-With `fetch: true`, LibreChat calls `GET /v1/models` on startup to populate the model list. ollama-mesh implements this endpoint — it returns all models currently loaded across healthy nodes.
+With `fetch: true`, LibreChat calls `GET /v1/models` on startup to populate the model list. ollama-mesh implements this endpoint - it returns all models currently loaded across healthy nodes.
 
 If `fetch: true` returns no models (nodes not yet ready), fall back to a static `default` list.
 
@@ -101,7 +101,7 @@ If `fetch: true` returns no models (nodes not yet ready), fall back to a static 
 
 1. Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.
 2. Send a test message.
-3. Check the ollama-mesh request log at `http://<mesh-host>:8080` — the request should appear with model, node, and latency.
+3. Check the ollama-mesh request log at `http://<mesh-host>:8080` - the request should appear with model, node, and latency.
 
 If you see a 401, the `Authorization` header in `librechat.yaml` is missing or the key has been revoked. Regenerate from the admin dashboard.
 

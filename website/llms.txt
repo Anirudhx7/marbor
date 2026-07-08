@@ -1,6 +1,6 @@
 # ollama-mesh
 
-The control plane for self-hosted AI inference — a GPU-aware scheduler and OpenAI-compatible gateway for Ollama, vLLM, TGI, and llama.cpp. Routes each LLM request to the GPU node that already holds the requested model warm in VRAM, eliminating cold-start latency, and turns your own hardware into a high-availability alternative to cloud LLM APIs. Cost-aware cloud overflow to OpenAI or Anthropic only when the local cluster is saturated. Single static Go binary with zero runtime dependencies.
+The control plane for self-hosted AI inference - a GPU-aware scheduler and OpenAI-compatible gateway for Ollama, vLLM, TGI, and llama.cpp. Routes each LLM request to the GPU node that already holds the requested model warm in VRAM, eliminating cold-start latency, and turns your own hardware into a high-availability alternative to cloud LLM APIs. Cost-aware cloud overflow to OpenAI or Anthropic only when the local cluster is saturated. Single static Go binary with zero runtime dependencies.
 
 ## What it does
 
