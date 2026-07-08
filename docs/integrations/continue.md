@@ -76,7 +76,7 @@ The `/v1` path accepts OpenAI-format requests. The mesh routes them the same way
 
 ## Verification
 
-Send a test completion from Continue's chat panel. Then check the admin dashboard request log at `http://<mesh-host>:8080` — you should see the request appear with the model name, routing node, and latency.
+Send a test completion from Continue's chat panel. Then check the admin dashboard request log at `http://<mesh-host>:8080` - you should see the request appear with the model name, routing node, and latency.
 
 If auth fails, Continue will show a connection error. Double-check the `Authorization` header value matches a key listed in the admin dashboard.
 
