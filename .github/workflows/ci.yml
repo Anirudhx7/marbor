@@ -20,6 +20,15 @@ jobs:
         with:
           go-version: '1.26'
 
+      - name: Stub UI embed dir
+        # go:embed web/dist in internal/admin/admin.go requires the dir to exist at
+        # compile time. It's gitignored (built by `npm run build`), and this job is
+        # intentionally UI-build-independent, so create an empty stub — mirrors the
+        # Makefile's `test` target.
+        run: |
+          mkdir -p internal/admin/web/dist/assets
+          touch internal/admin/web/dist/index.html
+
       - name: Go vet
         run: go vet ./...
 
