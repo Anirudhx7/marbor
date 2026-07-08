@@ -56,6 +56,22 @@ Full, dated release history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
+## Now — Validation on real hardware
+
+The next milestone is proof, not features. The current README benchmark was measured on a
+node where the model did not fully fit in VRAM (documented honestly there). Before the
+router intelligence deepens further, it gets validated on dedicated hardware:
+
+- Cold-vs-warm TTFT on NVIDIA GPUs where the model fully fits in VRAM (n ≥ 10 per scenario,
+  direct-to-node control run, `--json` output, hardware documented)
+- Warm-aware routing vs round-robin across 2+ nodes — the number no plain load balancer can produce
+- Heterogeneous fleet validation: NVIDIA + Apple Silicon backends behind one endpoint
+- Published, reproducible results via the [`bench/`](bench/) harness
+
+Community feedback from early deployments shapes the priority of everything below.
+
+---
+
 ## Next
 
 ### Step 6 — Prefix locality hints
@@ -70,8 +86,22 @@ just within a single session.
 **Payoff:** RAG pipelines, shared corporate knowledge bases, contracts/legal — anywhere many
 requests share a large prefix. This is the deepest KV-preservation stage of the moat.
 
-*Under consideration after Step 6 (all within the single-instance model):* hardening
-predictive accuracy, richer soft-affinity, and more expressive placement policies.
+---
+
+## Later — under consideration (all within the single-instance model)
+
+Ordered by pull, not promise — items graduate to "Next" when real deployments ask for them:
+
+- **Scheduler depth** — extend placement scoring with queue-time and model-load-cost
+  awareness (estimated total latency per candidate node, not just static weights)
+- **Predictive accuracy hardening** — measure prewarming hit-rate and tune against real
+  traffic patterns rather than adding new prediction signals
+- **Deeper GPU observability** — per-model tokens/sec, cold-start counters, warm-hit
+  ratios surfaced as first-class dashboard and Prometheus signals
+- **SQLite write-path hardening at 20+ nodes** — the single-gateway design lives or dies
+  on write throughput; benchmark and tune before it becomes a ceiling
+- **Additional runtime adapters** (TensorRT-LLM, SGLang, …) — strictly demand-driven;
+  added when a real deployment needs one, not speculatively
 
 ---
 
@@ -86,6 +116,8 @@ the product's core simplicity for infrastructure it doesn't need:
 - ❌ federated / multi-region mesh
 - ❌ direct KV transport or shared KV between nodes
 - ❌ tenant isolation and compliance packs (HIPAA/SOC 2) — later-stage, not now
+- ❌ prompt-based model selection / policy engine ("small prompts → 7B") — gateway territory
+  already served well by LiteLLM; ollama-mesh routes *placement*, not *model choice*
 
 ---
 
