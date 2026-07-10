@@ -547,6 +547,25 @@ export async function fetchRoutingStrategy(): Promise<string> {
 }
 
 export async function fetchSettings() {
+  if (DEMO) {
+    const stored = localStorage.getItem('demo_settings');
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {}
+    }
+    return {
+      proxy: { port: 11434, log_level: 'info' },
+      auth: { enabled: true },
+      routing: { poll_interval_ms: 2000 },
+      metrics: { enabled: true, port: 9090 },
+      litellm: { enabled: false, url: '' },
+      timezone: 'UTC',
+      cloud_budget: { daily_usd_cap: 100, monthly_usd_cap: 1000, soft_budget_pct: 0.8 },
+      hide_demo_banner: false,
+      hide_budget_banner: false,
+    };
+  }
   const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch settings');
   return res.json();
@@ -586,6 +605,10 @@ export async function fetchRequests(): Promise<RequestEntry[]> {
 }
 
 export async function updateSettings(data: Record<string, unknown>) {
+  if (DEMO) {
+    localStorage.setItem('demo_settings', JSON.stringify(data));
+    return;
+  }
   const res = await apiFetch(`${BASE}/settings`, {
     method: 'PUT',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

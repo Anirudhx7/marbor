@@ -19,10 +19,18 @@ export function BudgetBanner() {
   const { demoMode } = useDemoMode();
   const { currency, toDisplay } = useCurrency();
   const [status, setStatus] = useState<CloudBudgetStatus | null>(null);
-  const [hidden, setHidden] = useState(false);
+  const [hidden, setHidden] = useState(() => {
+    try {
+      const stored = localStorage.getItem('demo_settings');
+      if (stored) {
+        const s = JSON.parse(stored);
+        return !!s.hide_budget_banner;
+      }
+    } catch {}
+    return false;
+  });
 
   useEffect(() => {
-    if (forcedDemo) return;
     const load = () => {
       fetchSettings()
         .then(s => setHidden(!!s.hide_budget_banner))
