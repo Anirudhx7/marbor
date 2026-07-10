@@ -3,6 +3,7 @@ import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key, RotateCcw
 import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserPassword, fetchKeys, fetchModels, loadSession } from '../lib/api';
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
+import { Modal } from '../components/Modal';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
   pending:   { variant: 'warning',     label: 'Pending' },
@@ -78,44 +79,25 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
 
   if (createdKey) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-green-500/10 rounded-lg">
-              <Key className="w-5 h-5 text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">User Approved</h3>
-              <p className="text-xs text-muted-foreground">Share this API key - shown once only</p>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mb-2">API key for <strong>{user.username}</strong>:</p>
-          <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all mb-2 select-all">
+      <Modal isOpen={true} onClose={onDone} title="User Approved" maxWidth="sm">
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">API key for <strong>{user.username}</strong>:</p>
+          <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
             {createdKey}
           </code>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">This key will not be shown again. Copy it now.</p>
-          <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+          <p className="text-xs text-amber-600 dark:text-amber-400">This key will not be shown again. Copy it now.</p>
+          <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
             Done
           </button>
         </div>
-      </div>
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="p-2 bg-green-500/10 rounded-lg">
-            <UserCheck className="w-5 h-5 text-green-600 dark:text-green-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Approve {user.username}</h3>
-            <p className="text-xs text-muted-foreground">Assign an API key to activate this user</p>
-          </div>
-        </div>
-
-        <div className="flex gap-2 mb-4">
+    <Modal isOpen={true} onClose={onClose} title={`Approve ${user.username}`}>
+      <div className="space-y-4">
+        <div className="flex gap-2">
           {(['create', 'assign'] as const).map(m => (
             <button key={m} onClick={() => setMode(m)}
               className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${mode === m ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground hover:bg-secondary'}`}>
@@ -180,19 +162,19 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
           </div>
         )}
 
-        {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg mt-3">{error}</p>}
+        {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
 
-        <div className="flex gap-2 mt-5">
+        <div className="flex gap-2 pt-4 border-t border-border">
           <button onClick={onClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
             Cancel
           </button>
           <button onClick={handleApprove} disabled={saving}
-            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
+            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm">
             {saving ? 'Approving...' : 'Approve'}
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -215,35 +197,26 @@ function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   }, [user.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-amber-500/10 rounded-lg">
-            <RotateCcw className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Reset Password</h3>
-            <p className="text-xs text-muted-foreground">{user.username}</p>
-          </div>
-        </div>
-        {loading && <p className="text-sm text-muted-foreground">Generating new password...</p>}
+    <Modal isOpen={true} onClose={onClose} title="Reset Password" maxWidth="sm">
+      <div className="space-y-4">
+        {loading && <p className="text-sm text-muted-foreground animate-pulse">Generating new password...</p>}
         {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
         {password && (
-          <>
-            <p className="text-xs text-muted-foreground mb-2">New temporary password (shown once):</p>
-            <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all mb-2 select-all">
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">New temporary password for <strong>{user.username}</strong> (shown once):</p>
+            <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
               {password}
             </code>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
               User will be prompted to change it on next login. All active sessions revoked.
             </p>
-          </>
+          </div>
         )}
-        <button onClick={onClose} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+        <button onClick={onClose} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
           Done
         </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -278,35 +251,24 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
 
   if (created) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
-          <h3 className="text-sm font-semibold text-foreground mb-4">User Created</h3>
-          <p className="text-xs text-muted-foreground mb-2">Initial password for <strong>{created.username}</strong>:</p>
-          <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all mb-2 select-all">
+      <Modal isOpen={true} onClose={onDone} title="User Created" maxWidth="sm">
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">Initial password for <strong>{created.username}</strong>:</p>
+          <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
             {created.initial_password}
           </code>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mb-4">Share with the user. They will be prompted to change it on first login.</p>
-          <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+          <p className="text-xs text-amber-600 dark:text-amber-400">Share with the user. They will be prompted to change it on first login.</p>
+          <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
             Done
           </button>
         </div>
-      </div>
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="p-2 bg-blue-500/10 rounded-lg">
-            <Plus className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Create User</h3>
-            <p className="text-xs text-muted-foreground">An initial password will be generated</p>
-          </div>
-        </div>
-
+    <Modal isOpen={true} onClose={onClose} title="Create User">
+      <div className="space-y-4">
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">Username</label>
@@ -328,19 +290,19 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
           </div>
         </div>
 
-        {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg mt-3">{error}</p>}
+        {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
 
-        <div className="flex gap-2 mt-5">
+        <div className="flex gap-2 pt-4 border-t border-border">
           <button onClick={onClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
             Cancel
           </button>
           <button onClick={handleCreate} disabled={saving}
-            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
+            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm">
             {saving ? 'Creating...' : 'Create'}
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
