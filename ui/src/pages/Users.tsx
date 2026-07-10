@@ -3,7 +3,6 @@ import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key, RotateCcw
 import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserPassword, fetchKeys, fetchModels, loadSession } from '../lib/api';
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
-import { Tooltip } from '../components/Tooltip';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
   pending:   { variant: 'warning',     label: 'Pending' },
@@ -461,44 +460,39 @@ export function Users() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
                           {u.status === 'pending' && (
-                            <Tooltip label="Approve user">
-                              <button onClick={() => setApproveTarget(u)}
-                                className="p-1.5 rounded-md text-green-600 hover:bg-green-500/10 transition-colors">
-                                <Check className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
+                            <button onClick={() => setApproveTarget(u)}
+                              title="Approve user"
+                              className="p-1.5 rounded-md text-green-600 hover:bg-green-500/10 transition-colors">
+                              <Check className="w-4 h-4" />
+                            </button>
                           )}
                           {u.status === 'active' && (
-                            <Tooltip label="Suspend user">
-                              <button onClick={() => handleSuspend(u)}
-                                className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
-                                <Ban className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
+                            <button onClick={() => handleSuspend(u)}
+                              title="Suspend user"
+                              className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
+                              <Ban className="w-4 h-4" />
+                            </button>
                           )}
                           {u.status === 'suspended' && (
-                            <Tooltip label="Reactivate user">
-                              <button onClick={() => setApproveTarget(u)}
-                                className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors">
-                                <UserCheck className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
+                            <button onClick={() => setApproveTarget(u)}
+                              title="Reactivate user"
+                              className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors">
+                              <UserCheck className="w-4 h-4" />
+                            </button>
                           )}
-                          <Tooltip label={u.username === currentUsername ? 'Use Settings to change your own password' : 'Reset password'}>
-                            <button
-                              onClick={() => setResetTarget(u)}
-                              disabled={u.username === currentUsername}
-                              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          </Tooltip>
-                          <Tooltip label="Delete user">
-                            <button onClick={() => handleDelete(u)}
-                              className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </Tooltip>
+                          <button
+                            onClick={() => setResetTarget(u)}
+                            disabled={u.username === currentUsername}
+                            title={u.username === currentUsername ? 'Use Settings to change your own password' : 'Reset password'}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(u)}
+                            title="Delete user"
+                            className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
