@@ -668,8 +668,14 @@ export function Warmup() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-secondary/35 border border-border/80 rounded-xl px-4 py-3 gap-2.5 text-xs text-muted-foreground shadow-sm">
             <div className="flex items-center gap-2">
               <div className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                {predictiveEnabled ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </>
+                ) : (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                )}
               </div>
               <span className="font-medium text-foreground/80">Server Clock:</span>
               <span className="font-semibold text-foreground font-mono bg-secondary/85 px-2 py-0.5 rounded border border-border/50">
@@ -680,6 +686,20 @@ export function Warmup() {
               * Schedules run on server time. Check server/container timezone configuration.
             </span>
           </div>
+
+          {/* Predictive engine disabled banner */}
+          {!predictiveEnabled && (
+            <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
+              <BrainCircuit className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Predictive Warmup Engine is disabled</p>
+                <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
+                  Scheduled predictive warmups will not fire while the engine is off. Manual schedules below still run normally.
+                  Enable the engine in the <button onClick={() => setTab('predictions')} className="underline underline-offset-2 hover:text-amber-500 transition-colors">Predictions</button> tab.
+                </p>
+              </div>
+            </div>
+          )}
 
           {(() => {
             const active = schedules.filter(s => s.enabled);
@@ -719,14 +739,19 @@ export function Warmup() {
       {/* Predictions tab */}
       {tab === 'predictions' && (
         <section className="space-y-4">
-          <div className="bg-card border border-border rounded-xl p-4 flex items-center justify-between shadow-sm">
+          <div className={`bg-card border rounded-xl p-4 flex items-center justify-between shadow-sm transition-colors ${
+            predictiveEnabled ? 'border-border' : 'border-amber-500/40 bg-amber-500/5'
+          }`}>
             <div className="flex items-center gap-3">
-              <BrainCircuit className="w-5 h-5 text-primary shrink-0" />
+              <BrainCircuit className={`w-5 h-5 shrink-0 ${predictiveEnabled ? 'text-primary' : 'text-amber-500'}`} />
               <div>
                 <h4 className="text-sm font-semibold text-foreground">Predictive Warmup Engine</h4>
                 <p className="text-xs text-muted-foreground">
                   Auto-preloads next-likely models in background VRAM based on historical model-transition patterns.
                 </p>
+                {!predictiveEnabled && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">Engine is paused — no new decisions will be recorded.</p>
+                )}
               </div>
             </div>
             <button
@@ -748,6 +773,7 @@ export function Warmup() {
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
               Last {decisions.length} predictive-warmup decisions. Newest first - this is a log of what the engine actually did on each tick, not a schedule.
+              {!predictiveEnabled && <span className="text-amber-500/80"> (engine paused — list is frozen)</span>}
             </p>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
