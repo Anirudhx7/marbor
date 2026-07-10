@@ -145,7 +145,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
               <input type="text" value={newKeyName} onChange={e => setNewKeyName(e.target.value)}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {([['Rate/hr', rateLimit, setRateLimit], ['Daily', dailyLimit, setDailyLimit], ['Monthly', monthlyLimit, setMonthlyLimit]] as const).map(([label, val, setter]) => (
                 <div key={label}>
                   <label className="block text-xs font-medium text-muted-foreground mb-1.5">{label}</label>

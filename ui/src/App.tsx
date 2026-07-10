@@ -89,7 +89,7 @@ function App() {
 
   // Detect if visitor is on the user portal path (/login but not /admin/login)
   const isUserPath = typeof window !== 'undefined' &&
-    window.location.pathname === '/login';
+    window.location.pathname.endsWith('/login');
 
   if (!session) {
     return (
