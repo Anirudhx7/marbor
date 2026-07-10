@@ -750,7 +750,7 @@ export function Warmup() {
                   Auto-preloads next-likely models in background VRAM based on historical model-transition patterns.
                 </p>
                 {!predictiveEnabled && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">Engine is paused — no new decisions will be recorded.</p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">Engine is paused - no new decisions will be recorded.</p>
                 )}
               </div>
             </div>
@@ -770,13 +770,13 @@ export function Warmup() {
             </button>
           </div>
 
-          <div className="space-y-2">
+          <div className={`space-y-2 transition-opacity duration-200 ${!predictiveEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
             <p className="text-xs text-muted-foreground">
               Last {decisions.length} predictive-warmup decisions. Newest first - this is a log of what the engine actually did on each tick, not a schedule.
-              {!predictiveEnabled && <span className="text-amber-500/80"> (engine paused — list is frozen)</span>}
+              {!predictiveEnabled && <span className="text-amber-500/80"> (engine paused - list is frozen)</span>}
             </p>
             {loading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <p className="text-sm text-muted-foreground">Loading...</p>
             ) : decisions.length === 0 ? (
               <p className="text-sm text-muted-foreground">No predictive decisions recorded yet.</p>
             ) : (
