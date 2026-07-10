@@ -43,6 +43,7 @@ const ModelAdvisor = lazy(() => import('./pages/ModelAdvisor').then(m => ({ defa
 const Requests     = lazy(() => import('./pages/Requests').then(m => ({ default: m.Requests })));
 const Warmup       = lazy(() => import('./pages/Warmup').then(m => ({ default: m.Warmup })));
 const Users        = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
+const SystemAudit  = lazy(() => import('./pages/SystemAudit').then(m => ({ default: m.SystemAudit })));
 
 const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
@@ -139,6 +140,7 @@ function App() {
                   <Route path="/requests" element={<Requests />} />
                   <Route path="/warmup" element={<Warmup />} />
                   {session.role === 'admin' && <Route path="/users" element={<Users />} />}
+                  {session.role === 'admin' && <Route path="/system-audit" element={<SystemAudit />} />}
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Suspense>

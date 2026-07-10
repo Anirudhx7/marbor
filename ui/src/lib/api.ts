@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry } from '../types';
 
 const BASE = '/admin';
 
@@ -739,5 +739,50 @@ export async function getHFRepoDetails(repoId: string, nodeName?: string, ctxLen
   if (ctxLen) url += `&ctx=${ctxLen}`;
   const res = await apiFetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch Hugging Face repository details');
+  return res.json();
+}
+
+export async function fetchSystemAudit(limit: number = 100): Promise<SystemAuditEntry[]> {
+  if (DEMO) {
+    const now = Date.now();
+    const iso = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
+    return [
+      { time: iso(2), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, AuthEnabled: true, DailyCap: 150.00', source_ip: '192.168.1.5' },
+      { time: iso(15), username: 'admin', action: 'add_node', target: 'gpu-node-03', details: 'URL: http://192.168.1.103:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
+      { time: iso(45), username: 'admin', action: 'add_routing_rule', target: 'rule-deepseek-r1', details: 'Condition: model == "deepseek-r1", Target: gpu-node-02, Priority: 10, Enabled: true', source_ip: '192.168.1.5' },
+      { time: iso(120), username: 'admin', action: 'set_pinned_models', target: 'gpu-node-01', details: 'Models: ["llama3:8b", "mistral:7b"]', source_ip: '192.168.1.5' },
+      { time: iso(180), username: 'admin', action: 'add_key', target: 'marketing-team', details: 'RateLimit: 50, DailyLimit: 500, MonthlyLimit: 10000, DailyUsdCap: 50.00, MonthlyUsdCap: 200.00, Models: []', source_ip: '192.168.1.5' },
+    ];
+  }
+  const res = await apiFetch(`${BASE}/system-audit?limit=${limit}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch system audit logs');
+  return res.json();
+}
+
+export async function fetchWarmupStatus(): Promise<{ enabled: boolean; interval_ms: number; keep_alive: string; models: any[]; predictive_engine_enabled: boolean }> {
+  if (DEMO) {
+    return {
+      enabled: true,
+      interval_ms: 300000,
+      keep_alive: "10m",
+      models: [],
+      predictive_engine_enabled: true,
+    };
+  }
+  const res = await apiFetch(`${BASE}/warmup`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch warmup status');
+  return res.json();
+}
+
+export async function setPredictiveEngine(enabled: boolean): Promise<{ predictive_engine_enabled: boolean }> {
+  if (DEMO) {
+    return { predictive_engine_enabled: enabled };
+  }
+  const res = await apiFetch(`${BASE}/warmup/predictive`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error('Failed to set predictive engine status');
   return res.json();
 }

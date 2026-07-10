@@ -144,6 +144,17 @@ export interface Settings {
   cloudDailyUsdCap: number;
   cloudMonthlyUsdCap: number;
   cloudSoftBudgetPct: number;
+  hideDemoBanner?: boolean;
+  hideBudgetBanner?: boolean;
+}
+
+export interface SystemAuditEntry {
+  time: string;
+  username: string;
+  action: string;
+  target: string;
+  details: string;
+  source_ip: string;
 }
 
 export interface Savings {

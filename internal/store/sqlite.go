@@ -195,12 +195,21 @@ func (s *sqliteStore) migrate() error {
 			expires_at           INTEGER NOT NULL
 		)`,
 
-		// --- Phase 1: SQLite-first tables ---
-
 		`CREATE TABLE IF NOT EXISTS settings (
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS system_audit_log (
+			id        INTEGER PRIMARY KEY AUTOINCREMENT,
+			ts        TEXT NOT NULL,
+			username  TEXT NOT NULL,
+			action    TEXT NOT NULL,
+			target    TEXT NOT NULL,
+			details   TEXT NOT NULL,
+			source_ip TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_system_audit_log_ts ON system_audit_log(ts DESC)`,
 
 		`CREATE TABLE IF NOT EXISTS cloud_providers (
 			name               TEXT PRIMARY KEY,
@@ -1219,6 +1228,50 @@ func (s *sqliteStore) SetSetting(key, value string) error {
 		return fmt.Errorf("store: SetSetting: %w", err)
 	}
 	return nil
+}
+
+func (s *sqliteStore) AppendSystemAuditLog(e SystemAuditEntry) error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO system_audit_log (ts, username, action, target, details, source_ip)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		e.Time.Format(time.RFC3339), e.Username, e.Action, e.Target, e.Details, e.SourceIP,
+	)
+	if err != nil {
+		return fmt.Errorf("store: AppendSystemAuditLog: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	rows, err := s.db.Query(
+		`SELECT ts, username, action, target, details, source_ip
+		 FROM system_audit_log ORDER BY ts DESC LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: QuerySystemAuditLog: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []SystemAuditEntry
+	for rows.Next() {
+		var tsStr string
+		var e SystemAuditEntry
+		if err := rows.Scan(&tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
+			return nil, fmt.Errorf("store: QuerySystemAuditLog: %w", err)
+		}
+		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
+			e.Time = t
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
 }
 
 func (s *sqliteStore) AllSettings() (map[string]string, error) {
