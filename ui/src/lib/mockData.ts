@@ -196,6 +196,8 @@ export const defaultSettings: Settings = {
   cloudDailyUsdCap: 25,
   cloudMonthlyUsdCap: 500,
   cloudSoftBudgetPct: 0.8,
+  hideDemoBanner: false,
+  hideBudgetBanner: false,
 };
 
 export const mockSavings: Savings = {

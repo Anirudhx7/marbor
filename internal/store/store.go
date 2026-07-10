@@ -69,6 +69,10 @@ type Store interface {
 	AppendAuditLog(e AuditEntry) error
 	QueryAuditLog(opts AuditQuery) ([]AuditEntry, error)
 
+	// System audit log (administrative mutations)
+	AppendSystemAuditLog(e SystemAuditEntry) error
+	QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error)
+
 	// Admin dashboard credentials
 	GetAdminCreds() (AdminCreds, error)
 	SetAdminCreds(creds AdminCreds) error
@@ -240,6 +244,16 @@ type AuditEntry struct {
 	CloudModel string    `json:"cloud_model,omitempty"`
 }
 
+// SystemAuditEntry is one administrative mutation event persisted to SQLite.
+type SystemAuditEntry struct {
+	Time     time.Time `json:"time"`
+	Username string    `json:"username"`
+	Action   string    `json:"action"`
+	Target   string    `json:"target"`
+	Details  string    `json:"details"`
+	SourceIP string    `json:"source_ip"`
+}
+
 // AuditQuery controls filtering for QueryAuditLog.
 type AuditQuery struct {
 	Limit int
@@ -349,6 +363,8 @@ func (NopStore) AllKeys() ([]KeyRecord, error)                          { return
 func (NopStore) KeySpendSince(_ string, _ time.Time) (float64, error)   { return 0, nil }
 func (NopStore) AppendAuditLog(_ AuditEntry) error                      { return nil }
 func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)       { return nil, nil }
+func (NopStore) AppendSystemAuditLog(_ SystemAuditEntry) error                 { return nil }
+func (NopStore) QuerySystemAuditLog(_ int) ([]SystemAuditEntry, error)         { return nil, nil }
 func (NopStore) GetAdminCreds() (AdminCreds, error)                     { return AdminCreds{}, ErrNoAdminCreds }
 func (NopStore) SetAdminCreds(_ AdminCreds) error                       { return nil }
 func (NopStore) CreateSession(_ string, _ time.Time) error              { return nil }

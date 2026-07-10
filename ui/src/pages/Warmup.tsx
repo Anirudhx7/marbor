@@ -4,6 +4,7 @@ import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule, updateSchedule,
   fetchModels, getPinned, setPinned, fetchSystemInfo, fetchPredictiveDecisions,
+  fetchWarmupStatus, setPredictiveEngine,
 } from '../lib/api';
 import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
@@ -503,6 +504,8 @@ export function Warmup() {
   const [tab, setTab] = useState<'warmup' | 'schedules' | 'predictions'>('warmup');
   const [serverTime, setServerTime] = useState<Date | null>(null);
   const [serverTimezone, setServerTimezone] = useState<string>('');
+  const [predictiveEnabled, setPredictiveEnabled] = useState(true);
+  const [togglingPredictive, setTogglingPredictive] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -515,6 +518,9 @@ export function Warmup() {
       setWarmup(w);
       setSchedules(await listSchedules());
       setDecisions(await fetchPredictiveDecisions().catch(() => []));
+
+      const status = await fetchWarmupStatus().catch(() => ({ predictive_engine_enabled: true }));
+      setPredictiveEnabled(status.predictive_engine_enabled);
 
       const sys = await fetchSystemInfo().catch(() => null);
       if (sys && sys.server_time && sys.timezone) {
@@ -577,6 +583,18 @@ export function Warmup() {
       const saved = await setNodeWarmup(name, nw);
       setWarmup(prev => ({ ...prev, [name]: saved }));
     } catch (e: any) { alert(e.message || 'Save failed'); }
+  }
+
+  async function handleTogglePredictive() {
+    setTogglingPredictive(true);
+    try {
+      const res = await setPredictiveEngine(!predictiveEnabled);
+      setPredictiveEnabled(res.predictive_engine_enabled);
+    } catch (err: any) {
+      alert(err.message || 'Failed to toggle predictive engine');
+    } finally {
+      setTogglingPredictive(false);
+    }
   }
 
   async function addSchedule(s: Omit<Schedule, 'id'>) {
@@ -700,15 +718,42 @@ export function Warmup() {
 
       {/* Predictions tab */}
       {tab === 'predictions' && (
-        <section className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Last {decisions.length} predictive-warmup decisions. Newest first - this is a log of what the engine actually did on each tick, not a schedule.
-          </p>
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : decisions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No predictive decisions recorded yet.</p>
-          ) : (
+        <section className="space-y-4">
+          <div className="bg-card border border-border rounded-xl p-4 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-3">
+              <BrainCircuit className="w-5 h-5 text-primary shrink-0" />
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Predictive Warmup Engine</h4>
+                <p className="text-xs text-muted-foreground">
+                  Auto-preloads next-likely models in background VRAM based on historical model-transition patterns.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleTogglePredictive}
+              disabled={togglingPredictive}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
+                predictiveEnabled ? 'bg-primary' : 'bg-secondary'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  predictiveEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Last {decisions.length} predictive-warmup decisions. Newest first - this is a log of what the engine actually did on each tick, not a schedule.
+            </p>
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : decisions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No predictive decisions recorded yet.</p>
+            ) : (
             <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
               {[...decisions].reverse().map((d, i) => (
                 <div key={i} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
@@ -735,6 +780,7 @@ export function Warmup() {
               ))}
             </div>
           )}
+          </div>
         </section>
       )}
     </div>

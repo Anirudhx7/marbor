@@ -19,6 +19,7 @@ import {
   LogOut,
   Users,
   Flame,
+  Shield,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { forcedDemo } from '../hooks/useDemoMode';
@@ -112,15 +113,21 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
           );
         })}
         {isAdmin && (
-          <NavLink to="/users" className={linkClass}>
-            <Users className="w-4 h-4 shrink-0" />
-            <span className="flex-1">Users</span>
-            {pendingCount > 0 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full leading-none">
-                {pendingCount}
-              </span>
-            )}
-          </NavLink>
+          <>
+            <NavLink to="/users" className={linkClass}>
+              <Users className="w-4 h-4 shrink-0" />
+              <span className="flex-1">Users</span>
+              {pendingCount > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full leading-none">
+                  {pendingCount}
+                </span>
+              )}
+            </NavLink>
+            <NavLink to="/system-audit" className={linkClass}>
+              <Shield className="w-4 h-4 shrink-0" />
+              <span className="flex-1">Audit Trail</span>
+            </NavLink>
+          </>
         )}
       </nav>
 

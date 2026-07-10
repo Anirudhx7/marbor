@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { fetchCloudBudgetStatus } from '../lib/api';
-import { useDemoMode } from '../hooks/useDemoMode';
+import { fetchCloudBudgetStatus, fetchSettings } from '../lib/api';
+import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
 import type { BudgetEntry, CloudBudgetStatus } from '../types';
 
@@ -19,6 +19,19 @@ export function BudgetBanner() {
   const { demoMode } = useDemoMode();
   const { currency, toDisplay } = useCurrency();
   const [status, setStatus] = useState<CloudBudgetStatus | null>(null);
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    if (forcedDemo) return;
+    const load = () => {
+      fetchSettings()
+        .then(s => setHidden(!!s.hide_budget_banner))
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener('ollama-mesh-settings-change', load);
+    return () => window.removeEventListener('ollama-mesh-settings-change', load);
+  }, [demoMode]);
 
   useEffect(() => {
     let active = true;
@@ -32,6 +45,7 @@ export function BudgetBanner() {
     return () => { active = false; clearInterval(id); };
   }, [demoMode]);
 
+  if (hidden) return null;
   if (!status || status.softBudgetPct <= 0) return null;
 
   const worst = worstEntry([status.global, ...status.perKey]);

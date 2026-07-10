@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign } from 'lucide-react';
+import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
@@ -128,6 +128,8 @@ export function SettingsPage() {
           cloudDailyUsdCap: settingsData.cloud_budget?.daily_usd_cap || 0,
           cloudMonthlyUsdCap: settingsData.cloud_budget?.monthly_usd_cap || 0,
           cloudSoftBudgetPct: settingsData.cloud_budget?.soft_budget_pct || 0,
+          hideDemoBanner: settingsData.hide_demo_banner || false,
+          hideBudgetBanner: settingsData.hide_budget_banner || false,
         });
         setCloudProviders(providersData || []);
         setError(null);
@@ -156,9 +158,12 @@ export function SettingsPage() {
         metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
         litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint },
         cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap, soft_budget_pct: settings.cloudSoftBudgetPct },
+        hide_demo_banner: settings.hideDemoBanner || false,
+        hide_budget_banner: settings.hideBudgetBanner || false,
       };
       
       await updateSettings(payload);
+      window.dispatchEvent(new Event('ollama-mesh-settings-change'));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setError(null);
@@ -654,6 +659,59 @@ export function SettingsPage() {
               Checked against real cumulative cloud spend (UTC day/month). 0 disables the check.
               Amounts stored and enforced in USD - currency above is display-only, converted at the manual FX rate you set.
             </p>
+          </div>
+        </div>
+
+        {/* Dashboard Preferences */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-indigo-500/10 rounded-lg">
+              <Sliders className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Dashboard Preferences</h3>
+              <p className="text-xs font-medium text-muted-foreground">Customize UI warning banners visibility</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Hide Demo Banner</p>
+                <p className="text-xs text-muted-foreground">Do not show warning banner in demo mode</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, hideDemoBanner: !settings.hideDemoBanner })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.hideDemoBanner ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.hideDemoBanner ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Hide Budget Banner</p>
+                <p className="text-xs text-muted-foreground">Do not show cloud spend warning banners</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, hideBudgetBanner: !settings.hideBudgetBanner })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.hideBudgetBanner ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.hideBudgetBanner ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </div>
 

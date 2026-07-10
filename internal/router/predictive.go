@@ -99,6 +99,15 @@ func (r *Router) RecordTransition(toModel string, now time.Time) {
 
 // RunPredictionCycle executes the prediction and accuracy check.
 func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
+	r.mu.RLock()
+	st := r.store
+	r.mu.RUnlock()
+	if st != nil {
+		if val, err := st.GetSetting("predictive_engine_enabled"); err == nil && val == "false" {
+			return
+		}
+	}
+
 	now = r.localNow(now)
 
 	r.predictiveMu.Lock()

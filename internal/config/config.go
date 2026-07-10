@@ -96,6 +96,8 @@ type Config struct {
 	HuggingFace    HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
 	Storage        StorageConfig     `yaml:"storage" json:"storage"`
 	CloudBudget    CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
+	HideDemoBanner   bool              `yaml:"hide_demo_banner" json:"hide_demo_banner"`
+	HideBudgetBanner bool              `yaml:"hide_budget_banner" json:"hide_budget_banner"`
 	// ContextWindows maps a model name to its max context window in tokens.
 	// Operator-declared, like a node's vram_total_mb - never guessed. A model
 	// absent from this map has no admission-time context-length check.

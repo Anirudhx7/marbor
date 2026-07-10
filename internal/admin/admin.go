@@ -432,6 +432,7 @@ func (s *Server) Handler() http.Handler {
 	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
 	reg("POST /admin/nodes/{name}/prewarm", s.cors(s.adminAuth(s.handleSetNodePrewarm)))
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
+	reg("GET /admin/system-audit", s.cors(s.adminAuth(s.handleSystemAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
 	reg("GET /admin/models/search", s.cors(s.adminAuth(s.handleModelSearch)))
@@ -444,6 +445,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/cloud-budget-status", s.cors(s.adminAuth(s.handleCloudBudgetStatus)))
 
 	reg("GET /admin/warmup", s.cors(s.adminAuth(s.handleWarmupStatus)))
+	reg("PUT /admin/warmup/predictive", s.cors(s.adminAuth(s.handleSetPredictiveEngine)))
 	reg("POST /admin/warmup/ping", s.cors(s.adminAuth(s.handleWarmupPing)))
 
 	reg("POST /admin/config/reload", s.cors(s.adminAuth(s.handleConfigReload)))
@@ -888,8 +890,43 @@ func (s *Server) handleWarmupStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	cfg := s.cfg.Warmup
 	s.mu.RUnlock()
+
+	predictiveEnabled := true
+	if val, err := s.st.GetSetting("predictive_engine_enabled"); err == nil && val == "false" {
+		predictiveEnabled = false
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cfg)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"enabled":                   cfg.Enabled,
+		"interval_ms":               cfg.IntervalMs,
+		"keep_alive":                cfg.KeepAlive,
+		"models":                    cfg.Models,
+		"predictive_engine_enabled": predictiveEnabled,
+	})
+}
+
+func (s *Server) handleSetPredictiveEngine(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	val := "true"
+	if !body.Enabled {
+		val = "false"
+	}
+	if err := s.st.SetSetting("predictive_engine_enabled", val); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.logSystemChange(r, "set_predictive_engine", "global", fmt.Sprintf("Enabled: %v", body.Enabled))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"predictive_engine_enabled": body.Enabled,
+	})
 }
 
 // handlePredictiveDecisions returns the last 50 predictive-engine decisions,
@@ -1022,14 +1059,22 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		Runtime:     cfg.Runtime,
 		VRAMTotalMB: vramPtr,
 	})
+	s.logSystemChange(r, "add_node", cfg.Name, fmt.Sprintf("URL: %s, Runtime: %s, VRAM: %dMB", cfg.URL, cfg.Runtime, cfg.VRAMTotalMB))
 	w.WriteHeader(http.StatusCreated)
 }
 
 func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if name == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"name is required"}`))
+		return
+	}
 	s.router.RemoveNode(name)
 	_ = s.st.DeleteNode(name)
 	_ = s.st.SetSetting("warmup:node:"+name, "") // drop any warmup setting for the node
+	s.logSystemChange(r, "remove_node", name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1065,6 +1110,7 @@ func (s *Server) handleSetNodeWarmup(w http.ResponseWriter, r *http.Request) {
 	if body.Enabled && len(body.Models) > 0 {
 		s.router.TriggerWarmup(context.Background())
 	}
+	s.logSystemChange(r, "set_node_warmup", name, fmt.Sprintf("Enabled: %v, Models: %v", body.Enabled, body.Models))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": body.Enabled, "models": body.Models})
 }
@@ -1094,6 +1140,7 @@ func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
 	raw, _ := json.Marshal(body.Models)
 	_ = s.st.SetSetting("pinned:node:"+name, string(raw))
 	s.router.SetPinnedModels(name, body.Models)
+	s.logSystemChange(r, "set_pinned_models", name, fmt.Sprintf("Models: %v", body.Models))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"models": body.Models})
 }
@@ -1135,6 +1182,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
+	s.logSystemChange(r, "unload_model", name, fmt.Sprintf("Model: %s", body.Model))
 	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "model": body.Model, "unloaded": true})
 }
 
@@ -1316,6 +1364,7 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.st.SetNodeDrain(name, true)
+	s.logSystemChange(r, "drain_node", name, "")
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"node":%q,"draining":true}`, name)
 }
@@ -1327,6 +1376,7 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.st.SetNodeDrain(name, false)
+	s.logSystemChange(r, "undrain_node", name, "")
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"node":%q,"draining":false}`, name)
 }
@@ -1348,6 +1398,7 @@ func (s *Server) handleSetNodePrewarm(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
+	s.logSystemChange(r, "set_node_prewarm", name, fmt.Sprintf("Disabled: %v", body.Disabled))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"node":             name,
@@ -1370,6 +1421,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel)
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("VRAMTotalMBChanged: %v, GPUModelChanged: %v", patch.VRAMTotalMB != nil, patch.GPUModel != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
 }
@@ -1818,6 +1870,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := s.st.GetUserByID(id)
+	s.logSystemChange(r, "create_user", req.Username, fmt.Sprintf("Role: %s, Status: %s", req.Role, status))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	type resp struct {
@@ -1905,6 +1958,7 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to update user"}`))
 		return
 	}
+	s.logSystemChange(r, "approve_user", user.Username, fmt.Sprintf("APIKeyName: %s", req.APIKeyName))
 	w.Header().Set("Content-Type", "application/json")
 	type approveResp struct {
 		User        store.User `json:"user"`
@@ -1943,6 +1997,7 @@ func (s *Server) handleSuspendUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.st.DeleteUserSessionsByUserID(id)
+	s.logSystemChange(r, "suspend_user", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{}`))
 }
@@ -1984,6 +2039,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to delete user"}`))
 		return
 	}
+	s.logSystemChange(r, "delete_user", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{}`))
 }
@@ -2031,6 +2087,7 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to update user"}`))
 		return
 	}
+	s.logSystemChange(r, "patch_user", user.Username, fmt.Sprintf("RoleChanged: %v, EmailChanged: %v", req.Role != "", req.Email != ""))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
 }
@@ -2068,6 +2125,7 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_ = s.st.DeleteUserSessionsByUserID(id)
+	s.logSystemChange(r, "reset_user_password", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"initial_password": newPassword})
 }
@@ -2248,6 +2306,7 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		Models:        k.Models,
 		Revoked:       false,
 	})
+	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(k)
@@ -2259,6 +2318,7 @@ func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
 		s.auth.RevokeKey(name)
 	}
 	_ = s.st.RevokeKey(name)
+	s.logSystemChange(r, "revoke_key", name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2277,6 +2337,39 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
 		return
 	}
+	// Persist the patch changes to SQLite
+	var keyRecord *store.KeyRecord
+	keys, err := s.st.AllKeys()
+	if err == nil {
+		for _, k := range keys {
+			if k.Name == name {
+				keyRecord = &k
+				break
+			}
+		}
+	}
+	if keyRecord != nil {
+		if patch.RateLimit != nil {
+			keyRecord.RateLimit = *patch.RateLimit
+		}
+		if patch.DailyLimit != nil {
+			keyRecord.DailyLimit = *patch.DailyLimit
+		}
+		if patch.MonthlyLimit != nil {
+			keyRecord.MonthlyLimit = *patch.MonthlyLimit
+		}
+		if patch.DailyUsdCap != nil {
+			keyRecord.DailyUsdCap = *patch.DailyUsdCap
+		}
+		if patch.MonthlyUsdCap != nil {
+			keyRecord.MonthlyUsdCap = *patch.MonthlyUsdCap
+		}
+		if patch.Models != nil {
+			keyRecord.Models = patch.Models
+		}
+		_ = s.st.UpsertKey(*keyRecord)
+	}
+	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil))
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"key":%q,"updated":true}`, name)
 }
@@ -2313,6 +2406,7 @@ func (s *Server) handleAddRoutingRule(w http.ResponseWriter, r *http.Request) {
 		Enabled:   rule.Enabled,
 		CreatedAt: time.Now(),
 	})
+	s.logSystemChange(r, "add_routing_rule", rule.ID, fmt.Sprintf("Condition: %s, Target: %s, Priority: %d, Enabled: %v", rule.Condition, rule.TargetNode, rule.Priority, rule.Enabled))
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -2320,6 +2414,7 @@ func (s *Server) handleRemoveRoutingRule(w http.ResponseWriter, r *http.Request)
 	id := r.PathValue("id")
 	s.router.RemoveRule(id)
 	_ = s.st.DeleteRoutingRule(id)
+	s.logSystemChange(r, "remove_routing_rule", id, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2327,12 +2422,15 @@ func (s *Server) handleToggleRoutingRule(w http.ResponseWriter, r *http.Request)
 	id := r.PathValue("id")
 	s.router.ToggleRule(id)
 	// Reflect the new enabled state in SQLite by reading what the router now has.
+	enabled := false
 	for _, rule := range s.router.Rules() {
 		if rule.ID == id {
 			_ = s.st.SetRoutingRuleEnabled(id, rule.Enabled)
+			enabled = rule.Enabled
 			break
 		}
 	}
+	s.logSystemChange(r, "toggle_routing_rule", id, fmt.Sprintf("Enabled: %v", enabled))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2354,6 +2452,8 @@ func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request
 		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
 		return
 	}
+	_ = s.st.SetSetting("routing_strategy", req.Strategy)
+	s.logSystemChange(r, "set_routing_strategy", req.Strategy, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2368,6 +2468,22 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	cfg.Auth.AdminToken = ""
+
+	username, _ := r.Context().Value(ctxKeyUsername).(string)
+	if username == "" {
+		username = "admin"
+	}
+	if val, err := s.st.GetSetting("pref:" + username + ":hide_demo_banner"); err == nil && val != "" {
+		cfg.HideDemoBanner = (val == "true")
+	} else {
+		cfg.HideDemoBanner = false
+	}
+	if val, err := s.st.GetSetting("pref:" + username + ":hide_budget_banner"); err == nil && val != "" {
+		cfg.HideBudgetBanner = (val == "true")
+	} else {
+		cfg.HideBudgetBanner = false
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfg)
 }
@@ -2401,11 +2517,43 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
 		log.Printf("admin: failed to persist timezone setting: %v", err)
 	}
+	username, _ := r.Context().Value(ctxKeyUsername).(string)
+	if username == "" {
+		username = "admin"
+	}
+
+	if err := s.st.SetSetting("pref:"+username+":hide_demo_banner", strconv.FormatBool(incoming.HideDemoBanner)); err != nil {
+		log.Printf("admin: failed to persist hide_demo_banner setting: %v", err)
+	}
+	if err := s.st.SetSetting("pref:"+username+":hide_budget_banner", strconv.FormatBool(incoming.HideBudgetBanner)); err != nil {
+		log.Printf("admin: failed to persist hide_budget_banner setting: %v", err)
+	}
+
+	s.logSystemChange(r, "update_settings", "global", fmt.Sprintf("Timezone: %s, AuthEnabled: %v, PollInterval: %dms, DailyCap: %f, MonthlyCap: %f", incoming.Timezone, incoming.Auth.Enabled != nil && *incoming.Auth.Enabled, incoming.Routing.PollIntervalMs, incoming.CloudBudget.DailyUSDCap, incoming.CloudBudget.MonthlyUSDCap))
 
 	// Settings now persist to SQLite routing_rules/runtime_nodes/runtime_keys
 	// tables on each mutation. Scalar settings migration to the settings table
 	// completes in Phase 2. config.SaveConfig removed (audit findings #2, #10).
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) logSystemChange(r *http.Request, action, target, details string) {
+	username, _ := r.Context().Value(ctxKeyUsername).(string)
+	if username == "" {
+		username = "admin"
+	}
+	source := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(source); err == nil {
+		source = host
+	}
+	_ = s.st.AppendSystemAuditLog(store.SystemAuditEntry{
+		Time:     time.Now(),
+		Username: username,
+		Action:   action,
+		Target:   target,
+		Details:  details,
+		SourceIP: source,
+	})
 }
 
 func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latencyMs int, tokens int64) {
@@ -2976,6 +3124,8 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s", body.Model))
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -3047,6 +3197,27 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		"total":     len(entries),
 		"truncated": len(entries) == limit,
 	})
+}
+
+func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if n > 0 && n <= 1000 {
+				limit = n
+			}
+		}
+	}
+	entries, err := s.st.QuerySystemAuditLog(limit)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		return
+	}
+	if entries == nil {
+		entries = []store.SystemAuditEntry{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
 }
 
 // handleAnalyticsExport serves analytics data as CSV or JSON.
