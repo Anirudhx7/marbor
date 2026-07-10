@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { LiveRequest } from '../types';
 import { fetchLiveRequests } from '../lib/api';
+import { useDemoMode } from './useDemoMode';
 
 const MODELS = [
   'llama3.2:3b',
@@ -47,27 +48,33 @@ function generateRequest(): LiveRequest {
 }
 
 export function useLiveRequests(maxRequests: number = 20) {
+  const { demoMode } = useDemoMode();
   const [requests, setRequests] = useState<LiveRequest[]>([]);
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const lastIdRef = useRef<string | null>(null);
 
   const poll = useCallback(async () => {
     try {
       const data = await fetchLiveRequests();
       setRequests(data);
       setIsLive(true);
-      if (data.length > 0 && (!requests.length || data[0].id !== requests[0].id)) {
+      if (data.length > 0 && data[0].id !== lastIdRef.current) {
+        lastIdRef.current = data[0].id;
         setNewRequestId(data[0].id);
         setTimeout(() => setNewRequestId(null), 500);
       }
     } catch (e) {
       setIsLive(false);
-      const newRequest = generateRequest();
-      setNewRequestId(newRequest.id);
-      setRequests(prev => [newRequest, ...prev].slice(0, maxRequests));
-      setTimeout(() => setNewRequestId(null), 500);
+      if (demoMode) {
+        const newRequest = generateRequest();
+        lastIdRef.current = newRequest.id;
+        setNewRequestId(newRequest.id);
+        setRequests(prev => [newRequest, ...prev].slice(0, maxRequests));
+        setTimeout(() => setNewRequestId(null), 500);
+      }
     }
-  }, [maxRequests, requests]);
+  }, [maxRequests, demoMode]);
 
   useEffect(() => {
     const interval = setInterval(poll, 2000);

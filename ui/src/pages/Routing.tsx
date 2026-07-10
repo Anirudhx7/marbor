@@ -408,6 +408,7 @@ export function Routing() {
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               >
                 <option value="">Select node...</option>
+                <option value="any">Any Node (Dynamic Balancing)</option>
                 {availableNodes.map((node) => (
                   <option key={node.id} value={node.name}>{node.name}</option>
                 ))}

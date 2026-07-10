@@ -390,8 +390,9 @@ export function GPUNodes() {
     try {
       await addNode(nodeData);
       await loadNodes();
-    } catch {
-      // add failed; node list unchanged
+      setActionError(null);
+    } catch (err: any) {
+      setActionError(err?.message || 'Failed to add node');
     }
 
     setIsAddModalOpen(false);
@@ -403,8 +404,9 @@ export function GPUNodes() {
     try {
       await removeNode(name);
       await loadNodes();
-    } catch {
-      // remove failed; node list unchanged
+      setActionError(null);
+    } catch (err: any) {
+      setActionError(err?.message || `Failed to remove node ${name}`);
     }
   };
 
@@ -413,8 +415,9 @@ export function GPUNodes() {
     try {
       await drainNode(name);
       await loadNodes();
-    } catch {
-      // drain failed; node list unchanged
+      setActionError(null);
+    } catch (err: any) {
+      setActionError(err?.message || `Failed to drain node ${name}`);
     }
   };
 
@@ -423,8 +426,9 @@ export function GPUNodes() {
     try {
       await undrainNode(name);
       await loadNodes();
-    } catch {
-      // undrain failed; node list unchanged
+      setActionError(null);
+    } catch (err: any) {
+      setActionError(err?.message || `Failed to undrain node ${name}`);
     }
   };
 
@@ -433,8 +437,9 @@ export function GPUNodes() {
     try {
       await setNodePrewarm(name, disabled);
       await loadNodes();
-    } catch {
-      // toggle failed; node list unchanged
+      setActionError(null);
+    } catch (err: any) {
+      setActionError(err?.message || `Failed to toggle prewarm for node ${name}`);
     }
   };
 

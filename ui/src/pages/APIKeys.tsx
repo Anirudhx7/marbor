@@ -80,7 +80,10 @@ export function APIKeys() {
       if (isNaN(v) || v < 0) { setEditError('Monthly USD cap must be a non-negative number'); return; }
       patch.monthly_usd_cap = v;
     }
-    if (editForm.models.length > 0) {
+    const originalModels = editKey.allowedModels ?? [];
+    const modelsChanged = originalModels.length !== editForm.models.length || 
+      !editForm.models.every(m => originalModels.includes(m));
+    if (modelsChanged) {
       patch.models = editForm.models;
     }
     if (Object.keys(patch).length === 0) { setEditKey(null); return; }
