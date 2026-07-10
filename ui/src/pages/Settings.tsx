@@ -135,14 +135,8 @@ export function SettingsPage() {
   }, [demoMode]);
 
   const handleSave = async () => {
-    if (demoMode) {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      return;
-    }
-
     try {
-      // Map UI settings to backend config format
+      // Map UI settings to backend config format (also used in demo mode → localStorage)
       const payload = {
         timezone: settings.timezone,
         proxy: { port: settings.proxyPort, log_level: settings.logLevel },
@@ -154,7 +148,7 @@ export function SettingsPage() {
         hide_demo_banner: settings.hideDemoBanner || false,
         hide_budget_banner: settings.hideBudgetBanner || false,
       };
-      
+
       await updateSettings(payload);
       window.dispatchEvent(new Event('ollama-mesh-settings-change'));
       setSaved(true);

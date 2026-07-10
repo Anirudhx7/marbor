@@ -7,16 +7,16 @@
 <meta name="robots" content="noindex, nofollow">
 <script>
   // SPA redirect for GitHub Pages demo subpath.
-  // Deep-link to /demo/* → store path in sessionStorage → redirect to SPA root.
-  // React app reads sessionStorage on load and restores URL via history.replaceState.
+  // Deep-link to /demo/* → redirect directly to SPA hash route.
+  // E.g. /ollama-mesh/demo/gpu-nodes → /ollama-mesh/demo/#/gpu-nodes
   (function () {
     var l = window.location;
     var path = l.pathname;
     if (path === '/ollama-mesh/demo') {
       l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/');
     } else if (path.indexOf('/ollama-mesh/demo/') === 0) {
-      sessionStorage.setItem('spa_redirect', path + l.search + l.hash);
-      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/');
+      var subpath = path.slice(18); // strip '/ollama-mesh/demo/' (18 chars)
+      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/#/' + subpath + l.search + l.hash);
     }
   })();
 </script>
