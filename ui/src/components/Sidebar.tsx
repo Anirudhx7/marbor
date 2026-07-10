@@ -37,7 +37,6 @@ const navItems = [
   { path: '/api-keys', label: 'API Keys', icon: Key },
   { path: '/routing', label: 'Routing', icon: Route },
   { path: '/metrics', label: 'Metrics', icon: BarChart3 },
-  { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
 interface SidebarProps {
@@ -129,6 +128,10 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
             </NavLink>
           </>
         )}
+        <NavLink to="/settings" className={linkClass}>
+          <Settings className="w-4 h-4 shrink-0" />
+          Settings
+        </NavLink>
       </nav>
 
       <div className="p-4 border-t border-border shrink-0 space-y-1">
