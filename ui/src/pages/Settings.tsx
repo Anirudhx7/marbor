@@ -105,15 +105,8 @@ export function SettingsPage() {
   const [credSaved, setCredSaved] = useState(false);
 
   useEffect(() => {
-    if (demoMode) {
-      setCloudProviders(mockCloudProviders);
-      setCloudLoading(false);
-      setSettings(defaultSettings);
-      setError(null);
-      return;
-    }
     setCloudLoading(true);
-    Promise.all([fetchSettings(), fetchCloudProviders()])
+    Promise.all([fetchSettings(), fetchCloudProviders().catch(() => mockCloudProviders)])
       .then(([settingsData, providersData]) => {
         setSettings({
           proxyPort: settingsData.proxy?.port || 11434,
@@ -131,7 +124,7 @@ export function SettingsPage() {
           hideDemoBanner: settingsData.hide_demo_banner || false,
           hideBudgetBanner: settingsData.hide_budget_banner || false,
         });
-        setCloudProviders(providersData || []);
+        setCloudProviders(demoMode ? mockCloudProviders : (providersData || []));
         setError(null);
       })
       .catch(err => {
