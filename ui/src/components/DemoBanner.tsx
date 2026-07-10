@@ -4,10 +4,18 @@ import { fetchSettings } from '../lib/api';
 
 export function DemoBanner() {
   const { demoMode } = useDemoMode();
-  const [hidden, setHidden] = useState(false);
+  const [hidden, setHidden] = useState(() => {
+    try {
+      const stored = localStorage.getItem('demo_settings');
+      if (stored) {
+        const s = JSON.parse(stored);
+        return !!s.hide_demo_banner;
+      }
+    } catch {}
+    return false;
+  });
 
   useEffect(() => {
-    if (forcedDemo) return;
     const load = () => {
       fetchSettings()
         .then(s => setHidden(!!s.hide_demo_banner))
