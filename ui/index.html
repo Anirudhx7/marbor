@@ -2,17 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="pragma" content="no-cache" />
+    <meta http-equiv="expires" content="0" />
     <base href="./">
-    <script>
-      // Restore path from GitHub Pages SPA 404 redirect
-      (function () {
-        var redirect = sessionStorage.getItem('spa_redirect');
-        if (redirect) {
-          sessionStorage.removeItem('spa_redirect');
-          window.history.replaceState(null, null, redirect);
-        }
-      })();
-    </script>
+
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ollama-mesh | Admin Dashboard</title>
