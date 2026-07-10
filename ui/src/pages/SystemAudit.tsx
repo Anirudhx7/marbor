@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
-import { Shield, Search, RefreshCw, Eye, Calendar, User, Terminal, Globe, Filter, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Shield, Search, RefreshCw, Eye, Calendar, User, Terminal, Globe, Filter, AlertCircle, X } from 'lucide-react';
 import { fetchSystemAudit } from '../lib/api';
 import type { SystemAuditEntry } from '../types';
+
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
 
 function formatDateTime(isoString: string): string {
   try {
@@ -37,6 +39,12 @@ function getActionLabel(action: string): string {
     .join(' ');
 }
 
+/** Returns true for actions that represent an infrastructure-level mutation. */
+function isInfrastructureAction(action: string): boolean {
+  const infraKeywords = ['node', 'routing', 'drain', 'undrain', 'warmup', 'schedule', 'pinned', 'settings', 'key', 'user', 'allowlist'];
+  return infraKeywords.some((kw) => action.includes(kw));
+}
+
 export function SystemAudit() {
   const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,27 +53,45 @@ export function SystemAudit() {
   const [actionFilter, setActionFilter] = useState('all');
   const [selectedEntry, setSelectedEntry] = useState<SystemAuditEntry | null>(null);
   const [refreshSpin, setRefreshSpin] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  async function loadLogs() {
-    setLoading(true);
+  const loadLogs = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setRefreshSpin(true);
     try {
       const data = await fetchSystemAudit(200);
       setEntries(data);
       setError(null);
+      setLastRefreshed(new Date());
     } catch (err: any) {
       setError(err.message || 'Failed to load system audit trail');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
       setTimeout(() => setRefreshSpin(false), 500);
     }
-  }
-
-  useEffect(() => {
-    loadLogs();
   }, []);
 
-  const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action)))];
+  // Initial load + auto-refresh every 30 s
+  useEffect(() => {
+    loadLogs();
+    intervalRef.current = setInterval(() => loadLogs(true), AUTO_REFRESH_INTERVAL_MS);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [loadLogs]);
+
+  // Close modal on Escape key
+  useEffect(() => {
+    if (!selectedEntry) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setSelectedEntry(null);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedEntry]);
+
+  const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action))).sort()];
 
   const filtered = entries.filter((e) => {
     const matchesAction = actionFilter === 'all' || e.action === actionFilter;
@@ -80,11 +106,11 @@ export function SystemAudit() {
     return matchesAction && matchesSearch;
   });
 
-  const totalMutations = entries.length;
+  const hasActiveFilters = searchQuery.trim() !== '' || actionFilter !== 'all';
+
+  const totalFetched = entries.length;
   const uniqueOperators = new Set(entries.map((e) => e.username)).size;
-  const infrastructureChanges = entries.filter(
-    (e) => e.action.includes('node') || e.action.includes('routing')
-  ).length;
+  const infrastructureChanges = entries.filter((e) => isInfrastructureAction(e.action)).length;
 
   return (
     <div className="space-y-6">
@@ -99,14 +125,21 @@ export function SystemAudit() {
             Review configuration changes, node updates, and administrative actions.
           </p>
         </div>
-        <button
-          onClick={loadLogs}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshSpin ? 'animate-spin' : ''}`} />
-          Refresh Logs
-        </button>
+        <div className="flex items-center gap-3">
+          {lastRefreshed && (
+            <span className="text-[11px] text-muted-foreground/60 hidden sm:block">
+              Updated {lastRefreshed.toLocaleTimeString()}
+            </span>
+          )}
+          <button
+            onClick={() => loadLogs()}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshSpin ? 'animate-spin' : ''}`} />
+            Refresh Logs
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -115,8 +148,11 @@ export function SystemAudit() {
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Actions Logged</p>
-              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{totalMutations}</h3>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions (last {totalFetched})</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{filtered.length}</h3>
+              {hasActiveFilters && (
+                <p className="text-[10px] text-muted-foreground/60 mt-0.5">filtered from {totalFetched}</p>
+              )}
             </div>
             <div className="p-2.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg">
               <Terminal className="w-5 h-5" />
@@ -177,6 +213,15 @@ export function SystemAudit() {
               </option>
             ))}
           </select>
+          {hasActiveFilters && (
+            <button
+              onClick={() => { setSearchQuery(''); setActionFilter('all'); }}
+              title="Clear all filters"
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -196,6 +241,14 @@ export function SystemAudit() {
           <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
             <Search className="w-6 h-6 text-muted-foreground/50" />
             No audit records found matching your filters.
+            {hasActiveFilters && (
+              <button
+                onClick={() => { setSearchQuery(''); setActionFilter('all'); }}
+                className="text-primary hover:underline text-xs mt-1"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -212,9 +265,9 @@ export function SystemAudit() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {filtered.map((e, idx) => (
+                {filtered.map((e) => (
                   <tr
-                    key={idx}
+                    key={`${e.time}-${e.action}-${e.username}`}
                     className="hover:bg-secondary/20 transition-all duration-150 group cursor-pointer"
                     onClick={() => setSelectedEntry(e)}
                   >
@@ -238,7 +291,7 @@ export function SystemAudit() {
                       {e.target}
                     </td>
                     <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                      {e.source_ip || '—'}
+                      {e.source_ip || '-'}
                     </td>
                     <td className="px-5 py-3.5 text-muted-foreground max-w-[320px] truncate" title={e.details}>
                       {e.details}
@@ -264,13 +317,25 @@ export function SystemAudit() {
 
       {/* Details Inspector Modal */}
       {selectedEntry && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-          <div className="bg-card border border-border w-full max-w-lg rounded-xl shadow-lg p-6 space-y-5 animate-in fade-in zoom-in duration-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+          onClick={() => setSelectedEntry(null)}
+        >
+          <div
+            className="bg-card border border-border w-full max-w-lg rounded-xl shadow-lg p-6 space-y-5 animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-border/60 pb-3">
               <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                 <Shield className="w-5 h-5 text-primary" />
                 Audit Record Details
               </h2>
+              <button
+                onClick={() => setSelectedEntry(null)}
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -286,7 +351,7 @@ export function SystemAudit() {
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Source IP</p>
                 <p className="text-sm font-mono font-semibold text-foreground mt-1 flex items-center gap-1.5">
                   <Globe className="w-4 h-4 text-primary" />
-                  {selectedEntry.source_ip || '—'}
+                  {selectedEntry.source_ip || '-'}
                 </p>
               </div>
 
