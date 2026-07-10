@@ -77,7 +77,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
 
   const sidebarContent = (
     <>
-      <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
+      <div className="h-16 flex items-center justify-between px-6 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#1a1714' }}>
             <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
@@ -92,6 +92,13 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
             <span className="text-[10px] font-medium text-muted-foreground leading-none">v{version}</span>
           </div>
         </div>
+        <button
+          onClick={() => setIsOpen(false)}
+          className="md:hidden p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
@@ -158,13 +165,15 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
   return (
     <>
       {/* Mobile hamburger */}
-      <button
-        className="md:hidden fixed top-3 left-3 z-50 p-2 rounded-md bg-card border border-border text-foreground shadow-sm"
-        onClick={() => setIsOpen(o => !o)}
-        aria-label={isOpen ? 'Close menu' : 'Open menu'}
-      >
-        {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
+      {!isOpen && (
+        <button
+          className="md:hidden fixed top-3 left-3 z-50 p-2 rounded-md bg-card border border-border text-foreground shadow-sm"
+          onClick={() => setIsOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Mobile overlay */}
       {isOpen && (

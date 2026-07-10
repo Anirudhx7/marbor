@@ -215,7 +215,7 @@ export function Requests() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       {entry.cloud ? (
                         <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
-                          cloud
+                          cloud:{entry.node.replace('cloud:', '')}
                         </span>
                       ) : (
                         <span className="text-foreground">{entry.node || '-'}</span>
