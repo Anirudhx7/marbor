@@ -391,12 +391,11 @@ export function GPUNodes() {
       await addNode(nodeData);
       await loadNodes();
       setActionError(null);
+      setIsAddModalOpen(false);
+      setNewNode({ name: '', host: '', port: '11434', gpuModel: '' });
     } catch (err: any) {
       setActionError(err?.message || 'Failed to add node');
     }
-
-    setIsAddModalOpen(false);
-    setNewNode({ name: '', host: '', port: '11434', gpuModel: '' });
   };
 
   const handleRemoveNode = async (name: string) => {
@@ -518,7 +517,7 @@ export function GPUNodes() {
             </span>
           </div>
           <button
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => { setActionError(null); setIsAddModalOpen(true); }}
             disabled={!isLive}
             title={!isLive ? 'Backend disconnected' : undefined}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
@@ -684,6 +683,9 @@ export function GPUNodes() {
               />
             </div>
           </div>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               onClick={() => setIsAddModalOpen(false)}
