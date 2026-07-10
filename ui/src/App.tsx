@@ -19,7 +19,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return this.props.children;
   }
 }
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
@@ -116,9 +116,11 @@ function App() {
     );
   }
 
+  const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
+
   return (
     <ThemeProvider>
-      <BrowserRouter basename={basename}>
+      <RouterComponent {...(forcedDemo ? {} : { basename })}>
         <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
           <Sidebar onLogout={handleLogout} session={session} pendingCount={pendingCount} />
           <main className="md:ml-64 min-h-screen">
@@ -148,7 +150,7 @@ function App() {
             </div>
           </main>
         </div>
-      </BrowserRouter>
+      </RouterComponent>
     </ThemeProvider>
   );
 }
