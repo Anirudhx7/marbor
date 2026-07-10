@@ -47,6 +47,14 @@ const SystemAudit  = lazy(() => import('./pages/SystemAudit').then(m => ({ defau
 
 const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
+// Declare RouterComponent at module scope so React's reconciler always sees
+// the same component identity across re-renders of App. A component declared
+// inside the render function gets a fresh identity on every render, causing
+// React to unmount → remount the entire router (and wipe its history state)
+// on every state update (e.g. setPendingCount) — which breaks client-side
+// navigation on the static GitHub Pages demo.
+const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
+
 function App() {
   const [session, setSession] = useState<SessionData | null>(() => loadSession());
   const [pendingCount, setPendingCount] = useState(0);
@@ -115,8 +123,6 @@ function App() {
       </ThemeProvider>
     );
   }
-
-  const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
 
   return (
     <ThemeProvider>
