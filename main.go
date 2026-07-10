@@ -315,7 +315,6 @@ func main() {
 		log.Printf("store: loaded timezone %q", tzVal)
 	}
 
-
 	// Load persisted schedules (warmup/drain/undrain) from the KV store.
 	if raw, err := st.GetSetting("schedules"); err == nil && raw != "" {
 		var scheds []router.Schedule

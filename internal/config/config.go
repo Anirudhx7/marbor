@@ -78,24 +78,24 @@ type WarmupConfig struct {
 }
 
 type Config struct {
-	Timezone       string            `yaml:"timezone" json:"timezone"`
-	Proxy          ProxyConfig       `yaml:"proxy"`
-	Admin          AdminConfig       `yaml:"admin" json:"admin"`
-	Auth           AuthConfig        `yaml:"auth"`
-	Nodes          []NodeConfig      `yaml:"nodes"`
-	Routing        RoutingConfig     `yaml:"routing"`
-	Metrics        MetricsConfig     `yaml:"metrics"`
-	LiteLLM        LiteLLMConfig     `yaml:"litellm"`
-	CloudProviders []CloudProvider   `yaml:"cloud_providers" json:"cloud_providers"`
-	Docker         DockerConfig      `yaml:"docker" json:"docker"`
-	Audit          AuditConfig       `yaml:"audit" json:"audit"`
-	Webhook        WebhookConfig     `yaml:"webhook" json:"webhook"`
-	Savings        SavingsConfig     `yaml:"savings" json:"savings"`
-	HA             HAConfig          `yaml:"ha" json:"ha"`
-	Warmup         WarmupConfig      `yaml:"warmup" json:"warmup"`
-	HuggingFace    HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
-	Storage        StorageConfig     `yaml:"storage" json:"storage"`
-	CloudBudget    CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
+	Timezone         string            `yaml:"timezone" json:"timezone"`
+	Proxy            ProxyConfig       `yaml:"proxy"`
+	Admin            AdminConfig       `yaml:"admin" json:"admin"`
+	Auth             AuthConfig        `yaml:"auth"`
+	Nodes            []NodeConfig      `yaml:"nodes"`
+	Routing          RoutingConfig     `yaml:"routing"`
+	Metrics          MetricsConfig     `yaml:"metrics"`
+	LiteLLM          LiteLLMConfig     `yaml:"litellm"`
+	CloudProviders   []CloudProvider   `yaml:"cloud_providers" json:"cloud_providers"`
+	Docker           DockerConfig      `yaml:"docker" json:"docker"`
+	Audit            AuditConfig       `yaml:"audit" json:"audit"`
+	Webhook          WebhookConfig     `yaml:"webhook" json:"webhook"`
+	Savings          SavingsConfig     `yaml:"savings" json:"savings"`
+	HA               HAConfig          `yaml:"ha" json:"ha"`
+	Warmup           WarmupConfig      `yaml:"warmup" json:"warmup"`
+	HuggingFace      HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
+	Storage          StorageConfig     `yaml:"storage" json:"storage"`
+	CloudBudget      CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
 	HideDemoBanner   bool              `yaml:"hide_demo_banner" json:"hide_demo_banner"`
 	HideBudgetBanner bool              `yaml:"hide_budget_banner" json:"hide_budget_banner"`
 	// ContextWindows maps a model name to its max context window in tokens.
