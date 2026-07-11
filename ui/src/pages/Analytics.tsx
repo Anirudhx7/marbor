@@ -263,7 +263,7 @@ export function Analytics() {
                         </span>
                       </td>
                       <td className="px-6 py-3 text-right font-mono font-medium text-success">
-                        ${m.saved_usd.toFixed(4)}
+                        ${(m.saved_usd ?? 0).toFixed(4)}
                       </td>
                     </tr>
                   );

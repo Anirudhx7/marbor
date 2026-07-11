@@ -50,6 +50,7 @@ function ModelCard({ model, demoMode }: { model: ModelEntry; demoMode: boolean }
       if (demoMode) {
         await new Promise<void>((resolve) => setTimeout(resolve, 1000));
       } else {
+        if (!targetNode) { setPullStatus('error'); setPullError('No healthy node available'); return; }
         await pullModel(targetNode.name, trimmed);
       }
       setPullStatus('success');

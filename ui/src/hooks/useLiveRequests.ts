@@ -57,7 +57,7 @@ export function useLiveRequests(maxRequests: number = 20) {
   const poll = useCallback(async () => {
     try {
       const data = await fetchLiveRequests();
-      setRequests(data);
+      setRequests(Array.isArray(data) ? data : []);
       setIsLive(true);
       if (data.length > 0 && data[0].id !== lastIdRef.current) {
         lastIdRef.current = data[0].id;

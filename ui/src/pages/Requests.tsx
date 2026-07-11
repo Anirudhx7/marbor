@@ -55,7 +55,7 @@ export function Requests() {
       try {
         const data = await fetchRequests();
         if (!cancelled) {
-          setEntries(data);
+          setEntries(Array.isArray(data) ? data : []);
           setFetchError(null);
           setLoading(false);
         }

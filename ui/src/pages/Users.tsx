@@ -40,7 +40,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
 
   useEffect(() => {
     fetchKeys().then(keys => setActiveKeys(keys.filter(k => k.status === 'active'))).catch(() => {});
-    fetchModels().then((cat: ModelCatalog) => setAvailableModels(cat.models.map(m => m.name))).catch(() => {});
+    fetchModels().then((cat: ModelCatalog) => setAvailableModels((cat.models ?? []).map(m => m.name))).catch(() => {});
   }, []);
 
   function toggleModel(model: string) {

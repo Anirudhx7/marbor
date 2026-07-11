@@ -510,13 +510,14 @@ export function Warmup() {
   const load = useCallback(async () => {
     try {
       const ns = await fetchNodes();
-      setNodes(ns);
+      const safeNs = Array.isArray(ns) ? ns : [];
+      setNodes(safeNs);
       const w: Record<string, NodeWarmup> = {};
-      await Promise.all(ns.map(async n => {
+      await Promise.all(safeNs.map(async n => {
         try { w[n.name] = await getNodeWarmup(n.name); } catch { w[n.name] = { enabled: false, models: [] }; }
       }));
       setWarmup(w);
-      setSchedules(await listSchedules());
+      setSchedules((await listSchedules()) || []);
       setDecisions(await fetchPredictiveDecisions().catch(() => []));
 
       const status = await fetchWarmupStatus().catch(() => ({ predictive_engine_enabled: true }));
