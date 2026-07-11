@@ -223,11 +223,11 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
           <span className="text-xs font-medium">Health (60m)</span>
         </div>
         <div className="flex items-center gap-2">
-          {node.healthHistory.length > 0 ? (
+          {(node.healthHistory || []).length > 1 ? (
             <>
               <Sparkline data={node.healthHistory} width={100} height={24} />
               <span className={`text-xs font-mono font-medium ${healthColor}`}>
-                {Math.round(node.healthHistory[node.healthHistory.length - 1])}%
+                {Math.round((node.healthHistory || [])[(node.healthHistory || []).length - 1])}%
               </span>
             </>
           ) : (
@@ -262,7 +262,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                 >
                   {model.name}
                   <span className="ml-1.5 opacity-70 font-mono">
-                    {(model.sizeVram / 1024 / 1024 / 1024).toFixed(1)}GB
+                    {(model.sizeVram / 1024).toFixed(1)}GB
                   </span>
                   {pinned ? (
                     <span
@@ -589,7 +589,7 @@ export function GPUNodes() {
             </div>
           )}
 
-          {modelFit && modelFit.nodes.map((nodeFit) => (
+          {modelFit && (modelFit.nodes ?? []).map((nodeFit) => (
             <div key={nodeFit.name} className="bg-card border border-border rounded-xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <div>
