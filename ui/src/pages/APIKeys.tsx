@@ -399,7 +399,7 @@ export function APIKeys() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="font-mono text-sm text-foreground">
-                      {key.rateLimit.toLocaleString()}<span className="text-muted-foreground font-sans">/hr</span>
+                      {(key.rateLimit ?? 0).toLocaleString()}<span className="text-muted-foreground font-sans">/hr</span>
                     </span>
                   </td>
                   <td className="px-6 py-4">
