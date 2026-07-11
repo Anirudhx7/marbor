@@ -221,7 +221,7 @@ export function Models() {
       }
       setPullSuccess(true);
       setPullModelName('');
-      loadModels();
+      void loadModels().catch(console.error);
     } catch (e: unknown) {
       setPullErrorMsg(e instanceof Error ? e.message : 'Pull failed');
     } finally {

@@ -355,7 +355,7 @@ export function SettingsPage() {
               <input
                 type="number"
                 value={settings.proxyPort}
-                onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) })}
+                onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) || settings.proxyPort })}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               />
             </div>
@@ -474,7 +474,7 @@ export function SettingsPage() {
                   max="10000"
                   step="500"
                   value={settings.pollingInterval}
-                  onChange={(e) => setSettings({ ...settings, pollingInterval: parseInt(e.target.value) })}
+                  onChange={(e) => setSettings({ ...settings, pollingInterval: parseInt(e.target.value) || 1000 })}
                   className="flex-1 accent-primary"
                 />
                 <code className="font-mono text-sm font-medium text-primary min-w-[80px]">
@@ -525,7 +525,7 @@ export function SettingsPage() {
                 <input
                   type="number"
                   value={settings.prometheusPort}
-                  onChange={(e) => setSettings({ ...settings, prometheusPort: parseInt(e.target.value) })}
+                  onChange={(e) => setSettings({ ...settings, prometheusPort: parseInt(e.target.value) || settings.prometheusPort })}
                   className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
                 />
               </div>

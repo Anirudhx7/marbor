@@ -209,7 +209,7 @@ export function APIKeys() {
         requestsThisMonth: 0,
         tokensThisMonth: 0,
         estimatedCostUsd: 0,
-        rateLimit: parseInt(newKeyForm.rateLimit),
+        rateLimit: parseInt(newKeyForm.rateLimit) || 0,
         status: 'active',
         allowedModels: newKeyForm.allowedModels.length > 0 ? newKeyForm.allowedModels : ['all'],
         expiresAt: newKeyForm.expiresAt || null,
@@ -223,7 +223,7 @@ export function APIKeys() {
 
     const newKeyData = {
       name: newKeyForm.name,
-      rate_limit: parseInt(newKeyForm.rateLimit),
+      rate_limit: parseInt(newKeyForm.rateLimit) || 0,
       models: newKeyForm.allowedModels,
       expires_at: newKeyForm.expiresAt || "",
     };

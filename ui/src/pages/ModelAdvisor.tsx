@@ -145,7 +145,7 @@ function ModelDetailPanel({
       <div className="flex items-start justify-between p-5 border-b border-border shrink-0">
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-foreground text-base truncate" title={model.id}>
-            {model.id.split('/').pop()}
+            {(model.id ?? '').split('/').pop()}
           </h2>
           <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
           <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1.5">
@@ -298,7 +298,7 @@ function ModelCard({
       <div className="flex items-start justify-between mb-2">
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-foreground truncate" title={model.id}>
-            {model.id.split('/').pop()}
+            {(model.id ?? '').split('/').pop()}
           </h3>
           <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
         </div>
