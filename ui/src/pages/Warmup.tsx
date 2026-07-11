@@ -530,12 +530,12 @@ export function Warmup() {
           const dParts = parts[0].split('-');
           const tParts = parts[1].split(':');
           const date = new Date(
-            parseInt(dParts[0], 10),
-            parseInt(dParts[1], 10) - 1,
-            parseInt(dParts[2], 10),
-            parseInt(tParts[0], 10),
-            parseInt(tParts[1], 10),
-            parseInt(tParts[2], 10)
+            parseInt(dParts[0] ?? '0', 10),
+            parseInt(dParts[1] ?? '1', 10) - 1,
+            parseInt(dParts[2] ?? '1', 10),
+            parseInt(tParts[0] ?? '0', 10),
+            parseInt(tParts[1] ?? '0', 10),
+            parseInt(tParts[2] ?? '0', 10)
           );
           setServerTime(date);
         }

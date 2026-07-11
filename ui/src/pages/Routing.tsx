@@ -107,7 +107,7 @@ export function Routing() {
         fetchRoutingRules(),
         fetchNodes(),
       ]);
-      setRules(rulesData || []);
+      setRules(Array.isArray(rulesData) ? rulesData : []);
       setAvailableNodes(nodesData || []);
       setError(null);
       // Fetch strategy separately so failure is visible to the user
