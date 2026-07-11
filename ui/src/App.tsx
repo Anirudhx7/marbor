@@ -1,25 +1,5 @@
 import { lazy, Suspense, Component, ReactNode, useState, useEffect } from 'react';
-
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="p-8 text-center">
-          <p className="text-destructive font-semibold mb-2">Page failed to load</p>
-          <p className="text-xs text-muted-foreground font-mono">{this.state.error.message}</p>
-          <button onClick={() => this.setState({ error: null })} className="mt-4 px-3 py-1.5 text-xs bg-secondary rounded-lg text-foreground hover:bg-secondary/80 cursor-pointer">Retry</button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
@@ -28,9 +8,58 @@ import { BudgetBanner } from './components/BudgetBanner';
 import { Login } from './components/Login';
 import { ForceChangePassword } from './components/ForceChangePassword';
 import { UserPortal } from './pages/UserPortal';
-import { loadSession, logout, saveSession, getPendingUserCount } from './lib/api';
+import { loadSession, logout, getPendingUserCount } from './lib/api';
 import type { SessionData } from './types';
 
+// ---------------------------------------------------------------------------
+// ErrorBoundary
+// Accepts an optional `resetKey` prop — when it changes React unmounts and
+// remounts this subtree, automatically clearing any caught error. Without this
+// the boundary stays in error state across all subsequent navigations.
+// ---------------------------------------------------------------------------
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  resetKey?: string;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, { error: Error | null }> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  // Reset when resetKey changes (i.e. on every navigation).
+  static getDerivedStateFromProps(
+    props: ErrorBoundaryProps,
+    state: { error: Error | null; _prevKey?: string }
+  ) {
+    if (state._prevKey !== undefined && state._prevKey !== props.resetKey) {
+      return { error: null, _prevKey: props.resetKey };
+    }
+    return { _prevKey: props.resetKey };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-8 text-center">
+          <p className="text-destructive font-semibold mb-2">Page failed to load</p>
+          <p className="text-xs text-muted-foreground font-mono">{this.state.error.message}</p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="mt-4 px-3 py-1.5 text-xs bg-secondary rounded-lg text-foreground hover:bg-secondary/80 cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Lazy page imports
+// ---------------------------------------------------------------------------
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const GPUNodes     = lazy(() => import('./pages/GPUNodes').then(m => ({ default: m.GPUNodes })));
 const APIKeys      = lazy(() => import('./pages/APIKeys').then(m => ({ default: m.APIKeys })));
@@ -45,16 +74,79 @@ const Warmup       = lazy(() => import('./pages/Warmup').then(m => ({ default: m
 const Users        = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const SystemAudit  = lazy(() => import('./pages/SystemAudit').then(m => ({ default: m.SystemAudit })));
 
+// ---------------------------------------------------------------------------
+// RouterComponent declared at module scope so its identity is stable across
+// re-renders of App (e.g. pendingCount polls). A component declared inside the
+// render function gets a fresh identity every render, causing React to unmount
+// and remount the entire router — wiping its history state and breaking
+// client-side navigation.
+// ---------------------------------------------------------------------------
+const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
 const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
-// Declare RouterComponent at module scope so React's reconciler always sees
-// the same component identity across re-renders of App. A component declared
-// inside the render function gets a fresh identity on every render, causing
-// React to unmount → remount the entire router (and wipe its history state)
-// on every state update (e.g. setPendingCount) — which breaks client-side
-// navigation on the static GitHub Pages demo.
-const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
+// ---------------------------------------------------------------------------
+// AppShell — rendered inside the Router so it can call useLocation.
+// Passes location.pathname as a resetKey to ErrorBoundary so the boundary
+// fully resets (clears stuck error/loading state) on every navigation.
+// ---------------------------------------------------------------------------
+interface AppShellProps {
+  session: SessionData;
+  onLogout: () => void;
+  pendingCount: number;
+}
 
+function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
+  const location = useLocation();
+  const pathname = location.pathname;
+
+  return (
+    <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
+      <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} />
+      <main className="md:ml-64 min-h-screen">
+        <DemoBanner />
+        <BudgetBanner />
+        <div className="pt-14 md:pt-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
+          {/*
+            key=pathname on ErrorBoundary: forces React to fully unmount and
+            remount the boundary (and its Suspense + Routes children) on every
+            navigation. This clears any stuck error state and any in-progress
+            Suspense loading state so the new page always renders cleanly.
+          */}
+          <ErrorBoundary key={pathname} resetKey={pathname}>
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                  Loading...
+                </div>
+              }
+            >
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/gpu-nodes" element={<GPUNodes />} />
+                <Route path="/api-keys" element={<APIKeys />} />
+                <Route path="/routing" element={<Routing />} />
+                <Route path="/metrics" element={<Metrics />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/models" element={<Models />} />
+                <Route path="/model-advisor" element={<ModelAdvisor />} />
+                <Route path="/requests" element={<Requests />} />
+                <Route path="/warmup" element={<Warmup />} />
+                {session.role === 'admin' && <Route path="/users" element={<Users />} />}
+                {session.role === 'admin' && <Route path="/system-audit" element={<SystemAudit />} />}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------------
 function App() {
   const [session, setSession] = useState<SessionData | null>(() => loadSession());
   const [pendingCount, setPendingCount] = useState(0);
@@ -80,11 +172,10 @@ function App() {
   }
 
   function handleLoginSuccess(data: SessionData) {
-    // Reset the URL to the app root so BrowserRouter (mounted under `basename`)
-    // lands on the dashboard rather than /admin/login or /login. This MUST target
-    // the app base, not '/': under the GitHub Pages demo the app is served from
-    // /ollama-mesh/demo/, and resetting to '/' navigates out of the app to the
-    // domain root (the landing page), which looked like a redirect to the site root.
+    // Reset the URL to the app root so BrowserRouter lands on the dashboard
+    // rather than /admin/login or /login. Target the app base, not '/': under
+    // the GitHub Pages demo the app is at /ollama-mesh/demo/ and resetting to
+    // '/' would navigate out to the domain root.
     const home = basename === '/' ? '/' : basename + '/';
     if (window.location.pathname !== home) {
       window.history.replaceState({}, '', home);
@@ -127,35 +218,7 @@ function App() {
   return (
     <ThemeProvider>
       <RouterComponent {...(forcedDemo ? {} : { basename })}>
-        <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-          <Sidebar onLogout={handleLogout} session={session} pendingCount={pendingCount} />
-          <main className="md:ml-64 min-h-screen">
-            <DemoBanner />
-            <BudgetBanner />
-            <div className="pt-14 md:pt-0 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
-              <ErrorBoundary>
-              <Suspense fallback={<div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Loading...</div>}>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/gpu-nodes" element={<GPUNodes />} />
-                  <Route path="/api-keys" element={<APIKeys />} />
-                  <Route path="/routing" element={<Routing />} />
-                  <Route path="/metrics" element={<Metrics />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/models" element={<Models />} />
-                  <Route path="/model-advisor" element={<ModelAdvisor />} />
-                  <Route path="/requests" element={<Requests />} />
-                  <Route path="/warmup" element={<Warmup />} />
-                  {session.role === 'admin' && <Route path="/users" element={<Users />} />}
-                  {session.role === 'admin' && <Route path="/system-audit" element={<SystemAudit />} />}
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </Suspense>
-              </ErrorBoundary>
-            </div>
-          </main>
-        </div>
+        <AppShell session={session} onLogout={handleLogout} pendingCount={pendingCount} />
       </RouterComponent>
     </ThemeProvider>
   );
