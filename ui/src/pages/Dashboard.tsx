@@ -239,13 +239,13 @@ export function Dashboard() {
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       {/* Top Bar */}
-      <div className="flex items-center justify-between border-b border-border pb-6">
-        <div className="flex items-center gap-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
           <div className="flex items-center gap-2">
             <StatusDot status="online" pulse />
             <span className="text-sm font-semibold text-foreground">System Status</span>
           </div>
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex flex-wrap items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Port:</span>
               <span className="text-foreground font-medium font-mono">{proxyPort}</span>
@@ -254,7 +254,7 @@ export function Dashboard() {
               <span className="text-muted-foreground">Version:</span>
               <Badge variant="muted" size="sm">{version ? `v${version}` : `v${__APP_VERSION__}`}</Badge>
             </div>
-            <div className="flex items-center gap-2 px-3 border-l border-border">
+            <div className="flex items-center gap-2 sm:px-3 sm:border-l sm:border-border">
               <div className={`w-2 h-2 rounded-full ${isLive || requestsLive ? 'bg-success' : 'bg-amber-500'}`} />
               <span className={`font-medium ${isLive || requestsLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
                 {demoMode ? 'Demo Mode' : (isLive || requestsLive ? 'Live Data' : 'Disconnected')}
