@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
 import { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   isOpen: boolean;
@@ -18,7 +19,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: Mod
     xl: 'max-w-xl',
   }[maxWidth];
 
-  return (
+  const modalElement = (
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
@@ -55,4 +56,6 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: Mod
       )}
     </AnimatePresence>
   );
+
+  return createPortal(modalElement, document.body);
 }
