@@ -36,9 +36,9 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: Mod
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className={`relative w-full ${maxWidthClass} max-h-[calc(100vh-3rem)] bg-card border border-border shadow-xl rounded-2xl overflow-hidden flex flex-col`}
+            className={`relative w-full ${maxWidthClass} max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-card border border-border shadow-xl rounded-2xl overflow-hidden flex flex-col`}
           >
-            <div className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
+            <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-border flex items-center justify-between shrink-0">
               <h3 className="text-lg font-semibold text-foreground">{title}</h3>
               <button
                 onClick={onClose}
@@ -47,7 +47,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: Mod
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
               {children}
             </div>
           </motion.div>
