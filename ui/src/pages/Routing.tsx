@@ -271,14 +271,14 @@ export function Routing() {
       )}
 
       {/* Advanced Rules Header */}
-      <div className="flex items-center justify-between pt-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6">
         <div>
           <h2 className="text-lg font-semibold text-foreground">Override Rules</h2>
           <p className="text-sm text-muted-foreground">Fine-grained control for specific models or API keys</p>
         </div>
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           Add Rule

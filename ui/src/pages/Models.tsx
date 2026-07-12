@@ -274,7 +274,7 @@ export function Models() {
             All models across your nodes — warm (loaded in VRAM) and available on disk
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           {catalog && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-xs font-medium text-foreground">
               <span className="text-primary font-semibold">{warmModelCount}</span> of
