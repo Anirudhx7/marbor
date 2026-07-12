@@ -235,18 +235,18 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
   return (
     <div className="overflow-hidden transition-opacity duration-300">
       {/* View row */}
-      <div className="flex items-center justify-between px-4 py-2.5 text-sm">
-        <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 gap-2 text-sm">
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
           <Badge variant={s.action === 'warmup' ? 'success' : s.action === 'unload' ? 'destructive' : s.action === 'drain' ? 'warning' : 'muted'}>{s.action}</Badge>
           <span className="font-medium text-foreground">{s.node}</span>
           {s.models && s.models.length > 0 && (
-            <span className="font-mono text-xs text-muted-foreground">{s.models.join(', ')}</span>
+            <span className="font-mono text-xs text-muted-foreground truncate max-w-full sm:max-w-xs md:max-w-md lg:max-w-lg" title={s.models.join(', ')}>{s.models.join(', ')}</span>
           )}
-          <span className="text-muted-foreground text-xs">
+          <span className="text-muted-foreground text-xs whitespace-nowrap">
             {s.at} &middot; {(s.days && s.days.length > 0) ? s.days.map(d => DAYS[d]).join(' ') : 'every day'}
           </span>
         </div>
-        <div className="flex items-center gap-1 ml-2 shrink-0">
+        <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
           <button onClick={() => onToggle(!s.enabled)} title={s.enabled ? 'Pause' : 'Resume'}
             className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
             {s.enabled ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
@@ -616,25 +616,25 @@ export function Warmup() {
   return (
     <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
       {/* Header + tab toggle */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
           <Flame className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-bold text-foreground">Warmup &amp; Scheduling</h1>
         </div>
-        <div className="flex items-center bg-secondary rounded-lg p-0.5 text-sm">
+        <div className="flex items-center bg-secondary rounded-lg p-0.5 text-sm w-full sm:w-auto">
           <button onClick={() => setTab('warmup')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'warmup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'warmup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <Flame className="w-3.5 h-3.5" /> Warmup
           </button>
           <button onClick={() => setTab('schedules')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'schedules' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'schedules' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <Clock className="w-3.5 h-3.5" /> Schedules
             {schedules.length > 0 && (
               <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{schedules.length}</span>
             )}
           </button>
           <button onClick={() => setTab('predictions')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'predictions' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'predictions' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <BrainCircuit className="w-3.5 h-3.5" /> Predictions
           </button>
         </div>
@@ -783,7 +783,7 @@ export function Warmup() {
             ) : (
             <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
               {[...decisions].reverse().map((d, i) => (
-                <div key={i} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 py-3 text-sm">
                   <div className="flex items-center gap-3 min-w-0">
                     <BrainCircuit className="w-4 h-4 text-primary shrink-0" />
                     <div className="min-w-0">
@@ -795,7 +795,7 @@ export function Warmup() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 self-start sm:self-auto mt-1 sm:mt-0 shrink-0">
                     <Badge variant={d.was_already_warm ? 'muted' : d.warmup_triggered ? 'success' : 'muted'} size="sm">
                       {d.was_already_warm ? 'already warm' : d.warmup_triggered ? 'warmup triggered' : 'skipped'}
                     </Badge>
