@@ -174,16 +174,34 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile hamburger */}
-      {!isOpen && (
-        <button
-          className="md:hidden fixed top-3 left-3 z-50 p-2 rounded-md bg-card border border-border text-foreground shadow-sm"
-          onClick={() => setIsOpen(true)}
-          aria-label="Open menu"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-      )}
+      {/* Mobile Header Bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-card border-b border-border flex items-center justify-between px-4 z-30 shadow-sm">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsOpen(true)}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+            aria-label="Open menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded flex items-center justify-center shrink-0" style={{ background: '#1a1714' }}>
+              <svg width="16" height="16" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+                <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="75" cy="75" r="8" fill="#a87f3a" />
+              </svg>
+            </div>
+            <span className="font-semibold text-foreground text-sm tracking-tight">
+              ollama<span className="text-primary">-mesh</span>
+            </span>
+          </div>
+        </div>
+        {pendingCount > 0 && (
+          <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full leading-none">
+            {pendingCount}
+          </span>
+        )}
+      </div>
 
       {/* Mobile overlay */}
       {isOpen && (

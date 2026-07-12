@@ -65,7 +65,7 @@ export function BudgetBanner() {
   const scope = entry.name ? `key "${entry.name}"` : 'global cloud budget';
 
   return (
-    <div className="bg-orange-500 text-black text-sm font-medium text-center py-1.5 pl-14 pr-4 md:px-4">
+    <div className="bg-orange-500 text-black text-sm font-medium text-center py-1.5 px-4">
       Cloud spend warning: {scope} at {Math.round(pct * 100)}% of its {period} cap
       ({currency.symbol}{toDisplay(spent).toFixed(2)} / {currency.symbol}{toDisplay(cap).toFixed(2)}).
     </div>
