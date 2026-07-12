@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Shield, Search, RefreshCw, Eye, Calendar, User, Terminal, Globe, Filter, AlertCircle, X } from 'lucide-react';
 import { fetchSystemAudit } from '../lib/api';
 import type { SystemAuditEntry } from '../types';
+import { Modal } from '../components/Modal';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 
@@ -316,28 +317,14 @@ export function SystemAudit() {
       </div>
 
       {/* Details Inspector Modal */}
-      {selectedEntry && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
-          onClick={() => setSelectedEntry(null)}
-        >
-          <div
-            className="bg-card border border-border w-full max-w-lg rounded-xl shadow-lg p-6 space-y-5 animate-in fade-in zoom-in duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-border/60 pb-3">
-              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <Shield className="w-5 h-5 text-primary" />
-                Audit Record Details
-              </h2>
-              <button
-                onClick={() => setSelectedEntry(null)}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
+      <Modal
+        isOpen={selectedEntry !== null}
+        onClose={() => setSelectedEntry(null)}
+        title="Audit Record Details"
+        maxWidth="lg"
+      >
+        {selectedEntry && (
+          <div className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Operator</p>
@@ -387,7 +374,7 @@ export function SystemAudit() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end pt-2 border-t border-border">
               <button
                 onClick={() => setSelectedEntry(null)}
                 className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-colors cursor-pointer"
@@ -396,8 +383,8 @@ export function SystemAudit() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }
