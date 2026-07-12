@@ -121,36 +121,36 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   return (
     <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors ${node.draining ? 'border-amber-500/60' : 'border-border'}`}>
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 bg-secondary rounded-lg">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="p-2 bg-secondary rounded-lg shrink-0">
             <Server className="w-5 h-5 text-muted-foreground" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <StatusDot status={node.health} />
-              <h3 className="font-semibold text-foreground">{node.name}</h3>
+              <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {node.draining && (
-                <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap">
                   DRAINING
                 </span>
               )}
               {node.prewarmDisabled && (
                 <span
                   title="Predictive engine will not warm new models onto this node until re-enabled or the mesh restarts"
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border whitespace-nowrap"
                 >
                   PREWARM OFF
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               <p className="text-sm text-muted-foreground">{node.gpuModel}</p>
               <RuntimeBadge runtime={node.runtime} />
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
           <button
             onClick={() => onEdit(node)}
             title="Edit node metadata"
@@ -591,12 +591,12 @@ export function GPUNodes() {
 
           {modelFit && (modelFit.nodes ?? []).map((nodeFit) => (
             <div key={nodeFit.name} className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <div className="flex items-baseline flex-wrap gap-2">
                   <span className="font-semibold text-foreground">{nodeFit.name}</span>
-                  <span className="ml-2 text-xs text-muted-foreground font-mono">{nodeFit.url}</span>
+                  <span className="text-xs text-muted-foreground font-mono">{nodeFit.url}</span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground self-start sm:self-auto">
                   {nodeFit.vram_source !== 'unknown' && nodeFit.vram_total_bytes > 0 && (
                     <span>
                       Free: <span className="font-mono text-foreground">{formatBytes(nodeFit.vram_free_bytes)}</span>

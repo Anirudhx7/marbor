@@ -88,12 +88,12 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
             Ask your admin for the mesh endpoint URL and your API key. Then point your tools at it:
           </p>
           <div className="space-y-2 text-xs">
-            <div className="bg-secondary rounded-lg p-3 font-mono">
+            <div className="bg-secondary rounded-lg p-3 font-mono overflow-x-auto">
               <p className="text-muted-foreground mb-1"># OpenAI SDK / any LLM client</p>
               <p className="text-foreground">OPENAI_BASE_URL=http://&lt;mesh-host&gt;:11435/v1</p>
               <p className="text-foreground">OPENAI_API_KEY=&lt;your-api-key&gt;</p>
             </div>
-            <div className="bg-secondary rounded-lg p-3 font-mono">
+            <div className="bg-secondary rounded-lg p-3 font-mono overflow-x-auto">
               <p className="text-muted-foreground mb-1"># Ollama CLI</p>
               <p className="text-foreground">OLLAMA_HOST=http://&lt;mesh-host&gt;:11435</p>
             </div>

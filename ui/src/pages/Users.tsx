@@ -354,22 +354,22 @@ export function Users() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <UsersIcon className="w-6 h-6 text-primary" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <UsersIcon className="w-6 h-6 text-primary animate-pulse" />
           <div>
             <h1 className="text-xl font-bold text-foreground">Users</h1>
             <p className="text-xs text-muted-foreground">Manage dashboard access and API key assignments</p>
           </div>
           {pendingCount > 0 && (
-            <span className="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full">
+            <span className="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full whitespace-nowrap">
               {pendingCount} pending
             </span>
           )}
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           Create User

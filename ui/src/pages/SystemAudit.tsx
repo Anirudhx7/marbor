@@ -338,7 +338,7 @@ export function SystemAudit() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Operator</p>
                 <p className="text-sm font-semibold text-foreground mt-1 flex items-center gap-1.5">
