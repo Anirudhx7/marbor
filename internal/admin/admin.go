@@ -2512,6 +2512,22 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if incoming.HuggingFace.Token == "" || incoming.HuggingFace.Token == "***" {
 		incoming.HuggingFace.Token = s.cfg.HuggingFace.Token
 	}
+	// The Settings page never sends these Routing sub-fields (they're managed
+	// via their own dedicated endpoints/pages) - preserve them from the
+	// current config instead of letting the wholesale s.cfg = incoming below
+	// silently zero them out.
+	if len(incoming.Routing.Rules) == 0 {
+		incoming.Routing.Rules = s.cfg.Routing.Rules
+	}
+	if len(incoming.Routing.FallbackChains) == 0 {
+		incoming.Routing.FallbackChains = s.cfg.Routing.FallbackChains
+	}
+	if !incoming.Routing.SessionAffinity {
+		incoming.Routing.SessionAffinity = s.cfg.Routing.SessionAffinity
+	}
+	if incoming.Routing.ThermalWatchdog == (config.ThermalWatchdogConfig{}) {
+		incoming.Routing.ThermalWatchdog = s.cfg.Routing.ThermalWatchdog
+	}
 
 	if err := incoming.Validate(); err != nil {
 		s.mu.Unlock()
@@ -2526,6 +2542,32 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
 		log.Printf("admin: failed to persist timezone setting: %v", err)
 	}
+
+	// Phase 2: persist the remaining UI-editable scalars so they survive a
+	// restart instead of reverting to config.yaml's defaults. Mirrors the
+	// timezone pattern above; main.go's boot-load block applies these over
+	// the loaded config.yaml value before the servers start.
+	if incoming.Routing.Strategy != "" {
+		if err := s.st.SetSetting("routing_strategy", incoming.Routing.Strategy); err != nil {
+			log.Printf("admin: failed to persist routing_strategy setting: %v", err)
+		}
+	}
+	scalarSettings := map[string]string{
+		"proxy_port":            strconv.Itoa(incoming.Proxy.Port),
+		"proxy_log_format":      incoming.Proxy.LogFormat,
+		"litellm_url":           incoming.LiteLLM.URL,
+		"litellm_enabled":       strconv.FormatBool(incoming.LiteLLM.Enabled),
+		"cloud_daily_usd_cap":   strconv.FormatFloat(incoming.CloudBudget.DailyUSDCap, 'f', -1, 64),
+		"cloud_monthly_usd_cap": strconv.FormatFloat(incoming.CloudBudget.MonthlyUSDCap, 'f', -1, 64),
+		"metrics_enabled":       strconv.FormatBool(incoming.Metrics.Enabled),
+		"metrics_port":          strconv.Itoa(incoming.Metrics.Port),
+	}
+	for key, val := range scalarSettings {
+		if err := s.st.SetSetting(key, val); err != nil {
+			log.Printf("admin: failed to persist %s setting: %v", key, err)
+		}
+	}
+
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
 	if username == "" {
 		username = "admin"
