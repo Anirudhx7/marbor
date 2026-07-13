@@ -35,6 +35,11 @@ type NodeState struct {
 	RequestsTotal int64 // atomic: lifetime requests routed to this node
 	Healthy       bool
 	Draining      bool
+	// DrainedReason records why Draining was set (e.g. "manual", "thermal") -
+	// persisted and restored alongside Draining, surfaced to operators in the
+	// UI so they can tell an admin-initiated drain from a watchdog-triggered
+	// one.
+	DrainedReason string
 	// PrewarmDisabled is a live, admin-toggleable, in-memory-only flag: when
 	// true, the predictive engine skips this node for new warmup triggers.
 	// Never persisted - it always reverts to false (prewarm enabled) on
@@ -795,14 +800,17 @@ func (r *Router) SyncNodes(newNodes []config.NodeConfig) (added, removed int) {
 }
 
 // DrainNode marks a node as draining: it will no longer receive new requests
-// but in-flight connections are allowed to finish. Returns false if not found.
-func (r *Router) DrainNode(name string) bool {
+// but in-flight connections are allowed to finish. reason records why (e.g.
+// "manual", "thermal", "scheduled") and is surfaced to operators in the UI.
+// Returns false if not found.
+func (r *Router) DrainNode(name string, reason string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, n := range r.nodes {
 		if n.Name == name {
 			n.mu.Lock()
 			n.Draining = true
+			n.DrainedReason = reason
 			nodeURL := n.URL
 			n.mu.Unlock()
 			r.fireWebhook("node_drain", name, nodeURL)
@@ -821,6 +829,7 @@ func (r *Router) UndrainNode(name string) bool {
 		if n.Name == name {
 			n.mu.Lock()
 			n.Draining = false
+			n.DrainedReason = ""
 			nodeURL := n.URL
 			n.mu.Unlock()
 			r.fireWebhook("node_undrain", name, nodeURL)

@@ -125,8 +125,9 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS node_drain (
-			name     TEXT PRIMARY KEY,
-			draining INTEGER
+			name           TEXT PRIMARY KEY,
+			draining       INTEGER,
+			drained_reason TEXT NOT NULL DEFAULT ''
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS runtime_keys (
@@ -271,6 +272,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE hourly_buckets ADD COLUMN gen_duration_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN daily_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 	} {
 		s.db.Exec(col) // ignore error — column may already exist
 	}
@@ -614,14 +616,14 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 
 // --- Node drain state ---
 
-func (s *sqliteStore) SetNodeDrain(name string, draining bool) error {
+func (s *sqliteStore) SetNodeDrain(name string, draining bool, reason string) error {
 	d := 0
 	if draining {
 		d = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO node_drain (name, draining) VALUES (?, ?)`,
-		name, d,
+		`INSERT OR REPLACE INTO node_drain (name, draining, drained_reason) VALUES (?, ?, ?)`,
+		name, d, reason,
 	)
 	if err != nil {
 		return fmt.Errorf("store: SetNodeDrain: %w", err)
@@ -629,21 +631,28 @@ func (s *sqliteStore) SetNodeDrain(name string, draining bool) error {
 	return nil
 }
 
-func (s *sqliteStore) NodeDrainStates() (map[string]bool, error) {
-	rows, err := s.db.Query(`SELECT name, draining FROM node_drain`)
+// NodeDrainState is the persisted drain flag plus the reason it was set,
+// keyed by node name in NodeDrainStates.
+type NodeDrainState struct {
+	Draining bool
+	Reason   string
+}
+
+func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
+	rows, err := s.db.Query(`SELECT name, draining, drained_reason FROM node_drain`)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeDrainStates: %w", err)
 	}
 	defer rows.Close()
 
-	out := make(map[string]bool)
+	out := make(map[string]NodeDrainState)
 	for rows.Next() {
-		var name string
+		var name, reason string
 		var d int
-		if err := rows.Scan(&name, &d); err != nil {
+		if err := rows.Scan(&name, &d, &reason); err != nil {
 			return nil, fmt.Errorf("store: NodeDrainStates scan: %w", err)
 		}
-		out[name] = d != 0
+		out[name] = NodeDrainState{Draining: d != 0, Reason: reason}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: NodeDrainStates rows: %w", err)
