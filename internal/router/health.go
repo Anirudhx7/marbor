@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"sync"
 	"time"
@@ -260,6 +261,49 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 }
 
+// localAddrCacheTTL bounds how long localInterfaceAddrs() reuses a previous
+// net.InterfaceAddrs() result. isLocalNode is invoked on the health-poll hot
+// path (once per node every PollIntervalMs, default 2s), so a fresh syscall
+// on every single call would add avoidable overhead as node count grows.
+// Interfaces changing (DHCP renewal, docker network churn) within this
+// window is rare and self-corrects on the next refresh.
+const localAddrCacheTTL = 30 * time.Second
+
+var (
+	localAddrMu    sync.RWMutex
+	localAddrCache map[string]struct{}
+	localAddrAt    time.Time
+)
+
+// localInterfaceAddrs returns the set of IP addresses (string form) bound to
+// this machine's network interfaces, refreshing the cached set at most once
+// per localAddrCacheTTL.
+func localInterfaceAddrs() map[string]struct{} {
+	localAddrMu.RLock()
+	if localAddrCache != nil && time.Since(localAddrAt) < localAddrCacheTTL {
+		cache := localAddrCache
+		localAddrMu.RUnlock()
+		return cache
+	}
+	localAddrMu.RUnlock()
+
+	addrs, err := net.InterfaceAddrs()
+	set := make(map[string]struct{}, len(addrs))
+	if err == nil {
+		for _, a := range addrs {
+			if ipNet, ok := a.(*net.IPNet); ok {
+				set[ipNet.IP.String()] = struct{}{}
+			}
+		}
+	}
+
+	localAddrMu.Lock()
+	localAddrCache = set
+	localAddrAt = time.Now()
+	localAddrMu.Unlock()
+	return set
+}
+
 // isLocalNode reports whether a node URL points at the mesh host itself, so that
 // local nvidia-smi telemetry may be attributed to it. Remote nodes must not be
 // given the mesh host's GPU stats.
@@ -268,11 +312,22 @@ func isLocalNode(rawURL string) bool {
 	if err != nil {
 		return false
 	}
-	switch u.Hostname() {
+	host := u.Hostname()
+	switch host {
 	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
 		return true
 	}
-	return false
+	// Fallback: the node may be configured with this machine's actual LAN IP
+	// (e.g. 192.168.1.100) rather than a localhost alias. Only compare IP
+	// literals against this host's own interface addresses - no DNS
+	// resolution here, since that would add latency to a hot-path call for
+	// every plain hostname (including genuinely remote ones).
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	_, local := localInterfaceAddrs()[ip.String()]
+	return local
 }
 
 func formatUptime(d time.Duration) string {
