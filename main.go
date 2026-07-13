@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -321,6 +322,42 @@ func main() {
 			log.Printf("store: ignoring invalid persisted routing strategy %q: %v", stratVal, err)
 		} else {
 			log.Printf("store: loaded routing strategy %q", stratVal)
+		}
+	}
+
+	// Load remaining Settings-page scalars persisted via the Phase 2 SQLite
+	// migration (see admin.go handleUpdateSettings), applying them over
+	// config.yaml's value before the servers below start listening.
+	if v, err := st.GetSetting("proxy_port"); err == nil && v != "" {
+		if port, convErr := strconv.Atoi(v); convErr == nil && port > 0 {
+			cfg.Proxy.Port = port
+		}
+	}
+	if v, err := st.GetSetting("proxy_log_format"); err == nil && v != "" {
+		cfg.Proxy.LogFormat = v
+	}
+	if v, err := st.GetSetting("litellm_url"); err == nil && v != "" {
+		cfg.LiteLLM.URL = v
+	}
+	if v, err := st.GetSetting("litellm_enabled"); err == nil && v != "" {
+		cfg.LiteLLM.Enabled = v == "true"
+	}
+	if v, err := st.GetSetting("cloud_daily_usd_cap"); err == nil && v != "" {
+		if cap, convErr := strconv.ParseFloat(v, 64); convErr == nil {
+			cfg.CloudBudget.DailyUSDCap = cap
+		}
+	}
+	if v, err := st.GetSetting("cloud_monthly_usd_cap"); err == nil && v != "" {
+		if cap, convErr := strconv.ParseFloat(v, 64); convErr == nil {
+			cfg.CloudBudget.MonthlyUSDCap = cap
+		}
+	}
+	if v, err := st.GetSetting("metrics_enabled"); err == nil && v != "" {
+		cfg.Metrics.Enabled = v == "true"
+	}
+	if v, err := st.GetSetting("metrics_port"); err == nil && v != "" {
+		if port, convErr := strconv.Atoi(v); convErr == nil && port > 0 {
+			cfg.Metrics.Port = port
 		}
 	}
 
