@@ -315,6 +315,15 @@ func main() {
 		log.Printf("store: loaded timezone %q", tzVal)
 	}
 
+	// Load persisted routing strategy from the KV store.
+	if stratVal, err := st.GetSetting("routing_strategy"); err == nil && stratVal != "" {
+		if err := r.SetStrategy(stratVal); err != nil {
+			log.Printf("store: ignoring invalid persisted routing strategy %q: %v", stratVal, err)
+		} else {
+			log.Printf("store: loaded routing strategy %q", stratVal)
+		}
+	}
+
 	// Load persisted schedules (warmup/drain/undrain) from the KV store.
 	if raw, err := st.GetSetting("schedules"); err == nil && raw != "" {
 		var scheds []router.Schedule
