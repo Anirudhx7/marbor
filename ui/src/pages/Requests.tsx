@@ -38,6 +38,9 @@ function SkeletonRow() {
 // Cloud filter tri-state: 'all' | 'local' | 'cloud'.
 type CloudFilter = 'all' | 'local' | 'cloud';
 
+// Status category filter: 'all' sends no status param.
+type StatusFilter = 'all' | 'success' | 'client_error' | 'server_error';
+
 // Since filter presets map to a lookback window; 'all' sends no since param.
 type SincePreset = 'all' | '15m' | '1h' | '24h';
 
@@ -56,12 +59,16 @@ export function Requests() {
   // Raw text inputs (debounced before becoming active filters).
   const [modelInput, setModelInput] = useState('');
   const [keyInput, setKeyInput] = useState('');
+  const [nodeInput, setNodeInput] = useState('');
   const [cloudFilter, setCloudFilter] = useState<CloudFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sincePreset, setSincePreset] = useState<SincePreset>('all');
+  const [untilInput, setUntilInput] = useState(''); // datetime-local value
 
   // Debounced text filters actually sent as query params.
   const [modelFilter, setModelFilter] = useState('');
   const [keyFilter, setKeyFilter] = useState('');
+  const [nodeFilter, setNodeFilter] = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => setModelFilter(modelInput.trim()), 350);
@@ -73,14 +80,22 @@ export function Requests() {
     return () => clearTimeout(t);
   }, [keyInput]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setNodeFilter(nodeInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [nodeInput]);
+
   const activeFilters = useMemo(
     () => ({
       model: modelFilter || undefined,
       key: keyFilter || undefined,
+      node: nodeFilter || undefined,
+      status: statusFilter === 'all' ? undefined : statusFilter,
       cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
       since: sinceIso(sincePreset),
+      until: untilInput ? new Date(untilInput).toISOString() : undefined,
     }),
-    [modelFilter, keyFilter, cloudFilter, sincePreset]
+    [modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, untilInput]
   );
 
   useEffect(() => {
@@ -116,10 +131,11 @@ export function Requests() {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemoMode, modelFilter, keyFilter, cloudFilter, sincePreset]);
+  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, untilInput]);
 
   const filtered = entries;
-  const hasActiveFilter = !!modelFilter || !!keyFilter || cloudFilter !== 'all' || sincePreset !== 'all';
+  const hasActiveFilter =
+    !!modelFilter || !!keyFilter || !!nodeFilter || statusFilter !== 'all' || cloudFilter !== 'all' || sincePreset !== 'all' || !!untilInput;
 
   const localCount = filtered.filter((e) => !e.cloud).length;
   const cloudCount = filtered.filter((e) => e.cloud).length;
@@ -162,6 +178,13 @@ export function Requests() {
           onChange={(e) => setKeyInput(e.target.value)}
           className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
+        <input
+          type="text"
+          placeholder="Filter by node..."
+          value={nodeInput}
+          onChange={(e) => setNodeInput(e.target.value)}
+          className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
         <select
           value={cloudFilter}
           onChange={(e) => setCloudFilter(e.target.value as CloudFilter)}
@@ -170,6 +193,16 @@ export function Requests() {
           <option value="all">All (local + cloud)</option>
           <option value="local">Local only</option>
           <option value="cloud">Cloud only</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          <option value="all">All statuses</option>
+          <option value="success">Success (2xx)</option>
+          <option value="client_error">Client error (4xx)</option>
+          <option value="server_error">Server error (5xx)</option>
         </select>
         <select
           value={sincePreset}
@@ -181,13 +214,23 @@ export function Requests() {
           <option value="1h">Last hour</option>
           <option value="24h">Last 24h</option>
         </select>
+        <input
+          type="datetime-local"
+          value={untilInput}
+          onChange={(e) => setUntilInput(e.target.value)}
+          title="Only show requests before this time"
+          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
         {hasActiveFilter && (
           <button
             onClick={() => {
               setModelInput('');
               setKeyInput('');
+              setNodeInput('');
               setCloudFilter('all');
+              setStatusFilter('all');
               setSincePreset('all');
+              setUntilInput('');
             }}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-2"
           >

@@ -19,6 +19,7 @@ export function BudgetBanner() {
   const { demoMode } = useDemoMode();
   const { currency, toDisplay } = useCurrency();
   const [status, setStatus] = useState<CloudBudgetStatus | null>(null);
+  const [dismissed, setDismissed] = useState(false);
   const [hidden, setHidden] = useState(() => {
     try {
       const stored = localStorage.getItem('demo_settings');
@@ -53,7 +54,7 @@ export function BudgetBanner() {
     return () => { active = false; clearInterval(id); };
   }, [demoMode]);
 
-  if (hidden) return null;
+  if (hidden || dismissed) return null;
   if (!status || status.softBudgetPct <= 0) return null;
 
   const worst = worstEntry([status.global, ...status.perKey]);
@@ -65,9 +66,16 @@ export function BudgetBanner() {
   const scope = entry.name ? `key "${entry.name}"` : 'global cloud budget';
 
   return (
-    <div className="bg-orange-500 text-black text-sm font-medium text-center py-1.5 px-4">
+    <div className="relative bg-orange-500 text-black text-sm font-medium text-center py-1.5 px-9">
       Cloud spend warning: {scope} at {Math.round(pct * 100)}% of its {period} cap
       ({currency.symbol}{toDisplay(spent).toFixed(2)} / {currency.symbol}{toDisplay(cap).toFixed(2)}).
+      <button
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss warning"
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-black/70 hover:text-black text-lg leading-none px-1"
+      >
+        &times;
+      </button>
     </div>
   );
 }

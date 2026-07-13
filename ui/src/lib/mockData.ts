@@ -335,17 +335,30 @@ export const mockRequests: RequestEntry[] = [
 export interface MockRequestFilters {
   model?: string;
   key?: string;
+  node?: string;
+  status?: 'success' | 'client_error' | 'server_error';
   cloud?: boolean;
   since?: string; // ISO string
+  until?: string; // ISO string
+}
+
+function matchesStatusCategory(status: number, category: 'success' | 'client_error' | 'server_error'): boolean {
+  if (category === 'success') return status >= 200 && status < 300;
+  if (category === 'client_error') return status >= 400 && status < 500;
+  return status >= 500 && status < 600;
 }
 
 export function filterMockRequests(filters: MockRequestFilters): RequestEntry[] {
   const sinceMs = filters.since ? new Date(filters.since).getTime() : null;
+  const untilMs = filters.until ? new Date(filters.until).getTime() : null;
   return mockRequests.filter((e) => {
     if (filters.model && !e.model.toLowerCase().includes(filters.model.toLowerCase())) return false;
     if (filters.key && e.key_name !== filters.key) return false;
+    if (filters.node && e.node !== filters.node) return false;
+    if (filters.status && !matchesStatusCategory(e.status, filters.status)) return false;
     if (filters.cloud !== undefined && e.cloud !== filters.cloud) return false;
     if (sinceMs !== null && new Date(e.time).getTime() < sinceMs) return false;
+    if (untilMs !== null && new Date(e.time).getTime() >= untilMs) return false;
     return true;
   });
 }
