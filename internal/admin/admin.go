@@ -3198,7 +3198,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAudit queries the audit log with optional filters.
-// GET /admin/v1/audit?limit=100&model=llama3&key=prod&cloud=true&since=2026-05-23T00:00:00Z
+// GET /admin/v1/audit?limit=100&model=llama3&key=prod&node=gpu-node-01&status=client_error&cloud=true&since=2026-05-23T00:00:00Z&until=2026-05-24T00:00:00Z
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	if s.auditLog == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -3228,6 +3228,17 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		Limit: limit,
 		Model: q.Get("model"),
 		Key:   q.Get("key"),
+		Node:  q.Get("node"),
+	}
+
+	if v := q.Get("status"); v != "" {
+		switch v {
+		case "success", "client_error", "server_error":
+			opts.StatusCategory = v
+		default:
+			http.Error(w, `{"error":"invalid status: use success, client_error, or server_error"}`, http.StatusBadRequest)
+			return
+		}
 	}
 
 	if v := q.Get("cloud"); v != "" {
@@ -3242,6 +3253,15 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		opts.Since = t
+	}
+
+	if v := q.Get("until"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			http.Error(w, `{"error":"invalid until: use RFC3339"}`, http.StatusBadRequest)
+			return
+		}
+		opts.Until = t
 	}
 
 	entries, err := s.auditLog.Query(opts)

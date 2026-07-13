@@ -54,11 +54,14 @@ func (l *Logger) Log(e Entry) {
 
 // QueryOptions controls filtering and limiting for Query.
 type QueryOptions struct {
-	Limit int
-	Model string
-	Key   string
-	Cloud *bool
-	Since time.Time
+	Limit          int
+	Model          string
+	Key            string
+	Node           string
+	StatusCategory string
+	Cloud          *bool
+	Since          time.Time
+	Until          time.Time
 }
 
 // Query returns audit entries matching opts, newest first.
@@ -67,11 +70,14 @@ func (l *Logger) Query(opts QueryOptions) ([]Entry, error) {
 		return []Entry{}, nil
 	}
 	raw, err := l.st.QueryAuditLog(store.AuditQuery{
-		Limit: opts.Limit,
-		Model: opts.Model,
-		Key:   opts.Key,
-		Cloud: opts.Cloud,
-		Since: opts.Since,
+		Limit:          opts.Limit,
+		Model:          opts.Model,
+		Key:            opts.Key,
+		Node:           opts.Node,
+		StatusCategory: opts.StatusCategory,
+		Cloud:          opts.Cloud,
+		Since:          opts.Since,
+		Until:          opts.Until,
 	})
 	if err != nil {
 		return nil, err

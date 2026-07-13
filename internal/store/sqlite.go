@@ -835,6 +835,10 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		query += " AND key_name = ?"
 		args = append(args, opts.Key)
 	}
+	if opts.Node != "" {
+		query += " AND node = ?"
+		args = append(args, opts.Node)
+	}
 	if opts.Cloud != nil {
 		cloud := 0
 		if *opts.Cloud {
@@ -842,6 +846,18 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		}
 		query += " AND cloud = ?"
 		args = append(args, cloud)
+	}
+	switch opts.StatusCategory {
+	case "success":
+		query += " AND CAST(status AS INTEGER) BETWEEN 200 AND 299"
+	case "client_error":
+		query += " AND CAST(status AS INTEGER) BETWEEN 400 AND 499"
+	case "server_error":
+		query += " AND CAST(status AS INTEGER) BETWEEN 500 AND 599"
+	}
+	if !opts.Until.IsZero() {
+		query += " AND ts < ?"
+		args = append(args, opts.Until.UTC().Format(time.RFC3339Nano))
 	}
 	query += " ORDER BY id DESC LIMIT ?"
 	args = append(args, opts.Limit)

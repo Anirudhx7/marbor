@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Requests page filters**: added `node`, `status` (success/client_error/server_error category), and `until` (upper time bound) filters to the server-side `/admin/audit` endpoint and Requests page filter toolbar, alongside the existing model/key/cloud/since filters.
+- **Dismiss button on the cloud-spend warning banner** - closes for the current session instead of staying pinned until the underlying spend drops below the threshold.
 - **`uninstall.sh`**: removes the binary, the systemd service (if installed), and a background (nohup) instance; prompts before deleting `config.yaml`/`mesh.db` (kept by default, including in non-interactive/piped runs - `KEEP_DB=0`/`KEEP_CONFIG=0` to remove without prompting).
 - **`install.sh` post-install health checks**: after starting (either mode), validates `config.yaml` (`-validate`), confirms the proxy/admin/metrics ports are actually responding (not just that the process exists), and reports reachability of configured backend nodes.
 - **`install.sh` upgrade reporting**: prints old → new version on reinstall/upgrade via the binary's own `-version` flag; warns when the binary on disk was upgraded but the running background process hasn't been restarted yet.

@@ -608,8 +608,11 @@ export async function fetchRequests(): Promise<RequestEntry[]> {
 export interface AuditLogFilters {
   model?: string;
   key?: string;
+  node?: string;
+  status?: 'success' | 'client_error' | 'server_error';
   cloud?: boolean;
   since?: string; // RFC3339
+  until?: string; // RFC3339
   limit?: number;
 }
 
@@ -632,8 +635,11 @@ export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<Requ
   const params = new URLSearchParams();
   if (filters.model) params.set('model', filters.model);
   if (filters.key) params.set('key', filters.key);
+  if (filters.node) params.set('node', filters.node);
+  if (filters.status) params.set('status', filters.status);
   if (filters.cloud !== undefined) params.set('cloud', String(filters.cloud));
   if (filters.since) params.set('since', filters.since);
+  if (filters.until) params.set('until', filters.until);
   params.set('limit', String(filters.limit ?? 50));
 
   const res = await apiFetch(`${BASE}/audit?${params.toString()}`, { headers: authHeaders() });
