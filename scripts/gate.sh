@@ -23,7 +23,7 @@ gorun() {
     -v "ollama-mesh-gobuild:/root/.cache/go-build" \
     -w /app \
     -e GOFLAGS=-buildvcs=false \
-    golang:1.25 "$@"
+    golang:1.25.12 "$@"
 }
 
 fail() { echo ""; echo "GATE RED: $*" >&2; exit 1; }
