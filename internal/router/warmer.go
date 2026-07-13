@@ -131,6 +131,10 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 				status := "ok"
 				if err := r.pingNode(ctx, n, model, keepAlive); err != nil {
 					status = "error"
+					// Warmup failed - release the reservation now instead of
+					// letting it block other models' headroom checks for the
+					// remainder of warmReservationTTL.
+					r.clearWarmReservation(n.Name, model)
 				}
 				metrics.WarmupPing(model, n.Name, status)
 			}
