@@ -1,4 +1,4 @@
-.PHONY: all build ui backend clean test dev demo demo-build demo-down bench
+.PHONY: all build ui backend clean test dev demo demo-build demo-down bench smoke
 
 all: ui backend
 
@@ -36,6 +36,9 @@ demo: demo-build ## Spin up demo stack, send 20 real requests, show dashboard UR
 
 demo-down: ## Stop and remove demo stack
 	docker compose -f docker-compose.demo.yml down -v
+
+smoke: ## Gate the demo path: build, run, assert auth/routing/streaming/admin/metrics, tear down
+	bash scripts/smoke.sh
 
 bench: ## Warm-vs-cold first-token latency benchmark. Pass BENCH_ARGS to override flags.
 	## Example: make bench BENCH_ARGS="-endpoint http://localhost:11434 -model llama3 -runs 5"

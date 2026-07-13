@@ -50,7 +50,9 @@ echo "=== [2/5] Go: vet ==="
 gorun go vet ./... || fail "go vet failed"
 
 echo "=== [3/5] Go: gofmt check ==="
-unformatted=$(gorun gofmt -l .)
+# Exclude gitignored worktrees/backups (.claude/, .local/) — CI's clean checkout never has
+# them, so scanning them here only surfaces stale local artifacts, not real formatting issues.
+unformatted=$(gorun bash -c "gofmt -l . | grep -v -e '^\.claude/' -e '^\./\.claude/' -e '^\.local/' -e '^\./\.local/'" || true)
 if [ -n "$unformatted" ]; then
   echo "Not gofmt-formatted:"; echo "$unformatted"
   fail "gofmt check failed"

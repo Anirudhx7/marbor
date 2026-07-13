@@ -134,4 +134,8 @@ func main() {
 
 	fmt.Println(strings.Repeat("-", 60))
 	fmt.Printf("Done: %d succeeded, %d failed\n", count-failures, failures)
+
+	if failures > 0 {
+		os.Exit(1)
+	}
 }
