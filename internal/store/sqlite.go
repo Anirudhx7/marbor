@@ -154,6 +154,12 @@ func (s *sqliteStore) migrate() error {
 			cloud_model TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts DESC)`,
+		// Composite index backing QueryAuditLog's filterable columns (key_name
+		// equality, model LIKE prefix, node, ts range) so filtered lookups on
+		// the Requests admin page stay fast as audit_log grows past hundreds
+		// of thousands of rows. IF NOT EXISTS makes this a no-op after the
+		// first boot on existing DBs.
+		`CREATE INDEX IF NOT EXISTS idx_audit_log_filters ON audit_log (key_name, model, node, ts)`,
 
 		`CREATE TABLE IF NOT EXISTS admin_credentials (
 			id            INTEGER PRIMARY KEY CHECK(id=1),
