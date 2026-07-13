@@ -31,6 +31,7 @@ export function APIKeys() {
   const [keyToRevoke, setKeyToRevoke] = useState<APIKey | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
@@ -92,8 +93,8 @@ export function APIKeys() {
       await patchKey(editKey.name, patch);
       await loadKeys();
       setEditKey(null);
-    } catch {
-      setEditError('Failed to save changes');
+    } catch (e: any) {
+      setEditError(e?.message || 'Failed to save changes');
     } finally {
       setEditSaving(false);
     }
@@ -238,23 +239,25 @@ export function APIKeys() {
       setNewlyCreatedKey(result.key);
       const timer = setTimeout(() => setNewlyCreatedKey(null), 30000);
       setNewKeyDismissTimer(timer);
-    } catch (e) {
-      setFormErrors(['Failed to create key on server']);
+    } catch (e: any) {
+      setFormErrors([e?.message || 'Failed to create key on server']);
     }
   };
 
   const handleRevokeKey = async () => {
     if (!keyToRevoke) return;
-    
+
     if (isLive) {
       try {
         await revokeKey(keyToRevoke.name);
-        loadKeys();
-      } catch {
-        // revoke failed; keys list unchanged
+        await loadKeys();
+        setRevokeError(null);
+      } catch (e: any) {
+        setRevokeError(e?.message || `Failed to revoke key ${keyToRevoke.name}`);
+        return;
       }
     } else {
-      setKeys(keys.map(k => 
+      setKeys(keys.map(k =>
         k.id === keyToRevoke.id ? { ...k, status: 'suspended' as const } : k
       ));
     }
@@ -425,6 +428,7 @@ export function APIKeys() {
                       </button>
                       <button
                         onClick={() => {
+                          setRevokeError(null);
                           setKeyToRevoke(key);
                           setIsRevokeModalOpen(true);
                         }}
@@ -671,6 +675,7 @@ export function APIKeys() {
         onClose={() => {
           setIsRevokeModalOpen(false);
           setKeyToRevoke(null);
+          setRevokeError(null);
         }}
         title="Revoke API Key"
         maxWidth="sm"
@@ -682,6 +687,9 @@ export function APIKeys() {
           <p className="text-xs text-muted-foreground">
             This action cannot be undone. Any applications using this key will immediately lose access.
           </p>
+          {revokeError && (
+            <p className="text-sm text-destructive">{revokeError}</p>
+          )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               onClick={() => setIsRevokeModalOpen(false)}
