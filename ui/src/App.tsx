@@ -147,8 +147,22 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
+// The public GitHub Pages demo (forcedDemo) never talks to a real backend —
+// api.ts's DEMO branch serves mockData for every call — so this session is
+// cosmetic routing only, not an auth bypass. The real product's adminAuth
+// middleware (auth.go, exact Bearer-token match) is what actually gates admin
+// APIs, and forcedDemo can only be true if VITE_FORCE_DEMO was set at build
+// time, which only .github/workflows/pages.yml does — `make build` (the
+// binary users install) never sets it, so real installs always hit Login.
+const DEMO_SESSION: SessionData = {
+  token: 'demo',
+  role: 'admin',
+  username: 'demo',
+  mustChangePassword: false,
+};
+
 function App() {
-  const [session, setSession] = useState<SessionData | null>(() => loadSession());
+  const [session, setSession] = useState<SessionData | null>(() => forcedDemo ? DEMO_SESSION : loadSession());
   const [pendingCount, setPendingCount] = useState(0);
 
   // Poll pending user count when admin
@@ -168,7 +182,10 @@ function App() {
 
   function handleLogout() {
     logout();
-    setSession(null);
+    // Demo has no Login screen to fall through to (see DEMO_SESSION above) —
+    // reset to the same fake session instead of null so clicking Logout on
+    // the public demo doesn't strand the visitor on a real login form.
+    setSession(forcedDemo ? DEMO_SESSION : null);
   }
 
   function handleLoginSuccess(data: SessionData) {
