@@ -310,6 +310,8 @@ export function GPUNodes() {
   const [modelFitLoading, setModelFitLoading] = useState(false);
   const [pinnedByNode, setPinnedByNode] = useState<Record<string, string[]>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
+  const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
 
   const loadPinned = async (nodeList: GPUNode[]) => {
     if (demoMode || nodeList.length === 0) return;
@@ -398,14 +400,16 @@ export function GPUNodes() {
     }
   };
 
-  const handleRemoveNode = async (name: string) => {
-    if (!isLive) return;
+  const handleRemoveNode = async (name: string): Promise<boolean> => {
+    if (!isLive) return false;
     try {
       await removeNode(name);
       await loadNodes();
       setActionError(null);
+      return true;
     } catch (err: any) {
       setActionError(err?.message || `Failed to remove node ${name}`);
+      return false;
     }
   };
 
@@ -442,7 +446,7 @@ export function GPUNodes() {
     }
   };
 
-  const handleUnloadModel = async (nodeName: string, model: string) => {
+  const handleUnloadModel = async (nodeName: string, model: string): Promise<boolean> => {
     try {
       await unloadModel(nodeName, model);
       setActionError(null);
@@ -454,12 +458,14 @@ export function GPUNodes() {
       } else {
         await loadNodes();
       }
+      return true;
     } catch (e: any) {
       // The unload button is already hidden for models we know are pinned, but
       // pinned state can go stale between polls (e.g. pinned from another tab
       // right after this page loaded) — the backend still enforces it (409),
       // so surface that clearly instead of silently dropping the click.
       setActionError(e?.message || `Failed to unload ${model} from ${nodeName}`);
+      return false;
     }
   };
 
@@ -559,7 +565,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={handleRemoveNode} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={handleUnloadModel} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} />
         ))}
       </div>
 
@@ -758,6 +764,83 @@ export function GPUNodes() {
               className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {editSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Remove Node Confirmation Modal */}
+      <Modal
+        isOpen={nodeToDelete !== null}
+        onClose={() => setNodeToDelete(null)}
+        title="Remove GPU Node"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to remove the node <span className="text-foreground font-semibold">{nodeToDelete}</span> from the mesh?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This deletes the node's configuration. In-flight requests to it will fail over, and any warm models on it will need a cold start elsewhere.
+          </p>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setNodeToDelete(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!nodeToDelete) return;
+                const ok = await handleRemoveNode(nodeToDelete);
+                if (ok) setNodeToDelete(null);
+              }}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Remove Node
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Unload Model Confirmation Modal */}
+      <Modal
+        isOpen={modelToUnload !== null}
+        onClose={() => setModelToUnload(null)}
+        title="Unload Model from VRAM"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Unload <span className="text-foreground font-semibold">{modelToUnload?.model}</span> from{' '}
+            <span className="text-foreground font-semibold">{modelToUnload?.nodeName}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            The next request for this model on this node will trigger a cold start.
+          </p>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setModelToUnload(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!modelToUnload) return;
+                const ok = await handleUnloadModel(modelToUnload.nodeName, modelToUnload.model);
+                if (ok) setModelToUnload(null);
+              }}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Unload Model
             </button>
           </div>
         </div>
