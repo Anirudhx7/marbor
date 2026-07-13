@@ -244,6 +244,7 @@ type nodeResp struct {
 	Runtime         string             `json:"runtime"`
 	Health          string             `json:"health"`
 	Draining        bool               `json:"draining"`
+	DrainedReason   string             `json:"drainedReason,omitempty"`
 	PrewarmDisabled bool               `json:"prewarmDisabled"`
 	Uptime          string             `json:"uptime"`
 	LoadedModels    []router.ModelInfo `json:"loadedModels"`
@@ -639,6 +640,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			Runtime:          n.Runtime,
 			Health:           health,
 			Draining:         n.Draining,
+			DrainedReason:    n.DrainedReason,
 			PrewarmDisabled:  n.PrewarmDisabled,
 			Uptime:           n.Uptime,
 			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
@@ -688,6 +690,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			Runtime:          n.Runtime,
 			Health:           health,
 			Draining:         n.Draining,
+			DrainedReason:    n.DrainedReason,
 			PrewarmDisabled:  n.PrewarmDisabled,
 			Uptime:           n.Uptime,
 			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
@@ -1359,14 +1362,22 @@ func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if !s.router.DrainNode(name) {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body) // optional body; empty is fine
+	reason := body.Reason
+	if reason == "" {
+		reason = "manual"
+	}
+	if !s.router.DrainNode(name, reason) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	_ = s.st.SetNodeDrain(name, true)
-	s.logSystemChange(r, "drain_node", name, "")
+	_ = s.st.SetNodeDrain(name, true, reason)
+	s.logSystemChange(r, "drain_node", name, reason)
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"node":%q,"draining":true}`, name)
+	fmt.Fprintf(w, `{"node":%q,"draining":true,"reason":%q}`, name, reason)
 }
 
 func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
@@ -1375,7 +1386,7 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	_ = s.st.SetNodeDrain(name, false)
+	_ = s.st.SetNodeDrain(name, false, "")
 	s.logSystemChange(r, "undrain_node", name, "")
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"node":%q,"draining":false}`, name)

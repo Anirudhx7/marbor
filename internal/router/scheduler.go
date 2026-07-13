@@ -92,7 +92,7 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	case "unload":
 		r.UnloadModels(ctx, s.Node, s.Models)
 	case "drain":
-		found = r.DrainNode(s.Node)
+		found = r.DrainNode(s.Node, "scheduled")
 	case "undrain":
 		found = r.UndrainNode(s.Node)
 	}

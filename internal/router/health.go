@@ -220,7 +220,7 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 
 	if shouldThermalDrain {
-		r.DrainNode(nodeName)
+		r.DrainNode(nodeName, "thermal")
 		log.Printf("thermal watchdog: node %s auto-drained after %d consecutive polls at/above %.1f°C",
 			nodeName, r.thermalWatchdog.ConsecutiveBreaches, r.thermalWatchdog.MaxTempCelsius)
 	}

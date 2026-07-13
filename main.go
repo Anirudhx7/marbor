@@ -265,9 +265,9 @@ func main() {
 		}
 	}
 	if drains, err := st.NodeDrainStates(); err == nil {
-		for name, draining := range drains {
-			if draining {
-				r.DrainNode(name)
+		for name, ds := range drains {
+			if ds.Draining {
+				r.DrainNode(name, ds.Reason)
 			}
 		}
 	}

@@ -131,8 +131,11 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               <StatusDot status={node.health} />
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {node.draining && (
-                <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap">
-                  DRAINING
+                <span
+                  title={node.drainedReason ? `Drained: ${node.drainedReason}` : undefined}
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap"
+                >
+                  DRAINING{node.drainedReason ? ` (${node.drainedReason})` : ''}
                 </span>
               )}
               {node.prewarmDisabled && (

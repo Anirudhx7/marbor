@@ -277,10 +277,10 @@ func TestKeyCounters(t *testing.T) {
 func TestNodeDrainStates(t *testing.T) {
 	s := openTestDB(t)
 
-	if err := s.SetNodeDrain("node1", true); err != nil {
+	if err := s.SetNodeDrain("node1", true, "manual"); err != nil {
 		t.Fatalf("SetNodeDrain: %v", err)
 	}
-	if err := s.SetNodeDrain("node2", false); err != nil {
+	if err := s.SetNodeDrain("node2", false, ""); err != nil {
 		t.Fatalf("SetNodeDrain: %v", err)
 	}
 
@@ -288,22 +288,25 @@ func TestNodeDrainStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NodeDrainStates: %v", err)
 	}
-	if !states["node1"] {
+	if !states["node1"].Draining {
 		t.Error("node1 should be draining")
 	}
-	if states["node2"] {
+	if states["node1"].Reason != "manual" {
+		t.Errorf("node1 reason = %q, want manual", states["node1"].Reason)
+	}
+	if states["node2"].Draining {
 		t.Error("node2 should not be draining")
 	}
 
 	// Update node1 to not draining.
-	if err := s.SetNodeDrain("node1", false); err != nil {
+	if err := s.SetNodeDrain("node1", false, ""); err != nil {
 		t.Fatalf("SetNodeDrain update: %v", err)
 	}
 	states, err = s.NodeDrainStates()
 	if err != nil {
 		t.Fatalf("NodeDrainStates after update: %v", err)
 	}
-	if states["node1"] {
+	if states["node1"].Draining {
 		t.Error("node1 should no longer be draining")
 	}
 }

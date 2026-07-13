@@ -54,8 +54,8 @@ type Store interface {
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
-	SetNodeDrain(name string, draining bool) error
-	NodeDrainStates() (map[string]bool, error)
+	SetNodeDrain(name string, draining bool, reason string) error
+	NodeDrainStates() (map[string]NodeDrainState, error)
 
 	// Runtime API keys (survive restart)
 	UpsertKey(k KeyRecord) error
@@ -355,8 +355,8 @@ func (NopStore) DeleteNode(_ string) error                              { return
 func (NopStore) AllNodes() ([]NodeRecord, error)                        { return nil, nil }
 func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string) error { return nil }
 func (NopStore) NodeOverrides() (map[string]NodeOverride, error)        { return nil, nil }
-func (NopStore) SetNodeDrain(_ string, _ bool) error                    { return nil }
-func (NopStore) NodeDrainStates() (map[string]bool, error)              { return nil, nil }
+func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error          { return nil }
+func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error)    { return nil, nil }
 func (NopStore) UpsertKey(_ KeyRecord) error                            { return nil }
 func (NopStore) RevokeKey(_ string) error                               { return nil }
 func (NopStore) AllKeys() ([]KeyRecord, error)                          { return nil, nil }
