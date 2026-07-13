@@ -1,10 +1,12 @@
 package router
 
 import (
+	"context"
 	"encoding/xml"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type GPUStats struct {
@@ -78,7 +80,9 @@ func parseNvidiaSMIXML(data []byte, gpuIndex int) (GPUStats, bool) {
 
 // queryAllGPUs returns stats for all GPUs on the host by executing nvidia-smi once.
 func queryAllGPUs() (map[int]GPUStats, bool) {
-	out, err := exec.Command("nvidia-smi", "-q", "-x").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "nvidia-smi", "-q", "-x").Output()
 	if err != nil {
 		return nil, false
 	}
