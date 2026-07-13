@@ -311,6 +311,37 @@ func TestNodeDrainStates(t *testing.T) {
 	}
 }
 
+// TestPredictiveHistory verifies AppendPredictiveTransition + PredictiveHistory
+// survive across a fresh Open() (restart simulation).
+func TestPredictiveHistory(t *testing.T) {
+	s := openTestDB(t)
+
+	base := time.Now().UTC().Truncate(time.Second)
+	if err := s.AppendPredictiveTransition("", "llama3", base); err != nil {
+		t.Fatalf("AppendPredictiveTransition: %v", err)
+	}
+	if err := s.AppendPredictiveTransition("llama3", "mistral", base.Add(time.Minute)); err != nil {
+		t.Fatalf("AppendPredictiveTransition: %v", err)
+	}
+
+	hist, err := s.PredictiveHistory()
+	if err != nil {
+		t.Fatalf("PredictiveHistory: %v", err)
+	}
+	if len(hist) != 2 {
+		t.Fatalf("len(hist) = %d, want 2", len(hist))
+	}
+	if hist[0].FromModel != "" || hist[0].ToModel != "llama3" {
+		t.Errorf("hist[0] = %+v, want FromModel=\"\" ToModel=llama3", hist[0])
+	}
+	if hist[1].FromModel != "llama3" || hist[1].ToModel != "mistral" {
+		t.Errorf("hist[1] = %+v, want FromModel=llama3 ToModel=mistral", hist[1])
+	}
+	if !hist[0].Timestamp.Equal(base) {
+		t.Errorf("hist[0].Timestamp = %v, want %v", hist[0].Timestamp, base)
+	}
+}
+
 // TestNodeOverrides verifies UpsertNodeOverride + NodeOverrides.
 func TestNodeOverrides(t *testing.T) {
 	s := openTestDB(t)

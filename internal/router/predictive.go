@@ -65,15 +65,19 @@ func (r *Router) RecentPredictiveDecisions() []PredictiveDecision {
 	return out
 }
 
-// RecordTransition logs a transition in the ring buffer.
+// RecordTransition logs a transition in the ring buffer and, if a store is
+// configured, persists it so the predictive engine resumes learned patterns
+// instead of rebuilding from zero after a restart.
 func (r *Router) RecordTransition(toModel string, now time.Time) {
 	if toModel == "" {
 		return
 	}
 	now = r.localNow(now)
-	r.predictiveMu.Lock()
-	defer r.predictiveMu.Unlock()
+	r.mu.RLock()
+	st := r.store
+	r.mu.RUnlock()
 
+	r.predictiveMu.Lock()
 	fromModel := r.lastModelRequested
 	r.lastModelRequested = toModel
 
@@ -94,6 +98,29 @@ func (r *Router) RecordTransition(toModel string, now time.Time) {
 		if r.activePredictions[i].Model == toModel && !now.After(r.activePredictions[i].ExpiresAt) {
 			r.activePredictions[i].Met = true
 		}
+	}
+	r.predictiveMu.Unlock()
+
+	if st != nil {
+		if err := st.AppendPredictiveTransition(fromModel, toModel, now); err != nil {
+			log.Printf("predictive: failed to persist transition: %v", err)
+		}
+	}
+}
+
+// SeedPredictiveHistory replaces the in-memory transition ring buffer with
+// persisted entries loaded at boot, capped at the same 500-entry limit
+// RecordTransition enforces. Called once during startup, before the mesh
+// serves traffic.
+func (r *Router) SeedPredictiveHistory(entries []TransitionEntry) {
+	if len(entries) > 500 {
+		entries = entries[len(entries)-500:]
+	}
+	r.predictiveMu.Lock()
+	defer r.predictiveMu.Unlock()
+	r.predictiveHistory = append([]TransitionEntry(nil), entries...)
+	if len(entries) > 0 {
+		r.lastModelRequested = entries[len(entries)-1].ToModel
 	}
 }
 

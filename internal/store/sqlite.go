@@ -130,6 +130,13 @@ func (s *sqliteStore) migrate() error {
 			drained_reason TEXT NOT NULL DEFAULT ''
 		)`,
 
+		`CREATE TABLE IF NOT EXISTS predictive_history (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			from_model TEXT NOT NULL,
+			to_model   TEXT NOT NULL,
+			ts         TEXT NOT NULL
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS runtime_keys (
 			name          TEXT PRIMARY KEY,
 			key           TEXT,
@@ -656,6 +663,46 @@ func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: NodeDrainStates rows: %w", err)
+	}
+	return out, nil
+}
+
+// --- Predictive engine transition history ---
+
+func (s *sqliteStore) AppendPredictiveTransition(fromModel, toModel string, ts time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT INTO predictive_history (from_model, to_model, ts) VALUES (?, ?, ?)`,
+		fromModel, toModel, ts.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("store: AppendPredictiveTransition: %w", err)
+	}
+	// Trim to the same 500-entry cap the in-memory ring buffer uses.
+	_, _ = s.db.Exec(`DELETE FROM predictive_history WHERE id NOT IN (SELECT id FROM predictive_history ORDER BY id DESC LIMIT 500)`)
+	return nil
+}
+
+func (s *sqliteStore) PredictiveHistory() ([]PredictiveTransition, error) {
+	rows, err := s.db.Query(`SELECT from_model, to_model, ts FROM predictive_history ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: PredictiveHistory: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PredictiveTransition
+	for rows.Next() {
+		var fromModel, toModel, tsRaw string
+		if err := rows.Scan(&fromModel, &toModel, &tsRaw); err != nil {
+			return nil, fmt.Errorf("store: PredictiveHistory scan: %w", err)
+		}
+		ts, err := time.Parse(time.RFC3339Nano, tsRaw)
+		if err != nil {
+			continue
+		}
+		out = append(out, PredictiveTransition{FromModel: fromModel, ToModel: toModel, Timestamp: ts})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: PredictiveHistory rows: %w", err)
 	}
 	return out, nil
 }

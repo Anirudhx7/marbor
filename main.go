@@ -272,6 +272,22 @@ func main() {
 		}
 	}
 
+	// Load persisted predictive transition history so the predictive engine
+	// resumes learned patterns instead of rebuilding from zero.
+	if hist, err := st.PredictiveHistory(); err == nil && len(hist) > 0 {
+		entries := make([]router.TransitionEntry, len(hist))
+		for i, h := range hist {
+			entries[i] = router.TransitionEntry{
+				FromModel: h.FromModel,
+				ToModel:   h.ToModel,
+				Timestamp: h.Timestamp,
+				HourOfDay: h.Timestamp.Hour(),
+			}
+		}
+		r.SeedPredictiveHistory(entries)
+		log.Printf("store: loaded %d predictive transition(s)", len(entries))
+	}
+
 	// Restore the warm-state residency map so the router starts warm, not cold:
 	// LRU last-used history is re-seeded for every persisted (model, node) pair,
 	// and each node's residency is seeded until the first live poll refreshes it.
