@@ -328,6 +328,27 @@ export const mockRequests: RequestEntry[] = [
   { id: 'req-d6e1f2a3b4c5', time: mins(19),  key_name: 'Support Bot',       model: 'mistral:7b',      node: 'gpu-node-04', status: 200, latency_ms: 47,   cloud: false },
 ];
 
+// filterMockRequests simulates the /admin/audit server-side filter params
+// against the static demo request list, so the Requests page filter toolbar
+// behaves the same in demo mode as it does against the real audit_log.
+export interface MockRequestFilters {
+  model?: string;
+  key?: string;
+  cloud?: boolean;
+  since?: string; // ISO string
+}
+
+export function filterMockRequests(filters: MockRequestFilters): RequestEntry[] {
+  const sinceMs = filters.since ? new Date(filters.since).getTime() : null;
+  return mockRequests.filter((e) => {
+    if (filters.model && !e.model.toLowerCase().includes(filters.model.toLowerCase())) return false;
+    if (filters.key && e.key_name !== filters.key) return false;
+    if (filters.cloud !== undefined && e.cloud !== filters.cloud) return false;
+    if (sinceMs !== null && new Date(e.time).getTime() < sinceMs) return false;
+    return true;
+  });
+}
+
 function makeHourKey(hoursAgo: number): string {
   const d = new Date(Date.now() - hoursAgo * 3600000);
   const y = d.getUTCFullYear();

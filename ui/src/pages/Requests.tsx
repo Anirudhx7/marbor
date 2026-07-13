@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { RequestEntry } from '../types';
-import { fetchRequests } from '../lib/api';
+import { fetchAuditLog } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockRequests } from '../lib/mockData';
+import { filterMockRequests } from '../lib/mockData';
 
 function formatRelative(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime();
@@ -35,16 +35,57 @@ function SkeletonRow() {
   );
 }
 
+// Cloud filter tri-state: 'all' | 'local' | 'cloud'.
+type CloudFilter = 'all' | 'local' | 'cloud';
+
+// Since filter presets map to a lookback window; 'all' sends no since param.
+type SincePreset = 'all' | '15m' | '1h' | '24h';
+
+function sinceIso(preset: SincePreset): string | undefined {
+  if (preset === 'all') return undefined;
+  const ms = { '15m': 15 * 60_000, '1h': 60 * 60_000, '24h': 24 * 60 * 60_000 }[preset];
+  return new Date(Date.now() - ms).toISOString();
+}
+
 export function Requests() {
   const { demoMode: isDemoMode } = useDemoMode();
   const [entries, setEntries] = useState<RequestEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [filter, setFilter] = useState('');
+
+  // Raw text inputs (debounced before becoming active filters).
+  const [modelInput, setModelInput] = useState('');
+  const [keyInput, setKeyInput] = useState('');
+  const [cloudFilter, setCloudFilter] = useState<CloudFilter>('all');
+  const [sincePreset, setSincePreset] = useState<SincePreset>('all');
+
+  // Debounced text filters actually sent as query params.
+  const [modelFilter, setModelFilter] = useState('');
+  const [keyFilter, setKeyFilter] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setModelFilter(modelInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [modelInput]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setKeyFilter(keyInput.trim()), 350);
+    return () => clearTimeout(t);
+  }, [keyInput]);
+
+  const activeFilters = useMemo(
+    () => ({
+      model: modelFilter || undefined,
+      key: keyFilter || undefined,
+      cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
+      since: sinceIso(sincePreset),
+    }),
+    [modelFilter, keyFilter, cloudFilter, sincePreset]
+  );
 
   useEffect(() => {
     if (isDemoMode) {
-      setEntries(mockRequests);
+      setEntries(filterMockRequests(activeFilters));
       setLoading(false);
       return;
     }
@@ -53,7 +94,7 @@ export function Requests() {
 
     async function poll() {
       try {
-        const data = await fetchRequests();
+        const data = await fetchAuditLog(activeFilters);
         if (!cancelled) {
           setEntries(Array.isArray(data) ? data : []);
           setFetchError(null);
@@ -67,23 +108,18 @@ export function Requests() {
       }
     }
 
+    setLoading(true);
     poll();
     const interval = setInterval(poll, 3000);
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isDemoMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDemoMode, modelFilter, keyFilter, cloudFilter, sincePreset]);
 
-  const filtered = filter.trim()
-    ? entries.filter(
-        (e) =>
-          e.model.toLowerCase().includes(filter.toLowerCase()) ||
-          e.node.toLowerCase().includes(filter.toLowerCase()) ||
-          e.key_name.toLowerCase().includes(filter.toLowerCase()) ||
-          (e.source_ip || '').toLowerCase().includes(filter.toLowerCase())
-      )
-    : entries;
+  const filtered = entries;
+  const hasActiveFilter = !!modelFilter || !!keyFilter || cloudFilter !== 'all' || sincePreset !== 'all';
 
   const localCount = filtered.filter((e) => !e.cloud).length;
   const cloudCount = filtered.filter((e) => e.cloud).length;
@@ -105,26 +141,57 @@ export function Requests() {
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Last 50 requests - auto-refreshes every 3s
+            Server-side filtered - auto-refreshes every 3s
           </p>
         </div>
       </div>
 
       {/* Filter bar */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <input
           type="text"
-          placeholder="Filter by model, node, or key..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="flex-1 max-w-sm px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          placeholder="Filter by model..."
+          value={modelInput}
+          onChange={(e) => setModelInput(e.target.value)}
+          className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
-        {filter && (
+        <input
+          type="text"
+          placeholder="Filter by key name..."
+          value={keyInput}
+          onChange={(e) => setKeyInput(e.target.value)}
+          className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
+        <select
+          value={cloudFilter}
+          onChange={(e) => setCloudFilter(e.target.value as CloudFilter)}
+          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          <option value="all">All (local + cloud)</option>
+          <option value="local">Local only</option>
+          <option value="cloud">Cloud only</option>
+        </select>
+        <select
+          value={sincePreset}
+          onChange={(e) => setSincePreset(e.target.value as SincePreset)}
+          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          <option value="all">Any time</option>
+          <option value="15m">Last 15 min</option>
+          <option value="1h">Last hour</option>
+          <option value="24h">Last 24h</option>
+        </select>
+        {hasActiveFilter && (
           <button
-            onClick={() => setFilter('')}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => {
+              setModelInput('');
+              setKeyInput('');
+              setCloudFilter('all');
+              setSincePreset('all');
+            }}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-2"
           >
-            Clear
+            Clear filters
           </button>
         )}
       </div>
@@ -174,9 +241,9 @@ export function Requests() {
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground text-sm">
-                    {entries.length === 0
-                      ? 'No requests yet. Send a request through the proxy to see it here.'
-                      : 'No requests match your filter.'}
+                    {hasActiveFilter
+                      ? 'No requests match your filter.'
+                      : 'No requests yet. Send a request through the proxy to see it here.'}
                   </td>
                 </tr>
               ) : (
