@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Activity,
   Clock,
@@ -154,7 +155,7 @@ import { useDemoMode } from '../hooks/useDemoMode';
 
 export function Dashboard() {
   const { demoMode } = useDemoMode();
-  const { requests, newRequestId, isLive: requestsLive } = useLiveRequests();
+  const { requests, newRequestId, isLive: requestsLive } = useLiveRequests(10);
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [summary, setSummary] = useState({
     activeRequests: 0,
@@ -390,7 +391,16 @@ export function Dashboard() {
               <span className="text-[10px] font-medium text-primary uppercase tracking-wider">Live</span>
             </div>
           </div>
-          <span className="text-xs font-medium text-muted-foreground">Auto-refresh: 2s</span>
+          <div className="flex items-center gap-4">
+            <span className="text-xs font-medium text-muted-foreground">Auto-refresh: 2s</span>
+            <Link
+              to="/requests"
+              className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+            >
+              View All Requests
+              <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -414,7 +424,7 @@ export function Dashboard() {
                   </td>
                 </tr>
               )}
-              {requests.map((req) => (
+              {requests.slice(0, 10).map((req) => (
                 <tr 
                   key={req.id} 
                   className={`transition-colors duration-200 ${
