@@ -69,7 +69,13 @@ type NodeState struct {
 	// Runtime identifies the backend type: "ollama", "vllm", "tgi", "llamacpp".
 	// Empty string is treated as "ollama" for backwards compatibility.
 	// "auto" means detection is pending; resolved to a real runtime on first poll.
-	Runtime        string
+	Runtime string
+	// VRAMOverrides is the operator-declared, per-model VRAM size (MB) from
+	// config (NodeConfig.VRAMOverrides). Used by estimateModelSizeBytes as a
+	// fallback when a node's runtime API can't report a real observed size
+	// (non-Ollama backends). Set once at construction; never mutated at
+	// runtime, so it is safe to read under RLock like any other field.
+	VRAMOverrides  map[string]int64
 	autoDetect     bool                    // true if config said runtime: auto; cleared after first detection
 	probe          runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
 	LastErrorAt    time.Time
@@ -237,6 +243,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			GPUModel:          n.GPUModel,
 			NvidiaIndex:       n.NvidiaIndex,
 			VRAMTotalMBConfig: n.VRAMTotalMB,
+			VRAMOverrides:     n.VRAMOverrides,
 			Healthy:           true,
 			FirstSeenAt:       time.Now(),
 			Runtime:           n.Runtime,
@@ -694,13 +701,14 @@ func (r *Router) AddNode(n config.NodeConfig) {
 	}
 	r.mu.RUnlock()
 	node := &NodeState{
-		Name:        n.Name,
-		URL:         n.URL,
-		GPUModel:    n.GPUModel,
-		NvidiaIndex: n.NvidiaIndex,
-		Healthy:     true,
-		FirstSeenAt: time.Now(),
-		Runtime:     n.Runtime,
+		Name:          n.Name,
+		URL:           n.URL,
+		GPUModel:      n.GPUModel,
+		NvidiaIndex:   n.NvidiaIndex,
+		VRAMOverrides: n.VRAMOverrides,
+		Healthy:       true,
+		FirstSeenAt:   time.Now(),
+		Runtime:       n.Runtime,
 	}
 	if n.Runtime == "auto" {
 		node.autoDetect = true
