@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -203,6 +204,40 @@ func TestIsLocalNode(t *testing.T) {
 		if got := isLocalNode(url); got != want {
 			t.Errorf("isLocalNode(%q) = %v, want %v", url, got, want)
 		}
+	}
+}
+
+// TestIsLocalNodeMatchesOwnLANInterfaceIP verifies that a node configured with
+// this machine's actual LAN IP (rather than localhost/127.0.0.1) is still
+// recognized as local, so it does not silently lose local nvidia-smi
+// telemetry and thermal-watchdog auto-drain coverage.
+func TestIsLocalNodeMatchesOwnLANInterfaceIP(t *testing.T) {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Fatalf("net.InterfaceAddrs() error: %v", err)
+	}
+	var ownIP string
+	for _, a := range addrs {
+		ipNet, ok := a.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		ownIP = ipNet.IP.String()
+		break
+	}
+	if ownIP == "" {
+		t.Skip("no non-loopback interface address available in this environment")
+	}
+
+	url := "http://" + ownIP + ":11434"
+	if got := isLocalNode(url); !got {
+		t.Errorf("isLocalNode(%q) = %v, want true (matches this machine's own interface IP)", url, got)
+	}
+
+	// A LAN IP that is not one of this machine's own addresses must still be
+	// treated as remote.
+	if got := isLocalNode("http://192.0.2.123:11434"); got {
+		t.Errorf("isLocalNode(%q) = %v, want false (not this machine's IP)", "http://192.0.2.123:11434", got)
 	}
 }
 
