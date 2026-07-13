@@ -557,9 +557,10 @@ export async function fetchSettings() {
     return {
       proxy: { port: 11434, log_level: 'info' },
       auth: { enabled: true },
-      routing: { poll_interval_ms: 2000 },
+      routing: { poll_interval_ms: 2000, allow_management_endpoints: false },
       metrics: { enabled: true, port: 9090 },
       litellm: { enabled: false, url: '' },
+      huggingface: { token: '' },
       timezone: 'UTC',
       cloud_budget: { daily_usd_cap: 100, monthly_usd_cap: 1000, soft_budget_pct: 0.8 },
       hide_demo_banner: false,

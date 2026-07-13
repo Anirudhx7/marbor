@@ -75,6 +75,13 @@ nodes:
   #   url: http://10.0.1.20:8000
   #   runtime: vllm
   #   vram_total_mb: 81920
+  #   # vram_overrides: vLLM/TGI/llama.cpp don't expose per-model VRAM usage
+  #   # via their APIs, so without this the router has no real size to reason
+  #   # about and predictive warmup / headroom / eviction checks are silently
+  #   # disabled for models on this node. Declare the sizes you actually know
+  #   # (MB); operator-declared like vram_total_mb, never guessed.
+  #   vram_overrides:
+  #     llama-3.1-70b: 40960
   # - name: tgi-node
   #   url: http://10.0.1.21:8080
   #   runtime: tgi

@@ -210,6 +210,8 @@ export const defaultSettings: Settings = {
   cloudSoftBudgetPct: 0.8,
   hideDemoBanner: false,
   hideBudgetBanner: false,
+  huggingFaceToken: '',
+  allowManagementEndpoints: false,
 };
 
 export const mockSavings: Savings = {

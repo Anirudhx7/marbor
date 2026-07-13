@@ -274,17 +274,33 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName string, neededBy
 const evictCooldown = 15 * time.Second
 
 // estimateModelSizeBytes estimates the VRAM a not-yet-loaded model needs from the
-// node's /api/tags on-disk size (a good proxy for GGUF weights). Returns 0 when
-// the size is unknown so callers can decline to evict blindly.
+// node's /api/tags on-disk size (a good proxy for GGUF weights). Non-Ollama
+// runtimes (vllm, tgi, llamacpp) don't expose /api/tags, so FetchModelTags
+// fails or the model is absent from the result; in that case, fall back to the
+// operator-declared vram_overrides size for that node+model (R1: an explicit
+// operator declaration, not a guess). Returns 0 when the size is unknown by
+// either path so callers can decline to evict/warm blindly.
 func (r *Router) estimateModelSizeBytes(nodeURL, model string) int64 {
-	tags, err := r.FetchModelTags(nodeURL)
-	if err != nil {
-		return 0
-	}
-	for _, t := range tags {
-		if t.Name == model {
-			return t.Size
+	if tags, err := r.FetchModelTags(nodeURL); err == nil {
+		for _, t := range tags {
+			if t.Name == model {
+				return t.Size
+			}
 		}
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, n := range r.nodes {
+		if n.URL != nodeURL {
+			continue
+		}
+		n.mu.RLock()
+		mb, ok := n.VRAMOverrides[model]
+		n.mu.RUnlock()
+		if ok && mb > 0 {
+			return mb * 1024 * 1024
+		}
+		break
 	}
 	return 0
 }

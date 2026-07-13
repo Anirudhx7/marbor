@@ -2468,6 +2468,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	cfg.Auth.AdminToken = ""
+	if cfg.HuggingFace.Token != "" {
+		cfg.HuggingFace.Token = "***"
+	}
 
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
 	if username == "" {
@@ -2503,6 +2506,12 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		incoming.Auth.Keys = s.cfg.Auth.Keys
 	}
 	incoming.Auth.AdminToken = s.cfg.Auth.AdminToken
+	// The client echoes back the masked "***" placeholder (or omits the field
+	// entirely) when the operator didn't change it; preserve the real token in
+	// both cases instead of clobbering it with the mask.
+	if incoming.HuggingFace.Token == "" || incoming.HuggingFace.Token == "***" {
+		incoming.HuggingFace.Token = s.cfg.HuggingFace.Token
+	}
 
 	if err := incoming.Validate(); err != nil {
 		s.mu.Unlock()

@@ -146,6 +146,8 @@ export interface Settings {
   cloudSoftBudgetPct: number;
   hideDemoBanner?: boolean;
   hideBudgetBanner?: boolean;
+  huggingFaceToken?: string;
+  allowManagementEndpoints?: boolean;
 }
 
 export interface SystemAuditEntry {
