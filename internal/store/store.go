@@ -271,8 +271,13 @@ type AuditQuery struct {
 	Limit int
 	Model string
 	Key   string
-	Cloud *bool
-	Since time.Time
+	Node  string
+	// StatusCategory buckets by HTTP status range: "success" (2xx),
+	// "client_error" (4xx), or "server_error" (5xx). Empty means no filter.
+	StatusCategory string
+	Cloud          *bool
+	Since          time.Time
+	Until          time.Time
 }
 
 // User is a dashboard administrator or API-consumer user with role-based access.
