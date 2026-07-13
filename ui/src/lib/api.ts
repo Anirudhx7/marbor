@@ -605,6 +605,53 @@ export async function fetchRequests(): Promise<RequestEntry[]> {
   return res.json();
 }
 
+export interface AuditLogFilters {
+  model?: string;
+  key?: string;
+  cloud?: boolean;
+  since?: string; // RFC3339
+  limit?: number;
+}
+
+interface AuditLogEntry {
+  time: string;
+  request_id: string;
+  key_name: string;
+  model: string;
+  node: string;
+  status: string;
+  latency_ms: number;
+  cloud: boolean;
+  cloud_model?: string;
+}
+
+// fetchAuditLog queries the server-side filterable /admin/audit endpoint
+// (backed by SQLite audit_log, indexed on key_name/model/node/ts) so the
+// Requests page can filter without pulling every row and matching client-side.
+export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<RequestEntry[]> {
+  const params = new URLSearchParams();
+  if (filters.model) params.set('model', filters.model);
+  if (filters.key) params.set('key', filters.key);
+  if (filters.cloud !== undefined) params.set('cloud', String(filters.cloud));
+  if (filters.since) params.set('since', filters.since);
+  params.set('limit', String(filters.limit ?? 50));
+
+  const res = await apiFetch(`${BASE}/audit?${params.toString()}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch audit log');
+  const data = await res.json();
+  const entries: AuditLogEntry[] = data.entries ?? [];
+  return entries.map((e) => ({
+    id: e.request_id,
+    time: e.time,
+    key_name: e.key_name,
+    model: e.cloud && e.cloud_model ? e.cloud_model : e.model,
+    node: e.node,
+    status: Number(e.status) || 0,
+    latency_ms: e.latency_ms,
+    cloud: e.cloud,
+  }));
+}
+
 export async function updateSettings(data: Record<string, unknown>) {
   if (DEMO) {
     localStorage.setItem('demo_settings', JSON.stringify(data));
