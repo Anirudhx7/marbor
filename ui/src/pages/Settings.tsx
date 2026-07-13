@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders } from 'lucide-react';
+import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
@@ -123,6 +123,8 @@ export function SettingsPage() {
           cloudSoftBudgetPct: settingsData.cloud_budget?.soft_budget_pct || 0,
           hideDemoBanner: settingsData.hide_demo_banner || false,
           hideBudgetBanner: settingsData.hide_budget_banner || false,
+          huggingFaceToken: settingsData.huggingface?.token || '',
+          allowManagementEndpoints: settingsData.routing?.allow_management_endpoints || false,
         });
         setCloudProviders(demoMode ? mockCloudProviders : (providersData || []));
         setError(null);
@@ -141,9 +143,10 @@ export function SettingsPage() {
         timezone: settings.timezone,
         proxy: { port: settings.proxyPort, log_level: settings.logLevel },
         auth: { enabled: settings.authMode === 'api-key' },
-        routing: { poll_interval_ms: settings.pollingInterval },
+        routing: { poll_interval_ms: settings.pollingInterval, allow_management_endpoints: settings.allowManagementEndpoints || false },
         metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
         litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint },
+        huggingface: { token: settings.huggingFaceToken || '' },
         cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap, soft_budget_pct: settings.cloudSoftBudgetPct },
         hide_demo_banner: settings.hideDemoBanner || false,
         hide_budget_banner: settings.hideBudgetBanner || false,
@@ -695,6 +698,57 @@ export function SettingsPage() {
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     settings.hideBudgetBanner ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Developer Integrations & Security */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-rose-500/10 rounded-lg">
+              <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Developer Integrations & Security</h3>
+              <p className="text-xs font-medium text-muted-foreground">API tokens and proxy access controls</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Hugging Face API Token
+              </label>
+              <input
+                type="password"
+                value={settings.huggingFaceToken || ''}
+                onChange={(e) => setSettings({ ...settings, huggingFaceToken: e.target.value })}
+                placeholder="hf_..."
+                autoComplete="off"
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Used by Model Advisor for Hugging Face API lookups. Stored server-side; masked here once saved.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Allow Management Endpoints</p>
+                <p className="text-xs text-muted-foreground">Let client API keys reach model create/delete/pull APIs. Single-tenant homelab only.</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, allowManagementEndpoints: !settings.allowManagementEndpoints })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.allowManagementEndpoints ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.allowManagementEndpoints ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>

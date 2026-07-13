@@ -239,6 +239,14 @@ type NodeConfig struct {
 	// Runtime identifies the inference backend. Valid: "ollama" (default), "vllm", "tgi", "llamacpp".
 	// Controls which health endpoint and warm-model detection API the router uses.
 	Runtime string `yaml:"runtime" json:"runtime"`
+	// VRAMOverrides declares, per model name, how much VRAM (MB) that model
+	// consumes on this node. Non-Ollama runtimes (vllm, tgi, llamacpp) don't
+	// expose per-model VRAM/disk size via their APIs, so without this the
+	// router has no way to size a not-yet-loaded model and silently disables
+	// predictive warmup and headroom/eviction checks for that node. Operator-
+	// declared, like vram_total_mb - never guessed (R1). Empty/absent map is a
+	// no-op; only declare sizes you actually know.
+	VRAMOverrides map[string]int64 `yaml:"vram_overrides,omitempty" json:"vram_overrides,omitempty"`
 }
 
 type RoutingRule struct {
@@ -513,6 +521,9 @@ func (c *Config) Validate() error {
 		seenNodeURLs[normURL] = true
 		if c.Nodes[i].Runtime == "" {
 			c.Nodes[i].Runtime = "ollama"
+		}
+		if c.Nodes[i].VRAMOverrides == nil {
+			c.Nodes[i].VRAMOverrides = map[string]int64{}
 		}
 		switch c.Nodes[i].Runtime {
 		case "ollama", "vllm", "tgi", "llamacpp", "auto":
