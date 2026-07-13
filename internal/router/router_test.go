@@ -710,7 +710,7 @@ func TestDrainNodeExcludesFromRouting(t *testing.T) {
 	r.nodes[1].mu.Unlock()
 
 	// Drain node-b.
-	if !r.DrainNode("node-b") {
+	if !r.DrainNode("node-b", "manual") {
 		t.Fatal("DrainNode returned false for existing node")
 	}
 
@@ -840,7 +840,7 @@ func TestAddNode_AllowsDistinctURLs(t *testing.T) {
 
 func TestDrainNodeNotFound(t *testing.T) {
 	r := New(config.RoutingConfig{}, nil, nil)
-	if r.DrainNode("nonexistent") {
+	if r.DrainNode("nonexistent", "manual") {
 		t.Error("DrainNode should return false for unknown node")
 	}
 	if r.UndrainNode("nonexistent") {

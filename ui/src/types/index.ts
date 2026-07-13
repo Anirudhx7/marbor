@@ -54,6 +54,9 @@ export interface GPUNode {
   health: 'healthy' | 'degraded' | 'down';
   runtime: string;
   draining: boolean;
+  // Why draining was set (e.g. "manual", "thermal", "scheduled") - persisted
+  // alongside draining, empty when not draining.
+  drainedReason?: string;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;
