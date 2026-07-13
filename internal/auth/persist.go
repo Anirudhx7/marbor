@@ -24,6 +24,9 @@ type counterSnapshot struct {
 func (c *keyCounter) export() counterSnapshot {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	now := time.Now()
+	c.resetLocked(now)
+	c.lastReset = now
 	return counterSnapshot{
 		Today:       c.today,
 		Month:       c.month,
