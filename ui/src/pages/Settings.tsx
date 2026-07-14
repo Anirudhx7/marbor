@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
+import { Modal } from '../components/Modal';
 import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
 import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig, changePassword } from '../lib/api';
 import type { Settings, CloudProvider } from '../types';
@@ -93,6 +94,7 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [reloading, setReloading] = useState(false);
+  const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,6 +167,7 @@ export function SettingsPage() {
   const handleReload = async () => {
     if (demoMode) {
       setReloaded(true);
+      setReloadConfirmOpen(false);
       setTimeout(() => setReloaded(false), 2000);
       return;
     }
@@ -178,6 +181,7 @@ export function SettingsPage() {
       setError(err.message || 'Config reload failed');
     } finally {
       setReloading(false);
+      setReloadConfirmOpen(false);
     }
   };
 
@@ -257,6 +261,7 @@ export function SettingsPage() {
   };
 
   return (
+    <>
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
@@ -268,7 +273,7 @@ export function SettingsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleReload}
+            onClick={() => setReloadConfirmOpen(true)}
             disabled={reloading}
             title="Reload config from disk without restarting (equivalent to SIGHUP)"
             className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-foreground font-medium rounded-lg transition-colors border border-border"
@@ -916,5 +921,42 @@ export function SettingsPage() {
         )}
       </div>
     </div>
+
+    <Modal
+      isOpen={reloadConfirmOpen}
+      onClose={() => setReloadConfirmOpen(false)}
+      title="Reload Config"
+      maxWidth="sm"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to reload config.yaml into the running process?
+        </p>
+        <p className="text-xs text-muted-foreground">
+          This re-applies whatever is currently saved on disk — including auth mode, ports, and routing settings — to
+          the live mesh immediately, without a restart.
+        </p>
+        {error && (
+          <p className="text-sm text-destructive">{error}</p>
+        )}
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <button
+            onClick={() => setReloadConfirmOpen(false)}
+            disabled={reloading}
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleReload}
+            disabled={reloading}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+          >
+            Reload Config
+          </button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 }

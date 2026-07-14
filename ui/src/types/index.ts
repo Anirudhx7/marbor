@@ -316,26 +316,34 @@ export interface BudgetEntry {
   monthlyPct: number;
 }
 
-// ModelConfig is an operator-declared default parameter profile for a model,
-// applied whenever ollama-mesh routes to it. Every field but `model` is
-// optional — unset means "inherit Ollama's own default", never a fabricated
-// value (R1). Field names/JSON keys mirror internal/store/store.go 1:1.
+// ModelConfig is an operator-declared default parameter profile for a
+// specific (model, node) pair, applied whenever ollama-mesh routes to that
+// model on that node. The same model name can be resident on multiple nodes
+// with different runtimes (ollama/vllm/tgi/llamacpp) or VRAM budgets, so a
+// profile is only ever meaningful scoped to one node — `model` and `node`
+// are both required. Every other field is optional — unset means "inherit
+// the backend's own default", never a fabricated value (R1). Field
+// names/JSON keys mirror internal/store/store.go 1:1. Verified 2026-07
+// against each runtime's actual current source/API schema (Ollama's
+// api/types.go, llama.cpp's server README, vLLM's OpenAI protocol source,
+// TGI's live OpenAPI spec) — flash_attention, offload_kv_cache_to_gpu,
+// rope_frequency_base/scale, use_mlock, tensor_parallelism, mirostat*, and
+// tfs_z were removed: none are real per-request parameters on any of the
+// four runtimes (some never existed as request fields at all; others were
+// pruned from Ollama/llama.cpp's own current option set).
 export interface ModelConfig {
   model: string;
+  node: string;
 
-  // Load-time / engine parameters.
+  // Load-time / engine parameters — Ollama only.
   num_ctx?: number;
   num_gpu?: number;
-  flash_attention?: boolean;
-  offload_kv_cache_to_gpu?: boolean;
+  main_gpu?: number;
   num_batch?: number;
   num_thread?: number;
   use_mmap?: boolean;
-  use_mlock?: boolean;
-  rope_frequency_base?: number;
-  rope_frequency_scale?: number;
+  draft_num_predict?: number;
   ttl?: number;
-  tensor_parallelism?: boolean;
 
   // Inference-time / sampling parameters.
   temperature?: number;
@@ -343,7 +351,7 @@ export interface ModelConfig {
   top_k?: number;
   min_p?: number;
   typical_p?: number;
-  tfs_z?: number;
+  num_keep?: number;
   max_tokens?: number;
   seed?: number;
   stop?: string[];
@@ -356,6 +364,26 @@ export interface ModelConfig {
   mirostat_eta?: number;
   logit_bias?: Record<string, number>;
   response_format?: string;
+
+  // llama.cpp-only sampling extras.
+  dry_multiplier?: number;
+  dry_base?: number;
+  dry_allowed_length?: number;
+  dry_penalty_last_n?: number;
+  xtc_probability?: number;
+  xtc_threshold?: number;
+  n_probs?: number;
+  min_keep?: number;
+
+  // vLLM-only sampling extras. ignore_eos is shared with llama.cpp (same
+  // wire name/meaning on both).
+  length_penalty?: number;
+  stop_token_ids?: number[];
+  include_stop_str_in_output?: boolean;
+  ignore_eos?: boolean;
+  min_tokens?: number;
+  skip_special_tokens?: boolean;
+  truncate_prompt_tokens?: number;
 
   // Meta / orchestration.
   system?: string;

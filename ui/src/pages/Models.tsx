@@ -286,9 +286,12 @@ export function Models() {
 
   const models = catalog?.models ?? [];
   const configModelEntry = configModel ? models.find((m) => m.name === configModel) ?? null : null;
-  const configRuntimes = configModelEntry
-    ? configModelEntry.nodes.map((n) => runtimeByNode[n.name]).filter((r): r is string => Boolean(r))
-    : undefined;
+  // Every node this model is resident on, paired with its runtime — the
+  // Advanced Settings modal scopes configuration to one (model, node) pair
+  // and needs the full list to drive its node selector.
+  const configNodes = configModelEntry
+    ? configModelEntry.nodes.map((n) => ({ name: n.name, runtime: runtimeByNode[n.name] || 'ollama' }))
+    : [];
   // total_models is the full catalog (warm + on-disk); "warm" means loaded in VRAM somewhere.
   const warmModelCount = models.filter((m) => m.warm_count > 0).length;
   const filteredModels = models.filter((m) =>
@@ -475,7 +478,7 @@ export function Models() {
       <ModelConfigModal
         model={configModel}
         demoMode={demoMode}
-        runtimes={configRuntimes}
+        nodes={configNodes}
         onClose={() => setConfigModel(null)}
       />
     </div>
