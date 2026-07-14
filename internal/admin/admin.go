@@ -443,6 +443,7 @@ func (s *Server) Handler() http.Handler {
 	reg("PUT /admin/model-config", s.cors(s.adminAuth(s.handleSetModelConfig)))
 	reg("DELETE /admin/model-config", s.cors(s.adminAuth(s.handleDeleteModelConfig)))
 	reg("GET /admin/model-configs", s.cors(s.adminAuth(s.handleListModelConfigs)))
+	reg("GET /admin/model-config/capabilities", s.cors(s.adminAuth(s.handleModelConfigCapabilities)))
 
 	reg("GET /admin/predictive/decisions", s.cors(s.adminAuth(s.handlePredictiveDecisions)))
 
@@ -1442,19 +1443,25 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	s.handleNode(w, r)
 }
 
-// handleGetModelConfig returns the configured default parameter profile for a
-// model. GET /admin/model-config?model=X. 404 if no profile is configured —
-// the caller sees the backend's own defaults apply (R1: never invents values
-// the operator never set).
+// handleGetModelConfig returns the configured default parameter profile for
+// a model on a specific node. GET /admin/model-config?model=X&node=Y. 404 if
+// no profile is configured for that exact pair — the caller sees the
+// backend's own defaults apply (R1: never invents values the operator never
+// set).
 func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
 	model := r.URL.Query().Get("model")
+	node := r.URL.Query().Get("node")
 	if model == "" {
 		writeJSONError(w, http.StatusBadRequest, "model query param is required")
 		return
 	}
-	cfg, err := s.st.GetModelConfig(model)
+	if node == "" {
+		writeJSONError(w, http.StatusBadRequest, "node query param is required")
+		return
+	}
+	cfg, err := s.st.GetModelConfig(model, node)
 	if err == store.ErrNotFound {
-		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("no config profile for model %q", model))
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("no config profile for model %q on node %q", model, node))
 		return
 	}
 	if err != nil {
@@ -1463,6 +1470,21 @@ func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfg)
+}
+
+// handleModelConfigCapabilities returns, for every known runtime, which
+// ModelConfig fields actually take effect when injected — the single source
+// of truth (store.SupportedFieldsFor) the UI reads to show only fields that
+// are real for a given model/node's runtime, instead of hand-duplicating
+// this list in TypeScript (which is exactly what caused this list to drift
+// out of sync with the backend before). GET /admin/model-config/capabilities.
+func (s *Server) handleModelConfigCapabilities(w http.ResponseWriter, r *http.Request) {
+	out := map[string][]string{}
+	for _, runtime := range []string{"ollama", "vllm", "tgi", "llamacpp"} {
+		out[runtime] = store.SupportedFieldsFor(runtime)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 // handleListModelConfigs returns every configured model profile.
@@ -1497,6 +1519,9 @@ func modelConfigRange(name string, v *float64, min, max float64) string {
 func validateModelConfig(cfg store.ModelConfig) string {
 	if cfg.Model == "" {
 		return "model is required"
+	}
+	if cfg.Node == "" {
+		return "node is required"
 	}
 	for _, msg := range []string{
 		modelConfigRange("temperature", cfg.Temperature, 0, 2),
@@ -1542,26 +1567,32 @@ func (s *Server) handleSetModelConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.logSystemChange(r, "set_model_config", cfg.Model, "updated model configuration profile")
+	s.logSystemChange(r, "set_model_config", cfg.Model+"@"+cfg.Node, "updated model configuration profile")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfg)
 }
 
-// handleDeleteModelConfig resets a model to backend defaults by removing its
-// configured profile. DELETE /admin/model-config?model=X.
+// handleDeleteModelConfig resets a model on a specific node to backend
+// defaults by removing its configured profile. DELETE
+// /admin/model-config?model=X&node=Y.
 func (s *Server) handleDeleteModelConfig(w http.ResponseWriter, r *http.Request) {
 	model := r.URL.Query().Get("model")
+	node := r.URL.Query().Get("node")
 	if model == "" {
 		writeJSONError(w, http.StatusBadRequest, "model query param is required")
 		return
 	}
-	if err := s.st.DeleteModelConfig(model); err != nil {
+	if node == "" {
+		writeJSONError(w, http.StatusBadRequest, "node query param is required")
+		return
+	}
+	if err := s.st.DeleteModelConfig(model, node); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.logSystemChange(r, "delete_model_config", model, "reset model configuration profile to defaults")
+	s.logSystemChange(r, "delete_model_config", model+"@"+node, "reset model configuration profile to defaults")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"model": model, "status": "reset"})
+	json.NewEncoder(w).Encode(map[string]string{"model": model, "node": node, "status": "reset"})
 }
 
 // generateAPIKey creates a cryptographically random API key of the form sk-<name>-<48 hex chars>.
@@ -3028,10 +3059,11 @@ func (s *Server) ContextWindowFor(model string) (int, bool) {
 }
 
 // ModelConfigFor returns the operator-configured default parameter profile
-// for model, if one exists. Lets the proxy inject defaults without holding a
-// direct store reference (mirrors ContextWindowFor's admin-as-facade shape).
-func (s *Server) ModelConfigFor(model string) (store.ModelConfig, bool) {
-	cfg, err := s.st.GetModelConfig(model)
+// for model on the given node, if one exists. Lets the proxy inject defaults
+// without holding a direct store reference (mirrors ContextWindowFor's
+// admin-as-facade shape).
+func (s *Server) ModelConfigFor(model, node string) (store.ModelConfig, bool) {
+	cfg, err := s.st.GetModelConfig(model, node)
 	if err != nil {
 		return store.ModelConfig{}, false
 	}

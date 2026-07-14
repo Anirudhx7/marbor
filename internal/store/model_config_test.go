@@ -10,7 +10,7 @@ func float64p(v float64) *float64 { return &v }
 func intp(v int) *int             { return &v }
 
 // TestModelConfigCRUDAndPersistence verifies Set/Get/Delete round-trip a full
-// profile and that it survives a reopen (item #20).
+// profile and that it survives a reopen (item #20). Keyed by (model, node).
 func TestModelConfigCRUDAndPersistence(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/mc.db"
@@ -18,6 +18,7 @@ func TestModelConfigCRUDAndPersistence(t *testing.T) {
 	s := openTestDBAt(t, path)
 	cfg := store.ModelConfig{
 		Model:       "llama3.3:70b",
+		Node:        "gpu-node-01",
 		NumCtx:      intp(8192),
 		Temperature: float64p(0.6),
 		TopP:        float64p(0.95),
@@ -28,7 +29,7 @@ func TestModelConfigCRUDAndPersistence(t *testing.T) {
 		t.Fatalf("SetModelConfig: %v", err)
 	}
 
-	got, err := s.GetModelConfig("llama3.3:70b")
+	got, err := s.GetModelConfig("llama3.3:70b", "gpu-node-01")
 	if err != nil {
 		t.Fatalf("GetModelConfig: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestModelConfigCRUDAndPersistence(t *testing.T) {
 	// Survives reopen.
 	s2 := openTestDBAt(t, path)
 	defer s2.Close()
-	got2, err := s2.GetModelConfig("llama3.3:70b")
+	got2, err := s2.GetModelConfig("llama3.3:70b", "gpu-node-01")
 	if err != nil {
 		t.Fatalf("GetModelConfig after reopen: %v", err)
 	}
@@ -62,24 +63,78 @@ func TestModelConfigCRUDAndPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllModelConfigs: %v", err)
 	}
-	if len(all) != 1 || all[0].Model != "llama3.3:70b" {
+	if len(all) != 1 || all[0].Model != "llama3.3:70b" || all[0].Node != "gpu-node-01" {
 		t.Fatalf("AllModelConfigs = %+v", all)
 	}
 
-	if err := s2.DeleteModelConfig("llama3.3:70b"); err != nil {
+	if err := s2.DeleteModelConfig("llama3.3:70b", "gpu-node-01"); err != nil {
 		t.Fatalf("DeleteModelConfig: %v", err)
 	}
-	if _, err := s2.GetModelConfig("llama3.3:70b"); err != store.ErrNotFound {
+	if _, err := s2.GetModelConfig("llama3.3:70b", "gpu-node-01"); err != store.ErrNotFound {
 		t.Fatalf("GetModelConfig after delete = %v, want ErrNotFound", err)
 	}
 }
 
-// TestGetModelConfigNotFound verifies an unconfigured model reports
-// ErrNotFound rather than a zero-value profile silently masquerading as
-// "configured with all defaults".
+// TestGetModelConfigNotFound verifies an unconfigured (model, node) pair
+// reports ErrNotFound rather than a zero-value profile silently masquerading
+// as "configured with all defaults".
 func TestGetModelConfigNotFound(t *testing.T) {
 	s := openTestDB(t)
-	if _, err := s.GetModelConfig("never-configured"); err != store.ErrNotFound {
+	if _, err := s.GetModelConfig("never-configured", "gpu-node-01"); err != store.ErrNotFound {
 		t.Fatalf("GetModelConfig = %v, want ErrNotFound", err)
+	}
+}
+
+// TestModelConfigSameModelDifferentNodes verifies the same model name can
+// carry two independent profiles on two different nodes — the core reason
+// for keying by (model, node) rather than model alone (e.g. one Ollama node
+// with a smaller VRAM budget wanting a smaller num_ctx than another node
+// hosting the identical model, or two nodes running different runtimes
+// entirely).
+func TestModelConfigSameModelDifferentNodes(t *testing.T) {
+	s := openTestDB(t)
+
+	cfgA := store.ModelConfig{Model: "llama3.3:8b", Node: "gpu-node-01", NumCtx: intp(4096)}
+	cfgB := store.ModelConfig{Model: "llama3.3:8b", Node: "gpu-node-02", NumCtx: intp(8192)}
+	if err := s.SetModelConfig(cfgA); err != nil {
+		t.Fatalf("SetModelConfig A: %v", err)
+	}
+	if err := s.SetModelConfig(cfgB); err != nil {
+		t.Fatalf("SetModelConfig B: %v", err)
+	}
+
+	gotA, err := s.GetModelConfig("llama3.3:8b", "gpu-node-01")
+	if err != nil {
+		t.Fatalf("GetModelConfig A: %v", err)
+	}
+	if gotA.NumCtx == nil || *gotA.NumCtx != 4096 {
+		t.Fatalf("node-01 NumCtx = %v, want 4096", gotA.NumCtx)
+	}
+
+	gotB, err := s.GetModelConfig("llama3.3:8b", "gpu-node-02")
+	if err != nil {
+		t.Fatalf("GetModelConfig B: %v", err)
+	}
+	if gotB.NumCtx == nil || *gotB.NumCtx != 8192 {
+		t.Fatalf("node-02 NumCtx = %v, want 8192", gotB.NumCtx)
+	}
+
+	all, err := s.AllModelConfigs()
+	if err != nil {
+		t.Fatalf("AllModelConfigs: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("AllModelConfigs = %+v, want 2 rows for the same model on different nodes", all)
+	}
+
+	// Deleting node-01's profile must not touch node-02's.
+	if err := s.DeleteModelConfig("llama3.3:8b", "gpu-node-01"); err != nil {
+		t.Fatalf("DeleteModelConfig: %v", err)
+	}
+	if _, err := s.GetModelConfig("llama3.3:8b", "gpu-node-01"); err != store.ErrNotFound {
+		t.Fatalf("node-01 after delete = %v, want ErrNotFound", err)
+	}
+	if _, err := s.GetModelConfig("llama3.3:8b", "gpu-node-02"); err != nil {
+		t.Fatalf("node-02 should be untouched: %v", err)
 	}
 }

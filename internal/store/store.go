@@ -150,11 +150,16 @@ type Store interface {
 
 	// Model configuration overrides — an operator-declared default parameter
 	// profile (load-time engine params, inference-time sampling defaults, meta
-	// fields) for a model, applied whenever ollama-mesh routes to it.
-	// GetModelConfig returns ErrNotFound if the model has no configured profile.
-	GetModelConfig(model string) (ModelConfig, error)
+	// fields) for a model on a specific node, applied whenever ollama-mesh
+	// routes to it. Keyed by (model, node) rather than model alone: the same
+	// model name can be resident on nodes with different runtimes (Ollama,
+	// vLLM, TGI, llama.cpp) or simply different VRAM budgets, and a single
+	// shared profile can't express per-node differences in either case.
+	// GetModelConfig returns ErrNotFound if there's no configured profile for
+	// that exact (model, node) pair.
+	GetModelConfig(model, node string) (ModelConfig, error)
 	SetModelConfig(cfg ModelConfig) error
-	DeleteModelConfig(model string) error
+	DeleteModelConfig(model, node string) error
 	AllModelConfigs() ([]ModelConfig, error)
 
 	Close() error
@@ -372,6 +377,11 @@ type WarmStateRecord struct {
 // explicitly set (R1: no fabricated defaults masquerading as configuration).
 type ModelConfig struct {
 	Model string `json:"model"`
+	// Node is the specific node this profile applies to (required — a
+	// profile with no node has no meaning, since injection always happens
+	// against one already-selected node). The same model name may have a
+	// separate ModelConfig row per node it's resident on.
+	Node string `json:"node"`
 
 	// Load-time / engine parameters. Injected into every routed request's
 	// Ollama "options" object; Ollama reloads the model automatically when a
@@ -498,8 +508,8 @@ func (NopStore) DeleteWarmState(_, _ string) error                 { return nil 
 func (NopStore) DeleteWarmStateByNode(_ string) error              { return nil }
 func (NopStore) AllWarmState() ([]WarmStateRecord, error)          { return nil, nil }
 func (NopStore) ReconcileNodeWarmState(_ string, _ []string) error { return nil }
-func (NopStore) GetModelConfig(_ string) (ModelConfig, error)      { return ModelConfig{}, ErrNotFound }
+func (NopStore) GetModelConfig(_, _ string) (ModelConfig, error)   { return ModelConfig{}, ErrNotFound }
 func (NopStore) SetModelConfig(_ ModelConfig) error                { return nil }
-func (NopStore) DeleteModelConfig(_ string) error                  { return nil }
+func (NopStore) DeleteModelConfig(_, _ string) error               { return nil }
 func (NopStore) AllModelConfigs() ([]ModelConfig, error)           { return nil, nil }
 func (NopStore) Close() error                                      { return nil }

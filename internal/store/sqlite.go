@@ -268,21 +268,30 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		// model_configs holds the operator-declared default parameter profile
-		// per model (item #20 — advanced model config overrides). The full
-		// profile (30 load-time/inference-time/meta fields, see ModelConfig)
-		// is stored as one JSON blob rather than one column per field, matching
-		// the existing runtime_keys.models / warmup_models.nodes_json idiom in
-		// this file — there's no need to filter/sort by individual param, only
-		// to fetch the whole profile by model name.
+		// per (model, node) pair (item #20 — advanced model config overrides).
+		// Keyed by node, not just model: the same model name can be resident
+		// on nodes with different runtimes (Ollama/vLLM/TGI/llama.cpp) or just
+		// different VRAM budgets, and a single shared-by-model-name profile
+		// can't express either case. The full profile (30 load-time/
+		// inference-time/meta fields, see ModelConfig) is stored as one JSON
+		// blob rather than one column per field, matching the existing
+		// runtime_keys.models / warmup_models.nodes_json idiom in this file —
+		// there's no need to filter/sort by individual param, only to fetch
+		// the whole profile by (model, node).
 		`CREATE TABLE IF NOT EXISTS model_configs (
-			model       TEXT PRIMARY KEY,
-			config_json TEXT NOT NULL
+			model       TEXT NOT NULL,
+			node        TEXT NOT NULL,
+			config_json TEXT NOT NULL,
+			PRIMARY KEY (model, node)
 		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate stmt: %w\nSQL: %s", err, stmt)
 		}
+	}
+	if err := s.migrateModelConfigsToNodeKeyed(); err != nil {
+		return fmt.Errorf("migrate model_configs to (model,node) key: %w", err)
 	}
 	// Idempotent column additions for schema upgrades on existing DBs.
 	for _, col := range []string{
@@ -1648,9 +1657,9 @@ func (s *sqliteStore) ReconcileNodeWarmState(node string, residentModels []strin
 
 // --- Model configuration overrides ---
 
-func (s *sqliteStore) GetModelConfig(model string) (ModelConfig, error) {
+func (s *sqliteStore) GetModelConfig(model, node string) (ModelConfig, error) {
 	var configJSON string
-	err := s.db.QueryRow(`SELECT config_json FROM model_configs WHERE model = ?`, model).Scan(&configJSON)
+	err := s.db.QueryRow(`SELECT config_json FROM model_configs WHERE model = ? AND node = ?`, model, node).Scan(&configJSON)
 	if err == sql.ErrNoRows {
 		return ModelConfig{}, ErrNotFound
 	}
@@ -1662,6 +1671,7 @@ func (s *sqliteStore) GetModelConfig(model string) (ModelConfig, error) {
 		return ModelConfig{}, fmt.Errorf("store: GetModelConfig unmarshal: %w", err)
 	}
 	cfg.Model = model
+	cfg.Node = node
 	return cfg, nil
 }
 
@@ -1671,8 +1681,8 @@ func (s *sqliteStore) SetModelConfig(cfg ModelConfig) error {
 		return fmt.Errorf("store: SetModelConfig marshal: %w", err)
 	}
 	_, err = s.db.Exec(
-		`INSERT OR REPLACE INTO model_configs (model, config_json) VALUES (?, ?)`,
-		cfg.Model, string(configJSON),
+		`INSERT OR REPLACE INTO model_configs (model, node, config_json) VALUES (?, ?, ?)`,
+		cfg.Model, cfg.Node, string(configJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("store: SetModelConfig: %w", err)
@@ -1680,8 +1690,8 @@ func (s *sqliteStore) SetModelConfig(cfg ModelConfig) error {
 	return nil
 }
 
-func (s *sqliteStore) DeleteModelConfig(model string) error {
-	_, err := s.db.Exec(`DELETE FROM model_configs WHERE model = ?`, model)
+func (s *sqliteStore) DeleteModelConfig(model, node string) error {
+	_, err := s.db.Exec(`DELETE FROM model_configs WHERE model = ? AND node = ?`, model, node)
 	if err != nil {
 		return fmt.Errorf("store: DeleteModelConfig: %w", err)
 	}
@@ -1689,7 +1699,7 @@ func (s *sqliteStore) DeleteModelConfig(model string) error {
 }
 
 func (s *sqliteStore) AllModelConfigs() ([]ModelConfig, error) {
-	rows, err := s.db.Query(`SELECT model, config_json FROM model_configs ORDER BY model ASC`)
+	rows, err := s.db.Query(`SELECT model, node, config_json FROM model_configs ORDER BY model ASC, node ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllModelConfigs: %w", err)
 	}
@@ -1697,8 +1707,8 @@ func (s *sqliteStore) AllModelConfigs() ([]ModelConfig, error) {
 
 	var out []ModelConfig
 	for rows.Next() {
-		var model, configJSON string
-		if err := rows.Scan(&model, &configJSON); err != nil {
+		var model, node, configJSON string
+		if err := rows.Scan(&model, &node, &configJSON); err != nil {
 			return nil, fmt.Errorf("store: AllModelConfigs scan: %w", err)
 		}
 		var cfg ModelConfig
@@ -1706,10 +1716,130 @@ func (s *sqliteStore) AllModelConfigs() ([]ModelConfig, error) {
 			continue // skip a corrupt row rather than failing the whole list
 		}
 		cfg.Model = model
+		cfg.Node = node
 		out = append(out, cfg)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: AllModelConfigs rows: %w", err)
 	}
 	return out, nil
+}
+
+// migrateModelConfigsToNodeKeyed rebuilds model_configs from its original
+// model-only primary key to a (model, node) composite key. SQLite can't
+// ALTER a PRIMARY KEY in place, so this does a one-time rebuild: detect the
+// old schema via PRAGMA table_info, then fan each old model-only row out to
+// every node currently known in runtime_nodes — preserving existing operator
+// settings instead of silently discarding them — before dropping the old
+// table. A no-op on a fresh DB (model_configs already has the new schema)
+// and a no-op if there's nothing to migrate.
+func (s *sqliteStore) migrateModelConfigsToNodeKeyed() error {
+	rows, err := s.db.Query(`PRAGMA table_info(model_configs)`)
+	if err != nil {
+		return err
+	}
+	hasNodeCol := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "node" {
+			hasNodeCol = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if hasNodeCol {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`CREATE TABLE model_configs_new (
+		model       TEXT NOT NULL,
+		node        TEXT NOT NULL,
+		config_json TEXT NOT NULL,
+		PRIMARY KEY (model, node)
+	)`); err != nil {
+		return err
+	}
+
+	oldRows, err := tx.Query(`SELECT model, config_json FROM model_configs`)
+	if err != nil {
+		return err
+	}
+	type oldCfg struct{ model, json string }
+	var old []oldCfg
+	for oldRows.Next() {
+		var c oldCfg
+		if err := oldRows.Scan(&c.model, &c.json); err != nil {
+			oldRows.Close()
+			return err
+		}
+		old = append(old, c)
+	}
+	if err := oldRows.Err(); err != nil {
+		oldRows.Close()
+		return err
+	}
+	oldRows.Close()
+
+	nodeRows, err := tx.Query(`SELECT name FROM runtime_nodes`)
+	if err != nil {
+		return err
+	}
+	var nodeNames []string
+	for nodeRows.Next() {
+		var n string
+		if err := nodeRows.Scan(&n); err != nil {
+			nodeRows.Close()
+			return err
+		}
+		nodeNames = append(nodeNames, n)
+	}
+	if err := nodeRows.Err(); err != nil {
+		nodeRows.Close()
+		return err
+	}
+	nodeRows.Close()
+
+	for _, c := range old {
+		for _, node := range nodeNames {
+			patched := c.json
+			var m map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(c.json), &m); err == nil {
+				if nodeBytes, err := json.Marshal(node); err == nil {
+					m["node"] = nodeBytes
+					if out, err := json.Marshal(m); err == nil {
+						patched = string(out)
+					}
+				}
+			}
+			if _, err := tx.Exec(
+				`INSERT OR REPLACE INTO model_configs_new (model, node, config_json) VALUES (?, ?, ?)`,
+				c.model, node, patched,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	if _, err := tx.Exec(`DROP TABLE model_configs`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE model_configs_new RENAME TO model_configs`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

@@ -291,31 +291,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
-	// Advanced model configuration overrides (item #20): apply the operator's
-	// configured default profile for this model, if one exists. rpm/tpm are
-	// enforced as a pre-request gate; every other field is merged into the
-	// outgoing body only where the client didn't already specify it.
-	var modelCfg store.ModelConfig
-	var hasModelCfg bool
-	if h.admin != nil {
-		modelCfg, hasModelCfg = h.admin.ModelConfigFor(modelName)
-	}
-	if hasModelCfg && (modelCfg.RPM != nil || modelCfg.TPM != nil) {
-		if !h.modelLimiter.allow(modelName, modelCfg.RPM, modelCfg.TPM) {
-			if h.auth != nil {
-				h.auth.Refund(keyName)
-			}
-			writeAPIError(w, http.StatusTooManyRequests,
-				fmt.Sprintf("model %q rate limit exceeded (rpm/tpm cap)", modelName),
-				"server_error", "model_rate_limited")
-			metrics.RequestsTotal(keyName, modelName, "none", "429")
-			return
-		}
-	}
-	if hasModelCfg {
-		body = injectModelDefaults(body, isOllamaPath(r.URL.Path), modelCfg)
-		r.Body = io.NopCloser(bytes.NewReader(body))
-	}
+	// Advanced model configuration overrides (item #20) are applied further
+	// down, right after a node is selected — the profile is keyed by
+	// (model, node), so which node's config applies can't be known until
+	// routing has actually picked one. See the block right after
+	// h.router.IncrConn(node) below.
 
 	// Context-length vs. model-window admission check. Cheap char-count/4
 	// heuristic - no tokenizer dependency. A model's context window is
@@ -390,6 +370,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h.router.IncrConn(node)
 	h.router.RecordModelUse(node.Name, modelName) // LRU signal for model eviction
+
+	// Advanced model configuration overrides (item #20): apply the operator's
+	// configured default profile for this (model, node) pair, if one exists.
+	// A profile is keyed by node as well as model — the same model name can
+	// be resident on nodes with different runtimes or different VRAM
+	// budgets, so it can only be resolved once a node has actually been
+	// selected. rpm/tpm are enforced as a pre-send gate; every other field
+	// is merged into the outgoing body only where the client didn't already
+	// specify it, using injection rules specific to this node's runtime.
+	var modelCfg store.ModelConfig
+	var hasModelCfg bool
+	if h.admin != nil {
+		modelCfg, hasModelCfg = h.admin.ModelConfigFor(modelName, node.Name)
+	}
+	if hasModelCfg && (modelCfg.RPM != nil || modelCfg.TPM != nil) {
+		if !h.modelLimiter.allow(modelName, node.Name, modelCfg.RPM, modelCfg.TPM) {
+			h.router.DecrConn(node)
+			if h.auth != nil {
+				h.auth.Refund(keyName)
+			}
+			writeAPIError(w, http.StatusTooManyRequests,
+				fmt.Sprintf("model %q rate limit exceeded on node %q (rpm/tpm cap)", modelName, node.Name),
+				"server_error", "model_rate_limited")
+			metrics.RequestsTotal(keyName, modelName, node.Name, "429")
+			return
+		}
+	}
+	if hasModelCfg {
+		runtime := node.Runtime
+		body = injectModelDefaults(body, runtime, modelCfg)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
 
 	targetURL, err := url.Parse(node.URL)
 	if err != nil {
@@ -562,7 +574,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, logTokens)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(modelName, tokens, rec.evalDurationMs())
-			h.modelLimiter.recordTokens(modelName, int64(tokens))
+			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
 		}
 	}
 	if h.audit != nil {
@@ -916,7 +928,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, logTokens)
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
-			h.modelLimiter.recordTokens(modelName, int64(tokens))
+			// Model-config rpm/tpm caps are keyed to a specific local mesh
+			// node's profile and don't apply to cloud dispatch — cloud spend
+			// already has its own governance via CloudBudgetExceeded and the
+			// runtime_keys daily/monthly USD caps, which is the correct place
+			// for cloud cost control rather than a per-node capacity knob.
 		}
 	}
 	if h.audit != nil {
