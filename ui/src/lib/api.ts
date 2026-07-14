@@ -687,15 +687,18 @@ export async function pullModel(nodeName: string, model: string): Promise<void> 
 }
 
 // fetchModelConfig returns the configured default parameter profile for a
-// model, or null if none is configured (backend returns 404 in that case —
-// R1: the UI must show "not set", never fabricate a value).
-export async function fetchModelConfig(model: string): Promise<ModelConfig | null> {
-  const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}`, { headers: authHeaders() });
+// (model, node) pair, or null if none is configured (backend returns 404 in
+// that case — R1: the UI must show "not set", never fabricate a value).
+// Both model and node are required by the backend.
+export async function fetchModelConfig(model: string, node: string): Promise<ModelConfig | null> {
+  const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}&node=${encodeURIComponent(node)}`, { headers: authHeaders() });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to fetch model config: ${res.statusText}`);
   return res.json();
 }
 
+// saveModelConfig upserts a profile for the (model, node) pair named in the
+// body — cfg.model and cfg.node are both required by the backend.
 export async function saveModelConfig(cfg: ModelConfig): Promise<ModelConfig> {
   const res = await apiFetch(`${BASE}/model-config`, {
     method: 'PUT',
@@ -709,8 +712,9 @@ export async function saveModelConfig(cfg: ModelConfig): Promise<ModelConfig> {
   return res.json();
 }
 
-export async function deleteModelConfig(model: string): Promise<void> {
-  const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}`, {
+// deleteModelConfig resets a single (model, node) pair to backend defaults.
+export async function deleteModelConfig(model: string, node: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}&node=${encodeURIComponent(node)}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
@@ -722,6 +726,18 @@ export async function fetchAllModelConfigs(): Promise<ModelConfig[]> {
   if (!res.ok) throw new Error('Failed to fetch model configs');
   const data = await res.json();
   return data.configs ?? [];
+}
+
+// fetchModelConfigCapabilities returns, for each known runtime (ollama, vllm,
+// tgi, llamacpp), the exact ModelConfig JSON field names that actually take
+// effect when injected for that runtime. This is the single source of truth
+// the UI uses to decide which fields to render/enable per node — it must
+// never hand-duplicate this list from memory, since that's exactly what
+// drifted out of sync with the backend before this endpoint existed.
+export async function fetchModelConfigCapabilities(): Promise<Record<string, string[]>> {
+  const res = await apiFetch(`${BASE}/model-config/capabilities`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch model config capabilities');
+  return res.json();
 }
 
 export async function fetchModelFit(): Promise<ModelFitResponse> {

@@ -840,32 +840,53 @@ export const mockHFRepoDetails: Record<string, any> = {
 // --- Model configuration overrides (demo) ---
 // Plausible static profiles: a realistic MIX of some fields set, most left
 // unconfigured — an all-fields-filled profile would look fabricated (R1).
+// Keyed by (model, node) — the same model name can carry a different
+// profile per node/runtime it's resident on (see mockGPUNodes/mockModelCatalog
+// above: gpu-node-01=ollama, gpu-node-02=vllm, gpu-node-03=tgi, gpu-node-04=llamacpp).
 const mockModelConfigSeed: ModelConfig[] = [
   {
-    model: 'deepseek-r1:7b',
-    num_ctx: 8192,
-    temperature: 0.6,
-    top_p: 0.95,
-    system: 'You are a careful reasoning assistant. Think step by step before answering.',
-  },
-  {
     model: 'llama3.3:8b',
+    node: 'gpu-node-01',
     num_ctx: 4096,
     num_gpu: 999,
-    flash_attention: true,
     repeat_penalty: 1.15,
     rpm: 120,
+    system: 'You are a careful reasoning assistant. Think step by step before answering.',
   },
-  // Resident only on non-Ollama nodes (gpu-node-02 vLLM, gpu-node-03 TGI) —
-  // load-time/engine params intentionally absent here since they're
-  // launch-time-only flags on those runtimes, not settable per-request.
+  // mistral:7b is resident on both a vLLM node and a TGI node — two separate
+  // profiles, since load-time/engine params only ever apply on Ollama and
+  // the two OpenAI-compatible runtimes support different extra fields.
   {
     model: 'mistral:7b',
+    node: 'gpu-node-02',
     temperature: 0.7,
     top_p: 0.9,
+    top_k: 40,
+    ignore_eos: false,
     rpm: 200,
   },
+  {
+    model: 'mistral:7b',
+    node: 'gpu-node-03',
+    temperature: 0.65,
+    max_tokens: 2048,
+  },
+  // phi3:medium is resident on gpu-node-04 (llama.cpp) — exercises the
+  // llama.cpp-only sampling extras (mirostat, DRY).
+  {
+    model: 'phi3:medium',
+    node: 'gpu-node-04',
+    temperature: 0.7,
+    mirostat: 2,
+    mirostat_tau: 5,
+    dry_multiplier: 0.8,
+    dry_base: 1.75,
+  },
 ];
+
+function modelConfigKey(model: string, node: string): string {
+  return `${model}@@${node}`;
+}
 
 // Mutable in-memory demo store so the config modal behaves realistically
 // (save/reset) within a session; resets on reload, same lifecycle as
@@ -873,26 +894,75 @@ const mockModelConfigSeed: ModelConfig[] = [
 let demoModelConfigs: Map<string, ModelConfig> | null = null;
 function demoModelConfigStore(): Map<string, ModelConfig> {
   if (!demoModelConfigs) {
-    demoModelConfigs = new Map(mockModelConfigSeed.map(c => [c.model, c]));
+    demoModelConfigs = new Map(mockModelConfigSeed.map(c => [modelConfigKey(c.model, c.node), c]));
   }
   return demoModelConfigs;
 }
 
-export function getMockModelConfig(model: string): ModelConfig | null {
-  return demoModelConfigStore().get(model) ?? null;
+export function getMockModelConfig(model: string, node: string): ModelConfig | null {
+  return demoModelConfigStore().get(modelConfigKey(model, node)) ?? null;
 }
 
 export function setMockModelConfig(cfg: ModelConfig): ModelConfig {
-  demoModelConfigStore().set(cfg.model, cfg);
+  demoModelConfigStore().set(modelConfigKey(cfg.model, cfg.node), cfg);
   return cfg;
 }
 
-export function deleteMockModelConfig(model: string): void {
-  demoModelConfigStore().delete(model);
+export function deleteMockModelConfig(model: string, node: string): void {
+  demoModelConfigStore().delete(modelConfigKey(model, node));
 }
 
 export function listMockModelConfigs(): ModelConfig[] {
   return Array.from(demoModelConfigStore().values());
+}
+
+// --- Model config capabilities (demo) ---
+// Mirrors internal/store/model_config_capabilities.go's SupportedFieldsFor
+// table so the offline/demo build filters fields the same way the real API
+// does. Hardcoded here deliberately — this is the demo/offline path, not the
+// real API contract (the live build always calls fetchModelConfigCapabilities).
+const OPENAI_COMPAT_BASE_FIELDS = [
+  'temperature', 'top_p', 'max_tokens', 'seed', 'stop',
+  'presence_penalty', 'frequency_penalty', 'response_format',
+];
+// Ollama-only, verified against Ollama's current api/types.go
+// Options/Runner structs — flash_attention, offload_kv_cache_to_gpu,
+// rope_frequency_base/scale, use_mlock, and tensor_parallelism removed:
+// none are real per-request params in current Ollama.
+const OLLAMA_LOAD_TIME_FIELDS = [
+  'num_ctx', 'num_gpu', 'main_gpu', 'num_batch', 'num_thread', 'use_mmap', 'draft_num_predict', 'ttl',
+];
+// mirostat*/tfs_z removed: not in Ollama's current Options struct (tfs_z was
+// removed from llama.cpp itself too, hence its ModelConfig field is gone
+// entirely). mirostat* remain valid for llama.cpp only, listed below.
+const OLLAMA_INFERENCE_FIELDS = [
+  'top_k', 'min_p', 'typical_p', 'num_keep', 'repeat_penalty', 'repeat_last_n',
+];
+
+export function getMockModelConfigCapabilities(): Record<string, string[]> {
+  // system is supported on every runtime: injectModelDefaults prepends it as
+  // a leading system-role message on chat-shaped OpenAI-compatible requests.
+  // template stays Ollama-only — it's Ollama's own model-file
+  // prompt-templating mechanism, with no OpenAI-compatible equivalent.
+  return {
+    ollama: [...OPENAI_COMPAT_BASE_FIELDS, ...OLLAMA_LOAD_TIME_FIELDS, ...OLLAMA_INFERENCE_FIELDS, 'system', 'template', 'rpm', 'tpm'],
+    vllm: [
+      ...OPENAI_COMPAT_BASE_FIELDS,
+      'top_k', 'min_p', 'repetition_penalty',
+      'length_penalty', 'stop_token_ids', 'include_stop_str_in_output',
+      'ignore_eos', 'min_tokens', 'skip_special_tokens', 'truncate_prompt_tokens',
+      'system', 'rpm', 'tpm',
+    ],
+    tgi: [...OPENAI_COMPAT_BASE_FIELDS, 'system', 'rpm', 'tpm'],
+    llamacpp: [
+      ...OPENAI_COMPAT_BASE_FIELDS,
+      'repeat_penalty', 'repeat_last_n', 'typical_p', 'mirostat', 'mirostat_tau', 'mirostat_eta',
+      'num_keep', 'logit_bias', 'n_probs', 'min_keep',
+      'dry_multiplier', 'dry_base', 'dry_allowed_length', 'dry_penalty_last_n',
+      'xtc_probability', 'xtc_threshold', 'ignore_eos',
+      'system', 'rpm', 'tpm',
+    ],
+  };
 }
 
 

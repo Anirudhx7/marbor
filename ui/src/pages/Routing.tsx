@@ -82,6 +82,7 @@ export function Routing() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<RoutingRule | null>(null);
+  const [strategyToConfirm, setStrategyToConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   const [newRuleForm, setNewRuleForm] = useState({
@@ -238,7 +239,7 @@ export function Routing() {
         {STRATEGIES.map((strategy) => (
           <button
             key={strategy.value}
-            onClick={() => handleStrategyChange(strategy.value)}
+            onClick={() => { if (strategy.value !== currentStrategy) setStrategyToConfirm(strategy.value); }}
             className={`flex flex-col p-5 rounded-xl border text-left transition-colors ${
               currentStrategy === strategy.value
                 ? 'bg-primary/5 border-primary shadow-sm'
@@ -507,6 +508,46 @@ export function Routing() {
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Delete Rule
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Strategy Change Confirmation Modal */}
+      <Modal
+        isOpen={strategyToConfirm !== null}
+        onClose={() => setStrategyToConfirm(null)}
+        title="Change Routing Strategy"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to switch the routing strategy from{' '}
+            <span className="text-foreground font-semibold">{STRATEGIES.find((s) => s.value === currentStrategy)?.label ?? 'none'}</span> to{' '}
+            <span className="text-foreground font-semibold">{STRATEGIES.find((s) => s.value === strategyToConfirm)?.label}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This changes how every request across the entire mesh is load-balanced, effective immediately for all live traffic.
+          </p>
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setStrategyToConfirm(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!strategyToConfirm) return;
+                await handleStrategyChange(strategyToConfirm);
+                setStrategyToConfirm(null);
+              }}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Change Strategy
             </button>
           </div>
         </div>
