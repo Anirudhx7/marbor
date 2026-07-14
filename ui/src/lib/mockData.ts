@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse } from '../types';
+import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig } from '../types';
 import type { SystemInfo } from './api';
 
 const GB = 1024;
@@ -836,5 +836,63 @@ export const mockHFRepoDetails: Record<string, any> = {
     ]
   }
 };
-;
+
+// --- Model configuration overrides (demo) ---
+// Plausible static profiles: a realistic MIX of some fields set, most left
+// unconfigured — an all-fields-filled profile would look fabricated (R1).
+const mockModelConfigSeed: ModelConfig[] = [
+  {
+    model: 'deepseek-r1:7b',
+    num_ctx: 8192,
+    temperature: 0.6,
+    top_p: 0.95,
+    system: 'You are a careful reasoning assistant. Think step by step before answering.',
+  },
+  {
+    model: 'llama3.3:8b',
+    num_ctx: 4096,
+    num_gpu: 999,
+    flash_attention: true,
+    repeat_penalty: 1.15,
+    rpm: 120,
+  },
+  // Resident only on non-Ollama nodes (gpu-node-02 vLLM, gpu-node-03 TGI) —
+  // load-time/engine params intentionally absent here since they're
+  // launch-time-only flags on those runtimes, not settable per-request.
+  {
+    model: 'mistral:7b',
+    temperature: 0.7,
+    top_p: 0.9,
+    rpm: 200,
+  },
+];
+
+// Mutable in-memory demo store so the config modal behaves realistically
+// (save/reset) within a session; resets on reload, same lifecycle as
+// api.ts's demoUsers roster.
+let demoModelConfigs: Map<string, ModelConfig> | null = null;
+function demoModelConfigStore(): Map<string, ModelConfig> {
+  if (!demoModelConfigs) {
+    demoModelConfigs = new Map(mockModelConfigSeed.map(c => [c.model, c]));
+  }
+  return demoModelConfigs;
+}
+
+export function getMockModelConfig(model: string): ModelConfig | null {
+  return demoModelConfigStore().get(model) ?? null;
+}
+
+export function setMockModelConfig(cfg: ModelConfig): ModelConfig {
+  demoModelConfigStore().set(cfg.model, cfg);
+  return cfg;
+}
+
+export function deleteMockModelConfig(model: string): void {
+  demoModelConfigStore().delete(model);
+}
+
+export function listMockModelConfigs(): ModelConfig[] {
+  return Array.from(demoModelConfigStore().values());
+}
+
 

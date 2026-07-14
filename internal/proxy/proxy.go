@@ -23,6 +23,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 // maxRequestBodyBytes bounds how much of a request body the proxy will buffer
@@ -83,6 +84,11 @@ type Handler struct {
 	// therefore a fresh TCP/TLS handshake) on every request.
 	localTransportOnce sync.Once
 	localTransport     *http.Transport
+
+	// modelLimiter enforces optional per-model rpm/tpm caps from a model's
+	// configured profile (store.ModelConfig). In-process only, matching the
+	// rest of this file's rate-limiting state.
+	modelLimiter *modelRateLimiter
 }
 
 // cloudRoundTripper returns the shared cloud transport, constructing it once.
@@ -111,7 +117,7 @@ func (h *Handler) localRoundTripper() *http.Transport {
 
 func NewHandler(r *router.Router, a *admin.Server, al *audit.Logger) *Handler {
 	// access defaults to a no-op logger; main wires a real one via SetAccessLogger.
-	return &Handler{router: r, admin: a, audit: al, access: NewAccessLogger(nil, false)}
+	return &Handler{router: r, admin: a, audit: al, access: NewAccessLogger(nil, false), modelLimiter: newModelRateLimiter()}
 }
 
 // blockedManagementPaths is the default-deny set of Ollama model-management /
@@ -282,6 +288,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if modelName != requestedModelName {
 		w.Header().Set("X-Ollama-Mesh-Model-Fallback", requestedModelName+" -> "+modelName)
 		body = rewriteModelField(body, modelName)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
+	// Advanced model configuration overrides (item #20): apply the operator's
+	// configured default profile for this model, if one exists. rpm/tpm are
+	// enforced as a pre-request gate; every other field is merged into the
+	// outgoing body only where the client didn't already specify it.
+	var modelCfg store.ModelConfig
+	var hasModelCfg bool
+	if h.admin != nil {
+		modelCfg, hasModelCfg = h.admin.ModelConfigFor(modelName)
+	}
+	if hasModelCfg && (modelCfg.RPM != nil || modelCfg.TPM != nil) {
+		if !h.modelLimiter.allow(modelName, modelCfg.RPM, modelCfg.TPM) {
+			if h.auth != nil {
+				h.auth.Refund(keyName)
+			}
+			writeAPIError(w, http.StatusTooManyRequests,
+				fmt.Sprintf("model %q rate limit exceeded (rpm/tpm cap)", modelName),
+				"server_error", "model_rate_limited")
+			metrics.RequestsTotal(keyName, modelName, "none", "429")
+			return
+		}
+	}
+	if hasModelCfg {
+		body = injectModelDefaults(body, isOllamaPath(r.URL.Path), modelCfg)
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
@@ -530,6 +562,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, logTokens)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(modelName, tokens, rec.evalDurationMs())
+			h.modelLimiter.recordTokens(modelName, int64(tokens))
 		}
 	}
 	if h.audit != nil {
@@ -883,6 +916,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, logTokens)
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
+			h.modelLimiter.recordTokens(modelName, int64(tokens))
 		}
 	}
 	if h.audit != nil {
