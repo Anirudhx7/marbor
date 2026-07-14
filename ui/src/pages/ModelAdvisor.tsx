@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X } from 'lucide-react';
+import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X, Settings2 } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
+import { ModelConfigModal } from '../components/ModelConfigModal';
 import {
   pullModel,
   fetchSystemInfo,
@@ -54,6 +55,7 @@ function ModelDetailPanel({
   const [pullingTag, setPullingTag] = useState<string | null>(null);
   const [pulledTags, setPulledTags] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [configTag, setConfigTag] = useState<string | null>(null);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -230,6 +232,13 @@ function ModelDetailPanel({
                     </div>
                     <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
                       <FitBadge fit={v.fit} />
+                      <button
+                        onClick={() => setConfigTag(v.tag)}
+                        title={`Advanced settings for ${v.tag}`}
+                        className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <Settings2 className="w-3.5 h-3.5" />
+                      </button>
                       {isPulled ? (
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
                           <Check className="w-3.5 h-3.5" /> Ready
@@ -277,6 +286,14 @@ function ModelDetailPanel({
           Close
         </button>
       </div>
+
+      <ModelConfigModal
+        model={configTag}
+        demoMode={demoMode}
+        runtimes={nodeRuntime ? [nodeRuntime] : undefined}
+        presetNumCtx={ctxLen}
+        onClose={() => setConfigTag(null)}
+      />
     </div>
   );
 }

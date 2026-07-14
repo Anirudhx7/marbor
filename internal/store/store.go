@@ -148,6 +148,15 @@ type Store interface {
 	ReconcileNodeWarmState(node string, residentModels []string) error
 	AllWarmState() ([]WarmStateRecord, error)
 
+	// Model configuration overrides — an operator-declared default parameter
+	// profile (load-time engine params, inference-time sampling defaults, meta
+	// fields) for a model, applied whenever ollama-mesh routes to it.
+	// GetModelConfig returns ErrNotFound if the model has no configured profile.
+	GetModelConfig(model string) (ModelConfig, error)
+	SetModelConfig(cfg ModelConfig) error
+	DeleteModelConfig(model string) error
+	AllModelConfigs() ([]ModelConfig, error)
+
 	Close() error
 }
 
@@ -354,6 +363,64 @@ type WarmStateRecord struct {
 	LoadCount int64     `json:"load_count"`
 }
 
+// ModelConfig is the operator-declared default parameter profile for a model —
+// covering Ollama's load-time engine params, inference-time sampling defaults,
+// and ollama-mesh's own meta/orchestration fields (system prompt override,
+// per-model rate caps). Every field is nilable/nullable: nil (or an absent
+// key in the persisted JSON) means "not configured, inherit the backend's own
+// default" — this struct must never carry a value the operator didn't
+// explicitly set (R1: no fabricated defaults masquerading as configuration).
+type ModelConfig struct {
+	Model string `json:"model"`
+
+	// Load-time / engine parameters. Injected into every routed request's
+	// Ollama "options" object; Ollama reloads the model automatically when a
+	// resident instance's options differ from an incoming request's, so no
+	// separate evict-then-reload step is needed on the mesh side.
+	NumCtx              *int     `json:"num_ctx,omitempty"`
+	NumGPU              *int     `json:"num_gpu,omitempty"`
+	FlashAttention      *bool    `json:"flash_attention,omitempty"`
+	OffloadKVCacheToGPU *bool    `json:"offload_kv_cache_to_gpu,omitempty"`
+	NumBatch            *int     `json:"num_batch,omitempty"`
+	NumThread           *int     `json:"num_thread,omitempty"`
+	UseMmap             *bool    `json:"use_mmap,omitempty"`
+	UseMlock            *bool    `json:"use_mlock,omitempty"`
+	RopeFrequencyBase   *float64 `json:"rope_frequency_base,omitempty"`
+	RopeFrequencyScale  *float64 `json:"rope_frequency_scale,omitempty"`
+	TTL                 *int     `json:"ttl,omitempty"`
+	TensorParallelism   *bool    `json:"tensor_parallelism,omitempty"`
+
+	// Inference-time / sampling parameters. Injected into a routed request
+	// only when the client's own request does not already specify the field.
+	Temperature      *float64           `json:"temperature,omitempty"`
+	TopP             *float64           `json:"top_p,omitempty"`
+	TopK             *int               `json:"top_k,omitempty"`
+	MinP             *float64           `json:"min_p,omitempty"`
+	TypicalP         *float64           `json:"typical_p,omitempty"`
+	TfsZ             *float64           `json:"tfs_z,omitempty"`
+	MaxTokens        *int               `json:"max_tokens,omitempty"`
+	Seed             *int               `json:"seed,omitempty"`
+	Stop             []string           `json:"stop,omitempty"`
+	RepeatPenalty    *float64           `json:"repeat_penalty,omitempty"`
+	RepeatLastN      *int               `json:"repeat_last_n,omitempty"`
+	PresencePenalty  *float64           `json:"presence_penalty,omitempty"`
+	FrequencyPenalty *float64           `json:"frequency_penalty,omitempty"`
+	Mirostat         *int               `json:"mirostat,omitempty"`
+	MirostatTau      *float64           `json:"mirostat_tau,omitempty"`
+	MirostatEta      *float64           `json:"mirostat_eta,omitempty"`
+	LogitBias        map[string]float64 `json:"logit_bias,omitempty"`
+	ResponseFormat   *string            `json:"response_format,omitempty"`
+
+	// Meta / orchestration.
+	System   *string `json:"system,omitempty"`
+	Template *string `json:"template,omitempty"`
+	// RPM/TPM cap requests/tokens per minute for this model across all keys.
+	// Enforced in-process (single mesh instance, no distributed state) by the
+	// proxy; nil means unlimited.
+	RPM *int `json:"rpm,omitempty"`
+	TPM *int `json:"tpm,omitempty"`
+}
+
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
@@ -431,4 +498,8 @@ func (NopStore) DeleteWarmState(_, _ string) error                 { return nil 
 func (NopStore) DeleteWarmStateByNode(_ string) error              { return nil }
 func (NopStore) AllWarmState() ([]WarmStateRecord, error)          { return nil, nil }
 func (NopStore) ReconcileNodeWarmState(_ string, _ []string) error { return nil }
+func (NopStore) GetModelConfig(_ string) (ModelConfig, error)      { return ModelConfig{}, ErrNotFound }
+func (NopStore) SetModelConfig(_ ModelConfig) error                { return nil }
+func (NopStore) DeleteModelConfig(_ string) error                  { return nil }
+func (NopStore) AllModelConfigs() ([]ModelConfig, error)           { return nil, nil }
 func (NopStore) Close() error                                      { return nil }

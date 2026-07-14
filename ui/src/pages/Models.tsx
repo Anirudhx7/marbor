@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Package, Download, Loader2 } from 'lucide-react';
+import { Package, Download, Loader2, Settings2 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
-import { mockModelCatalog } from '../lib/mockData';
+import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
 import { fetchModels, pullModel, fetchNodes } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
+import { ModelConfigModal } from '../components/ModelConfigModal';
 
 function formatVRAM(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -32,7 +33,7 @@ function SkeletonCard() {
 
 type PullStatus = 'idle' | 'pulling' | 'success' | 'error';
 
-function ModelCard({ model, demoMode }: { model: ModelEntry; demoMode: boolean }) {
+function ModelCard({ model, demoMode, onConfigure }: { model: ModelEntry; demoMode: boolean; onConfigure: () => void }) {
   const isWarm = model.warm_count > 0;
   const [pullInput, setPullInput] = useState('');
   const [pullStatus, setPullStatus] = useState<PullStatus>('idle');
@@ -88,9 +89,18 @@ function ModelCard({ model, demoMode }: { model: ModelEntry; demoMode: boolean }
             </p>
           </div>
         </div>
-        <Badge variant={isWarm ? 'success' : 'muted'} size="sm">
-          {isWarm ? `${model.warm_count} warm` : 'cold'}
-        </Badge>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={onConfigure}
+            title={`Advanced settings for ${model.name}`}
+            className="p-1 text-muted-foreground hover:text-primary transition-colors"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+          </button>
+          <Badge variant={isWarm ? 'success' : 'muted'} size="sm">
+            {isWarm ? `${model.warm_count} warm` : 'cold'}
+          </Badge>
+        </div>
       </div>
 
       {/* Node count indicator */}
@@ -165,6 +175,23 @@ export function Models() {
   const [pullLoading, setPullLoading] = useState(false);
   const [pullSuccess, setPullSuccess] = useState(false);
   const [pullErrorMsg, setPullErrorMsg] = useState('');
+  const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
+  const [configModel, setConfigModel] = useState<string | null>(null);
+
+  // Cross-reference each model's resident node names against node runtimes so
+  // the Advanced Settings modal can gate load-time/engine params for
+  // non-Ollama (or mixed) runtimes. Failure just leaves gating info absent
+  // (modal defaults to enabled), never blocks the page.
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = demoMode ? mockGPUNodes : await fetchNodes();
+        setRuntimeByNode(Object.fromEntries((list || []).map((n) => [n.name, n.runtime])));
+      } catch {
+        setRuntimeByNode({});
+      }
+    })();
+  }, [demoMode]);
 
   const openPullModal = async () => {
     if (demoMode) {
@@ -258,6 +285,10 @@ export function Models() {
   }, [demoMode]);
 
   const models = catalog?.models ?? [];
+  const configModelEntry = configModel ? models.find((m) => m.name === configModel) ?? null : null;
+  const configRuntimes = configModelEntry
+    ? configModelEntry.nodes.map((n) => runtimeByNode[n.name]).filter((r): r is string => Boolean(r))
+    : undefined;
   // total_models is the full catalog (warm + on-disk); "warm" means loaded in VRAM somewhere.
   const warmModelCount = models.filter((m) => m.warm_count > 0).length;
   const filteredModels = models.filter((m) =>
@@ -325,7 +356,7 @@ export function Models() {
       ) : filteredModels.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredModels.map((model) => (
-            <ModelCard key={model.name} model={model} demoMode={demoMode} />
+            <ModelCard key={model.name} model={model} demoMode={demoMode} onConfigure={() => setConfigModel(model.name)} />
           ))}
         </div>
       ) : (
@@ -439,6 +470,14 @@ export function Models() {
           </div>
         </div>
       </Modal>
+
+      {/* Model Advanced Settings Modal */}
+      <ModelConfigModal
+        model={configModel}
+        demoMode={demoMode}
+        runtimes={configRuntimes}
+        onClose={() => setConfigModel(null)}
+      />
     </div>
   );
 }

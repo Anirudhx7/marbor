@@ -439,6 +439,11 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/models/search", s.cors(s.adminAuth(s.handleModelSearch)))
 	reg("GET /admin/models/repo", s.cors(s.adminAuth(s.handleModelRepo)))
 
+	reg("GET /admin/model-config", s.cors(s.adminAuth(s.handleGetModelConfig)))
+	reg("PUT /admin/model-config", s.cors(s.adminAuth(s.handleSetModelConfig)))
+	reg("DELETE /admin/model-config", s.cors(s.adminAuth(s.handleDeleteModelConfig)))
+	reg("GET /admin/model-configs", s.cors(s.adminAuth(s.handleListModelConfigs)))
+
 	reg("GET /admin/predictive/decisions", s.cors(s.adminAuth(s.handlePredictiveDecisions)))
 
 	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
@@ -1435,6 +1440,128 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("VRAMTotalMBChanged: %v, GPUModelChanged: %v", patch.VRAMTotalMB != nil, patch.GPUModel != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
+}
+
+// handleGetModelConfig returns the configured default parameter profile for a
+// model. GET /admin/model-config?model=X. 404 if no profile is configured —
+// the caller sees the backend's own defaults apply (R1: never invents values
+// the operator never set).
+func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
+	model := r.URL.Query().Get("model")
+	if model == "" {
+		writeJSONError(w, http.StatusBadRequest, "model query param is required")
+		return
+	}
+	cfg, err := s.st.GetModelConfig(model)
+	if err == store.ErrNotFound {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("no config profile for model %q", model))
+		return
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+// handleListModelConfigs returns every configured model profile.
+// GET /admin/model-configs
+func (s *Server) handleListModelConfigs(w http.ResponseWriter, r *http.Request) {
+	cfgs, err := s.st.AllModelConfigs()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if cfgs == nil {
+		cfgs = []store.ModelConfig{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"configs": cfgs})
+}
+
+// modelConfigRange bounds-checks a nullable float field, returning a 400-worthy
+// error message when set and out of range. min/max are inclusive.
+func modelConfigRange(name string, v *float64, min, max float64) string {
+	if v == nil {
+		return ""
+	}
+	if *v < min || *v > max {
+		return fmt.Sprintf("%s must be between %g and %g", name, min, max)
+	}
+	return ""
+}
+
+// validateModelConfig rejects out-of-range values instead of silently
+// clamping them (Audit & Triage Protocol: server-side validation, clear 400).
+func validateModelConfig(cfg store.ModelConfig) string {
+	if cfg.Model == "" {
+		return "model is required"
+	}
+	for _, msg := range []string{
+		modelConfigRange("temperature", cfg.Temperature, 0, 2),
+		modelConfigRange("top_p", cfg.TopP, 0, 1),
+		modelConfigRange("min_p", cfg.MinP, 0, 1),
+		modelConfigRange("typical_p", cfg.TypicalP, 0, 1),
+		modelConfigRange("tfs_z", cfg.TfsZ, 0, 1),
+		modelConfigRange("presence_penalty", cfg.PresencePenalty, -2, 2),
+		modelConfigRange("frequency_penalty", cfg.FrequencyPenalty, -2, 2),
+	} {
+		if msg != "" {
+			return msg
+		}
+	}
+	if cfg.Mirostat != nil && (*cfg.Mirostat < 0 || *cfg.Mirostat > 2) {
+		return "mirostat must be 0, 1, or 2"
+	}
+	if cfg.RPM != nil && *cfg.RPM < 0 {
+		return "rpm must be >= 0"
+	}
+	if cfg.TPM != nil && *cfg.TPM < 0 {
+		return "tpm must be >= 0"
+	}
+	if cfg.NumCtx != nil && *cfg.NumCtx <= 0 {
+		return "num_ctx must be > 0"
+	}
+	return ""
+}
+
+// handleSetModelConfig upserts a model's default parameter profile.
+// PUT /admin/model-config, body = full store.ModelConfig JSON (model field required).
+func (s *Server) handleSetModelConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg store.ModelConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if msg := validateModelConfig(cfg); msg != "" {
+		writeJSONError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if err := s.st.SetModelConfig(cfg); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.logSystemChange(r, "set_model_config", cfg.Model, "updated model configuration profile")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+// handleDeleteModelConfig resets a model to backend defaults by removing its
+// configured profile. DELETE /admin/model-config?model=X.
+func (s *Server) handleDeleteModelConfig(w http.ResponseWriter, r *http.Request) {
+	model := r.URL.Query().Get("model")
+	if model == "" {
+		writeJSONError(w, http.StatusBadRequest, "model query param is required")
+		return
+	}
+	if err := s.st.DeleteModelConfig(model); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.logSystemChange(r, "delete_model_config", model, "reset model configuration profile to defaults")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"model": model, "status": "reset"})
 }
 
 // generateAPIKey creates a cryptographically random API key of the form sk-<name>-<48 hex chars>.
@@ -2898,6 +3025,17 @@ func (s *Server) handleCloudBudgetStatus(w http.ResponseWriter, r *http.Request)
 func (s *Server) ContextWindowFor(model string) (int, bool) {
 	window, ok := s.cfg.ContextWindows[model]
 	return window, ok
+}
+
+// ModelConfigFor returns the operator-configured default parameter profile
+// for model, if one exists. Lets the proxy inject defaults without holding a
+// direct store reference (mirrors ContextWindowFor's admin-as-facade shape).
+func (s *Server) ModelConfigFor(model string) (store.ModelConfig, bool) {
+	cfg, err := s.st.GetModelConfig(model)
+	if err != nil {
+		return store.ModelConfig{}, false
+	}
+	return cfg, true
 }
 
 func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
