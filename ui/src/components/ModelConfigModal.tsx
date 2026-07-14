@@ -1,9 +1,18 @@
 import { useState, useEffect, useCallback, type ReactElement } from 'react';
 import { ChevronDown, RotateCcw, Loader2 } from 'lucide-react';
 import { Modal } from './Modal';
-import { fetchModelConfig, saveModelConfig, deleteModelConfig } from '../lib/api';
-import { getMockModelConfig, setMockModelConfig, deleteMockModelConfig } from '../lib/mockData';
+import { fetchModelConfig, saveModelConfig, deleteModelConfig, fetchModelConfigCapabilities } from '../lib/api';
+import { getMockModelConfig, setMockModelConfig, deleteMockModelConfig, getMockModelConfigCapabilities } from '../lib/mockData';
 import type { ModelConfig } from '../types';
+
+// A node this model is resident on, paired with the runtime serving it there
+// (e.g. { name: 'gpu-node-02', runtime: 'vllm' }). Configuration is always
+// scoped to one (model, node) pair, since the same model name can carry a
+// different profile per node — different runtime, different VRAM budget.
+export interface ModelConfigNode {
+  name: string;
+  runtime: string;
+}
 
 // Editable form shape: same keys as ModelConfig, but `stop`/`logit_bias` are
 // held as raw text while being edited (comma-separated / JSON respectively)
@@ -13,6 +22,24 @@ type FormState = Omit<ModelConfig, 'model' | 'stop' | 'logit_bias'> & {
   stop_text: string;
   logit_bias_text: string;
 };
+
+// Some ModelConfig fields are injected under a different wire name on some
+// runtimes than the JSON key that stores the value (vLLM's OpenAI-compatible
+// server calls it "repetition_penalty"; the ModelConfig/Ollama/llama.cpp name
+// is "repeat_penalty" — see internal/proxy/model_config.go and
+// internal/store/model_config_capabilities.go's OpenAICompatExtraFields).
+// The capabilities endpoint returns wire names, so aliases map a form field
+// key to every wire name that means the same underlying field.
+const FIELD_ALIASES: Record<string, string[]> = {
+  repeat_penalty: ['repeat_penalty', 'repetition_penalty'],
+};
+
+// normalizeRuntime mirrors store.SupportedFieldsFor's convention: "" (or
+// anything outside the known runtime set) is treated as "ollama".
+function normalizeRuntime(runtime: string | undefined): string {
+  const r = (runtime || '').toLowerCase();
+  return r === 'vllm' || r === 'tgi' || r === 'llamacpp' ? r : 'ollama';
+}
 
 type FieldType = 'int' | 'float' | 'bool' | 'text' | 'textarea' | 'slider' | 'select';
 
@@ -86,11 +113,12 @@ const META_FIELDS: FieldDef[] = [
   { key: 'tpm', label: 'Tokens / Minute Cap', help: 'Caps tokens-per-minute for this model across all keys. Empty = unlimited.', type: 'int', min: 0 },
 ];
 
-function toFormState(model: string, cfg: ModelConfig | null): FormState {
-  const c = cfg ?? { model };
+function toFormState(model: string, node: string, cfg: ModelConfig | null): FormState {
+  const c = cfg ?? { model, node };
   return {
     ...c,
     model,
+    node,
     stop_text: (c.stop ?? []).join(', '),
     logit_bias_text: c.logit_bias ? JSON.stringify(c.logit_bias, null, 2) : '',
   };
@@ -103,7 +131,7 @@ function fromFormState(form: FormState): { cfg: ModelConfig; error: string | nul
     try {
       logitBias = JSON.parse(form.logit_bias_text);
     } catch {
-      return { cfg: { model: form.model }, error: 'Logit bias must be valid JSON, e.g. {"1234": -5}' };
+      return { cfg: { model: form.model, node: form.node }, error: 'Logit bias must be valid JSON, e.g. {"1234": -5}' };
     }
   }
   const { stop_text, logit_bias_text, ...rest } = form;
@@ -251,15 +279,17 @@ function Section({
   fields,
   form,
   setField,
-  disabled,
-  disabledNote,
+  emptyNote,
 }: {
   title: string;
   fields: FieldDef[];
   form: FormState;
   setField: (key: FieldDef['key'], v: unknown) => void;
-  disabled?: boolean;
-  disabledNote?: string;
+  // Shown instead of the field grid when `fields` has been filtered down to
+  // nothing for the selected node's runtime (e.g. Load-time/Engine on a vLLM
+  // node) — replaces the old whole-section gray-out with per-field filtering
+  // driven by the capabilities endpoint.
+  emptyNote?: string;
 }) {
   const [open, setOpen] = useState(true);
   return (
@@ -274,23 +304,23 @@ function Section({
       </button>
       {open && (
         <div className="p-4 sm:p-5 space-y-4">
-          {disabled && disabledNote && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2 leading-snug">
-              {disabledNote}
+          {fields.length === 0 ? (
+            <p className="text-xs text-muted-foreground leading-snug">
+              {emptyNote ?? 'No fields in this section apply to the selected node’s runtime.'}
             </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
+              {fields.map((def) => (
+                <Field
+                  key={String(def.key)}
+                  def={def}
+                  value={(form as Record<string, unknown>)[def.key as string]}
+                  onChange={(v) => setField(def.key, v)}
+                  onReset={() => setField(def.key, undefined)}
+                />
+              ))}
+            </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
-            {fields.map((def) => (
-              <Field
-                key={String(def.key)}
-                def={def}
-                value={(form as Record<string, unknown>)[def.key as string]}
-                onChange={(v) => setField(def.key, v)}
-                onReset={() => setField(def.key, undefined)}
-                disabled={disabled}
-              />
-            ))}
-          </div>
         </div>
       )}
     </div>
@@ -300,20 +330,17 @@ function Section({
 export function ModelConfigModal({
   model,
   demoMode,
-  runtimes,
+  nodes,
   presetNumCtx,
   onClose,
 }: {
   model: string | null;
   demoMode: boolean;
-  // Runtime(s) hosting this model (e.g. from the node(s) it's resident on).
-  // Load-time/engine params (num_ctx, num_gpu, flash_attention, ...) only have
-  // a per-request equivalent on Ollama-native /api/* requests — vLLM/TGI/
-  // llama.cpp treat them as launch-time-only flags, so injectModelDefaults
-  // silently no-ops them there. Omit/leave empty when unknown (assumed
-  // ollama, the common case) — pass every runtime the model spans so mixed
-  // residency (e.g. one ollama node + one vLLM node) is also gated.
-  runtimes?: string[];
+  // Every node this model is resident on, paired with the runtime serving it
+  // there. Configuration is always scoped to one (model, node) pair — the
+  // modal shows a node selector when there's more than one, and fetches/
+  // saves/resets against whichever node is currently selected.
+  nodes: ModelConfigNode[];
   // Pre-fills num_ctx the first time this model's config is opened (no saved
   // config yet) — e.g. from a context-length slider elsewhere in the UI, so
   // that control is a real input into the config rather than decorative.
@@ -325,30 +352,65 @@ export function ModelConfigModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<string>('');
+  // Capabilities are fetched once and cached for the modal's lifetime — the
+  // field list per runtime doesn't change while the modal is open, so
+  // switching nodes only needs a re-filter, not a re-fetch. `null` means
+  // "not loaded yet" — every field is shown in that state so the form
+  // doesn't flash empty sections while capabilities are in flight.
+  const [capabilities, setCapabilities] = useState<Record<string, string[]> | null>(null);
 
-  // Engine/load-time params are Ollama-only. Unknown runtime defaults to
-  // enabled (assume ollama); any non-ollama runtime in the set — including
-  // a mixed ollama + non-ollama residency — disables the section.
-  const engineParamsSupported =
-    !runtimes || runtimes.length === 0 || runtimes.every((r) => (r || '').toLowerCase() === 'ollama');
+  // Reset the node selection when the modal is opened for a different model.
+  // Keep the current selection if it's still one of the model's nodes (e.g.
+  // Models.tsx re-renders with a new-but-equivalent `nodes` array every poll
+  // — that must not silently kick the user back to the first node).
+  useEffect(() => {
+    setSelectedNode((prev) => (nodes.some((n) => n.name === prev) ? prev : (nodes[0]?.name ?? '')));
+  }, [model, nodes]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const caps = demoMode ? getMockModelConfigCapabilities() : await fetchModelConfigCapabilities();
+        if (!cancelled) setCapabilities(caps);
+      } catch {
+        // Non-fatal — falls back to showing every field, same as before
+        // this endpoint existed.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [demoMode]);
+
+  const runtime = normalizeRuntime(nodes.find((n) => n.name === selectedNode)?.runtime);
+  const supportedFields = capabilities ? (capabilities[runtime] ?? capabilities.ollama ?? []) : null;
+  const isSupported = (key: string): boolean => {
+    if (!supportedFields) return true;
+    const aliases = FIELD_ALIASES[key] ?? [key];
+    return aliases.some((a) => supportedFields.includes(a));
+  };
+  const loadTimeFields = LOAD_TIME_FIELDS.filter((f) => isSupported(String(f.key)));
+  const inferenceFields = INFERENCE_FIELDS.filter((f) => isSupported(String(f.key)));
+  const metaFields = META_FIELDS.filter((f) => isSupported(String(f.key)));
+  const logitBiasSupported = isSupported('logit_bias');
 
   const load = useCallback(async () => {
-    if (!model) return;
+    if (!model || !selectedNode) return;
     setLoading(true);
     setError(null);
     setSuccess(false);
     try {
-      const cfg = demoMode ? getMockModelConfig(model) : await fetchModelConfig(model);
-      const fs = toFormState(model, cfg);
+      const cfg = demoMode ? getMockModelConfig(model, selectedNode) : await fetchModelConfig(model, selectedNode);
+      const fs = toFormState(model, selectedNode, cfg);
       if (!cfg && presetNumCtx !== undefined) fs.num_ctx = presetNumCtx;
       setForm(fs);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load model config');
-      setForm(toFormState(model, null));
+      setForm(toFormState(model, selectedNode, null));
     } finally {
       setLoading(false);
     }
-  }, [model, demoMode, presetNumCtx]);
+  }, [model, selectedNode, demoMode, presetNumCtx]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -378,17 +440,17 @@ export function ModelConfigModal({
   };
 
   const handleResetAll = async () => {
-    if (!model) return;
+    if (!model || !selectedNode) return;
     setSaving(true);
     setError(null);
     setSuccess(false);
     try {
       if (demoMode) {
-        deleteMockModelConfig(model);
+        deleteMockModelConfig(model, selectedNode);
       } else {
-        await deleteModelConfig(model);
+        await deleteModelConfig(model, selectedNode);
       }
-      setForm(toFormState(model, null));
+      setForm(toFormState(model, selectedNode, null));
       setSuccess(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to reset model config');
@@ -410,22 +472,37 @@ export function ModelConfigModal({
         </div>
       ) : (
         <div className="space-y-6">
+          {nodes.length > 0 && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-foreground shrink-0">Node</label>
+              <select
+                value={selectedNode}
+                onChange={(e) => setSelectedNode(e.target.value)}
+                className="flex-1 px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {nodes.map((n) => (
+                  <option key={n.name} value={n.name}>{n.name} ({normalizeRuntime(n.runtime)})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <p className="text-xs text-muted-foreground leading-normal">
-            Unset fields inherit Ollama's own defaults. Load-time parameters apply the next time
-            this model is (re)loaded; Ollama automatically reloads a resident model whose active
-            options differ from these. Inference-time parameters are injected only when a client
-            request doesn't already specify them.
+            Unset fields inherit the backend's own defaults. Load-time parameters apply the next
+            time this model is (re)loaded on the selected node; Ollama automatically reloads a
+            resident model whose active options differ from these. Inference-time parameters are
+            injected only when a client request doesn't already specify them. Fields shown below
+            depend on the selected node's runtime — options that don't apply there are hidden.
           </p>
 
           <Section
             title="Load-time / Engine"
-            fields={LOAD_TIME_FIELDS}
+            fields={loadTimeFields}
             form={form}
             setField={setField}
-            disabled={!engineParamsSupported}
-            disabledNote="Engine params are Ollama-only. This model's runtime (non-Ollama, or mixed) applies these as launch-time config instead — they can't be set per-request here."
+            emptyNote="Engine params are Ollama-only. The selected node's runtime applies these as launch-time config instead — they can't be set per-request here."
           />
-          <Section title="Inference-time / Sampling" fields={INFERENCE_FIELDS} form={form} setField={setField} />
+          <Section title="Inference-time / Sampling" fields={inferenceFields} form={form} setField={setField} />
 
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-2">
@@ -446,28 +523,30 @@ export function ModelConfigModal({
             <p className="text-[10px] text-muted-foreground leading-snug">Generation stops immediately when any of these strings is produced.</p>
           </div>
 
-          <div className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-foreground">Logit Bias (JSON)</label>
-              {form.logit_bias_text && (
-                <button type="button" onClick={() => setForm((f) => f && { ...f, logit_bias_text: '' })} title="Reset to default" className="text-muted-foreground hover:text-destructive transition-colors">
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-              )}
+          {logitBiasSupported && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-foreground">Logit Bias (JSON)</label>
+                {form.logit_bias_text && (
+                  <button type="button" onClick={() => setForm((f) => f && { ...f, logit_bias_text: '' })} title="Reset to default" className="text-muted-foreground hover:text-destructive transition-colors">
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={form.logit_bias_text}
+                onChange={(e) => setForm((f) => f && { ...f, logit_bias_text: e.target.value })}
+                rows={2}
+                placeholder='e.g. {"1234": -5}'
+                className="w-full px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary font-mono resize-y"
+              />
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                Token-ID to bias-value map.
+              </p>
             </div>
-            <textarea
-              value={form.logit_bias_text}
-              onChange={(e) => setForm((f) => f && { ...f, logit_bias_text: e.target.value })}
-              rows={2}
-              placeholder='e.g. {"1234": -5}'
-              className="w-full px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary font-mono resize-y"
-            />
-            <p className="text-[10px] text-muted-foreground leading-snug">
-              Token-ID to bias-value map. OpenAI-compatible clients only — not applied to native Ollama requests.
-            </p>
-          </div>
+          )}
 
-          <Section title="Meta / Orchestration" fields={META_FIELDS} form={form} setField={setField} />
+          <Section title="Meta / Orchestration" fields={metaFields} form={form} setField={setField} />
 
           {error && (
             <p className="text-xs text-destructive font-medium bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
@@ -486,7 +565,7 @@ export function ModelConfigModal({
               disabled={saving}
               className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 cursor-pointer"
             >
-              Reset all to defaults
+              Reset this node to defaults
             </button>
             <div className="flex items-center gap-3">
               <button
