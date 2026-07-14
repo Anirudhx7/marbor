@@ -112,7 +112,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onTogglePrewarm: (name: string, disabled: boolean) => void;
   onEdit: (node: GPUNode) => void;
   onUnload: (nodeName: string, model: string) => void;
-  onConfigureModel: (modelName: string, runtime: string) => void;
+  onConfigureModel: (modelName: string, nodeName: string, runtime: string) => void;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -270,7 +270,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                     {(model.sizeVram / 1024).toFixed(1)}GB
                   </span>
                   <button
-                    onClick={() => onConfigureModel(model.name, node.runtime)}
+                    onClick={() => onConfigureModel(model.name, node.name, node.runtime)}
                     title={`Advanced settings for ${model.name}`}
                     className="ml-1.5 opacity-50 hover:opacity-100 hover:text-primary transition-opacity"
                   >
@@ -324,7 +324,7 @@ export function GPUNodes() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
-  const [configTarget, setConfigTarget] = useState<{ model: string; runtime: string } | null>(null);
+  const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
 
   const loadPinned = async (nodeList: GPUNode[]) => {
     if (demoMode || nodeList.length === 0) return;
@@ -578,7 +578,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, runtime) => setConfigTarget({ model: modelName, runtime })} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} />
         ))}
       </div>
 
@@ -863,7 +863,7 @@ export function GPUNodes() {
       <ModelConfigModal
         model={configTarget?.model ?? null}
         demoMode={demoMode}
-        runtimes={configTarget ? [configTarget.runtime] : undefined}
+        nodes={configTarget ? [{ name: configTarget.node, runtime: configTarget.runtime }] : []}
         onClose={() => setConfigTarget(null)}
       />
     </div>

@@ -316,12 +316,17 @@ export interface BudgetEntry {
   monthlyPct: number;
 }
 
-// ModelConfig is an operator-declared default parameter profile for a model,
-// applied whenever ollama-mesh routes to it. Every field but `model` is
-// optional — unset means "inherit Ollama's own default", never a fabricated
-// value (R1). Field names/JSON keys mirror internal/store/store.go 1:1.
+// ModelConfig is an operator-declared default parameter profile for a
+// specific (model, node) pair, applied whenever ollama-mesh routes to that
+// model on that node. The same model name can be resident on multiple nodes
+// with different runtimes (ollama/vllm/tgi/llamacpp) or VRAM budgets, so a
+// profile is only ever meaningful scoped to one node — `model` and `node`
+// are both required. Every other field is optional — unset means "inherit
+// the backend's own default", never a fabricated value (R1). Field
+// names/JSON keys mirror internal/store/store.go 1:1.
 export interface ModelConfig {
   model: string;
+  node: string;
 
   // Load-time / engine parameters.
   num_ctx?: number;

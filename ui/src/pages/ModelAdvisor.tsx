@@ -290,7 +290,7 @@ function ModelDetailPanel({
       <ModelConfigModal
         model={configTag}
         demoMode={demoMode}
-        runtimes={nodeRuntime ? [nodeRuntime] : undefined}
+        nodes={nodeName ? [{ name: nodeName, runtime: nodeRuntime ?? 'ollama' }] : []}
         presetNumCtx={ctxLen}
         onClose={() => setConfigTag(null)}
       />
