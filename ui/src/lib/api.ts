@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig } from '../types';
 
 const BASE = '/admin';
 
@@ -684,6 +684,44 @@ export async function pullModel(nodeName: string, model: string): Promise<void> 
     body: JSON.stringify({ model }),
   });
   if (!res.ok) throw new Error(`Pull failed: ${res.statusText}`);
+}
+
+// fetchModelConfig returns the configured default parameter profile for a
+// model, or null if none is configured (backend returns 404 in that case —
+// R1: the UI must show "not set", never fabricate a value).
+export async function fetchModelConfig(model: string): Promise<ModelConfig | null> {
+  const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}`, { headers: authHeaders() });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to fetch model config: ${res.statusText}`);
+  return res.json();
+}
+
+export async function saveModelConfig(cfg: ModelConfig): Promise<ModelConfig> {
+  const res = await apiFetch(`${BASE}/model-config`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to save model config: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteModelConfig(model: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to reset model config: ${res.statusText}`);
+}
+
+export async function fetchAllModelConfigs(): Promise<ModelConfig[]> {
+  const res = await apiFetch(`${BASE}/model-configs`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch model configs');
+  const data = await res.json();
+  return data.configs ?? [];
 }
 
 export async function fetchModelFit(): Promise<ModelFitResponse> {

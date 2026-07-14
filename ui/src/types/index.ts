@@ -316,6 +316,54 @@ export interface BudgetEntry {
   monthlyPct: number;
 }
 
+// ModelConfig is an operator-declared default parameter profile for a model,
+// applied whenever ollama-mesh routes to it. Every field but `model` is
+// optional — unset means "inherit Ollama's own default", never a fabricated
+// value (R1). Field names/JSON keys mirror internal/store/store.go 1:1.
+export interface ModelConfig {
+  model: string;
+
+  // Load-time / engine parameters.
+  num_ctx?: number;
+  num_gpu?: number;
+  flash_attention?: boolean;
+  offload_kv_cache_to_gpu?: boolean;
+  num_batch?: number;
+  num_thread?: number;
+  use_mmap?: boolean;
+  use_mlock?: boolean;
+  rope_frequency_base?: number;
+  rope_frequency_scale?: number;
+  ttl?: number;
+  tensor_parallelism?: boolean;
+
+  // Inference-time / sampling parameters.
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  min_p?: number;
+  typical_p?: number;
+  tfs_z?: number;
+  max_tokens?: number;
+  seed?: number;
+  stop?: string[];
+  repeat_penalty?: number;
+  repeat_last_n?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  mirostat?: number;
+  mirostat_tau?: number;
+  mirostat_eta?: number;
+  logit_bias?: Record<string, number>;
+  response_format?: string;
+
+  // Meta / orchestration.
+  system?: string;
+  template?: string;
+  rpm?: number;
+  tpm?: number;
+}
+
 export interface CloudBudgetStatus {
   softBudgetPct: number;
   global: BudgetEntry;
