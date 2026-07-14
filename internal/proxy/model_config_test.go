@@ -9,6 +9,7 @@ import (
 
 func fp(v float64) *float64 { return &v }
 func ip(v int) *int         { return &v }
+func boolp(v bool) *bool    { return &v }
 
 // TestInjectModelDefaultsOllamaNativeFillsAbsentFields verifies configured
 // load-time and inference-time defaults land in the "options" object, and
@@ -128,9 +129,10 @@ func TestInjectModelDefaultsVLLMExtraFields(t *testing.T) {
 }
 
 // TestInjectModelDefaultsLlamaCppExtraFields verifies llama.cpp gets its own
-// sampling extras (mirostat family, repeat_penalty under its own name).
+// sampling extras (mirostat family, repeat_penalty under its own name, and
+// num_keep injected under llama.cpp's own "n_keep" wire name).
 func TestInjectModelDefaultsLlamaCppExtraFields(t *testing.T) {
-	cfg := store.ModelConfig{Model: "m", Node: "n", Mirostat: ip(2), RepeatPenalty: fp(1.2), TfsZ: fp(0.9)}
+	cfg := store.ModelConfig{Model: "m", Node: "n", Mirostat: ip(2), RepeatPenalty: fp(1.2), NumKeep: ip(16)}
 	out := injectModelDefaults([]byte(`{"model":"m","messages":[]}`), "llamacpp", cfg)
 
 	var m map[string]interface{}
@@ -141,8 +143,102 @@ func TestInjectModelDefaultsLlamaCppExtraFields(t *testing.T) {
 	if m["repeat_penalty"] != 1.2 {
 		t.Errorf("llamacpp repeat_penalty = %v, want 1.2", m["repeat_penalty"])
 	}
-	if m["tfs_z"] != 0.9 {
-		t.Errorf("llamacpp tfs_z = %v, want 0.9", m["tfs_z"])
+	if m["n_keep"] != float64(16) {
+		t.Errorf("llamacpp n_keep = %v, want 16", m["n_keep"])
+	}
+	if _, ok := m["num_keep"]; ok {
+		t.Errorf("llamacpp body should use n_keep, not num_keep: %v", m)
+	}
+}
+
+// TestInjectModelDefaultsLlamaCppSamplerExtras verifies llama.cpp's DRY/XTC/
+// logit_bias/n_probs/min_keep sampling extras, which llama.cpp's server
+// README documents as also accepted on its OpenAI-compatible endpoint.
+func TestInjectModelDefaultsLlamaCppSamplerExtras(t *testing.T) {
+	cfg := store.ModelConfig{
+		Model: "m", Node: "n",
+		DryMultiplier: fp(0.8), DryBase: fp(1.75), DryAllowedLength: ip(2), DryPenaltyLastN: ip(64),
+		XtcProbability: fp(0.5), XtcThreshold: fp(0.1),
+		NProbs: ip(5), MinKeep: ip(1),
+		LogitBias: map[string]float64{"1234": -5},
+	}
+	out := injectModelDefaults([]byte(`{"model":"m","messages":[]}`), "llamacpp", cfg)
+
+	var m map[string]interface{}
+	json.Unmarshal(out, &m)
+	checks := map[string]float64{
+		"dry_multiplier": 0.8, "dry_base": 1.75, "dry_allowed_length": 2, "dry_penalty_last_n": 64,
+		"xtc_probability": 0.5, "xtc_threshold": 0.1, "n_probs": 5, "min_keep": 1,
+	}
+	for key, want := range checks {
+		if m[key] != want {
+			t.Errorf("llamacpp %s = %v, want %v", key, m[key], want)
+		}
+	}
+	lb, ok := m["logit_bias"].(map[string]interface{})
+	if !ok || lb["1234"] != -5.0 {
+		t.Errorf("llamacpp logit_bias = %v, want {1234: -5}", m["logit_bias"])
+	}
+}
+
+// TestInjectModelDefaultsVLLMSamplerExtras verifies vLLM's extended sampling
+// fields beyond top_k/min_p/repetition_penalty (its ChatCompletionRequest
+// schema accepts these too).
+func TestInjectModelDefaultsVLLMSamplerExtras(t *testing.T) {
+	cfg := store.ModelConfig{
+		Model: "m", Node: "n",
+		LengthPenalty: fp(1.1), StopTokenIDs: []int{100, 200},
+		IncludeStopStrInOutput: boolp(true), IgnoreEOS: boolp(true),
+		MinTokens: ip(10), SkipSpecialTokens: boolp(false), TruncatePromptTokens: ip(2048),
+	}
+	out := injectModelDefaults([]byte(`{"model":"m","messages":[]}`), "vllm", cfg)
+
+	var m map[string]interface{}
+	json.Unmarshal(out, &m)
+	if m["length_penalty"] != 1.1 {
+		t.Errorf("vllm length_penalty = %v, want 1.1", m["length_penalty"])
+	}
+	if m["ignore_eos"] != true {
+		t.Errorf("vllm ignore_eos = %v, want true", m["ignore_eos"])
+	}
+	if m["min_tokens"] != float64(10) {
+		t.Errorf("vllm min_tokens = %v, want 10", m["min_tokens"])
+	}
+	if m["skip_special_tokens"] != false {
+		t.Errorf("vllm skip_special_tokens = %v, want false", m["skip_special_tokens"])
+	}
+	if m["truncate_prompt_tokens"] != float64(2048) {
+		t.Errorf("vllm truncate_prompt_tokens = %v, want 2048", m["truncate_prompt_tokens"])
+	}
+	ids, ok := m["stop_token_ids"].([]interface{})
+	if !ok || len(ids) != 2 || ids[0] != float64(100) {
+		t.Errorf("vllm stop_token_ids = %v, want [100, 200]", m["stop_token_ids"])
+	}
+}
+
+// TestInjectModelDefaultsOllamaDeadFieldsNotInjected verifies fields that no
+// longer exist in Ollama's current Options/Runner structs (removed 2026-07)
+// are simply absent from the struct — nothing to inject, nothing that could
+// silently no-op. The new real Ollama fields (num_keep, main_gpu,
+// draft_num_predict) DO get injected.
+func TestInjectModelDefaultsOllamaDeadFieldsNotInjected(t *testing.T) {
+	cfg := store.ModelConfig{
+		Model: "m", Node: "n",
+		NumKeep: ip(8), MainGPU: ip(1), DraftNumPredict: ip(4),
+	}
+	out := injectModelDefaults([]byte(`{"model":"m","prompt":"hi"}`), "ollama", cfg)
+
+	var m map[string]interface{}
+	json.Unmarshal(out, &m)
+	opts := m["options"].(map[string]interface{})
+	if opts["num_keep"] != float64(8) {
+		t.Errorf("ollama num_keep = %v, want 8", opts["num_keep"])
+	}
+	if opts["main_gpu"] != float64(1) {
+		t.Errorf("ollama main_gpu = %v, want 1", opts["main_gpu"])
+	}
+	if opts["draft_num_predict"] != float64(4) {
+		t.Errorf("ollama draft_num_predict = %v, want 4", opts["draft_num_predict"])
 	}
 }
 

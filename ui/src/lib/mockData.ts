@@ -849,7 +849,6 @@ const mockModelConfigSeed: ModelConfig[] = [
     node: 'gpu-node-01',
     num_ctx: 4096,
     num_gpu: 999,
-    flash_attention: true,
     repeat_penalty: 1.15,
     rpm: 120,
     system: 'You are a careful reasoning assistant. Think step by step before answering.',
@@ -862,6 +861,8 @@ const mockModelConfigSeed: ModelConfig[] = [
     node: 'gpu-node-02',
     temperature: 0.7,
     top_p: 0.9,
+    top_k: 40,
+    ignore_eos: false,
     rpm: 200,
   },
   {
@@ -869,6 +870,17 @@ const mockModelConfigSeed: ModelConfig[] = [
     node: 'gpu-node-03',
     temperature: 0.65,
     max_tokens: 2048,
+  },
+  // phi3:medium is resident on gpu-node-04 (llama.cpp) — exercises the
+  // llama.cpp-only sampling extras (mirostat, DRY).
+  {
+    model: 'phi3:medium',
+    node: 'gpu-node-04',
+    temperature: 0.7,
+    mirostat: 2,
+    mirostat_tau: 5,
+    dry_multiplier: 0.8,
+    dry_base: 1.75,
   },
 ];
 
@@ -913,14 +925,18 @@ const OPENAI_COMPAT_BASE_FIELDS = [
   'temperature', 'top_p', 'max_tokens', 'seed', 'stop',
   'presence_penalty', 'frequency_penalty', 'response_format',
 ];
+// Ollama-only, verified against Ollama's current api/types.go
+// Options/Runner structs — flash_attention, offload_kv_cache_to_gpu,
+// rope_frequency_base/scale, use_mlock, and tensor_parallelism removed:
+// none are real per-request params in current Ollama.
 const OLLAMA_LOAD_TIME_FIELDS = [
-  'num_ctx', 'num_gpu', 'flash_attention', 'offload_kv_cache_to_gpu',
-  'num_batch', 'num_thread', 'use_mmap', 'use_mlock',
-  'rope_frequency_base', 'rope_frequency_scale', 'ttl', 'tensor_parallelism',
+  'num_ctx', 'num_gpu', 'main_gpu', 'num_batch', 'num_thread', 'use_mmap', 'draft_num_predict', 'ttl',
 ];
+// mirostat*/tfs_z removed: not in Ollama's current Options struct (tfs_z was
+// removed from llama.cpp itself too, hence its ModelConfig field is gone
+// entirely). mirostat* remain valid for llama.cpp only, listed below.
 const OLLAMA_INFERENCE_FIELDS = [
-  'top_k', 'min_p', 'typical_p', 'tfs_z', 'repeat_penalty', 'repeat_last_n',
-  'mirostat', 'mirostat_tau', 'mirostat_eta', 'logit_bias',
+  'top_k', 'min_p', 'typical_p', 'num_keep', 'repeat_penalty', 'repeat_last_n',
 ];
 
 export function getMockModelConfigCapabilities(): Record<string, string[]> {
@@ -930,9 +946,22 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
   // prompt-templating mechanism, with no OpenAI-compatible equivalent.
   return {
     ollama: [...OPENAI_COMPAT_BASE_FIELDS, ...OLLAMA_LOAD_TIME_FIELDS, ...OLLAMA_INFERENCE_FIELDS, 'system', 'template', 'rpm', 'tpm'],
-    vllm: [...OPENAI_COMPAT_BASE_FIELDS, 'top_k', 'min_p', 'repetition_penalty', 'system', 'rpm', 'tpm'],
+    vllm: [
+      ...OPENAI_COMPAT_BASE_FIELDS,
+      'top_k', 'min_p', 'repetition_penalty',
+      'length_penalty', 'stop_token_ids', 'include_stop_str_in_output',
+      'ignore_eos', 'min_tokens', 'skip_special_tokens', 'truncate_prompt_tokens',
+      'system', 'rpm', 'tpm',
+    ],
     tgi: [...OPENAI_COMPAT_BASE_FIELDS, 'system', 'rpm', 'tpm'],
-    llamacpp: [...OPENAI_COMPAT_BASE_FIELDS, 'mirostat', 'mirostat_tau', 'mirostat_eta', 'repeat_penalty', 'repeat_last_n', 'tfs_z', 'typical_p', 'system', 'rpm', 'tpm'],
+    llamacpp: [
+      ...OPENAI_COMPAT_BASE_FIELDS,
+      'repeat_penalty', 'repeat_last_n', 'typical_p', 'mirostat', 'mirostat_tau', 'mirostat_eta',
+      'num_keep', 'logit_bias', 'n_probs', 'min_keep',
+      'dry_multiplier', 'dry_base', 'dry_allowed_length', 'dry_penalty_last_n',
+      'xtc_probability', 'xtc_threshold', 'ignore_eos',
+      'system', 'rpm', 'tpm',
+    ],
   };
 }
 
