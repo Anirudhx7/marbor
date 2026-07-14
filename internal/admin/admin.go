@@ -1528,9 +1528,9 @@ func validateModelConfig(cfg store.ModelConfig) string {
 		modelConfigRange("top_p", cfg.TopP, 0, 1),
 		modelConfigRange("min_p", cfg.MinP, 0, 1),
 		modelConfigRange("typical_p", cfg.TypicalP, 0, 1),
-		modelConfigRange("tfs_z", cfg.TfsZ, 0, 1),
 		modelConfigRange("presence_penalty", cfg.PresencePenalty, -2, 2),
 		modelConfigRange("frequency_penalty", cfg.FrequencyPenalty, -2, 2),
+		modelConfigRange("xtc_probability", cfg.XtcProbability, 0, 1),
 	} {
 		if msg != "" {
 			return msg

@@ -65,12 +65,20 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 			opts = map[string]json.RawMessage{}
 		}
 
-		// Load-time / engine.
+		// Load-time / engine. This list is verified against Ollama's current
+		// api/types.go Options/Runner structs — flash_attention,
+		// offload_kv_cache_to_gpu, rope_frequency_base/scale, use_mlock, and
+		// tensor_parallelism are deliberately not injected (and no longer
+		// exist as ModelConfig fields at all): they are not real per-request
+		// options in current Ollama.
 		if cfg.NumCtx != nil {
 			setIfAbsent(opts, "num_ctx", *cfg.NumCtx)
 		}
 		if cfg.NumGPU != nil {
 			setIfAbsent(opts, "num_gpu", *cfg.NumGPU)
+		}
+		if cfg.MainGPU != nil {
+			setIfAbsent(opts, "main_gpu", *cfg.MainGPU)
 		}
 		if cfg.NumBatch != nil {
 			setIfAbsent(opts, "num_batch", *cfg.NumBatch)
@@ -81,21 +89,16 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		if cfg.UseMmap != nil {
 			setIfAbsent(opts, "use_mmap", *cfg.UseMmap)
 		}
-		if cfg.UseMlock != nil {
-			setIfAbsent(opts, "use_mlock", *cfg.UseMlock)
+		if cfg.DraftNumPredict != nil {
+			setIfAbsent(opts, "draft_num_predict", *cfg.DraftNumPredict)
 		}
-		if cfg.RopeFrequencyBase != nil {
-			setIfAbsent(opts, "rope_frequency_base", *cfg.RopeFrequencyBase)
-		}
-		if cfg.RopeFrequencyScale != nil {
-			setIfAbsent(opts, "rope_frequency_scale", *cfg.RopeFrequencyScale)
-		}
-		// flash_attention, offload_kv_cache_to_gpu, and tensor_parallelism are
-		// Ollama server/env-level knobs (OLLAMA_FLASH_ATTENTION, etc.), not
-		// per-request "options" fields — persisted for operator visibility and
-		// for future non-Ollama runtimes, but intentionally not injected here.
 
-		// Inference-time / sampling.
+		// Inference-time / sampling. mirostat/mirostat_tau/mirostat_eta and
+		// tfs_z are deliberately NOT injected here (and tfs_z no longer
+		// exists as a ModelConfig field at all — removed from llama.cpp's own
+		// server too): current Ollama's Options struct has none of these.
+		// mirostat* remain valid fields for llama.cpp, injected in the
+		// non-Ollama branch below instead.
 		if cfg.Temperature != nil {
 			setIfAbsent(opts, "temperature", *cfg.Temperature)
 		}
@@ -111,8 +114,8 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		if cfg.TypicalP != nil {
 			setIfAbsent(opts, "typical_p", *cfg.TypicalP)
 		}
-		if cfg.TfsZ != nil {
-			setIfAbsent(opts, "tfs_z", *cfg.TfsZ)
+		if cfg.NumKeep != nil {
+			setIfAbsent(opts, "num_keep", *cfg.NumKeep)
 		}
 		if cfg.MaxTokens != nil {
 			setIfAbsent(opts, "num_predict", *cfg.MaxTokens)
@@ -134,15 +137,6 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		}
 		if cfg.FrequencyPenalty != nil {
 			setIfAbsent(opts, "frequency_penalty", *cfg.FrequencyPenalty)
-		}
-		if cfg.Mirostat != nil {
-			setIfAbsent(opts, "mirostat", *cfg.Mirostat)
-		}
-		if cfg.MirostatTau != nil {
-			setIfAbsent(opts, "mirostat_tau", *cfg.MirostatTau)
-		}
-		if cfg.MirostatEta != nil {
-			setIfAbsent(opts, "mirostat_eta", *cfg.MirostatEta)
 		}
 		// logit_bias / response_format have no Ollama-native "options" equivalent.
 
@@ -244,10 +238,6 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 				if cfg.RepeatLastN != nil {
 					setIfAbsent(top, "repeat_last_n", *cfg.RepeatLastN)
 				}
-			case "tfs_z":
-				if cfg.TfsZ != nil {
-					setIfAbsent(top, "tfs_z", *cfg.TfsZ)
-				}
 			case "typical_p":
 				if cfg.TypicalP != nil {
 					setIfAbsent(top, "typical_p", *cfg.TypicalP)
@@ -263,6 +253,74 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 			case "mirostat_eta":
 				if cfg.MirostatEta != nil {
 					setIfAbsent(top, "mirostat_eta", *cfg.MirostatEta)
+				}
+			case "num_keep": // llama.cpp calls the same concept "n_keep"
+				if cfg.NumKeep != nil {
+					setIfAbsent(top, "n_keep", *cfg.NumKeep)
+				}
+			case "logit_bias":
+				if len(cfg.LogitBias) > 0 {
+					setIfAbsent(top, "logit_bias", cfg.LogitBias)
+				}
+			case "n_probs":
+				if cfg.NProbs != nil {
+					setIfAbsent(top, "n_probs", *cfg.NProbs)
+				}
+			case "min_keep":
+				if cfg.MinKeep != nil {
+					setIfAbsent(top, "min_keep", *cfg.MinKeep)
+				}
+			case "dry_multiplier":
+				if cfg.DryMultiplier != nil {
+					setIfAbsent(top, "dry_multiplier", *cfg.DryMultiplier)
+				}
+			case "dry_base":
+				if cfg.DryBase != nil {
+					setIfAbsent(top, "dry_base", *cfg.DryBase)
+				}
+			case "dry_allowed_length":
+				if cfg.DryAllowedLength != nil {
+					setIfAbsent(top, "dry_allowed_length", *cfg.DryAllowedLength)
+				}
+			case "dry_penalty_last_n":
+				if cfg.DryPenaltyLastN != nil {
+					setIfAbsent(top, "dry_penalty_last_n", *cfg.DryPenaltyLastN)
+				}
+			case "xtc_probability":
+				if cfg.XtcProbability != nil {
+					setIfAbsent(top, "xtc_probability", *cfg.XtcProbability)
+				}
+			case "xtc_threshold":
+				if cfg.XtcThreshold != nil {
+					setIfAbsent(top, "xtc_threshold", *cfg.XtcThreshold)
+				}
+			case "ignore_eos": // shared wire name/meaning on both vLLM and llama.cpp
+				if cfg.IgnoreEOS != nil {
+					setIfAbsent(top, "ignore_eos", *cfg.IgnoreEOS)
+				}
+			case "length_penalty":
+				if cfg.LengthPenalty != nil {
+					setIfAbsent(top, "length_penalty", *cfg.LengthPenalty)
+				}
+			case "stop_token_ids":
+				if len(cfg.StopTokenIDs) > 0 {
+					setIfAbsent(top, "stop_token_ids", cfg.StopTokenIDs)
+				}
+			case "include_stop_str_in_output":
+				if cfg.IncludeStopStrInOutput != nil {
+					setIfAbsent(top, "include_stop_str_in_output", *cfg.IncludeStopStrInOutput)
+				}
+			case "min_tokens":
+				if cfg.MinTokens != nil {
+					setIfAbsent(top, "min_tokens", *cfg.MinTokens)
+				}
+			case "skip_special_tokens":
+				if cfg.SkipSpecialTokens != nil {
+					setIfAbsent(top, "skip_special_tokens", *cfg.SkipSpecialTokens)
+				}
+			case "truncate_prompt_tokens":
+				if cfg.TruncatePromptTokens != nil {
+					setIfAbsent(top, "truncate_prompt_tokens", *cfg.TruncatePromptTokens)
 				}
 			}
 		}
