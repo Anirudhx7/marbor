@@ -315,6 +315,10 @@ export function Users() {
   const [error, setError] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<UserRecord | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
+  const [resetConfirmTarget, setResetConfirmTarget] = useState<UserRecord | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<UserRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
@@ -331,22 +335,25 @@ export function Users() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function handleSuspend(u: UserRecord) {
+  async function handleSuspend(u: UserRecord): Promise<boolean> {
     try {
       await suspendUser(u.id);
       load();
+      return true;
     } catch (err: any) {
-      alert(err.message || 'Failed to suspend user');
+      setActionError(err.message || 'Failed to suspend user');
+      return false;
     }
   }
 
-  async function handleDelete(u: UserRecord) {
-    if (!confirm(`Delete user "${u.username}"? They will be soft-deleted and removed from the active list.`)) return;
+  async function handleDelete(u: UserRecord): Promise<boolean> {
     try {
       await deleteUser(u.id);
       load();
+      return true;
     } catch (err: any) {
-      alert(err.message || 'Failed to delete user');
+      setActionError(err.message || 'Failed to delete user');
+      return false;
     }
   }
 
@@ -429,7 +436,7 @@ export function Users() {
                             </button>
                           )}
                           {u.status === 'active' && (
-                            <button onClick={() => handleSuspend(u)}
+                            <button onClick={() => { setActionError(null); setSuspendTarget(u); }}
                               title="Suspend user"
                               className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
                               <Ban className="w-4 h-4" />
@@ -443,14 +450,14 @@ export function Users() {
                             </button>
                           )}
                           <button
-                            onClick={() => setResetTarget(u)}
+                            onClick={() => { setActionError(null); setResetConfirmTarget(u); }}
                             disabled={u.username === currentUsername}
                             title={u.username === currentUsername ? 'Use Settings to change your own password' : 'Reset password'}
                             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                           >
                             <RotateCcw className="w-4 h-4" />
                           </button>
-                          <button onClick={() => handleDelete(u)}
+                          <button onClick={() => { setActionError(null); setDeleteTarget(u); }}
                             title="Delete user"
                             className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors">
                             <Trash2 className="w-4 h-4" />
@@ -485,6 +492,114 @@ export function Users() {
           onDone={() => { setShowCreate(false); load(); }}
         />
       )}
+
+      <Modal
+        isOpen={suspendTarget !== null}
+        onClose={() => setSuspendTarget(null)}
+        title="Suspend User"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to suspend <span className="text-foreground font-semibold">{suspendTarget?.username}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            They will immediately lose dashboard access until reactivated.
+          </p>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setSuspendTarget(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!suspendTarget) return;
+                const ok = await handleSuspend(suspendTarget);
+                if (ok) setSuspendTarget(null);
+              }}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Suspend User
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete User"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete <span className="text-foreground font-semibold">{deleteTarget?.username}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            They will be soft-deleted and removed from the active list. This action cannot be undone.
+          </p>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!deleteTarget) return;
+                const ok = await handleDelete(deleteTarget);
+                if (ok) setDeleteTarget(null);
+              }}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Delete User
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={resetConfirmTarget !== null}
+        onClose={() => setResetConfirmTarget(null)}
+        title="Reset Password"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to reset the password for <span className="text-foreground font-semibold">{resetConfirmTarget?.username}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            A new temporary password will be generated and all of their active sessions will be revoked immediately.
+          </p>
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setResetConfirmTarget(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                const target = resetConfirmTarget;
+                setResetConfirmTarget(null);
+                if (target) setResetTarget(target);
+              }}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Reset Password
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
