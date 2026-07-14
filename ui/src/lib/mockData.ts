@@ -840,32 +840,41 @@ export const mockHFRepoDetails: Record<string, any> = {
 // --- Model configuration overrides (demo) ---
 // Plausible static profiles: a realistic MIX of some fields set, most left
 // unconfigured — an all-fields-filled profile would look fabricated (R1).
+// Keyed by (model, node) — the same model name can carry a different
+// profile per node/runtime it's resident on (see mockGPUNodes/mockModelCatalog
+// above: gpu-node-01=ollama, gpu-node-02=vllm, gpu-node-03=tgi, gpu-node-04=llamacpp).
 const mockModelConfigSeed: ModelConfig[] = [
   {
-    model: 'deepseek-r1:7b',
-    num_ctx: 8192,
-    temperature: 0.6,
-    top_p: 0.95,
-    system: 'You are a careful reasoning assistant. Think step by step before answering.',
-  },
-  {
     model: 'llama3.3:8b',
+    node: 'gpu-node-01',
     num_ctx: 4096,
     num_gpu: 999,
     flash_attention: true,
     repeat_penalty: 1.15,
     rpm: 120,
+    system: 'You are a careful reasoning assistant. Think step by step before answering.',
   },
-  // Resident only on non-Ollama nodes (gpu-node-02 vLLM, gpu-node-03 TGI) —
-  // load-time/engine params intentionally absent here since they're
-  // launch-time-only flags on those runtimes, not settable per-request.
+  // mistral:7b is resident on both a vLLM node and a TGI node — two separate
+  // profiles, since load-time/engine params only ever apply on Ollama and
+  // the two OpenAI-compatible runtimes support different extra fields.
   {
     model: 'mistral:7b',
+    node: 'gpu-node-02',
     temperature: 0.7,
     top_p: 0.9,
     rpm: 200,
   },
+  {
+    model: 'mistral:7b',
+    node: 'gpu-node-03',
+    temperature: 0.65,
+    max_tokens: 2048,
+  },
 ];
+
+function modelConfigKey(model: string, node: string): string {
+  return `${model}@@${node}`;
+}
 
 // Mutable in-memory demo store so the config modal behaves realistically
 // (save/reset) within a session; resets on reload, same lifecycle as
@@ -873,26 +882,54 @@ const mockModelConfigSeed: ModelConfig[] = [
 let demoModelConfigs: Map<string, ModelConfig> | null = null;
 function demoModelConfigStore(): Map<string, ModelConfig> {
   if (!demoModelConfigs) {
-    demoModelConfigs = new Map(mockModelConfigSeed.map(c => [c.model, c]));
+    demoModelConfigs = new Map(mockModelConfigSeed.map(c => [modelConfigKey(c.model, c.node), c]));
   }
   return demoModelConfigs;
 }
 
-export function getMockModelConfig(model: string): ModelConfig | null {
-  return demoModelConfigStore().get(model) ?? null;
+export function getMockModelConfig(model: string, node: string): ModelConfig | null {
+  return demoModelConfigStore().get(modelConfigKey(model, node)) ?? null;
 }
 
 export function setMockModelConfig(cfg: ModelConfig): ModelConfig {
-  demoModelConfigStore().set(cfg.model, cfg);
+  demoModelConfigStore().set(modelConfigKey(cfg.model, cfg.node), cfg);
   return cfg;
 }
 
-export function deleteMockModelConfig(model: string): void {
-  demoModelConfigStore().delete(model);
+export function deleteMockModelConfig(model: string, node: string): void {
+  demoModelConfigStore().delete(modelConfigKey(model, node));
 }
 
 export function listMockModelConfigs(): ModelConfig[] {
   return Array.from(demoModelConfigStore().values());
+}
+
+// --- Model config capabilities (demo) ---
+// Mirrors internal/store/model_config_capabilities.go's SupportedFieldsFor
+// table so the offline/demo build filters fields the same way the real API
+// does. Hardcoded here deliberately — this is the demo/offline path, not the
+// real API contract (the live build always calls fetchModelConfigCapabilities).
+const OPENAI_COMPAT_BASE_FIELDS = [
+  'temperature', 'top_p', 'max_tokens', 'seed', 'stop',
+  'presence_penalty', 'frequency_penalty', 'response_format',
+];
+const OLLAMA_LOAD_TIME_FIELDS = [
+  'num_ctx', 'num_gpu', 'flash_attention', 'offload_kv_cache_to_gpu',
+  'num_batch', 'num_thread', 'use_mmap', 'use_mlock',
+  'rope_frequency_base', 'rope_frequency_scale', 'ttl', 'tensor_parallelism',
+];
+const OLLAMA_INFERENCE_FIELDS = [
+  'top_k', 'min_p', 'typical_p', 'tfs_z', 'repeat_penalty', 'repeat_last_n',
+  'mirostat', 'mirostat_tau', 'mirostat_eta', 'logit_bias',
+];
+
+export function getMockModelConfigCapabilities(): Record<string, string[]> {
+  return {
+    ollama: [...OPENAI_COMPAT_BASE_FIELDS, ...OLLAMA_LOAD_TIME_FIELDS, ...OLLAMA_INFERENCE_FIELDS, 'system', 'template', 'rpm', 'tpm'],
+    vllm: [...OPENAI_COMPAT_BASE_FIELDS, 'top_k', 'min_p', 'repetition_penalty', 'rpm', 'tpm'],
+    tgi: [...OPENAI_COMPAT_BASE_FIELDS, 'rpm', 'tpm'],
+    llamacpp: [...OPENAI_COMPAT_BASE_FIELDS, 'mirostat', 'mirostat_tau', 'mirostat_eta', 'repeat_penalty', 'repeat_last_n', 'tfs_z', 'typical_p', 'rpm', 'tpm'],
+  };
 }
 
 
