@@ -37,11 +37,16 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 //     /v1/completions): the subset of inference-time params that exist in the
 //     strict OpenAI schema are always injected at the top level, plus
 //     whatever additional fields store.OpenAICompatExtraFields[runtime]
-//     declares that specific runtime's server actually accepts. Ollama-only
-//     load-time knobs (num_ctx, num_gpu, top_k via Ollama's own naming,
-//     mirostat, etc.) have no equivalent outside Ollama's options object and
-//     are skipped unless explicitly re-declared (under the runtime's own
-//     field name) in store.OpenAICompatExtraFields.
+//     declares that specific runtime's server actually accepts, plus a
+//     system prompt prepended as a leading {"role":"system",...} message
+//     when the request has a chat "messages" array (the OpenAI schema has no
+//     bare "system" field the way Ollama does). Ollama-only load-time knobs
+//     (num_ctx, num_gpu, top_k via Ollama's own naming, mirostat, etc.) have
+//     no equivalent outside Ollama's options object and are skipped unless
+//     explicitly re-declared (under the runtime's own field name) in
+//     store.OpenAICompatExtraFields. template stays Ollama-only always — it's
+//     Ollama's own model-file prompt-templating mechanism, with no
+//     equivalent concept in any other runtime's OpenAI-compatible layer.
 //
 // Returns the original body unchanged if it isn't a JSON object or the
 // config carries no fields worth injecting.
@@ -182,6 +187,37 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		}
 		if cfg.ResponseFormat != nil {
 			setIfAbsent(top, "response_format", map[string]string{"type": *cfg.ResponseFormat})
+		}
+
+		// System prompt: the OpenAI chat schema has no bare "system" field —
+		// it's expressed as a leading {"role":"system",...} message. Only
+		// applies to chat-shaped bodies (a "messages" array); a legacy
+		// /v1/completions-style body has no place to carry one and is left
+		// untouched. Never inserted if the client already supplied its own
+		// system message (never overwrite a client-supplied value).
+		if cfg.System != nil {
+			if rawMsgs, ok := top["messages"]; ok {
+				var msgs []map[string]json.RawMessage
+				if err := json.Unmarshal(rawMsgs, &msgs); err == nil {
+					hasSystem := false
+					for _, m := range msgs {
+						var role string
+						if roleRaw, ok := m["role"]; ok && json.Unmarshal(roleRaw, &role) == nil && role == "system" {
+							hasSystem = true
+							break
+						}
+					}
+					if !hasSystem {
+						roleBytes, _ := json.Marshal("system")
+						contentBytes, _ := json.Marshal(*cfg.System)
+						sysMsg := map[string]json.RawMessage{"role": roleBytes, "content": contentBytes}
+						newMsgs := append([]map[string]json.RawMessage{sysMsg}, msgs...)
+						if raw, err := json.Marshal(newMsgs); err == nil {
+							top["messages"] = raw
+						}
+					}
+				}
+			}
 		}
 
 		// Extra fields specific to this runtime's own OpenAI-compatible

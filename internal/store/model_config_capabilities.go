@@ -60,6 +60,11 @@ func SupportedFieldsFor(runtime string) []string {
 	}
 	fields := append([]string{}, OpenAICompatBaseFields...)
 	fields = append(fields, OpenAICompatExtraFields[runtime]...)
-	fields = append(fields, "rpm", "tpm")
+	// system is supported here too: injectModelDefaults prepends it as a
+	// leading {"role":"system",...} message on chat-shaped ("messages"
+	// array) requests. template stays Ollama-only — it's Ollama's own
+	// model-file prompt-templating mechanism, with no equivalent on any
+	// OpenAI-compatible runtime.
+	fields = append(fields, "system", "rpm", "tpm")
 	return fields
 }

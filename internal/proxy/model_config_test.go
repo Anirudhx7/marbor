@@ -192,3 +192,68 @@ func TestModelRateLimiterPerNodeIsolation(t *testing.T) {
 		t.Fatal("node-b should have its own independent budget and allow its 1st request")
 	}
 }
+
+// TestInjectModelDefaultsOpenAICompatSystemPromptInjection verifies a
+// configured system prompt is prepended as a leading system-role message on
+// a chat-shaped OpenAI-compatible request, for every non-Ollama runtime.
+func TestInjectModelDefaultsOpenAICompatSystemPromptInjection(t *testing.T) {
+	cfg := store.ModelConfig{Model: "m", Node: "n", System: strp("Always answer BANANA.")}
+	body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+	out := injectModelDefaults(body, "vllm", cfg)
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	msgs, ok := m["messages"].([]interface{})
+	if !ok || len(msgs) != 2 {
+		t.Fatalf("messages = %v, want 2 entries (system + original user)", m["messages"])
+	}
+	first := msgs[0].(map[string]interface{})
+	if first["role"] != "system" || first["content"] != "Always answer BANANA." {
+		t.Fatalf("first message = %v, want the configured system prompt", first)
+	}
+	second := msgs[1].(map[string]interface{})
+	if second["role"] != "user" || second["content"] != "hi" {
+		t.Fatalf("original user message was mutated: %v", second)
+	}
+}
+
+// TestInjectModelDefaultsOpenAICompatSystemPromptNeverOverwritesClient
+// verifies a client-supplied system message is left alone even when a
+// default is configured.
+func TestInjectModelDefaultsOpenAICompatSystemPromptNeverOverwritesClient(t *testing.T) {
+	cfg := store.ModelConfig{Model: "m", Node: "n", System: strp("configured default")}
+	body := []byte(`{"model":"m","messages":[{"role":"system","content":"client system prompt"},{"role":"user","content":"hi"}]}`)
+	out := injectModelDefaults(body, "tgi", cfg)
+
+	var m map[string]interface{}
+	json.Unmarshal(out, &m)
+	msgs := m["messages"].([]interface{})
+	if len(msgs) != 2 {
+		t.Fatalf("messages = %v, want unchanged 2 entries (no system message inserted)", msgs)
+	}
+	first := msgs[0].(map[string]interface{})
+	if first["content"] != "client system prompt" {
+		t.Fatalf("client system prompt was overwritten: %v", first)
+	}
+}
+
+// TestInjectModelDefaultsOpenAICompatSystemPromptNoMessagesArray verifies a
+// legacy /v1/completions-style body (no "messages" array) is left untouched
+// by the system-prompt injection — there's no place to carry a system role
+// in that schema.
+func TestInjectModelDefaultsOpenAICompatSystemPromptNoMessagesArray(t *testing.T) {
+	cfg := store.ModelConfig{Model: "m", Node: "n", System: strp("configured default")}
+	body := []byte(`{"model":"m","prompt":"hi"}`)
+	out := injectModelDefaults(body, "llamacpp", cfg)
+
+	var m map[string]interface{}
+	json.Unmarshal(out, &m)
+	if _, ok := m["messages"]; ok {
+		t.Fatalf("messages array should not be fabricated: %v", m)
+	}
+	if _, ok := m["system"]; ok {
+		t.Fatalf("bare 'system' field should not be injected for non-Ollama runtimes: %v", m)
+	}
+}

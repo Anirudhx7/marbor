@@ -924,11 +924,15 @@ const OLLAMA_INFERENCE_FIELDS = [
 ];
 
 export function getMockModelConfigCapabilities(): Record<string, string[]> {
+  // system is supported on every runtime: injectModelDefaults prepends it as
+  // a leading system-role message on chat-shaped OpenAI-compatible requests.
+  // template stays Ollama-only — it's Ollama's own model-file
+  // prompt-templating mechanism, with no OpenAI-compatible equivalent.
   return {
     ollama: [...OPENAI_COMPAT_BASE_FIELDS, ...OLLAMA_LOAD_TIME_FIELDS, ...OLLAMA_INFERENCE_FIELDS, 'system', 'template', 'rpm', 'tpm'],
-    vllm: [...OPENAI_COMPAT_BASE_FIELDS, 'top_k', 'min_p', 'repetition_penalty', 'rpm', 'tpm'],
-    tgi: [...OPENAI_COMPAT_BASE_FIELDS, 'rpm', 'tpm'],
-    llamacpp: [...OPENAI_COMPAT_BASE_FIELDS, 'mirostat', 'mirostat_tau', 'mirostat_eta', 'repeat_penalty', 'repeat_last_n', 'tfs_z', 'typical_p', 'rpm', 'tpm'],
+    vllm: [...OPENAI_COMPAT_BASE_FIELDS, 'top_k', 'min_p', 'repetition_penalty', 'system', 'rpm', 'tpm'],
+    tgi: [...OPENAI_COMPAT_BASE_FIELDS, 'system', 'rpm', 'tpm'],
+    llamacpp: [...OPENAI_COMPAT_BASE_FIELDS, 'mirostat', 'mirostat_tau', 'mirostat_eta', 'repeat_penalty', 'repeat_last_n', 'tfs_z', 'typical_p', 'system', 'rpm', 'tpm'],
   };
 }
 
