@@ -24,28 +24,34 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 
 // injectModelDefaults applies a model's configured default parameters to an
 // outgoing request body, filling only fields the client did not already
-// specify (never overwrites a client-supplied value). ollamaNative selects
-// which wire shape to inject into:
+// specify (never overwrites a client-supplied value). runtime selects which
+// wire shape to inject into ("" is treated as "ollama" for backwards
+// compatibility, matching router.NodeState.Runtime's convention):
 //
-//   - Ollama-native (/api/generate, /api/chat): load-time and inference-time
+//   - Ollama (/api/generate, /api/chat): load-time and inference-time
 //     params go into the request's "options" object; system/template/keep_alive
 //     are top-level fields. Ollama itself detects when a resident model's
 //     active options differ from an incoming request's and reloads
 //     automatically — the mesh does not need a separate evict-then-reload step.
-//   - OpenAI-compatible (/v1/chat/completions, /v1/completions): only the
-//     subset of inference-time params that exist in the OpenAI schema are
-//     injected at the top level; Ollama-specific knobs (num_ctx, num_gpu,
-//     top_k, mirostat, etc.) have no OpenAI equivalent and are skipped here.
+//   - Every other runtime (vllm/tgi/llamacpp, reached via /v1/chat/completions,
+//     /v1/completions): the subset of inference-time params that exist in the
+//     strict OpenAI schema are always injected at the top level, plus
+//     whatever additional fields store.OpenAICompatExtraFields[runtime]
+//     declares that specific runtime's server actually accepts. Ollama-only
+//     load-time knobs (num_ctx, num_gpu, top_k via Ollama's own naming,
+//     mirostat, etc.) have no equivalent outside Ollama's options object and
+//     are skipped unless explicitly re-declared (under the runtime's own
+//     field name) in store.OpenAICompatExtraFields.
 //
 // Returns the original body unchanged if it isn't a JSON object or the
 // config carries no fields worth injecting.
-func injectModelDefaults(body []byte, ollamaNative bool, cfg store.ModelConfig) []byte {
+func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []byte {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(body, &top); err != nil {
 		return body
 	}
 
-	if ollamaNative {
+	if runtime == "" || runtime == "ollama" {
 		var opts map[string]json.RawMessage
 		if raw, ok := top["options"]; ok {
 			_ = json.Unmarshal(raw, &opts)
@@ -151,7 +157,8 @@ func injectModelDefaults(body []byte, ollamaNative bool, cfg store.ModelConfig) 
 			setIfAbsent(top, "keep_alive", *cfg.TTL)
 		}
 	} else {
-		// OpenAI-compatible: only fields that exist in that schema.
+		// Strict OpenAI schema — always valid regardless of which non-Ollama
+		// runtime is on the other end.
 		if cfg.Temperature != nil {
 			setIfAbsent(top, "temperature", *cfg.Temperature)
 		}
@@ -176,6 +183,53 @@ func injectModelDefaults(body []byte, ollamaNative bool, cfg store.ModelConfig) 
 		if cfg.ResponseFormat != nil {
 			setIfAbsent(top, "response_format", map[string]string{"type": *cfg.ResponseFormat})
 		}
+
+		// Extra fields specific to this runtime's own OpenAI-compatible
+		// server extensions, beyond the strict schema above.
+		for _, field := range store.OpenAICompatExtraFields[runtime] {
+			switch field {
+			case "top_k":
+				if cfg.TopK != nil {
+					setIfAbsent(top, "top_k", *cfg.TopK)
+				}
+			case "min_p":
+				if cfg.MinP != nil {
+					setIfAbsent(top, "min_p", *cfg.MinP)
+				}
+			case "repetition_penalty": // vLLM's own name for repeat_penalty
+				if cfg.RepeatPenalty != nil {
+					setIfAbsent(top, "repetition_penalty", *cfg.RepeatPenalty)
+				}
+			case "repeat_penalty": // llama.cpp's own name for the same value
+				if cfg.RepeatPenalty != nil {
+					setIfAbsent(top, "repeat_penalty", *cfg.RepeatPenalty)
+				}
+			case "repeat_last_n":
+				if cfg.RepeatLastN != nil {
+					setIfAbsent(top, "repeat_last_n", *cfg.RepeatLastN)
+				}
+			case "tfs_z":
+				if cfg.TfsZ != nil {
+					setIfAbsent(top, "tfs_z", *cfg.TfsZ)
+				}
+			case "typical_p":
+				if cfg.TypicalP != nil {
+					setIfAbsent(top, "typical_p", *cfg.TypicalP)
+				}
+			case "mirostat":
+				if cfg.Mirostat != nil {
+					setIfAbsent(top, "mirostat", *cfg.Mirostat)
+				}
+			case "mirostat_tau":
+				if cfg.MirostatTau != nil {
+					setIfAbsent(top, "mirostat_tau", *cfg.MirostatTau)
+				}
+			case "mirostat_eta":
+				if cfg.MirostatEta != nil {
+					setIfAbsent(top, "mirostat_eta", *cfg.MirostatEta)
+				}
+			}
+		}
 	}
 
 	out, err := json.Marshal(top)
@@ -185,12 +239,15 @@ func injectModelDefaults(body []byte, ollamaNative bool, cfg store.ModelConfig) 
 	return out
 }
 
-// modelRateLimiter enforces optional per-model requests-per-minute and
-// tokens-per-minute caps (store.ModelConfig.RPM/TPM). Single mesh process, no
-// distributed state — an in-memory rolling-minute counter per model, mirroring
-// the per-key tokenBucket pattern in internal/auth. RPM is a real pre-request
-// gate; TPM is necessarily post-hoc (token counts are only known after a
-// response completes), so it blocks new requests once the current minute's
+// modelRateLimiter enforces optional per-(model,node) requests-per-minute
+// and tokens-per-minute caps (store.ModelConfig.RPM/TPM). Single mesh
+// process, no distributed state — an in-memory rolling-minute counter per
+// (model, node) pair, mirroring the per-key tokenBucket pattern in
+// internal/auth. Keyed by node as well as model since ModelConfig itself is
+// now a per-(model,node) profile: the same model on two different nodes can
+// carry two different rpm/tpm caps. RPM is a real pre-request gate; TPM is
+// necessarily post-hoc (token counts are only known after a response
+// completes), so it blocks new requests once the current minute's
 // already-consumed tokens reach the cap — the same "count now, gate later"
 // shape used for the existing daily/monthly per-key usage caps.
 type modelRateLimiter struct {
@@ -208,12 +265,18 @@ func newModelRateLimiter() *modelRateLimiter {
 	return &modelRateLimiter{stats: make(map[string]*modelMinuteStats)}
 }
 
-func (l *modelRateLimiter) statsLocked(model string) *modelMinuteStats {
-	st, ok := l.stats[model]
+// limiterKey combines model+node into the map key. NUL is used as the
+// separator since it can never appear in either a model name or node name.
+func limiterKey(model, node string) string {
+	return model + "\x00" + node
+}
+
+func (l *modelRateLimiter) statsLocked(key string) *modelMinuteStats {
+	st, ok := l.stats[key]
 	now := time.Now()
 	if !ok {
 		st = &modelMinuteStats{windowStart: now}
-		l.stats[model] = st
+		l.stats[key] = st
 		return st
 	}
 	if now.Sub(st.windowStart) >= time.Minute {
@@ -224,15 +287,15 @@ func (l *modelRateLimiter) statsLocked(model string) *modelMinuteStats {
 	return st
 }
 
-// allow reports whether a new request for model may proceed given rpm/tpm
-// caps (nil = unlimited), and increments the request counter if so.
-func (l *modelRateLimiter) allow(model string, rpm, tpm *int) bool {
+// allow reports whether a new request for (model, node) may proceed given
+// rpm/tpm caps (nil = unlimited), and increments the request counter if so.
+func (l *modelRateLimiter) allow(model, node string, rpm, tpm *int) bool {
 	if rpm == nil && tpm == nil {
 		return true
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	st := l.statsLocked(model)
+	st := l.statsLocked(limiterKey(model, node))
 	if rpm != nil && *rpm > 0 && st.requests >= *rpm {
 		return false
 	}
@@ -244,14 +307,14 @@ func (l *modelRateLimiter) allow(model string, rpm, tpm *int) bool {
 }
 
 // recordTokens adds tokens consumed by a completed request into the current
-// minute's window, so a subsequent request against the same model sees an
-// accurate running total for the TPM gate.
-func (l *modelRateLimiter) recordTokens(model string, tokens int64) {
+// minute's window, so a subsequent request against the same (model, node)
+// sees an accurate running total for the TPM gate.
+func (l *modelRateLimiter) recordTokens(model, node string, tokens int64) {
 	if tokens <= 0 {
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	st := l.statsLocked(model)
+	st := l.statsLocked(limiterKey(model, node))
 	st.tokens += tokens
 }
