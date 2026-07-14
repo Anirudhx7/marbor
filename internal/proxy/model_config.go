@@ -183,7 +183,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 			setIfAbsent(top, "response_format", map[string]string{"type": *cfg.ResponseFormat})
 		}
 
-		// System prompt: the OpenAI chat schema has no bare "system" field  -- 
+		// System prompt: the OpenAI chat schema has no bare "system" field  --
 		// it's expressed as a leading {"role":"system",...} message. Only
 		// applies to chat-shaped bodies (a "messages" array); a legacy
 		// /v1/completions-style body has no place to carry one and is left

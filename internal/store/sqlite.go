@@ -275,7 +275,7 @@ func (s *sqliteStore) migrate() error {
 		// can't express either case. The full profile (30 load-time/
 		// inference-time/meta fields, see ModelConfig) is stored as one JSON
 		// blob rather than one column per field, matching the existing
-		// runtime_keys.models / warmup_models.nodes_json idiom in this file  -- 
+		// runtime_keys.models / warmup_models.nodes_json idiom in this file  --
 		// there's no need to filter/sort by individual param, only to fetch
 		// the whole profile by (model, node).
 		`CREATE TABLE IF NOT EXISTS model_configs (

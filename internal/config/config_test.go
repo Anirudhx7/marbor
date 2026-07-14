@@ -107,7 +107,7 @@ savings:
 
 // TestDuplicateNodeURLNormalized verifies that two nodes with the same
 // backend URL are rejected even when they differ only cosmetically (case of
-// scheme/host, trailing slash) and are registered under different names  -- 
+// scheme/host, trailing slash) and are registered under different names  --
 // e.g. a statically-configured "pve" and an auto-discovered
 // "discovered-ollama-1" that both point at the same physical GPU box. Before
 // NormalizeNodeURL, Validate() only caught byte-for-byte identical URL

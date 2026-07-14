@@ -1179,7 +1179,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, router.ErrModelPinned) {
-		// Pinning means "never evict/unload without an explicit unpin first"  -- 
+		// Pinning means "never evict/unload without an explicit unpin first"  --
 		// this must be honored on the manual unload path exactly like it is on
 		// auto-eviction. There is no force-override; unpin, then unload.
 		w.WriteHeader(http.StatusConflict)
@@ -1328,7 +1328,7 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 		sc.Days = *patch.Days
 	}
 	// Re-validate the merged schedule so an edit can't leave it pointing at a
-	// node that doesn't exist, or a warmup/unload schedule with no models  -- 
+	// node that doesn't exist, or a warmup/unload schedule with no models  --
 	// both of which would fire "successfully" every tick and silently do
 	// nothing (see fireSchedule).
 	if !s.scheduleNodeExists(sc.Node) {

@@ -33,7 +33,9 @@ func (r *Router) warmStore() store.Store {
 // the mesh observes it (Tier 1, lifecycle events): models newly resident on the
 // node are recorded as loads (bumping load_count); models that vanished are
 // deleted. Persistence is best-effort  --  a store error must never disturb polling
-//  --  so failures are logged and swallowed. Must be called WITHOUT holding n.mu or
+//
+//	--  so failures are logged and swallowed. Must be called WITHOUT holding n.mu or
+//
 // r.mu (it performs blocking store I/O).
 func (r *Router) persistResidencyDiff(node string, prev, current []ModelInfo) {
 	st := r.warmStore()
@@ -149,7 +151,7 @@ func (r *Router) FlushWarmState() {
 // RestoreWarmState seeds the in-memory warm state from the store at startup so
 // the router starts warm, not cold. It restores the LRU last-used history for
 // every persisted (model, node) pair, and seeds each known node's residency map
-// when it is still empty (i.e. the first health poll has not yet populated it  -- 
+// when it is still empty (i.e. the first health poll has not yet populated it  --
 // polling remains the authoritative source and overwrites the seed as soon as it
 // succeeds). Returns the number of persisted pairs restored. Call after nodes are
 // registered and before serving client traffic.

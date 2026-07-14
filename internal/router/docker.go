@@ -59,7 +59,7 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 // on the same Docker network (container-to-container traffic on a bridge
 // network uses container IPs, not 127.0.0.1).
 //
-// Falls back to 127.0.0.1 only when no container IP can be determined  -- 
+// Falls back to 127.0.0.1 only when no container IP can be determined  --
 // e.g. the container was started with --network host, where it shares the
 // host's network namespace and the mapped port is genuinely reachable via
 // loopback. We do not attempt to detect ollama-mesh's own network mode here;
