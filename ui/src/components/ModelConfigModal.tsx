@@ -353,6 +353,7 @@ export function ModelConfigModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string>('');
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   // Capabilities are fetched once and cached for the modal's lifetime — the
   // field list per runtime doesn't change while the modal is open, so
   // switching nodes only needs a re-filter, not a re-fetch. `null` means
@@ -456,10 +457,12 @@ export function ModelConfigModal({
       setError(e instanceof Error ? e.message : 'Failed to reset model config');
     } finally {
       setSaving(false);
+      setResetConfirmOpen(false);
     }
   };
 
   return (
+    <>
     <Modal
       isOpen={!!model}
       onClose={onClose}
@@ -561,7 +564,7 @@ export function ModelConfigModal({
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2">
             <button
-              onClick={handleResetAll}
+              onClick={() => setResetConfirmOpen(true)}
               disabled={saving}
               className="px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 cursor-pointer"
             >
@@ -588,5 +591,44 @@ export function ModelConfigModal({
         </div>
       )}
     </Modal>
+
+    <Modal
+      isOpen={resetConfirmOpen}
+      onClose={() => setResetConfirmOpen(false)}
+      title="Reset this node to defaults"
+      maxWidth="sm"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Are you sure you want to reset <span className="text-foreground font-semibold">{model}</span> on node{' '}
+          <span className="text-foreground font-semibold">{selectedNode}</span> to backend defaults?
+        </p>
+        <p className="text-xs text-muted-foreground">
+          This clears every configured override for this (model, node) pair — temperature, system prompt, rate
+          limits, everything. This action cannot be undone.
+        </p>
+        {error && (
+          <p className="text-sm text-destructive">{error}</p>
+        )}
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <button
+            onClick={() => setResetConfirmOpen(false)}
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleResetAll}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Reset to Defaults
+          </button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 }
