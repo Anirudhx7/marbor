@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus, Copy, Trash2, Key, Pencil } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
@@ -21,6 +22,7 @@ import { useCurrency } from '../hooks/useCurrency';
 
 export function APIKeys() {
   const { demoMode } = useDemoMode();
+  const location = useLocation();
   const { currency, toDisplay, toUSD } = useCurrency();
   const roundDisplay = (n: number) => Math.round(n * 100) / 100;
   const [keys, setKeys] = useState<APIKey[]>(demoMode ? mockAPIKeys : []);
@@ -126,8 +128,9 @@ export function APIKeys() {
   });
   const [formErrors, setFormErrors] = useState<string[]>([]);
 
-  const loadKeys = async () => {
+  const loadKeys = async (active: boolean = true) => {
     if (demoMode) {
+      if (!active || location.pathname !== '/api-keys') return;
       setKeys(mockAPIKeys);
       setIsLive(false);
       setError(null);
@@ -135,10 +138,12 @@ export function APIKeys() {
     }
     try {
       const data = await fetchKeys();
+      if (!active || location.pathname !== '/api-keys') return;
       setKeys(data || []);
       setIsLive(true);
       setError(null);
     } catch (e: any) {
+      if (!active || location.pathname !== '/api-keys') return;
       setIsLive(false);
       setKeys([]);
       setError(e.message || 'Failed to connect to backend');
@@ -148,19 +153,34 @@ export function APIKeys() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
 
   useEffect(() => {
+    if (location.pathname !== '/api-keys') return;
+    let active = true;
     if (!demoMode) {
       fetchModels().then(data => {
+        if (!active || location.pathname !== '/api-keys') return;
         setAvailableModels((data.models || []).map((m: any) => m.name));
       }).catch(() => {});
     }
-  }, [demoMode]);
+    return () => { active = false; };
+  }, [demoMode, location.pathname]);
 
   useEffect(() => {
-    loadKeys();
-    if (demoMode) return;
-    const interval = setInterval(loadKeys, 30000);
-    return () => clearInterval(interval);
-  }, [demoMode]);
+    if (location.pathname !== '/api-keys') return;
+    let active = true;
+    loadKeys(active);
+    if (demoMode) return () => { active = false; };
+    const interval = setInterval(() => loadKeys(active), 30000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname]);
+
+  useEffect(() => {
+    return () => {
+      if (newKeyDismissTimer) clearTimeout(newKeyDismissTimer);
+    };
+  }, [newKeyDismissTimer]);
 
   const filteredKeys = keys.filter(key =>
     key.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

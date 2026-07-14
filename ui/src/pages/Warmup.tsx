@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, PlayCircle, Pencil, BrainCircuit } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
@@ -495,6 +496,7 @@ function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (
 
 export function Warmup() {
   const { demoMode } = useDemoMode();
+  const location = useLocation();
   const [nodes, setNodes] = useState<GPUNode[]>([]);
   const [warmup, setWarmup] = useState<Record<string, NodeWarmup>>({});
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -511,23 +513,40 @@ export function Warmup() {
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
   const [scheduleDeleteError, setScheduleDeleteError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (active: boolean) => {
     try {
       const ns = await fetchNodes();
+      if (!active || location.pathname !== '/warmup') return;
       const safeNs = Array.isArray(ns) ? ns : [];
       setNodes(safeNs);
       const w: Record<string, NodeWarmup> = {};
       await Promise.all(safeNs.map(async n => {
-        try { w[n.name] = await getNodeWarmup(n.name); } catch { w[n.name] = { enabled: false, models: [] }; }
+        try {
+          const res = await getNodeWarmup(n.name);
+          if (active && location.pathname === '/warmup') {
+            w[n.name] = res;
+          }
+        } catch {
+          if (active && location.pathname === '/warmup') {
+            w[n.name] = { enabled: false, models: [] };
+          }
+        }
       }));
+      if (!active || location.pathname !== '/warmup') return;
       setWarmup(w);
-      setSchedules((await listSchedules()) || []);
-      setDecisions(await fetchPredictiveDecisions().catch(() => []));
+      const schedList = await listSchedules();
+      if (!active || location.pathname !== '/warmup') return;
+      setSchedules(schedList || []);
+      const decs = await fetchPredictiveDecisions().catch(() => []);
+      if (!active || location.pathname !== '/warmup') return;
+      setDecisions(decs);
 
       const status = await fetchWarmupStatus().catch(() => ({ predictive_engine_enabled: true }));
+      if (!active || location.pathname !== '/warmup') return;
       setPredictiveEnabled(status.predictive_engine_enabled);
 
       const sys = await fetchSystemInfo().catch(() => null);
+      if (!active || location.pathname !== '/warmup') return;
       if (sys && sys.server_time && sys.timezone) {
         const parts = sys.server_time.split(' ');
         if (parts.length === 2) {
@@ -551,25 +570,44 @@ export function Warmup() {
       } else {
         try {
           const data = await fetchModels();
+          if (!active || location.pathname !== '/warmup') return;
           setAvailableModels((data.models || []).map((m: any) => m.name));
         } catch {
+          if (!active || location.pathname !== '/warmup') return;
           setAvailableModels([]);
         }
       }
       setError(null);
-    } catch (e: any) { setError(e.message || 'Failed to load'); }
-    finally { setLoading(false); }
-  }, [demoMode]);
-
-  useEffect(() => { load(); }, [load]);
+    } catch (e: any) {
+      if (!active || location.pathname !== '/warmup') return;
+      setError(e.message || 'Failed to load');
+    }
+    finally {
+      if (active && location.pathname === '/warmup') {
+        setLoading(false);
+      }
+    }
+  }, [demoMode, location.pathname]);
 
   useEffect(() => {
-    if (!serverTime) return;
+    if (location.pathname !== '/warmup') return;
+    let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load(active);
+    return () => {
+      active = false;
+    };
+  }, [load, location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname !== '/warmup' || !serverTime) return;
     const timer = setInterval(() => {
-      setServerTime(prev => prev ? new Date(prev.getTime() + 1000) : null);
+      if (location.pathname === '/warmup') {
+        setServerTime(prev => prev ? new Date(prev.getTime() + 1000) : null);
+      }
     }, 1000);
     return () => clearInterval(timer);
-  }, [serverTime]);
+  }, [serverTime, location.pathname]);
 
   const formatServerTime = (d: Date | null) => {
     if (!d) return 'Loading clock...';
