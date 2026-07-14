@@ -40,15 +40,30 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, { error: Error | null 
   }
   render() {
     if (this.state.error) {
+      const isChunkLoadError =
+        this.state.error.name === 'ChunkLoadError' ||
+        /failed to fetch dynamically imported module|chunk|load/i.test(this.state.error.message || '');
+
       return (
         <div className="p-8 text-center">
-          <p className="text-destructive font-semibold mb-2">Page failed to load</p>
-          <p className="text-xs text-muted-foreground font-mono">{this.state.error.message}</p>
+          <p className="text-destructive font-semibold mb-2">
+            {isChunkLoadError ? 'New application version available' : 'Page failed to load'}
+          </p>
+          <p className="text-xs text-muted-foreground font-mono mb-1">{this.state.error.message}</p>
+          {isChunkLoadError && (
+            <p className="text-xs text-muted-foreground mb-3">Please reload the page to load the latest version.</p>
+          )}
           <button
-            onClick={() => this.setState({ error: null })}
+            onClick={() => {
+              if (isChunkLoadError) {
+                window.location.reload();
+              } else {
+                this.setState({ error: null });
+              }
+            }}
             className="mt-4 px-3 py-1.5 text-xs bg-secondary rounded-lg text-foreground hover:bg-secondary/80 cursor-pointer"
           >
-            Retry
+            {isChunkLoadError ? 'Reload Page' : 'Retry'}
           </button>
         </div>
       );
@@ -234,7 +249,7 @@ function App() {
 
   return (
     <ThemeProvider>
-      <RouterComponent {...(forcedDemo ? {} : { basename })}>
+      <RouterComponent {...(forcedDemo ? {} : (basename === '/' ? {} : { basename }))}>
         <AppShell session={session} onLogout={handleLogout} pendingCount={pendingCount} />
       </RouterComponent>
     </ThemeProvider>

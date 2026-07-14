@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   Activity,
   Clock,
@@ -155,6 +155,7 @@ import { useDemoMode } from '../hooks/useDemoMode';
 
 export function Dashboard() {
   const { demoMode } = useDemoMode();
+  const location = useLocation();
   const { requests, newRequestId, isLive: requestsLive } = useLiveRequests(10);
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [summary, setSummary] = useState({
@@ -175,15 +176,22 @@ export function Dashboard() {
   const [version, setVersion] = useState<string>('');
 
   useEffect(() => {
+    if (location.pathname !== '/') return;
+    let active = true;
     fetchHealth().then(h => {
+      if (!active || location.pathname !== '/') return;
       if (h.proxy_port) setProxyPort(h.proxy_port);
       if (h.version) setVersion(h.version);
     }).catch(() => {});
-  }, []);
+    return () => { active = false; };
+  }, [location.pathname]);
 
   useEffect(() => {
+    if (location.pathname !== '/') return;
+    let active = true;
     const loadData = async () => {
       if (demoMode) {
+        if (!active || location.pathname !== '/') return;
         setNodes(mockGPUNodes);
         setSavings(mockSavings);
         setSavingsLoading(false);
@@ -196,39 +204,55 @@ export function Dashboard() {
           fetchNodes(),
           fetchSummary()
         ]);
+        if (!active || location.pathname !== '/') return;
         setNodes(nodesData || []);
         setSummary(summaryData || summary);
         setIsLive(true);
         setError(null);
       } catch (err: any) {
+        if (!active || location.pathname !== '/') return;
         setIsLive(false);
         setNodes([]);
         setError(err.message || 'Failed to fetch data');
       }
     };
     loadData();
-    if (demoMode) return;
+    if (demoMode) return () => { active = false; };
     const interval = setInterval(loadData, 10000);
-    return () => clearInterval(interval);
-  }, [demoMode]);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname]);
 
   useEffect(() => {
+    if (location.pathname !== '/') return;
+    let active = true;
     const loadSavings = async () => {
       if (demoMode) return;
-      setSavingsLoading(true);
+      if (active && location.pathname === '/') {
+        setSavingsLoading(true);
+      }
       try {
         const data = await fetchSavings();
+        if (!active || location.pathname !== '/') return;
         setSavings(data);
       } catch {
+        if (!active || location.pathname !== '/') return;
         setSavings(null);
       } finally {
-        setSavingsLoading(false);
+        if (active && location.pathname === '/') {
+          setSavingsLoading(false);
+        }
       }
     };
     loadSavings();
     const interval = setInterval(loadSavings, 5000);
-    return () => clearInterval(interval);
-  }, [demoMode]);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname]);
 
   const activeFromRequests = requests.filter(r => r.status === 'loading').length;
   const displayActive = isLive ? summary.activeRequests : activeFromRequests;

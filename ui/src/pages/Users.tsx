@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key, RotateCcw } from 'lucide-react';
 import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserPassword, fetchKeys, fetchModels, loadSession } from '../lib/api';
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
@@ -310,6 +311,7 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
 
 export function Users() {
   const currentUsername = loadSession()?.username ?? '';
+  const location = useLocation();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -321,19 +323,31 @@ export function Users() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (active = true) => {
+    if (location.pathname !== '/users') return;
     try {
       const data = await listUsers();
+      if (!active || location.pathname !== '/users') return;
       setUsers(data);
       setError(null);
     } catch (err: any) {
+      if (!active || location.pathname !== '/users') return;
       setError(err.message || 'Failed to load users');
     } finally {
-      setLoading(false);
+      if (active && location.pathname === '/users') {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [location.pathname]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (location.pathname !== '/users') return;
+    let active = true;
+    load(active);
+    return () => {
+      active = false;
+    };
+  }, [load, location.pathname]);
 
   async function handleSuspend(u: UserRecord): Promise<boolean> {
     try {

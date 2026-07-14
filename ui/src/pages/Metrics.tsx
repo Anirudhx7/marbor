@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Download, BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   LineChart,
@@ -119,34 +120,44 @@ function LoadingSkeleton() {
 
 export function Metrics() {
   const { demoMode } = useDemoMode();
+  const location = useLocation();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
+    if (location.pathname !== '/metrics') return;
     if (demoMode) {
       setAnalytics(mockAnalytics);
       setLoading(false);
       return;
     }
+    let active = true;
     const load = () => {
-      setLoading(true);
-      setError(null);
+      if (active && location.pathname === '/metrics') {
+        setLoading(true);
+        setError(null);
+      }
       fetchAnalytics()
         .then(data => {
+          if (!active || location.pathname !== '/metrics') return;
           setAnalytics(data);
           setLoading(false);
         })
         .catch(err => {
+          if (!active || location.pathname !== '/metrics') return;
           setError(err instanceof Error ? err.message : 'Failed to load analytics');
           setLoading(false);
         });
     };
     load();
     const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
-  }, [demoMode]);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname]);
 
   const hourlyData = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({
     hour: formatHour(b.hour),
