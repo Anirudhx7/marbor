@@ -227,32 +227,42 @@ verify_endpoint() {
       echo "$IP:8000:vllm"
     fi
   elif [ "$PORT" = "8080" ]; then
-    IS_TGI=false
-    if curl -fs -m 0.5 "http://$IP:8080/info" >/dev/null 2>&1; then
-      IS_TGI=true
-    elif wget -T 0.5 -t 1 -qO- "http://$IP:8080/info" >/dev/null 2>&1; then
-      IS_TGI=true
-    fi
-
-    if [ "$IS_TGI" = true ]; then
-      echo "$IP:8080:tgi"
+    HEALTH_BODY=""
+    if command -v curl >/dev/null 2>&1; then
+      HEALTH_BODY=$(curl -fs -m 0.5 "http://$IP:8080/health" 2>/dev/null || true)
     else
-      HEALTH_BODY=""
-      if command -v curl >/dev/null 2>&1; then
-        HEALTH_BODY=$(curl -fs -m 0.5 "http://$IP:8080/health" 2>/dev/null || true)
-      else
-        HEALTH_BODY=$(wget -T 0.5 -t 1 -qO- "http://$IP:8080/health" 2>/dev/null || true)
-      fi
-      if [ -n "$HEALTH_BODY" ]; then
-        # ollama-mesh's own /health returns {"proxy_port":...}; a real
-        # llama.cpp server never does. Skip it — it's a mesh instance
-        # (possibly this one), not a raw inference backend to route to.
-        case "$HEALTH_BODY" in
-          *proxy_port*) : ;;
-          *) echo "$IP:8080:llamacpp" ;;
-        esac
-      fi
+      HEALTH_BODY=$(wget -T 0.5 -t 1 -qO- "http://$IP:8080/health" 2>/dev/null || true)
     fi
+    # ollama-mesh's own /health returns {"proxy_port":...}; a real TGI or
+    # llama.cpp server never does. Rule this out FIRST, before the /info
+    # probe below — the mesh's embedded dashboard SPA answers 200 on any
+    # unmatched path (including /info), so checking status code alone would
+    # misidentify a mesh instance (possibly this one) as a TGI node.
+    case "$HEALTH_BODY" in
+      *proxy_port*) return ;;
+    esac
+
+    # TGI: verify by content, not just HTTP status. A real TGI server's
+    # /info response is JSON containing both "model_id" and
+    # "max_concurrent_requests" — fields no SPA catch-all route would emit.
+    INFO_BODY=""
+    if command -v curl >/dev/null 2>&1; then
+      INFO_BODY=$(curl -fs -m 0.5 "http://$IP:8080/info" 2>/dev/null || true)
+    else
+      INFO_BODY=$(wget -T 0.5 -t 1 -qO- "http://$IP:8080/info" 2>/dev/null || true)
+    fi
+    case "$INFO_BODY" in
+      *model_id*max_concurrent_requests*|*max_concurrent_requests*model_id*)
+        echo "$IP:8080:tgi"
+        return
+        ;;
+    esac
+
+    # llama.cpp server: /health responds with a JSON "status" field (already
+    # ruled out being ollama-mesh above), not just any non-empty body.
+    case "$HEALTH_BODY" in
+      *'"status"'*) echo "$IP:8080:llamacpp" ;;
+    esac
   fi
 }
 
@@ -463,8 +473,11 @@ if [ ! -f config.yaml ]; then
 
     # Own addresses are probed separately via the "localhost" check below;
     # skipping them here avoids discovering this same host twice under two
-    # different names (once by LAN IP, once as "localhost").
-    SELF_IPS=" $(get_local_subnets) "
+    # different names (once by LAN IP, once as "localhost"). get_local_subnets
+    # emits one IP per line (any host with >1 interface, e.g. Docker bridges,
+    # returns several lines) — join with spaces so the " $TARGET_IP " match
+    # below actually matches each entry instead of only the last one.
+    SELF_IPS=" $(get_local_subnets | tr '\n' ' ') "
 
     TEMP_FOUND="$(mktemp)"
     for ip in $IP_LIST; do
