@@ -807,3 +807,165 @@ func TestCloudBudgetExceeded_UnderCapAllowsFallback(t *testing.T) {
 		t.Errorf("CloudBudgetExceeded = true (%q), want false when spend is under the cap", reason)
 	}
 }
+
+// --- Model configuration overrides: (model, node)-keyed admin API ---
+
+func newModelConfigTestServer(t *testing.T) *Server {
+	t.Helper()
+	tmpDB := filepath.Join(t.TempDir(), "model-config.db")
+	st, err := store.Open(tmpDB)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	return NewServer(r, nil, config.Config{}, st)
+}
+
+// TestHandleSetGetDeleteModelConfig_RoundTrip verifies the full PUT/GET/DELETE
+// cycle at the HTTP handler layer, keyed by (model, node) rather than model
+// alone.
+func TestHandleSetGetDeleteModelConfig_RoundTrip(t *testing.T) {
+	s := newModelConfigTestServer(t)
+
+	body := `{"model":"llama3.3:8b","node":"gpu-node-01","num_ctx":8192,"temperature":0.5}`
+	putReq := httptest.NewRequest(http.MethodPut, "/admin/model-config", strings.NewReader(body))
+	putRec := httptest.NewRecorder()
+	s.handleSetModelConfig(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, body = %s", putRec.Code, putRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/admin/model-config?model=llama3.3:8b&node=gpu-node-01", nil)
+	getRec := httptest.NewRecorder()
+	s.handleGetModelConfig(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, body = %s", getRec.Code, getRec.Body.String())
+	}
+	var got store.ModelConfig
+	if err := json.Unmarshal(getRec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode GET response: %v", err)
+	}
+	if got.Node != "gpu-node-01" || got.NumCtx == nil || *got.NumCtx != 8192 {
+		t.Fatalf("GET result = %+v, want node=gpu-node-01 num_ctx=8192", got)
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/admin/model-config?model=llama3.3:8b&node=gpu-node-01", nil)
+	delRec := httptest.NewRecorder()
+	s.handleDeleteModelConfig(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("DELETE status = %d, body = %s", delRec.Code, delRec.Body.String())
+	}
+
+	getAfterDeleteReq := httptest.NewRequest(http.MethodGet, "/admin/model-config?model=llama3.3:8b&node=gpu-node-01", nil)
+	getAfterDeleteRec := httptest.NewRecorder()
+	s.handleGetModelConfig(getAfterDeleteRec, getAfterDeleteReq)
+	if getAfterDeleteRec.Code != http.StatusNotFound {
+		t.Fatalf("GET after delete status = %d, want 404", getAfterDeleteRec.Code)
+	}
+}
+
+// TestHandleGetModelConfig_RequiresNodeParam verifies the node query param is
+// mandatory — a profile with no node has no meaning under the new keying.
+func TestHandleGetModelConfig_RequiresNodeParam(t *testing.T) {
+	s := newModelConfigTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/admin/model-config?model=llama3.3:8b", nil)
+	rec := httptest.NewRecorder()
+	s.handleGetModelConfig(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 when node param is missing", rec.Code)
+	}
+}
+
+// TestHandleSetModelConfig_RequiresNodeField verifies validateModelConfig
+// rejects a profile with no node, not just no model.
+func TestHandleSetModelConfig_RequiresNodeField(t *testing.T) {
+	s := newModelConfigTestServer(t)
+	body := `{"model":"llama3.3:8b","temperature":0.5}`
+	req := httptest.NewRequest(http.MethodPut, "/admin/model-config", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	s.handleSetModelConfig(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 when node field is missing", rec.Code)
+	}
+}
+
+// TestHandleModelConfig_SameModelDifferentNodesIndependent verifies the same
+// model name can carry two independent profiles on two nodes, and deleting
+// one doesn't touch the other — exercised at the HTTP layer this time, not
+// just the store layer.
+func TestHandleModelConfig_SameModelDifferentNodesIndependent(t *testing.T) {
+	s := newModelConfigTestServer(t)
+
+	for _, body := range []string{
+		`{"model":"llama3.3:8b","node":"gpu-node-01","num_ctx":4096}`,
+		`{"model":"llama3.3:8b","node":"gpu-node-02","num_ctx":8192}`,
+	} {
+		req := httptest.NewRequest(http.MethodPut, "/admin/model-config", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		s.handleSetModelConfig(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT status = %d, body = %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/model-configs", nil)
+	listRec := httptest.NewRecorder()
+	s.handleListModelConfigs(listRec, listReq)
+	var listResp struct {
+		Configs []store.ModelConfig `json:"configs"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listResp.Configs) != 2 {
+		t.Fatalf("model-configs list = %+v, want 2 entries for the same model on different nodes", listResp.Configs)
+	}
+}
+
+// TestHandleModelConfigCapabilities verifies the capabilities endpoint
+// returns Ollama's full field set, and correctly withholds Ollama-only
+// load-time fields (num_ctx) from every other runtime, while giving vLLM
+// and llama.cpp their own extra sampling fields beyond TGI's strict set.
+func TestHandleModelConfigCapabilities(t *testing.T) {
+	s := newModelConfigTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/admin/model-config/capabilities", nil)
+	rec := httptest.NewRecorder()
+	s.handleModelConfigCapabilities(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var caps map[string][]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &caps); err != nil {
+		t.Fatalf("decode capabilities response: %v", err)
+	}
+
+	contains := func(fields []string, want string) bool {
+		for _, f := range fields {
+			if f == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !contains(caps["ollama"], "num_ctx") {
+		t.Errorf("ollama capabilities missing num_ctx: %v", caps["ollama"])
+	}
+	if contains(caps["tgi"], "num_ctx") {
+		t.Errorf("tgi capabilities should not include num_ctx (load-time, Ollama-only): %v", caps["tgi"])
+	}
+	if contains(caps["vllm"], "num_ctx") {
+		t.Errorf("vllm capabilities should not include num_ctx (load-time, Ollama-only): %v", caps["vllm"])
+	}
+	if !contains(caps["vllm"], "top_k") {
+		t.Errorf("vllm capabilities missing its top_k extra: %v", caps["vllm"])
+	}
+	if contains(caps["tgi"], "top_k") {
+		t.Errorf("tgi capabilities should not include top_k (unsupported extra): %v", caps["tgi"])
+	}
+	if !contains(caps["llamacpp"], "mirostat") {
+		t.Errorf("llamacpp capabilities missing its mirostat extra: %v", caps["llamacpp"])
+	}
+}

@@ -9,6 +9,7 @@ import {
 import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
+import { Modal } from '../components/Modal';
 import { useDemoMode } from '../hooks/useDemoMode';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -506,6 +507,9 @@ export function Warmup() {
   const [serverTimezone, setServerTimezone] = useState<string>('');
   const [predictiveEnabled, setPredictiveEnabled] = useState(true);
   const [togglingPredictive, setTogglingPredictive] = useState(false);
+  const [predictiveConfirmOpen, setPredictiveConfirmOpen] = useState(false);
+  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
+  const [scheduleDeleteError, setScheduleDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -595,6 +599,7 @@ export function Warmup() {
       alert(err.message || 'Failed to toggle predictive engine');
     } finally {
       setTogglingPredictive(false);
+      setPredictiveConfirmOpen(false);
     }
   }
 
@@ -603,9 +608,15 @@ export function Warmup() {
     setSchedules(prev => [...prev, created]);
   }
 
-  async function removeSchedule(id: string) {
-    try { await deleteSchedule(id); setSchedules(prev => prev.filter(s => s.id !== id)); }
-    catch (e: any) { alert(e.message || 'Delete failed'); }
+  async function removeSchedule(id: string): Promise<boolean> {
+    try {
+      await deleteSchedule(id);
+      setSchedules(prev => prev.filter(s => s.id !== id));
+      return true;
+    } catch (e: any) {
+      setScheduleDeleteError(e.message || 'Delete failed');
+      return false;
+    }
   }
 
   async function editSchedule(id: string, patch: Partial<Omit<Schedule, 'id'>>) {
@@ -710,7 +721,7 @@ export function Warmup() {
                 key={s.id} schedule={s} nodes={nodes} availableModels={availableModels}
                 onToggle={(enabled) => editSchedule(s.id, { enabled })}
                 onSave={(patch) => editSchedule(s.id, patch)}
-                onDelete={() => removeSchedule(s.id)}
+                onDelete={() => { setScheduleDeleteError(null); setScheduleToDelete(s); }}
               />
             );
             return (
@@ -756,7 +767,7 @@ export function Warmup() {
               </div>
             </div>
             <button
-              onClick={handleTogglePredictive}
+              onClick={() => setPredictiveConfirmOpen(true)}
               disabled={togglingPredictive}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
                 predictiveEnabled ? 'bg-primary' : 'bg-secondary'
@@ -810,6 +821,85 @@ export function Warmup() {
           </div>
         </section>
       )}
+
+      <Modal
+        isOpen={predictiveConfirmOpen}
+        onClose={() => setPredictiveConfirmOpen(false)}
+        title={predictiveEnabled ? 'Disable Predictive Warmup Engine' : 'Enable Predictive Warmup Engine'}
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to {predictiveEnabled ? 'disable' : 'enable'} the Predictive Warmup Engine?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {predictiveEnabled
+              ? 'No new predictive warmup decisions will be recorded or acted on across the whole mesh until re-enabled. Manual schedules and live traffic are unaffected.'
+              : 'The engine will resume auto-preloading next-likely models in background VRAM based on historical model-transition patterns.'}
+          </p>
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setPredictiveConfirmOpen(false)}
+              disabled={togglingPredictive}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleTogglePredictive}
+              disabled={togglingPredictive}
+              className={`px-4 py-2 font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50 ${
+                predictiveEnabled ? 'bg-amber-600 hover:bg-amber-600/90 text-white' : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+              }`}
+            >
+              {predictiveEnabled ? 'Disable Engine' : 'Enable Engine'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={scheduleToDelete !== null}
+        onClose={() => setScheduleToDelete(null)}
+        title="Delete Schedule"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete this schedule?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <span className="text-foreground font-semibold">{scheduleToDelete?.action}</span> on{' '}
+            <span className="text-foreground font-semibold">{scheduleToDelete?.node}</span> at{' '}
+            <span className="text-foreground font-semibold">{scheduleToDelete?.at}</span>
+            {scheduleToDelete?.days && scheduleToDelete.days.length > 0
+              ? ` (${scheduleToDelete.days.map((d) => DAYS[d]).join(', ')})`
+              : ' (every day)'}
+            . This action cannot be undone.
+          </p>
+          {scheduleDeleteError && (
+            <p className="text-sm text-destructive">{scheduleDeleteError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setScheduleToDelete(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!scheduleToDelete) return;
+                const ok = await removeSchedule(scheduleToDelete.id);
+                if (ok) setScheduleToDelete(null);
+              }}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Delete Schedule
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

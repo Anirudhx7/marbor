@@ -20,13 +20,13 @@ test-ci: ui test
 dev-ui:
 	cd ui && npm run dev
 
-## Demo targets — spin up two mock Ollama nodes + mesh, send real traffic
-demo-build: ## Build demo Docker images (mockollama nodes + mesh)
+## Demo targets — spin up mock Ollama/vLLM/TGI/llama.cpp nodes + mesh, send real traffic
+demo-build: ## Build demo Docker images (mocknode runtimes + mesh)
 	docker compose -f docker-compose.demo.yml build
 
-demo: demo-build ## Spin up demo stack, send 20 real requests, show dashboard URL (Docker only, no Go needed)
-	@echo "Starting demo stack (mock Ollama nodes + mesh + Prometheus + Grafana)..."
-	docker compose -f docker-compose.demo.yml up -d ollama-node-a ollama-node-b mesh prometheus grafana
+demo: demo-build ## Spin up demo stack (all 4 runtimes), send 20 real requests, show dashboard URL (Docker only, no Go needed)
+	@echo "Starting demo stack (mock Ollama x2 + vLLM + TGI + llama.cpp + mesh + Prometheus + Grafana)..."
+	docker compose -f docker-compose.demo.yml up -d ollama-node-a ollama-node-b vllm-node tgi-node llamacpp-node mesh prometheus grafana
 	@echo "Sending demo traffic (20 requests, runs in Docker - no local Go needed)..."
 	docker compose -f docker-compose.demo.yml run --rm demotraffic
 	@echo ""

@@ -1,8 +1,26 @@
-// cmd/mockollama/main.go - Mock Ollama HTTP server for demo and testing.
-// Configurable via env vars: NODE_NAME, WARM_MODELS, ALL_MODELS, PORT, LATENCY_MS
+// cmd/mocknode/main.go - Mock inference-node HTTP server for the demo stack
+// and multi-runtime testing. RUNTIME selects which backend it impersonates:
+// "ollama" (default, unchanged from this tool's original mockollama name),
+// "vllm", "tgi", or "llamacpp". Configurable via env vars: RUNTIME,
+// NODE_NAME, MODEL_ID, WARM_MODELS, ALL_MODELS, PORT, LATENCY_MS.
+//
+// The non-Ollama runtimes deliberately implement only what ollama-mesh
+// itself actually calls (internal/runtime's detect/health probes, verified
+// against that package's source and tests) rather than each project's full
+// real API surface — this is a mock of the mesh's integration contract, not
+// a general-purpose vLLM/TGI/llama.cpp simulator:
+//   - vllm/llamacpp: GET /health, GET /v1/models (owned_by:"vllm" is what
+//     distinguishes vllm from llamacpp during auto-detection), POST
+//     /v1/chat/completions, POST /v1/completions.
+//   - tgi: GET /health, GET /info ({"model_id":...} is the only field the
+//     mesh reads), POST /v1/chat/completions.
+//   - None of the three implement /api/tags: the mesh already treats its
+//     absence as an expected, gracefully-degraded case (see
+//     internal/router/eviction.go's estimateModelSizeBytes comment).
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -80,16 +98,29 @@ func splitModels(s string) []string {
 }
 
 func main() {
+	runtime := strings.ToLower(envOrDefault("RUNTIME", "ollama"))
 	nodeName := envOrDefault("NODE_NAME", "mock-node")
-	for _, m := range splitModels(envOrDefault("WARM_MODELS", "llama3.2:3b,qwen2.5:7b")) {
-		warmModels[m] = true
-	}
-	allModels = splitModels(envOrDefault("ALL_MODELS", "llama3.2:3b,qwen2.5:7b,mistral:7b"))
 	port := envOrDefault("PORT", "11434")
 	latencyMs, err := strconv.Atoi(envOrDefault("LATENCY_MS", "150"))
 	if err != nil {
 		latencyMs = 150
 	}
+
+	switch runtime {
+	case "vllm", "tgi", "llamacpp":
+		runOpenAICompatMock(runtime, nodeName, port, latencyMs)
+	default:
+		runOllamaMock(nodeName, port, latencyMs)
+	}
+}
+
+// --- Ollama mock (unchanged behavior from this tool's original name) ---
+
+func runOllamaMock(nodeName, port string, latencyMs int) {
+	for _, m := range splitModels(envOrDefault("WARM_MODELS", "llama3.2:3b,qwen2.5:7b")) {
+		warmModels[m] = true
+	}
+	allModels = splitModels(envOrDefault("ALL_MODELS", "llama3.2:3b,qwen2.5:7b,mistral:7b"))
 
 	stateMu.RLock()
 	var warmList []string
@@ -196,6 +227,7 @@ var responseTokens = map[string][]string{
 	"llama3.2": {"Hello", "!", " I", "'m", " a", " mock", " Llama", " 3.2", " node", ".", " I", " can", " help", " you", " with", " questions", " and", " tasks", "."},
 	"mistral":  {"Bonjour", "!", " I", "'m", " a", " mock", " Mistral", " model", ".", " Ready", " to", " assist", " with", " any", " query", " you", " have", "."},
 	"qwen2.5":  {"Hi", "!", " I", "'m", " mock", " Qwen", "2.5", ".", " Let", " me", " help", " you", " with", " that", " request", " efficiently", "."},
+	"llama-3":  {"Hi", "!", " I", "'m", " a", " mock", " Llama", " 3", " model", " served", " through", " an", " OpenAI-compatible", " endpoint", "."},
 }
 
 func tokensFor(model string) []string {
@@ -392,5 +424,219 @@ func handleChat(w http.ResponseWriter, r *http.Request, nodeName string, latency
 		"eval_duration":     totalDuration - int64(latencyMs)*1_000_000,
 	}
 	enc.Encode(final)
+	flusher.Flush()
+}
+
+// --- OpenAI-compatible mock: vllm / tgi / llamacpp ---
+
+// defaultModelID returns a realistic single-model identity for a runtime
+// that wasn't given an explicit MODEL_ID — these three runtimes are
+// conventionally single-model-per-process, unlike Ollama's multi-model
+// warm/cold catalog.
+func defaultModelID(runtime string) string {
+	switch runtime {
+	case "vllm":
+		return "meta-llama/Llama-3.1-8B-Instruct"
+	case "tgi":
+		return "mistralai/Mistral-7B-Instruct-v0.3"
+	case "llamacpp":
+		return "llama-3.2-3b-instruct.Q4_K_M.gguf"
+	}
+	return "mock-model"
+}
+
+func runOpenAICompatMock(runtime, nodeName, port string, latencyMs int) {
+	modelID := envOrDefault("MODEL_ID", defaultModelID(runtime))
+
+	log.Printf("[%s] mock-%s starting on :%s  model=%s  latency=%dms", nodeName, runtime, port, modelID, latencyMs)
+
+	mux := http.NewServeMux()
+
+	// GET /health - liveness probe every one of these three runtimes needs
+	// (internal/runtime's shared checkHealth requires a bare 200).
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{}`)
+	})
+
+	switch runtime {
+	case "tgi":
+		// GET /info - the only field internal/runtime/tgi.go reads is model_id.
+		mux.HandleFunc("/info", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"model_id": modelID})
+		})
+	default: // vllm, llamacpp
+		// GET /v1/models - owned_by:"vllm" is what internal/runtime/detect.go
+		// uses to tell vllm and llamacpp apart; llamacpp must NOT send that value.
+		ownedBy := "llamacpp"
+		if runtime == "vllm" {
+			ownedBy = "vllm"
+		}
+		mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"object": "list",
+				"data": []map[string]interface{}{
+					{"id": modelID, "object": "model", "owned_by": ownedBy},
+				},
+			})
+		})
+	}
+
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		handleOpenAIChatCompletion(w, r, nodeName, modelID, latencyMs)
+	})
+	mux.HandleFunc("/v1/completions", func(w http.ResponseWriter, r *http.Request) {
+		handleOpenAICompletion(w, r, nodeName, modelID, latencyMs)
+	})
+
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
+		log.Fatalf("[%s] listen error: %v", nodeName, err)
+	}
+}
+
+func openAITokensFor(model string) []string {
+	lower := strings.ToLower(model)
+	for family, tokens := range responseTokens {
+		if strings.Contains(lower, family) || strings.HasPrefix(lower, strings.ToLower(strings.ReplaceAll(family, ".", ""))) {
+			return tokens
+		}
+	}
+	return []string{"This", " is", " a", " mock", " OpenAI-compatible", " response", " from", " node", "."}
+}
+
+func handleOpenAIChatCompletion(w http.ResponseWriter, r *http.Request, nodeName, modelID string, latencyMs int) {
+	var req struct {
+		Model    string `json:"model"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+		Stream *bool `json:"stream"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if req.Model == "" {
+		req.Model = modelID
+	}
+
+	promptTokens := 12
+	tokens := openAITokensFor(req.Model)
+	// OpenAI's own default is non-streaming, but demos care most about
+	// exercising the streaming path, so default true here unless the client
+	// explicitly asked for stream:false.
+	stream := req.Stream == nil || *req.Stream
+	id := fmt.Sprintf("chatcmpl-mock-%d", time.Now().UnixNano())
+	created := time.Now().Unix()
+
+	time.Sleep(time.Duration(latencyMs) * time.Millisecond)
+	w.Header().Set("X-Node-Name", nodeName)
+
+	if !stream {
+		full := strings.Join(tokens, "")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": id, "object": "chat.completion", "created": created, "model": req.Model,
+			"choices": []map[string]interface{}{
+				{"index": 0, "message": map[string]string{"role": "assistant", "content": full}, "finish_reason": "stop"},
+			},
+			"usage": map[string]int{"prompt_tokens": promptTokens, "completion_tokens": len(tokens), "total_tokens": promptTokens + len(tokens)},
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	bw := bufio.NewWriter(w)
+
+	writeChunk := func(delta map[string]interface{}, finishReason interface{}) {
+		chunk := map[string]interface{}{
+			"id": id, "object": "chat.completion.chunk", "created": created, "model": req.Model,
+			"choices": []map[string]interface{}{
+				{"index": 0, "delta": delta, "finish_reason": finishReason},
+			},
+		}
+		b, _ := json.Marshal(chunk)
+		fmt.Fprintf(bw, "data: %s\n\n", b)
+		bw.Flush()
+		flusher.Flush()
+	}
+
+	writeChunk(map[string]interface{}{"role": "assistant"}, nil)
+	for _, tok := range tokens {
+		writeChunk(map[string]interface{}{"content": tok}, nil)
+		time.Sleep(15 * time.Millisecond)
+	}
+	writeChunk(map[string]interface{}{}, "stop")
+	fmt.Fprint(bw, "data: [DONE]\n\n")
+	bw.Flush()
+	flusher.Flush()
+}
+
+func handleOpenAICompletion(w http.ResponseWriter, r *http.Request, nodeName, modelID string, latencyMs int) {
+	var req struct {
+		Model  string `json:"model"`
+		Prompt string `json:"prompt"`
+		Stream *bool  `json:"stream"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if req.Model == "" {
+		req.Model = modelID
+	}
+
+	tokens := openAITokensFor(req.Model)
+	stream := req.Stream != nil && *req.Stream
+	id := fmt.Sprintf("cmpl-mock-%d", time.Now().UnixNano())
+	created := time.Now().Unix()
+
+	time.Sleep(time.Duration(latencyMs) * time.Millisecond)
+	w.Header().Set("X-Node-Name", nodeName)
+
+	if !stream {
+		full := strings.Join(tokens, "")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": id, "object": "text_completion", "created": created, "model": req.Model,
+			"choices": []map[string]interface{}{
+				{"index": 0, "text": full, "finish_reason": "stop"},
+			},
+			"usage": map[string]int{"prompt_tokens": 8, "completion_tokens": len(tokens), "total_tokens": 8 + len(tokens)},
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+	bw := bufio.NewWriter(w)
+	for _, tok := range tokens {
+		chunk := map[string]interface{}{
+			"id": id, "object": "text_completion", "created": created, "model": req.Model,
+			"choices": []map[string]interface{}{{"index": 0, "text": tok, "finish_reason": nil}},
+		}
+		b, _ := json.Marshal(chunk)
+		fmt.Fprintf(bw, "data: %s\n\n", b)
+		bw.Flush()
+		flusher.Flush()
+		time.Sleep(15 * time.Millisecond)
+	}
+	fmt.Fprint(bw, "data: [DONE]\n\n")
+	bw.Flush()
 	flusher.Flush()
 }

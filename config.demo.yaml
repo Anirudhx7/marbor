@@ -14,6 +14,19 @@ nodes:
     url: http://ollama-node-a:11434
   - name: node-b
     url: http://ollama-node-b:11434
+  # Multi-runtime demo nodes (mock vLLM/TGI/llama.cpp) — see cmd/mocknode
+  # and docker-compose.demo.yml's vllm-node/tgi-node/llamacpp-node services.
+  # Not started by smoke.sh's default gate; the router polls these
+  # gracefully as unhealthy until/unless they're brought up alongside mesh.
+  - name: vllm-node
+    url: http://vllm-node:11434
+    runtime: vllm
+  - name: tgi-node
+    url: http://tgi-node:11434
+    runtime: tgi
+  - name: llamacpp-node
+    url: http://llamacpp-node:11434
+    runtime: llamacpp
 
 auth:
   enabled: true

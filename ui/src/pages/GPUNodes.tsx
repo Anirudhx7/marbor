@@ -112,7 +112,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onTogglePrewarm: (name: string, disabled: boolean) => void;
   onEdit: (node: GPUNode) => void;
   onUnload: (nodeName: string, model: string) => void;
-  onConfigureModel: (modelName: string, runtime: string) => void;
+  onConfigureModel: (modelName: string, nodeName: string, runtime: string) => void;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -270,7 +270,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                     {(model.sizeVram / 1024).toFixed(1)}GB
                   </span>
                   <button
-                    onClick={() => onConfigureModel(model.name, node.runtime)}
+                    onClick={() => onConfigureModel(model.name, node.name, node.runtime)}
                     title={`Advanced settings for ${model.name}`}
                     className="ml-1.5 opacity-50 hover:opacity-100 hover:text-primary transition-opacity"
                   >
@@ -323,8 +323,10 @@ export function GPUNodes() {
   const [pinnedByNode, setPinnedByNode] = useState<Record<string, string[]>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
+  const [nodeToDrain, setNodeToDrain] = useState<string | null>(null);
+  const [prewarmToToggle, setPrewarmToToggle] = useState<{ name: string; disabled: boolean } | null>(null);
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
-  const [configTarget, setConfigTarget] = useState<{ model: string; runtime: string } | null>(null);
+  const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
 
   const loadPinned = async (nodeList: GPUNode[]) => {
     if (demoMode || nodeList.length === 0) return;
@@ -426,14 +428,16 @@ export function GPUNodes() {
     }
   };
 
-  const handleDrainNode = async (name: string) => {
-    if (!isLive) return;
+  const handleDrainNode = async (name: string): Promise<boolean> => {
+    if (!isLive) return false;
     try {
       await drainNode(name);
       await loadNodes();
       setActionError(null);
+      return true;
     } catch (err: any) {
       setActionError(err?.message || `Failed to drain node ${name}`);
+      return false;
     }
   };
 
@@ -448,14 +452,16 @@ export function GPUNodes() {
     }
   };
 
-  const handleTogglePrewarm = async (name: string, disabled: boolean) => {
-    if (!isLive) return;
+  const handleTogglePrewarm = async (name: string, disabled: boolean): Promise<boolean> => {
+    if (!isLive) return false;
     try {
       await setNodePrewarm(name, disabled);
       await loadNodes();
       setActionError(null);
+      return true;
     } catch (err: any) {
       setActionError(err?.message || `Failed to toggle prewarm for node ${name}`);
+      return false;
     }
   };
 
@@ -578,7 +584,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, runtime) => setConfigTarget({ model: modelName, runtime })} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={handleUndrainNode} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} />
         ))}
       </div>
 
@@ -859,11 +865,94 @@ export function GPUNodes() {
         </div>
       </Modal>
 
+      {/* Drain Node Confirmation Modal */}
+      <Modal
+        isOpen={nodeToDrain !== null}
+        onClose={() => setNodeToDrain(null)}
+        title="Drain Node"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to drain <span className="text-foreground font-semibold">{nodeToDrain}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This stops new requests from being routed to this node. In-flight requests are unaffected. You can undrain it again at any time.
+          </p>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setNodeToDrain(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!nodeToDrain) return;
+                const ok = await handleDrainNode(nodeToDrain);
+                if (ok) setNodeToDrain(null);
+              }}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Drain Node
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toggle Predictive Prewarm Confirmation Modal */}
+      <Modal
+        isOpen={prewarmToToggle !== null}
+        onClose={() => setPrewarmToToggle(null)}
+        title={prewarmToToggle?.disabled ? 'Disable Predictive Prewarm' : 'Re-enable Predictive Prewarm'}
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to {prewarmToToggle?.disabled ? 'disable' : 're-enable'} predictive prewarm on{' '}
+            <span className="text-foreground font-semibold">{prewarmToToggle?.name}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {prewarmToToggle?.disabled
+              ? 'The predictive engine will not warm new models onto this node until re-enabled or the mesh restarts. Live traffic and warm-state routing are unaffected.'
+              : 'The predictive engine will resume warming models onto this node based on usage patterns.'}
+          </p>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setPrewarmToToggle(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!prewarmToToggle) return;
+                const ok = await handleTogglePrewarm(prewarmToToggle.name, prewarmToToggle.disabled);
+                if (ok) setPrewarmToToggle(null);
+              }}
+              className={`px-4 py-2 font-medium rounded-lg text-sm transition-colors shadow-sm ${
+                prewarmToToggle?.disabled
+                  ? 'bg-amber-600 hover:bg-amber-600/90 text-white'
+                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+              }`}
+            >
+              {prewarmToToggle?.disabled ? 'Disable Prewarm' : 'Re-enable Prewarm'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Model Advanced Settings Modal */}
       <ModelConfigModal
         model={configTarget?.model ?? null}
         demoMode={demoMode}
-        runtimes={configTarget ? [configTarget.runtime] : undefined}
+        nodes={configTarget ? [{ name: configTarget.node, runtime: configTarget.runtime }] : []}
         onClose={() => setConfigTarget(null)}
       />
     </div>
