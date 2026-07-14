@@ -50,7 +50,7 @@ const LOAD_TIME_FIELDS: FieldDef[] = [
   { key: 'use_mlock', label: 'Use mlock', help: 'Locks model pages in RAM to prevent swapping.', type: 'bool' },
   { key: 'rope_frequency_base', label: 'RoPE Frequency Base', help: 'Base frequency for RoPE context scaling. Rarely needs changing — leave unset unless extending context past a model’s trained length.', type: 'int', min: 0, step: 1000 },
   { key: 'rope_frequency_scale', label: 'RoPE Frequency Scale', help: 'Scale factor for RoPE context expansion (used for context-window stretching).', type: 'slider', min: 0, max: 4, step: 0.05, sliderDefault: 1 },
-  { key: 'ttl', label: 'TTL (seconds)', help: 'Idle seconds before auto-unload. 0 = disabled.', type: 'int', min: 0 },
+  { key: 'ttl', label: 'TTL (seconds)', help: 'Idle seconds before auto-unload. 0 = disabled. e.g. 300 = 5 min, 1800 = 30 min, 3600 = 1 hour.', type: 'int', min: 0 },
   { key: 'tensor_parallelism', label: 'Tensor Parallelism', help: 'Split tensor compute across multiple GPUs.', type: 'bool' },
 ];
 
