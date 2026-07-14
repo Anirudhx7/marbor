@@ -678,6 +678,7 @@ export async function fetchAnalytics(): Promise<Analytics> {
 }
 
 export async function pullModel(nodeName: string, model: string): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
   const res = await apiFetch(`${BASE}/v1/nodes/${encodeURIComponent(nodeName)}/pull`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

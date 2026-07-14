@@ -396,7 +396,35 @@ export function GPUNodes() {
   );
 
   const handleAddNode = async () => {
-    if (!newNode.name || !newNode.host || !isLive) return;
+    if (!newNode.name || !newNode.host) return;
+
+    if (demoMode) {
+      const added: GPUNode = {
+        id: `gpu-node-${Math.random().toString(36).substring(2, 9)}`,
+        name: newNode.name,
+        gpuModel: newNode.gpuModel || 'Unknown GPU',
+        port: parseInt(newNode.port, 10) || 11434,
+        vramTotalMB: 24576,
+        vramUsedMB: 0,
+        vramSource: 'declared',
+        runtime: 'ollama',
+        powerDrawW: 0,
+        cpuPercent: 0,
+        temperature: 45,
+        health: 'healthy',
+        draining: false,
+        uptime: '0m',
+        loadedModels: [],
+        healthHistory: [100, 100, 100],
+      };
+      setNodes(prev => [...prev, added]);
+      setActionError(null);
+      setIsAddModalOpen(false);
+      setNewNode({ name: '', host: '', port: '11434', gpuModel: '' });
+      return;
+    }
+
+    if (!isLive) return;
 
     const nodeData = {
       name: newNode.name,
@@ -416,6 +444,11 @@ export function GPUNodes() {
   };
 
   const handleRemoveNode = async (name: string): Promise<boolean> => {
+    if (demoMode) {
+      setNodes(prev => prev.filter(n => n.name !== name));
+      setActionError(null);
+      return true;
+    }
     if (!isLive) return false;
     try {
       await removeNode(name);
@@ -429,6 +462,11 @@ export function GPUNodes() {
   };
 
   const handleDrainNode = async (name: string): Promise<boolean> => {
+    if (demoMode) {
+      setNodes(prev => prev.map(n => n.name === name ? { ...n, draining: true } : n));
+      setActionError(null);
+      return true;
+    }
     if (!isLive) return false;
     try {
       await drainNode(name);
@@ -442,6 +480,11 @@ export function GPUNodes() {
   };
 
   const handleUndrainNode = async (name: string) => {
+    if (demoMode) {
+      setNodes(prev => prev.map(n => n.name === name ? { ...n, draining: false } : n));
+      setActionError(null);
+      return;
+    }
     if (!isLive) return;
     try {
       await undrainNode(name);
@@ -453,6 +496,11 @@ export function GPUNodes() {
   };
 
   const handleTogglePrewarm = async (name: string, disabled: boolean): Promise<boolean> => {
+    if (demoMode) {
+      setNodes(prev => prev.map(n => n.name === name ? { ...n, prewarmDisabled: disabled } : n));
+      setActionError(null);
+      return true;
+    }
     if (!isLive) return false;
     try {
       await setNodePrewarm(name, disabled);
@@ -502,7 +550,7 @@ export function GPUNodes() {
   };
 
   const handleSavePatch = async () => {
-    if (!editNode || !isLive) return;
+    if (!editNode) return;
     const patch: { vram_total_mb?: number; gpu_model?: string } = {};
     if (editVRAM.trim() !== '') {
       const v = parseInt(editVRAM, 10);
@@ -511,6 +559,16 @@ export function GPUNodes() {
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
     if (Object.keys(patch).length === 0) { setEditNode(null); return; }
+
+    if (demoMode) {
+      setNodes(prev => prev.map(n => n.name === editNode.name
+        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel }
+        : n));
+      setEditNode(null);
+      return;
+    }
+
+    if (!isLive) return;
     setEditSaving(true);
     setEditError('');
     try {
@@ -536,15 +594,15 @@ export function GPUNodes() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-success' : 'bg-amber-500'}`} />
-            <span className={`text-xs font-medium ${isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
+            <div className={`w-2 h-2 rounded-full ${isLive || demoMode ? 'bg-success' : 'bg-amber-500'}`} />
+            <span className={`text-xs font-medium ${isLive || demoMode ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
               {demoMode ? 'Demo Mode' : (isLive ? 'Live Data' : 'Disconnected')}
             </span>
           </div>
           <button
             onClick={() => { setActionError(null); setIsAddModalOpen(true); }}
-            disabled={!isLive}
-            title={!isLive ? 'Backend disconnected' : undefined}
+            disabled={!isLive && !demoMode}
+            title={!isLive && !demoMode ? 'Backend disconnected' : undefined}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />

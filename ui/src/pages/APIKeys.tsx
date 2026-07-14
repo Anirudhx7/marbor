@@ -54,7 +54,7 @@ export function APIKeys() {
   };
 
   const handleSaveKeyPatch = async () => {
-    if (!editKey || !isLive) return;
+    if (!editKey) return;
     const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[] } = {};
     if (editForm.rateLimit.trim()) {
       const v = parseInt(editForm.rateLimit, 10);
@@ -88,6 +88,24 @@ export function APIKeys() {
       patch.models = editForm.models;
     }
     if (Object.keys(patch).length === 0) { setEditKey(null); return; }
+
+    if (demoMode) {
+      setKeys(prev => prev.map(k => k.id === editKey.id
+        ? {
+            ...k,
+            rateLimit: patch.rate_limit ?? k.rateLimit,
+            dailyLimit: patch.daily_limit ?? k.dailyLimit,
+            monthlyLimit: patch.monthly_limit ?? k.monthlyLimit,
+            dailyUsdCap: patch.daily_usd_cap ?? k.dailyUsdCap,
+            monthlyUsdCap: patch.monthly_usd_cap ?? k.monthlyUsdCap,
+            allowedModels: patch.models ?? k.allowedModels,
+          }
+        : k));
+      setEditKey(null);
+      return;
+    }
+
+    if (!isLive) return;
     setEditSaving(true); setEditError('');
     try {
       await patchKey(editKey.name, patch);
@@ -283,8 +301,8 @@ export function APIKeys() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-success' : 'bg-amber-500'}`} />
-            <span className={`text-xs font-medium ${isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
+            <div className={`w-2 h-2 rounded-full ${isLive || demoMode ? 'bg-success' : 'bg-amber-500'}`} />
+            <span className={`text-xs font-medium ${isLive || demoMode ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
               {demoMode ? 'Demo Mode' : (isLive ? 'Live Data' : 'Disconnected')}
             </span>
           </div>
@@ -420,7 +438,7 @@ export function APIKeys() {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => openEditModal(key)}
-                        disabled={!isLive || key.status === 'suspended'}
+                        disabled={(!isLive && !demoMode) || key.status === 'suspended'}
                         title="Edit key limits"
                         className="p-2 text-muted-foreground hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
