@@ -127,7 +127,7 @@ func (a *analyticsStore) recordCloud(model string, costPer1K float64, tokens int
 //
 // Only hourly buckets are restored. store.HourlyBucket persists a genuine
 // Local/Cloud split (LocalRequests/CloudRequests) plus cloud spend (CostUSD),
-// so it can be mapped onto admin.HourlyBucket without inventing data  -- 
+// so it can be mapped onto admin.HourlyBucket without inventing data  --
 // SavedUSD is intentionally left at zero since per-hour local savings are not
 // persisted. store.ModelStat, by contrast, only persists an aggregate
 // Requests count with no local/cloud split; attributing that total to either

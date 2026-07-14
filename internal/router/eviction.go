@@ -499,7 +499,7 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	// Reserve this model's estimated footprint now, and pick up whatever other
 	// models on this node are still mid-warmup (started, not yet poll-confirmed).
 	// Without this, warming two models on the same node races: both read the
-	// identical pre-warmup snapshot and each independently  --  and wrongly  -- 
+	// identical pre-warmup snapshot and each independently  --  and wrongly  --
 	// concludes it has the entire node's free VRAM to itself.
 	reservedByOthers := r.reserveWarmBytes(nodeName, model, est)
 

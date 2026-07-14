@@ -368,7 +368,7 @@ type WarmStateRecord struct {
 	LoadCount int64     `json:"load_count"`
 }
 
-// ModelConfig is the operator-declared default parameter profile for a model  -- 
+// ModelConfig is the operator-declared default parameter profile for a model  --
 // covering Ollama's load-time engine params, inference-time sampling defaults,
 // and ollama-mesh's own meta/orchestration fields (system prompt override,
 // per-model rate caps). Every field is nilable/nullable: nil (or an absent
