@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
@@ -306,6 +307,7 @@ import { useDemoMode } from '../hooks/useDemoMode';
 
 export function GPUNodes() {
   const { demoMode } = useDemoMode();
+  const location = useLocation();
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [isLive, setIsLive] = useState(!demoMode);
   const [searchQuery, setSearchQuery] = useState('');
@@ -328,8 +330,8 @@ export function GPUNodes() {
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
 
-  const loadPinned = async (nodeList: GPUNode[]) => {
-    if (demoMode || nodeList.length === 0) return;
+  const loadPinned = async (nodeList: GPUNode[], active: boolean = true) => {
+    if (demoMode || nodeList.length === 0 || !active || location.pathname !== '/gpu-nodes') return;
     const entries = await Promise.all(nodeList.map(async (n) => {
       try {
         return [n.name, await getPinned(n.name)] as const;
@@ -337,11 +339,14 @@ export function GPUNodes() {
         return [n.name, []] as const; // pinned-fetch failure just means no badges for this node
       }
     }));
-    setPinnedByNode(Object.fromEntries(entries));
+    if (active && location.pathname === '/gpu-nodes') {
+      setPinnedByNode(Object.fromEntries(entries));
+    }
   };
 
-  const loadNodes = async () => {
+  const loadNodes = async (active: boolean = true) => {
     if (demoMode) {
+      if (!active || location.pathname !== '/gpu-nodes') return;
       setNodes(mockGPUNodes);
       setIsLive(false);
       setError(null);
@@ -349,46 +354,64 @@ export function GPUNodes() {
     }
     try {
       const data = await fetchNodes();
+      if (!active || location.pathname !== '/gpu-nodes') return;
       setNodes(data || []);
       setIsLive(true);
       setError(null);
-      await loadPinned(data || []);
+      await loadPinned(data || [], active);
     } catch (e: any) {
+      if (!active || location.pathname !== '/gpu-nodes') return;
       setIsLive(false);
       setNodes([]);
       setError(e.message || 'Failed to connect to backend');
     }
   };
 
-  const loadModelFit = async () => {
-    if (demoMode) return;
+  const loadModelFit = async (active: boolean = true) => {
+    if (demoMode || !active || location.pathname !== '/gpu-nodes') return;
     setModelFitLoading(true);
     try {
       const data = await fetchModelFit();
+      if (!active || location.pathname !== '/gpu-nodes') return;
       setModelFit(data);
       setModelFitError(null);
     } catch (e: unknown) {
+      if (!active || location.pathname !== '/gpu-nodes') return;
       const msg = e instanceof Error ? e.message : 'Failed to fetch model fit data';
       setModelFitError(msg);
     } finally {
-      setModelFitLoading(false);
+      if (active && location.pathname === '/gpu-nodes') {
+        setModelFitLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadNodes();
-    if (demoMode) return;
-    const interval = setInterval(loadNodes, 10000);
-    return () => clearInterval(interval);
-  }, [demoMode]);
+    if (location.pathname !== '/gpu-nodes') return;
+    let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadNodes(active);
+    if (demoMode) return () => { active = false; };
+    const interval = setInterval(() => loadNodes(active), 10000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname]);
 
   useEffect(() => {
+    if (location.pathname !== '/gpu-nodes') return;
+    let active = true;
     if (!demoMode) {
-      loadModelFit();
-      const interval = setInterval(loadModelFit, 30000);
-      return () => clearInterval(interval);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadModelFit(active);
+      const interval = setInterval(() => loadModelFit(active), 30000);
+      return () => {
+        active = false;
+        clearInterval(interval);
+      };
     }
-  }, [demoMode]);
+  }, [demoMode, location.pathname]);
 
   const filteredNodes = nodes.filter(node =>
     (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { LiveRequest } from '../types';
 import { fetchLiveRequests } from '../lib/api';
 import { useDemoMode } from './useDemoMode';
@@ -49,37 +50,58 @@ function generateRequest(): LiveRequest {
 
 export function useLiveRequests(maxRequests: number = 20) {
   const { demoMode } = useDemoMode();
+  const location = useLocation();
   const [requests, setRequests] = useState<LiveRequest[]>([]);
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
   const lastIdRef = useRef<string | null>(null);
 
-  const poll = useCallback(async () => {
+  const poll = useCallback(async (active: boolean) => {
+    if (location.pathname !== '/') return;
     try {
       const data = await fetchLiveRequests();
+      if (!active || location.pathname !== '/') return;
       setRequests(Array.isArray(data) ? data : []);
       setIsLive(true);
       if (data.length > 0 && data[0].id !== lastIdRef.current) {
         lastIdRef.current = data[0].id;
         setNewRequestId(data[0].id);
-        setTimeout(() => setNewRequestId(null), 500);
+        setTimeout(() => {
+          if (active && location.pathname === '/') {
+            setNewRequestId(null);
+          }
+        }, 500);
       }
     } catch (e) {
+      if (!active || location.pathname !== '/') return;
       setIsLive(false);
       if (demoMode) {
         const newRequest = generateRequest();
         lastIdRef.current = newRequest.id;
         setNewRequestId(newRequest.id);
         setRequests(prev => [newRequest, ...prev].slice(0, maxRequests));
-        setTimeout(() => setNewRequestId(null), 500);
+        setTimeout(() => {
+          if (active && location.pathname === '/') {
+            setNewRequestId(null);
+          }
+        }, 500);
       }
     }
-  }, [maxRequests, demoMode]);
+  }, [maxRequests, demoMode, location.pathname]);
 
   useEffect(() => {
-    const interval = setInterval(poll, 2000);
-    return () => clearInterval(interval);
-  }, [poll]);
+    if (location.pathname !== '/') return;
+    let active = true;
+    const interval = setInterval(() => {
+      if (active && location.pathname === '/') {
+        poll(active);
+      }
+    }, 2000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [poll, location.pathname]);
 
   return { requests, newRequestId, isLive };
 }

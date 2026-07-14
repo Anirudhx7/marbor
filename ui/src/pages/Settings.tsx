@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
@@ -86,6 +87,7 @@ const getTimezoneLabel = (tz: string): string => {
 
 export function SettingsPage() {
   const { demoMode, setDemoMode } = useDemoMode();
+  const location = useLocation();
   const { currency, setCurrency, toDisplay, toUSD } = useCurrency();
   const roundDisplay = (n: number) => Math.round(n * 100) / 100;
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -107,9 +109,14 @@ export function SettingsPage() {
   const [credSaved, setCredSaved] = useState(false);
 
   useEffect(() => {
-    setCloudLoading(true);
+    if (location.pathname !== '/settings') return;
+    let active = true;
+    if (active && location.pathname === '/settings') {
+      setCloudLoading(true);
+    }
     Promise.all([fetchSettings(), fetchCloudProviders().catch(() => mockCloudProviders)])
       .then(([settingsData, providersData]) => {
+        if (!active || location.pathname !== '/settings') return;
         setSettings({
           proxyPort: settingsData.proxy?.port || 11434,
           authMode: settingsData.auth?.enabled ? 'api-key' : 'no-auth',
@@ -132,11 +139,19 @@ export function SettingsPage() {
         setError(null);
       })
       .catch(err => {
+        if (!active || location.pathname !== '/settings') return;
         setError(err.message || 'Failed to load settings');
         setCloudProviders([]);
       })
-      .finally(() => setCloudLoading(false));
-  }, [demoMode]);
+      .finally(() => {
+        if (active && location.pathname === '/settings') {
+          setCloudLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [demoMode, location.pathname]);
 
   const handleSave = async () => {
     try {

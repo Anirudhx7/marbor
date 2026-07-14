@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Package, Download, Loader2, Settings2 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
@@ -178,20 +179,27 @@ export function Models() {
   const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
   const [configModel, setConfigModel] = useState<string | null>(null);
 
+  const location = useLocation();
+
   // Cross-reference each model's resident node names against node runtimes so
   // the Advanced Settings modal can gate load-time/engine params for
   // non-Ollama (or mixed) runtimes. Failure just leaves gating info absent
   // (modal defaults to enabled), never blocks the page.
   useEffect(() => {
+    if (location.pathname !== '/models') return;
+    let active = true;
     (async () => {
       try {
         const list = demoMode ? mockGPUNodes : await fetchNodes();
+        if (!active || location.pathname !== '/models') return;
         setRuntimeByNode(Object.fromEntries((list || []).map((n) => [n.name, n.runtime])));
       } catch {
+        if (!active || location.pathname !== '/models') return;
         setRuntimeByNode({});
       }
     })();
-  }, [demoMode]);
+    return () => { active = false; };
+  }, [demoMode, location.pathname]);
 
   const openPullModal = async () => {
     if (demoMode) {
@@ -256,8 +264,9 @@ export function Models() {
     }
   };
 
-  const loadModels = async () => {
+  const loadModels = async (active: boolean = true) => {
     if (demoMode) {
+      if (!active || location.pathname !== '/models') return;
       setCatalog(mockModelCatalog);
       setIsLive(false);
       setError(null);
@@ -266,23 +275,32 @@ export function Models() {
     }
     try {
       const data = await fetchModels();
+      if (!active || location.pathname !== '/models') return;
       setCatalog(data);
       setIsLive(true);
       setError(null);
     } catch (e: unknown) {
+      if (!active || location.pathname !== '/models') return;
       setIsLive(false);
       setError(e instanceof Error ? e.message : 'Failed to connect to backend');
     } finally {
-      setLoading(false);
+      if (active && location.pathname === '/models') {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadModels();
-    if (demoMode) return;
-    const interval = setInterval(loadModels, 5000);
-    return () => clearInterval(interval);
-  }, [demoMode]);
+    if (location.pathname !== '/models') return;
+    let active = true;
+    loadModels(active);
+    if (demoMode) return () => { active = false; };
+    const interval = setInterval(() => loadModels(active), 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname]);
 
   const models = catalog?.models ?? [];
   const configModelEntry = configModel ? models.find((m) => m.name === configModel) ?? null : null;

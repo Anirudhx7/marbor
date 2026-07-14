@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Shield, Search, RefreshCw, Eye, Calendar, User, Terminal, Globe, Filter, AlertCircle, X } from 'lucide-react';
 import { fetchSystemAudit } from '../lib/api';
 import type { SystemAuditEntry } from '../types';
@@ -47,6 +48,7 @@ function isInfrastructureAction(action: string): boolean {
 }
 
 export function SystemAudit() {
+  const location = useLocation();
   const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,30 +59,46 @@ export function SystemAudit() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadLogs = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setRefreshSpin(true);
+  const loadLogs = useCallback(async (silent = false, active = true) => {
+    if (location.pathname !== '/system-audit') return;
+    if (!silent && active && location.pathname === '/system-audit') setLoading(true);
+    if (active && location.pathname === '/system-audit') setRefreshSpin(true);
     try {
       const data = await fetchSystemAudit(200);
+      if (!active || location.pathname !== '/system-audit') return;
       setEntries(data);
       setError(null);
       setLastRefreshed(new Date());
     } catch (err: any) {
+      if (!active || location.pathname !== '/system-audit') return;
       setError(err.message || 'Failed to load system audit trail');
     } finally {
-      if (!silent) setLoading(false);
-      setTimeout(() => setRefreshSpin(false), 500);
+      if (active && location.pathname === '/system-audit') {
+        if (!silent) setLoading(false);
+        setTimeout(() => {
+          if (active && location.pathname === '/system-audit') {
+            setRefreshSpin(false);
+          }
+        }, 500);
+      }
     }
-  }, []);
+  }, [location.pathname]);
 
   // Initial load + auto-refresh every 30 s
   useEffect(() => {
-    loadLogs();
-    intervalRef.current = setInterval(() => loadLogs(true), AUTO_REFRESH_INTERVAL_MS);
+    if (location.pathname !== '/system-audit') return;
+    let active = true;
+    loadLogs(false, active);
+    intervalRef.current = setInterval(() => {
+      if (active && location.pathname === '/system-audit') {
+        loadLogs(true, active);
+      }
+    }, AUTO_REFRESH_INTERVAL_MS);
     return () => {
+      active = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [loadLogs]);
+  }, [loadLogs, location.pathname]);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -266,9 +284,9 @@ export function SystemAudit() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {filtered.map((e) => (
+                {filtered.map((e, index) => (
                   <tr
-                    key={`${e.time}-${e.action}-${e.username}`}
+                    key={`${e.time}-${e.action}-${e.username}-${index}`}
                     className="hover:bg-secondary/20 transition-all duration-150 group cursor-pointer"
                     onClick={() => setSelectedEntry(e)}
                   >

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { TrendingUp, DollarSign, Server, Cloud } from 'lucide-react';
 import {
   AreaChart,
@@ -57,31 +58,41 @@ function StatCard({
 
 export function Analytics() {
   const { demoMode } = useDemoMode();
+  const location = useLocation();
   const [data, setData] = useState<Analytics | null>(demoMode ? mockAnalytics : null);
   const [loading, setLoading] = useState(!demoMode);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (location.pathname !== '/analytics') return;
     if (demoMode) {
       setData(mockAnalytics);
       setLoading(false);
       return;
     }
+    let active = true;
     const load = async () => {
       try {
         const d = await fetchAnalytics();
+        if (!active || location.pathname !== '/analytics') return;
         setData(d);
         setError(null);
       } catch (e: unknown) {
+        if (!active || location.pathname !== '/analytics') return;
         setError(e instanceof Error ? e.message : 'Failed to load analytics');
       } finally {
-        setLoading(false);
+        if (active && location.pathname === '/analytics') {
+          setLoading(false);
+        }
       }
     };
     load();
     const id = setInterval(load, 10000);
-    return () => clearInterval(id);
-  }, [demoMode]);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [demoMode, location.pathname]);
 
   const chartData = (data?.hourly ?? []).map((b: HourlyBucket) => ({
     hour: formatHourLabel(b.hour),

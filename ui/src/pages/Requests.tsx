@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { RequestEntry } from '../types';
 import { fetchAuditLog } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
@@ -52,6 +53,7 @@ function sinceIso(preset: SincePreset): string | undefined {
 
 export function Requests() {
   const { demoMode: isDemoMode } = useDemoMode();
+  const location = useLocation();
   const [entries, setEntries] = useState<RequestEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -99,6 +101,7 @@ export function Requests() {
   );
 
   useEffect(() => {
+    if (location.pathname !== '/requests') return;
     if (isDemoMode) {
       setEntries(filterMockRequests(activeFilters));
       setLoading(false);
@@ -110,13 +113,13 @@ export function Requests() {
     async function poll() {
       try {
         const data = await fetchAuditLog(activeFilters);
-        if (!cancelled) {
+        if (!cancelled && location.pathname === '/requests') {
           setEntries(Array.isArray(data) ? data : []);
           setFetchError(null);
           setLoading(false);
         }
       } catch (err: any) {
-        if (!cancelled) {
+        if (!cancelled && location.pathname === '/requests') {
           setFetchError(err.message || 'Failed to load requests');
           setLoading(false);
         }
@@ -131,7 +134,7 @@ export function Requests() {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, untilInput]);
+  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, untilInput, location.pathname]);
 
   const filtered = entries;
   const hasActiveFilter =
