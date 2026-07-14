@@ -18,7 +18,7 @@ type HourlyBucket struct {
 	// requests, real eval_count/eval_duration parsed from responses.
 	// TokensPerSec is derived from them (Tokens / GenDurationMs) only when
 	// GenDurationMs > 0 for the hour; otherwise 0, meaning no real
-	// generation-time data was available for this hour — never a fabricated
+	// generation-time data was available for this hour  --  never a fabricated
 	// rate.
 	Tokens        int64   `json:"tokens"`
 	GenDurationMs int64   `json:"gen_duration_ms"`
@@ -127,7 +127,7 @@ func (a *analyticsStore) recordCloud(model string, costPer1K float64, tokens int
 //
 // Only hourly buckets are restored. store.HourlyBucket persists a genuine
 // Local/Cloud split (LocalRequests/CloudRequests) plus cloud spend (CostUSD),
-// so it can be mapped onto admin.HourlyBucket without inventing data —
+// so it can be mapped onto admin.HourlyBucket without inventing data  -- 
 // SavedUSD is intentionally left at zero since per-hour local savings are not
 // persisted. store.ModelStat, by contrast, only persists an aggregate
 // Requests count with no local/cloud split; attributing that total to either

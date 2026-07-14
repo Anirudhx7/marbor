@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  # Fastest signal first: vet + gofmt + race tests. Independent of the UI build —
+  # Fastest signal first: vet + gofmt + race tests. Independent of the UI build  -- 
   # Go compiles against the committed internal/admin/web embed, not ui/dist.
   go-checks:
     runs-on: ubuntu-latest
@@ -24,7 +24,7 @@ jobs:
       - name: Stub UI embed dir
         # go:embed web/dist in internal/admin/admin.go requires the dir to exist at
         # compile time. It's gitignored (built by `npm run build`), and this job is
-        # intentionally UI-build-independent, so create an empty stub — mirrors the
+        # intentionally UI-build-independent, so create an empty stub  --  mirrors the
         # Makefile's `test` target.
         run: |
           mkdir -p internal/admin/web/dist/assets

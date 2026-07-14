@@ -15,7 +15,7 @@ import (
 
 // discoverDockerNodes connects to the Docker unix socket and returns NodeConfigs
 // for any running Ollama containers. No external dependencies required on
-// Linux/macOS — stdlib HTTP over the unix socket is sufficient.
+// Linux/macOS  --  stdlib HTTP over the unix socket is sufficient.
 func discoverDockerNodes(socketPath string) ([]config.NodeConfig, error) {
 	if socketPath == "" {
 		socketPath = "/var/run/docker.sock"

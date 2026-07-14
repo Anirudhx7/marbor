@@ -312,11 +312,11 @@ export function Requests() {
                           {entry.key_name}
                         </span>
                       ) : entry.source_ip ? (
-                        <span className="font-mono text-xs text-muted-foreground" title="No API key — showing source IP">
+                        <span className="font-mono text-xs text-muted-foreground" title="No API key  --  showing source IP">
                           {entry.source_ip}
                         </span>
                       ) : (
-                        <span className="text-muted-foreground/40 text-xs">—</span>
+                        <span className="text-muted-foreground/40 text-xs"> -- </span>
                       )}
                     </td>
                     <td className="px-4 py-3">
