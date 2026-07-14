@@ -34,10 +34,10 @@ generation latency, not GPU generation latency plus model load time.**
 
 ## Honesty caveat - mock servers cannot demonstrate this
 
-The `cmd/mockollama` servers use a fixed `LATENCY_MS` sleep to simulate
+The `cmd/mocknode` servers use a fixed `LATENCY_MS` sleep to simulate
 response delay.  They respond instantly regardless of WARM_MODELS state.
-**Running this benchmark against mockollama or the demo stack will produce
-sub-200 ms numbers that mean nothing about real cold-load savings.**
+**Running this benchmark against the mock nodes or the demo stack will
+produce sub-200 ms numbers that mean nothing about real cold-load savings.**
 
 The headline number MUST be captured on real Ollama running on real GPU
 hardware where model-load delay is genuine (tens of seconds for large models).
