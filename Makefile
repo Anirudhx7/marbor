@@ -20,7 +20,7 @@ test-ci: ui test
 dev-ui:
 	cd ui && npm run dev
 
-## Demo targets — spin up mock Ollama/vLLM/TGI/llama.cpp nodes + mesh, send real traffic
+## Demo targets  --  spin up mock Ollama/vLLM/TGI/llama.cpp nodes + mesh, send real traffic
 demo-build: ## Build demo Docker images (mocknode runtimes + mesh)
 	docker compose -f docker-compose.demo.yml build
 

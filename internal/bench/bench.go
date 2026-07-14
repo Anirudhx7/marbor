@@ -3,7 +3,7 @@
 // It measures cold vs warm Time-To-First-Token (TTFT) through the mesh proxy
 // using the OpenAI-compatible /v1/chat/completions streaming endpoint.
 // The --target flag must point at the mesh proxy port (e.g.
-// http://localhost:11435), NOT at an Ollama backend directly — we measure
+// http://localhost:11435), NOT at an Ollama backend directly  --  we measure
 // what the mesh adds, not raw Ollama speed.
 //
 // Usage:
@@ -82,7 +82,7 @@ func Run(args []string) {
 		os.Exit(1)
 	}
 
-	// ── 3. Warm TTFT (immediate repeat — model now in VRAM) ─────────────────
+	// ── 3. Warm TTFT (immediate repeat  --  model now in VRAM) ─────────────────
 	if !*jsonOut {
 		fmt.Printf("Sending warm request (model in VRAM)...\n\n")
 	}
@@ -265,5 +265,5 @@ func measureTTFT(client *http.Client, target, model, apiKey string) (int64, erro
 	if err := scanner.Err(); err != nil {
 		return 0, fmt.Errorf("read stream: %w", err)
 	}
-	return 0, fmt.Errorf("no tokens received — model may have failed to load, or the mesh has no healthy nodes")
+	return 0, fmt.Errorf("no tokens received  --  model may have failed to load, or the mesh has no healthy nodes")
 }

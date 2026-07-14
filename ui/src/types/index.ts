@@ -320,13 +320,13 @@ export interface BudgetEntry {
 // specific (model, node) pair, applied whenever ollama-mesh routes to that
 // model on that node. The same model name can be resident on multiple nodes
 // with different runtimes (ollama/vllm/tgi/llamacpp) or VRAM budgets, so a
-// profile is only ever meaningful scoped to one node — `model` and `node`
-// are both required. Every other field is optional — unset means "inherit
+// profile is only ever meaningful scoped to one node  --  `model` and `node`
+// are both required. Every other field is optional  --  unset means "inherit
 // the backend's own default", never a fabricated value (R1). Field
 // names/JSON keys mirror internal/store/store.go 1:1. Verified 2026-07
 // against each runtime's actual current source/API schema (Ollama's
 // api/types.go, llama.cpp's server README, vLLM's OpenAI protocol source,
-// TGI's live OpenAPI spec) — flash_attention, offload_kv_cache_to_gpu,
+// TGI's live OpenAPI spec)  --  flash_attention, offload_kv_cache_to_gpu,
 // rope_frequency_base/scale, use_mlock, tensor_parallelism, mirostat*, and
 // tfs_z were removed: none are real per-request parameters on any of the
 // four runtimes (some never existed as request fields at all; others were
@@ -335,7 +335,7 @@ export interface ModelConfig {
   model: string;
   node: string;
 
-  // Load-time / engine parameters — Ollama only.
+  // Load-time / engine parameters  --  Ollama only.
   num_ctx?: number;
   num_gpu?: number;
   main_gpu?: number;

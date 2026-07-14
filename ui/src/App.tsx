@@ -13,7 +13,7 @@ import type { SessionData } from './types';
 
 // ---------------------------------------------------------------------------
 // ErrorBoundary
-// Accepts an optional `resetKey` prop — when it changes React unmounts and
+// Accepts an optional `resetKey` prop  --  when it changes React unmounts and
 // remounts this subtree, automatically clearing any caught error. Without this
 // the boundary stays in error state across all subsequent navigations.
 // ---------------------------------------------------------------------------
@@ -78,14 +78,14 @@ const SystemAudit  = lazy(() => import('./pages/SystemAudit').then(m => ({ defau
 // RouterComponent declared at module scope so its identity is stable across
 // re-renders of App (e.g. pendingCount polls). A component declared inside the
 // render function gets a fresh identity every render, causing React to unmount
-// and remount the entire router — wiping its history state and breaking
+// and remount the entire router  --  wiping its history state and breaking
 // client-side navigation.
 // ---------------------------------------------------------------------------
 const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
 const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
 
 // ---------------------------------------------------------------------------
-// AppShell — rendered inside the Router so it can call useLocation.
+// AppShell  --  rendered inside the Router so it can call useLocation.
 // Passes location.pathname as a resetKey to ErrorBoundary so the boundary
 // fully resets (clears stuck error/loading state) on every navigation.
 // ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
             navigation. This clears any stuck error state and any in-progress
             Suspense loading state so the new page always renders cleanly.
           */}
-          <ErrorBoundary key={pathname} resetKey={pathname}>
+          <ErrorBoundary resetKey={pathname}>
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -147,12 +147,12 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
-// The public GitHub Pages demo (forcedDemo) never talks to a real backend —
-// api.ts's DEMO branch serves mockData for every call — so this session is
+// The public GitHub Pages demo (forcedDemo) never talks to a real backend  -- 
+// api.ts's DEMO branch serves mockData for every call  --  so this session is
 // cosmetic routing only, not an auth bypass. The real product's adminAuth
 // middleware (auth.go, exact Bearer-token match) is what actually gates admin
 // APIs, and forcedDemo can only be true if VITE_FORCE_DEMO was set at build
-// time, which only .github/workflows/pages.yml does — `make build` (the
+// time, which only .github/workflows/pages.yml does  --  `make build` (the
 // binary users install) never sets it, so real installs always hit Login.
 const DEMO_SESSION: SessionData = {
   token: 'demo',
@@ -182,7 +182,7 @@ function App() {
 
   function handleLogout() {
     logout();
-    // Demo has no Login screen to fall through to (see DEMO_SESSION above) —
+    // Demo has no Login screen to fall through to (see DEMO_SESSION above)  -- 
     // reset to the same fake session instead of null so clicking Logout on
     // the public demo doesn't strand the visitor on a real login form.
     setSession(forcedDemo ? DEMO_SESSION : null);

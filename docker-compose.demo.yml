@@ -39,7 +39,7 @@ services:
       retries: 10
       start_period: 5s
 
-  # Multi-runtime demo nodes — vLLM/TGI/llama.cpp mocks satisfying exactly
+  # Multi-runtime demo nodes  --  vLLM/TGI/llama.cpp mocks satisfying exactly
   # what internal/runtime's detect/health probes expect (see cmd/mocknode's
   # package comment), not each project's full real API surface. Not part of
   # smoke.sh's default gate (that only checks the 2 Ollama nodes + mesh);

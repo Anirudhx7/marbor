@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gate.sh — mirrors CI exactly. Green here = green in GitHub Actions.
+# gate.sh  --  mirrors CI exactly. Green here = green in GitHub Actions.
 # Requires Docker Desktop running (Go is not installed locally).
 set -euo pipefail
 
@@ -7,14 +7,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 gorun() {
   # MSYS_NO_PATHCONV=1: disable Git Bash path conversion entirely for Docker args
-  # pwd -W: explicit Windows-style path (C:/...) for the bind mount — Docker Desktop requires this
+  # pwd -W: explicit Windows-style path (C:/...) for the bind mount  --  Docker Desktop requires this
   # ollama-mesh-gomod: named volume caches Go modules across runs (no re-download each time).
-  # Mounted at /go/pkg/mod, NOT /root/go/pkg/mod — golang:1.25's default GOPATH is /go
+  # Mounted at /go/pkg/mod, NOT /root/go/pkg/mod  --  golang:1.25's default GOPATH is /go
   # (confirmed via `go env GOPATH` in-container), so /root/go/pkg/mod is never read/written
   # and every run silently redownloaded the full module graph from scratch. If this volume
   # ever needs clearing (disk pressure): `docker volume rm ollama-mesh-gomod`. Safe to
-  # delete anytime — it's a pure cache, gate.sh repopulates it on the next run.
-  # ollama-mesh-gobuild: named volume caching compiled build objects (GOCACHE) —
+  # delete anytime  --  it's a pure cache, gate.sh repopulates it on the next run.
+  # ollama-mesh-gobuild: named volume caching compiled build objects (GOCACHE)  -- 
   # same rationale as ollama-mesh-gomod above. Also safe to `docker volume rm`
   # anytime; it's rebuilt from scratch on the next run.
   MSYS_NO_PATHCONV=1 docker run --rm \
@@ -31,7 +31,7 @@ fail() { echo ""; echo "GATE RED: $*" >&2; exit 1; }
 echo "=== [1/5] UI: npm ci + build ==="
 if command -v powershell.exe &>/dev/null; then
   # Windows: neither 'rd /s /q' nor 'Remove-Item -Recurse' is 100% reliable
-  # alone — Windows Defender or VS Code file watchers lock different packages
+  # alone  --  Windows Defender or VS Code file watchers lock different packages
   # each run. Strategy: try both methods in a retry loop until the directory
   # is gone or we give up and let npm ci handle it (npm ci also cleans first,
   # and it may succeed even if our pre-delete partially failed).
@@ -59,7 +59,7 @@ echo "=== [2/5] Go: vet ==="
 gorun go vet ./... || fail "go vet failed"
 
 echo "=== [3/5] Go: gofmt check ==="
-# Exclude gitignored worktrees/backups (.claude/, .local/) — CI's clean checkout never has
+# Exclude gitignored worktrees/backups (.claude/, .local/)  --  CI's clean checkout never has
 # them, so scanning them here only surfaces stale local artifacts, not real formatting issues.
 unformatted=$(gorun bash -c "gofmt -l . | grep -v -e '^\.claude/' -e '^\./\.claude/' -e '^\.local/' -e '^\./\.local/'" || true)
 if [ -n "$unformatted" ]; then

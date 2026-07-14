@@ -82,7 +82,7 @@ func TestWarmFirstPicksLeastConns(t *testing.T) {
 	r.nodes[1].Healthy = true
 	r.nodes[1].mu.Unlock()
 
-	// gpu-0 has more active connections — gpu-1 should win
+	// gpu-0 has more active connections  --  gpu-1 should win
 	atomic.StoreInt32(&r.nodes[0].ActiveConns, 5)
 	atomic.StoreInt32(&r.nodes[1].ActiveConns, 1)
 
@@ -398,7 +398,7 @@ func TestSessionAffinitySticksToBestNode(t *testing.T) {
 	r.nodes[1].Healthy = true
 	r.nodes[1].mu.Unlock()
 
-	// First request: no affinity entry yet — should pick node-a (warm).
+	// First request: no affinity entry yet  --  should pick node-a (warm).
 	n1, warm1 := r.Route("llama3", "sess-1", "")
 	if n1 == nil {
 		t.Fatal("expected a node, got nil")
@@ -410,7 +410,7 @@ func TestSessionAffinitySticksToBestNode(t *testing.T) {
 		t.Error("expected warm=true for first route")
 	}
 
-	// Second request: affinity pinned to node-a — must return node-a even if node-b is also warm.
+	// Second request: affinity pinned to node-a  --  must return node-a even if node-b is also warm.
 	r.nodes[1].mu.Lock()
 	r.nodes[1].LoadedModels = []ModelInfo{{Name: "llama3"}}
 	r.nodes[1].mu.Unlock()
@@ -472,7 +472,7 @@ func TestSessionAffinityNoIDIsStateless(t *testing.T) {
 	r.nodes[0].Healthy = true
 	r.nodes[0].mu.Unlock()
 
-	// No session ID — must not create affinity entries.
+	// No session ID  --  must not create affinity entries.
 	r.Route("llama3", "", "")
 	r.affinityMu.RLock()
 	count := len(r.affinity)
@@ -533,7 +533,7 @@ func TestSweepAffinityRemovesExpired(t *testing.T) {
 }
 
 func TestPickMostFreeVRAM_BasicSelection(t *testing.T) {
-	// Three nodes: free VRAM = 4000, 14000, 15000 — third wins.
+	// Three nodes: free VRAM = 4000, 14000, 15000  --  third wins.
 	nodes := make([]*NodeState, 3)
 	for i := range nodes {
 		nodes[i] = &NodeState{}
@@ -589,7 +589,7 @@ func TestPickMostFreeVRAM_MixedUnknown(t *testing.T) {
 		nodes[i] = &NodeState{}
 	}
 	nodes[0].mu.Lock()
-	nodes[0].VRAMTotalMB = 0 // unknown — skipped
+	nodes[0].VRAMTotalMB = 0 // unknown  --  skipped
 	nodes[0].mu.Unlock()
 	nodes[1].mu.Lock()
 	nodes[1].VRAMTotalMB = 24000
@@ -597,7 +597,7 @@ func TestPickMostFreeVRAM_MixedUnknown(t *testing.T) {
 	nodes[1].mu.Unlock()
 	nodes[2].mu.Lock()
 	nodes[2].VRAMTotalMB = 24000
-	nodes[2].VRAMUsedMB = 8000 // 16000 free — wins
+	nodes[2].VRAMUsedMB = 8000 // 16000 free  --  wins
 	nodes[2].mu.Unlock()
 
 	got := pickMostFreeVRAM(nodes)
@@ -607,7 +607,7 @@ func TestPickMostFreeVRAM_MixedUnknown(t *testing.T) {
 }
 
 func TestRouteInternal_VRAMFallback(t *testing.T) {
-	// fallback="vram-aware", no warm models — VRAM free should win over conn count.
+	// fallback="vram-aware", no warm models  --  VRAM free should win over conn count.
 	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "vram-aware", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 24576},
 		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 24576},
@@ -790,9 +790,9 @@ func TestSyncNodes(t *testing.T) {
 
 // TestAddNode_RejectsDuplicateURLUnderDifferentName reproduces a real-world
 // bug scenario: a node ("pve") is already registered (as if loaded from
-// config.yaml at router construction time), and a second source — the SQLite
+// config.yaml at router construction time), and a second source  --  the SQLite
 // store overlay in main.go, the admin "add node" API, or Docker
-// auto-discovery, all of which funnel through Router.AddNode — later tries to
+// auto-discovery, all of which funnel through Router.AddNode  --  later tries to
 // register the exact same physical backend under a different auto-generated
 // name ("discovered-ollama-1", the name install.sh's PROBE-based discovery
 // writes into a freshly generated config.yaml). Without a URL-based dedup
@@ -998,7 +998,7 @@ func TestRoute_RuntimeFilter_OllamaOnly(t *testing.T) {
 }
 
 // TestRoute_RuntimeFilter_Any verifies that runtimeFilter="" allows routing to
-// any runtime — both Ollama and vLLM nodes are eligible.
+// any runtime  --  both Ollama and vLLM nodes are eligible.
 func TestRoute_RuntimeFilter_Any(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "ollama-0", URL: "http://localhost:1"},

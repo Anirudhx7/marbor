@@ -62,7 +62,7 @@ nodes:
   # Remote node example. nvidia-smi runs on the mesh host only, so a remote
   # node's used-VRAM is derived from its own /api/ps (real, live). Declaring
   # vram_total_mb lets the dashboard show headroom; omit it and capacity shows
-  # as "—". The value is operator-declared, never presented as a measurement.
+  # as "--". The value is operator-declared, never presented as a measurement.
   - name: gpu-remote
     url: http://10.0.1.10:11434
     gpu_model: "NVIDIA A10G 24GB"
@@ -116,7 +116,7 @@ routing:
   # When true, requests carrying the same X-Session-ID header are routed to the
   # same backend node. The node's KV cache for that conversation stays in VRAM,
   # so subsequent turns skip re-prefill and produce the first token faster.
-  # Default false — stateless routing. Safe zero value.
+  # Default false  --  stateless routing. Safe zero value.
   session_affinity: false
   # How long an idle session pin stays valid. After this window with no requests,
   # the session is evicted and the next request re-routes normally.
@@ -127,7 +127,7 @@ routing:
   # call; polling it every 2s alongside /api/ps produces measurable CPU overhead.
   # Default 30000 (30s). Set lower only if you need near-real-time temp/power
   # data in the dashboard. /api/ps (VRAM used by loaded models) still polls at
-  # poll_interval_ms — only nvidia-smi telemetry is decoupled here.
+  # poll_interval_ms  --  only nvidia-smi telemetry is decoupled here.
   nvidia_poll_interval_ms: 30000
 
   # Request queue: when all local nodes are saturated, requests queue here

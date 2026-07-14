@@ -42,7 +42,7 @@ func TestProgressBar(t *testing.T) {
 }
 
 func TestProgressBarCapsAtWidth(t *testing.T) {
-	// duration exceeds max — bar should be fully filled, not overflow
+	// duration exceeds max  --  bar should be fully filled, not overflow
 	bar := progressBar(30*time.Second, 10*time.Second, 10)
 	runes := []rune(bar)
 	for i := 1; i <= 10; i++ {

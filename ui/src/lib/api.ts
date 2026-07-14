@@ -688,7 +688,7 @@ export async function pullModel(nodeName: string, model: string): Promise<void> 
 
 // fetchModelConfig returns the configured default parameter profile for a
 // (model, node) pair, or null if none is configured (backend returns 404 in
-// that case — R1: the UI must show "not set", never fabricate a value).
+// that case  --  R1: the UI must show "not set", never fabricate a value).
 // Both model and node are required by the backend.
 export async function fetchModelConfig(model: string, node: string): Promise<ModelConfig | null> {
   const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}&node=${encodeURIComponent(node)}`, { headers: authHeaders() });
@@ -698,7 +698,7 @@ export async function fetchModelConfig(model: string, node: string): Promise<Mod
 }
 
 // saveModelConfig upserts a profile for the (model, node) pair named in the
-// body — cfg.model and cfg.node are both required by the backend.
+// body  --  cfg.model and cfg.node are both required by the backend.
 export async function saveModelConfig(cfg: ModelConfig): Promise<ModelConfig> {
   const res = await apiFetch(`${BASE}/model-config`, {
     method: 'PUT',
@@ -731,7 +731,7 @@ export async function fetchAllModelConfigs(): Promise<ModelConfig[]> {
 // fetchModelConfigCapabilities returns, for each known runtime (ollama, vllm,
 // tgi, llamacpp), the exact ModelConfig JSON field names that actually take
 // effect when injected for that runtime. This is the single source of truth
-// the UI uses to decide which fields to render/enable per node — it must
+// the UI uses to decide which fields to render/enable per node  --  it must
 // never hand-duplicate this list from memory, since that's exactly what
 // drifted out of sync with the backend before this endpoint existed.
 export async function fetchModelConfigCapabilities(): Promise<Record<string, string[]>> {

@@ -292,7 +292,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Advanced model configuration overrides (item #20) are applied further
-	// down, right after a node is selected — the profile is keyed by
+	// down, right after a node is selected  --  the profile is keyed by
 	// (model, node), so which node's config applies can't be known until
 	// routing has actually picked one. See the block right after
 	// h.router.IncrConn(node) below.
@@ -373,7 +373,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Advanced model configuration overrides (item #20): apply the operator's
 	// configured default profile for this (model, node) pair, if one exists.
-	// A profile is keyed by node as well as model — the same model name can
+	// A profile is keyed by node as well as model  --  the same model name can
 	// be resident on nodes with different runtimes or different VRAM
 	// budgets, so it can only be resolved once a node has actually been
 	// selected. rpm/tpm are enforced as a pre-send gate; every other field
@@ -823,7 +823,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	metrics.CloudFallback(cloud.Name)
 	path := translateCloudPath(r.URL.Path)
 
-	// Anthropic's API only exposes /v1/messages — it has no /v1/completions or
+	// Anthropic's API only exposes /v1/messages  --  it has no /v1/completions or
 	// /v1/chat/completions. ollama-mesh does not translate those to the Anthropic
 	// Messages schema, so rather than proxy a request Anthropic will reject with a
 	// confusing raw error, return a clear 501 before the request leaves the mesh.
@@ -929,7 +929,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local mesh
-			// node's profile and don't apply to cloud dispatch — cloud spend
+			// node's profile and don't apply to cloud dispatch  --  cloud spend
 			// already has its own governance via CloudBudgetExceeded and the
 			// runtime_keys daily/monthly USD caps, which is the correct place
 			// for cloud cost control rather than a per-node capacity knob.
@@ -1000,7 +1000,7 @@ type statusRecorder struct {
 
 // tailMax bounds the retained response tail. Token counts live in the final
 // JSON object (Ollama NDJSON) or final SSE chunk (OpenAI), so a small tail
-// is enough. Writes still pass straight through — streaming is not buffered.
+// is enough. Writes still pass straight through  --  streaming is not buffered.
 const tailMax = 8192
 
 func (r *statusRecorder) Write(b []byte) (int, error) {
@@ -1031,7 +1031,7 @@ func (r *statusRecorder) ttft() time.Duration {
 // from the end looking for Ollama's final object (eval_count +
 // prompt_eval_count) or an OpenAI-style usage block (total_tokens).
 // Returns 0 when no count is present on a normally-completed response.
-// Returns -1 when aborted is true and no count is present — the terminal
+// Returns -1 when aborted is true and no count is present  --  the terminal
 // chunk carrying the real count was never sent by upstream, so this is a
 // genuinely unknown value, not a real zero-token response; callers must
 // skip cost/analytics accumulation for -1 rather than storing it as 0.
@@ -1068,8 +1068,8 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 
 // evalDurationMs parses Ollama's real eval_duration (nanoseconds spent
 // generating completion tokens, excluding prompt processing) from the
-// response tail. This is only present on Ollama-native responses — cloud
-// providers don't report it — so it returns 0 (unavailable) for anything
+// response tail. This is only present on Ollama-native responses  --  cloud
+// providers don't report it  --  so it returns 0 (unavailable) for anything
 // else, including OpenAI usage blocks. 0 always means "not present": unlike
 // tokenCount, a genuine eval_duration is never 0, so no aborted-vs-zero
 // sentinel distinction is needed here.

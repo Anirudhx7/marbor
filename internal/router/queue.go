@@ -26,7 +26,7 @@ func (r *Router) DecrConn(node *NodeState) {
 			v = 0
 		}
 		metrics.ActiveConnections(node.Name, float64(v))
-		// Wake up all WaitForNode callers — a slot just freed.
+		// Wake up all WaitForNode callers  --  a slot just freed.
 		r.notifyMu.Lock()
 		ch := r.notifyCh
 		r.notifyCh = make(chan struct{})

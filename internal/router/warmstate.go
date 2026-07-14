@@ -32,8 +32,8 @@ func (r *Router) warmStore() store.Store {
 // persistResidencyDiff records a model-residency change to the store the moment
 // the mesh observes it (Tier 1, lifecycle events): models newly resident on the
 // node are recorded as loads (bumping load_count); models that vanished are
-// deleted. Persistence is best-effort — a store error must never disturb polling
-// — so failures are logged and swallowed. Must be called WITHOUT holding n.mu or
+// deleted. Persistence is best-effort  --  a store error must never disturb polling
+//  --  so failures are logged and swallowed. Must be called WITHOUT holding n.mu or
 // r.mu (it performs blocking store I/O).
 func (r *Router) persistResidencyDiff(node string, prev, current []ModelInfo) {
 	st := r.warmStore()
@@ -48,7 +48,7 @@ func (r *Router) persistResidencyDiff(node string, prev, current []ModelInfo) {
 	for _, m := range current {
 		curSet[m.Name] = struct{}{}
 		if _, existed := prevSet[m.Name]; existed {
-			continue // unchanged residency — refreshed by the Tier-2 snapshot
+			continue // unchanged residency  --  refreshed by the Tier-2 snapshot
 		}
 		if err := st.RecordWarmLoad(store.WarmStateRecord{
 			Model:     m.Name,
@@ -118,7 +118,7 @@ func (r *Router) snapshotNode(n *NodeState) {
 // FlushWarmState writes the full in-memory residency snapshot to the store
 // (Tier 2 background flush and Tier 3 shutdown flush). It refreshes last-used and
 // VRAM for every resident (model, node) pair without disturbing load_count. It
-// never deletes rows — models leaving VRAM are pruned by the immediate lifecycle
+// never deletes rows  --  models leaving VRAM are pruned by the immediate lifecycle
 // writes (unload/eviction/poll-diff). Safe to call concurrently; best-effort.
 func (r *Router) FlushWarmState() {
 	r.mu.RLock()
@@ -149,7 +149,7 @@ func (r *Router) FlushWarmState() {
 // RestoreWarmState seeds the in-memory warm state from the store at startup so
 // the router starts warm, not cold. It restores the LRU last-used history for
 // every persisted (model, node) pair, and seeds each known node's residency map
-// when it is still empty (i.e. the first health poll has not yet populated it —
+// when it is still empty (i.e. the first health poll has not yet populated it  -- 
 // polling remains the authoritative source and overwrites the seed as soon as it
 // succeeds). Returns the number of persisted pairs restored. Call after nodes are
 // registered and before serving client traffic.
@@ -188,7 +188,7 @@ func (r *Router) RestoreWarmState() (int, error) {
 			continue
 		}
 		n.mu.Lock()
-		// Only seed if a poll has not already established the real residency — the
+		// Only seed if a poll has not already established the real residency  --  the
 		// live /api/ps result is always more authoritative than the restored guess.
 		if len(n.LoadedModels) == 0 {
 			n.LoadedModels = models

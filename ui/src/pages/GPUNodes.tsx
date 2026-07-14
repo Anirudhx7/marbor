@@ -278,7 +278,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   </button>
                   {pinned ? (
                     <span
-                      title="Pinned — never evicted or unloaded. Unpin on the Warmup page first."
+                      title="Pinned  --  never evicted or unloaded. Unpin on the Warmup page first."
                       className="ml-1.5 -mr-0.5 opacity-60 cursor-not-allowed"
                     >
                       <Pin className="w-3 h-3" />
@@ -481,7 +481,7 @@ export function GPUNodes() {
     } catch (e: any) {
       // The unload button is already hidden for models we know are pinned, but
       // pinned state can go stale between polls (e.g. pinned from another tab
-      // right after this page loaded) — the backend still enforces it (409),
+      // right after this page loaded)  --  the backend still enforces it (409),
       // so surface that clearly instead of silently dropping the click.
       setActionError(e?.message || `Failed to unload ${model} from ${nodeName}`);
       return false;

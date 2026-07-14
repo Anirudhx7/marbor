@@ -234,7 +234,7 @@ type NodeConfig struct {
 	// VRAMTotalMB optionally declares this node's total GPU VRAM in MB. Used to
 	// compute headroom for remote nodes where nvidia-smi cannot reach (nvidia-smi
 	// only sees the mesh host). Operator-declared, surfaced as "declared", never
-	// presented as a live measurement. 0 = unknown (UI shows capacity as "—").
+	// presented as a live measurement. 0 = unknown (UI shows capacity as " -- ").
 	VRAMTotalMB int64 `yaml:"vram_total_mb" json:"vram_total_mb"`
 	// Runtime identifies the inference backend. Valid: "ollama" (default), "vllm", "tgi", "llamacpp".
 	// Controls which health endpoint and warm-model detection API the router uses.

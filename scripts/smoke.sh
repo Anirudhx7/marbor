@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke.sh — gates the `make demo` path with real pass/fail assertions.
+# smoke.sh  --  gates the `make demo` path with real pass/fail assertions.
 # Brings up the demo stack, hits auth/routing/streaming/admin/metrics, tears down, exits 0/1.
 set -uo pipefail
 
