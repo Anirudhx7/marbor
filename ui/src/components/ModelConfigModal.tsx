@@ -14,7 +14,7 @@ type FormState = Omit<ModelConfig, 'model' | 'stop' | 'logit_bias'> & {
   logit_bias_text: string;
 };
 
-type FieldType = 'int' | 'float' | 'bool' | 'text' | 'textarea';
+type FieldType = 'int' | 'float' | 'bool' | 'text' | 'textarea' | 'slider' | 'select';
 
 interface FieldDef {
   key: keyof Omit<FormState, 'model' | 'stop_text' | 'logit_bias_text'>;
@@ -24,40 +24,59 @@ interface FieldDef {
   min?: number;
   max?: number;
   step?: number;
+  // slider only: the value the control seeds to the first time a user
+  // switches it on (the field's real-world common default, so dragging
+  // starts from something sane instead of the min).
+  sliderDefault?: number;
+  // select only: fixed enum options (value + human label).
+  options?: { value: string; label: string }[];
+  // select only: store the chosen option as a number instead of a string
+  // (e.g. mirostat mode 0/1/2 is an int field in ModelConfig).
+  numeric?: boolean;
 }
 
+// Common power-of-2 context windows, LM-Studio style, so users pick a size
+// instead of guessing a token count. "Custom" reveals the raw number input.
+const NUM_CTX_PRESETS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
+
 const LOAD_TIME_FIELDS: FieldDef[] = [
-  { key: 'num_ctx', label: 'Context Length (num_ctx)', help: 'Max context window in tokens.', type: 'int', min: 1, step: 512 },
-  { key: 'num_gpu', label: 'GPU Layers (num_gpu)', help: 'Layers offloaded to GPU. Higher = more VRAM, less CPU.', type: 'int', min: 0 },
+  { key: 'num_ctx', label: 'Context Length (num_ctx)', help: 'Max context window in tokens.', type: 'slider', min: 2048, max: 131072, step: 2048, sliderDefault: 4096 },
+  { key: 'num_gpu', label: 'GPU Layers (num_gpu)', help: 'Layers offloaded to GPU. Higher = more VRAM, less CPU. Depends on model size — leave unset to let Ollama decide.', type: 'int', min: 0 },
   { key: 'flash_attention', label: 'Flash Attention', help: 'Faster attention kernel, lower VRAM for long contexts.', type: 'bool' },
   { key: 'offload_kv_cache_to_gpu', label: 'Offload KV Cache to GPU', help: 'Keeps the KV cache resident on GPU instead of CPU.', type: 'bool' },
-  { key: 'num_batch', label: 'Batch Size (num_batch)', help: 'Tokens processed in parallel during prompt eval.', type: 'int', min: 1 },
+  { key: 'num_batch', label: 'Batch Size (num_batch)', help: 'Tokens processed in parallel during prompt eval.', type: 'slider', min: 32, max: 2048, step: 32, sliderDefault: 512 },
   { key: 'num_thread', label: 'CPU Threads (num_thread)', help: 'CPU threads for generation. 0 = auto.', type: 'int', min: 0 },
   { key: 'use_mmap', label: 'Use mmap', help: 'Memory-maps the model file for faster loads.', type: 'bool' },
   { key: 'use_mlock', label: 'Use mlock', help: 'Locks model pages in RAM to prevent swapping.', type: 'bool' },
-  { key: 'rope_frequency_base', label: 'RoPE Frequency Base', help: 'Base frequency for RoPE context scaling.', type: 'float', step: 1000 },
-  { key: 'rope_frequency_scale', label: 'RoPE Frequency Scale', help: 'Scale factor for RoPE context expansion.', type: 'float', step: 0.1 },
+  { key: 'rope_frequency_base', label: 'RoPE Frequency Base', help: 'Base frequency for RoPE context scaling. Rarely needs changing — leave unset unless extending context past a model’s trained length.', type: 'int', min: 0, step: 1000 },
+  { key: 'rope_frequency_scale', label: 'RoPE Frequency Scale', help: 'Scale factor for RoPE context expansion (used for context-window stretching).', type: 'slider', min: 0, max: 4, step: 0.05, sliderDefault: 1 },
   { key: 'ttl', label: 'TTL (seconds)', help: 'Idle seconds before auto-unload. 0 = disabled.', type: 'int', min: 0 },
   { key: 'tensor_parallelism', label: 'Tensor Parallelism', help: 'Split tensor compute across multiple GPUs.', type: 'bool' },
 ];
 
 const INFERENCE_FIELDS: FieldDef[] = [
-  { key: 'temperature', label: 'Temperature', help: 'Sampling randomness. 0 = deterministic, 2 = max chaos.', type: 'float', min: 0, max: 2, step: 0.05 },
-  { key: 'top_p', label: 'Top P', help: 'Nucleus sampling threshold.', type: 'float', min: 0, max: 1, step: 0.05 },
-  { key: 'top_k', label: 'Top K', help: 'Only sample from the top K candidate tokens.', type: 'int', min: 0 },
-  { key: 'min_p', label: 'Min P', help: 'Minimum probability relative to the top token.', type: 'float', min: 0, max: 1, step: 0.01 },
-  { key: 'typical_p', label: 'Typical P', help: 'Locally typical sampling threshold.', type: 'float', min: 0, max: 1, step: 0.05 },
-  { key: 'tfs_z', label: 'TFS-Z', help: 'Tail-free sampling parameter.', type: 'float', min: 0, max: 1, step: 0.05 },
-  { key: 'max_tokens', label: 'Max Tokens (num_predict)', help: 'Max tokens to generate. -1 = unlimited.', type: 'int' },
-  { key: 'seed', label: 'Seed', help: 'Fixed RNG seed for reproducible output. -1 = random.', type: 'int' },
-  { key: 'repeat_penalty', label: 'Repeat Penalty', help: 'Penalizes repeated tokens. 1.0 = off.', type: 'float', min: 0, step: 0.05 },
-  { key: 'repeat_last_n', label: 'Repeat Last N', help: 'Lookback window for the repeat penalty.', type: 'int', min: -1 },
-  { key: 'presence_penalty', label: 'Presence Penalty', help: 'Penalizes tokens already used, regardless of count.', type: 'float', min: -2, max: 2, step: 0.1 },
-  { key: 'frequency_penalty', label: 'Frequency Penalty', help: 'Penalizes tokens by how often they recur.', type: 'float', min: -2, max: 2, step: 0.1 },
-  { key: 'mirostat', label: 'Mirostat Mode', help: '0 = off, 1 = Mirostat, 2 = Mirostat 2.0.', type: 'int', min: 0, max: 2 },
-  { key: 'mirostat_tau', label: 'Mirostat Tau', help: 'Target entropy for Mirostat sampling.', type: 'float', step: 0.1 },
-  { key: 'mirostat_eta', label: 'Mirostat Eta', help: 'Learning rate for Mirostat sampling.', type: 'float', step: 0.01 },
-  { key: 'response_format', label: 'Response Format', help: 'e.g. "json" to force structured output.', type: 'text' },
+  { key: 'temperature', label: 'Temperature', help: 'Sampling randomness. 0 = deterministic/focused, 2 = max chaos. Most chat use cases: 0.6–0.9.', type: 'slider', min: 0, max: 2, step: 0.05, sliderDefault: 0.8 },
+  { key: 'top_p', label: 'Top P (nucleus sampling)', help: 'Only sample from the smallest set of tokens whose cumulative probability reaches this. Lower = more focused.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 0.9 },
+  { key: 'top_k', label: 'Top K', help: 'Only sample from the top K candidate tokens. Lower = more focused, higher = more variety.', type: 'slider', min: 0, max: 100, step: 1, sliderDefault: 40 },
+  { key: 'min_p', label: 'Min P', help: 'Minimum token probability relative to the top token’s probability.', type: 'slider', min: 0, max: 1, step: 0.01, sliderDefault: 0 },
+  { key: 'typical_p', label: 'Typical P', help: 'Locally typical sampling threshold — filters out tokens with atypical information content.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 1 },
+  { key: 'tfs_z', label: 'TFS-Z', help: 'Tail-free sampling parameter — trims low-probability tail tokens.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 1 },
+  { key: 'max_tokens', label: 'Max Tokens (num_predict)', help: 'Max tokens to generate. -1 = unlimited.', type: 'int', min: -1 },
+  { key: 'seed', label: 'Seed', help: 'Fixed RNG seed for reproducible output. -1 = random.', type: 'int', min: -1 },
+  { key: 'repeat_penalty', label: 'Repeat Penalty', help: 'Penalizes repeated tokens. 1.0 = off, higher = less repetition.', type: 'slider', min: 0.5, max: 2, step: 0.05, sliderDefault: 1.1 },
+  { key: 'repeat_last_n', label: 'Repeat Last N', help: 'Lookback window (in tokens) for the repeat penalty. -1 = whole context.', type: 'int', min: -1 },
+  { key: 'presence_penalty', label: 'Presence Penalty', help: 'Penalizes tokens already used at all, regardless of how often.', type: 'slider', min: -2, max: 2, step: 0.1, sliderDefault: 0 },
+  { key: 'frequency_penalty', label: 'Frequency Penalty', help: 'Penalizes tokens by how often they’ve already recurred.', type: 'slider', min: -2, max: 2, step: 0.1, sliderDefault: 0 },
+  {
+    key: 'mirostat', label: 'Mirostat Mode', help: 'Adaptive sampling that targets a constant perplexity instead of tuning top-k/top-p by hand. 2.0 is the modern variant.', type: 'select', numeric: true,
+    options: [{ value: '0', label: 'Off' }, { value: '1', label: 'Mirostat 1.0' }, { value: '2', label: 'Mirostat 2.0' }],
+  },
+  { key: 'mirostat_tau', label: 'Mirostat Tau', help: 'Target entropy for Mirostat sampling. Only used when Mirostat mode is on.', type: 'slider', min: 0, max: 10, step: 0.1, sliderDefault: 5 },
+  { key: 'mirostat_eta', label: 'Mirostat Eta', help: 'Learning rate for Mirostat sampling. Only used when Mirostat mode is on.', type: 'slider', min: 0, max: 1, step: 0.01, sliderDefault: 0.1 },
+  {
+    key: 'response_format', label: 'Response Format', help: 'Force a structured output format.', type: 'select',
+    options: [{ value: 'json', label: 'JSON object' }],
+  },
 ];
 
 const META_FIELDS: FieldDef[] = [
@@ -151,6 +170,45 @@ function Field({
         className="w-full px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
       />
     );
+  } else if (def.type === 'select') {
+    input = (
+      <select
+        value={value === undefined || value === null ? '' : String(value)}
+        onChange={(e) => {
+          if (e.target.value === '') return onChange(undefined);
+          onChange(def.numeric ? Number(e.target.value) : e.target.value);
+        }}
+        disabled={disabled}
+        className="w-full px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <option value="">Default (unset)</option>
+        {def.options?.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    );
+  } else if (def.type === 'slider') {
+    const min = def.min ?? 0;
+    const max = def.max ?? 1;
+    const step = def.step ?? 0.01;
+    const sliderValue = isSet ? (value as number) : (def.sliderDefault ?? min);
+    input = (
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={sliderValue}
+          onChange={(e) => onChange(Number(e.target.value))}
+          disabled={disabled}
+          className={`flex-1 accent-primary ${!isSet ? 'opacity-40' : ''} disabled:opacity-30 disabled:cursor-not-allowed`}
+        />
+        <code className={`font-mono text-xs font-medium min-w-[52px] text-right ${isSet ? 'text-primary' : 'text-muted-foreground/60'}`}>
+          {isSet ? sliderValue : 'default'}
+        </code>
+      </div>
+    );
   } else {
     input = (
       <input
@@ -215,13 +273,13 @@ function Section({
         <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="p-3 space-y-3">
+        <div className="p-4 sm:p-5 space-y-4">
           {disabled && disabledNote && (
-            <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-2.5 py-1.5 leading-snug">
+            <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-2 leading-snug">
               {disabledNote}
             </p>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
             {fields.map((def) => (
               <Field
                 key={String(def.key)}
@@ -344,14 +402,14 @@ export function ModelConfigModal({
       isOpen={!!model}
       onClose={onClose}
       title={model ? `Advanced Settings — ${model}` : 'Advanced Settings'}
-      maxWidth="xl"
+      maxWidth="4xl"
     >
       {loading || !form ? (
         <div className="flex items-center justify-center py-12 gap-2 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading configuration...
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <p className="text-xs text-muted-foreground leading-normal">
             Unset fields inherit Ollama's own defaults. Load-time parameters apply the next time
             this model is (re)loaded; Ollama automatically reloads a resident model whose active
