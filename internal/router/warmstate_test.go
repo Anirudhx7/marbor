@@ -35,7 +35,7 @@ func TestRestoreWarmStateSeedsResidencyAndLRU(t *testing.T) {
 	r := &Router{
 		nodes: []*NodeState{
 			{Name: "cold", Healthy: true},
-			// "polled" already has a live residency from a poll — must be preserved.
+			// "polled" already has a live residency from a poll  --  must be preserved.
 			{Name: "polled", Healthy: true, LoadedModels: []ModelInfo{{Name: "qwen", SizeVRAM: 1}}},
 		},
 	}

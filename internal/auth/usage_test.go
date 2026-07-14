@@ -89,7 +89,7 @@ func TestNoQuotaMeansUnlimited(t *testing.T) {
 // TestQuotaRejectionDoesNotDriftCounter verifies that a request rejected by
 // quota enforcement does not permanently consume a slot against the limit.
 // Before the fix, incrementAndStats() ran before the limit check, so each
-// rejection permanently counted against today/month — operators saw their
+// rejection permanently counted against today/month  --  operators saw their
 // quota evaporating without any real usage.
 func TestQuotaRejectionDoesNotDriftCounter(t *testing.T) {
 	const limit = 2

@@ -13,7 +13,7 @@
 #
 # When run non-interactively (e.g. piped via curl, where stdin isn't a
 # terminal) config.yaml and mesh.db are kept by default unless the env vars
-# above say otherwise — an uninstall should never silently destroy data.
+# above say otherwise  --  an uninstall should never silently destroy data.
 
 set -e
 
@@ -78,7 +78,7 @@ else
   echo "No binary found at $BIN_PATH (already removed, or INSTALL_DIR differs from install)."
 fi
 
-# 4. mesh.db and config.yaml hold real state (API keys, warm-state history) —
+# 4. mesh.db and config.yaml hold real state (API keys, warm-state history)  -- 
 # ask before deleting, and default to keeping them when not on a terminal.
 ask_keep() {
   # ask_keep <label> <file> <env override>  -> prints "yes" or "no"

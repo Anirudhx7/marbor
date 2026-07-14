@@ -13,7 +13,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Task A (#3): WaitForNode threads runtimeFilter — wrong-runtime node must NOT
+// Task A (#3): WaitForNode threads runtimeFilter  --  wrong-runtime node must NOT
 // be returned when a matching node is available.
 // ---------------------------------------------------------------------------
 
@@ -84,7 +84,7 @@ func TestWaitForNodeRuntimeFilterNoMatch(t *testing.T) {
 	n.Healthy = true
 	n.mu.Unlock()
 
-	// Requesting "ollama" filter — no matching node, must time out and return nil.
+	// Requesting "ollama" filter  --  no matching node, must time out and return nil.
 	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "ollama")
 	if node != nil {
 		t.Errorf("expected nil when no ollama node available, got %+v", node)
@@ -92,7 +92,7 @@ func TestWaitForNodeRuntimeFilterNoMatch(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Task E (#14): FetchModelTags panic safety — close(entry.done) via defer
+// Task E (#14): FetchModelTags panic safety  --  close(entry.done) via defer
 // means waiters are unblocked even if the fetcher panics.
 // ---------------------------------------------------------------------------
 
@@ -141,19 +141,19 @@ func TestFetchModelTagsPanicSafety(t *testing.T) {
 
 	select {
 	case <-done:
-		// Both callers returned — no deadlock.
+		// Both callers returned  --  no deadlock.
 		for i, err := range results {
 			if err == nil {
 				t.Errorf("caller %d: expected error from malformed JSON, got nil", i)
 			}
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("FetchModelTags: waiters blocked forever — panic safety defer not working")
+		t.Fatal("FetchModelTags: waiters blocked forever  --  panic safety defer not working")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Task D (#18): pollAll holds RLock snapshot (already fixed — regression test).
+// Task D (#18): pollAll holds RLock snapshot (already fixed  --  regression test).
 // ---------------------------------------------------------------------------
 
 func TestPollAllHoldsSnapshot(t *testing.T) {
@@ -287,7 +287,7 @@ func TestStartNoWarmupTicker(t *testing.T) {
 		NvidiaPollIntervalMs: 30000,
 	}
 	r := New(cfg, nil, nil)
-	// warmup NOT enabled (default) — Start() must not create a zero-interval ticker.
+	// warmup NOT enabled (default)  --  Start() must not create a zero-interval ticker.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	// Must not panic.

@@ -109,7 +109,7 @@ type Store interface {
 	HasAdminCredentials() (bool, error)
 	GetLegacyAdminCreds() (username, passwordHash, salt string, err error)
 
-	// Routing rules (persist across restarts — fixes audit finding #30)
+	// Routing rules (persist across restarts  --  fixes audit finding #30)
 	UpsertRoutingRule(r RoutingRuleRecord) error
 	DeleteRoutingRule(id string) error
 	SetRoutingRuleEnabled(id string, enabled bool) error
@@ -132,7 +132,7 @@ type Store interface {
 	DeleteWarmupModel(model string) error
 	AllWarmupModels() ([]WarmupModelRecord, error)
 
-	// Warm state — the model residency map (which model is resident on which
+	// Warm state  --  the model residency map (which model is resident on which
 	// node), its LRU last-used time, VRAM footprint, and load count. Persisted so
 	// the router starts warm after a restart instead of cold (Phase 1). RecordWarmLoad
 	// bumps load_count (a model was loaded); SnapshotWarmState refreshes the
@@ -148,7 +148,7 @@ type Store interface {
 	ReconcileNodeWarmState(node string, residentModels []string) error
 	AllWarmState() ([]WarmStateRecord, error)
 
-	// Model configuration overrides — an operator-declared default parameter
+	// Model configuration overrides  --  an operator-declared default parameter
 	// profile (load-time engine params, inference-time sampling defaults, meta
 	// fields) for a model on a specific node, applied whenever ollama-mesh
 	// routes to it. Keyed by (model, node) rather than model alone: the same
@@ -368,31 +368,31 @@ type WarmStateRecord struct {
 	LoadCount int64     `json:"load_count"`
 }
 
-// ModelConfig is the operator-declared default parameter profile for a model —
+// ModelConfig is the operator-declared default parameter profile for a model  -- 
 // covering Ollama's load-time engine params, inference-time sampling defaults,
 // and ollama-mesh's own meta/orchestration fields (system prompt override,
 // per-model rate caps). Every field is nilable/nullable: nil (or an absent
 // key in the persisted JSON) means "not configured, inherit the backend's own
-// default" — this struct must never carry a value the operator didn't
+// default"  --  this struct must never carry a value the operator didn't
 // explicitly set (R1: no fabricated defaults masquerading as configuration).
 type ModelConfig struct {
 	Model string `json:"model"`
-	// Node is the specific node this profile applies to (required — a
+	// Node is the specific node this profile applies to (required  --  a
 	// profile with no node has no meaning, since injection always happens
 	// against one already-selected node). The same model name may have a
 	// separate ModelConfig row per node it's resident on.
 	Node string `json:"node"`
 
-	// Load-time / engine parameters — Ollama only. Injected into every routed
+	// Load-time / engine parameters  --  Ollama only. Injected into every routed
 	// request's Ollama "options" object; Ollama reloads the model automatically
 	// when a resident instance's options differ from an incoming request's, so
 	// no separate evict-then-reload step is needed on the mesh side. This list
 	// is verified against Ollama's current api/types.go Options/Runner structs
-	// (github.com/ollama/ollama) — flash_attention, offload_kv_cache_to_gpu,
+	// (github.com/ollama/ollama)  --  flash_attention, offload_kv_cache_to_gpu,
 	// rope_frequency_base/scale, use_mlock, and tensor_parallelism were removed
 	// from this struct because they are not real per-request parameters on ANY
 	// of the four runtimes (they're process-launch CLI flags at best, or never
-	// existed at all) — keeping them would have been exactly the kind of
+	// existed at all)  --  keeping them would have been exactly the kind of
 	// control that looks functional but isn't (R1).
 	NumCtx          *int  `json:"num_ctx,omitempty"`
 	NumGPU          *int  `json:"num_gpu,omitempty"`
@@ -429,7 +429,7 @@ type ModelConfig struct {
 	ResponseFormat   *string            `json:"response_format,omitempty"`
 
 	// llama.cpp-only sampling extras (its /completion and OpenAI-compatible
-	// endpoints both accept these — llama.cpp's server README explicitly
+	// endpoints both accept these  --  llama.cpp's server README explicitly
 	// states "/completion-specific features such as mirostat are also
 	// supported" on the OpenAI-compatible path).
 	DryMultiplier    *float64 `json:"dry_multiplier,omitempty"`
