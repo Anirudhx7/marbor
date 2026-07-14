@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame } from 'lucide-react';
+import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
 import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
+import { ModelConfigModal } from '../components/ModelConfigModal';
 import { mockGPUNodes } from '../lib/mockData';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
@@ -102,7 +103,7 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload }: {
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel }: {
   node: GPUNode;
   pinnedModels: string[];
   onRemove: (name: string) => void;
@@ -111,6 +112,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onTogglePrewarm: (name: string, disabled: boolean) => void;
   onEdit: (node: GPUNode) => void;
   onUnload: (nodeName: string, model: string) => void;
+  onConfigureModel: (modelName: string, runtime: string) => void;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -267,6 +269,13 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   <span className="ml-1.5 opacity-70 font-mono">
                     {(model.sizeVram / 1024).toFixed(1)}GB
                   </span>
+                  <button
+                    onClick={() => onConfigureModel(model.name, node.runtime)}
+                    title={`Advanced settings for ${model.name}`}
+                    className="ml-1.5 opacity-50 hover:opacity-100 hover:text-primary transition-opacity"
+                  >
+                    <Settings2 className="w-3 h-3" />
+                  </button>
                   {pinned ? (
                     <span
                       title="Pinned — never evicted or unloaded. Unpin on the Warmup page first."
@@ -315,6 +324,7 @@ export function GPUNodes() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
+  const [configTarget, setConfigTarget] = useState<{ model: string; runtime: string } | null>(null);
 
   const loadPinned = async (nodeList: GPUNode[]) => {
     if (demoMode || nodeList.length === 0) return;
@@ -568,7 +578,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={handleDrainNode} onUndrain={handleUndrainNode} onTogglePrewarm={handleTogglePrewarm} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, runtime) => setConfigTarget({ model: modelName, runtime })} />
         ))}
       </div>
 
@@ -848,6 +858,14 @@ export function GPUNodes() {
           </div>
         </div>
       </Modal>
+
+      {/* Model Advanced Settings Modal */}
+      <ModelConfigModal
+        model={configTarget?.model ?? null}
+        demoMode={demoMode}
+        runtimes={configTarget ? [configTarget.runtime] : undefined}
+        onClose={() => setConfigTarget(null)}
+      />
     </div>
   );
 }

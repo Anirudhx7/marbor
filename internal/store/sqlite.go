@@ -266,6 +266,18 @@ func (s *sqliteStore) migrate() error {
 			load_count INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (model, node)
 		)`,
+
+		// model_configs holds the operator-declared default parameter profile
+		// per model (item #20 — advanced model config overrides). The full
+		// profile (30 load-time/inference-time/meta fields, see ModelConfig)
+		// is stored as one JSON blob rather than one column per field, matching
+		// the existing runtime_keys.models / warmup_models.nodes_json idiom in
+		// this file — there's no need to filter/sort by individual param, only
+		// to fetch the whole profile by model name.
+		`CREATE TABLE IF NOT EXISTS model_configs (
+			model       TEXT PRIMARY KEY,
+			config_json TEXT NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -1632,4 +1644,72 @@ func (s *sqliteStore) ReconcileNodeWarmState(node string, residentModels []strin
 		return fmt.Errorf("store: ReconcileNodeWarmState %s: %w", node, err)
 	}
 	return nil
+}
+
+// --- Model configuration overrides ---
+
+func (s *sqliteStore) GetModelConfig(model string) (ModelConfig, error) {
+	var configJSON string
+	err := s.db.QueryRow(`SELECT config_json FROM model_configs WHERE model = ?`, model).Scan(&configJSON)
+	if err == sql.ErrNoRows {
+		return ModelConfig{}, ErrNotFound
+	}
+	if err != nil {
+		return ModelConfig{}, fmt.Errorf("store: GetModelConfig: %w", err)
+	}
+	var cfg ModelConfig
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return ModelConfig{}, fmt.Errorf("store: GetModelConfig unmarshal: %w", err)
+	}
+	cfg.Model = model
+	return cfg, nil
+}
+
+func (s *sqliteStore) SetModelConfig(cfg ModelConfig) error {
+	configJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("store: SetModelConfig marshal: %w", err)
+	}
+	_, err = s.db.Exec(
+		`INSERT OR REPLACE INTO model_configs (model, config_json) VALUES (?, ?)`,
+		cfg.Model, string(configJSON),
+	)
+	if err != nil {
+		return fmt.Errorf("store: SetModelConfig: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) DeleteModelConfig(model string) error {
+	_, err := s.db.Exec(`DELETE FROM model_configs WHERE model = ?`, model)
+	if err != nil {
+		return fmt.Errorf("store: DeleteModelConfig: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) AllModelConfigs() ([]ModelConfig, error) {
+	rows, err := s.db.Query(`SELECT model, config_json FROM model_configs ORDER BY model ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllModelConfigs: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ModelConfig
+	for rows.Next() {
+		var model, configJSON string
+		if err := rows.Scan(&model, &configJSON); err != nil {
+			return nil, fmt.Errorf("store: AllModelConfigs scan: %w", err)
+		}
+		var cfg ModelConfig
+		if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+			continue // skip a corrupt row rather than failing the whole list
+		}
+		cfg.Model = model
+		out = append(out, cfg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllModelConfigs rows: %w", err)
+	}
+	return out, nil
 }
