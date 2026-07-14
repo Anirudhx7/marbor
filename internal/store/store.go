@@ -383,31 +383,38 @@ type ModelConfig struct {
 	// separate ModelConfig row per node it's resident on.
 	Node string `json:"node"`
 
-	// Load-time / engine parameters. Injected into every routed request's
-	// Ollama "options" object; Ollama reloads the model automatically when a
-	// resident instance's options differ from an incoming request's, so no
-	// separate evict-then-reload step is needed on the mesh side.
-	NumCtx              *int     `json:"num_ctx,omitempty"`
-	NumGPU              *int     `json:"num_gpu,omitempty"`
-	FlashAttention      *bool    `json:"flash_attention,omitempty"`
-	OffloadKVCacheToGPU *bool    `json:"offload_kv_cache_to_gpu,omitempty"`
-	NumBatch            *int     `json:"num_batch,omitempty"`
-	NumThread           *int     `json:"num_thread,omitempty"`
-	UseMmap             *bool    `json:"use_mmap,omitempty"`
-	UseMlock            *bool    `json:"use_mlock,omitempty"`
-	RopeFrequencyBase   *float64 `json:"rope_frequency_base,omitempty"`
-	RopeFrequencyScale  *float64 `json:"rope_frequency_scale,omitempty"`
-	TTL                 *int     `json:"ttl,omitempty"`
-	TensorParallelism   *bool    `json:"tensor_parallelism,omitempty"`
+	// Load-time / engine parameters — Ollama only. Injected into every routed
+	// request's Ollama "options" object; Ollama reloads the model automatically
+	// when a resident instance's options differ from an incoming request's, so
+	// no separate evict-then-reload step is needed on the mesh side. This list
+	// is verified against Ollama's current api/types.go Options/Runner structs
+	// (github.com/ollama/ollama) — flash_attention, offload_kv_cache_to_gpu,
+	// rope_frequency_base/scale, use_mlock, and tensor_parallelism were removed
+	// from this struct because they are not real per-request parameters on ANY
+	// of the four runtimes (they're process-launch CLI flags at best, or never
+	// existed at all) — keeping them would have been exactly the kind of
+	// control that looks functional but isn't (R1).
+	NumCtx          *int  `json:"num_ctx,omitempty"`
+	NumGPU          *int  `json:"num_gpu,omitempty"`
+	MainGPU         *int  `json:"main_gpu,omitempty"`
+	NumBatch        *int  `json:"num_batch,omitempty"`
+	NumThread       *int  `json:"num_thread,omitempty"`
+	UseMmap         *bool `json:"use_mmap,omitempty"`
+	DraftNumPredict *int  `json:"draft_num_predict,omitempty"`
+	TTL             *int  `json:"ttl,omitempty"`
 
 	// Inference-time / sampling parameters. Injected into a routed request
 	// only when the client's own request does not already specify the field.
+	// Which of these actually apply to a given runtime is declared in
+	// internal/store/model_config_capabilities.go, verified against each
+	// runtime's real current source/API schema, not assumed from an older or
+	// unrelated runtime's option set.
 	Temperature      *float64           `json:"temperature,omitempty"`
 	TopP             *float64           `json:"top_p,omitempty"`
 	TopK             *int               `json:"top_k,omitempty"`
 	MinP             *float64           `json:"min_p,omitempty"`
 	TypicalP         *float64           `json:"typical_p,omitempty"`
-	TfsZ             *float64           `json:"tfs_z,omitempty"`
+	NumKeep          *int               `json:"num_keep,omitempty"`
 	MaxTokens        *int               `json:"max_tokens,omitempty"`
 	Seed             *int               `json:"seed,omitempty"`
 	Stop             []string           `json:"stop,omitempty"`
@@ -420,6 +427,31 @@ type ModelConfig struct {
 	MirostatEta      *float64           `json:"mirostat_eta,omitempty"`
 	LogitBias        map[string]float64 `json:"logit_bias,omitempty"`
 	ResponseFormat   *string            `json:"response_format,omitempty"`
+
+	// llama.cpp-only sampling extras (its /completion and OpenAI-compatible
+	// endpoints both accept these — llama.cpp's server README explicitly
+	// states "/completion-specific features such as mirostat are also
+	// supported" on the OpenAI-compatible path).
+	DryMultiplier    *float64 `json:"dry_multiplier,omitempty"`
+	DryBase          *float64 `json:"dry_base,omitempty"`
+	DryAllowedLength *int     `json:"dry_allowed_length,omitempty"`
+	DryPenaltyLastN  *int     `json:"dry_penalty_last_n,omitempty"`
+	XtcProbability   *float64 `json:"xtc_probability,omitempty"`
+	XtcThreshold     *float64 `json:"xtc_threshold,omitempty"`
+	NProbs           *int     `json:"n_probs,omitempty"`
+	MinKeep          *int     `json:"min_keep,omitempty"`
+
+	// vLLM-only sampling extras (its OpenAI-compatible ChatCompletionRequest
+	// accepts these beyond the strict OpenAI schema). IgnoreEOS is shared
+	// wire-for-wire with llama.cpp, which uses the identical "ignore_eos"
+	// field name and meaning.
+	LengthPenalty          *float64 `json:"length_penalty,omitempty"`
+	StopTokenIDs           []int    `json:"stop_token_ids,omitempty"`
+	IncludeStopStrInOutput *bool    `json:"include_stop_str_in_output,omitempty"`
+	IgnoreEOS              *bool    `json:"ignore_eos,omitempty"`
+	MinTokens              *int     `json:"min_tokens,omitempty"`
+	SkipSpecialTokens      *bool    `json:"skip_special_tokens,omitempty"`
+	TruncatePromptTokens   *int     `json:"truncate_prompt_tokens,omitempty"`
 
 	// Meta / orchestration.
 	System   *string `json:"system,omitempty"`
