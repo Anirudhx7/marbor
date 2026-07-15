@@ -151,6 +151,9 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Docker.PollIntervalMs = store.GetIntSetting(st, "docker_poll_interval_ms", cfg.Docker.PollIntervalMs)
 
 	cfg.Audit.Enabled = store.GetBoolSetting(st, "audit_enabled", cfg.Audit.Enabled)
+	// 30-day fallback applies only if this key was never set (first boot) -
+	// GetIntSetting returns a stored "0" as 0 (indefinite), not the fallback.
+	cfg.Audit.RetentionDays = store.GetIntSetting(st, "audit_retention_days", 30)
 
 	cfg.Webhook.Enabled = store.GetBoolSetting(st, "webhook_enabled", cfg.Webhook.Enabled)
 	cfg.Webhook.URL = store.GetStringSetting(st, "webhook_url", cfg.Webhook.URL)

@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Admin-configurable audit log retention** (`Settings` → Global Warmup & Audit → "Audit Log Retention (days)"). Replaces a hardcoded "keep the last 10,000 rows" trim that ran a `DELETE` on every single proxied request. Now a periodic sweep (startup + every 12h) removes `audit_log` rows older than the configured window; set to `0` to keep every entry forever instead.
+- **Requests page key/node filters are now a searchable, autocompleting list** (backed by the mesh's actual current API keys/nodes) instead of free text requiring an exact guess, and a precise custom "From" date/time filter joins the existing "Until" one instead of only three canned lookback presets. Every text/date filter box also gets an inline clear (×) once it has a value.
+
+### Fixed
+- **Requests page key/node filters silently returned zero rows on partial input.** They matched by SQL exact-equality while the model filter used substring `LIKE` - typing anything but the full, exact key/node name looked broken. Both now match by substring, consistently with model.
+
 ### Changed
 - **BREAKING: `config.yaml` is gone. ollama-mesh is now fully DB-first (SQLite/`mesh.db`).** A fresh install starts blank-slate: the binary opens/creates `mesh.db`, prints a banner pointing at the dashboard, and everything - nodes, API keys, ports, routing knobs, Docker auto-discovery, HA peer monitoring, webhooks, thermal watchdog, cloud providers, model context windows - is configured from the admin dashboard (`admin`/`admin` default login, forced password change on first login) or the admin REST API. `main.go` no longer has `--config`/`CONFIG_PATH`/`-validate`; it has `--db` (SQLite path, default `mesh.db`, or `MESH_DB_PATH` env) and a new `--seed-node "name=...,url=...,runtime=..."` (repeatable) that writes a node directly to the DB and exits, used by `install.sh`'s discovery wizard. Config hot-reload (`kill -HUP` / `POST /admin/v1/config/reload`) now re-syncs live state from SQLite instead of re-reading a file. `Settings.tsx` gained full parity coverage for every field that previously had no UI (~20 fields) plus an editable Cloud Providers CRUD table and a Model Context Windows editor.
 - **`install.sh`'s network probe is now the default flow, not opt-in.** After install, it always scans the local subnet for Ollama/vLLM/TGI/llama.cpp, prints a numbered list of what it found, and interactively prompts which to add (`comma-separated numbers`, `all`, or `skip`) - selected nodes are seeded via `--seed-node`. No config file, API key, or admin-token generation happens in `install.sh` anymore. `FORCE_PROBE=1` re-runs the wizard against an existing `mesh.db`.
