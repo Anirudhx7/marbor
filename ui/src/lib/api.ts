@@ -636,6 +636,15 @@ export async function deleteCloudProvider(name: string): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete cloud provider');
 }
 
+export async function reorderCloudProviders(order: string[]): Promise<void> {
+  const res = await apiFetch(`${BASE}/cloud/providers/reorder`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order }),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to reorder cloud providers'); }
+}
+
 // reloadFromStore re-syncs live nodes/API keys/cloud providers from the
 // database without restarting (no config.yaml to reload anymore - 2026-07
 // elimination). Settings not covered by this (Docker/HA/Webhook wiring,

@@ -1,6 +1,16 @@
 package config
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestLiteLLMConfigAPIKeyField(t *testing.T) {
+	cfg := LiteLLMConfig{Enabled: true, URL: "http://localhost:4000", APIKey: "sk-litellm"}
+	if cfg.APIKey != "sk-litellm" {
+		t.Errorf("APIKey = %q, want sk-litellm", cfg.APIKey)
+	}
+}
 
 func TestValidateAppliesDefaultsAndKeepsExplicitValues(t *testing.T) {
 	cfg := Config{
@@ -154,5 +164,20 @@ func TestDuplicateKeyName(t *testing.T) {
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for duplicate key name")
+	}
+}
+
+func TestCloudProviderPriorityFieldRoundTrips(t *testing.T) {
+	cp := CloudProvider{Name: "a", Provider: "openai", BaseURL: "https://api.openai.com/v1", Enabled: true, Priority: 5}
+	b, err := json.Marshal(cp)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var out CloudProvider
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if out.Priority != 5 {
+		t.Errorf("Priority = %d, want 5", out.Priority)
 	}
 }

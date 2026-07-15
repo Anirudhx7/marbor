@@ -577,6 +577,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/cloud/providers", s.cors(s.adminAuth(s.handleAddCloudProvider)))
 	reg("PUT /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleUpdateCloudProvider)))
 	reg("DELETE /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleDeleteCloudProvider)))
+	reg("PUT /admin/cloud/providers/reorder", s.cors(s.adminAuth(s.handleReorderCloudProviders)))
 	reg("POST /admin/cloud/providers/test", s.cors(s.adminAuth(s.handleTestCloudProvider)))
 	reg("GET /admin/analytics", s.cors(s.adminAuth(s.handleAnalytics)))
 	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
@@ -1308,6 +1309,10 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		masked.Webhook.Secret = "***"
 	}
 
+	if masked.LiteLLM.APIKey != "" {
+		masked.LiteLLM.APIKey = "***"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(masked)
 }
@@ -1392,6 +1397,7 @@ func (s *Server) syncCloudProvidersToRouter() ([]config.CloudProvider, error) {
 			Name: p.Name, Provider: p.Provider, BaseURL: p.BaseURL,
 			APIKey: p.APIKey, DefaultModel: p.DefaultModel,
 			CostPer1KTokens: p.CostPer1KTokens, Enabled: p.Enabled,
+			Priority: p.Priority,
 		}
 	}
 	s.router.SetClouds(clouds)
@@ -1565,6 +1571,35 @@ func (s *Server) handleDeleteCloudProvider(w http.ResponseWriter, r *http.Reques
 	}
 	s.logSystemChange(r, "delete_cloud_provider", name, "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleReorderCloudProviders takes the caller's desired display/attempt
+// order (highest priority first) and renumbers every named provider's
+// priority to match, then re-syncs the router so the new order takes effect
+// immediately - same immediate-effect pattern as add/update/delete.
+// PUT /admin/cloud/providers/reorder.
+func (s *Server) handleReorderCloudProviders(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Order []string `json:"order"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(body.Order) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "order is required")
+		return
+	}
+	if err := s.st.SetCloudProviderPriorities(body.Order); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if _, err := s.syncCloudProvidersToRouter(); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	s.logSystemChange(r, "reorder_cloud_providers", "", fmt.Sprintf("Order: %v", body.Order))
+	w.WriteHeader(http.StatusOK)
 }
 
 // handleGetNodeWarmup returns the per-node runtime warmup setting.
@@ -3201,7 +3236,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if cfg.Webhook.Secret != "" {
 		cfg.Webhook.Secret = "***"
 	}
-
+	if cfg.LiteLLM.APIKey != "" {
+		cfg.LiteLLM.APIKey = "***"
+	}
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
 	if username == "" {
 		username = "admin"
@@ -3257,6 +3294,9 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if incoming.Webhook.Secret == "" || incoming.Webhook.Secret == "***" {
 		incoming.Webhook.Secret = s.cfg.Webhook.Secret
 	}
+	if incoming.LiteLLM.APIKey == "" || incoming.LiteLLM.APIKey == "***" {
+		incoming.LiteLLM.APIKey = s.cfg.LiteLLM.APIKey
+	}
 
 	if err := incoming.Validate(); err != nil {
 		s.mu.Unlock()
@@ -3271,6 +3311,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		s.mgmtEndpoints.SetAllowManagementEndpoints(incoming.Routing.AllowManagementEndpoints)
 	}
 	s.router.SetTimezone(incoming.Timezone)
+	s.router.SetLiteLLM(incoming.LiteLLM)
 	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
 		log.Printf("admin: failed to persist timezone setting: %v", err)
 	}
@@ -3290,6 +3331,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"proxy_access_log":      strconv.FormatBool(incoming.Proxy.AccessLog == nil || *incoming.Proxy.AccessLog),
 		"litellm_url":           incoming.LiteLLM.URL,
 		"litellm_enabled":       strconv.FormatBool(incoming.LiteLLM.Enabled),
+		"litellm_api_key":       incoming.LiteLLM.APIKey,
 		"cloud_daily_usd_cap":   strconv.FormatFloat(incoming.CloudBudget.DailyUSDCap, 'f', -1, 64),
 		"cloud_monthly_usd_cap": strconv.FormatFloat(incoming.CloudBudget.MonthlyUSDCap, 'f', -1, 64),
 		"metrics_enabled":       strconv.FormatBool(incoming.Metrics.Enabled),
@@ -3793,6 +3835,7 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 		DefaultModel    string  `json:"default_model"`
 		CostPer1KTokens float64 `json:"cost_per_1k_tokens"`
 		Enabled         bool    `json:"enabled"`
+		Priority        int     `json:"priority"`
 	}
 	s.mu.RLock()
 	providers := make([]providerResp, 0, len(s.cfg.CloudProviders))
@@ -3804,6 +3847,7 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 			DefaultModel:    cp.DefaultModel,
 			CostPer1KTokens: cp.CostPer1KTokens,
 			Enabled:         cp.Enabled,
+			Priority:        cp.Priority,
 		})
 	}
 	s.mu.RUnlock()

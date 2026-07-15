@@ -354,6 +354,10 @@ type MetricsConfig struct {
 type LiteLLMConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
 	URL     string `yaml:"url" json:"url"`
+	// APIKey is the LiteLLM virtual/master key sent as Authorization: Bearer
+	// <key> - required for any real LiteLLM deployment that isn't running
+	// with auth disabled.
+	APIKey string `yaml:"api_key" json:"api_key"`
 }
 
 type CloudProvider struct {
@@ -364,6 +368,10 @@ type CloudProvider struct {
 	DefaultModel    string  `yaml:"default_model" json:"default_model"`
 	CostPer1KTokens float64 `yaml:"cost_per_1k_tokens" json:"cost_per_1k_tokens"`
 	Enabled         bool    `yaml:"enabled" json:"enabled"`
+	// Priority orders cloud fallback attempts when more than one provider is
+	// enabled - higher tries first. Ties fall back to insertion order (the
+	// same tie-break SQLite uses: ORDER BY priority DESC, name ASC).
+	Priority int `yaml:"priority" json:"priority"`
 }
 
 // IsEnabled reports whether auth enforcement is on.
