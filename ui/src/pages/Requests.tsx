@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type InputHTMLAttributes } from 'react';
 import { useLocation } from 'react-router-dom';
+import { X } from 'lucide-react';
 import { RequestEntry } from '../types';
 import { fetchAuditLog, fetchNodes, fetchKeys } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
@@ -33,6 +34,32 @@ function SkeletonRow() {
         </td>
       ))}
     </tr>
+  );
+}
+
+// ClearableInput wraps a text/datetime filter input with an inline "x"
+// button once it has a value, so undoing a filter (including one picked
+// from a datalist) doesn't require manually backspacing the whole thing.
+function ClearableInput(props: InputHTMLAttributes<HTMLInputElement> & { onClear: () => void }) {
+  const { onClear, className, value, ...rest } = props;
+  return (
+    <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-[220px]">
+      <input
+        {...rest}
+        value={value}
+        className={`${className ?? ''} w-full ${value ? 'pr-7' : ''}`}
+      />
+      {!!value && (
+        <button
+          type="button"
+          onClick={onClear}
+          title="Clear"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -195,33 +222,36 @@ export function Requests() {
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <input
+        <ClearableInput
           type="text"
           placeholder="Filter by model..."
           value={modelInput}
           onChange={(e) => setModelInput(e.target.value)}
-          className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          onClear={() => setModelInput('')}
+          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
-        <input
+        <ClearableInput
           type="text"
           list="request-key-options"
           placeholder="Filter by key name..."
           value={keyInput}
           onChange={(e) => setKeyInput(e.target.value)}
-          className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          onClear={() => setKeyInput('')}
+          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
         <datalist id="request-key-options">
           {keyOptions.map((name) => (
             <option key={name} value={name} />
           ))}
         </datalist>
-        <input
+        <ClearableInput
           type="text"
           list="request-node-options"
           placeholder="Filter by node..."
           value={nodeInput}
           onChange={(e) => setNodeInput(e.target.value)}
-          className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          onClear={() => setNodeInput('')}
+          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
         <datalist id="request-node-options">
           {nodeOptions.map((name) => (
@@ -262,22 +292,24 @@ export function Requests() {
           <option value="1h">Last hour</option>
           <option value="24h">Last 24h</option>
         </select>
-        <input
+        <ClearableInput
           type="datetime-local"
           value={sinceInput}
           onChange={(e) => {
             setSinceInput(e.target.value);
             if (e.target.value) setSincePreset('all'); // custom "From" wins over a stale preset
           }}
+          onClear={() => setSinceInput('')}
           title="Only show requests at or after this time"
-          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
-        <input
+        <ClearableInput
           type="datetime-local"
           value={untilInput}
           onChange={(e) => setUntilInput(e.target.value)}
+          onClear={() => setUntilInput('')}
           title="Only show requests before this time"
-          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
         {hasActiveFilter && (
           <button
