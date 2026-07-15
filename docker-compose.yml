@@ -1,8 +1,6 @@
-version: "3.8"
-
 services:
   ollama-mesh:
-    build: .
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
     ports:
       - "11434:11434"
       - "9090:9090"
@@ -11,8 +9,6 @@ services:
       - mesh-data:/root
     environment:
       - CONFIG_PATH=/root/config.yaml
-    networks:
-      - mesh
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s
@@ -20,34 +16,5 @@ services:
       retries: 3
       start_period: 10s
 
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9091:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    networks:
-      - mesh
-
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/ollama-mesh.json:/var/lib/grafana/dashboards/ollama-mesh.json:ro
-      - grafana-data:/var/lib/grafana
-    depends_on:
-      - prometheus
-    networks:
-      - mesh
-
 volumes:
   mesh-data:
-  prometheus-data:
-  grafana-data:
-
-networks:
-  mesh:
-    driver: bridge
