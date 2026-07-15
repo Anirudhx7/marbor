@@ -650,3 +650,101 @@ func TestPruneSystemAuditLog(t *testing.T) {
 		t.Fatalf("PruneSystemAuditLog(365): got %+v, want only the recent row", got)
 	}
 }
+
+// TestSetCloudProviderPrioritiesRenumbersInOrder verifies that
+// SetCloudProviderPriorities renumbers providers so AllCloudProviders (which
+// orders by priority DESC, name ASC) reflects the caller's desired order,
+// highest priority first.
+func TestSetCloudProviderPrioritiesRenumbersInOrder(t *testing.T) {
+	st := openTestDB(t)
+	for _, name := range []string{"a", "b", "c"} {
+		if err := st.UpsertCloudProvider(store.CloudProviderRecord{Name: name, Provider: "openai", BaseURL: "https://x", Enabled: true}); err != nil {
+			t.Fatalf("UpsertCloudProvider(%s): %v", name, err)
+		}
+	}
+	// New desired order: c first (highest priority), then a, then b.
+	if err := st.SetCloudProviderPriorities([]string{"c", "a", "b"}); err != nil {
+		t.Fatalf("SetCloudProviderPriorities: %v", err)
+	}
+	got, err := st.AllCloudProviders()
+	if err != nil {
+		t.Fatalf("AllCloudProviders: %v", err)
+	}
+	if len(got) != 3 || got[0].Name != "c" || got[1].Name != "a" || got[2].Name != "b" {
+		t.Fatalf("AllCloudProviders() order = %v, want [c a b]", got)
+	}
+}
+
+// TestSetCloudProviderPrioritiesLeavesOmittedProvidersUntouched verifies that
+// providers whose names are not present in the order slice retain their
+// existing priority - they are not modified by SetCloudProviderPriorities.
+func TestSetCloudProviderPrioritiesLeavesOmittedProvidersUntouched(t *testing.T) {
+	st := openTestDB(t)
+	// Seed three providers: a, b, c with distinct initial priorities.
+	providers := []store.CloudProviderRecord{
+		{Name: "a", Provider: "openai", BaseURL: "https://x", Enabled: true},
+		{Name: "b", Provider: "openai", BaseURL: "https://x", Enabled: true},
+		{Name: "c", Provider: "openai", BaseURL: "https://x", Enabled: true},
+	}
+	for _, cp := range providers {
+		if err := st.UpsertCloudProvider(cp); err != nil {
+			t.Fatalf("UpsertCloudProvider(%s): %v", cp.Name, err)
+		}
+	}
+
+	// Verify initial state and set a distinct priority for "c".
+	all, err := st.AllCloudProviders()
+	if err != nil {
+		t.Fatalf("AllCloudProviders (initial): %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 providers, got %d", len(all))
+	}
+
+	// Find provider "c" and remember its initial priority.
+	var cInitialPriority int
+	for _, p := range all {
+		if p.Name == "c" {
+			cInitialPriority = p.Priority
+			break
+		}
+	}
+
+	// Perform a partial reorder: only "b" and "a", omitting "c".
+	// This should renumber b and a but leave c untouched.
+	if err := st.SetCloudProviderPriorities([]string{"b", "a"}); err != nil {
+		t.Fatalf("SetCloudProviderPriorities: %v", err)
+	}
+
+	// Verify the result.
+	got, err := st.AllCloudProviders()
+	if err != nil {
+		t.Fatalf("AllCloudProviders (after): %v", err)
+	}
+
+	// Expect AllCloudProviders to order by priority DESC, name ASC.
+	// Since we set order ["b", "a"], "b" should have priority 2 and "a" priority 1.
+	// "c" should still have its initial priority (which was not changed).
+	// The exact order depends on the initial priorities, but we check the priorities directly.
+
+	providerMap := make(map[string]store.CloudProviderRecord)
+	for _, p := range got {
+		providerMap[p.Name] = p
+	}
+
+	// Verify "c" was not touched - it should still have its original priority.
+	if providerMap["c"].Priority != cInitialPriority {
+		t.Errorf("provider c: priority changed from %d to %d (should be untouched)",
+			cInitialPriority, providerMap["c"].Priority)
+	}
+
+	// Verify "b" got priority 2 (first in the order slice, len=2 so 2-0=2).
+	if providerMap["b"].Priority != 2 {
+		t.Errorf("provider b: priority = %d, want 2", providerMap["b"].Priority)
+	}
+
+	// Verify "a" got priority 1 (second in the order slice, len=2 so 2-1=1).
+	if providerMap["a"].Priority != 1 {
+		t.Errorf("provider a: priority = %d, want 1", providerMap["a"].Priority)
+	}
+}

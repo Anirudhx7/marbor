@@ -144,6 +144,7 @@ export interface Settings {
   authMode: 'api-key' | 'no-auth';
   liteLLMEnabled: boolean;
   liteLLMEndpoint: string;
+  liteLLMApiKey: string;
   pollingInterval: number;
   prometheusEnabled: boolean;
   prometheusPort: number;
@@ -253,6 +254,7 @@ export interface CloudProvider {
   default_model: string;
   cost_per_1k_tokens: number;
   enabled: boolean;
+  priority: number;
 }
 
 // CloudProviderInput is the add/edit payload - includes api_key (masked as
@@ -266,6 +268,7 @@ export interface CloudProviderInput {
   default_model: string;
   cost_per_1k_tokens: number;
   enabled: boolean;
+  priority: number;
 }
 
 export interface RequestEntry {

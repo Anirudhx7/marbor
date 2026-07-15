@@ -1503,6 +1503,28 @@ func (s *sqliteStore) AllCloudProviders() ([]CloudProviderRecord, error) {
 	return providers, nil
 }
 
+// SetCloudProviderPriorities renumbers providers to match the given order,
+// highest priority first (order[0] gets the highest int, matching
+// AllCloudProviders' "ORDER BY priority DESC, name ASC"). Providers whose
+// name is not present in order are left untouched - callers are expected to
+// pass every currently-configured name, but a partial list degrading
+// gracefully (rather than erroring) matches this store's existing
+// best-effort persistence style elsewhere (e.g. UpsertNodeOverride merge).
+func (s *sqliteStore) SetCloudProviderPriorities(order []string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("store: SetCloudProviderPriorities: %w", err)
+	}
+	defer tx.Rollback()
+	n := len(order)
+	for i, name := range order {
+		if _, err := tx.Exec(`UPDATE cloud_providers SET priority = ? WHERE name = ?`, n-i, name); err != nil {
+			return fmt.Errorf("store: SetCloudProviderPriorities: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 // --- Warmup configuration ---
 
 func (s *sqliteStore) GetWarmupConfig() (WarmupConfigRecord, error) {
