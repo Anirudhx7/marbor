@@ -6,7 +6,7 @@ import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
 import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
 import { fetchModels, pullModel, fetchNodes } from '../lib/api';
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
@@ -186,15 +186,15 @@ export function Models() {
   // non-Ollama (or mixed) runtimes. Failure just leaves gating info absent
   // (modal defaults to enabled), never blocks the page.
   useEffect(() => {
-    if (location.pathname !== '/models') return;
+    if (currentAppPath() !== '/models') return;
     let active = true;
     (async () => {
       try {
         const list = demoMode ? mockGPUNodes : await fetchNodes();
-        if (!active || location.pathname !== '/models') return;
+        if (!active || currentAppPath() !== '/models') return;
         setRuntimeByNode(Object.fromEntries((list || []).map((n) => [n.name, n.runtime])));
       } catch {
-        if (!active || location.pathname !== '/models') return;
+        if (!active || currentAppPath() !== '/models') return;
         setRuntimeByNode({});
       }
     })();
@@ -266,7 +266,7 @@ export function Models() {
 
   const loadModels = async (active: boolean = true) => {
     if (demoMode) {
-      if (!active || location.pathname !== '/models') return;
+      if (!active || currentAppPath() !== '/models') return;
       setCatalog(mockModelCatalog);
       setIsLive(false);
       setError(null);
@@ -275,23 +275,23 @@ export function Models() {
     }
     try {
       const data = await fetchModels();
-      if (!active || location.pathname !== '/models') return;
+      if (!active || currentAppPath() !== '/models') return;
       setCatalog(data);
       setIsLive(true);
       setError(null);
     } catch (e: unknown) {
-      if (!active || location.pathname !== '/models') return;
+      if (!active || currentAppPath() !== '/models') return;
       setIsLive(false);
       setError(e instanceof Error ? e.message : 'Failed to connect to backend');
     } finally {
-      if (active && location.pathname === '/models') {
+      if (active && currentAppPath() === '/models') {
         setLoading(false);
       }
     }
   };
 
   useEffect(() => {
-    if (location.pathname !== '/models') return;
+    if (currentAppPath() !== '/models') return;
     let active = true;
     loadModels(active);
     if (demoMode) return () => { active = false; };

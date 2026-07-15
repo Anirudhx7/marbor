@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RequestEntry } from '../types';
 import { fetchAuditLog } from '../lib/api';
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { filterMockRequests } from '../lib/mockData';
 
 function formatRelative(isoString: string): string {
@@ -101,7 +101,7 @@ export function Requests() {
   );
 
   useEffect(() => {
-    if (location.pathname !== '/requests') return;
+    if (currentAppPath() !== '/requests') return;
     if (isDemoMode) {
       setEntries(filterMockRequests(activeFilters));
       setLoading(false);
@@ -113,13 +113,13 @@ export function Requests() {
     async function poll() {
       try {
         const data = await fetchAuditLog(activeFilters);
-        if (!cancelled && location.pathname === '/requests') {
+        if (!cancelled && currentAppPath() === '/requests') {
           setEntries(Array.isArray(data) ? data : []);
           setFetchError(null);
           setLoading(false);
         }
       } catch (err: any) {
-        if (!cancelled && location.pathname === '/requests') {
+        if (!cancelled && currentAppPath() === '/requests') {
           setFetchError(err.message || 'Failed to load requests');
           setLoading(false);
         }

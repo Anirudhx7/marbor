@@ -5,6 +5,7 @@ import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserP
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { currentAppPath } from '../hooks/useDemoMode';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
   pending:   { variant: 'warning',     label: 'Pending' },
@@ -324,24 +325,24 @@ export function Users() {
   const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async (active = true) => {
-    if (location.pathname !== '/users') return;
+    if (currentAppPath() !== '/users') return;
     try {
       const data = await listUsers();
-      if (!active || location.pathname !== '/users') return;
+      if (!active || currentAppPath() !== '/users') return;
       setUsers(data);
       setError(null);
     } catch (err: any) {
-      if (!active || location.pathname !== '/users') return;
+      if (!active || currentAppPath() !== '/users') return;
       setError(err.message || 'Failed to load users');
     } finally {
-      if (active && location.pathname === '/users') {
+      if (active && currentAppPath() === '/users') {
         setLoading(false);
       }
     }
   }, [location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/users') return;
+    if (currentAppPath() !== '/users') return;
     let active = true;
     load(active);
     return () => {

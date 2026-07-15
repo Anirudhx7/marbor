@@ -11,7 +11,7 @@ import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -516,37 +516,37 @@ export function Warmup() {
   const load = useCallback(async (active: boolean) => {
     try {
       const ns = await fetchNodes();
-      if (!active || location.pathname !== '/warmup') return;
+      if (!active || currentAppPath() !== '/warmup') return;
       const safeNs = Array.isArray(ns) ? ns : [];
       setNodes(safeNs);
       const w: Record<string, NodeWarmup> = {};
       await Promise.all(safeNs.map(async n => {
         try {
           const res = await getNodeWarmup(n.name);
-          if (active && location.pathname === '/warmup') {
+          if (active && currentAppPath() === '/warmup') {
             w[n.name] = res;
           }
         } catch {
-          if (active && location.pathname === '/warmup') {
+          if (active && currentAppPath() === '/warmup') {
             w[n.name] = { enabled: false, models: [] };
           }
         }
       }));
-      if (!active || location.pathname !== '/warmup') return;
+      if (!active || currentAppPath() !== '/warmup') return;
       setWarmup(w);
       const schedList = await listSchedules();
-      if (!active || location.pathname !== '/warmup') return;
+      if (!active || currentAppPath() !== '/warmup') return;
       setSchedules(schedList || []);
       const decs = await fetchPredictiveDecisions().catch(() => []);
-      if (!active || location.pathname !== '/warmup') return;
+      if (!active || currentAppPath() !== '/warmup') return;
       setDecisions(decs);
 
       const status = await fetchWarmupStatus().catch(() => ({ predictive_engine_enabled: true }));
-      if (!active || location.pathname !== '/warmup') return;
+      if (!active || currentAppPath() !== '/warmup') return;
       setPredictiveEnabled(status.predictive_engine_enabled);
 
       const sys = await fetchSystemInfo().catch(() => null);
-      if (!active || location.pathname !== '/warmup') return;
+      if (!active || currentAppPath() !== '/warmup') return;
       if (sys && sys.server_time && sys.timezone) {
         const parts = sys.server_time.split(' ');
         if (parts.length === 2) {
@@ -570,27 +570,27 @@ export function Warmup() {
       } else {
         try {
           const data = await fetchModels();
-          if (!active || location.pathname !== '/warmup') return;
+          if (!active || currentAppPath() !== '/warmup') return;
           setAvailableModels((data.models || []).map((m: any) => m.name));
         } catch {
-          if (!active || location.pathname !== '/warmup') return;
+          if (!active || currentAppPath() !== '/warmup') return;
           setAvailableModels([]);
         }
       }
       setError(null);
     } catch (e: any) {
-      if (!active || location.pathname !== '/warmup') return;
+      if (!active || currentAppPath() !== '/warmup') return;
       setError(e.message || 'Failed to load');
     }
     finally {
-      if (active && location.pathname === '/warmup') {
+      if (active && currentAppPath() === '/warmup') {
         setLoading(false);
       }
     }
   }, [demoMode, location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/warmup') return;
+    if (currentAppPath() !== '/warmup') return;
     let active = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load(active);
@@ -600,9 +600,9 @@ export function Warmup() {
   }, [load, location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/warmup' || !serverTime) return;
+    if (currentAppPath() !== '/warmup' || !serverTime) return;
     const timer = setInterval(() => {
-      if (location.pathname === '/warmup') {
+      if (currentAppPath() === '/warmup') {
         setServerTime(prev => prev ? new Date(prev.getTime() + 1000) : null);
       }
     }, 1000);

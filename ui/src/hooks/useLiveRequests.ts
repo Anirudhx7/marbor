@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { LiveRequest } from '../types';
 import { fetchLiveRequests } from '../lib/api';
-import { useDemoMode } from './useDemoMode';
+import { useDemoMode, currentAppPath } from './useDemoMode';
 
 const MODELS = [
   'llama3.2:3b',
@@ -57,23 +57,23 @@ export function useLiveRequests(maxRequests: number = 20) {
   const lastIdRef = useRef<string | null>(null);
 
   const poll = useCallback(async (active: boolean) => {
-    if (location.pathname !== '/') return;
+    if (currentAppPath() !== '/') return;
     try {
       const data = await fetchLiveRequests();
-      if (!active || location.pathname !== '/') return;
+      if (!active || currentAppPath() !== '/') return;
       setRequests(Array.isArray(data) ? data : []);
       setIsLive(true);
       if (data.length > 0 && data[0].id !== lastIdRef.current) {
         lastIdRef.current = data[0].id;
         setNewRequestId(data[0].id);
         setTimeout(() => {
-          if (active && location.pathname === '/') {
+          if (active && currentAppPath() === '/') {
             setNewRequestId(null);
           }
         }, 500);
       }
     } catch (e) {
-      if (!active || location.pathname !== '/') return;
+      if (!active || currentAppPath() !== '/') return;
       setIsLive(false);
       if (demoMode) {
         const newRequest = generateRequest();
@@ -81,7 +81,7 @@ export function useLiveRequests(maxRequests: number = 20) {
         setNewRequestId(newRequest.id);
         setRequests(prev => [newRequest, ...prev].slice(0, maxRequests));
         setTimeout(() => {
-          if (active && location.pathname === '/') {
+          if (active && currentAppPath() === '/') {
             setNewRequestId(null);
           }
         }, 500);
@@ -90,10 +90,10 @@ export function useLiveRequests(maxRequests: number = 20) {
   }, [maxRequests, demoMode, location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/') return;
+    if (currentAppPath() !== '/') return;
     let active = true;
     const interval = setInterval(() => {
-      if (active && location.pathname === '/') {
+      if (active && currentAppPath() === '/') {
         poll(active);
       }
     }, 2000);

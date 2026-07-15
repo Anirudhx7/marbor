@@ -17,7 +17,7 @@ function maskKey(key: string): string {
   return key.slice(0, 12) + '****';
 }
 
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
 
 export function APIKeys() {
@@ -130,7 +130,7 @@ export function APIKeys() {
 
   const loadKeys = async (active: boolean = true) => {
     if (demoMode) {
-      if (!active || location.pathname !== '/api-keys') return;
+      if (!active || currentAppPath() !== '/api-keys') return;
       setKeys(mockAPIKeys);
       setIsLive(false);
       setError(null);
@@ -138,12 +138,12 @@ export function APIKeys() {
     }
     try {
       const data = await fetchKeys();
-      if (!active || location.pathname !== '/api-keys') return;
+      if (!active || currentAppPath() !== '/api-keys') return;
       setKeys(data || []);
       setIsLive(true);
       setError(null);
     } catch (e: any) {
-      if (!active || location.pathname !== '/api-keys') return;
+      if (!active || currentAppPath() !== '/api-keys') return;
       setIsLive(false);
       setKeys([]);
       setError(e.message || 'Failed to connect to backend');
@@ -153,11 +153,11 @@ export function APIKeys() {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
 
   useEffect(() => {
-    if (location.pathname !== '/api-keys') return;
+    if (currentAppPath() !== '/api-keys') return;
     let active = true;
     if (!demoMode) {
       fetchModels().then(data => {
-        if (!active || location.pathname !== '/api-keys') return;
+        if (!active || currentAppPath() !== '/api-keys') return;
         setAvailableModels((data.models || []).map((m: any) => m.name));
       }).catch(() => {});
     }
@@ -165,7 +165,7 @@ export function APIKeys() {
   }, [demoMode, location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/api-keys') return;
+    if (currentAppPath() !== '/api-keys') return;
     let active = true;
     loadKeys(active);
     if (demoMode) return () => { active = false; };

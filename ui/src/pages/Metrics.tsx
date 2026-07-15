@@ -19,7 +19,7 @@ import {
 import { mockAnalytics } from '../lib/mockData';
 import { fetchAnalytics } from '../lib/api';
 import type { Analytics, HourlyBucket, ModelStat } from '../types';
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
 
@@ -127,7 +127,7 @@ export function Metrics() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
-    if (location.pathname !== '/metrics') return;
+    if (currentAppPath() !== '/metrics') return;
     if (demoMode) {
       setAnalytics(mockAnalytics);
       setLoading(false);
@@ -135,18 +135,18 @@ export function Metrics() {
     }
     let active = true;
     const load = () => {
-      if (active && location.pathname === '/metrics') {
+      if (active && currentAppPath() === '/metrics') {
         setLoading(true);
         setError(null);
       }
       fetchAnalytics()
         .then(data => {
-          if (!active || location.pathname !== '/metrics') return;
+          if (!active || currentAppPath() !== '/metrics') return;
           setAnalytics(data);
           setLoading(false);
         })
         .catch(err => {
-          if (!active || location.pathname !== '/metrics') return;
+          if (!active || currentAppPath() !== '/metrics') return;
           setError(err instanceof Error ? err.message : 'Failed to load analytics');
           setLoading(false);
         });
