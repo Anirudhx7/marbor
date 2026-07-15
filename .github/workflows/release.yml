@@ -41,6 +41,50 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Detect demo image changes since last tag
+        id: demo-changes
+        run: |
+          check_changed() {
+            local image="$1"; shift
+            if ! docker buildx imagetools inspect "ghcr.io/anirudhx7/$image:latest" >/dev/null 2>&1; then
+              echo "$image:latest not found in GHCR yet; building."
+              echo true
+              return
+            fi
+            if [ -z "$PREV_TAG" ]; then
+              echo true
+              return
+            fi
+            if echo "$CHANGED" | grep -qE "$1"; then echo true; else echo false; fi
+          }
+          PREV_TAG=$(git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>/dev/null || true)
+          CHANGED=""
+          [ -n "$PREV_TAG" ] && CHANGED=$(git diff --name-only "$PREV_TAG" "${{ github.ref_name }}")
+          echo "mocknode=$(check_changed ollama-mesh-mocknode '^(cmd/mocknode/|Dockerfile\.mocknode$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
+          echo "demotraffic=$(check_changed ollama-mesh-demotraffic '^(cmd/demotraffic/|Dockerfile\.demotraffic$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push mocknode image
+        if: steps.demo-changes.outputs.mocknode == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.mocknode
+          push: true
+          tags: |
+            ghcr.io/anirudhx7/ollama-mesh-mocknode:latest
+            ghcr.io/anirudhx7/ollama-mesh-mocknode:${{ github.ref_name }}
+
+      - name: Build and push demotraffic image
+        if: steps.demo-changes.outputs.demotraffic == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.demotraffic
+          push: true
+          tags: |
+            ghcr.io/anirudhx7/ollama-mesh-demotraffic:latest
+            ghcr.io/anirudhx7/ollama-mesh-demotraffic:${{ github.ref_name }}
+
       - name: Trigger Pages Deploy
         run: |
           curl -X POST \
