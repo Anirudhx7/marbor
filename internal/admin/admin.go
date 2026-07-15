@@ -103,7 +103,20 @@ type Server struct {
 	coldStarts    int64           // atomic - total cold start events
 	warmHits      int64           // atomic - total warm hit events
 	tokenEvents   []TokenEvent    // protected by mu
+	mgmtEndpoints managementEndpointsSetter // nil until wired via SetProxyHandler
 }
+
+// managementEndpointsSetter is satisfied by *proxy.Handler. Defined locally
+// (rather than importing internal/proxy) because proxy already imports
+// admin to reach the Server for its own request handling.
+type managementEndpointsSetter interface {
+	SetAllowManagementEndpoints(bool)
+}
+
+// SetProxyHandler wires the proxy handler so routing.allow_management_endpoints
+// changes made via handleUpdateSettings/handleConfigReload take effect
+// immediately instead of only at boot.
+func (s *Server) SetProxyHandler(p managementEndpointsSetter) { s.mgmtEndpoints = p }
 
 // SetVersion sets the version string reported by /health.
 // Call this from main with the ldflags-injected version before serving.
@@ -1090,6 +1103,9 @@ func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	s.router.SetTimezone(newCfg.Timezone)
 	s.router.SetClouds(newCfg.CloudProviders)
 	added, removed := s.router.SyncNodes(newCfg.Nodes)
+	if s.mgmtEndpoints != nil {
+		s.mgmtEndpoints.SetAllowManagementEndpoints(newCfg.Routing.AllowManagementEndpoints)
+	}
 	s.mu.Lock()
 	s.cfg = *newCfg
 	s.mu.Unlock()
@@ -2842,6 +2858,9 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	s.cfg = incoming
 	s.mu.Unlock()
 
+	if s.mgmtEndpoints != nil {
+		s.mgmtEndpoints.SetAllowManagementEndpoints(incoming.Routing.AllowManagementEndpoints)
+	}
 	s.router.SetTimezone(incoming.Timezone)
 	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
 		log.Printf("admin: failed to persist timezone setting: %v", err)
