@@ -82,6 +82,7 @@ export function Routing() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<RoutingRule | null>(null);
+  const [ruleToToggle, setRuleToToggle] = useState<RoutingRule | null>(null);
   const [strategyToConfirm, setStrategyToConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
@@ -147,18 +148,22 @@ export function Routing() {
     }
   };
 
-  const handleToggleRule = async (id: string) => {
+  const handleToggleRule = async () => {
+    if (!ruleToToggle) return;
+    const id = ruleToToggle.id;
+
     if (demoMode) {
       setRules(rules.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r));
-      return;
+    } else {
+      try {
+        await toggleRoutingRule(id);
+        await loadData();
+      } catch (err: any) {
+        setError(err.message);
+      }
     }
 
-    try {
-      await toggleRoutingRule(id);
-      await loadData();
-    } catch (err: any) {
-      setError(err.message);
-    }
+    setRuleToToggle(null);
   };
 
   const handleCreateRule = async () => {
@@ -324,7 +329,7 @@ export function Routing() {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button
-                      onClick={() => handleToggleRule(rule.id)}
+                      onClick={() => setRuleToToggle(rule)}
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
                         rule.enabled 
                           ? 'bg-primary/10 text-primary' 
@@ -508,6 +513,35 @@ export function Routing() {
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Delete Rule
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Toggle Rule Confirmation Modal */}
+      <Modal
+        isOpen={ruleToToggle !== null}
+        onClose={() => setRuleToToggle(null)}
+        title={ruleToToggle?.enabled ? 'Disable Routing Rule' : 'Enable Routing Rule'}
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to {ruleToToggle?.enabled ? 'disable' : 'enable'} the routing rule with priority{' '}
+            <span className="text-foreground font-medium">#{ruleToToggle?.priority}</span>?
+          </p>
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setRuleToToggle(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleToggleRule}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {ruleToToggle?.enabled ? 'Disable Rule' : 'Enable Rule'}
             </button>
           </div>
         </div>
