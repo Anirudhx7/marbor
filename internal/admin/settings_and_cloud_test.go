@@ -151,6 +151,55 @@ func TestUpdateSettings_WebhookSecretMaskNotPersisted(t *testing.T) {
 	}
 }
 
+// TestLiteLLMAPIKeyMaskedOnGetAndPreservedOnUpdate verifies that GET
+// /admin/settings masks a stored LiteLLM API key as "***" and that echoing
+// that placeholder back on a subsequent update preserves the real key,
+// mirroring the webhook secret and HuggingFace token mask-preserve behavior.
+func TestLiteLLMAPIKeyMaskedOnGetAndPreservedOnUpdate(t *testing.T) {
+	s := newRealStoreTestServer(t)
+
+	first := config.Config{LiteLLM: config.LiteLLMConfig{Enabled: true, URL: "http://localhost:4000", APIKey: "sk-real"}}
+	body, _ := json.Marshal(first)
+	rec := httptest.NewRecorder()
+	s.handleUpdateSettings(rec, httptest.NewRequest(http.MethodPut, "/admin/settings", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update settings status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	getRec := httptest.NewRecorder()
+	s.handleSettings(getRec, httptest.NewRequest(http.MethodGet, "/admin/settings", nil))
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get settings status = %d, want 200; body: %s", getRec.Code, getRec.Body.String())
+	}
+	var got config.Config
+	if err := json.Unmarshal(getRec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode settings response: %v", err)
+	}
+	if got.LiteLLM.APIKey != "***" {
+		t.Errorf("GET litellm.api_key = %q, want masked ***", got.LiteLLM.APIKey)
+	}
+
+	// Send the update again with the masked placeholder - the real key must survive.
+	second := config.Config{LiteLLM: config.LiteLLMConfig{Enabled: true, URL: "http://localhost:4000", APIKey: "***"}}
+	body2, _ := json.Marshal(second)
+	rec2 := httptest.NewRecorder()
+	s.handleUpdateSettings(rec2, httptest.NewRequest(http.MethodPut, "/admin/settings", bytes.NewReader(body2)))
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("second update status = %d, want 200", rec2.Code)
+	}
+	if s.cfg.LiteLLM.APIKey != "sk-real" {
+		t.Errorf("LiteLLM.APIKey after masked update = %q, want sk-real preserved", s.cfg.LiteLLM.APIKey)
+	}
+
+	got2, err := s.st.GetSetting("litellm_api_key")
+	if err != nil {
+		t.Fatalf("GetSetting(litellm_api_key): %v", err)
+	}
+	if got2 != "sk-real" {
+		t.Errorf("persisted litellm_api_key = %q, want sk-real", got2)
+	}
+}
+
 // TestCloudProviderCRUD exercises add/list/update/delete end to end through
 // the real HTTP handlers, verifying both the SQLite persistence and that the
 // masked list response never leaks the plaintext API key.

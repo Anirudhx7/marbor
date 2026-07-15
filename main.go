@@ -145,6 +145,7 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 
 	cfg.LiteLLM.Enabled = store.GetBoolSetting(st, "litellm_enabled", cfg.LiteLLM.Enabled)
 	cfg.LiteLLM.URL = store.GetStringSetting(st, "litellm_url", cfg.LiteLLM.URL)
+	cfg.LiteLLM.APIKey = store.GetStringSetting(st, "litellm_api_key", cfg.LiteLLM.APIKey)
 
 	cfg.Docker.Enabled = store.GetBoolSetting(st, "docker_enabled", cfg.Docker.Enabled)
 	cfg.Docker.Socket = store.GetStringSetting(st, "docker_socket", cfg.Docker.Socket)
@@ -314,6 +315,7 @@ func main() {
 
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
 	r.SetTimezone(cfg.Timezone)
+	r.SetLiteLLM(cfg.LiteLLM)
 	r.SetStore(st)
 	r.SetDockerConfig(cfg.Docker)
 	if cfg.Docker.Enabled {
