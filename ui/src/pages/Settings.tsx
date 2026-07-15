@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
 import { defaultSettings, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reloadFromStore, changePassword } from '../lib/api';
+import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword } from '../lib/api';
 import type { Settings, CloudProvider, CloudProviderInput } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
@@ -163,6 +163,7 @@ export function SettingsPage() {
           authMode: settingsData.auth?.enabled ? 'api-key' : 'no-auth',
           liteLLMEnabled: settingsData.litellm?.enabled || false,
           liteLLMEndpoint: settingsData.litellm?.url || '',
+          liteLLMApiKey: settingsData.litellm?.api_key || '',
           pollingInterval: settingsData.routing?.poll_interval_ms || 2000,
           prometheusEnabled: settingsData.metrics?.enabled || false,
           prometheusPort: settingsData.metrics?.port || 9090,
@@ -265,7 +266,7 @@ export function SettingsPage() {
           },
         },
         metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
-        litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint },
+        litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint, api_key: settings.liteLLMApiKey },
         huggingface: { token: settings.huggingFaceToken || '' },
         cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap, soft_budget_pct: settings.cloudSoftBudgetPct },
         hide_demo_banner: settings.hideDemoBanner || false,
@@ -339,7 +340,7 @@ export function SettingsPage() {
     }
   };
 
-  const emptyProvider: CloudProviderInput = { name: '', provider: 'openai', base_url: '', api_key: '', default_model: '', cost_per_1k_tokens: 0, enabled: false };
+  const emptyProvider: CloudProviderInput = { name: '', provider: 'openai', base_url: '', api_key: '', default_model: '', cost_per_1k_tokens: 0, enabled: false, priority: 0 };
 
   const refreshCloudProviders = async () => {
     try {
@@ -355,9 +356,23 @@ export function SettingsPage() {
   };
 
   const openEditCloudProvider = (p: CloudProvider) => {
-    setEditingProvider({ name: p.name, provider: p.provider, base_url: p.base_url, api_key: '***', default_model: p.default_model, cost_per_1k_tokens: p.cost_per_1k_tokens, enabled: p.enabled });
+    setEditingProvider({ name: p.name, provider: p.provider, base_url: p.base_url, api_key: '***', default_model: p.default_model, cost_per_1k_tokens: p.cost_per_1k_tokens, enabled: p.enabled, priority: p.priority });
     setCloudError(null);
     setCloudModalOpen(true);
+  };
+
+  const moveCloudProvider = async (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= cloudProviders.length) return;
+    const reordered = [...cloudProviders];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setCloudProviders(reordered); // optimistic
+    try {
+      await reorderCloudProviders(reordered.map(p => p.name));
+    } catch (err: any) {
+      setError(err.message || 'Failed to reorder cloud providers');
+      await refreshCloudProviders(); // revert to server truth on failure
+    }
   };
 
   const handleSaveCloudProvider = async (isNew: boolean) => {
@@ -622,6 +637,20 @@ export function SettingsPage() {
                   placeholder="http://localhost:4000"
                   className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
                 />
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5 mt-3">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={settings.liteLLMApiKey}
+                  onChange={(e) => setSettings({ ...settings, liteLLMApiKey: e.target.value })}
+                  autoComplete="off"
+                  placeholder="sk-litellm-..."
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Sent as Authorization: Bearer &lt;key&gt; to your LiteLLM proxy.
+                </p>
               </div>
             )}
 
@@ -924,10 +953,14 @@ export function SettingsPage() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Cloud Providers</h3>
-                <p className="text-xs font-medium text-muted-foreground">Fallback cloud endpoints for overflow traffic</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {settings.liteLLMEnabled
+                    ? 'Managed by LiteLLM while enabled - this list is inactive'
+                    : 'Fallback cloud endpoints for overflow traffic, tried highest priority first'}
+                </p>
               </div>
             </div>
-            {!demoMode && (
+            {!demoMode && !settings.liteLLMEnabled && (
               <button
                 onClick={openAddCloudProvider}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
@@ -938,46 +971,57 @@ export function SettingsPage() {
             )}
           </div>
 
-          {cloudLoading ? (
-            <div className="space-y-3">
-              {[1, 2].map(i => (
-                <div key={i} className="h-14 bg-secondary/30 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : cloudProviders.length === 0 ? (
-            <div className="py-8 text-center text-sm font-medium text-muted-foreground">
-              No cloud providers configured
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {cloudProviders.map(provider => (
-                <div key={provider.name} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-                  <div className="flex items-center gap-3">
-                    <StatusDot status={provider.enabled ? 'online' : 'offline'} size="sm" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{provider.name}</p>
-                      <p className="text-xs font-medium text-muted-foreground">{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
+          <div className={settings.liteLLMEnabled ? 'opacity-40 pointer-events-none' : ''}>
+            {cloudLoading ? (
+              <div className="space-y-3">
+                {[1, 2].map(i => (
+                  <div key={i} className="h-14 bg-secondary/30 rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ) : cloudProviders.length === 0 ? (
+              <div className="py-8 text-center text-sm font-medium text-muted-foreground">
+                No cloud providers configured
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {cloudProviders.map((provider, index) => (
+                  <div key={provider.name} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col items-center gap-0.5 w-5 text-[10px] font-medium text-muted-foreground">
+                        <span>{index + 1}</span>
+                      </div>
+                      <StatusDot status={provider.enabled ? 'online' : 'offline'} size="sm" />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{provider.name}</p>
+                        <p className="text-xs font-medium text-muted-foreground">{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
+                        {provider.provider}
+                      </Badge>
+                      {!demoMode && (
+                        <>
+                          <button onClick={() => moveCloudProvider(index, -1)} disabled={index === 0} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => moveCloudProvider(index, 1)} disabled={index === cloudProviders.length - 1} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => openEditCloudProvider(provider)} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => setProviderToDelete(provider.name)} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
-                      {provider.provider}
-                    </Badge>
-                    {!demoMode && (
-                      <>
-                        <button onClick={() => openEditCloudProvider(provider)} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => setProviderToDelete(provider.name)} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Advanced Routing */}
