@@ -444,6 +444,7 @@ func main() {
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	proxyHandler.SetAuth(authMw)
 	proxyHandler.SetAllowManagementEndpoints(cfg.Routing.AllowManagementEndpoints)
+	adminSrv.SetProxyHandler(proxyHandler)
 	accessEnabled := cfg.Proxy.AccessLog == nil || *cfg.Proxy.AccessLog
 	proxyHandler.SetAccessLogger(proxy.NewAccessLogger(os.Stdout, accessEnabled))
 	log.Printf("Access log     : %t (stdout, JSON lines)", accessEnabled)
