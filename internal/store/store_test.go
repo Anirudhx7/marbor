@@ -538,3 +538,37 @@ func TestNopStoreWarmState(t *testing.T) {
 		t.Errorf("NopStore AllWarmState: rows=%v err=%v", rows, err)
 	}
 }
+
+// TestQueryAuditLogSubstringFilters verifies key and node filters match on
+// substring (like the model filter), not exact string equality. Regression
+// for the Requests page filter bar silently returning zero rows on partial
+// key/node input.
+func TestQueryAuditLogSubstringFilters(t *testing.T) {
+	s := openTestDB(t)
+
+	entries := []store.AuditEntry{
+		{RequestID: "r1", KeyName: "prod-api-key", Model: "llama3", Node: "gpu-node-01", Status: "200", Time: time.Now()},
+		{RequestID: "r2", KeyName: "staging-key", Model: "llama3", Node: "gpu-node-02", Status: "200", Time: time.Now()},
+	}
+	for _, e := range entries {
+		if err := s.AppendAuditLog(e); err != nil {
+			t.Fatalf("AppendAuditLog: %v", err)
+		}
+	}
+
+	got, err := s.QueryAuditLog(store.AuditQuery{Limit: 10, Key: "prod"})
+	if err != nil {
+		t.Fatalf("QueryAuditLog(Key=prod): %v", err)
+	}
+	if len(got) != 1 || got[0].RequestID != "r1" {
+		t.Fatalf("Key substring filter: got %+v, want single match r1", got)
+	}
+
+	got, err = s.QueryAuditLog(store.AuditQuery{Limit: 10, Node: "node-02"})
+	if err != nil {
+		t.Fatalf("QueryAuditLog(Node=node-02): %v", err)
+	}
+	if len(got) != 1 || got[0].RequestID != "r2" {
+		t.Fatalf("Node substring filter: got %+v, want single match r2", got)
+	}
+}

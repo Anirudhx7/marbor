@@ -853,12 +853,12 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		args = append(args, "%"+opts.Model+"%")
 	}
 	if opts.Key != "" {
-		query += " AND key_name = ?"
-		args = append(args, opts.Key)
+		query += " AND key_name LIKE ?"
+		args = append(args, "%"+opts.Key+"%")
 	}
 	if opts.Node != "" {
-		query += " AND node = ?"
-		args = append(args, opts.Node)
+		query += " AND node LIKE ?"
+		args = append(args, "%"+opts.Node+"%")
 	}
 	if opts.Cloud != nil {
 		cloud := 0
