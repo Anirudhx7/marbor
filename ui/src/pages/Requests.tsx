@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RequestEntry } from '../types';
-import { fetchAuditLog } from '../lib/api';
+import { fetchAuditLog, fetchNodes, fetchKeys } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { filterMockRequests } from '../lib/mockData';
+import { filterMockRequests, mockGPUNodes, mockAPIKeys } from '../lib/mockData';
 
 function formatRelative(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime();
@@ -65,12 +65,40 @@ export function Requests() {
   const [cloudFilter, setCloudFilter] = useState<CloudFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sincePreset, setSincePreset] = useState<SincePreset>('all');
+  const [sinceInput, setSinceInput] = useState(''); // datetime-local value, overrides sincePreset
   const [untilInput, setUntilInput] = useState(''); // datetime-local value
 
   // Debounced text filters actually sent as query params.
   const [modelFilter, setModelFilter] = useState('');
   const [keyFilter, setKeyFilter] = useState('');
   const [nodeFilter, setNodeFilter] = useState('');
+
+  // Known node names / key names for this mesh's current config, so the
+  // filter bar offers a searchable list instead of demanding an exact
+  // hand-typed match (nodes/keys are a bounded, dynamic set - not free text).
+  const [nodeOptions, setNodeOptions] = useState<string[]>([]);
+  const [keyOptions, setKeyOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (isDemoMode) {
+      setNodeOptions(mockGPUNodes.map((n) => n.name));
+      setKeyOptions(mockAPIKeys.map((k) => k.name));
+      return;
+    }
+    Promise.all([fetchNodes(), fetchKeys()])
+      .then(([nodes, keys]) => {
+        if (cancelled) return;
+        setNodeOptions(nodes.map((n) => n.name));
+        setKeyOptions(keys.map((k) => k.name));
+      })
+      .catch(() => {
+        // Filter bar still works as free text if this fails - non-fatal.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemoMode]);
 
   useEffect(() => {
     const t = setTimeout(() => setModelFilter(modelInput.trim()), 350);
@@ -94,10 +122,10 @@ export function Requests() {
       node: nodeFilter || undefined,
       status: statusFilter === 'all' ? undefined : statusFilter,
       cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
-      since: sinceIso(sincePreset),
+      since: sinceInput ? new Date(sinceInput).toISOString() : sinceIso(sincePreset),
       until: untilInput ? new Date(untilInput).toISOString() : undefined,
     }),
-    [modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, untilInput]
+    [modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput]
   );
 
   useEffect(() => {
@@ -134,11 +162,11 @@ export function Requests() {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, untilInput, location.pathname]);
+  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput, location.pathname]);
 
   const filtered = entries;
   const hasActiveFilter =
-    !!modelFilter || !!keyFilter || !!nodeFilter || statusFilter !== 'all' || cloudFilter !== 'all' || sincePreset !== 'all' || !!untilInput;
+    !!modelFilter || !!keyFilter || !!nodeFilter || statusFilter !== 'all' || cloudFilter !== 'all' || sincePreset !== 'all' || !!sinceInput || !!untilInput;
 
   const localCount = filtered.filter((e) => !e.cloud).length;
   const cloudCount = filtered.filter((e) => e.cloud).length;
@@ -176,18 +204,30 @@ export function Requests() {
         />
         <input
           type="text"
+          list="request-key-options"
           placeholder="Filter by key name..."
           value={keyInput}
           onChange={(e) => setKeyInput(e.target.value)}
           className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
+        <datalist id="request-key-options">
+          {keyOptions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
         <input
           type="text"
+          list="request-node-options"
           placeholder="Filter by node..."
           value={nodeInput}
           onChange={(e) => setNodeInput(e.target.value)}
           className="w-full sm:w-auto sm:flex-1 sm:max-w-[220px] px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
+        <datalist id="request-node-options">
+          {nodeOptions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
         <select
           value={cloudFilter}
           onChange={(e) => setCloudFilter(e.target.value as CloudFilter)}
@@ -209,14 +249,29 @@ export function Requests() {
         </select>
         <select
           value={sincePreset}
-          onChange={(e) => setSincePreset(e.target.value as SincePreset)}
-          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          onChange={(e) => {
+            setSincePreset(e.target.value as SincePreset);
+            setSinceInput(''); // a quick preset always wins over a stale custom "From" value
+          }}
+          disabled={!!sinceInput}
+          title={sinceInput ? 'Clear the custom "From" date to use a quick preset' : undefined}
+          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
         >
           <option value="all">Any time</option>
           <option value="15m">Last 15 min</option>
           <option value="1h">Last hour</option>
           <option value="24h">Last 24h</option>
         </select>
+        <input
+          type="datetime-local"
+          value={sinceInput}
+          onChange={(e) => {
+            setSinceInput(e.target.value);
+            if (e.target.value) setSincePreset('all'); // custom "From" wins over a stale preset
+          }}
+          title="Only show requests at or after this time"
+          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+        />
         <input
           type="datetime-local"
           value={untilInput}
@@ -233,6 +288,7 @@ export function Requests() {
               setCloudFilter('all');
               setStatusFilter('all');
               setSincePreset('all');
+              setSinceInput('');
               setUntilInput('');
             }}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-2"
