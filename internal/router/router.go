@@ -867,6 +867,7 @@ func (r *Router) SetPrewarmDisabled(name string, disabled bool) bool {
 type NodePatch struct {
 	VRAMTotalMB *int64  `json:"vram_total_mb"`
 	GPUModel    *string `json:"gpu_model"`
+	Runtime     *string `json:"runtime"`
 }
 
 // PatchNode applies runtime metadata overrides to a node without restarting.
@@ -887,6 +888,12 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 			}
 			if patch.GPUModel != nil {
 				n.GPUModel = *patch.GPUModel
+			}
+			if patch.Runtime != nil {
+				n.Runtime = *patch.Runtime
+				// "auto" re-arms detection so the next poll re-probes the
+				// node instead of keeping whatever runtime it had before.
+				n.autoDetect = *patch.Runtime == "auto"
 			}
 			n.mu.Unlock()
 			return true

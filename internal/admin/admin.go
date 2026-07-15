@@ -577,6 +577,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/cloud/providers", s.cors(s.adminAuth(s.handleAddCloudProvider)))
 	reg("PUT /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleUpdateCloudProvider)))
 	reg("DELETE /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleDeleteCloudProvider)))
+	reg("POST /admin/cloud/providers/test", s.cors(s.adminAuth(s.handleTestCloudProvider)))
 	reg("GET /admin/analytics", s.cors(s.adminAuth(s.handleAnalytics)))
 	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
@@ -1342,9 +1343,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	if cfg.Runtime == "" {
 		cfg.Runtime = "ollama"
 	}
-	switch cfg.Runtime {
-	case "ollama", "vllm", "tgi", "llamacpp", "auto":
-	default:
+	if !isValidRuntime(cfg.Runtime) {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)", cfg.Runtime))
 		return
 	}
@@ -1483,6 +1482,64 @@ func (s *Server) handleUpdateCloudProvider(w http.ResponseWriter, r *http.Reques
 	}
 	s.logSystemChange(r, "update_cloud_provider", name, fmt.Sprintf("Provider: %s, Enabled: %v", cp.Provider, cp.Enabled))
 	w.WriteHeader(http.StatusOK)
+}
+
+// cloudProviderTestTimeout bounds how long handleTestCloudProvider waits for
+// the upstream provider to answer before reporting the key as unreachable.
+const cloudProviderTestTimeout = 8 * time.Second
+
+// handleTestCloudProvider verifies a base_url + api_key pair actually
+// authenticates against the provider before it gets saved. All configured
+// providers speak the OpenAI-compatible surface (see proxyToCloud), so a
+// GET {base_url}/models with the same Bearer header used at request time is
+// a faithful, side-effect-free credential check.
+// POST /admin/cloud/providers/test.
+func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.BaseURL == "" || body.APIKey == "" {
+		writeJSONError(w, http.StatusBadRequest, "base_url and api_key are required")
+		return
+	}
+	if err := config.ValidateNodeURL(body.BaseURL); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "base_url must be http(s) with a host")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), cloudProviderTestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(body.BaseURL, "/")+"/models", nil)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+body.APIKey)
+
+	client := &http.Client{Timeout: cloudProviderTestTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, "could not reach base_url: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		writeJSONError(w, http.StatusUnauthorized, "provider rejected the API key")
+		return
+	}
+	if resp.StatusCode >= 400 {
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("provider returned %d", resp.StatusCode))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `{"ok":true}`)
 }
 
 // handleDeleteCloudProvider removes a cloud provider by name.
@@ -1843,8 +1900,19 @@ func (s *Server) handleSetNodePrewarm(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// isValidRuntime reports whether runtime is a recognized node runtime value.
+// Shared by handleAddNode and handlePatchNode so both reject the same set.
+func isValidRuntime(runtime string) bool {
+	switch runtime {
+	case "ollama", "vllm", "tgi", "llamacpp", "auto":
+		return true
+	default:
+		return false
+	}
+}
+
 // handlePatchNode applies runtime metadata overrides to a node.
-// PATCH /admin/nodes/{name} - accepts {"vram_total_mb":N,"gpu_model":"..."}
+// PATCH /admin/nodes/{name} - accepts {"vram_total_mb":N,"gpu_model":"...","runtime":"..."}
 func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var patch router.NodePatch
@@ -1853,12 +1921,16 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
 		return
 	}
+	if patch.Runtime != nil && !isValidRuntime(*patch.Runtime) {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)", *patch.Runtime))
+		return
+	}
 	if !s.router.PatchNode(name, patch) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel)
-	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("VRAMTotalMBChanged: %v, GPUModelChanged: %v", patch.VRAMTotalMB != nil, patch.GPUModel != nil))
+	_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime)
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v", patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
 }

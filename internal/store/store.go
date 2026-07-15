@@ -50,7 +50,7 @@ type Store interface {
 	AllNodes() ([]NodeRecord, error)
 
 	// Node overrides (vram, gpu_model)
-	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string) error
+	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
@@ -236,6 +236,7 @@ type NodeRecord struct {
 type NodeOverride struct {
 	VRAMTotalMB *int64  `json:"vram_total_mb,omitempty"`
 	GPUModel    *string `json:"gpu_model,omitempty"`
+	Runtime     *string `json:"runtime,omitempty"`
 }
 
 // PredictiveTransition is one persisted model-to-model transition, used to
@@ -468,56 +469,56 @@ type ModelConfig struct {
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
-func (NopStore) AppendRequest(_ RequestRecord) error                       { return nil }
-func (NopStore) LastRequests(_ int) ([]RequestRecord, error)               { return nil, nil }
-func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                   { return nil }
-func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)         { return nil, nil }
-func (NopStore) UpsertModelStat(_ ModelStat) error                         { return nil }
-func (NopStore) AllModelStats() ([]ModelStat, error)                       { return nil, nil }
-func (NopStore) SetCounters(_ Counters) error                              { return nil }
-func (NopStore) GetCounters() (Counters, error)                            { return Counters{}, nil }
-func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error      { return nil }
-func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error)    { return nil, nil }
-func (NopStore) UpsertNode(_ NodeRecord) error                             { return nil }
-func (NopStore) DeleteNode(_ string) error                                 { return nil }
-func (NopStore) AllNodes() ([]NodeRecord, error)                           { return nil, nil }
-func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string) error    { return nil }
-func (NopStore) NodeOverrides() (map[string]NodeOverride, error)           { return nil, nil }
-func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error             { return nil }
-func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error)       { return nil, nil }
-func (NopStore) AppendPredictiveTransition(_, _ string, _ time.Time) error { return nil }
-func (NopStore) PredictiveHistory() ([]PredictiveTransition, error)        { return nil, nil }
-func (NopStore) UpsertKey(_ KeyRecord) error                               { return nil }
-func (NopStore) RevokeKey(_ string) error                                  { return nil }
-func (NopStore) AllKeys() ([]KeyRecord, error)                             { return nil, nil }
-func (NopStore) KeySpendSince(_ string, _ time.Time) (float64, error)      { return 0, nil }
-func (NopStore) AppendAuditLog(_ AuditEntry) error                         { return nil }
-func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)          { return nil, nil }
-func (NopStore) PruneAuditLog(_ int) error                                 { return nil }
-func (NopStore) PruneSystemAuditLog(_ int) error                           { return nil }
-func (NopStore) AppendSystemAuditLog(_ SystemAuditEntry) error             { return nil }
-func (NopStore) QuerySystemAuditLog(_ int) ([]SystemAuditEntry, error)     { return nil, nil }
-func (NopStore) GetAdminCreds() (AdminCreds, error)                        { return AdminCreds{}, ErrNoAdminCreds }
-func (NopStore) SetAdminCreds(_ AdminCreds) error                          { return nil }
-func (NopStore) CreateSession(_ string, _ time.Time) error                 { return nil }
-func (NopStore) ValidateSession(_ string) (bool, error)                    { return false, nil }
-func (NopStore) DeleteSession(_ string) error                              { return nil }
-func (NopStore) PruneExpiredSessions() error                               { return nil }
-func (NopStore) CreateUser(_ User) (int64, error)                          { return 0, nil }
-func (NopStore) GetUserByUsername(_ string) (User, error)                  { return User{}, ErrUserNotFound }
-func (NopStore) GetUserByID(_ int64) (User, error)                         { return User{}, ErrUserNotFound }
-func (NopStore) ListUsers() ([]User, error)                                { return nil, nil }
-func (NopStore) UpdateUser(_ User) error                                   { return nil }
-func (NopStore) DeleteUser(_ int64) error                                  { return nil }
-func (NopStore) SoftDeleteUser(_ int64, _ string) error                    { return nil }
-func (NopStore) CountAdminUsers() (int, error)                             { return 0, nil }
-func (NopStore) PendingUserCount() (int, error)                            { return 0, nil }
-func (NopStore) CreateUserSession(_ UserSession) error                     { return nil }
-func (NopStore) GetUserSession(_ string) (UserSession, bool, error)        { return UserSession{}, false, nil }
-func (NopStore) DeleteUserSession(_ string) error                          { return nil }
-func (NopStore) DeleteUserSessionsByUserID(_ int64) error                  { return nil }
-func (NopStore) PruneExpiredUserSessions() error                           { return nil }
-func (NopStore) HasAdminCredentials() (bool, error)                        { return false, nil }
+func (NopStore) AppendRequest(_ RequestRecord) error                               { return nil }
+func (NopStore) LastRequests(_ int) ([]RequestRecord, error)                       { return nil, nil }
+func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                           { return nil }
+func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)                 { return nil, nil }
+func (NopStore) UpsertModelStat(_ ModelStat) error                                 { return nil }
+func (NopStore) AllModelStats() ([]ModelStat, error)                               { return nil, nil }
+func (NopStore) SetCounters(_ Counters) error                                      { return nil }
+func (NopStore) GetCounters() (Counters, error)                                    { return Counters{}, nil }
+func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error              { return nil }
+func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error)            { return nil, nil }
+func (NopStore) UpsertNode(_ NodeRecord) error                                     { return nil }
+func (NopStore) DeleteNode(_ string) error                                         { return nil }
+func (NopStore) AllNodes() ([]NodeRecord, error)                                   { return nil, nil }
+func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string) error { return nil }
+func (NopStore) NodeOverrides() (map[string]NodeOverride, error)                   { return nil, nil }
+func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error                     { return nil }
+func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error)               { return nil, nil }
+func (NopStore) AppendPredictiveTransition(_, _ string, _ time.Time) error         { return nil }
+func (NopStore) PredictiveHistory() ([]PredictiveTransition, error)                { return nil, nil }
+func (NopStore) UpsertKey(_ KeyRecord) error                                       { return nil }
+func (NopStore) RevokeKey(_ string) error                                          { return nil }
+func (NopStore) AllKeys() ([]KeyRecord, error)                                     { return nil, nil }
+func (NopStore) KeySpendSince(_ string, _ time.Time) (float64, error)              { return 0, nil }
+func (NopStore) AppendAuditLog(_ AuditEntry) error                                 { return nil }
+func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)                  { return nil, nil }
+func (NopStore) PruneAuditLog(_ int) error                                         { return nil }
+func (NopStore) PruneSystemAuditLog(_ int) error                                   { return nil }
+func (NopStore) AppendSystemAuditLog(_ SystemAuditEntry) error                     { return nil }
+func (NopStore) QuerySystemAuditLog(_ int) ([]SystemAuditEntry, error)             { return nil, nil }
+func (NopStore) GetAdminCreds() (AdminCreds, error)                                { return AdminCreds{}, ErrNoAdminCreds }
+func (NopStore) SetAdminCreds(_ AdminCreds) error                                  { return nil }
+func (NopStore) CreateSession(_ string, _ time.Time) error                         { return nil }
+func (NopStore) ValidateSession(_ string) (bool, error)                            { return false, nil }
+func (NopStore) DeleteSession(_ string) error                                      { return nil }
+func (NopStore) PruneExpiredSessions() error                                       { return nil }
+func (NopStore) CreateUser(_ User) (int64, error)                                  { return 0, nil }
+func (NopStore) GetUserByUsername(_ string) (User, error)                          { return User{}, ErrUserNotFound }
+func (NopStore) GetUserByID(_ int64) (User, error)                                 { return User{}, ErrUserNotFound }
+func (NopStore) ListUsers() ([]User, error)                                        { return nil, nil }
+func (NopStore) UpdateUser(_ User) error                                           { return nil }
+func (NopStore) DeleteUser(_ int64) error                                          { return nil }
+func (NopStore) SoftDeleteUser(_ int64, _ string) error                            { return nil }
+func (NopStore) CountAdminUsers() (int, error)                                     { return 0, nil }
+func (NopStore) PendingUserCount() (int, error)                                    { return 0, nil }
+func (NopStore) CreateUserSession(_ UserSession) error                             { return nil }
+func (NopStore) GetUserSession(_ string) (UserSession, bool, error)                { return UserSession{}, false, nil }
+func (NopStore) DeleteUserSession(_ string) error                                  { return nil }
+func (NopStore) DeleteUserSessionsByUserID(_ int64) error                          { return nil }
+func (NopStore) PruneExpiredUserSessions() error                                   { return nil }
+func (NopStore) HasAdminCredentials() (bool, error)                                { return false, nil }
 func (NopStore) GetLegacyAdminCreds() (string, string, string, error) {
 	return "", "", "", ErrNoAdminCreds
 }

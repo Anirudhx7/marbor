@@ -348,8 +348,9 @@ func TestNodeOverrides(t *testing.T) {
 
 	vram := int64(16384)
 	gpu := "NVIDIA RTX 4090"
+	rt := "vllm"
 
-	if err := s.UpsertNodeOverride("node1", &vram, &gpu); err != nil {
+	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -366,6 +367,9 @@ func TestNodeOverrides(t *testing.T) {
 	}
 	if ov.GPUModel == nil || *ov.GPUModel != gpu {
 		t.Errorf("GPUModel mismatch")
+	}
+	if ov.Runtime == nil || *ov.Runtime != rt {
+		t.Errorf("Runtime mismatch")
 	}
 }
 

@@ -931,6 +931,42 @@ func TestPatchNodeMetadata(t *testing.T) {
 	}
 }
 
+func TestPatchNodeRuntime(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Runtime: "ollama"},
+	}, nil)
+
+	vllm := "vllm"
+	if !r.PatchNode("gpu-0", NodePatch{Runtime: &vllm}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	gotRuntime := r.nodes[0].Runtime
+	gotAutoDetect := r.nodes[0].autoDetect
+	r.nodes[0].mu.RUnlock()
+	if gotRuntime != "vllm" {
+		t.Errorf("Runtime = %q, want vllm", gotRuntime)
+	}
+	if gotAutoDetect {
+		t.Error("autoDetect should be false after patching to an explicit runtime")
+	}
+
+	auto := "auto"
+	if !r.PatchNode("gpu-0", NodePatch{Runtime: &auto}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	gotRuntime = r.nodes[0].Runtime
+	gotAutoDetect = r.nodes[0].autoDetect
+	r.nodes[0].mu.RUnlock()
+	if gotRuntime != "auto" {
+		t.Errorf("Runtime = %q, want auto", gotRuntime)
+	}
+	if !gotAutoDetect {
+		t.Error("autoDetect should be re-armed after patching runtime back to auto")
+	}
+}
+
 func TestPatchNodeSkipsVRAMWhenNvidia(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434"},
