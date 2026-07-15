@@ -364,6 +364,10 @@ type CloudProvider struct {
 	DefaultModel    string  `yaml:"default_model" json:"default_model"`
 	CostPer1KTokens float64 `yaml:"cost_per_1k_tokens" json:"cost_per_1k_tokens"`
 	Enabled         bool    `yaml:"enabled" json:"enabled"`
+	// Priority orders cloud fallback attempts when more than one provider is
+	// enabled - higher tries first. Ties fall back to insertion order (the
+	// same tie-break SQLite uses: ORDER BY priority DESC, name ASC).
+	Priority int `yaml:"priority" json:"priority"`
 }
 
 // IsEnabled reports whether auth enforcement is on.
