@@ -98,11 +98,11 @@ type Server struct {
 	logChan       chan store.RequestRecord
 	logDone       chan struct{} // closed by Shutdown to signal drain-and-stop
 	logWg         sync.WaitGroup
-	pullsMu       sync.Mutex      // guards pullsInFlight
-	pullsInFlight map[string]bool // "node|model" -> in progress; ephemeral, never persisted
-	coldStarts    int64           // atomic - total cold start events
-	warmHits      int64           // atomic - total warm hit events
-	tokenEvents   []TokenEvent    // protected by mu
+	pullsMu       sync.Mutex                // guards pullsInFlight
+	pullsInFlight map[string]bool           // "node|model" -> in progress; ephemeral, never persisted
+	coldStarts    int64                     // atomic - total cold start events
+	warmHits      int64                     // atomic - total warm hit events
+	tokenEvents   []TokenEvent              // protected by mu
 	mgmtEndpoints managementEndpointsSetter // nil until wired via SetProxyHandler
 }
 
