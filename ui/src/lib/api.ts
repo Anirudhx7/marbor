@@ -885,6 +885,7 @@ export interface HFModel {
   tags: string[];
   lastModified: string;
   pipeline_tag: string;
+  createdAt?: string;
 }
 
 export interface ModelVariantFit {
@@ -905,17 +906,35 @@ export interface HFRepoDetails {
   variants: ModelVariantFit[];
 }
 
-export async function searchHFModels(query: string): Promise<HFModel[]> {
-  const url = `${BASE}/v1/models/search?q=${encodeURIComponent(query)}`;
+export interface HFSearchFilters {
+  runtime?: string;
+  sort?: 'downloads' | 'likes' | 'newest' | 'oldest';
+  minDownloads?: number;
+  minLikes?: number;
+  createdAfter?: string; // YYYY-MM-DD
+  createdBefore?: string; // YYYY-MM-DD
+}
+
+export async function searchHFModels(query: string, filters?: HFSearchFilters): Promise<HFModel[]> {
+  const params = new URLSearchParams();
+  if (query) params.set('q', query);
+  if (filters?.runtime) params.set('runtime', filters.runtime);
+  if (filters?.sort) params.set('sort', filters.sort);
+  if (filters?.minDownloads) params.set('min_downloads', String(filters.minDownloads));
+  if (filters?.minLikes) params.set('min_likes', String(filters.minLikes));
+  if (filters?.createdAfter) params.set('created_after', filters.createdAfter);
+  if (filters?.createdBefore) params.set('created_before', filters.createdBefore);
+  const url = `${BASE}/v1/models/search?${params.toString()}`;
   const res = await apiFetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to search Hugging Face models');
   return res.json();
 }
 
-export async function getHFRepoDetails(repoId: string, nodeName?: string, ctxLen?: number): Promise<HFRepoDetails> {
+export async function getHFRepoDetails(repoId: string, nodeName?: string, ctxLen?: number, runtime?: string): Promise<HFRepoDetails> {
   let url = `${BASE}/v1/models/repo?id=${encodeURIComponent(repoId)}`;
   if (nodeName) url += `&node=${encodeURIComponent(nodeName)}`;
   if (ctxLen) url += `&ctx=${ctxLen}`;
+  if (runtime) url += `&runtime=${encodeURIComponent(runtime)}`;
   const res = await apiFetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch Hugging Face repository details');
   return res.json();

@@ -104,7 +104,7 @@ export interface APIKey {
   monthlyLimit?: number;
   dailyUsdCap?: number;
   monthlyUsdCap?: number;
-  status: 'active' | 'suspended' | 'rate-limited';
+  status: 'active' | 'suspended' | 'rate-limited' | 'revoked' | 'expired';
   allowedModels: string[];
   models?: string[];
   expiresAt: string | null;

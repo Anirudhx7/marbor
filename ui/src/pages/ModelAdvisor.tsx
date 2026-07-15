@@ -104,14 +104,14 @@ function ModelDetailPanel({
     setLoading(true);
     setError(null);
     try {
-      const resp = await getHFRepoDetails(model.id, nodeName || undefined, len);
+      const resp = await getHFRepoDetails(model.id, nodeName || undefined, len, nodeRuntime || undefined);
       setDetails(resp);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load variants');
     } finally {
       setLoading(false);
     }
-  }, [demoMode, model.id, model.downloads, model.likes, model.tags, model.lastModified, nodeName]);
+  }, [demoMode, model.id, model.downloads, model.likes, model.tags, model.lastModified, nodeName, nodeRuntime]);
 
   useEffect(() => { fetchDetails(ctxLen); }, [ctxLen, fetchDetails]);
 
@@ -209,7 +209,9 @@ function ModelDetailPanel({
           </div>
         ) : details && details.variants && details.variants.length > 0 ? (
           <div className="space-y-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">GGUF File Quantizations</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+              {(!nodeRuntime || nodeRuntime === 'ollama' || nodeRuntime === 'llamacpp') ? 'GGUF File Quantizations' : 'Safetensors Repository'}
+            </span>
             <div className="space-y-1.5">
               {details.variants.map((v) => {
                 const isPulled = v.downloaded || (v.tag && pulledTags.has(v.tag));
@@ -265,7 +267,9 @@ function ModelDetailPanel({
             </div>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground py-4 text-center">No GGUF files found in this repository.</p>
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            {(!nodeRuntime || nodeRuntime === 'ollama' || nodeRuntime === 'llamacpp') ? 'No GGUF files found in this repository.' : 'No safetensors weights found in this repository.'}
+          </p>
         )}
       </div>
 
@@ -362,6 +366,16 @@ export function ModelAdvisor() {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [columnCount, setColumnCount] = useState(3);
 
+  const [sortBy, setSortBy] = useState<'downloads' | 'likes' | 'newest' | 'oldest'>('downloads');
+  const [minDownloads, setMinDownloads] = useState('');
+  const [minLikes, setMinLikes] = useState('');
+  const [createdAfter, setCreatedAfter] = useState('');
+
+  const activeNode = useMemo(
+    () => (!selectedNode || nodes.length === 0) ? null : nodes.find(n => n.name === selectedNode) || null,
+    [nodes, selectedNode]
+  );
+
   // Track grid column count to insert panel at end of the correct row
   useEffect(() => {
     const update = () => {
@@ -419,20 +433,35 @@ export function ModelAdvisor() {
 
   useEffect(() => {
     const doSearch = async () => {
+      const minDl = minDownloads ? Number(minDownloads) : undefined;
+      const minLk = minLikes ? Number(minLikes) : undefined;
+
       if (demoMode) {
         setSearchError(null);
-        if (debouncedSearch.trim() === '') {
-          setModels(mockHFModels);
-        } else {
-          const q = debouncedSearch.toLowerCase();
-          setModels(mockHFModels.filter(m => m.id.toLowerCase().includes(q)));
-        }
+        const q = debouncedSearch.trim().toLowerCase();
+        let filtered = q === '' ? mockHFModels : mockHFModels.filter(m => m.id.toLowerCase().includes(q));
+        if (minDl) filtered = filtered.filter(m => m.downloads >= minDl);
+        if (minLk) filtered = filtered.filter(m => m.likes >= minLk);
+        if (createdAfter) filtered = filtered.filter(m => m.lastModified >= createdAfter);
+        const sorted = [...filtered].sort((a, b) => {
+          if (sortBy === 'likes') return b.likes - a.likes;
+          if (sortBy === 'newest') return b.lastModified.localeCompare(a.lastModified);
+          if (sortBy === 'oldest') return a.lastModified.localeCompare(b.lastModified);
+          return b.downloads - a.downloads;
+        });
+        setModels(sorted);
         return;
       }
       setSearching(true);
       setSearchError(null);
       try {
-        const resp = await searchHFModels(debouncedSearch);
+        const resp = await searchHFModels(debouncedSearch, {
+          runtime: activeNode?.runtime,
+          sort: sortBy,
+          minDownloads: minDl,
+          minLikes: minLk,
+          createdAfter: createdAfter || undefined,
+        });
         setModels(resp || []);
       } catch (e: unknown) {
         setSearchError(e instanceof Error ? e.message : 'Failed to search Hugging Face models. Make sure the backend has internet access.');
@@ -442,7 +471,7 @@ export function ModelAdvisor() {
       }
     };
     doSearch();
-  }, [debouncedSearch, demoMode]);
+  }, [debouncedSearch, demoMode, sortBy, minDownloads, minLikes, createdAfter, activeNode?.runtime]);
 
   // Close panel when search results change
   useEffect(() => { setSelectedModelId(null); }, [models]);
@@ -455,11 +484,6 @@ export function ModelAdvisor() {
       return true;
     });
   }, [models]);
-
-  const activeNode = useMemo(
-    () => (!selectedNode || nodes.length === 0) ? null : nodes.find(n => n.name === selectedNode) || null,
-    [nodes, selectedNode]
-  );
 
   const selectedModel = useMemo(
     () => uniqueModels.find(m => m.id === selectedModelId) ?? null,
@@ -496,7 +520,7 @@ export function ModelAdvisor() {
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Package className="w-6 h-6 text-primary" /> Model Advisor
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 font-medium">Search and pull Hugging Face GGUF models directly to Ollama</p>
+          <p className="text-sm text-muted-foreground mt-1 font-medium">Search Hugging Face for models that fit your node&apos;s runtime and VRAM</p>
         </div>
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${demoMode ? 'bg-success' : (loading && !isLive) ? 'bg-blue-500 animate-pulse' : isLive ? 'bg-success' : 'bg-amber-500'}`} />
@@ -620,6 +644,61 @@ export function ModelAdvisor() {
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium animate-pulse">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /> Searching Hugging Face...
               </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-3 items-center text-xs">
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted-foreground font-medium">Sort:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium cursor-pointer"
+              >
+                <option value="downloads">Most Downloads</option>
+                <option value="likes">Most Likes</option>
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted-foreground font-medium">Min Downloads:</span>
+              <input
+                type="number"
+                min="0"
+                value={minDownloads}
+                onChange={(e) => setMinDownloads(e.target.value)}
+                placeholder="0"
+                className="w-24 bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium"
+              />
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted-foreground font-medium">Min Likes:</span>
+              <input
+                type="number"
+                min="0"
+                value={minLikes}
+                onChange={(e) => setMinLikes(e.target.value)}
+                placeholder="0"
+                className="w-20 bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium"
+              />
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted-foreground font-medium">Created After:</span>
+              <input
+                type="date"
+                value={createdAfter}
+                onChange={(e) => setCreatedAfter(e.target.value)}
+                className="bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium"
+              />
+            </label>
+            {(minDownloads || minLikes || createdAfter || sortBy !== 'downloads') && (
+              <button
+                onClick={() => { setSortBy('downloads'); setMinDownloads(''); setMinLikes(''); setCreatedAfter(''); }}
+                className="text-primary hover:underline font-medium cursor-pointer"
+              >
+                Reset filters
+              </button>
             )}
           </div>
 
