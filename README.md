@@ -53,15 +53,15 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 *   **Quick demo - Auto-Discover & Run in background**
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | PROBE=1 START=1 sh
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh
     ```
-    Installs the binary, scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) to auto-configure `config.yaml`, starts the gateway in the background, and prints operational access details. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try ollama-mesh, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
+    Installs the binary, starts the gateway in the background against a fresh `mesh.db`, and prints operational access details. Before starting, it scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) and interactively prompts you to pick which discovered nodes to seed into `mesh.db` (comma-separated numbers, `all`, or `skip`) - there's no config file to hand-edit. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try ollama-mesh, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
 
 *   **Production - Auto-Discover & Run as a managed service (recommended for real deployments)**
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | PROBE=1 SERVICE=1 sh
+    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | SERVICE=1 sh
     ```
-    Same as the quick-demo command, but instead of a background process it installs and enables a proper OS service (`Restart=on-failure`, starts on boot) - this is what you want for anything you intend to keep running. Currently implemented via `systemd` on Linux (requires root/sudo; logs via `journalctl -u ollama-mesh -f`). `SERVICE=1` is deliberately OS-agnostic - on macOS or any host without a supported service manager, it prints a notice and falls back to the same background mode as the quick-demo command rather than failing the install.
+    Same as the quick-demo command (including the interactive node-discovery prompt), but instead of a background process it installs and enables a proper OS service (`Restart=on-failure`, starts on boot) - this is what you want for anything you intend to keep running. Currently implemented via `systemd` on Linux (requires root/sudo; logs via `journalctl -u ollama-mesh -f`). `SERVICE=1` is deliberately OS-agnostic - on macOS or any host without a supported service manager, it prints a notice and falls back to the same background mode as the quick-demo command rather than failing the install.
 
 ### Uninstalling
 
@@ -69,10 +69,10 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh | sh
 ```
 
-Run this from the same directory `install.sh` was run in (it looks for `config.yaml`, `mesh.db`, and the pidfile there). It stops and removes the systemd service or background process and removes the binary. `config.yaml` and `mesh.db` are always kept by default when piped like this (stdin isn't a terminal, so the keep/remove prompt never runs) - pass `KEEP_DB=0` and/or `KEEP_CONFIG=0` to remove them instead:
+Run this from the same directory `install.sh` was run in (it looks for `mesh.db` and the pidfile there). It stops and removes the systemd service or background process and removes the binary. `mesh.db` is always kept by default when piped like this (stdin isn't a terminal, so the keep/remove prompt never runs) - pass `KEEP_DB=0` to remove it instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh | KEEP_DB=0 KEEP_CONFIG=0 sh
+curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh | KEEP_DB=0 sh
 ```
 
 To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying on the env vars, download the script first so it runs with a real terminal attached: `curl -fsSL .../uninstall.sh -o uninstall.sh && sh uninstall.sh`.
@@ -287,97 +287,28 @@ Point your LLM clients at `:11434`. ollama-mesh speaks the Ollama API and passes
 
 ## Configuration
 
-Start from [`config.example.yaml`](config.example.yaml):
+There is no config file. ollama-mesh is DB-first: everything lives in `mesh.db` (SQLite), and you configure it entirely through the admin dashboard or the REST API - nothing to hand-edit, nothing to redeploy for a settings change.
 
-```yaml
-proxy:
-  port: 11434
-  log_level: info
-  log_format: json  # for log aggregators
-
-nodes:
-  - name: gpu-0
-    url: http://10.0.1.10:11434
-    gpu_model: "NVIDIA A100 80GB"
-    # runtime: ollama  # default - GET /api/ps for warm-model detection
-  - name: gpu-1
-    url: http://10.0.1.11:11434
-    gpu_model: "NVIDIA A100 80GB"
-  - name: vllm-gpu
-    url: http://10.0.1.20:8000
-    runtime: vllm       # GET /health + /v1/models; /v1/* traffic only
-    vram_total_mb: 24576
-  - name: tgi-gpu
-    url: http://10.0.1.21:8080
-    runtime: tgi        # GET /health + /info; /v1/* traffic only
-    vram_total_mb: 24576
-  - name: llamacpp-gpu
-    url: http://10.0.1.22:8080
-    runtime: llamacpp   # GET /health + /v1/models; /v1/* traffic only
-    vram_total_mb: 16384
-
-routing:
-  strategy: warm-first
-  poll_interval_ms: 2000
-  fallback: least-connections
-  max_retries: 2
-  upstream_timeout_ms: 120000
-  queue_max_depth: 100
-  queue_timeout_ms: 30000
-  session_affinity: true
-  session_affinity_ttl: "10m"
-
-warmup:
-  enabled: true
-  interval_ms: 300000
-  models:
-    - llama3.2:8b
-    - codellama:34b
-
-auth:
-  enabled: true
-  admin_token: sk-admin-change-me
-  state_path: usage-state.json
-  keys:
-    - name: engineering
-      key: sk-mesh-eng-001
-      rate_limit: 5000
-      monthly_limit: 5000000
-      models: []
-    - name: data-science
-      key: sk-mesh-ds-001
-      rate_limit: 2000
-      daily_limit: 100000
-      models:
-        - llama3.2:8b
-        - codellama:34b
-    - name: agent-pipeline
-      key: sk-mesh-agent-001
-      rate_limit: 500
-      monthly_limit: 2000000
-      expires_at: "2027-01-01"
-
-metrics:
-  enabled: true
-  port: 9090
-
-cloud_providers:
-  - name: openai-overflow
-    provider: openai
-    base_url: https://api.openai.com
-    api_key: sk-...
-    default_model: gpt-4o-mini
-    cost_per_1k_tokens: 0.00015
-    enabled: false  # explicit opt-in
-
-docker:
-  enabled: false
-  socket: /var/run/docker.sock
-  poll_interval_ms: 30000
-
-savings:
-  reference_cost_per_1k: 0.002
+**First boot:**
+```bash
+./ollama-mesh              # or --db /path/to/mesh.db to pick the database location
 ```
+The binary opens (or creates) `mesh.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Log in at `http://localhost:8080` with `admin` / `admin` - you'll be forced to set a new password on first login.
+
+From there, everything is a dashboard page or an `/admin/v1/...` API call:
+
+| Area | Where |
+|---|---|
+| GPU nodes | **GPU Nodes** page, or `install.sh`'s network-discovery wizard (`--seed-node` under the hood) |
+| API keys, rate limits, model allow-lists, quotas | **API Keys** page |
+| Routing strategy, timeouts, retries, session affinity, queueing, thermal watchdog | **Settings → Advanced Routing** |
+| Cloud overflow providers (OpenAI/Anthropic), cost-per-1k, spend caps | **Settings → Cloud Providers** / **Cloud Spend Cap** |
+| Docker auto-discovery, HA peer monitoring, webhooks | **Settings** (dedicated cards for each) |
+| Model warmup schedule | **Settings → Global Warmup**, or per-node in the **Warmup** page |
+| Model context windows | **Settings → Model Context Windows** |
+| Proxy/admin ports, CORS, access log | **Settings → Proxy Configuration** / **Admin & Security** |
+
+Prefer scripting it? Every one of those pages is a thin wrapper over `GET/PUT /admin/v1/settings`, `/admin/v1/nodes`, `/admin/v1/keys`, and `/admin/v1/cloud-providers` - GitOps-style operators can drive the same REST API from an init job instead of clicking through the UI.
 
 ---
 
@@ -410,7 +341,7 @@ Router: extract model name from JSON body
 
 The router polls `/api/ps` on each node every 2 seconds. State is real-time, not cached guesses.
 
-**Config hot-reload:** `kill -HUP <pid>` or `POST /admin/v1/config/reload` re-reads `config.yaml` without dropping connections.
+**Config hot-reload:** `kill -HUP <pid>` or `POST /admin/v1/config/reload` re-syncs live routing/nodes/keys/cloud-providers from `mesh.db` without dropping connections. (Listen ports/addresses and a few other startup-only settings still need a restart - the dashboard flags which ones.)
 
 ---
 
@@ -418,14 +349,7 @@ The router polls `/api/ps` on each node every 2 seconds. State is real-time, not
 
 ollama-mesh proactively keeps priority models loaded in VRAM between requests. Without this, idle models get evicted and the next request pays the cold-start tax.
 
-```yaml
-warmup:
-  enabled: true
-  interval_ms: 300000   # every 5 minutes
-  models:
-    - llama3.2:8b       # your highest-traffic models
-    - codellama:34b
-```
+Configure it in the dashboard's **Settings → Global Warmup** card: enable it, set the interval (default every 5 minutes), and list your highest-traffic models. Per-node warmup overrides live on the **Warmup** page.
 
 ---
 

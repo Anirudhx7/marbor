@@ -41,7 +41,7 @@ When a request overflows to a configured cloud provider (OpenAI, Anthropic), spe
 spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens
 ```
 
-`cost_per_1k_tokens` is configured per cloud provider in `config.yaml`. Local requests are always $0 spend.
+`cost_per_1k_tokens` is set per cloud provider on the dashboard's **Settings > Cloud Providers** page. Local requests are always $0 spend.
 
 ### Net Savings
 
@@ -145,7 +145,7 @@ After break-even, every locally-served token is pure cost deflection. The hardwa
 
 2. **Cloud token counts** - parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.
 
-3. **Reference rate** - operator-configured in `config.yaml` under `savings.reference_cost_per_1k`. Single flat rate applied to all locally-served tokens.
+3. **Reference rate** - operator-configured on the dashboard's **Settings > Global Warmup & Audit** page (Savings reference cost). Single flat rate applied to all locally-served tokens.
 
 4. **Cloud rates** - per-provider `cost_per_1k_tokens` in the `cloud_providers` config block.
 
