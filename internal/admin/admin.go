@@ -1482,7 +1482,10 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body) // optional body; empty is fine
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
 	reason := body.Reason
 	if reason == "" {
 		reason = "manual"
