@@ -345,6 +345,7 @@ export function GPUNodes() {
     host: '',
     port: '11434',
     gpuModel: '',
+    runtime: 'auto',
   });
   const [modelFit, setModelFit] = useState<ModelFitResponse | null>(null);
   const [modelFitError, setModelFitError] = useState<string | null>(null);
@@ -457,7 +458,7 @@ export function GPUNodes() {
         vramTotalMB: 24576,
         vramUsedMB: 0,
         vramSource: 'declared',
-        runtime: 'ollama',
+        runtime: newNode.runtime === 'auto' ? 'ollama' : newNode.runtime,
         powerDrawW: 0,
         cpuPercent: 0,
         temperature: 45,
@@ -470,7 +471,7 @@ export function GPUNodes() {
       setNodes(prev => [...prev, added]);
       setActionError(null);
       setIsAddModalOpen(false);
-      setNewNode({ name: '', host: '', port: '11434', gpuModel: '' });
+      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto' });
       return;
     }
 
@@ -480,6 +481,7 @@ export function GPUNodes() {
       name: newNode.name,
       url: `http://${newNode.host}:${newNode.port}`,
       gpu_model: newNode.gpuModel || 'Unknown GPU',
+      runtime: newNode.runtime,
     };
 
     try {
@@ -487,7 +489,7 @@ export function GPUNodes() {
       await loadNodes();
       setActionError(null);
       setIsAddModalOpen(false);
-      setNewNode({ name: '', host: '', port: '11434', gpuModel: '' });
+      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto' });
     } catch (err: any) {
       setActionError(err?.message || 'Failed to add node');
     }
@@ -589,6 +591,7 @@ export function GPUNodes() {
   const [editNode, setEditNode] = useState<GPUNode | null>(null);
   const [editVRAM, setEditVRAM] = useState('');
   const [editGPUModel, setEditGPUModel] = useState('');
+  const [editRuntime, setEditRuntime] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -596,23 +599,25 @@ export function GPUNodes() {
     setEditNode(node);
     setEditVRAM(node.vramTotalMB > 0 ? String(node.vramTotalMB) : '');
     setEditGPUModel(node.gpuModel ?? '');
+    setEditRuntime(node.runtime || 'ollama');
     setEditError('');
   };
 
   const handleSavePatch = async () => {
     if (!editNode) return;
-    const patch: { vram_total_mb?: number; gpu_model?: string } = {};
+    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string } = {};
     if (editVRAM.trim() !== '') {
       const v = parseInt(editVRAM, 10);
       if (isNaN(v) || v < 0) { setEditError('VRAM must be a non-negative integer (MB)'); return; }
       patch.vram_total_mb = v;
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
+    if (editRuntime && editRuntime !== (editNode.runtime || 'ollama')) patch.runtime = editRuntime;
     if (Object.keys(patch).length === 0) { setEditNode(null); return; }
 
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === editNode.name
-        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel }
+        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel, runtime: patch.runtime ?? n.runtime }
         : n));
       setEditNode(null);
       return;
@@ -816,6 +821,25 @@ export function GPUNodes() {
               />
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Runtime
+            </label>
+            <select
+              value={newNode.runtime}
+              onChange={(e) => setNewNode({ ...newNode, runtime: e.target.value })}
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
+            >
+              <option value="auto">Auto-detect</option>
+              <option value="ollama">Ollama</option>
+              <option value="vllm">vLLM</option>
+              <option value="tgi">TGI (Text Generation Inference)</option>
+              <option value="llamacpp">llama.cpp</option>
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Auto-detect probes the node on first health check. Pick a runtime directly if you know it.
+            </p>
+          </div>
           {actionError && (
             <p className="text-sm text-destructive">{actionError}</p>
           )}
@@ -858,6 +882,25 @@ export function GPUNodes() {
               placeholder="e.g., NVIDIA RTX 4090"
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Runtime
+            </label>
+            <select
+              value={editRuntime}
+              onChange={(e) => setEditRuntime(e.target.value)}
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
+            >
+              <option value="auto">Auto-detect</option>
+              <option value="ollama">Ollama</option>
+              <option value="vllm">vLLM</option>
+              <option value="tgi">TGI (Text Generation Inference)</option>
+              <option value="llamacpp">llama.cpp</option>
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Setting Auto-detect re-probes the node on the next health check.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">

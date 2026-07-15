@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # gate.sh - mirrors CI exactly. Green here = green in GitHub Actions.
-# Requires Docker Desktop running (Go is not installed locally).
+# Runs Go in Docker (golang:1.25.12) to match CI's toolchain version exactly,
+# even though Go is also installed locally. Requires Docker Desktop running.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
