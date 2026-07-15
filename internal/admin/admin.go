@@ -577,6 +577,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/cloud/providers", s.cors(s.adminAuth(s.handleAddCloudProvider)))
 	reg("PUT /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleUpdateCloudProvider)))
 	reg("DELETE /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleDeleteCloudProvider)))
+	reg("PUT /admin/cloud/providers/reorder", s.cors(s.adminAuth(s.handleReorderCloudProviders)))
 	reg("POST /admin/cloud/providers/test", s.cors(s.adminAuth(s.handleTestCloudProvider)))
 	reg("GET /admin/analytics", s.cors(s.adminAuth(s.handleAnalytics)))
 	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
@@ -1566,6 +1567,35 @@ func (s *Server) handleDeleteCloudProvider(w http.ResponseWriter, r *http.Reques
 	}
 	s.logSystemChange(r, "delete_cloud_provider", name, "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleReorderCloudProviders takes the caller's desired display/attempt
+// order (highest priority first) and renumbers every named provider's
+// priority to match, then re-syncs the router so the new order takes effect
+// immediately - same immediate-effect pattern as add/update/delete.
+// PUT /admin/cloud/providers/reorder.
+func (s *Server) handleReorderCloudProviders(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Order []string `json:"order"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(body.Order) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "order is required")
+		return
+	}
+	if err := s.st.SetCloudProviderPriorities(body.Order); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if _, err := s.syncCloudProvidersToRouter(); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	s.logSystemChange(r, "reorder_cloud_providers", "", fmt.Sprintf("Order: %v", body.Order))
+	w.WriteHeader(http.StatusOK)
 }
 
 // handleGetNodeWarmup returns the per-node runtime warmup setting.
