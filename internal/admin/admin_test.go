@@ -618,6 +618,55 @@ func TestHandleAddNode_AllowsNewURL(t *testing.T) {
 	}
 }
 
+// TestHandlePatchNode_RejectsUnknownRuntime verifies a PATCH with an
+// unrecognized runtime value is rejected with 400 before it ever reaches
+// router.PatchNode or the store override.
+func TestHandlePatchNode_RejectsUnknownRuntime(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"runtime":"lmstudio"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/gpu-0", body)
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handlePatchNode(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for unknown runtime", rec.Code)
+	}
+}
+
+// TestHandlePatchNode_SetsRuntime verifies a valid runtime patch is applied
+// to the live node.
+func TestHandlePatchNode_SetsRuntime(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Runtime: "ollama"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"runtime":"vllm"}`))
+	req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/gpu-0", body)
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handlePatchNode(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(nodes))
+	}
+	nodes[0].RLock()
+	got := nodes[0].Runtime
+	nodes[0].RUnlock()
+	if got != "vllm" {
+		t.Errorf("Runtime = %q, want vllm", got)
+	}
+}
+
 func TestCloudBudgetExceeded_DisabledByDefault(t *testing.T) {
 	s := newTestServer()
 	s.TrackCloudCostModel("gpt-4o", 1000.0, 1000) // huge cost, caps still 0/disabled

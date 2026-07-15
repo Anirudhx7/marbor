@@ -301,6 +301,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN daily_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -590,19 +591,33 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 
 // --- Node overrides ---
 
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string) error {
-	var vram sql.NullInt64
+// UpsertNodeOverride merges the given fields into any existing override row
+// for name, so a call that only sets one field (e.g. runtime) never clobbers
+// fields set by an earlier, separate PatchNode call (e.g. vram_total_mb).
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string) error {
+	var existingVRAM sql.NullInt64
+	var existingGPU, existingRuntime sql.NullString
+	_ = s.db.QueryRow(
+		`SELECT vram_total_mb, gpu_model, runtime FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime)
+
+	vram := existingVRAM
 	if vramTotalMB != nil {
 		vram = sql.NullInt64{Int64: *vramTotalMB, Valid: true}
 	}
-	var gpu sql.NullString
+	gpu := existingGPU
 	if gpuModel != nil {
 		gpu = sql.NullString{String: *gpuModel, Valid: true}
 	}
+	rt := existingRuntime
+	if runtime != nil {
+		rt = sql.NullString{String: *runtime, Valid: true}
+	}
+
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model)
-		 VALUES (?, ?, ?)`,
-		name, vram, gpu,
+		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model, runtime)
+		 VALUES (?, ?, ?, ?)`,
+		name, vram, gpu, rt,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -612,7 +627,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -623,8 +638,8 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	for rows.Next() {
 		var name string
 		var vram sql.NullInt64
-		var gpu sql.NullString
-		if err := rows.Scan(&name, &vram, &gpu); err != nil {
+		var gpu, rt sql.NullString
+		if err := rows.Scan(&name, &vram, &gpu, &rt); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -633,6 +648,9 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		}
 		if gpu.Valid {
 			ov.GPUModel = &gpu.String
+		}
+		if rt.Valid {
+			ov.Runtime = &rt.String
 		}
 		out[name] = ov
 	}

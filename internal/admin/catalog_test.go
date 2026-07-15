@@ -176,6 +176,42 @@ func TestClassifyFit(t *testing.T) {
 	}
 }
 
+func TestGgufOnlyRuntime(t *testing.T) {
+	cases := []struct {
+		runtime string
+		want    bool
+	}{
+		{"", true},
+		{"ollama", true},
+		{"llamacpp", true},
+		{"vllm", false},
+		{"tgi", false},
+		{"auto", false},
+	}
+	for _, c := range cases {
+		if got := ggufOnlyRuntime(c.runtime); got != c.want {
+			t.Errorf("ggufOnlyRuntime(%q) = %v, want %v", c.runtime, got, c.want)
+		}
+	}
+}
+
+func TestDetectSafetensorsQuant(t *testing.T) {
+	cases := []struct {
+		tags []string
+		want string
+	}{
+		{[]string{"text-generation", "awq"}, "AWQ"},
+		{[]string{"text-generation", "gptq"}, "GPTQ"},
+		{[]string{"text-generation", "bitsandbytes"}, "BNB"},
+		{[]string{"text-generation", "transformers"}, "FP16/BF16"},
+	}
+	for _, c := range cases {
+		if got := detectSafetensorsQuant(c.tags); got != c.want {
+			t.Errorf("detectSafetensorsQuant(%v) = %q, want %q", c.tags, got, c.want)
+		}
+	}
+}
+
 func TestExtractQuantization(t *testing.T) {
 	cases := []struct {
 		filename string
