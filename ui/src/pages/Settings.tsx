@@ -948,7 +948,7 @@ export function SettingsPage() {
           Are you sure you want to reload config.yaml into the running process?
         </p>
         <p className="text-xs text-muted-foreground">
-          This re-applies whatever is currently saved on disk  --  including auth mode, ports, and routing settings  --  to
+          This re-applies whatever is currently saved on disk — including auth mode, ports, and routing settings — to
           the live mesh immediately, without a restart.
         </p>
         {error && (

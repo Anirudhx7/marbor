@@ -58,7 +58,7 @@ func (r *Router) discoverAndAddDockerNodes() {
 
 	found, err := discoverDockerNodes(socket)
 	if err != nil {
-		// Docker not available or socket missing  --  log silently, don't crash.
+		// Docker not available or socket missing — log silently, don't crash.
 		return
 	}
 	for _, n := range found {
@@ -226,7 +226,7 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 
 	// Persist any residency change (models loaded/unloaded since the last poll)
-	// immediately  --  Tier 1 lifecycle events must not wait for the background flush.
+	// immediately — Tier 1 lifecycle events must not wait for the background flush.
 	r.persistResidencyDiff(nodeName, prevModels, models)
 
 	// Reconcile SQLite against live /api/ps truth: delete any warm_state row for

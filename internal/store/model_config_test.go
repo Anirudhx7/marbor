@@ -86,7 +86,7 @@ func TestGetModelConfigNotFound(t *testing.T) {
 }
 
 // TestModelConfigSameModelDifferentNodes verifies the same model name can
-// carry two independent profiles on two different nodes  --  the core reason
+// carry two independent profiles on two different nodes — the core reason
 // for keying by (model, node) rather than model alone (e.g. one Ollama node
 // with a smaller VRAM budget wanting a smaller num_ctx than another node
 // hosting the identical model, or two nodes running different runtimes

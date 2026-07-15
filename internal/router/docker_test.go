@@ -63,13 +63,13 @@ func TestContainerNodeName(t *testing.T) {
 }
 
 func TestContainerHost(t *testing.T) {
-	// No NetworkSettings at all (zero value)  --  falls back to loopback.
+	// No NetworkSettings at all (zero value) — falls back to loopback.
 	c := dockerContainer{}
 	if got := containerHost(c); got != "127.0.0.1" {
 		t.Errorf("containerHost(no networks) = %q, want 127.0.0.1", got)
 	}
 
-	// Bridge network with a container IP  --  must use the container IP,
+	// Bridge network with a container IP — must use the container IP,
 	// not loopback, so container-to-container traffic on the bridge works.
 	c2 := dockerContainer{}
 	c2.NetworkSettings.Networks = map[string]struct {
@@ -82,7 +82,7 @@ func TestContainerHost(t *testing.T) {
 	}
 
 	// Network present but IPAddress empty (e.g. --network host: container
-	// shares the host's namespace and has no container-private IP)  --  falls
+	// shares the host's namespace and has no container-private IP) — falls
 	// back to loopback since the mapped port is reachable there.
 	c3 := dockerContainer{}
 	c3.NetworkSettings.Networks = map[string]struct {
@@ -126,7 +126,7 @@ func TestParseDockerContainersUsesContainerIP(t *testing.T) {
 }
 
 func TestParseDockerContainersFallsBackToLoopback(t *testing.T) {
-	// No container IP available (e.g. host network mode)  --  must fall back
+	// No container IP available (e.g. host network mode) — must fall back
 	// to 127.0.0.1 rather than emit an empty/broken host.
 	c := dockerContainer{
 		ID:    "def456",
@@ -183,7 +183,7 @@ func TestDiscoverDockerNodesHTTP(t *testing.T) {
 			},
 		},
 		{
-			// Ollama container with no mapped port  --  should be skipped.
+			// Ollama container with no mapped port — should be skipped.
 			ID:    "ghi789",
 			Names: []string{"/ollama-no-port"},
 			Image: "ollama/ollama",

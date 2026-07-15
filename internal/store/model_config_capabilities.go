@@ -4,7 +4,7 @@ package store
 // the strict OpenAI chat-completions schema, and are therefore always valid
 // for any non-Ollama runtime reached via the OpenAI-compatible wire path
 // (vLLM, TGI, llama.cpp). Verified against TGI's live OpenAPI schema
-// (ChatRequest) as the narrowest of the three  --  it accepts exactly this set
+// (ChatRequest) as the narrowest of the three — it accepts exactly this set
 // and nothing more via its OpenAI-compatible endpoint.
 var OpenAICompatBaseFields = []string{
 	"temperature", "top_p", "max_tokens", "seed", "stop",
@@ -22,12 +22,12 @@ var OpenAICompatBaseFields = []string{
 //   - llama.cpp: tools/server/README.md, which explicitly states its
 //     /completion-specific sampling features are also accepted on the
 //     OpenAI-compatible endpoints.
-//   - TGI: live OpenAPI schema  --  its ChatRequest genuinely does not declare
+//   - TGI: live OpenAPI schema — its ChatRequest genuinely does not declare
 //     any of these properties, so it gets none.
 //
 // Load-time/engine params (num_ctx, num_gpu, etc.) are never listed here: on
 // every non-Ollama runtime those are launch-time flags, not per-request
-// fields, regardless of wire format  --  so there's no runtime for which they'd
+// fields, regardless of wire format — so there's no runtime for which they'd
 // belong in this table. This is the single source of truth for both request
 // injection (internal/proxy) and the admin API that lets the UI show only
 // the fields a model's actual node/runtime supports (see
@@ -44,14 +44,14 @@ var OpenAICompatExtraFields = map[string][]string{
 		"dry_multiplier", "dry_base", "dry_allowed_length", "dry_penalty_last_n",
 		"xtc_probability", "xtc_threshold", "ignore_eos",
 	},
-	"tgi": {}, // strict OpenAI schema only  --  TGI's OpenAI layer doesn't accept extras
+	"tgi": {}, // strict OpenAI schema only — TGI's OpenAI layer doesn't accept extras
 }
 
 // OllamaLoadTimeFields are ModelConfig fields injected into Ollama's
 // per-request "options" object that have no meaning on any other runtime
 // (they're launch-time flags everywhere else, or don't exist elsewhere at
 // all). Verified against Ollama's current api/types.go Options/Runner
-// structs (github.com/ollama/ollama)  --  flash_attention,
+// structs (github.com/ollama/ollama) — flash_attention,
 // offload_kv_cache_to_gpu, rope_frequency_base/scale, use_mlock, and
 // tensor_parallelism are deliberately absent: none of them are real
 // per-request (or even current Modelfile) parameters anymore.
@@ -66,7 +66,7 @@ var OllamaLoadTimeFields = []string{
 // mirostat/mirostat_tau/mirostat_eta and tfs_z were removed from this list:
 // they do not exist in Ollama's current Options struct (confirmed against
 // source, not older docs/blog posts describing a previous version that
-// wrapped llama.cpp's full option set directly)  --  they remain valid
+// wrapped llama.cpp's full option set directly) — they remain valid
 // ModelConfig fields for llama.cpp, just no longer injected for Ollama.
 var OllamaInferenceFields = []string{
 	"top_k", "min_p", "typical_p", "num_keep", "repeat_penalty", "repeat_last_n",
@@ -88,7 +88,7 @@ func SupportedFieldsFor(runtime string) []string {
 	fields = append(fields, OpenAICompatExtraFields[runtime]...)
 	// system is supported here too: injectModelDefaults prepends it as a
 	// leading {"role":"system",...} message on chat-shaped ("messages"
-	// array) requests. template stays Ollama-only  --  it's Ollama's own
+	// array) requests. template stays Ollama-only — it's Ollama's own
 	// model-file prompt-templating mechanism, with no equivalent on any
 	// OpenAI-compatible runtime.
 	fields = append(fields, "system", "rpm", "tpm")

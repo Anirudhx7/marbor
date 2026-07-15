@@ -28,7 +28,7 @@ func TestMonitor_PeerReachable(t *testing.T) {
 	defer srv.Close()
 
 	m := newMonitor([]string{srv.URL}, 20, 500)
-	m.checkAll() // deterministic  --  no goroutine/timer needed
+	m.checkAll() // deterministic — no goroutine/timer needed
 
 	statuses := m.PeerStatuses()
 	if !statuses[srv.URL] {
@@ -88,7 +88,7 @@ func TestMonitor_MultiPeer(t *testing.T) {
 
 func TestAllPeersUp_NoPeers(t *testing.T) {
 	m := newMonitor(nil, 20, 500)
-	// No Start needed  --  vacuous truth requires no polling.
+	// No Start needed — vacuous truth requires no polling.
 	if !m.allPeersUp() {
 		t.Error("allPeersUp() should return true (vacuously) when no peers are configured")
 	}
@@ -101,7 +101,7 @@ func TestProbeSetsInitialStatus(t *testing.T) {
 	defer srv.Close()
 
 	m := newMonitor([]string{srv.URL}, 20, 500)
-	// Call checkAll directly  --  no goroutine, no ticker, deterministic.
+	// Call checkAll directly — no goroutine, no ticker, deterministic.
 	m.checkAll()
 
 	statuses := m.PeerStatuses()
@@ -119,7 +119,7 @@ func TestMonitor_String(t *testing.T) {
 }
 
 func TestMonitor_PeerConnectionRefused(t *testing.T) {
-	// Bind a listener, capture its address, close it  --  guarantees no listener on that port.
+	// Bind a listener, capture its address, close it — guarantees no listener on that port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

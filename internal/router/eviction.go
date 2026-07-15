@@ -16,7 +16,7 @@ import (
 
 // ErrModelPinned is returned by UnloadModel when the requested model is on the
 // node's never-evict (pinned) list. Pinning means "never evict or unload
-// without an explicit unpin first"  --  it must be honored on every unload path
+// without an explicit unpin first" — it must be honored on every unload path
 // (manual and scheduled), not just the automatic LRU eviction path. Callers
 // that want to override this must unpin the model first; there is no
 // force-unload bypass.
@@ -27,7 +27,7 @@ func modelKey(node, model string) string { return node + "\x00" + model }
 
 // RecordModelUse stamps the last-request time for (node, model). Called from the
 // proxy on every routed request; this timestamp is what drives LRU eviction
-// (the coldest model  --  oldest or never-seen  --  is unloaded first under pressure).
+// (the coldest model — oldest or never-seen — is unloaded first under pressure).
 func (r *Router) RecordModelUse(node, model string) {
 	if node == "" || model == "" {
 		return
@@ -157,7 +157,7 @@ func (r *Router) nodeExistsLocked(name string) bool {
 // (keep_alive:0). Returns false if the node is unknown. A no-op unload against a
 // model that isn't resident is harmless (Ollama returns success). Returns
 // ErrModelPinned without contacting the node if the model is on the node's
-// never-evict list  --  pinning blocks manual unload the same as auto-eviction;
+// never-evict list — pinning blocks manual unload the same as auto-eviction;
 // the operator must unpin first.
 func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool, error) {
 	n := r.FindNode(nodeName)
@@ -205,7 +205,7 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 
 // EvictForHeadroom unloads the coldest non-pinned models on nodeName until at
 // least neededBytes of VRAM is free, or only pinned models remain (in which case
-// it logs the unmet pressure  --  a genuine OOM risk, surfaced rather than hidden).
+// it logs the unmet pressure — a genuine OOM risk, surfaced rather than hidden).
 // Returns the number of models evicted. No-op when the node's total VRAM is
 // unknown (nothing to reason about).
 func (r *Router) EvictForHeadroom(ctx context.Context, nodeName string, neededBytes int64) int {
@@ -328,7 +328,7 @@ const warmReservationTTL = warmupPingTimeout
 // This exists because n.LoadedModels only reflects the last /api/ps poll: when
 // two models are warmed on the same node close together, the second model's
 // headroom check would otherwise see the exact same pre-warmup snapshot as the
-// first and conclude  --  wrongly  --  that it has the whole node to itself.
+// first and conclude — wrongly — that it has the whole node to itself.
 func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 	r.evictMu.Lock()
 	defer r.evictMu.Unlock()
@@ -466,8 +466,8 @@ func (r *Router) clearWarmReservation(node, model string) {
 // already loaded, the size or node capacity is unknown, it already fits, or a
 // recent auto-eviction on this node is still within the cooldown (thrash guard).
 //
-// It runs ONLY on the proactive warm/load path  --  never on the streaming request
-// path  --  so it never adds latency to a client request.
+// It runs ONLY on the proactive warm/load path — never on the streaming request
+// path — so it never adds latency to a client request.
 func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string) {
 	n.mu.RLock()
 	nodeURL := n.URL
@@ -499,7 +499,7 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	// Reserve this model's estimated footprint now, and pick up whatever other
 	// models on this node are still mid-warmup (started, not yet poll-confirmed).
 	// Without this, warming two models on the same node races: both read the
-	// identical pre-warmup snapshot and each independently  --  and wrongly  --
+	// identical pre-warmup snapshot and each independently — and wrongly  --
 	// concludes it has the entire node's free VRAM to itself.
 	reservedByOthers := r.reserveWarmBytes(nodeName, model, est)
 

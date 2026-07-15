@@ -272,7 +272,7 @@ func withNodePullTimeout(t *testing.T, d time.Duration) {
 
 // TestHandleNodePull_ShortTimeoutCausesBadGateway documents the exact
 // mechanism behind the reported bug: /api/pull is called with "stream":false,
-// so Ollama sends nothing back  --  not even response headers  --  until the whole
+// so Ollama sends nothing back — not even response headers — until the whole
 // download finishes. If the admin API's outbound HTTP client timeout is
 // shorter than a slow-but-otherwise-successful pull, the client call itself
 // fails (context deadline exceeded) and handleNodePull maps that to a 502
