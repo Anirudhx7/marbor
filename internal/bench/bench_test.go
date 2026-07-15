@@ -177,7 +177,7 @@ func TestMeasureTTFT_httpError(t *testing.T) {
 func TestMeasureTTFT_emptyStream(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		// Only a [DONE] with no content — simulates a model that returned nothing.
+		// Only a [DONE] with no content - simulates a model that returned nothing.
 		fmt.Fprint(w, sseChunk("[DONE]", true))
 	}))
 	defer srv.Close()
@@ -199,7 +199,7 @@ func TestPrintTable_nocrash(t *testing.T) {
 		ImprovementX:   124.1,
 		ImprovementPct: 99.2,
 	}
-	// Redirect stdout to discard — we just want a no-panic guarantee.
+	// Redirect stdout to discard - we just want a no-panic guarantee.
 	// (printTable writes to os.Stdout directly; integration verified manually.)
 	_ = r
 	printTable(r) // should not panic

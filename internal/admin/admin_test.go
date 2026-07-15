@@ -371,7 +371,7 @@ func TestAdmin_KeysNeverPlaintext(t *testing.T) {
 }
 
 // TestAdmin_AddKeyResponseContainsPlaintext verifies that POST /admin/keys
-// (the creation endpoint) returns the full key once — this is the only time it
+// (the creation endpoint) returns the full key once - this is the only time it
 // appears in an API response.
 func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
@@ -412,7 +412,7 @@ func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 // buffered request logs to the store before returning, so LogRequest calls
 // made just before shutdown are not lost. Also verifies that a LogRequest
 // call arriving after Shutdown() has returned does not panic (logChan is
-// never closed, so a late send is dropped, not a crash) — this is the
+// never closed, so a late send is dropped, not a crash) - this is the
 // scenario that motivated the fix: the store used to be closed out from
 // under the async logger goroutine.
 func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
@@ -482,7 +482,7 @@ func TestHandleCreateScheduleRejectsUnknownNode(t *testing.T) {
 }
 
 // TestHandleCreateScheduleRequiresModelsForWarmupUnload verifies a warmup or
-// unload schedule with no models selected is rejected — such a schedule would
+// unload schedule with no models selected is rejected - such a schedule would
 // otherwise fire "successfully" every tick while its models loop runs zero
 // times, i.e. it would never actually warm up or unload anything.
 func TestHandleCreateScheduleRequiresModelsForWarmupUnload(t *testing.T) {
@@ -866,7 +866,7 @@ func TestHandleSetGetDeleteModelConfig_RoundTrip(t *testing.T) {
 }
 
 // TestHandleGetModelConfig_RequiresNodeParam verifies the node query param is
-// mandatory — a profile with no node has no meaning under the new keying.
+// mandatory - a profile with no node has no meaning under the new keying.
 func TestHandleGetModelConfig_RequiresNodeParam(t *testing.T) {
 	s := newModelConfigTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/admin/model-config?model=llama3.3:8b", nil)
@@ -892,7 +892,7 @@ func TestHandleSetModelConfig_RequiresNodeField(t *testing.T) {
 
 // TestHandleModelConfig_SameModelDifferentNodesIndependent verifies the same
 // model name can carry two independent profiles on two nodes, and deleting
-// one doesn't touch the other — exercised at the HTTP layer this time, not
+// one doesn't touch the other - exercised at the HTTP layer this time, not
 // just the store layer.
 func TestHandleModelConfig_SameModelDifferentNodesIndependent(t *testing.T) {
 	s := newModelConfigTestServer(t)

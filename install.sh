@@ -235,7 +235,7 @@ verify_endpoint() {
     fi
     # ollama-mesh's own /health returns {"proxy_port":...}; a real TGI or
     # llama.cpp server never does. Rule this out FIRST, before the /info
-    # probe below — the mesh's embedded dashboard SPA answers 200 on any
+    # probe below - the mesh's embedded dashboard SPA answers 200 on any
     # unmatched path (including /info), so checking status code alone would
     # misidentify a mesh instance (possibly this one) as a TGI node.
     case "$HEALTH_BODY" in
@@ -244,7 +244,7 @@ verify_endpoint() {
 
     # TGI: verify by content, not just HTTP status. A real TGI server's
     # /info response is JSON containing both "model_id" and
-    # "max_concurrent_requests" — fields no SPA catch-all route would emit.
+    # "max_concurrent_requests" - fields no SPA catch-all route would emit.
     INFO_BODY=""
     if command -v curl >/dev/null 2>&1; then
       INFO_BODY=$(curl -fs -m 0.5 "http://$IP:8080/info" 2>/dev/null || true)
@@ -291,7 +291,7 @@ setup_systemd_service() {
   fi
 
   # Anything else already bound to the admin port (unmanaged process, another
-  # tool) would still make the new unit fail to bind on restart — warn.
+  # tool) would still make the new unit fail to bind on restart - warn.
   if curl -fs -m 0.5 "http://localhost:8080/health" >/dev/null 2>&1; then
     echo "  [!] Something is already listening on :8080 (possibly an old"
     echo "      hand-started ollama-mesh process). Stop it first, or the"
@@ -352,7 +352,7 @@ WantedBy=multi-user.target
     echo "  Logs:             journalctl -u ollama-mesh -f  (also ${WORKDIR}/ollama-mesh.log)"
     echo "  Config:           ${CONFIG_PATH}"
     echo "--------------------------------------------------------"
-    echo "Enabled — will restart on failure and on reboot."
+    echo "Enabled - will restart on failure and on reboot."
     echo "Uninstall:        https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
     return 0
   else
@@ -361,7 +361,7 @@ WantedBy=multi-user.target
   fi
 }
 
-# Poll a URL until it responds (any HTTP status counts as "up" — we're
+# Poll a URL until it responds (any HTTP status counts as "up" - we're
 # checking the port is bound and serving, not asserting a particular route).
 # Non-fatal to the caller: prints [ok]/[FAIL] and returns 0/1.
 wait_for_http() {
@@ -396,7 +396,7 @@ wait_for_http() {
 
 # Real post-install verification: config validity, the three listeners the
 # binary starts, and reachability of whatever backend nodes are configured.
-# Never fails the install — this is diagnostics for the operator, since a
+# Never fails the install - this is diagnostics for the operator, since a
 # backend node being offline at install time is expected/acceptable.
 run_health_checks() {
   CONFIG_FILE="$1"
@@ -475,7 +475,7 @@ if [ ! -f config.yaml ]; then
     # skipping them here avoids discovering this same host twice under two
     # different names (once by LAN IP, once as "localhost"). get_local_subnets
     # emits one IP per line (any host with >1 interface, e.g. Docker bridges,
-    # returns several lines) — join with spaces so the " $TARGET_IP " match
+    # returns several lines) - join with spaces so the " $TARGET_IP " match
     # below actually matches each entry instead of only the last one.
     SELF_IPS=" $(get_local_subnets | tr '\n' ' ') "
 
@@ -553,7 +553,7 @@ EOF
     fi
 
   else
-    # No probe — write a minimal default config pointing at localhost
+    # No probe - write a minimal default config pointing at localhost
     echo "Writing default config.yaml (run with PROBE=1 to auto-discover network nodes)..."
     cat <<EOF > config.yaml
 proxy:
@@ -602,7 +602,7 @@ if [ "$SERVICE_MODE" = true ]; then
 fi
 
 # Idempotency: if a previous nohup-managed instance is still running, don't
-# start a second one competing for the same ports — report it and verify
+# start a second one competing for the same ports - report it and verify
 # health instead. A stale pidfile (process no longer running) is cleaned up
 # and a fresh instance is started normally.
 if [ -f "$PIDFILE" ]; then

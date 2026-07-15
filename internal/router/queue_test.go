@@ -73,7 +73,7 @@ func TestWaitForNodeUnblocksOnDecrConn(t *testing.T) {
 	go func() {
 		// WaitForNode blocks because we'll pretend there is a global conn limit.
 		// Since we have no real conn limit in the router, it will actually route
-		// immediately — so this tests the signal path by holding the node unhealthy,
+		// immediately - so this tests the signal path by holding the node unhealthy,
 		// then marking healthy and signaling.
 		n.mu.Lock()
 		n.Healthy = false
@@ -114,7 +114,7 @@ func TestWaitForNodeTimeout(t *testing.T) {
 		SessionAffinityTTL:   "10m",
 		NvidiaPollIntervalMs: 30000,
 		QueueMaxDepth:        10,
-		QueueTimeoutMs:       200, // 200ms timeout — fast for tests
+		QueueTimeoutMs:       200, // 200ms timeout - fast for tests
 	}
 	r := New(cfg, []config.NodeConfig{{Name: "n1", URL: "http://localhost:11434"}}, nil)
 	r.mu.RLock()

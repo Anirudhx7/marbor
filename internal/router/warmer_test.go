@@ -238,7 +238,7 @@ func TestWarmupBothModelsStayResidentOnNodeWithHeadroom(t *testing.T) {
 
 // TestPingNodeRequestBody verifies pingNode sends the correct JSON body to
 // /api/generate: model name, keep_alive string, and stream:false. This is the
-// critical correctness test — a malformed body would silently fail to keep the
+// critical correctness test - a malformed body would silently fail to keep the
 // model warm even though the HTTP call succeeded.
 func TestPingNodeRequestBody(t *testing.T) {
 	type reqBody struct {
@@ -341,7 +341,7 @@ func TestPingNodeDoesNotFallBackOnNon400Errors(t *testing.T) {
 }
 
 // TestPingNodeDrainBody verifies that a keep_alive of "0" (drain/unload) is
-// forwarded verbatim — sending any other value would prevent the model from
+// forwarded verbatim - sending any other value would prevent the model from
 // being evicted from VRAM during a scheduled drain.
 func TestPingNodeDrainBody(t *testing.T) {
 	received := make(chan string, 1)

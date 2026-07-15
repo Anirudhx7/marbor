@@ -855,8 +855,8 @@ export const mockHFRepoDetails: Record<string, any> = {
 
 // --- Model configuration overrides (demo) ---
 // Plausible static profiles: a realistic MIX of some fields set, most left
-// unconfigured — an all-fields-filled profile would look fabricated (R1).
-// Keyed by (model, node) — the same model name can carry a different
+// unconfigured - an all-fields-filled profile would look fabricated (R1).
+// Keyed by (model, node) - the same model name can carry a different
 // profile per node/runtime it's resident on (see mockGPUNodes/mockModelCatalog
 // above: gpu-node-01=ollama, gpu-node-02=vllm, gpu-node-03=tgi, gpu-node-04=llamacpp).
 const mockModelConfigSeed: ModelConfig[] = [
@@ -869,7 +869,7 @@ const mockModelConfigSeed: ModelConfig[] = [
     rpm: 120,
     system: 'You are a careful reasoning assistant. Think step by step before answering.',
   },
-  // mistral:7b is resident on both a vLLM node and a TGI node — two separate
+  // mistral:7b is resident on both a vLLM node and a TGI node - two separate
   // profiles, since load-time/engine params only ever apply on Ollama and
   // the two OpenAI-compatible runtimes support different extra fields.
   {
@@ -887,7 +887,7 @@ const mockModelConfigSeed: ModelConfig[] = [
     temperature: 0.65,
     max_tokens: 2048,
   },
-  // phi3:medium is resident on gpu-node-04 (llama.cpp) — exercises the
+  // phi3:medium is resident on gpu-node-04 (llama.cpp) - exercises the
   // llama.cpp-only sampling extras (mirostat, DRY).
   {
     model: 'phi3:medium',
@@ -935,14 +935,14 @@ export function listMockModelConfigs(): ModelConfig[] {
 // --- Model config capabilities (demo) ---
 // Mirrors internal/store/model_config_capabilities.go's SupportedFieldsFor
 // table so the offline/demo build filters fields the same way the real API
-// does. Hardcoded here deliberately — this is the demo/offline path, not the
+// does. Hardcoded here deliberately - this is the demo/offline path, not the
 // real API contract (the live build always calls fetchModelConfigCapabilities).
 const OPENAI_COMPAT_BASE_FIELDS = [
   'temperature', 'top_p', 'max_tokens', 'seed', 'stop',
   'presence_penalty', 'frequency_penalty', 'response_format',
 ];
 // Ollama-only, verified against Ollama's current api/types.go
-// Options/Runner structs — flash_attention, offload_kv_cache_to_gpu,
+// Options/Runner structs - flash_attention, offload_kv_cache_to_gpu,
 // rope_frequency_base/scale, use_mlock, and tensor_parallelism removed:
 // none are real per-request params in current Ollama.
 const OLLAMA_LOAD_TIME_FIELDS = [
@@ -958,7 +958,7 @@ const OLLAMA_INFERENCE_FIELDS = [
 export function getMockModelConfigCapabilities(): Record<string, string[]> {
   // system is supported on every runtime: injectModelDefaults prepends it as
   // a leading system-role message on chat-shaped OpenAI-compatible requests.
-  // template stays Ollama-only — it's Ollama's own model-file
+  // template stays Ollama-only - it's Ollama's own model-file
   // prompt-templating mechanism, with no OpenAI-compatible equivalent.
   return {
     ollama: [...OPENAI_COMPAT_BASE_FIELDS, ...OLLAMA_LOAD_TIME_FIELDS, ...OLLAMA_INFERENCE_FIELDS, 'system', 'template', 'rpm', 'tpm'],

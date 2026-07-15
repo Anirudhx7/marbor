@@ -7,7 +7,7 @@
 // The non-Ollama runtimes deliberately implement only what ollama-mesh
 // itself actually calls (internal/runtime's detect/health probes, verified
 // against that package's source and tests) rather than each project's full
-// real API surface — this is a mock of the mesh's integration contract, not
+// real API surface - this is a mock of the mesh's integration contract, not
 // a general-purpose vLLM/TGI/llama.cpp simulator:
 //   - vllm/llamacpp: GET /health, GET /v1/models (owned_by:"vllm" is what
 //     distinguishes vllm from llamacpp during auto-detection), POST
@@ -430,7 +430,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, nodeName string, latency
 // --- OpenAI-compatible mock: vllm / tgi / llamacpp ---
 
 // defaultModelID returns a realistic single-model identity for a runtime
-// that wasn't given an explicit MODEL_ID — these three runtimes are
+// that wasn't given an explicit MODEL_ID - these three runtimes are
 // conventionally single-model-per-process, unlike Ollama's multi-model
 // warm/cold catalog.
 func defaultModelID(runtime string) string {

@@ -268,7 +268,7 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		// model_configs holds the operator-declared default parameter profile
-		// per (model, node) pair (item #20 — advanced model config overrides).
+		// per (model, node) pair (item #20 - advanced model config overrides).
 		// Keyed by node, not just model: the same model name can be resident
 		// on nodes with different runtimes (Ollama/vLLM/TGI/llama.cpp) or just
 		// different VRAM budgets, and a single shared-by-model-name profile
@@ -302,7 +302,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 	} {
-		s.db.Exec(col) // ignore error — column may already exist
+		s.db.Exec(col) // ignore error - column may already exist
 	}
 	return nil
 }
@@ -424,7 +424,7 @@ func (s *sqliteStore) HourlyBuckets(since time.Time) ([]HourlyBucket, error) {
 }
 
 // UpsertModelStat ADDS the given counts to the per-model row (same accumulate
-// semantics as UpsertHourlyBucket — callers pass a single request's delta).
+// semantics as UpsertHourlyBucket - callers pass a single request's delta).
 func (s *sqliteStore) UpsertModelStat(ms ModelStat) error {
 	_, err := s.db.Exec(
 		`INSERT INTO model_stats (model, requests, tokens, cost_usd)
@@ -1566,7 +1566,7 @@ func (s *sqliteStore) RecordWarmLoad(w WarmStateRecord) error {
 }
 
 func (s *sqliteStore) SnapshotWarmState(w WarmStateRecord) error {
-	// Refresh residency/last-used/vram without bumping load_count — this is the
+	// Refresh residency/last-used/vram without bumping load_count - this is the
 	// periodic snapshot flush, not a load event. Inserts a fresh row (load_count
 	// 0) only if the pair is not already present.
 	_, err := s.db.Exec(
@@ -1630,7 +1630,7 @@ func (s *sqliteStore) AllWarmState() ([]WarmStateRecord, error) {
 // that node is deleted. A single SQL statement is used; no row-by-row loop.
 func (s *sqliteStore) ReconcileNodeWarmState(node string, residentModels []string) error {
 	if len(residentModels) == 0 {
-		// Fast path: node is fully cold — clear it entirely.
+		// Fast path: node is fully cold - clear it entirely.
 		_, err := s.db.Exec(`DELETE FROM warm_state WHERE node = ?`, node)
 		if err != nil {
 			return fmt.Errorf("store: ReconcileNodeWarmState clear %s: %w", node, err)
@@ -1729,8 +1729,8 @@ func (s *sqliteStore) AllModelConfigs() ([]ModelConfig, error) {
 // model-only primary key to a (model, node) composite key. SQLite can't
 // ALTER a PRIMARY KEY in place, so this does a one-time rebuild: detect the
 // old schema via PRAGMA table_info, then fan each old model-only row out to
-// every node currently known in runtime_nodes — preserving existing operator
-// settings instead of silently discarding them — before dropping the old
+// every node currently known in runtime_nodes - preserving existing operator
+// settings instead of silently discarding them - before dropping the old
 // table. A no-op on a fresh DB (model_configs already has the new schema)
 // and a no-op if there's nothing to migrate.
 func (s *sqliteStore) migrateModelConfigsToNodeKeyed() error {

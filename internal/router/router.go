@@ -293,7 +293,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	// Queue config: 0 means disabled (immediate fallthrough to cloud/503).
 	// config.Validate() sets the production defaults (30s, depth 100).
 	// Tests that construct RoutingConfig{} directly bypass Validate() and get
-	// no queue, which is correct — they test 503/cloud paths, not queuing.
+	// no queue, which is correct - they test 503/cloud paths, not queuing.
 	queueTimeout := time.Duration(cfg.QueueTimeoutMs) * time.Millisecond
 	queueMaxDepth := cfg.QueueMaxDepth
 	healthFailureThreshold := cfg.HealthFailureThreshold
@@ -636,7 +636,7 @@ func (r *Router) Start(ctx context.Context) {
 	scheduleTicker := time.NewTicker(1 * time.Minute)
 	defer scheduleTicker.Stop()
 
-	// Warm-state flush ticker: Tier 2 of persistence — snapshots the full residency
+	// Warm-state flush ticker: Tier 2 of persistence - snapshots the full residency
 	// map to SQLite every 60s so drift the immediate lifecycle writes miss (VRAM,
 	// last-used) is captured even without a load/unload event.
 	warmStateTicker := time.NewTicker(warmStateFlushInterval)
@@ -705,7 +705,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		}
 		if config.NormalizeNodeURL(existing.URL) == normURL {
 			r.mu.RUnlock()
-			log.Printf("router: WARNING: rejecting node %q (%s): URL already registered as node %q — refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
+			log.Printf("router: WARNING: rejecting node %q (%s): URL already registered as node %q - refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
 			return
 		}
 	}
@@ -793,7 +793,7 @@ func (r *Router) SyncNodes(newNodes []config.NodeConfig) (added, removed int) {
 	for _, n := range newNodes {
 		if existingURL, ok := currentNames[n.Name]; !ok || existingURL != n.URL {
 			if ok {
-				// Same name, different URL — remove old first.
+				// Same name, different URL - remove old first.
 				r.RemoveNode(n.Name)
 				removed++
 			}
@@ -920,7 +920,7 @@ func (r *Router) NodeURLs() map[string]string {
 // "does this URL belong to some OTHER node" (e.g. an admin API update that
 // re-submits the same node's own URL is not a collision). Used to reject
 // admin "add node" requests that would silently duplicate an already-known
-// backend under a second name — see AddNode for the same check applied to
+// backend under a second name - see AddNode for the same check applied to
 // the DB store overlay and Docker discovery paths.
 func (r *Router) FindNodeByURL(url string, excludeName string) (string, bool) {
 	norm := config.NormalizeNodeURL(url)
