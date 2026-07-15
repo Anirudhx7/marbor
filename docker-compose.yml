@@ -6,7 +6,9 @@ services:
       - "9090:9090"
       - "8080:8080"
     volumes:
-      - mesh-data:/root
+      - mesh-data:/data
+    environment:
+      - MESH_DB_PATH=/data/mesh.db
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s
