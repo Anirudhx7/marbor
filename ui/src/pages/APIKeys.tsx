@@ -446,8 +446,8 @@ export function APIKeys() {
                   <td className="px-6 py-4">
                     <Badge 
                       variant={
-                        key.status === 'active' ? 'success' : 
-                        key.status === 'suspended' ? 'muted' : 'warning'
+                        key.status === 'active' ? 'success' :
+                        key.status === 'suspended' || key.status === 'revoked' ? 'muted' : 'warning'
                       }
                       size="sm"
                     >
@@ -458,7 +458,7 @@ export function APIKeys() {
                     <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => openEditModal(key)}
-                        disabled={(!isLive && !demoMode) || key.status === 'suspended'}
+                        disabled={(!isLive && !demoMode) || key.status === 'suspended' || key.status === 'revoked' || key.status === 'expired'}
                         title="Edit key limits"
                         className="p-2 text-muted-foreground hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
@@ -470,7 +470,7 @@ export function APIKeys() {
                           setKeyToRevoke(key);
                           setIsRevokeModalOpen(true);
                         }}
-                        disabled={key.status === 'suspended'}
+                        disabled={key.status === 'suspended' || key.status === 'revoked'}
                         className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />

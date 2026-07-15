@@ -410,6 +410,37 @@ type HFModelInfo struct {
 	Tags         []string `json:"tags"`
 	LastModified string   `json:"lastModified"`
 	PipelineTag  string   `json:"pipeline_tag"`
+	CreatedAt    string   `json:"createdAt"`
+}
+
+// ggufOnlyRuntime reports whether a node runtime only ever loads GGUF weight
+// files. Ollama and llama.cpp both load GGUF; vLLM and TGI load standard HF
+// `safetensors` repos (optionally AWQ/GPTQ quantized), never GGUF. An empty
+// runtime defaults to the historical GGUF-only behavior (Ollama).
+func ggufOnlyRuntime(runtime string) bool {
+	switch runtime {
+	case "", "ollama", "llamacpp":
+		return true
+	default:
+		return false
+	}
+}
+
+// detectSafetensorsQuant labels a non-GGUF repo's quantization method from
+// its HF tags. Falls back to "FP16/BF16" for unquantized full-precision repos.
+func detectSafetensorsQuant(tags []string) string {
+	for _, t := range tags {
+		lt := strings.ToLower(t)
+		switch {
+		case strings.Contains(lt, "awq"):
+			return "AWQ"
+		case strings.Contains(lt, "gptq"):
+			return "GPTQ"
+		case strings.Contains(lt, "bitsandbytes"), strings.Contains(lt, "bnb"):
+			return "BNB"
+		}
+	}
+	return "FP16/BF16"
 }
 
 // HFRepoResponse represents the detail returned by Hugging Face API for a single repository
@@ -438,8 +469,24 @@ type ModelVariantFit struct {
 // GET /admin/models/search?q={query} (also /admin/v1/models/search)
 func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
+	runtime := r.URL.Query().Get("runtime")
 
-	targetURL := "https://huggingface.co/api/models?filter=gguf&sort=downloads&direction=-1&limit=25"
+	sortField := "downloads"
+	direction := "-1"
+	switch r.URL.Query().Get("sort") {
+	case "likes":
+		sortField = "likes"
+	case "newest":
+		sortField = "createdAt"
+	case "oldest":
+		sortField = "createdAt"
+		direction = "1"
+	}
+
+	targetURL := fmt.Sprintf("https://huggingface.co/api/models?sort=%s&direction=%s&limit=25", sortField, direction)
+	if ggufOnlyRuntime(runtime) {
+		targetURL += "&filter=gguf"
+	}
 	if query != "" {
 		targetURL += "&search=" + url.QueryEscape(query)
 	}
@@ -472,6 +519,44 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Post-filter on fields the HF search API returns per-model but has no
+	// query param for (min downloads/likes, created-date range). All of these
+	// come from real HF response fields, never estimated.
+	minDownloads, _ := strconv.Atoi(r.URL.Query().Get("min_downloads"))
+	minLikes, _ := strconv.Atoi(r.URL.Query().Get("min_likes"))
+	var createdAfter, createdBefore time.Time
+	if v := r.URL.Query().Get("created_after"); v != "" {
+		createdAfter, _ = time.Parse("2006-01-02", v)
+	}
+	if v := r.URL.Query().Get("created_before"); v != "" {
+		createdBefore, _ = time.Parse("2006-01-02", v)
+	}
+
+	if minDownloads > 0 || minLikes > 0 || !createdAfter.IsZero() || !createdBefore.IsZero() {
+		filtered := make([]HFModelInfo, 0, len(hfModels))
+		for _, m := range hfModels {
+			if minDownloads > 0 && m.Downloads < minDownloads {
+				continue
+			}
+			if minLikes > 0 && m.Likes < minLikes {
+				continue
+			}
+			if !createdAfter.IsZero() || !createdBefore.IsZero() {
+				created, err := time.Parse(time.RFC3339, m.CreatedAt)
+				if err == nil {
+					if !createdAfter.IsZero() && created.Before(createdAfter) {
+						continue
+					}
+					if !createdBefore.IsZero() && created.After(createdBefore.AddDate(0, 0, 1)) {
+						continue
+					}
+				}
+			}
+			filtered = append(filtered, m)
+		}
+		hfModels = filtered
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(hfModels)
 }
@@ -493,6 +578,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nodeName := r.URL.Query().Get("node")
+	runtime := r.URL.Query().Get("runtime")
 
 	targetURL := fmt.Sprintf("https://huggingface.co/api/models/%s?blobs=true", repoID)
 	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
@@ -572,49 +658,79 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 2. Filter GGUF siblings and build variants list
+	// 2. Filter siblings and build variants list. Ollama/llama.cpp load GGUF
+	// quant files individually (one variant per file). vLLM/TGI load an
+	// entire HF safetensors repo as a single unit, so we aggregate all
+	// .safetensors sibling sizes into one variant instead.
 	variants := []ModelVariantFit{}
-	for _, sib := range repo.Siblings {
-		if !strings.HasSuffix(strings.ToLower(sib.Rfilename), ".gguf") {
-			continue
-		}
+	if ggufOnlyRuntime(runtime) {
+		for _, sib := range repo.Siblings {
+			if !strings.HasSuffix(strings.ToLower(sib.Rfilename), ".gguf") {
+				continue
+			}
 
-		quant := extractQuantization(sib.Rfilename)
-		sizeMB := sib.Size / (1024 * 1024)
-		if sizeMB == 0 {
-			continue // skip directories/metadata placeholder files
-		}
+			quant := extractQuantization(sib.Rfilename)
+			sizeMB := sib.Size / (1024 * 1024)
+			if sizeMB == 0 {
+				continue // skip directories/metadata placeholder files
+			}
 
-		// Calculate estimated VRAM based on file size and context length
-		// Formula: VRAMEstMB = sizeMB * 1.10 + ctxLen * 0.15
-		vramEstMB := int64(float64(sizeMB)*1.10 + float64(ctxLen)*0.15)
-		estBytes := vramEstMB * 1024 * 1024
+			// Calculate estimated VRAM based on file size and context length
+			// Formula: VRAMEstMB = sizeMB * 1.10 + ctxLen * 0.15
+			vramEstMB := int64(float64(sizeMB)*1.10 + float64(ctxLen)*0.15)
+			estBytes := vramEstMB * 1024 * 1024
 
-		tag := fmt.Sprintf("hf.co/%s:%s", repo.ID, quant)
-		if quant == "GGUF" {
-			tag = fmt.Sprintf("hf.co/%s", repo.ID)
-		}
+			tag := fmt.Sprintf("hf.co/%s:%s", repo.ID, quant)
+			if quant == "GGUF" {
+				tag = fmt.Sprintf("hf.co/%s", repo.ID)
+			}
 
-		// Check downloaded status
-		isDl := downloaded[tag] || downloaded[tag+":latest"]
-		if !isDl {
-			// Check case-insensitive base name cut match
-			for k := range downloaded {
-				if strings.EqualFold(k, tag) || strings.EqualFold(k, tag+":latest") {
-					isDl = true
-					break
+			// Check downloaded status
+			isDl := downloaded[tag] || downloaded[tag+":latest"]
+			if !isDl {
+				// Check case-insensitive base name cut match
+				for k := range downloaded {
+					if strings.EqualFold(k, tag) || strings.EqualFold(k, tag+":latest") {
+						isDl = true
+						break
+					}
 				}
 			}
-		}
 
-		variants = append(variants, ModelVariantFit{
-			Tag:          tag,
-			Quantization: quant,
-			VRAMEstMB:    vramEstMB,
-			SizeMB:       sizeMB,
-			Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
-			Downloaded:   isDl,
-		})
+			variants = append(variants, ModelVariantFit{
+				Tag:          tag,
+				Quantization: quant,
+				VRAMEstMB:    vramEstMB,
+				SizeMB:       sizeMB,
+				Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
+				Downloaded:   isDl,
+			})
+		}
+	} else {
+		var totalSize int64
+		hasSafetensors := false
+		for _, sib := range repo.Siblings {
+			if strings.HasSuffix(strings.ToLower(sib.Rfilename), ".safetensors") {
+				hasSafetensors = true
+				totalSize += sib.Size
+			}
+		}
+		if hasSafetensors {
+			sizeMB := totalSize / (1024 * 1024)
+			// vLLM/TGI carry more runtime overhead (PagedAttention KV cache,
+			// CUDA graph buffers) than llama.cpp, hence the higher multiplier.
+			vramEstMB := int64(float64(sizeMB)*1.20 + float64(ctxLen)*0.20)
+			estBytes := vramEstMB * 1024 * 1024
+			isDl := downloaded[repo.ID]
+			variants = append(variants, ModelVariantFit{
+				Tag:          repo.ID,
+				Quantization: detectSafetensorsQuant(repo.Tags),
+				VRAMEstMB:    vramEstMB,
+				SizeMB:       sizeMB,
+				Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
+				Downloaded:   isDl,
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

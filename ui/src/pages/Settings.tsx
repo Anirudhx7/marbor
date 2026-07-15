@@ -16,7 +16,7 @@ import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
 // header + per-deployment URL, which this proxy doesn't support).
 const CLOUD_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; defaultModel: string }> = {
   openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
-  anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-4-5' },
+  anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-5' },
   openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'openai/gpt-4o' },
   groq: { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', defaultModel: 'llama-3.3-70b-versatile' },
   together: { label: 'Together AI', baseUrl: 'https://api.together.xyz/v1', defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
@@ -25,6 +25,7 @@ const CLOUD_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; d
   mistral: { label: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', defaultModel: 'mistral-large-latest' },
   xai: { label: 'xAI (Grok)', baseUrl: 'https://api.x.ai/v1', defaultModel: 'grok-2-latest' },
   cerebras: { label: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1', defaultModel: 'llama-3.3-70b' },
+  custom: { label: 'Custom / Other', baseUrl: '', defaultModel: '' },
 };
 
 // Compact toggle switch shared by every boolean setting on this page.
@@ -1481,8 +1482,8 @@ export function SettingsPage() {
                 setEditingProvider({
                   ...editingProvider,
                   provider,
-                  base_url: editingProvider.base_url || preset?.baseUrl || '',
-                  default_model: editingProvider.default_model || preset?.defaultModel || '',
+                  base_url: preset?.baseUrl || editingProvider.base_url || '',
+                  default_model: preset?.defaultModel || editingProvider.default_model || '',
                 });
               }}
               className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
