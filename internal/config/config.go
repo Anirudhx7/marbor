@@ -153,13 +153,16 @@ type WebhookConfig struct {
 
 type AuditConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
-	// RetentionDays bounds how long audit_log rows are kept before a
-	// periodic prune deletes them. Admin-configurable rather than a fixed
-	// value: compliance-driven operators want months, disk-constrained
-	// self-hosted shops want days. 0 (even if persisted) is normalized to
-	// the default in Validate() - never an unbounded "keep forever" via a
-	// zero value someone forgot to set.
+	// RetentionDays bounds how long the per-request audit_log is kept before
+	// a periodic prune deletes old rows. Admin-configurable: compliance-
+	// driven operators want months, disk-constrained self-hosted shops want
+	// days. 0 is a deliberate "keep forever" choice (see Validate()).
 	RetentionDays int `yaml:"retention_days" json:"retention_days"`
+	// SystemAuditRetentionDays bounds the separate system_audit_log (admin
+	// action trail - who changed what). Kept independent of RetentionDays:
+	// this table is low-volume and security-sensitive, so it defaults to 0
+	// (forever) rather than the per-request log's 30-day default.
+	SystemAuditRetentionDays int `yaml:"system_audit_retention_days" json:"system_audit_retention_days"`
 }
 
 type DockerConfig struct {
@@ -456,6 +459,9 @@ func (c *Config) Validate() error {
 	// boot, before any admin choice exists (see main.go's settings overlay).
 	if c.Audit.RetentionDays < 0 {
 		return fmt.Errorf("audit.retention_days must be >= 0 (0 keeps audit log entries forever)")
+	}
+	if c.Audit.SystemAuditRetentionDays < 0 {
+		return fmt.Errorf("audit.system_audit_retention_days must be >= 0 (0 keeps entries forever)")
 	}
 
 	// Auth defaults to enabled: make an absent key explicit so a saved config
