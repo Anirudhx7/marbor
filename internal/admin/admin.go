@@ -1530,7 +1530,12 @@ func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request)
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		writeJSONError(w, http.StatusUnauthorized, "provider rejected the API key")
+		// Never return 401 here: apiFetch (ui/src/lib/api.ts) treats ANY 401
+		// from ANY admin endpoint as "the admin session expired" and force
+		// logs the operator out. This 401 would be the *cloud provider's*
+		// rejection of the key under test, not this admin session's - 400
+		// keeps it a plain validation error instead of triggering a logout.
+		writeJSONError(w, http.StatusBadRequest, "provider rejected the API key")
 		return
 	}
 	if resp.StatusCode >= 400 {
