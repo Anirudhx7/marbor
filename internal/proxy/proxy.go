@@ -822,6 +822,7 @@ func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r
 func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, clouds []config.CloudProvider, idx int) {
 	cloud := &clouds[idx]
 	hasNext := idx+1 < len(clouds)
+	delegated := false
 	metrics.CloudFallback(cloud.Name)
 	path := translateCloudPath(r.URL.Path)
 
@@ -892,11 +893,15 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			req.ContentLength = int64(len(outBody))
 		}
 	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+	proxy.ErrorHandler = func(w http.ResponseWriter, outReq *http.Request, err error) {
 		// Log the detailed error server-side, but never leak upstream topology
 		// (hostnames, ports, dial/TLS details) to the client.
 		log.Printf("cloud upstream error (provider=%s request_id=%s): %v", cloud.Name, requestID, err)
 		if hasNext {
+			delegated = true
+			// Use the original, unmutated request r (not outReq, which is the
+			// Director-rewritten outbound request) so the fallback provider
+			// sees the client's real path when deciding on Ollama translation.
 			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1)
 			return
 		}
@@ -905,6 +910,9 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 
 	rec := &statusRecorder{ResponseWriter: w, start: start}
 	aborted := serveAndRecoverAbort(proxy, rec, r)
+	if delegated {
+		return
+	}
 
 	duration := time.Since(start).Seconds()
 	nodeName := "cloud:" + cloud.Name
