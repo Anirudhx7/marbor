@@ -56,6 +56,9 @@ jobs:
           mkdir -p site/demo
           # Dashboard demo goes under /demo/
           cp -r ui/dist/. site/demo/
+          # Real Grafana dashboard JSON so the demo's download button works
+          mkdir -p site/demo/grafana
+          cp grafana/ollama-mesh.json site/demo/grafana/ollama-mesh.json
           # Create SPA 404 fallback inside demo/
           cp site/demo/index.html site/demo/404.html
           # Build docs HTML from markdown source
