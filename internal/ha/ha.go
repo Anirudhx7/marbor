@@ -109,7 +109,7 @@ func (m *Monitor) allPeersUp() bool {
 }
 
 // PeerCount returns the number of configured peers.
-// m.peers is immutable after construction — safe to read without a lock.
+// m.peers is immutable after construction - safe to read without a lock.
 func (m *Monitor) PeerCount() int { return len(m.peers) }
 
 // String returns a human-readable summary for startup logging.

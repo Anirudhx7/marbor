@@ -32,7 +32,7 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 //     params go into the request's "options" object; system/template/keep_alive
 //     are top-level fields. Ollama itself detects when a resident model's
 //     active options differ from an incoming request's and reloads
-//     automatically — the mesh does not need a separate evict-then-reload step.
+//     automatically - the mesh does not need a separate evict-then-reload step.
 //   - Every other runtime (vllm/tgi/llamacpp, reached via /v1/chat/completions,
 //     /v1/completions): the subset of inference-time params that exist in the
 //     strict OpenAI schema are always injected at the top level, plus
@@ -44,7 +44,7 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 //     (num_ctx, num_gpu, top_k via Ollama's own naming, mirostat, etc.) have
 //     no equivalent outside Ollama's options object and are skipped unless
 //     explicitly re-declared (under the runtime's own field name) in
-//     store.OpenAICompatExtraFields. template stays Ollama-only always — it's
+//     store.OpenAICompatExtraFields. template stays Ollama-only always - it's
 //     Ollama's own model-file prompt-templating mechanism, with no
 //     equivalent concept in any other runtime's OpenAI-compatible layer.
 //
@@ -66,7 +66,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		}
 
 		// Load-time / engine. This list is verified against Ollama's current
-		// api/types.go Options/Runner structs — flash_attention,
+		// api/types.go Options/Runner structs - flash_attention,
 		// offload_kv_cache_to_gpu, rope_frequency_base/scale, use_mlock, and
 		// tensor_parallelism are deliberately not injected (and no longer
 		// exist as ModelConfig fields at all): they are not real per-request
@@ -95,7 +95,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 
 		// Inference-time / sampling. mirostat/mirostat_tau/mirostat_eta and
 		// tfs_z are deliberately NOT injected here (and tfs_z no longer
-		// exists as a ModelConfig field at all — removed from llama.cpp's own
+		// exists as a ModelConfig field at all - removed from llama.cpp's own
 		// server too): current Ollama's Options struct has none of these.
 		// mirostat* remain valid fields for llama.cpp, injected in the
 		// non-Ollama branch below instead.
@@ -156,7 +156,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 			setIfAbsent(top, "keep_alive", *cfg.TTL)
 		}
 	} else {
-		// Strict OpenAI schema — always valid regardless of which non-Ollama
+		// Strict OpenAI schema - always valid regardless of which non-Ollama
 		// runtime is on the other end.
 		if cfg.Temperature != nil {
 			setIfAbsent(top, "temperature", *cfg.Temperature)
@@ -335,14 +335,14 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 
 // modelRateLimiter enforces optional per-(model,node) requests-per-minute
 // and tokens-per-minute caps (store.ModelConfig.RPM/TPM). Single mesh
-// process, no distributed state — an in-memory rolling-minute counter per
+// process, no distributed state - an in-memory rolling-minute counter per
 // (model, node) pair, mirroring the per-key tokenBucket pattern in
 // internal/auth. Keyed by node as well as model since ModelConfig itself is
 // now a per-(model,node) profile: the same model on two different nodes can
 // carry two different rpm/tpm caps. RPM is a real pre-request gate; TPM is
 // necessarily post-hoc (token counts are only known after a response
 // completes), so it blocks new requests once the current minute's
-// already-consumed tokens reach the cap — the same "count now, gate later"
+// already-consumed tokens reach the cap - the same "count now, gate later"
 // shape used for the existing daily/monthly per-key usage caps.
 type modelRateLimiter struct {
 	mu    sync.Mutex

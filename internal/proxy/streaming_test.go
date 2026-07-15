@@ -253,7 +253,7 @@ func TestAbortedStreamStillRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed before any response was delivered: %v", err)
 	}
-	io.Copy(io.Discard, resp.Body) //nolint:errcheck — truncated stream, read error possible
+	io.Copy(io.Discard, resp.Body) //nolint:errcheck - truncated stream, read error possible
 	resp.Body.Close()
 
 	entries := fetchLiveRequests(t, a)
