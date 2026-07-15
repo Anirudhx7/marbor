@@ -1,4 +1,4 @@
-# UI stage  --  vite outDir is ../internal/admin/web/dist (see ui/vite.config.ts),
+# UI stage — vite outDir is ../internal/admin/web/dist (see ui/vite.config.ts),
 # so from /app/ui the build lands in /app/internal/admin/web/dist.
 FROM node:20-alpine AS ui
 WORKDIR /app/ui

@@ -406,7 +406,7 @@ function titleFromMd(md, slug) {
 }
 
 function main() {
-  // Exclude internal/design docs from the public site  --  these stay local (never published).
+  // Exclude internal/design docs from the public site — these stay local (never published).
   const slugs = listMd(DOCS_SRC).filter((s) => s !== "prometheus-alerts" && !s.startsWith("design/"));
   let count = 0;
   for (const slug of slugs) {

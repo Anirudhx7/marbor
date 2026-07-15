@@ -264,7 +264,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
         </div>
       </div>
 
-      {/* Inline edit form  --  visually attached, distinct bg */}
+      {/* Inline edit form — visually attached, distinct bg */}
       {editing && (
         <div className="border-t border-border bg-secondary/30 px-4 py-4 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -284,7 +284,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
                     render it as an explicit option so the <select>'s displayed value always
                     matches the `node` state that will actually be submitted. Without this,
                     the browser silently falls back to visually showing the first real
-                    <option> while `node` state still holds the stale name  --  so Save appears
+                    <option> while `node` state still holds the stale name — so Save appears
                     to target a live node but actually submits the dead one and gets
                     rejected by the backend. */}
                 {node && !nodes.some(n => n.name === node) && (
@@ -354,7 +354,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
 
   // Keep `node` pointed at a live node: also self-heal if the previously
   // selected node disappears from the list (e.g. removed/renamed) while this
-  // form is open, not just when it starts out empty  --  otherwise the <select>
+  // form is open, not just when it starts out empty — otherwise the <select>
   // could fall into the same display/state divergence as ScheduleRow (see
   // that component's Node <select> for the full explanation).
   useEffect(() => {

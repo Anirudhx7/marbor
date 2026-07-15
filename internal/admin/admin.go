@@ -54,7 +54,7 @@ func extractBearerToken(hdr string) string {
 // %q) whenever msg embeds a runtime value: %q already wraps its argument in
 // its own literal quote characters, so splicing it into a template that is
 // itself already inside a JSON string (e.g. `{"error":"node %q not found"}`)
-// produces invalid JSON  --  the embedded quotes prematurely close the JSON
+// produces invalid JSON — the embedded quotes prematurely close the JSON
 // string and the frontend's res.json() throws, silently swallowing the real
 // error message and falling back to a generic one. json.Marshal here escapes
 // msg correctly no matter what it contains.
@@ -145,7 +145,7 @@ func (s *Server) SetStore(st store.Store) {
 }
 
 // LoadFromStore seeds in-memory state from the persistent store on startup.
-// Errors are non-fatal  --  the server still runs, just with a cold cache.
+// Errors are non-fatal — the server still runs, just with a cold cache.
 func (s *Server) LoadFromStore() error {
 	// Restore global counters.
 	if c, err := s.st.GetCounters(); err == nil {
@@ -505,17 +505,17 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/config/reload", s.cors(s.adminAuth(s.handleConfigReload)))
 	reg("GET /admin/config", s.cors(s.adminAuth(s.handleGetConfig)))
 
-	// Health check and login  --  no auth required.
+	// Health check and login — no auth required.
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /login", s.cors(s.handleLogin))
 	mux.HandleFunc("POST /admin/login", s.cors(s.handleAdminLogin))
 	reg("POST /admin/logout", s.cors(s.adminAuth(s.handleLogout)))
 	reg("POST /admin/change-password", s.cors(s.adminAuth(s.handleChangePassword)))
-	// Role-agnostic endpoints  --  any valid session (admin or user).
+	// Role-agnostic endpoints — any valid session (admin or user).
 	mux.HandleFunc("POST /change-password", s.cors(s.sessionAuth(s.handleChangePassword)))
 	mux.HandleFunc("POST /logout", s.cors(s.sessionAuth(s.handleLogout)))
 
-	// User management (admin only, no /admin/* duplicate  --  these are v1-only)
+	// User management (admin only, no /admin/* duplicate — these are v1-only)
 	mux.HandleFunc("GET /admin/v1/users/pending-count", s.cors(s.adminAuth(s.handlePendingUserCount)))
 	mux.HandleFunc("GET /admin/v1/users", s.cors(s.adminAuth(s.handleListUsers)))
 	mux.HandleFunc("POST /admin/v1/users", s.cors(s.adminAuth(s.handleCreateUser)))
@@ -538,9 +538,9 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Serve index.html for SPA routes; block unknown /admin/* API paths.
-		// /admin/login is a frontend SPA route, not an API path  --  let it through.
+		// /admin/login is a frontend SPA route, not an API path — let it through.
 		// Block unknown /admin/* API paths; /admin/login is a SPA route.
-		// /login and /change-password are API endpoints registered above  --  they
+		// /login and /change-password are API endpoints registered above — they
 		// never reach this catch-all, so no special-casing needed here.
 		if strings.HasPrefix(r.URL.Path, "/admin") && r.URL.Path != "/admin/login" {
 			http.NotFound(w, r)
@@ -620,7 +620,7 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 		token := extractBearerToken(r.Header.Get("Authorization"))
 
 		// Demo mode: accept the literal "demo-session" token so the GitHub Pages
-		// demo works without a DB. Not a security concern  --  demo mode is opt-in,
+		// demo works without a DB. Not a security concern — demo mode is opt-in,
 		// explicitly labelled, and never ships with real credentials.
 		if s.demoMode && token == "demo-session" {
 			next(w, r)
@@ -677,7 +677,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		} else if n.Failures > 0 {
 			health = "degraded"
 		}
-		// Empty history stays empty ([] in JSON)  --  the UI renders a "no data" state.
+		// Empty history stays empty ([] in JSON) — the UI renders a "no data" state.
 		hist := make([]float64, len(n.HealthHistory))
 		copy(hist, n.HealthHistory)
 
@@ -1075,7 +1075,7 @@ func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
 
 // handleConfigReload reloads the config file from disk without restarting.
 // POST /admin/config/reload (also /admin/v1/config/reload)
-// Equivalent to sending SIGHUP  --  useful in container environments where
+// Equivalent to sending SIGHUP — useful in container environments where
 // sending Unix signals is inconvenient (Kubernetes, Nomad, etc.).
 func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	newCfg, err := config.LoadConfig(s.configPath)
@@ -1266,7 +1266,7 @@ func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
 
 // handleUnloadModel evicts a single model from a node's VRAM on operator request
 // (Ollama keep_alive:0). It frees VRAM immediately without draining the node or
-// waiting for LRU pressure  --  the manual counterpart to auto-eviction.
+// waiting for LRU pressure — the manual counterpart to auto-eviction.
 func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body struct {
@@ -1534,7 +1534,7 @@ func (s *Server) handleSetNodePrewarm(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePatchNode applies runtime metadata overrides to a node.
-// PATCH /admin/nodes/{name}  --  accepts {"vram_total_mb":N,"gpu_model":"..."}
+// PATCH /admin/nodes/{name} — accepts {"vram_total_mb":N,"gpu_model":"..."}
 func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var patch router.NodePatch
@@ -1555,7 +1555,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 
 // handleGetModelConfig returns the configured default parameter profile for
 // a model on a specific node. GET /admin/model-config?model=X&node=Y. 404 if
-// no profile is configured for that exact pair  --  the caller sees the
+// no profile is configured for that exact pair — the caller sees the
 // backend's own defaults apply (R1: never invents values the operator never
 // set).
 func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
@@ -1583,7 +1583,7 @@ func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleModelConfigCapabilities returns, for every known runtime, which
-// ModelConfig fields actually take effect when injected  --  the single source
+// ModelConfig fields actually take effect when injected — the single source
 // of truth (store.SupportedFieldsFor) the UI reads to show only fields that
 // are real for a given model/node's runtime, instead of hand-duplicating
 // this list in TypeScript (which is exactly what caused this list to drift
@@ -1715,7 +1715,7 @@ func generateAPIKey(name string) string {
 // loginRateLimiter throttles admin login attempts per client IP to defend
 // against brute-force credential guessing on the admin dashboard (port 8080).
 // State is in-memory only (matches the rest of admin.go's in-process patterns)
-// and resets on process restart  --  an acceptable tradeoff since a meaningful
+// and resets on process restart — an acceptable tradeoff since a meaningful
 // brute-force run takes far longer than typical restart cycles, and this is a
 // throttle, not durable security state (rotate credentials if you suspect an
 // actual compromise, restart alone doesn't help an attacker).
@@ -1762,7 +1762,7 @@ func (l *loginRateLimiter) allow(ip string) (ok bool, retryAfter time.Duration) 
 	if now.Before(st.lockedUntil) {
 		return false, st.lockedUntil.Sub(now)
 	}
-	// Lockout expired (or none active)  --  if the failure window has also
+	// Lockout expired (or none active) — if the failure window has also
 	// elapsed, reset so old failures don't count against a fresh window.
 	if now.Sub(st.windowStart) > l.window {
 		st.failures = 0
@@ -1796,7 +1796,7 @@ func (l *loginRateLimiter) recordFailure(ip string) {
 // pruneLocked drops entries that are neither currently locked out nor within an
 // active failure window, so a brute-force flood from many unique IPs can't grow
 // the map without bound. Cheap: runs at most once per minute (caller holds the
-// write lock). A dropped entry is harmless  --  the next failure just re-creates a
+// write lock). A dropped entry is harmless — the next failure just re-creates a
 // fresh window for that IP.
 func (l *loginRateLimiter) pruneLocked(now time.Time) {
 	if now.Sub(l.lastPrune) < time.Minute {
@@ -1829,12 +1829,12 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-// handleAdminLogin handles POST /admin/login  --  admin role required.
+// handleAdminLogin handles POST /admin/login — admin role required.
 func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	s.handleLoginForRole(w, r, "admin")
 }
 
-// handleLogin handles POST /login  --  any active role accepted.
+// handleLogin handles POST /login — any active role accepted.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.handleLoginForRole(w, r, "")
 }
@@ -2416,7 +2416,7 @@ func (s *Server) handlePendingUserCount(w http.ResponseWriter, r *http.Request) 
 }
 
 // hashPassword hashes a plaintext password with bcrypt (cost=DefaultCost).
-// The salt is embedded in the returned hash  --  no separate salt parameter needed.
+// The salt is embedded in the returned hash — no separate salt parameter needed.
 // Replaces the broken SHA-256 loop (audit finding #1 / #9).
 func hashPassword(password string) (string, error) {
 	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -3222,7 +3222,7 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 
 // savingsUSD computes savings and cloud spend from real parsed token counts.
 // Returns nil (JSON null) for a figure when requests exist but no token data
-// was ever parsed  --  the UI renders that as " -- " instead of a fabricated number.
+// was ever parsed — the UI renders that as "—" instead of a fabricated number.
 func (s *Server) savingsUSD() (saved, spent interface{}) {
 	local := atomic.LoadInt64(&s.localCount)
 	cloud := atomic.LoadInt64(&s.cloudCount)
@@ -3385,8 +3385,8 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 // nodePullTimeout bounds how long ollama-mesh waits for a model pull to
 // finish on the target node before giving up and returning 502. handleNodePull
-// calls Ollama's /api/pull with "stream":false, so  --  unlike a normal chat/
-// generate request  --  the upstream sends no response at all (not even
+// calls Ollama's /api/pull with "stream":false, so — unlike a normal chat/
+// generate request — the upstream sends no response at all (not even
 // headers) until the *entire* download completes. Model pulls, especially
 // Hugging Face-sourced GGUF files (fetched directly from huggingface.co
 // rather than Ollama's CDN-backed registry), routinely take much longer than
@@ -3737,7 +3737,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 				vramSource = "nvidia-smi" // fallback
 			}
 		} else if vramUsedMBFromPS > 0 {
-			// No nvidia-smi but we have ps data  --  use loaded model VRAM as lower bound.
+			// No nvidia-smi but we have ps data — use loaded model VRAM as lower bound.
 			vramTotalBytes = 0
 			vramFreeBytes = 0
 			vramSource = "inferred"
@@ -3748,7 +3748,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		// Fetch downloaded models from /api/tags (cached 30s in router).
 		tagModels, err := s.router.FetchModelTags(nodeURL)
 		if err != nil {
-			// Node unreachable  --  emit an empty entry so the UI still shows the node.
+			// Node unreachable — emit an empty entry so the UI still shows the node.
 			result = append(result, nodeFitEntry{
 				Name:           nodeName,
 				URL:            nodeURL,

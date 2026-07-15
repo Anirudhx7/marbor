@@ -18,7 +18,7 @@ type HourlyBucket struct {
 	// requests, real eval_count/eval_duration parsed from responses.
 	// TokensPerSec is derived from them (Tokens / GenDurationMs) only when
 	// GenDurationMs > 0 for the hour; otherwise 0, meaning no real
-	// generation-time data was available for this hour  --  never a fabricated
+	// generation-time data was available for this hour — never a fabricated
 	// rate.
 	Tokens        int64   `json:"tokens"`
 	GenDurationMs int64   `json:"gen_duration_ms"`
