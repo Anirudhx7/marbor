@@ -1088,13 +1088,16 @@ func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	s.auth.Reload(newCfg.Auth)
 	s.router.SetWarmupConfig(newCfg.Warmup)
 	s.router.SetTimezone(newCfg.Timezone)
+	s.router.SetClouds(newCfg.CloudProviders)
+	added, removed := s.router.SyncNodes(newCfg.Nodes)
 	s.mu.Lock()
 	s.cfg = *newCfg
 	s.mu.Unlock()
-	log.Printf("config reloaded via API from %s (auth keys: %d, warmup: %v)", s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled)
+	log.Printf("config reloaded via API from %s (auth keys: %d, warmup: %v, nodes: +%d/-%d, cloud providers: %d)",
+		s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled, added, removed, len(newCfg.CloudProviders))
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"reloaded":true,"config_path":%q,"auth_keys":%d,"warmup_enabled":%v}`,
-		s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled)
+	fmt.Fprintf(w, `{"reloaded":true,"config_path":%q,"auth_keys":%d,"warmup_enabled":%v,"nodes_added":%d,"nodes_removed":%d,"cloud_providers":%d}`,
+		s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled, added, removed, len(newCfg.CloudProviders))
 }
 
 // handleGetConfig returns the current running config with all secret values masked.
