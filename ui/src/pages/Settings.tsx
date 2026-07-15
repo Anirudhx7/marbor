@@ -7,8 +7,25 @@ import { Modal } from '../components/Modal';
 import { defaultSettings, mockCloudProviders } from '../lib/mockData';
 import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, reloadFromStore, changePassword } from '../lib/api';
 import type { Settings, CloudProvider, CloudProviderInput } from '../types';
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
+
+// Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
+// auth and an OpenAI-compatible /chat/completions schema, matching this
+// mesh's proxy - Azure OpenAI is deliberately excluded (needs an `api-key`
+// header + per-deployment URL, which this proxy doesn't support).
+const CLOUD_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; defaultModel: string }> = {
+  openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
+  anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-4-5' },
+  openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'openai/gpt-4o' },
+  groq: { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', defaultModel: 'llama-3.3-70b-versatile' },
+  together: { label: 'Together AI', baseUrl: 'https://api.together.xyz/v1', defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
+  fireworks: { label: 'Fireworks AI', baseUrl: 'https://api.fireworks.ai/inference/v1', defaultModel: 'accounts/fireworks/models/llama-v3p1-70b-instruct' },
+  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+  mistral: { label: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', defaultModel: 'mistral-large-latest' },
+  xai: { label: 'xAI (Grok)', baseUrl: 'https://api.x.ai/v1', defaultModel: 'grok-2-latest' },
+  cerebras: { label: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1', defaultModel: 'llama-3.3-70b' },
+};
 
 // Compact toggle switch shared by every boolean setting on this page.
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -131,14 +148,14 @@ export function SettingsPage() {
   const [credSaved, setCredSaved] = useState(false);
 
   useEffect(() => {
-    if (location.pathname !== '/settings') return;
+    if (currentAppPath() !== '/settings') return;
     let active = true;
-    if (active && location.pathname === '/settings') {
+    if (active && currentAppPath() === '/settings') {
       setCloudLoading(true);
     }
     Promise.all([fetchSettings(), fetchCloudProviders().catch(() => mockCloudProviders)])
       .then(([settingsData, providersData]) => {
-        if (!active || location.pathname !== '/settings') return;
+        if (!active || currentAppPath() !== '/settings') return;
         setSettings({
           proxyPort: settingsData.proxy?.port || 11434,
           authMode: settingsData.auth?.enabled ? 'api-key' : 'no-auth',
@@ -201,12 +218,12 @@ export function SettingsPage() {
         setError(null);
       })
       .catch(err => {
-        if (!active || location.pathname !== '/settings') return;
+        if (!active || currentAppPath() !== '/settings') return;
         setError(err.message || 'Failed to load settings');
         setCloudProviders([]);
       })
       .finally(() => {
-        if (active && location.pathname === '/settings') {
+        if (active && currentAppPath() === '/settings') {
           setCloudLoading(false);
         }
       });
@@ -337,8 +354,12 @@ export function SettingsPage() {
 
   const handleSaveCloudProvider = async (isNew: boolean) => {
     if (!editingProvider) return;
-    if (!editingProvider.name.trim() || !editingProvider.provider.trim()) {
-      setCloudError('Name and provider are required');
+    if (!editingProvider.name.trim() || !editingProvider.provider.trim() || !editingProvider.base_url.trim()) {
+      setCloudError('Name, provider, and base URL are required');
+      return;
+    }
+    if (isNew && !editingProvider.api_key.trim()) {
+      setCloudError('API key is required');
       return;
     }
     setCloudSaving(true);
@@ -1402,7 +1423,9 @@ export function SettingsPage() {
       {editingProvider && (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Name</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Name <span className="text-destructive">*</span>
+            </label>
             <input
               type="text"
               value={editingProvider.name}
@@ -1413,23 +1436,39 @@ export function SettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Provider</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Provider <span className="text-destructive">*</span>
+            </label>
             <select
               value={editingProvider.provider}
-              onChange={(e) => setEditingProvider({ ...editingProvider, provider: e.target.value })}
+              onChange={(e) => {
+                const provider = e.target.value;
+                const preset = CLOUD_PROVIDER_PRESETS[provider];
+                setEditingProvider({
+                  ...editingProvider,
+                  provider,
+                  base_url: editingProvider.base_url || preset?.baseUrl || '',
+                  default_model: editingProvider.default_model || preset?.defaultModel || '',
+                });
+              }}
               className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
             >
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
+              {Object.entries(CLOUD_PROVIDER_PRESETS).map(([value, preset]) => (
+                <option key={value} value={value}>{preset.label}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Base URL</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Base URL <span className="text-destructive">*</span>
+            </label>
             <input type="text" value={editingProvider.base_url} onChange={(e) => setEditingProvider({ ...editingProvider, base_url: e.target.value })} placeholder="https://api.openai.com/v1" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">API Key</label>
-            <input type="password" value={editingProvider.api_key} onChange={(e) => setEditingProvider({ ...editingProvider, api_key: e.target.value })} autoComplete="off" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              API Key {!cloudProviders.some(p => p.name === editingProvider.name) && <span className="text-destructive">*</span>}
+            </label>
+            <input type="password" value={editingProvider.api_key} onChange={(e) => setEditingProvider({ ...editingProvider, api_key: e.target.value })} autoComplete="off" placeholder={cloudProviders.some(p => p.name === editingProvider.name) ? 'Leave unchanged to keep current key' : ''} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
