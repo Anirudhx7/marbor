@@ -122,10 +122,11 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
         <BudgetBanner />
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
           {/*
-            key=pathname on ErrorBoundary: forces React to fully unmount and
-            remount the boundary (and its Suspense + Routes children) on every
-            navigation. This clears any stuck error state and any in-progress
-            Suspense loading state so the new page always renders cleanly.
+            resetKey=pathname on ErrorBoundary: getDerivedStateFromProps clears
+            `error` whenever pathname changes, so a caught error on one page
+            doesn't keep the next page stuck in the error view. This does NOT
+            unmount/remount the boundary or its children — it's a state reset,
+            not a remount.
           */}
           <ErrorBoundary resetKey={pathname}>
             <Suspense
