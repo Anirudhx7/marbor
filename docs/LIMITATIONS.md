@@ -26,7 +26,7 @@ Docker-based auto-discovery works by scanning the Docker socket for containers r
 Workarounds if a discovered node is unreachable:
 - Run ollama-mesh on the host directly (bare-metal or VM), not inside a container.
 - Run ollama-mesh in Docker with `network_mode: host`, matching the discovered node's networking mode.
-- Disable auto-discovery and configure nodes manually in `config.yaml` using the correct container IP or hostname.
+- Disable auto-discovery and add the node manually from the dashboard's **GPU Nodes** page, using the correct container IP or hostname.
 
 ---
 
@@ -36,7 +36,7 @@ Workarounds if a discovered node is unreachable:
 Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each node's `/api/ps` endpoint. This is available for all nodes - local and remote - without any node agent.
 
 ### VRAM capacity
-Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh. For remote nodes, capacity must be declared explicitly via `vram_total_mb` in `config.yaml`. If neither is set, capacity is shown as `-` in the dashboard.
+Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh. For remote nodes, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
 
 ### Temperature and power draw
 GPU temperature and power draw are only available for the node running on the same host as ollama-mesh, via `nvidia-smi`. Remote nodes do not report temperature or power draw.
@@ -69,18 +69,14 @@ Hourly traffic buckets (requests, tokens, local/cloud split, cost) are persisted
 The "By Model" table's Local/Cloud breakdown is not backfilled the same way. Per-model stats are persisted as an aggregate request count with no local/cloud split, but the dashboard needs that split - attributing the aggregate to either side on restart would fabricate a false 100%-local or 100%-cloud number, which violates the project's no-fake-data rule. So the by-model view still shows a gap that fills back in as new traffic arrives. No data is lost in either case - the SQLite records are intact.
 
 ### Routing rules persist to SQLite
-Routing rules added via the admin API (the UI or `POST /admin/v1/routing/rules`) are written to SQLite and survive restarts. Rules defined in `config.yaml` are also loaded on startup. Both sources are merged at boot.
+Routing rules added via the admin API (the UI or `POST /admin/v1/routing/rules`) are written to SQLite and survive restarts.
 
 ---
 
 ## Configuration Model
-ollama-mesh uses a hybrid persistence model: `config.yaml` for static configuration and SQLite for runtime state. The boundary is not always intuitive:
-- Settings changed via the admin UI are written back to `config.yaml`.
-- Nodes added via the admin API are persisted to SQLite.
-- Routing rules added via the admin API are persisted to SQLite and survive restarts.
-- API keys and quota counters are persisted to the JSON state file (`auth.state_path`), not to `config.yaml` or SQLite.
+ollama-mesh is DB-first: `mesh.db` (SQLite) is the sole source of truth for every setting - nodes, API keys, routing rules, cloud providers, and everything on the Settings page. There is no config file and no split-brain between a static file and runtime state.
 
-If you manage ollama-mesh configuration via infrastructure-as-code (Ansible, Terraform, etc.), the safest approach is to treat `config.yaml` as the source of truth for all configuration and not rely on admin API mutations for anything that needs to survive a redeploy.
+If you manage ollama-mesh configuration via infrastructure-as-code (Ansible, Terraform, etc.), drive it through the `/admin/v1/...` REST API (the same endpoints the dashboard uses) from a post-deploy step, rather than templating a file.
 
 ---
 

@@ -1,8 +1,9 @@
 # Deploy ollama-mesh on AWS EC2
 
 Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2.
-ollama-mesh is a single static binary - no runtime, no dependencies - so an EC2
-deploy is "download, drop a config, start a service."
+ollama-mesh is a single static binary - no runtime, no dependencies, no config
+file - so an EC2 deploy is "download, start a service, configure from the
+dashboard."
 
 This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing,
 node-failure route-around, and self-healing recovery all verified live).
@@ -47,25 +48,6 @@ curl -fL -o /usr/local/bin/ollama-mesh \
 chmod +x /usr/local/bin/ollama-mesh
 ```
 
-`/opt/config.yaml`:
-
-```yaml
-proxy: { port: 11434, access_log: true }
-admin: { bind_address: "127.0.0.1:8080" }   # reach via SSH tunnel; don't expose
-auth:
-  enabled: true
-  state_path: /opt/usage-state.json          # quotas survive restarts
-  keys:
-    - { name: app, key: <generate-a-strong-key>, rate_limit: 1000 }
-nodes:
-  - { name: gpu-0, url: http://10.0.1.10:11434, gpu_model: "NVIDIA T4 16GB" }
-  - { name: gpu-1, url: http://10.0.1.11:11434, gpu_model: "NVIDIA A10G 24GB" }
-routing: { strategy: warm-first, poll_interval_ms: 2000, max_retries: 2 }
-metrics: { enabled: true, port: 9090 }
-savings: { reference_cost_per_1k: 0.002 }
-audit: { enabled: true, path: /opt/audit.log }
-```
-
 systemd unit (`/etc/systemd/system/ollama-mesh.service`):
 
 ```ini
@@ -74,8 +56,7 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 WorkingDirectory=/opt
-Environment=CONFIG_PATH=/opt/config.yaml
-ExecStart=/usr/local/bin/ollama-mesh
+ExecStart=/usr/local/bin/ollama-mesh --db /opt/mesh.db
 Restart=always
 [Install]
 WantedBy=multi-user.target
@@ -84,6 +65,14 @@ WantedBy=multi-user.target
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now ollama-mesh
 ```
+
+First boot creates a blank-slate `/opt/mesh.db`. Log in at `http://<mesh>:8080`
+with `admin`/`admin` (forced password change on first login - do this
+immediately since the admin port is reachable from the SSH tunnel below) and,
+from **Settings**, set `admin.bind_address` to `127.0.0.1:8080` (restart
+required). Add your GPU nodes from the **GPU Nodes** page and an API key from
+**API Keys** - or run `install.sh`'s network-discovery wizard against your VPC
+beforehand to seed the nodes automatically.
 
 ## 3. Security group
 

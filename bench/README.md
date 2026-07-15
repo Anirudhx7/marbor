@@ -60,7 +60,7 @@ docker run --rm -v "${PWD}:/app" -w /app -e GOFLAGS=-buildvcs=false \
 
 **Prerequisites:**
 - Two machines (or VMs) each running `ollama serve`
-- ollama-mesh configured with both nodes listed under `nodes:` in `config.yaml`
+- ollama-mesh configured with both nodes added via the dashboard's **GPU Nodes** page (or `--seed-node`)
 - The model you want to test pulled on both nodes (`ollama pull llama3.2:3b`)
 - An admin API key from your mesh config
 
