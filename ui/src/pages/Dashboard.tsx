@@ -159,7 +159,17 @@ export function Dashboard() {
   const location = useLocation();
   const { requests, newRequestId, isLive: requestsLive } = useLiveRequests(10);
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
-  const [summary, setSummary] = useState({
+  const [summary, setSummary] = useState(demoMode ? {
+    activeRequests: 1,
+    avgLatency: 145.2,
+    tokensPerMin: 12450,
+    coldStarts: 19,
+    queueDepth: 0,
+    nodesOnline: 3,
+    nodesDraining: 1,
+    totalNodes: 4,
+    warmHitRatio: 0.94,
+  } : {
     activeRequests: 0,
     avgLatency: 0,
     tokensPerMin: 0,
@@ -195,6 +205,17 @@ export function Dashboard() {
       if (demoMode) {
         if (!active || location.pathname !== '/') return;
         setNodes(mockGPUNodes);
+        setSummary({
+          activeRequests: 1,
+          avgLatency: 145.2,
+          tokensPerMin: 12450,
+          coldStarts: 19,
+          queueDepth: 0,
+          nodesOnline: 3,
+          nodesDraining: 1,
+          totalNodes: 4,
+          warmHitRatio: 0.94,
+        });
         setSavings(mockSavings);
         setSavingsLoading(false);
         setIsLive(false);
@@ -257,12 +278,12 @@ export function Dashboard() {
   }, [demoMode, location.pathname]);
 
   const activeFromRequests = requests.filter(r => r.status === 'loading').length;
-  const displayActive = isLive ? summary.activeRequests : activeFromRequests;
-  const displayLatency = isLive ? summary.avgLatency : 0;
-  const displayTokens = isLive ? summary.tokensPerMin : "--";
-  const displayColdStarts = isLive ? summary.coldStarts : '--';
-  const displayQueue = isLive ? summary.queueDepth : 0;
-  const displayWarmHitRatio = isLive ? summary.warmHitRatio : 0;
+  const displayActive = (isLive || demoMode) ? summary.activeRequests : activeFromRequests;
+  const displayLatency = (isLive || demoMode) ? summary.avgLatency : 0;
+  const displayTokens = (isLive || demoMode) ? summary.tokensPerMin : "--";
+  const displayColdStarts = (isLive || demoMode) ? summary.coldStarts : '--';
+  const displayQueue = (isLive || demoMode) ? summary.queueDepth : 0;
+  const displayWarmHitRatio = (isLive || demoMode) ? summary.warmHitRatio : 0;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -314,8 +335,8 @@ export function Dashboard() {
         />
         <MetricCard
           title="Avg Latency"
-          value={isLive ? displayLatency.toFixed(0) : '--'}
-          unit={isLive ? 'ms' : undefined}
+          value={isLive || demoMode ? displayLatency.toFixed(0) : '--'}
+          unit={isLive || demoMode ? 'ms' : undefined}
           icon={<Clock className="w-5 h-5" />}
         />
         <MetricCard
@@ -325,7 +346,7 @@ export function Dashboard() {
         />
         <MetricCard
           title="Warm Hit Ratio"
-          value={isLive ? `${(displayWarmHitRatio * 100).toFixed(0)}%` : '--'}
+          value={isLive || demoMode ? `${(displayWarmHitRatio * 100).toFixed(0)}%` : '--'}
           icon={<Flame className="w-5 h-5 text-orange-400" />}
         />
         <MetricCard
