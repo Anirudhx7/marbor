@@ -18,7 +18,7 @@
 *.tsx text eol=lf
 *.css text eol=lf
 
-# Binaries  --  no eol conversion
+# Binaries — no eol conversion
 *.png binary
 *.jpg binary
 *.gif binary

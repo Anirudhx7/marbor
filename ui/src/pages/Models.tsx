@@ -304,7 +304,7 @@ export function Models() {
 
   const models = catalog?.models ?? [];
   const configModelEntry = configModel ? models.find((m) => m.name === configModel) ?? null : null;
-  // Every node this model is resident on, paired with its runtime  --  the
+  // Every node this model is resident on, paired with its runtime — the
   // Advanced Settings modal scopes configuration to one (model, node) pair
   // and needs the full list to drive its node selector.
   const configNodes = configModelEntry
@@ -323,7 +323,7 @@ export function Models() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Model Catalog</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            All models across your nodes  --  warm (loaded in VRAM) and available on disk
+            All models across your nodes — warm (loaded in VRAM) and available on disk
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

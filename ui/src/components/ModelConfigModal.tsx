@@ -8,7 +8,7 @@ import type { ModelConfig } from '../types';
 // A node this model is resident on, paired with the runtime serving it there
 // (e.g. { name: 'gpu-node-02', runtime: 'vllm' }). Configuration is always
 // scoped to one (model, node) pair, since the same model name can carry a
-// different profile per node  --  different runtime, different VRAM budget.
+// different profile per node — different runtime, different VRAM budget.
 export interface ModelConfigNode {
   name: string;
   runtime: string;
@@ -26,7 +26,7 @@ type FormState = Omit<ModelConfig, 'model' | 'stop' | 'logit_bias'> & {
 // Some ModelConfig fields are injected under a different wire name on some
 // runtimes than the JSON key that stores the value (vLLM's OpenAI-compatible
 // server calls it "repetition_penalty"; the ModelConfig/Ollama/llama.cpp name
-// is "repeat_penalty"  --  see internal/proxy/model_config.go and
+// is "repeat_penalty" — see internal/proxy/model_config.go and
 // internal/store/model_config_capabilities.go's OpenAICompatExtraFields).
 // The capabilities endpoint returns wire names, so aliases map a form field
 // key to every wire name that means the same underlying field.
@@ -66,7 +66,7 @@ interface FieldDef {
 // instead of guessing a token count. "Custom" reveals the raw number input.
 const NUM_CTX_PRESETS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
 
-// Ollama-only  --  verified against Ollama's current api/types.go
+// Ollama-only — verified against Ollama's current api/types.go
 // Options/Runner structs. flash_attention, offload_kv_cache_to_gpu,
 // rope_frequency_base/scale, use_mlock, and tensor_parallelism were removed:
 // none of them are real per-request parameters in current Ollama (some were
@@ -74,7 +74,7 @@ const NUM_CTX_PRESETS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
 // directly; none ever existed on any other runtime).
 const LOAD_TIME_FIELDS: FieldDef[] = [
   { key: 'num_ctx', label: 'Context Length (num_ctx)', help: 'Max context window in tokens.', type: 'slider', min: 2048, max: 131072, step: 2048, sliderDefault: 4096 },
-  { key: 'num_gpu', label: 'GPU Layers (num_gpu)', help: 'Layers offloaded to GPU. Higher = more VRAM, less CPU. Depends on model size  --  leave unset to let Ollama decide.', type: 'int', min: 0 },
+  { key: 'num_gpu', label: 'GPU Layers (num_gpu)', help: 'Layers offloaded to GPU. Higher = more VRAM, less CPU. Depends on model size — leave unset to let Ollama decide.', type: 'int', min: 0 },
   { key: 'main_gpu', label: 'Main GPU (main_gpu)', help: 'Index of the primary GPU when running across multiple devices.', type: 'int', min: 0 },
   { key: 'num_batch', label: 'Batch Size (num_batch)', help: 'Tokens processed in parallel during prompt eval.', type: 'slider', min: 32, max: 2048, step: 32, sliderDefault: 512 },
   { key: 'num_thread', label: 'CPU Threads (num_thread)', help: 'CPU threads for generation. 0 = auto.', type: 'int', min: 0 },
@@ -88,7 +88,7 @@ const INFERENCE_FIELDS: FieldDef[] = [
   { key: 'top_p', label: 'Top P (nucleus sampling)', help: 'Only sample from the smallest set of tokens whose cumulative probability reaches this. Lower = more focused.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 0.9 },
   { key: 'top_k', label: 'Top K', help: 'Only sample from the top K candidate tokens. Lower = more focused, higher = more variety.', type: 'slider', min: 0, max: 100, step: 1, sliderDefault: 40 },
   { key: 'min_p', label: 'Min P', help: 'Minimum token probability relative to the top token’s probability.', type: 'slider', min: 0, max: 1, step: 0.01, sliderDefault: 0 },
-  { key: 'typical_p', label: 'Typical P', help: 'Locally typical sampling threshold  --  filters out tokens with atypical information content.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 1 },
+  { key: 'typical_p', label: 'Typical P', help: 'Locally typical sampling threshold — filters out tokens with atypical information content.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 1 },
   { key: 'num_keep', label: 'Keep Tokens (num_keep)', help: 'Prompt tokens kept when the context window fills up. -1 = keep all.', type: 'int', min: -1 },
   { key: 'max_tokens', label: 'Max Tokens (num_predict)', help: 'Max tokens to generate. -1 = unlimited.', type: 'int', min: -1 },
   { key: 'seed', label: 'Seed', help: 'Fixed RNG seed for reproducible output. -1 = random.', type: 'int', min: -1 },
@@ -108,7 +108,7 @@ const INFERENCE_FIELDS: FieldDef[] = [
   },
 ];
 
-// llama.cpp-only sampling extras  --  its server README documents these as
+// llama.cpp-only sampling extras — its server README documents these as
 // also accepted on its OpenAI-compatible endpoints, not just its native
 // /completion endpoint.
 const LLAMACPP_EXTRA_FIELDS: FieldDef[] = [
@@ -122,7 +122,7 @@ const LLAMACPP_EXTRA_FIELDS: FieldDef[] = [
   { key: 'xtc_threshold', label: 'XTC Threshold', help: 'Minimum probability a top token needs to be eligible for XTC exclusion.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 0.1 },
 ];
 
-// vLLM-only sampling extras  --  its OpenAI-compatible ChatCompletionRequest
+// vLLM-only sampling extras — its OpenAI-compatible ChatCompletionRequest
 // accepts these beyond the strict OpenAI schema.
 const VLLM_EXTRA_FIELDS: FieldDef[] = [
   { key: 'length_penalty', label: 'Length Penalty', help: 'Exponential penalty applied to sequence length; >1 favors longer output, <1 favors shorter.', type: 'slider', min: 0, max: 3, step: 0.05, sliderDefault: 1 },
@@ -131,12 +131,12 @@ const VLLM_EXTRA_FIELDS: FieldDef[] = [
   { key: 'truncate_prompt_tokens', label: 'Truncate Prompt Tokens', help: 'Truncates the prompt to at most this many tokens before generation.', type: 'int', min: 1 },
 ];
 
-// Shared between vLLM and llama.cpp  --  identical wire name/meaning on both.
+// Shared between vLLM and llama.cpp — identical wire name/meaning on both.
 const IGNORE_EOS_FIELD: FieldDef = { key: 'ignore_eos', label: 'Ignore EOS', help: 'Keeps generating past the end-of-sequence token instead of stopping there.', type: 'bool' };
 
 const META_FIELDS: FieldDef[] = [
   { key: 'system', label: 'System Prompt', help: 'Overrides the model’s default system prompt.', type: 'textarea' },
-  { key: 'template', label: 'Prompt Template', help: 'Overrides the model’s default prompt template. Ollama only  --  no equivalent on other runtimes.', type: 'textarea' },
+  { key: 'template', label: 'Prompt Template', help: 'Overrides the model’s default prompt template. Ollama only — no equivalent on other runtimes.', type: 'textarea' },
   { key: 'rpm', label: 'Requests / Minute Cap', help: 'Caps requests-per-minute for this model across all keys. Empty = unlimited.', type: 'int', min: 0 },
   { key: 'tpm', label: 'Tokens / Minute Cap', help: 'Caps tokens-per-minute for this model across all keys. Empty = unlimited.', type: 'int', min: 0 },
 ];
@@ -210,7 +210,7 @@ function Field({
         value={(value as string) ?? ''}
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
         rows={2}
-        placeholder="Not set  --  inherits Ollama's own default"
+        placeholder="Not set — inherits Ollama's own default"
         disabled={disabled}
         className="w-full px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground placeholder-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary resize-y disabled:opacity-50 disabled:cursor-not-allowed"
       />
@@ -315,7 +315,7 @@ function Section({
   setField: (key: FieldDef['key'], v: unknown) => void;
   // Shown instead of the field grid when `fields` has been filtered down to
   // nothing for the selected node's runtime (e.g. Load-time/Engine on a vLLM
-  // node)  --  replaces the old whole-section gray-out with per-field filtering
+  // node) — replaces the old whole-section gray-out with per-field filtering
   // driven by the capabilities endpoint.
   emptyNote?: string;
 }) {
@@ -365,12 +365,12 @@ export function ModelConfigModal({
   model: string | null;
   demoMode: boolean;
   // Every node this model is resident on, paired with the runtime serving it
-  // there. Configuration is always scoped to one (model, node) pair  --  the
+  // there. Configuration is always scoped to one (model, node) pair — the
   // modal shows a node selector when there's more than one, and fetches/
   // saves/resets against whichever node is currently selected.
   nodes: ModelConfigNode[];
   // Pre-fills num_ctx the first time this model's config is opened (no saved
-  // config yet)  --  e.g. from a context-length slider elsewhere in the UI, so
+  // config yet) — e.g. from a context-length slider elsewhere in the UI, so
   // that control is a real input into the config rather than decorative.
   presetNumCtx?: number;
   onClose: () => void;
@@ -382,17 +382,17 @@ export function ModelConfigModal({
   const [success, setSuccess] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string>('');
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  // Capabilities are fetched once and cached for the modal's lifetime  --  the
+  // Capabilities are fetched once and cached for the modal's lifetime — the
   // field list per runtime doesn't change while the modal is open, so
   // switching nodes only needs a re-filter, not a re-fetch. `null` means
-  // "not loaded yet"  --  every field is shown in that state so the form
+  // "not loaded yet" — every field is shown in that state so the form
   // doesn't flash empty sections while capabilities are in flight.
   const [capabilities, setCapabilities] = useState<Record<string, string[]> | null>(null);
 
   // Reset the node selection when the modal is opened for a different model.
   // Keep the current selection if it's still one of the model's nodes (e.g.
   // Models.tsx re-renders with a new-but-equivalent `nodes` array every poll
-  //  --  that must not silently kick the user back to the first node).
+  // — that must not silently kick the user back to the first node).
   useEffect(() => {
     setSelectedNode((prev) => (nodes.some((n) => n.name === prev) ? prev : (nodes[0]?.name ?? '')));
   }, [model, nodes]);
@@ -404,7 +404,7 @@ export function ModelConfigModal({
         const caps = demoMode ? getMockModelConfigCapabilities() : await fetchModelConfigCapabilities();
         if (!cancelled) setCapabilities(caps);
       } catch {
-        // Non-fatal  --  falls back to showing every field, same as before
+        // Non-fatal — falls back to showing every field, same as before
         // this endpoint existed.
       }
     })();
@@ -495,7 +495,7 @@ export function ModelConfigModal({
     <Modal
       isOpen={!!model}
       onClose={onClose}
-      title={model ? `Advanced Settings  --  ${model}` : 'Advanced Settings'}
+      title={model ? `Advanced Settings — ${model}` : 'Advanced Settings'}
       maxWidth="4xl"
     >
       {loading || !form ? (
@@ -524,7 +524,7 @@ export function ModelConfigModal({
             time this model is (re)loaded on the selected node; Ollama automatically reloads a
             resident model whose active options differ from these. Inference-time parameters are
             injected only when a client request doesn't already specify them. Fields shown below
-            depend on the selected node's runtime  --  options that don't apply there are hidden.
+            depend on the selected node's runtime — options that don't apply there are hidden.
           </p>
 
           <Section
@@ -532,7 +532,7 @@ export function ModelConfigModal({
             fields={loadTimeFields}
             form={form}
             setField={setField}
-            emptyNote="Engine params are Ollama-only. The selected node's runtime applies these as launch-time config instead  --  they can't be set per-request here."
+            emptyNote="Engine params are Ollama-only. The selected node's runtime applies these as launch-time config instead — they can't be set per-request here."
           />
           <Section title="Inference-time / Sampling" fields={inferenceFields} form={form} setField={setField} />
           <Section
@@ -640,7 +640,7 @@ export function ModelConfigModal({
           <span className="text-foreground font-semibold">{selectedNode}</span> to backend defaults?
         </p>
         <p className="text-xs text-muted-foreground">
-          This clears every configured override for this (model, node) pair  --  temperature, system prompt, rate
+          This clears every configured override for this (model, node) pair — temperature, system prompt, rate
           limits, everything. This action cannot be undone.
         </p>
         {error && (

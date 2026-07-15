@@ -218,7 +218,7 @@ func TestInjectModelDefaultsVLLMSamplerExtras(t *testing.T) {
 
 // TestInjectModelDefaultsOllamaDeadFieldsNotInjected verifies fields that no
 // longer exist in Ollama's current Options/Runner structs (removed 2026-07)
-// are simply absent from the struct  --  nothing to inject, nothing that could
+// are simply absent from the struct — nothing to inject, nothing that could
 // silently no-op. The new real Ollama fields (num_keep, main_gpu,
 // draft_num_predict) DO get injected.
 func TestInjectModelDefaultsOllamaDeadFieldsNotInjected(t *testing.T) {
@@ -273,7 +273,7 @@ func TestModelRateLimiterTPM(t *testing.T) {
 }
 
 // TestModelRateLimiterPerNodeIsolation verifies the same model on two
-// different nodes has independent rpm budgets  --  the core reason the
+// different nodes has independent rpm budgets — the core reason the
 // limiter is now keyed by (model, node) rather than model alone.
 func TestModelRateLimiterPerNodeIsolation(t *testing.T) {
 	l := newModelRateLimiter()
@@ -337,7 +337,7 @@ func TestInjectModelDefaultsOpenAICompatSystemPromptNeverOverwritesClient(t *tes
 
 // TestInjectModelDefaultsOpenAICompatSystemPromptNoMessagesArray verifies a
 // legacy /v1/completions-style body (no "messages" array) is left untouched
-// by the system-prompt injection  --  there's no place to carry a system role
+// by the system-prompt injection — there's no place to carry a system role
 // in that schema.
 func TestInjectModelDefaultsOpenAICompatSystemPromptNoMessagesArray(t *testing.T) {
 	cfg := store.ModelConfig{Model: "m", Node: "n", System: strp("configured default")}

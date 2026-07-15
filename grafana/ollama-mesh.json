@@ -38,7 +38,7 @@
   "annotations": {
     "list": []
   },
-  "description": "GPU-aware Ollama reverse proxy  --  requests, latency, routing, and node health",
+  "description": "GPU-aware Ollama reverse proxy — requests, latency, routing, and node health",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
