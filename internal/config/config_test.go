@@ -135,6 +135,11 @@ func TestAuditRetentionDaysValidate(t *testing.T) {
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() with RetentionDays=-1 should have failed")
 	}
+
+	cfg = Config{Audit: AuditConfig{SystemAuditRetentionDays: -1}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() with SystemAuditRetentionDays=-1 should have failed")
+	}
 }
 
 func TestDuplicateKeyName(t *testing.T) {

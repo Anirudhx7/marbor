@@ -609,3 +609,40 @@ func TestPruneAuditLog(t *testing.T) {
 		t.Fatalf("PruneAuditLog(30): got %+v, want only the recent row", got)
 	}
 }
+
+// TestPruneSystemAuditLog mirrors TestPruneAuditLog for the separate admin
+// action trail (system_audit_log), which has its own independent retention
+// setting defaulting to 0 (forever) rather than audit_log's 30 days.
+func TestPruneSystemAuditLog(t *testing.T) {
+	s := openTestDB(t)
+
+	old := store.SystemAuditEntry{Username: "admin", Action: "old-action", Time: time.Now().Add(-400 * 24 * time.Hour)}
+	recent := store.SystemAuditEntry{Username: "admin", Action: "recent-action", Time: time.Now()}
+	for _, e := range []store.SystemAuditEntry{old, recent} {
+		if err := s.AppendSystemAuditLog(e); err != nil {
+			t.Fatalf("AppendSystemAuditLog: %v", err)
+		}
+	}
+
+	if err := s.PruneSystemAuditLog(0); err != nil {
+		t.Fatalf("PruneSystemAuditLog(0): %v", err)
+	}
+	got, err := s.QuerySystemAuditLog(10)
+	if err != nil {
+		t.Fatalf("QuerySystemAuditLog: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("PruneSystemAuditLog(0) must be a no-op (forever), got %d rows", len(got))
+	}
+
+	if err := s.PruneSystemAuditLog(365); err != nil {
+		t.Fatalf("PruneSystemAuditLog(365): %v", err)
+	}
+	got, err = s.QuerySystemAuditLog(10)
+	if err != nil {
+		t.Fatalf("QuerySystemAuditLog: %v", err)
+	}
+	if len(got) != 1 || got[0].Action != "recent-action" {
+		t.Fatalf("PruneSystemAuditLog(365): got %+v, want only the recent row", got)
+	}
+}

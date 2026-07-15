@@ -504,9 +504,13 @@ func (s *Server) StartPeriodicCleanup(ctx context.Context) {
 		s.st.PruneExpiredUserSessions()
 		s.mu.RLock()
 		retentionDays := s.cfg.Audit.RetentionDays
+		systemRetentionDays := s.cfg.Audit.SystemAuditRetentionDays
 		s.mu.RUnlock()
 		if err := s.st.PruneAuditLog(retentionDays); err != nil {
 			log.Printf("admin: audit log prune failed: %v", err)
+		}
+		if err := s.st.PruneSystemAuditLog(systemRetentionDays); err != nil {
+			log.Printf("admin: system audit log prune failed: %v", err)
 		}
 	}
 	go func() {
@@ -3244,6 +3248,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		// Audit, webhooks, savings.
 		"audit_enabled":                 strconv.FormatBool(incoming.Audit.Enabled),
 		"audit_retention_days":          strconv.Itoa(incoming.Audit.RetentionDays),
+		"audit_system_retention_days":   strconv.Itoa(incoming.Audit.SystemAuditRetentionDays),
 		"webhook_enabled":               strconv.FormatBool(incoming.Webhook.Enabled),
 		"webhook_url":                   incoming.Webhook.URL,
 		"webhook_secret":                incoming.Webhook.Secret,

@@ -199,6 +199,7 @@ export function SettingsPage() {
 
           auditEnabled: settingsData.audit?.enabled || false,
           auditRetentionDays: settingsData.audit?.retention_days ?? 30,
+          systemAuditRetentionDays: settingsData.audit?.system_audit_retention_days ?? 0,
           webhookEnabled: settingsData.webhook?.enabled || false,
           webhookUrl: settingsData.webhook?.url || '',
           webhookSecret: settingsData.webhook?.secret || '',
@@ -268,7 +269,11 @@ export function SettingsPage() {
         hide_demo_banner: settings.hideDemoBanner || false,
         hide_budget_banner: settings.hideBudgetBanner || false,
         docker: { enabled: settings.dockerEnabled, socket: settings.dockerSocket, poll_interval_ms: settings.dockerPollIntervalMs },
-        audit: { enabled: settings.auditEnabled, retention_days: settings.auditRetentionDays },
+        audit: {
+          enabled: settings.auditEnabled,
+          retention_days: settings.auditRetentionDays,
+          system_audit_retention_days: settings.systemAuditRetentionDays,
+        },
         webhook: { enabled: settings.webhookEnabled, url: settings.webhookUrl, secret: settings.webhookSecret },
         savings: { reference_cost_per_1k: settings.savingsReferenceCostPer1k },
         ha: { enabled: settings.haEnabled, peers: settings.haPeers, heartbeat_interval_ms: settings.haHeartbeatIntervalMs, peer_timeout_ms: settings.haPeerTimeoutMs },
@@ -1253,6 +1258,20 @@ export function SettingsPage() {
               />
               <p className="text-[10px] text-muted-foreground mt-1">
                 Requests older than this are pruned automatically (checked every 12h). Set to 0 to keep audit log entries forever.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">System Audit Retention (days)</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={settings.systemAuditRetentionDays}
+                onChange={(e) => setSettings({ ...settings, systemAuditRetentionDays: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Applies to the admin action trail (System Audit page), separate from request logs above. Defaults to 0 - keep forever - since this log is low-volume and security-sensitive.
               </p>
             </div>
             <div>

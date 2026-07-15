@@ -154,6 +154,9 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	// 30-day fallback applies only if this key was never set (first boot) -
 	// GetIntSetting returns a stored "0" as 0 (indefinite), not the fallback.
 	cfg.Audit.RetentionDays = store.GetIntSetting(st, "audit_retention_days", 30)
+	// System audit (admin action trail) defaults to forever - low-volume,
+	// security-sensitive, and 0 is both the fallback and the zero value.
+	cfg.Audit.SystemAuditRetentionDays = store.GetIntSetting(st, "audit_system_retention_days", 0)
 
 	cfg.Webhook.Enabled = store.GetBoolSetting(st, "webhook_enabled", cfg.Webhook.Enabled)
 	cfg.Webhook.URL = store.GetStringSetting(st, "webhook_url", cfg.Webhook.URL)

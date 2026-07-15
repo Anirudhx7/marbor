@@ -187,6 +187,7 @@ export interface Settings {
   // Audit log, webhooks, savings rate.
   auditEnabled: boolean;
   auditRetentionDays: number;
+  systemAuditRetentionDays: number;
   webhookEnabled: boolean;
   webhookUrl: string;
   webhookSecret: string;
