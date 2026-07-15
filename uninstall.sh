@@ -1,19 +1,17 @@
 #!/usr/bin/env sh
 # ollama-mesh uninstaller
 # Usage: sh uninstall.sh   (run from the directory install.sh was run in, so
-#                           it can find config.yaml / mesh.db / the pidfile)
+#                           it can find mesh.db / the pidfile)
 #
 # Env vars:
 #   INSTALL_DIR   binary location to remove (default /usr/local/bin, must
 #                 match whatever install.sh used)
 #   KEEP_DB=1     keep mesh.db without prompting
 #   KEEP_DB=0     remove mesh.db without prompting
-#   KEEP_CONFIG=1 keep config.yaml without prompting
-#   KEEP_CONFIG=0 remove config.yaml without prompting
 #
 # When run non-interactively (e.g. piped via curl, where stdin isn't a
-# terminal) config.yaml and mesh.db are kept by default unless the env vars
-# above say otherwise - an uninstall should never silently destroy data.
+# terminal) mesh.db is kept by default unless the env var above says
+# otherwise - an uninstall should never silently destroy data.
 
 set -e
 
@@ -24,7 +22,6 @@ WORKDIR="$(pwd)"
 PIDFILE="$WORKDIR/ollama-mesh.pid"
 UNIT_PATH="/etc/systemd/system/ollama-mesh.service"
 DB_FILE="$WORKDIR/mesh.db"
-CONFIG_FILE="$WORKDIR/config.yaml"
 LOG_FILE="$WORKDIR/ollama-mesh.log"
 
 echo "ollama-mesh uninstaller"
@@ -78,8 +75,8 @@ else
   echo "No binary found at $BIN_PATH (already removed, or INSTALL_DIR differs from install)."
 fi
 
-# 4. mesh.db and config.yaml hold real state (API keys, warm-state history) -
-# ask before deleting, and default to keeping them when not on a terminal.
+# 4. mesh.db holds real state (nodes, API keys, warm-state history) - ask
+# before deleting, and default to keeping it when not on a terminal.
 ask_keep() {
   # ask_keep <label> <file> <env override>  -> prints "yes" or "no"
   LABEL="$1"
@@ -111,15 +108,6 @@ if [ -f "$DB_FILE" ]; then
     echo "Removed $DB_FILE"
   else
     echo "Kept $DB_FILE"
-  fi
-fi
-
-if [ -f "$CONFIG_FILE" ]; then
-  if [ "$(ask_keep "config.yaml (API keys, node list)" "$CONFIG_FILE" "$KEEP_CONFIG")" = "no" ]; then
-    rm -f "$CONFIG_FILE"
-    echo "Removed $CONFIG_FILE"
-  else
-    echo "Kept $CONFIG_FILE"
   fi
 fi
 

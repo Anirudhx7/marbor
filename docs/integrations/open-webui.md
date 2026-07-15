@@ -29,8 +29,8 @@ This is the best fit because Open WebUI treats the mesh exactly like a single Ol
    ```
    Replace `<mesh-host>` with the IP or hostname of the machine running ollama-mesh. If Open WebUI is running in Docker on the same host, use `host.docker.internal` instead of `localhost`.
 4. Open WebUI will probe `/api/tags` and `/v1/models` to enumerate models. The mesh aggregates model lists from all healthy nodes, so every model available across your fleet appears in one dropdown.
-5. **API key**: Open WebUI's Ollama connection type does not send an `Authorization` header by default. If `auth.enabled: true` in your mesh config, you have two options:
-   - Set `auth.enabled: false` and rely on network-level access control (only recommended on a trusted LAN).
+5. **API key**: Open WebUI's Ollama connection type does not send an `Authorization` header by default. If API-key auth is enabled (**Settings > Proxy Configuration > Authentication Mode** in the mesh dashboard), you have two options:
+   - Switch the mesh to "No Authentication" and rely on network-level access control (only recommended on a trusted LAN).
    - Use the OpenAI connection type (Option B below), which has an explicit API key field.
 
 ---
@@ -46,7 +46,7 @@ Use this when you want to supply the mesh API key through the UI, or when you ar
    | Field | Value |
    |-------|-------|
    | **URL** | `http://<mesh-host>:11434/v1` |
-   | **API Key** | Your `sk-mesh-...` key from `config.yaml` |
+   | **API Key** | Your `sk-mesh-...` key from the mesh dashboard's **API Keys** page |
 
 4. Click **Save**. Open WebUI calls `GET /v1/models` - the mesh returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.
 
@@ -88,9 +88,7 @@ services:
       - "11434:11434"
       - "8080:8080"
     volumes:
-      - ./config.yaml:/config.yaml
-    environment:
-      CONFIG_PATH: /config.yaml
+      - mesh-data:/root   # persists mesh.db - add nodes/keys once via the dashboard
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -106,6 +104,7 @@ services:
 
 volumes:
   open-webui:
+  mesh-data:
 ```
 
 ---
@@ -135,17 +134,17 @@ The mesh admin dashboard at `http://<mesh-host>:8080` shows each request logged 
 
 **401 Unauthorized**
 
-Your API key is missing or wrong. Verify the key matches one of the `auth.keys[].key` values in `config.yaml`. The mesh requires the exact key string as a `Bearer` token - no substring matching.
+Your API key is missing or wrong. Verify the key matches one of the keys shown on the mesh dashboard's **API Keys** page. The mesh requires the exact key string as a `Bearer` token - no substring matching.
 
 **403 Forbidden on a specific model**
 
-The key you are using has a `models:` allow-list in `config.yaml` that does not include the requested model. Either add the model to the key's allow-list or use a key with `models: []` (empty = allow all).
+The key you are using has a model allow-list set (edit it from the **API Keys** page) that does not include the requested model. Either add the model to the key's allow-list or use a key with no allow-list ("All models" - allow all).
 
 **Connection refused / timeout**
 
 - If Open WebUI is in Docker and the mesh is on the host, use `http://host.docker.internal:11434` not `http://localhost:11434`.
-- Confirm the mesh is running: `curl http://<mesh-host>:11434/api/tags` from the Open WebUI host (no auth needed for this endpoint if `auth.enabled: false`, or add the header if enabled).
+- Confirm the mesh is running: `curl http://<mesh-host>:11434/api/tags` from the Open WebUI host (no auth needed for this endpoint if authentication is disabled, or add the header if enabled).
 
 **Slow model list on startup**
 
-If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's `routing.upstream_timeout_ms` in `config.yaml`, or in Open WebUI set `AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3` (seconds) to fail fast on unreachable endpoints.
+If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's upstream timeout in **Settings > Advanced Routing > Upstream Timeout**, or in Open WebUI set `AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3` (seconds) to fail fast on unreachable endpoints.

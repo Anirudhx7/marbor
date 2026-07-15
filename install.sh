@@ -3,15 +3,23 @@
 # Downloads the latest release binary from GitHub for your OS and architecture.
 # Usage: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
 #
+# There is no config.yaml anymore - ollama-mesh is DB-first (mesh.db). When
+# starting the daemon for the first time, this installer scans the local
+# subnet for running GPU nodes (Ollama, vLLM, TGI, llama.cpp) and lets you
+# pick which ones to seed into mesh.db interactively. Everything else (API
+# keys, ports, routing, HA, webhooks, ...) is configured from the dashboard
+# after boot - log in with admin/admin and set a new password.
+#
 # Modes (opt in via env vars):
-#   PROBE=1    scan the local subnet for GPU nodes and write config.yaml
 #   START=1    start ollama-mesh in the background (nohup) after install
 #   SERVICE=1  install+enable a proper OS service instead of nohup (implies
 #              START=1); persists across reboots and restarts on failure.
 #              Currently implemented via systemd on Linux (root/sudo
 #              required); on macOS or any host without systemd it falls back
 #              to a plain background process rather than failing the install.
-#              Recommended for production. Example: curl ... | PROBE=1 SERVICE=1 sh
+#              Recommended for production. Example: curl ... | SERVICE=1 sh
+#   FORCE_PROBE=1  re-run the network discovery wizard even if mesh.db
+#              already exists (by default it only runs on a fresh DB).
 #
 # Uninstall: https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh
 
@@ -31,13 +39,13 @@ for arg in "$@"; do
   fi
 done
 
-PROBE_NETWORK=false
-if [ "$PROBE" = "1" ]; then
-  PROBE_NETWORK=true
+FORCE_PROBE=false
+if [ "$FORCE_PROBE" = "1" ]; then
+  FORCE_PROBE=true
 fi
 for arg in "$@"; do
-  if [ "$arg" = "--probe" ] || [ "$arg" = "-p" ]; then
-    PROBE_NETWORK=true
+  if [ "$arg" = "--force-probe" ]; then
+    FORCE_PROBE=true
   fi
 done
 
@@ -167,28 +175,6 @@ if [ "$START_DAEMON" = false ]; then
   exit 0
 fi
 
-# Helper to generate random hex strings
-generate_hex() {
-  BYTES=$1
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex "$BYTES"
-  elif command -v python3 >/dev/null 2>&1; then
-    python3 -c "import secrets; print(secrets.token_hex($BYTES))"
-  elif command -v python >/dev/null 2>&1; then
-    python -c "import secrets; print(secrets.token_hex($BYTES))" 2>/dev/null || python -c "import os; print(os.urandom($BYTES).hex())"
-  elif [ -r /dev/urandom ]; then
-    if command -v od >/dev/null 2>&1; then
-      dd if=/dev/urandom bs=1 count="$BYTES" 2>/dev/null | od -An -vtx1 | tr -d ' \n'
-    elif command -v hexdump >/dev/null 2>&1; then
-      dd if=/dev/urandom bs=1 count="$BYTES" 2>/dev/null | hexdump -e '32/1 "%02x"'
-    else
-      echo "$(date +%s)$(date +%s)"
-    fi
-  else
-    echo "$(date +%s)$(date +%s)"
-  fi
-}
-
 get_primary_ip() {
   if command -v ip >/dev/null 2>&1; then
     ip route get 1.1.1.1 2>/dev/null | grep -oE 'src [0-9.]+' | cut -d' ' -f2
@@ -213,7 +199,7 @@ get_local_subnets() {
 verify_endpoint() {
   IP=$1
   PORT=$2
-  
+
   if [ "$PORT" = "11434" ]; then
     if curl -fs -m 0.5 "http://$IP:11434/api/tags" >/dev/null 2>&1; then
       echo "$IP:11434:ollama"
@@ -266,6 +252,66 @@ verify_endpoint() {
   fi
 }
 
+# Scan local subnets for running LLM nodes (Ollama :11434, vLLM :8000,
+# TGI/llama.cpp :8080) and print each hit as it's found. Results land in
+# $TEMP_FOUND (one "ip:port:runtime" line per hit, deduped by the caller).
+probe_network() {
+  echo "Scanning local subnet for active GPU nodes (Ollama, vLLM, TGI, llama.cpp)..."
+  PRIMARY_IP=$(get_primary_ip)
+  IP_LIST=""
+  if [ -n "$PRIMARY_IP" ]; then
+    IP_LIST="$PRIMARY_IP"
+  else
+    IP_LIST=$(get_local_subnets)
+  fi
+
+  # Own addresses are probed separately via the "localhost" check below;
+  # skipping them here avoids discovering this same host twice under two
+  # different names (once by LAN IP, once as "localhost"). get_local_subnets
+  # emits one IP per line (any host with >1 interface, e.g. Docker bridges,
+  # returns several lines) - join with spaces so the " $TARGET_IP " match
+  # below actually matches each entry instead of only the last one.
+  SELF_IPS=" $(get_local_subnets | tr '\n' ' ') "
+
+  TEMP_FOUND="$(mktemp)"
+  for ip in $IP_LIST; do
+    case "$ip" in
+      127.*|172.17.*|172.18.*|172.19.*) continue ;;
+    esac
+    PREFIX=$(echo "$ip" | cut -d. -f1-3)"."
+
+    i=1
+    while [ $i -le 254 ]; do
+      TARGET_IP="${PREFIX}${i}"
+      case "$SELF_IPS" in
+        *" $TARGET_IP "*) i=$((i+1)); continue ;;
+      esac
+      verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
+      verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
+      verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
+
+      if [ $((i % 15)) -eq 0 ]; then
+        wait
+      fi
+      i=$((i+1))
+    done
+    wait
+  done
+  wait
+
+  # Also check localhost specifically
+  (
+    verify_endpoint "localhost" "11434" >> "$TEMP_FOUND" &
+    verify_endpoint "localhost" "8000"  >> "$TEMP_FOUND" &
+    verify_endpoint "localhost" "8080"  >> "$TEMP_FOUND" &
+    wait
+  ) &
+  wait
+
+  sort -u "$TEMP_FOUND" 2>/dev/null || cat "$TEMP_FOUND" | sort -u
+  rm -f "$TEMP_FOUND"
+}
+
 # Install a systemd unit for ollama-mesh so it persists across restarts/
 # reboots, instead of the plain `nohup` background process used otherwise.
 # Requires systemd + root (or sudo). Falls back to the caller starting a
@@ -302,7 +348,6 @@ setup_systemd_service() {
   WORKDIR="$(pwd)"
   RUN_USER="${SERVICE_USER:-$(id -un)}"
   BIN_PATH="$INSTALL_DIR/$BIN_NAME"
-  CONFIG_PATH="$WORKDIR/config.yaml"
 
   UNIT_CONTENT="[Unit]
 Description=ollama-mesh
@@ -313,7 +358,7 @@ Wants=network-online.target
 Type=simple
 User=${RUN_USER}
 WorkingDirectory=${WORKDIR}
-ExecStart=${BIN_PATH} -config ${CONFIG_PATH}
+ExecStart=${BIN_PATH} --db ${DB_PATH}
 Restart=on-failure
 RestartSec=2
 StandardOutput=append:${WORKDIR}/ollama-mesh.log
@@ -326,7 +371,7 @@ WantedBy=multi-user.target
   if [ "$(id -u)" = "0" ]; then
     printf '%s' "$UNIT_CONTENT" > "$UNIT_PATH"
     if [ "$RUN_USER" != "root" ]; then
-      chown "$RUN_USER" "$CONFIG_PATH" 2>/dev/null || true
+      chown "$RUN_USER" "$DB_PATH" 2>/dev/null || true
     fi
     systemctl daemon-reload
     systemctl enable ollama-mesh >/dev/null 2>&1
@@ -345,12 +390,12 @@ WantedBy=multi-user.target
   if systemctl is-active --quiet ollama-mesh 2>/dev/null; then
     echo "ollama-mesh installed as a systemd service and running!"
     echo "--------------------------------------------------------"
-    echo "  Proxy Endpoint:   http://localhost:11435"
-    echo "  Admin Dashboard:  http://localhost:8080"
+    echo "  Proxy Endpoint:   http://localhost:11434"
+    echo "  Admin Dashboard:  http://localhost:8080  (login: admin / admin)"
     echo "  Metrics:          http://localhost:9090/metrics"
     echo "  Unit file:        $UNIT_PATH"
     echo "  Logs:             journalctl -u ollama-mesh -f  (also ${WORKDIR}/ollama-mesh.log)"
-    echo "  Config:           ${CONFIG_PATH}"
+    echo "  Database:         ${DB_PATH}"
     echo "--------------------------------------------------------"
     echo "Enabled - will restart on failure and on reboot."
     echo "Uninstall:        https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
@@ -394,187 +439,116 @@ wait_for_http() {
   return 1
 }
 
-# Real post-install verification: config validity, the three listeners the
-# binary starts, and reachability of whatever backend nodes are configured.
-# Never fails the install - this is diagnostics for the operator, since a
-# backend node being offline at install time is expected/acceptable.
+# Real post-install verification: the three listeners the binary starts.
+# Never fails the install - this is diagnostics for the operator. Ports
+# reflect ollama-mesh's built-in defaults (11434/8080/9090); if you changed
+# them from the dashboard after a previous run, check there instead.
 run_health_checks() {
-  CONFIG_FILE="$1"
-  LOG_HINT="$2"
+  LOG_HINT="$1"
   HEALTH_OK=true
 
   echo ""
   echo "Verifying installation..."
 
-  if [ -f "$CONFIG_FILE" ]; then
-    if "$BIN_PATH" -validate -config "$CONFIG_FILE" >/dev/null 2>&1; then
-      echo "  [ok]   config.yaml is valid"
-    else
-      echo "  [FAIL] config.yaml failed validation"
-      HEALTH_OK=false
-    fi
-  fi
-
-  PROXY_PORT=$(awk '/^proxy:/{f=1;next} /^[^ ]/{f=0} f && /^[[:space:]]*port:/{print $2; exit}' "$CONFIG_FILE" 2>/dev/null)
-  [ -z "$PROXY_PORT" ] && PROXY_PORT=11434
-  wait_for_http "http://localhost:${PROXY_PORT}/" "Proxy" || HEALTH_OK=false
+  wait_for_http "http://localhost:11434/" "Proxy" || HEALTH_OK=false
   wait_for_http "http://localhost:8080/health" "Admin dashboard" || HEALTH_OK=false
-
-  METRICS_ENABLED=$(awk '/^metrics:/{f=1;next} /^[^ ]/{f=0} f && /^[[:space:]]*enabled:/{print $2; exit}' "$CONFIG_FILE" 2>/dev/null)
-  if [ "$METRICS_ENABLED" != "false" ]; then
-    wait_for_http "http://localhost:9090/metrics" "Metrics" || HEALTH_OK=false
-  else
-    echo "  [skip] Metrics disabled in config.yaml"
-  fi
-
-  if [ -f "$CONFIG_FILE" ]; then
-    NODE_URLS=$(grep -E '^[[:space:]]*url:' "$CONFIG_FILE" | awk '{print $2}')
-    for u in $NODE_URLS; do
-      CODE="000"
-      if command -v curl >/dev/null 2>&1; then
-        CODE=$(curl -s -o /dev/null -w '%{http_code}' -m 2 "$u" 2>/dev/null) || true
-        CODE="${CODE:-000}"
-      elif command -v wget >/dev/null 2>&1; then
-        wget -T 2 -t 1 -qO- "$u" >/dev/null 2>&1 && CODE="200"
-      fi
-      if [ "$CODE" != "000" ]; then
-        echo "  [ok]   backend node reachable: $u"
-      else
-        echo "  [warn] backend node not reachable: $u (mesh will retry; edit config.yaml if unexpected)"
-      fi
-    done
-  fi
+  wait_for_http "http://localhost:9090/metrics" "Metrics" || HEALTH_OK=false
 
   if [ "$HEALTH_OK" = false ]; then
     echo ""
     echo "  [!] One or more core health checks failed."
     echo "      Troubleshooting:"
     echo "        - Logs:            $LOG_HINT"
-    echo "        - Validate config: $BIN_PATH -validate -config $CONFIG_FILE"
-    echo "        - Port conflicts:  confirm nothing else is bound to ${PROXY_PORT}, 8080, or 9090"
+    echo "        - Port conflicts:  confirm nothing else is bound to 11434, 8080, or 9090"
   fi
 }
 
-# Write default config.yaml
-if [ ! -f config.yaml ]; then
-  ADMIN_TOKEN=$(generate_hex 16)
-  API_KEY="sk-mesh-$(generate_hex 32)"
+DB_PATH="${MESH_DB_PATH:-$(pwd)/mesh.db}"
 
-  if [ "$PROBE_NETWORK" = true ]; then
-    # Scan local subnets for running LLM nodes (Ollama :11434, vLLM :8000, TGI/llama.cpp :8080)
-    echo "Scanning local subnet for active GPU nodes (Ollama, vLLM, TGI, llama.cpp)..."
-    PRIMARY_IP=$(get_primary_ip)
-    IP_LIST=""
-    if [ -n "$PRIMARY_IP" ]; then
-      IP_LIST="$PRIMARY_IP"
-    else
-      IP_LIST=$(get_local_subnets)
-    fi
+# Node discovery + seeding wizard: only runs when we're about to start the
+# daemon against a fresh database (mesh.db doesn't exist yet), so re-running
+# the installer against an already-configured host is a no-op here. Nodes
+# added another way (dashboard, previous install) are left alone.
+if [ ! -f "$DB_PATH" ] || [ "$FORCE_PROBE" = true ]; then
+  FOUND_IPS=$(probe_network)
 
-    # Own addresses are probed separately via the "localhost" check below;
-    # skipping them here avoids discovering this same host twice under two
-    # different names (once by LAN IP, once as "localhost"). get_local_subnets
-    # emits one IP per line (any host with >1 interface, e.g. Docker bridges,
-    # returns several lines) - join with spaces so the " $TARGET_IP " match
-    # below actually matches each entry instead of only the last one.
-    SELF_IPS=" $(get_local_subnets | tr '\n' ' ') "
-
-    TEMP_FOUND="$(mktemp)"
-    for ip in $IP_LIST; do
-      case "$ip" in
-        127.*|172.17.*|172.18.*|172.19.*) continue ;;
-      esac
-      PREFIX=$(echo "$ip" | cut -d. -f1-3)"."
-
-      i=1
-      while [ $i -le 254 ]; do
-        TARGET_IP="${PREFIX}${i}"
-        case "$SELF_IPS" in
-          *" $TARGET_IP "*) i=$((i+1)); continue ;;
-        esac
-        verify_endpoint "$TARGET_IP" "11434" >> "$TEMP_FOUND" &
-        verify_endpoint "$TARGET_IP" "8000"  >> "$TEMP_FOUND" &
-        verify_endpoint "$TARGET_IP" "8080"  >> "$TEMP_FOUND" &
-
-        if [ $((i % 15)) -eq 0 ]; then
-          wait
-        fi
-        i=$((i+1))
-      done
-      wait
-    done
-    wait
-
-    # Also check localhost specifically
-    (
-      verify_endpoint "localhost" "11434" >> "$TEMP_FOUND" &
-      verify_endpoint "localhost" "8000"  >> "$TEMP_FOUND" &
-      verify_endpoint "localhost" "8080"  >> "$TEMP_FOUND" &
-      wait
-    ) &
-    wait
-
-    FOUND_IPS=$(sort -u "$TEMP_FOUND" 2>/dev/null || cat "$TEMP_FOUND" | sort -u)
-    rm -f "$TEMP_FOUND"
-
-    echo "Writing config.yaml with discovered nodes..."
-    cat <<EOF > config.yaml
-proxy:
-  port: 11435
-auth:
-  enabled: true
-  admin_token: ${ADMIN_TOKEN}
-  keys:
-    - name: default
-      key: ${API_KEY}
-      rate_limit: 1000
-metrics:
-  enabled: true
-nodes:
-EOF
-    if [ -n "$FOUND_IPS" ]; then
-      NODE_COUNT=1
-      for entry in $FOUND_IPS; do
-        IP=$(echo "$entry" | cut -d: -f1)
-        PORT=$(echo "$entry" | cut -d: -f2)
-        RUNTIME=$(echo "$entry" | cut -d: -f3)
-        echo "  - name: discovered-${RUNTIME}-${NODE_COUNT}" >> config.yaml
-        echo "    url: http://${IP}:${PORT}" >> config.yaml
-        echo "    runtime: ${RUNTIME}" >> config.yaml
-        echo "  [ok] Discovered ${RUNTIME} node at http://${IP}:${PORT} (added to config.yaml)"
-        NODE_COUNT=$((NODE_COUNT+1))
-      done
-    else
-      cat <<EOF >> config.yaml
-  - name: local
-    url: http://localhost:11434
-EOF
-      echo "  [!] No active LLM nodes found on subnet. Defaulted config.yaml to http://localhost:11434."
-    fi
-
+  if [ -z "$FOUND_IPS" ]; then
+    echo "  [!] No active LLM nodes found on the local subnet."
+    echo "      Add one later from the dashboard (Nodes tab) or re-run with FORCE_PROBE=1."
   else
-    # No probe - write a minimal default config pointing at localhost
-    echo "Writing default config.yaml (run with PROBE=1 to auto-discover network nodes)..."
-    cat <<EOF > config.yaml
-proxy:
-  port: 11435
-auth:
-  enabled: true
-  admin_token: ${ADMIN_TOKEN}
-  keys:
-    - name: default
-      key: ${API_KEY}
-      rate_limit: 1000
-metrics:
-  enabled: true
-nodes:
-  - name: local
-    url: http://localhost:11434
-EOF
-    echo "  Edit config.yaml to add your GPU nodes, then run: ollama-mesh"
+    echo ""
+    echo "Found:"
+    N=0
+    # POSIX sh has no arrays; index the matches with a parallel-numbered
+    # temp file so the selection step below can map "2" back to its line
+    # without relying on bash-only constructs.
+    LIST_FILE="$(mktemp)"
+    for entry in $FOUND_IPS; do
+      N=$((N+1))
+      echo "$entry" >> "$LIST_FILE"
+      IP=$(echo "$entry" | cut -d: -f1)
+      PORT=$(echo "$entry" | cut -d: -f2)
+      RUNTIME=$(echo "$entry" | cut -d: -f3)
+      echo "  $N) $RUNTIME at $IP:$PORT"
+    done
+
+    SELECTION=""
+    if [ -r /dev/tty ]; then
+      printf "Which do you want to add? (comma-separated numbers, 'all', or 'skip'): "
+      read -r SELECTION < /dev/tty || SELECTION="skip"
+    else
+      echo "  [!] No interactive terminal available (piped install) - skipping node selection."
+      echo "      Re-run with FORCE_PROBE=1 from an interactive shell to pick nodes, or add them from the dashboard."
+      SELECTION="skip"
+    fi
+
+    case "$SELECTION" in
+      ""|skip|SKIP|Skip) : ;;
+      all|ALL|All)
+        SEED_ARGS=""
+        n=0
+        while IFS= read -r entry; do
+          n=$((n+1))
+          IP=$(echo "$entry" | cut -d: -f1)
+          PORT=$(echo "$entry" | cut -d: -f2)
+          RUNTIME=$(echo "$entry" | cut -d: -f3)
+          SEED_ARGS="$SEED_ARGS --seed-node name=discovered-${RUNTIME}-${n},url=http://${IP}:${PORT},runtime=${RUNTIME}"
+        done < "$LIST_FILE"
+        if [ -n "$SEED_ARGS" ]; then
+          # shellcheck disable=SC2086 # intentional word-splitting of repeatable flags
+          "$BIN_PATH" --db "$DB_PATH" $SEED_ARGS
+        fi
+        ;;
+      *)
+        SEED_ARGS=""
+        OLDIFS="$IFS"
+        IFS=','
+        for idx in $SELECTION; do
+          idx=$(echo "$idx" | tr -d ' ')
+          [ -z "$idx" ] && continue
+          case "$idx" in
+            ''|*[!0-9]*) echo "  [!] Skipping invalid selection: $idx"; continue ;;
+          esac
+          entry=$(sed -n "${idx}p" "$LIST_FILE")
+          [ -z "$entry" ] && { echo "  [!] Skipping invalid selection: $idx"; continue; }
+          IP=$(echo "$entry" | cut -d: -f1)
+          PORT=$(echo "$entry" | cut -d: -f2)
+          RUNTIME=$(echo "$entry" | cut -d: -f3)
+          SEED_ARGS="$SEED_ARGS --seed-node name=discovered-${RUNTIME}-${idx},url=http://${IP}:${PORT},runtime=${RUNTIME}"
+        done
+        IFS="$OLDIFS"
+        if [ -n "$SEED_ARGS" ]; then
+          # shellcheck disable=SC2086 # intentional word-splitting of repeatable flags
+          "$BIN_PATH" --db "$DB_PATH" $SEED_ARGS
+        else
+          echo "  [!] No valid selections - no nodes added."
+        fi
+        ;;
+    esac
+    rm -f "$LIST_FILE"
   fi
 else
-  echo "config.yaml already exists, using existing configuration."
+  echo "mesh.db already exists at $DB_PATH - skipping node discovery wizard (re-run with FORCE_PROBE=1 to force it, or add nodes from the dashboard)."
 fi
 
 PIDFILE="ollama-mesh.pid"
@@ -586,7 +560,7 @@ if [ "$SERVICE_MODE" = true ]; then
     systemd)
       echo "Setting up ollama-mesh as a systemd service..."
       if setup_systemd_service; then
-        run_health_checks config.yaml "journalctl -u ollama-mesh -f  (also $(pwd)/ollama-mesh.log)"
+        run_health_checks "journalctl -u ollama-mesh -f  (also $(pwd)/ollama-mesh.log)"
         exit 0
       fi
       ;;
@@ -616,7 +590,7 @@ if [ -f "$PIDFILE" ]; then
       echo "Note: the binary on disk was just upgraded to $NEW_VERSION, but the running"
       echo "process (PID $EXISTING_PID) is still $OLD_VERSION until it's restarted."
     fi
-    run_health_checks config.yaml "$(pwd)/ollama-mesh.log"
+    run_health_checks "$(pwd)/ollama-mesh.log"
     exit 0
   fi
   rm -f "$PIDFILE"
@@ -624,7 +598,7 @@ fi
 
 echo ""
 echo "Starting ollama-mesh in the background..."
-nohup "$INSTALL_DIR/$BIN_NAME" > ollama-mesh.log 2>&1 &
+nohup "$INSTALL_DIR/$BIN_NAME" --db "$DB_PATH" > ollama-mesh.log 2>&1 &
 PID=$!
 echo "$PID" > "$PIDFILE"
 
@@ -633,15 +607,13 @@ sleep 2
 if kill -0 $PID >/dev/null 2>&1; then
   echo "ollama-mesh successfully started (PID: $PID)!"
   echo "--------------------------------------------------------"
-  echo "  Proxy Endpoint:   http://localhost:11435"
-  echo "  Admin Dashboard:  http://localhost:8080"
+  echo "  Proxy Endpoint:   http://localhost:11434"
+  echo "  Admin Dashboard:  http://localhost:8080  (login: admin / admin)"
   echo "  Metrics:          http://localhost:9090/metrics"
   echo "  Logs:             ollama-mesh.log"
-  if [ -f config.yaml ]; then
-    echo "  Config:           config.yaml"
-  fi
+  echo "  Database:         ${DB_PATH}"
   echo "--------------------------------------------------------"
-  run_health_checks config.yaml "$(pwd)/ollama-mesh.log"
+  run_health_checks "$(pwd)/ollama-mesh.log"
   echo ""
   echo "Uninstall: https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
 else
@@ -652,4 +624,3 @@ else
   fi
   exit 1
 fi
-

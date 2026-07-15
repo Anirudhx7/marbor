@@ -38,7 +38,7 @@ Run `./ollama-mesh` (or `make backend`) first so there is a backend to hit.
 - **Sign off every commit (DCO):** commit with `git commit -s`. See [Developer Certificate of Origin](#developer-certificate-of-origin-dco) below. A CI check rejects unsigned commits.
 - **Tests required** for any new feature or bug fix.
 - **`go build ./...` and `go test ./...` must pass** before opening a PR.
-- **`config.example.yaml` must be updated** if you add new config fields (with working defaults in `config.go Validate()`).
+- **New config fields need full DB-first wiring** - there's no config file to update. Add: a default in `config.go Validate()`, a `settings` KV entry (`internal/store/settings_helpers.go`'s `GetSetting`/`SetSetting` helpers), read/write wiring in `handleSettings`/`handleUpdateSettings` (`internal/admin/admin.go`), and a control on the Settings page (`ui/src/pages/Settings.tsx`).
 
 ## Developer Certificate of Origin (DCO)
 
