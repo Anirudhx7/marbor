@@ -579,10 +579,10 @@ func (r *Router) CloudChain() []config.CloudProvider {
 	defer r.mu.RUnlock()
 	if r.liteLLM.Enabled && r.liteLLM.URL != "" {
 		return []config.CloudProvider{{
-			Name: "litellm",
-			// TODO(task-5): add APIKey once config.LiteLLMConfig.APIKey lands.
+			Name:     "litellm",
 			Provider: "openai",
 			BaseURL:  r.liteLLM.URL,
+			APIKey:   r.liteLLM.APIKey,
 			Enabled:  true,
 		}}
 	}

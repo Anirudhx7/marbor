@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+func TestLiteLLMConfigAPIKeyField(t *testing.T) {
+	cfg := LiteLLMConfig{Enabled: true, URL: "http://localhost:4000", APIKey: "sk-litellm"}
+	if cfg.APIKey != "sk-litellm" {
+		t.Errorf("APIKey = %q, want sk-litellm", cfg.APIKey)
+	}
+}
+
 func TestValidateAppliesDefaultsAndKeepsExplicitValues(t *testing.T) {
 	cfg := Config{
 		Proxy: ProxyConfig{Port: 11434},
