@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -135,6 +136,7 @@ type Router struct {
 	roundRobin     uint32
 	rules          []config.RoutingRule
 	clouds         []config.CloudProvider
+	liteLLM        config.LiteLLMConfig
 	dockerCfg      config.DockerConfig
 	webhookCfg     config.WebhookConfig
 	discoveredURLs map[string]struct{} // URLs added via Docker discovery
@@ -243,6 +245,16 @@ type NodeWarmup struct {
 	Models  []string `json:"models"`
 }
 
+// sortCloudsByPriority orders providers highest-priority-first, in place.
+// Stable so equal-priority providers (the common case: priority left at its
+// zero-value default) keep their original insertion order, matching this
+// package's existing "first enabled" behavior when no priority is set.
+func sortCloudsByPriority(clouds []config.CloudProvider) {
+	sort.SliceStable(clouds, func(i, j int) bool {
+		return clouds[i].Priority > clouds[j].Priority
+	})
+}
+
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
 	client := &http.Client{Timeout: 5 * time.Second}
 	nodes := make([]*NodeState, len(nodesCfg))
@@ -268,6 +280,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	}
 	cloudsCopy := make([]config.CloudProvider, len(clouds))
 	copy(cloudsCopy, clouds)
+	sortCloudsByPriority(cloudsCopy)
 	prev := make(map[string]bool, len(nodes))
 	for _, n := range nodes {
 		prev[n.Name] = true // assume healthy at start
@@ -540,6 +553,45 @@ func (r *Router) SetClouds(providers []config.CloudProvider) {
 	defer r.mu.Unlock()
 	r.clouds = make([]config.CloudProvider, len(providers))
 	copy(r.clouds, providers)
+	sortCloudsByPriority(r.clouds)
+}
+
+// SetLiteLLM updates the LiteLLM integration config. When Enabled, CloudChain
+// ignores the per-provider list entirely and routes cloud fallback through
+// the single LiteLLM endpoint instead - LiteLLM owns provider ordering and
+// retries internally once a request reaches it, so running both this
+// package's priority chain and LiteLLM's own chain at the same time would
+// double-manage failover.
+func (r *Router) SetLiteLLM(cfg config.LiteLLMConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.liteLLM = cfg
+}
+
+// CloudChain returns every enabled cloud provider as a priority-ordered
+// snapshot for cloud fallback, or - when LiteLLM integration is enabled - a
+// single synthetic provider pointing at the LiteLLM endpoint. Every element
+// is a copy, never an alias into r.clouds, matching the invariant RouteCloud
+// documents above: SetClouds/SetLiteLLM can replace the backing state under
+// the write lock at any time, and a caller mid-request must not observe that.
+func (r *Router) CloudChain() []config.CloudProvider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.liteLLM.Enabled && r.liteLLM.URL != "" {
+		return []config.CloudProvider{{
+			Name:    "litellm",
+			Provider: "openai",
+			BaseURL: r.liteLLM.URL,
+			Enabled: true,
+		}}
+	}
+	out := make([]config.CloudProvider, 0, len(r.clouds))
+	for _, cp := range r.clouds {
+		if cp.Enabled {
+			out = append(out, cp)
+		}
+	}
+	return out
 }
 
 func (n *NodeState) Lock() {
