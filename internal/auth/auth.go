@@ -147,11 +147,11 @@ func (c *keyCounter) stats() (today, month int, tokensMonth int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now()
-	// Check month/year change FIRST — if the month rolled over, both counters are stale.
+	// Check month/year change FIRST - if the month rolled over, both counters are stale.
 	if now.Month() != c.lastReset.Month() || now.Year() != c.lastReset.Year() {
 		return 0, 0, 0
 	}
-	// Day changed within the same month — only today is stale; month survives.
+	// Day changed within the same month - only today is stale; month survives.
 	if now.Day() != c.lastReset.Day() {
 		return 0, c.month, c.tokensMonth
 	}
@@ -369,7 +369,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 	for _, k := range cfg.Keys {
 		existing, sameName := oldByName[k.Name]
 		if sameName && existing.key == k.Key {
-			// Same key value — preserve counter + limiter, update policy fields.
+			// Same key value - preserve counter + limiter, update policy fields.
 			existing.mu.Lock()
 			existing.models = k.Models
 			existing.dailyLimit = k.DailyLimit
@@ -382,7 +382,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 			newKeys[k.Key] = existing
 			newByName[k.Name] = existing
 		} else {
-			// New key or rotated token — fresh state.
+			// New key or rotated token - fresh state.
 			ks := &keyState{
 				name:         k.Name,
 				key:          k.Key,

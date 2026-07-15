@@ -202,7 +202,7 @@ export function APIKeys() {
       const el = document.createElement('textarea');
       el.value = text;
       el.setAttribute('readonly', '');
-      // Off-screen but NOT opacity:0 — some browsers block copy from invisible elements.
+      // Off-screen but NOT opacity:0 - some browsers block copy from invisible elements.
       el.style.cssText = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px';
       document.body.appendChild(el);
       el.focus();

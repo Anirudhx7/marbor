@@ -110,7 +110,7 @@ func TestHandleModelFit_HappyPath(t *testing.T) {
 	if !m0.Loaded {
 		t.Error("models[0].loaded = false, want true (it is in LoadedModels)")
 	}
-	// llama3:70b is 40 GB — won't fit in 8 GB node.
+	// llama3:70b is 40 GB - won't fit in 8 GB node.
 	m1 := node.Models[1]
 	if m1.Name != "llama3:70b" {
 		t.Errorf("models[1].name = %q, want llama3:70b", m1.Name)

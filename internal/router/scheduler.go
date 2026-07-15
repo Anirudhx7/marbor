@@ -83,8 +83,8 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	// pointed at a stale/renamed/removed node doesn't log a misleading
 	// "fired" line every tick while silently doing nothing. warmup/unload
 	// dispatch to goroutines and log their own "node not found" diagnostic
-	// (see WarmModels/UnloadModels), so only drain/undrain — whose result is
-	// available synchronously — gate the summary log here.
+	// (see WarmModels/UnloadModels), so only drain/undrain - whose result is
+	// available synchronously - gate the summary log here.
 	found := true
 	switch s.Action {
 	case "warmup":

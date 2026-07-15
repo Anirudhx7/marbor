@@ -18,7 +18,7 @@ import (
 // Named-pipe support (//./pipe/docker_engine) requires the go-winio library
 // which is not included to keep the binary dependency-free. If the TCP endpoint
 // is not enabled, discovery returns an error that discoverAndAddDockerNodes
-// swallows silently — disable docker.enabled in config to suppress the attempt.
+// swallows silently - disable docker.enabled in config to suppress the attempt.
 func discoverDockerNodes(_ string) ([]config.NodeConfig, error) {
 	client := &http.Client{
 		Timeout:   5 * time.Second,
@@ -33,7 +33,7 @@ func discoverDockerNodes(_ string) ([]config.NodeConfig, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("docker discovery (Windows): connect to localhost:2375: %w — enable \"Expose daemon on tcp://localhost:2375\" in Docker Desktop settings, or set docker.enabled: false", err)
+		return nil, fmt.Errorf("docker discovery (Windows): connect to localhost:2375: %w - enable \"Expose daemon on tcp://localhost:2375\" in Docker Desktop settings, or set docker.enabled: false", err)
 	}
 	defer resp.Body.Close()
 

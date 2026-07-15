@@ -55,7 +55,7 @@ func main() {
 	// ── Step 1: evict model so we start cold ──────────────────────────────────
 	fmt.Print("Evicting model from VRAM ... ")
 	if err := evict(client, *endpoint, *model, *apiKey); err != nil {
-		fmt.Fprintf(os.Stderr, "WARN: evict failed (%v) — proceeding anyway\n", err)
+		fmt.Fprintf(os.Stderr, "WARN: evict failed (%v) - proceeding anyway\n", err)
 	} else {
 		fmt.Println("done")
 	}
@@ -70,7 +70,7 @@ func main() {
 	}
 
 	// ── Step 3: warm runs ─────────────────────────────────────────────────────
-	fmt.Printf("WARM (model already in VRAM) — %d run(s)\n", *runs)
+	fmt.Printf("WARM (model already in VRAM) - %d run(s)\n", *runs)
 	var warmSamples []time.Duration
 	for i := 1; i <= *runs; i++ {
 		ft, _, err := measure(client, *endpoint, *model, *prompt, *apiKey)
@@ -96,7 +96,7 @@ func main() {
 	fmt.Printf("COLD (model loading from disk)\n")
 	printResult("cold", coldFirst, barMax)
 	fmt.Println()
-	fmt.Printf("WARM (model already in VRAM) — %d run(s)\n", *runs)
+	fmt.Printf("WARM (model already in VRAM) - %d run(s)\n", *runs)
 	for i, ft := range warmSamples {
 		printResult(fmt.Sprintf("warm #%d", i+1), ft, barMax)
 	}

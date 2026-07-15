@@ -44,7 +44,7 @@ func TestLoginRateLimiter_LocksOutAfterThreshold(t *testing.T) {
 		t.Error("expected Retry-After header on 429 lockout response")
 	}
 
-	// Even the CORRECT credentials must now be rejected — the IP is locked out,
+	// Even the CORRECT credentials must now be rejected - the IP is locked out,
 	// not just the bad guesses.
 	rec = loginReq(s, "admin", "admin", ip)
 	if rec.Code != http.StatusTooManyRequests {
@@ -97,7 +97,7 @@ func TestLoginRateLimiter_SuccessResetsFailureCount(t *testing.T) {
 		t.Fatalf("expected successful login, got status %d", rec.Code)
 	}
 
-	// Failures should have been reset — 4 more wrong attempts should still be
+	// Failures should have been reset - 4 more wrong attempts should still be
 	// under threshold (not locked out), proving the counter didn't carry over.
 	for i := 0; i < 4; i++ {
 		rec := loginReq(s, "admin", "wrong-password", ip)
