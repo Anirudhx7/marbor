@@ -891,7 +891,7 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	if runtimeKeys, err := s.st.AllKeys(); err == nil {
 		for _, rk := range runtimeKeys {
-			if rk.Revoked || cfgNames[rk.Name] {
+			if cfgNames[rk.Name] {
 				continue
 			}
 			keys = append(keys, config.KeyConfig{
