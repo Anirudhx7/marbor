@@ -152,7 +152,7 @@ function ArchitectureDiagram() {
   );
 }
 
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 export function Dashboard() {
   const { demoMode } = useDemoMode();
@@ -188,10 +188,10 @@ export function Dashboard() {
   const [version, setVersion] = useState<string>('');
 
   useEffect(() => {
-    if (location.pathname !== '/') return;
+    if (currentAppPath() !== '/') return;
     let active = true;
     fetchHealth().then(h => {
-      if (!active || location.pathname !== '/') return;
+      if (!active || currentAppPath() !== '/') return;
       if (h.proxy_port) setProxyPort(h.proxy_port);
       if (h.version) setVersion(h.version);
     }).catch(() => {});
@@ -199,11 +199,11 @@ export function Dashboard() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/') return;
+    if (currentAppPath() !== '/') return;
     let active = true;
     const loadData = async () => {
       if (demoMode) {
-        if (!active || location.pathname !== '/') return;
+        if (!active || currentAppPath() !== '/') return;
         setNodes(mockGPUNodes);
         setSummary({
           activeRequests: 1,
@@ -227,13 +227,13 @@ export function Dashboard() {
           fetchNodes(),
           fetchSummary()
         ]);
-        if (!active || location.pathname !== '/') return;
+        if (!active || currentAppPath() !== '/') return;
         setNodes(nodesData || []);
         setSummary(summaryData || summary);
         setIsLive(true);
         setError(null);
       } catch (err: any) {
-        if (!active || location.pathname !== '/') return;
+        if (!active || currentAppPath() !== '/') return;
         setIsLive(false);
         setNodes([]);
         setError(err.message || 'Failed to fetch data');
@@ -249,22 +249,22 @@ export function Dashboard() {
   }, [demoMode, location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/') return;
+    if (currentAppPath() !== '/') return;
     let active = true;
     const loadSavings = async () => {
       if (demoMode) return;
-      if (active && location.pathname === '/') {
+      if (active && currentAppPath() === '/') {
         setSavingsLoading(true);
       }
       try {
         const data = await fetchSavings();
-        if (!active || location.pathname !== '/') return;
+        if (!active || currentAppPath() !== '/') return;
         setSavings(data);
       } catch {
-        if (!active || location.pathname !== '/') return;
+        if (!active || currentAppPath() !== '/') return;
         setSavings(null);
       } finally {
-        if (active && location.pathname === '/') {
+        if (active && currentAppPath() === '/') {
           setSavingsLoading(false);
         }
       }
