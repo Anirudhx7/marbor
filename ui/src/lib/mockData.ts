@@ -27,6 +27,10 @@ export const mockGPUNodes: GPUNode[] = [
       { name: 'qwen2.5', sizeVram: Math.round(4.8 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 95 + Math.random() * 5),
+    coldStarts: 2,
+    tokensTotal: 245000,
+    avgLatencyMs: 120,
+    warmHitRatio: 0.98,
   },
   {
     id: 'node-2',
@@ -49,6 +53,10 @@ export const mockGPUNodes: GPUNode[] = [
       { name: 'meta-llama/Llama-3.3-8B-Instruct', sizeVram: Math.round(16.0 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 92 + Math.random() * 8),
+    coldStarts: 0,
+    tokensTotal: 890000,
+    avgLatencyMs: 85,
+    warmHitRatio: 1.00,
   },
   {
     id: 'node-3',
@@ -71,6 +79,10 @@ export const mockGPUNodes: GPUNode[] = [
       { name: 'mistralai/Mistral-Small-24B-Instruct-2501', sizeVram: Math.round(14.8 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 88 + Math.random() * 10),
+    coldStarts: 5,
+    tokensTotal: 1250000,
+    avgLatencyMs: 210,
+    warmHitRatio: 0.88,
   },
   {
     id: 'node-4',
@@ -94,6 +106,10 @@ export const mockGPUNodes: GPUNode[] = [
       { name: 'llama-3.2-3b-instruct.Q4_K_M.gguf', sizeVram: Math.round(4.2 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 70 + Math.random() * 25),
+    coldStarts: 12,
+    tokensTotal: 12000,
+    avgLatencyMs: 450,
+    warmHitRatio: 0.55,
   },
 ];
 
