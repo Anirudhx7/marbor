@@ -343,8 +343,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Try cloud fallback first - cloud providers support /api/* paths via
 		// the translating transport, so Ollama-native clients can still reach
 		// cloud when no local Ollama node is available.
-		cloud := h.router.RouteCloud()
-		if cloud != nil {
+		clouds := h.router.CloudChain()
+		if len(clouds) > 0 {
 			if h.admin != nil {
 				if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 					writeAPIError(w, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
@@ -352,7 +352,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, cloud)
+			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, 0)
 			return
 		}
 		// No local node and no cloud. If this was an Ollama-native path, return
@@ -468,8 +468,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// No alternate nodes - try cloud fallback.
-			cloud := h.router.RouteCloud()
-			if cloud != nil {
+			clouds := h.router.CloudChain()
+			if len(clouds) > 0 {
 				if h.admin != nil {
 					if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 						retryErr = errCloudHandled
@@ -482,7 +482,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// which writes the response. The outer loop checks this after
 				// serveAndRecoverAbort returns.
 				retryErr = errCloudHandled
-				h.proxyToCloud(rw, origReq, body, modelName, keyName, requestID, start, cloud)
+				h.proxyToCloud(rw, origReq, body, modelName, keyName, requestID, start, clouds, 0)
 				return
 			}
 			// Log detail server-side; return a generic message so upstream
@@ -819,7 +819,10 @@ func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r
 	return false
 }
 
-func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, cloud *config.CloudProvider) {
+func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, clouds []config.CloudProvider, idx int) {
+	cloud := &clouds[idx]
+	hasNext := idx+1 < len(clouds)
+	delegated := false
 	metrics.CloudFallback(cloud.Name)
 	path := translateCloudPath(r.URL.Path)
 
@@ -828,6 +831,10 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	// Messages schema, so rather than proxy a request Anthropic will reject with a
 	// confusing raw error, return a clear 501 before the request leaves the mesh.
 	if strings.EqualFold(cloud.Provider, "anthropic") && (path == "/v1/completions" || path == "/v1/chat/completions") {
+		if hasNext {
+			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1)
+			return
+		}
 		writeAPIError(w, http.StatusNotImplemented,
 			"the Anthropic cloud provider does not support "+path+" through ollama-mesh; use an OpenAI-compatible overflow provider for this endpoint",
 			"invalid_request_error", "unsupported_cloud_endpoint")
@@ -886,15 +893,26 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			req.ContentLength = int64(len(outBody))
 		}
 	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+	proxy.ErrorHandler = func(w http.ResponseWriter, outReq *http.Request, err error) {
 		// Log the detailed error server-side, but never leak upstream topology
 		// (hostnames, ports, dial/TLS details) to the client.
 		log.Printf("cloud upstream error (provider=%s request_id=%s): %v", cloud.Name, requestID, err)
+		if hasNext {
+			delegated = true
+			// Use the original, unmutated request r (not outReq, which is the
+			// Director-rewritten outbound request) so the fallback provider
+			// sees the client's real path when deciding on Ollama translation.
+			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1)
+			return
+		}
 		writeAPIError(w, http.StatusBadGateway, "upstream unavailable", "server_error", "upstream_error")
 	}
 
 	rec := &statusRecorder{ResponseWriter: w, start: start}
 	aborted := serveAndRecoverAbort(proxy, rec, r)
+	if delegated {
+		return
+	}
 
 	duration := time.Since(start).Seconds()
 	nodeName := "cloud:" + cloud.Name

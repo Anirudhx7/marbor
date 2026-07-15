@@ -1076,3 +1076,60 @@ func TestRoute_RuntimeFilter_NoMatch(t *testing.T) {
 		t.Errorf("Route with runtimeFilter=ollama returned %q, want nil (no Ollama nodes)", node.Name)
 	}
 }
+
+func TestCloudChainOrdersByPriorityDescending(t *testing.T) {
+	clouds := []config.CloudProvider{
+		{Name: "low", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-a", Enabled: true, Priority: 1},
+		{Name: "high", Provider: "anthropic", BaseURL: "https://api.anthropic.com", APIKey: "sk-b", Enabled: true, Priority: 10},
+		{Name: "mid", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-c", Enabled: true, Priority: 5},
+	}
+	r := New(config.RoutingConfig{}, []config.NodeConfig{}, clouds)
+	chain := r.CloudChain()
+	if len(chain) != 3 {
+		t.Fatalf("len(CloudChain()) = %d, want 3", len(chain))
+	}
+	got := []string{chain[0].Name, chain[1].Name, chain[2].Name}
+	want := []string{"high", "mid", "low"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("CloudChain()[%d].Name = %q, want %q (order: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestCloudChainSkipsDisabled(t *testing.T) {
+	clouds := []config.CloudProvider{
+		{Name: "off", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-a", Enabled: false, Priority: 10},
+		{Name: "on", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-b", Enabled: true, Priority: 1},
+	}
+	r := New(config.RoutingConfig{}, []config.NodeConfig{}, clouds)
+	chain := r.CloudChain()
+	if len(chain) != 1 || chain[0].Name != "on" {
+		t.Fatalf("CloudChain() = %v, want only [on]", chain)
+	}
+}
+
+func TestCloudChainUsesLiteLLMWhenEnabled(t *testing.T) {
+	clouds := []config.CloudProvider{
+		{Name: "openai", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-a", Enabled: true, Priority: 10},
+	}
+	r := New(config.RoutingConfig{}, []config.NodeConfig{}, clouds)
+	r.SetLiteLLM(config.LiteLLMConfig{Enabled: true, URL: "http://localhost:4000", APIKey: "sk-litellm"})
+	chain := r.CloudChain()
+	if len(chain) != 1 {
+		t.Fatalf("len(CloudChain()) = %d, want 1 (litellm only)", len(chain))
+	}
+	if chain[0].Name != "litellm" || chain[0].BaseURL != "http://localhost:4000" {
+		t.Errorf("CloudChain()[0] = %+v, want synthetic litellm provider", chain[0])
+	}
+	if chain[0].APIKey != "sk-litellm" {
+		t.Errorf("CloudChain()[0].APIKey = %q, want sk-litellm", chain[0].APIKey)
+	}
+	// Per-provider list is ignored entirely while LiteLLM is enabled - only
+	// the synthetic entry appears, the "openai" provider above must not.
+	for _, cp := range chain {
+		if cp.Name == "openai" {
+			t.Error("CloudChain() should not include per-provider entries while LiteLLM is enabled")
+		}
+	}
+}
