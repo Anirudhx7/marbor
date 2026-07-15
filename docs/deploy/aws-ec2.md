@@ -54,7 +54,6 @@ proxy: { port: 11434, access_log: true }
 admin: { bind_address: "127.0.0.1:8080" }   # reach via SSH tunnel; don't expose
 auth:
   enabled: true
-  admin_token: <generate-a-strong-token>
   state_path: /opt/usage-state.json          # quotas survive restarts
   keys:
     - { name: app, key: <generate-a-strong-key>, rate_limit: 1000 }
@@ -90,7 +89,9 @@ sudo systemctl daemon-reload && sudo systemctl enable --now ollama-mesh
 
 - **Endpoint `:11434`** - open only to your app servers / SG, never `0.0.0.0/0`.
 - **Admin `:8080`** - keep on `127.0.0.1` and reach it via SSH tunnel
-  (`ssh -L 8080:localhost:8080 ...`), or a private SG. The admin token is sensitive.
+  (`ssh -L 8080:localhost:8080 ...`), or a private SG. Login is username/password
+  (bcrypt-hashed, default `admin`/`admin` on first run - change it immediately);
+  a successful login issues an `HttpOnly` session cookie, which is what's sensitive here.
 - **Node `:11434`** - open only from the mesh box's SG, not the internet.
 - Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.
 

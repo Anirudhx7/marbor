@@ -1,14 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Save, Copy, Check, Terminal, Shield, Activity, FileText, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock } from 'lucide-react';
+import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
-import { defaultSettings, configFileYAML, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, reloadConfig, changePassword } from '../lib/api';
-import type { Settings, CloudProvider } from '../types';
+import { defaultSettings, mockCloudProviders } from '../lib/mockData';
+import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, reloadFromStore, changePassword } from '../lib/api';
+import type { Settings, CloudProvider, CloudProviderInput } from '../types';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
+
+// Compact toggle switch shared by every boolean setting on this page.
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+    >
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+    </button>
+  );
+}
 
 const getTimezoneOffsetMinutes = (tz: string): number => {
   if (tz === 'Local') return -999999;
@@ -97,8 +109,18 @@ export function SettingsPage() {
   const [reloaded, setReloaded] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Cloud providers CRUD
+  const [cloudModalOpen, setCloudModalOpen] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<CloudProviderInput | null>(null);
+  const [cloudSaving, setCloudSaving] = useState(false);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
+
+  // Model context windows
+  const [newCtxModel, setNewCtxModel] = useState('');
+  const [newCtxTokens, setNewCtxTokens] = useState('');
 
   // Admin credentials change
   const [credCurrentPw, setCredCurrentPw] = useState('');
@@ -134,6 +156,46 @@ export function SettingsPage() {
           hideBudgetBanner: settingsData.hide_budget_banner || false,
           huggingFaceToken: settingsData.huggingface?.token || '',
           allowManagementEndpoints: settingsData.routing?.allow_management_endpoints || false,
+
+          adminBindAddress: settingsData.admin?.bind_address || ':8080',
+          adminCorsOrigin: settingsData.admin?.cors_origin || '',
+          proxyAccessLog: settingsData.proxy?.access_log !== false,
+
+          routingFallback: settingsData.routing?.fallback || 'least-connections',
+          routingUpstreamTimeoutMs: settingsData.routing?.upstream_timeout_ms || 120000,
+          routingMaxRetries: settingsData.routing?.max_retries ?? 2,
+          routingSessionAffinity: settingsData.routing?.session_affinity || false,
+          routingSessionAffinityTtl: settingsData.routing?.session_affinity_ttl || '10m',
+          routingNvidiaPollIntervalMs: settingsData.routing?.nvidia_poll_interval_ms || 30000,
+          routingQueueMaxDepth: settingsData.routing?.queue_max_depth ?? 100,
+          routingQueueTimeoutMs: settingsData.routing?.queue_timeout_ms || 30000,
+          routingHealthFailureThreshold: settingsData.routing?.health_failure_threshold ?? 3,
+          routingHealthSuccessThreshold: settingsData.routing?.health_success_threshold ?? 2,
+          routingOverflowSlaMs: settingsData.routing?.overflow_sla_ms ?? 0,
+          thermalWatchdogEnabled: settingsData.routing?.thermal_watchdog?.enabled || false,
+          thermalWatchdogMaxTempCelsius: settingsData.routing?.thermal_watchdog?.max_temp_celsius || 0,
+          thermalWatchdogConsecutiveBreaches: settingsData.routing?.thermal_watchdog?.consecutive_breaches ?? 3,
+
+          dockerEnabled: settingsData.docker?.enabled || false,
+          dockerSocket: settingsData.docker?.socket || '',
+          dockerPollIntervalMs: settingsData.docker?.poll_interval_ms ?? 30000,
+
+          auditEnabled: settingsData.audit?.enabled || false,
+          webhookEnabled: settingsData.webhook?.enabled || false,
+          webhookUrl: settingsData.webhook?.url || '',
+          webhookSecret: settingsData.webhook?.secret || '',
+          savingsReferenceCostPer1k: settingsData.savings?.reference_cost_per_1k ?? 0.002,
+
+          haEnabled: settingsData.ha?.enabled || false,
+          haPeers: settingsData.ha?.peers || [],
+          haHeartbeatIntervalMs: settingsData.ha?.heartbeat_interval_ms ?? 5000,
+          haPeerTimeoutMs: settingsData.ha?.peer_timeout_ms ?? 3000,
+
+          warmupEnabled: settingsData.warmup?.enabled || false,
+          warmupIntervalMs: settingsData.warmup?.interval_ms ?? 300000,
+          warmupKeepAlive: settingsData.warmup?.keep_alive || '10m',
+
+          contextWindows: settingsData.context_windows || {},
         });
         setCloudProviders(demoMode ? mockCloudProviders : (providersData || []));
         setError(null);
@@ -158,15 +220,42 @@ export function SettingsPage() {
       // Map UI settings to backend config format (also used in demo mode → localStorage)
       const payload = {
         timezone: settings.timezone,
-        proxy: { port: settings.proxyPort, log_level: settings.logLevel },
+        proxy: { port: settings.proxyPort, log_level: settings.logLevel, access_log: settings.proxyAccessLog },
+        admin: { bind_address: settings.adminBindAddress, cors_origin: settings.adminCorsOrigin },
         auth: { enabled: settings.authMode === 'api-key' },
-        routing: { poll_interval_ms: settings.pollingInterval, allow_management_endpoints: settings.allowManagementEndpoints || false },
+        routing: {
+          poll_interval_ms: settings.pollingInterval,
+          allow_management_endpoints: settings.allowManagementEndpoints || false,
+          fallback: settings.routingFallback,
+          upstream_timeout_ms: settings.routingUpstreamTimeoutMs,
+          max_retries: settings.routingMaxRetries,
+          session_affinity: settings.routingSessionAffinity,
+          session_affinity_ttl: settings.routingSessionAffinityTtl,
+          nvidia_poll_interval_ms: settings.routingNvidiaPollIntervalMs,
+          queue_max_depth: settings.routingQueueMaxDepth,
+          queue_timeout_ms: settings.routingQueueTimeoutMs,
+          health_failure_threshold: settings.routingHealthFailureThreshold,
+          health_success_threshold: settings.routingHealthSuccessThreshold,
+          overflow_sla_ms: settings.routingOverflowSlaMs,
+          thermal_watchdog: {
+            enabled: settings.thermalWatchdogEnabled,
+            max_temp_celsius: settings.thermalWatchdogMaxTempCelsius,
+            consecutive_breaches: settings.thermalWatchdogConsecutiveBreaches,
+          },
+        },
         metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
         litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint },
         huggingface: { token: settings.huggingFaceToken || '' },
         cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap, soft_budget_pct: settings.cloudSoftBudgetPct },
         hide_demo_banner: settings.hideDemoBanner || false,
         hide_budget_banner: settings.hideBudgetBanner || false,
+        docker: { enabled: settings.dockerEnabled, socket: settings.dockerSocket, poll_interval_ms: settings.dockerPollIntervalMs },
+        audit: { enabled: settings.auditEnabled },
+        webhook: { enabled: settings.webhookEnabled, url: settings.webhookUrl, secret: settings.webhookSecret },
+        savings: { reference_cost_per_1k: settings.savingsReferenceCostPer1k },
+        ha: { enabled: settings.haEnabled, peers: settings.haPeers, heartbeat_interval_ms: settings.haHeartbeatIntervalMs, peer_timeout_ms: settings.haPeerTimeoutMs },
+        warmup: { enabled: settings.warmupEnabled, interval_ms: settings.warmupIntervalMs, keep_alive: settings.warmupKeepAlive },
+        context_windows: settings.contextWindows,
       };
 
       await updateSettings(payload);
@@ -188,66 +277,16 @@ export function SettingsPage() {
     }
     setReloading(true);
     try {
-      await reloadConfig();
+      await reloadFromStore();
       setReloaded(true);
       setError(null);
       setTimeout(() => setReloaded(false), 2000);
     } catch (err: any) {
-      setError(err.message || 'Config reload failed');
+      setError(err.message || 'Reload failed');
     } finally {
       setReloading(false);
       setReloadConfirmOpen(false);
     }
-  };
-
-  const buildYAML = (): string => {
-    if (demoMode) return configFileYAML;
-    return [
-      `proxy:`,
-      `  port: ${settings.proxyPort}`,
-      `  log_level: ${settings.logLevel}`,
-      ``,
-      `auth:`,
-      `  enabled: ${settings.authMode === 'api-key'}`,
-      ``,
-      `routing:`,
-      `  poll_interval_ms: ${settings.pollingInterval}`,
-      ``,
-      `metrics:`,
-      `  enabled: ${settings.prometheusEnabled}`,
-      `  port: ${settings.prometheusPort}`,
-      ``,
-      `litellm:`,
-      `  enabled: ${settings.liteLLMEnabled}`,
-      settings.liteLLMEnabled ? `  url: ${settings.liteLLMEndpoint}` : null,
-      ``,
-      `cloud_budget:`,
-      `  daily_usd_cap: ${settings.cloudDailyUsdCap}`,
-      `  monthly_usd_cap: ${settings.cloudMonthlyUsdCap}`,
-    ].filter(line => line !== null).join('\n');
-  };
-
-  const copyConfig = () => {
-    const yaml = buildYAML();
-    const legacyCopy = (text: string) => {
-      const el = document.createElement('textarea');
-      el.value = text;
-      el.setAttribute('readonly', '');
-      el.style.cssText = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px';
-      document.body.appendChild(el);
-      el.focus();
-      el.select();
-      el.setSelectionRange(0, text.length);
-      try { document.execCommand('copy'); } catch (_) {}
-      document.body.removeChild(el);
-    };
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(yaml).catch(() => legacyCopy(yaml));
-    } else {
-      legacyCopy(yaml);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleChangeCredentials = async () => {
@@ -272,6 +311,63 @@ export function SettingsPage() {
       setCredError(err.message || 'Failed to update credentials');
     } finally {
       setCredSaving(false);
+    }
+  };
+
+  const emptyProvider: CloudProviderInput = { name: '', provider: 'openai', base_url: '', api_key: '', default_model: '', cost_per_1k_tokens: 0, enabled: false };
+
+  const refreshCloudProviders = async () => {
+    try {
+      const providers = await fetchCloudProviders();
+      setCloudProviders(providers);
+    } catch { /* keep showing the last known list on a transient fetch error */ }
+  };
+
+  const openAddCloudProvider = () => {
+    setEditingProvider({ ...emptyProvider });
+    setCloudError(null);
+    setCloudModalOpen(true);
+  };
+
+  const openEditCloudProvider = (p: CloudProvider) => {
+    setEditingProvider({ name: p.name, provider: p.provider, base_url: p.base_url, api_key: '***', default_model: p.default_model, cost_per_1k_tokens: p.cost_per_1k_tokens, enabled: p.enabled });
+    setCloudError(null);
+    setCloudModalOpen(true);
+  };
+
+  const handleSaveCloudProvider = async (isNew: boolean) => {
+    if (!editingProvider) return;
+    if (!editingProvider.name.trim() || !editingProvider.provider.trim()) {
+      setCloudError('Name and provider are required');
+      return;
+    }
+    setCloudSaving(true);
+    setCloudError(null);
+    try {
+      if (isNew) {
+        await addCloudProvider(editingProvider);
+      } else {
+        await updateCloudProvider(editingProvider.name, editingProvider);
+      }
+      setCloudModalOpen(false);
+      setEditingProvider(null);
+      await refreshCloudProviders();
+    } catch (err: any) {
+      setCloudError(err.message || 'Failed to save cloud provider');
+    } finally {
+      setCloudSaving(false);
+    }
+  };
+
+  const handleDeleteCloudProvider = async () => {
+    if (!providerToDelete) return;
+    try {
+      await deleteCloudProvider(providerToDelete);
+      setProviderToDelete(null);
+      await refreshCloudProviders();
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete cloud provider');
+      setProviderToDelete(null);
     }
   };
 
@@ -778,14 +874,25 @@ export function SettingsPage() {
 
         {/* Cloud Providers */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-sky-500/10 rounded-lg">
-              <Cloud className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-sky-500/10 rounded-lg">
+                <Cloud className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Cloud Providers</h3>
+                <p className="text-xs font-medium text-muted-foreground">Fallback cloud endpoints for overflow traffic</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Cloud Providers</h3>
-              <p className="text-xs font-medium text-muted-foreground">Fallback cloud endpoints - configure in config.yaml</p>
-            </div>
+            {!demoMode && (
+              <button
+                onClick={openAddCloudProvider}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Provider
+              </button>
+            )}
           </div>
 
           {cloudLoading ? (
@@ -809,59 +916,372 @@ export function SettingsPage() {
                       <p className="text-xs font-medium text-muted-foreground">{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
                     </div>
                   </div>
-                  <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
-                    {provider.provider}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
+                      {provider.provider}
+                    </Badge>
+                    {!demoMode && (
+                      <>
+                        <button onClick={() => openEditCloudProvider(provider)} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setProviderToDelete(provider.name)} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
-              <p className="text-xs font-medium text-muted-foreground pt-1">
-                To add or remove providers, edit config.yaml and restart.
-              </p>
             </div>
           )}
         </div>
 
-        {/* Config File Preview */}
+        {/* Advanced Routing */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-secondary rounded-lg">
-                <FileText className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{demoMode ? 'Config Template' : 'Current Configuration'}</h3>
-                <p className="text-xs font-medium text-muted-foreground">
-                  {demoMode ? 'Reference configuration template' : 'Based on current settings above'}
-                </p>
-              </div>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-cyan-500/10 rounded-lg">
+              <Network className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
             </div>
-            <button
-              onClick={copyConfig}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  Copy
-                </>
-              )}
-            </button>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Advanced Routing</h3>
+              <p className="text-xs font-medium text-muted-foreground">Timeouts, retries, session affinity, and queueing - takes effect on next restart</p>
+            </div>
           </div>
 
-          <div className="relative">
-            <pre className="font-mono text-sm bg-secondary/30 border border-border rounded-lg p-4 overflow-x-auto text-foreground/80 leading-relaxed">
-              <code>{buildYAML()}</code>
-            </pre>
-            <Badge variant="muted" size="sm" className="absolute top-3 right-3 shadow-sm bg-background">
-              Read-only
-            </Badge>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Fallback Strategy</label>
+              <select
+                value={settings.routingFallback}
+                onChange={(e) => setSettings({ ...settings, routingFallback: e.target.value })}
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              >
+                <option value="least-connections">Least Connections</option>
+                <option value="round-robin">Round Robin</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Upstream Timeout (ms)</label>
+              <input type="number" value={settings.routingUpstreamTimeoutMs} onChange={(e) => setSettings({ ...settings, routingUpstreamTimeoutMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Max Retries</label>
+              <input type="number" value={settings.routingMaxRetries} onChange={(e) => setSettings({ ...settings, routingMaxRetries: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">nvidia-smi Poll Interval (ms)</label>
+              <input type="number" value={settings.routingNvidiaPollIntervalMs} onChange={(e) => setSettings({ ...settings, routingNvidiaPollIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Queue Max Depth</label>
+              <input type="number" value={settings.routingQueueMaxDepth} onChange={(e) => setSettings({ ...settings, routingQueueMaxDepth: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Queue Timeout (ms)</label>
+              <input type="number" value={settings.routingQueueTimeoutMs} onChange={(e) => setSettings({ ...settings, routingQueueTimeoutMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Health Failure Threshold</label>
+              <input type="number" value={settings.routingHealthFailureThreshold} onChange={(e) => setSettings({ ...settings, routingHealthFailureThreshold: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Health Success Threshold</label>
+              <input type="number" value={settings.routingHealthSuccessThreshold} onChange={(e) => setSettings({ ...settings, routingHealthSuccessThreshold: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Cloud Overflow SLA (ms, 0 = disabled)</label>
+              <input type="number" value={settings.routingOverflowSlaMs} onChange={(e) => setSettings({ ...settings, routingOverflowSlaMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+            <div>
+              <p className="text-sm font-medium text-foreground">Session Affinity</p>
+              <p className="text-xs text-muted-foreground">Route requests sharing an X-Session-ID to the same node (KV-cache reuse)</p>
+            </div>
+            <Toggle on={settings.routingSessionAffinity} onToggle={() => setSettings({ ...settings, routingSessionAffinity: !settings.routingSessionAffinity })} />
+          </div>
+          {settings.routingSessionAffinity && (
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Session Affinity TTL</label>
+              <input type="text" value={settings.routingSessionAffinityTtl} onChange={(e) => setSettings({ ...settings, routingSessionAffinityTtl: e.target.value })} placeholder="10m" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+          )}
+
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div className="flex items-center gap-2">
+                <Flame className="w-4 h-4 text-orange-500" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Thermal Watchdog</p>
+                  <p className="text-xs text-muted-foreground">Auto-drain a node after sustained overheat (recovery requires manual undrain)</p>
+                </div>
+              </div>
+              <Toggle on={settings.thermalWatchdogEnabled} onToggle={() => setSettings({ ...settings, thermalWatchdogEnabled: !settings.thermalWatchdogEnabled })} />
+            </div>
+            {settings.thermalWatchdogEnabled && (
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Max Temp (°C)</label>
+                  <input type="number" value={settings.thermalWatchdogMaxTempCelsius} onChange={(e) => setSettings({ ...settings, thermalWatchdogMaxTempCelsius: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Consecutive Breaches</label>
+                  <input type="number" value={settings.thermalWatchdogConsecutiveBreaches} onChange={(e) => setSettings({ ...settings, thermalWatchdogConsecutiveBreaches: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Admin & Security */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-rose-500/10 rounded-lg">
+              <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Admin & Security</h3>
+              <p className="text-xs font-medium text-muted-foreground">Dashboard listen address and CORS - takes effect on next restart</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Admin Bind Address</label>
+              <input type="text" value={settings.adminBindAddress} onChange={(e) => setSettings({ ...settings, adminBindAddress: e.target.value })} placeholder=":8080" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Use 127.0.0.1:8080 to restrict the dashboard to localhost. Changing this can lock you out until you reach it via the new address - restart required.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">CORS Origin</label>
+              <input type="text" value={settings.adminCorsOrigin} onChange={(e) => setSettings({ ...settings, adminCorsOrigin: e.target.value })} placeholder="https://your-frontend.example.com" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+              <p className="text-[10px] text-muted-foreground mt-1">Leave blank for same-origin only. Must be one concrete origin, not "*".</p>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
+                <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
+              </div>
+              <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
+            </div>
+          </div>
+        </div>
+
+        {/* Docker Auto-Discovery */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-blue-500/10 rounded-lg">
+              <Container className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Docker Auto-Discovery</h3>
+              <p className="text-xs font-medium text-muted-foreground">Auto-register Ollama containers - takes effect on next restart</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable Docker Discovery</p>
+                <p className="text-xs text-muted-foreground">Poll the Docker socket for Ollama containers</p>
+              </div>
+              <Toggle on={settings.dockerEnabled} onToggle={() => setSettings({ ...settings, dockerEnabled: !settings.dockerEnabled })} />
+            </div>
+            {settings.dockerEnabled && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Docker Socket</label>
+                  <input type="text" value={settings.dockerSocket} onChange={(e) => setSettings({ ...settings, dockerSocket: e.target.value })} placeholder="/var/run/docker.sock" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Poll Interval (ms)</label>
+                  <input type="number" value={settings.dockerPollIntervalMs} onChange={(e) => setSettings({ ...settings, dockerPollIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Webhooks */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-violet-500/10 rounded-lg">
+              <Webhook className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Webhooks</h3>
+              <p className="text-xs font-medium text-muted-foreground">HMAC-signed node health-transition notifications</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable Webhooks</p>
+              </div>
+              <Toggle on={settings.webhookEnabled} onToggle={() => setSettings({ ...settings, webhookEnabled: !settings.webhookEnabled })} />
+            </div>
+            {settings.webhookEnabled && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Webhook URL</label>
+                  <input type="text" value={settings.webhookUrl} onChange={(e) => setSettings({ ...settings, webhookUrl: e.target.value })} placeholder="https://hooks.example.com/ollama-mesh" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Signing Secret</label>
+                  <input type="password" value={settings.webhookSecret} onChange={(e) => setSettings({ ...settings, webhookSecret: e.target.value })} autoComplete="off" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                  <p className="text-[10px] text-muted-foreground mt-1">Stored server-side; masked here once saved.</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* High Availability / Peer Monitoring */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-teal-500/10 rounded-lg">
+              <Activity className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Peer Health Monitoring</h3>
+              <p className="text-xs font-medium text-muted-foreground">Observability only - never failover or shared state</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable Peer Monitoring</p>
+              </div>
+              <Toggle on={settings.haEnabled} onToggle={() => setSettings({ ...settings, haEnabled: !settings.haEnabled })} />
+            </div>
+            {settings.haEnabled && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Peer URLs (one per line)</label>
+                  <textarea
+                    value={settings.haPeers.join('\n')}
+                    onChange={(e) => setSettings({ ...settings, haPeers: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })}
+                    placeholder={'http://peer-a:8080\nhttp://peer-b:8080'}
+                    rows={3}
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 font-mono"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Heartbeat (ms)</label>
+                    <input type="number" value={settings.haHeartbeatIntervalMs} onChange={(e) => setSettings({ ...settings, haHeartbeatIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Peer Timeout (ms)</label>
+                    <input type="number" value={settings.haPeerTimeoutMs} onChange={(e) => setSettings({ ...settings, haPeerTimeoutMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Global Warmup & Audit */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-amber-500/10 rounded-lg">
+              <Ruler className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Global Warmup & Audit</h3>
+              <p className="text-xs font-medium text-muted-foreground">Distinct from per-node warmup toggles on the Warmup page</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Enable Global Warmup</p>
+              </div>
+              <Toggle on={settings.warmupEnabled} onToggle={() => setSettings({ ...settings, warmupEnabled: !settings.warmupEnabled })} />
+            </div>
+            {settings.warmupEnabled && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Interval (ms)</label>
+                  <input type="number" value={settings.warmupIntervalMs} onChange={(e) => setSettings({ ...settings, warmupIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Keep Alive</label>
+                  <input type="text" value={settings.warmupKeepAlive} onChange={(e) => setSettings({ ...settings, warmupKeepAlive: e.target.value })} placeholder="10m" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Audit Log</p>
+                <p className="text-xs text-muted-foreground">Append-only request audit trail</p>
+              </div>
+              <Toggle on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Local Token Value ($/1k tokens)</label>
+              <input type="number" step="0.001" value={settings.savingsReferenceCostPer1k} onChange={(e) => setSettings({ ...settings, savingsReferenceCostPer1k: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+              <p className="text-[10px] text-muted-foreground mt-1">Cloud rate used to value locally-served tokens in the dashboard's savings calculation.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Model Context Windows */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-lime-500/10 rounded-lg">
+              <Ruler className="w-5 h-5 text-lime-600 dark:text-lime-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Model Context Windows</h3>
+              <p className="text-xs font-medium text-muted-foreground">Operator-declared max tokens per model, for admission-time checks</p>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            {Object.entries(settings.contextWindows).length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No context windows declared</p>
+            ) : (
+              Object.entries(settings.contextWindows).map(([model, tokens]) => (
+                <div key={model} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{model}</p>
+                    <p className="text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = { ...settings.contextWindows };
+                      delete next[model];
+                      setSettings({ ...settings, contextWindows: next });
+                    }}
+                    className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <input type="text" value={newCtxModel} onChange={(e) => setNewCtxModel(e.target.value)} placeholder="llama3.2:8b" className="flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <input type="number" value={newCtxTokens} onChange={(e) => setNewCtxTokens(e.target.value)} placeholder="8192" className="w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <button
+              onClick={() => {
+                const tokens = parseInt(newCtxTokens, 10);
+                if (!newCtxModel.trim() || !tokens) return;
+                setSettings({ ...settings, contextWindows: { ...settings.contextWindows, [newCtxModel.trim()]: tokens } });
+                setNewCtxModel('');
+                setNewCtxTokens('');
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
         {/* Admin Credentials - hidden in demo mode */}
         {!demoMode && (
           <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
@@ -940,16 +1360,16 @@ export function SettingsPage() {
     <Modal
       isOpen={reloadConfirmOpen}
       onClose={() => setReloadConfirmOpen(false)}
-      title="Reload Config"
+      title="Reload From Database"
       maxWidth="sm"
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Are you sure you want to reload config.yaml into the running process?
+          Re-sync nodes, API keys, and cloud providers from the database into the running process?
         </p>
         <p className="text-xs text-muted-foreground">
-          This re-applies whatever is currently saved on disk - including auth mode, ports, and routing settings - to
-          the live mesh immediately, without a restart.
+          Applies immediately without a restart. Other settings (listen ports/addresses, Docker/HA/Webhook wiring)
+          require a restart to take effect.
         </p>
         {error && (
           <p className="text-sm text-destructive">{error}</p>
@@ -967,7 +1387,97 @@ export function SettingsPage() {
             disabled={reloading}
             className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
           >
-            Reload Config
+            Reload
+          </button>
+        </div>
+      </div>
+    </Modal>
+
+    <Modal
+      isOpen={cloudModalOpen}
+      onClose={() => { setCloudModalOpen(false); setEditingProvider(null); }}
+      title={editingProvider && cloudProviders.some(p => p.name === editingProvider.name) ? 'Edit Cloud Provider' : 'Add Cloud Provider'}
+      maxWidth="sm"
+    >
+      {editingProvider && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Name</label>
+            <input
+              type="text"
+              value={editingProvider.name}
+              disabled={cloudProviders.some(p => p.name === editingProvider.name)}
+              onChange={(e) => setEditingProvider({ ...editingProvider, name: e.target.value })}
+              placeholder="openai-prod"
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Provider</label>
+            <select
+              value={editingProvider.provider}
+              onChange={(e) => setEditingProvider({ ...editingProvider, provider: e.target.value })}
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+            >
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Base URL</label>
+            <input type="text" value={editingProvider.base_url} onChange={(e) => setEditingProvider({ ...editingProvider, base_url: e.target.value })} placeholder="https://api.openai.com/v1" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">API Key</label>
+            <input type="password" value={editingProvider.api_key} onChange={(e) => setEditingProvider({ ...editingProvider, api_key: e.target.value })} autoComplete="off" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Default Model</label>
+              <input type="text" value={editingProvider.default_model} onChange={(e) => setEditingProvider({ ...editingProvider, default_model: e.target.value })} placeholder="gpt-4o" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Cost / 1k tokens</label>
+              <input type="number" step="0.0001" value={editingProvider.cost_per_1k_tokens} onChange={(e) => setEditingProvider({ ...editingProvider, cost_per_1k_tokens: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+            <p className="text-sm font-medium text-foreground">Enabled</p>
+            <Toggle on={editingProvider.enabled} onToggle={() => setEditingProvider({ ...editingProvider, enabled: !editingProvider.enabled })} />
+          </div>
+          {cloudError && <p className="text-sm text-destructive">{cloudError}</p>}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button onClick={() => { setCloudModalOpen(false); setEditingProvider(null); }} disabled={cloudSaving} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
+              Cancel
+            </button>
+            <button
+              onClick={() => handleSaveCloudProvider(!cloudProviders.some(p => p.name === editingProvider.name))}
+              disabled={cloudSaving}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+            >
+              {cloudSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+
+    <Modal
+      isOpen={!!providerToDelete}
+      onClose={() => setProviderToDelete(null)}
+      title="Delete Cloud Provider"
+      maxWidth="sm"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Delete cloud provider <span className="font-medium text-foreground">{providerToDelete}</span>? This cannot be undone.
+        </p>
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <button onClick={() => setProviderToDelete(null)} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleDeleteCloudProvider} className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm">
+            Delete
           </button>
         </div>
       </div>

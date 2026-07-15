@@ -1,43 +1,24 @@
 package config
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
-func TestLoadConfig(t *testing.T) {
-	yaml := `
-proxy:
-  port: 11434
-  log_level: debug
-auth:
-  enabled: true
-  keys:
-    - name: test
-      key: sk-test
-      rate_limit: 100
-      models:
-        - llama3.2:8b
-nodes:
-  - name: gpu-0
-    url: http://localhost:11435
-    gpu_model: NVIDIA RTX 4090
-routing:
-  strategy: warm-first
-  poll_interval_ms: 2000
-  fallback: least-connections
-metrics:
-  enabled: true
-  port: 9090
-`
-	tmp, _ := os.CreateTemp("", "config-*.yaml")
-	tmp.WriteString(yaml)
-	tmp.Close()
-	defer os.Remove(tmp.Name())
-
-	cfg, err := LoadConfig(tmp.Name())
-	if err != nil {
-		t.Fatalf("load config: %v", err)
+func TestValidateAppliesDefaultsAndKeepsExplicitValues(t *testing.T) {
+	cfg := Config{
+		Proxy: ProxyConfig{Port: 11434},
+		Auth: AuthConfig{
+			Enabled: BoolPtr(true),
+			Keys: []KeyConfig{
+				{Name: "test", Key: "sk-test", RateLimit: 100, Models: []string{"llama3.2:8b"}},
+			},
+		},
+		Nodes: []NodeConfig{
+			{Name: "gpu-0", URL: "http://localhost:11435", GPUModel: "NVIDIA RTX 4090"},
+		},
+		Routing: RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000, Fallback: "least-connections"},
+		Metrics: MetricsConfig{Enabled: true, Port: 9090},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
 	}
 	if cfg.Proxy.Port != 11434 {
 		t.Errorf("port = %d, want 11434", cfg.Proxy.Port)
@@ -54,19 +35,11 @@ metrics:
 }
 
 func TestDefaults(t *testing.T) {
-	yaml := `
-nodes:
-  - name: a
-    url: http://localhost:1
-`
-	tmp, _ := os.CreateTemp("", "config-*.yaml")
-	tmp.WriteString(yaml)
-	tmp.Close()
-	defer os.Remove(tmp.Name())
-
-	cfg, err := LoadConfig(tmp.Name())
-	if err != nil {
-		t.Fatalf("load config: %v", err)
+	cfg := Config{
+		Nodes: []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
 	}
 	if cfg.Proxy.Port != 11434 {
 		t.Errorf("default port = %d, want 11434", cfg.Proxy.Port)
@@ -86,19 +59,10 @@ func TestSavingsReferenceRateDefault(t *testing.T) {
 	}
 }
 
-func TestSavingsReferenceRateFromYAML(t *testing.T) {
-	yaml := `
-savings:
-  reference_cost_per_1k: 0.01
-`
-	tmp, _ := os.CreateTemp("", "config-*.yaml")
-	tmp.WriteString(yaml)
-	tmp.Close()
-	defer os.Remove(tmp.Name())
-
-	cfg, err := LoadConfig(tmp.Name())
-	if err != nil {
-		t.Fatalf("load config: %v", err)
+func TestSavingsReferenceRateExplicitValue(t *testing.T) {
+	cfg := Config{Savings: SavingsConfig{ReferenceCostPer1K: 0.01}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
 	}
 	if cfg.Savings.ReferenceCostPer1K != 0.01 {
 		t.Errorf("reference_cost_per_1k = %v, want 0.01", cfg.Savings.ReferenceCostPer1K)
@@ -107,26 +71,19 @@ savings:
 
 // TestDuplicateNodeURLNormalized verifies that two nodes with the same
 // backend URL are rejected even when they differ only cosmetically (case of
-// scheme/host, trailing slash) and are registered under different names  --
+// scheme/host, trailing slash) and are registered under different names --
 // e.g. a statically-configured "pve" and an auto-discovered
 // "discovered-ollama-1" that both point at the same physical GPU box. Before
 // NormalizeNodeURL, Validate() only caught byte-for-byte identical URL
 // strings, so this exact real-world case slipped through.
 func TestDuplicateNodeURLNormalized(t *testing.T) {
-	yaml := `
-nodes:
-  - name: pve
-    url: http://192.168.1.115:11434
-  - name: discovered-ollama-1
-    url: HTTP://192.168.1.115:11434/
-`
-	tmp, _ := os.CreateTemp("", "config-*.yaml")
-	tmp.WriteString(yaml)
-	tmp.Close()
-	defer os.Remove(tmp.Name())
-
-	_, err := LoadConfig(tmp.Name())
-	if err == nil {
+	cfg := Config{
+		Nodes: []NodeConfig{
+			{Name: "pve", URL: "http://192.168.1.115:11434"},
+			{Name: "discovered-ollama-1", URL: "HTTP://192.168.1.115:11434/"},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for duplicate node URL under different names")
 	}
 }
@@ -153,22 +110,16 @@ func TestNormalizeNodeURL(t *testing.T) {
 }
 
 func TestDuplicateKeyName(t *testing.T) {
-	yaml := `
-auth:
-  enabled: true
-  keys:
-    - name: dup
-      key: sk-1
-    - name: dup
-      key: sk-2
-`
-	tmp, _ := os.CreateTemp("", "config-*.yaml")
-	tmp.WriteString(yaml)
-	tmp.Close()
-	defer os.Remove(tmp.Name())
-
-	_, err := LoadConfig(tmp.Name())
-	if err == nil {
+	cfg := Config{
+		Auth: AuthConfig{
+			Enabled: BoolPtr(true),
+			Keys: []KeyConfig{
+				{Name: "dup", Key: "sk-1"},
+				{Name: "dup", Key: "sk-2"},
+			},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for duplicate key name")
 	}
 }

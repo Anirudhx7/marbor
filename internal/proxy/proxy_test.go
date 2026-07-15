@@ -31,7 +31,7 @@ type liveRequestEntry struct {
 func fetchLiveRequests(t *testing.T, a *admin.Server) []liveRequestEntry {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/admin/requests/live", nil)
-	req.Header.Set("Authorization", "Bearer "+a.AdminToken())
+	req.AddCookie(&http.Cookie{Name: "mesh_session", Value: a.AdminToken()})
 	rec := httptest.NewRecorder()
 	a.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {

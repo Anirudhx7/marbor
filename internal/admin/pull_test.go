@@ -51,7 +51,7 @@ func TestHandleNodePull_Success(t *testing.T) {
 
 	body := `{"model":"llama3:8b"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 
@@ -111,7 +111,7 @@ func TestHandleNodePull_DedupsConcurrentPullsOfSameModel(t *testing.T) {
 	body := `{"model":"llama3:8b"}`
 	newPullReq := func() *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-		req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 		req.Header.Set("Content-Type", "application/json")
 		req.SetPathValue("name", "gpu-0")
 		return req
@@ -156,7 +156,7 @@ func TestHandleNodePull_SlotFreedAfterCompletion(t *testing.T) {
 	body := `{"model":"llama3:8b"}`
 	newPullReq := func() *http.Request {
 		req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-		req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 		req.Header.Set("Content-Type", "application/json")
 		req.SetPathValue("name", "gpu-0")
 		return req
@@ -181,7 +181,7 @@ func TestHandleSetNodePrewarm_TogglesFlag(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/prewarm", strings.NewReader(`{"disabled":true}`))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 
@@ -207,7 +207,7 @@ func TestHandleSetNodePrewarm_NodeNotFound(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/does-not-exist/prewarm", strings.NewReader(`{"disabled":true}`))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "does-not-exist")
 
@@ -226,7 +226,7 @@ func TestHandleNodePull_NodeNotFound(t *testing.T) {
 
 	body := `{"model":"llama3:8b"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/does-not-exist/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "does-not-exist")
 
@@ -246,7 +246,7 @@ func TestHandleNodePull_MissingModel(t *testing.T) {
 
 	body := `{}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 
@@ -297,7 +297,7 @@ func TestHandleNodePull_ShortTimeoutCausesBadGateway(t *testing.T) {
 
 	body := `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 
@@ -331,7 +331,7 @@ func TestHandleNodePull_SlowHFPullSucceedsWithGenerousTimeout(t *testing.T) {
 
 	body := `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 

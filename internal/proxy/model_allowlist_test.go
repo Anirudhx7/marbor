@@ -52,7 +52,7 @@ func buildAllowlistStack(t *testing.T, keys []config.KeyConfig) http.Handler {
 	}
 	nodes[0].Unlock()
 
-	cfg := config.Config{Auth: config.AuthConfig{Enabled: config.BoolPtr(true), AdminToken: "admin-tok", Keys: keys}}
+	cfg := config.Config{Auth: config.AuthConfig{Enabled: config.BoolPtr(true), Keys: keys}}
 	adminSrv := admin.NewServer(rtr, nil, cfg)
 	tmpDB := filepath.Join(t.TempDir(), "allowlist-audit.db")
 	st, err := store.Open(tmpDB)

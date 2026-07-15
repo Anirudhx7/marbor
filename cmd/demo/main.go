@@ -206,7 +206,7 @@ func (m *mockOllamaServer) handleGenerate(w http.ResponseWriter, r *http.Request
 // Demo config builder
 // ----------------------------------------------------------------------------
 
-func buildDemoConfig(node1URL, node2URL string, apiKey, adminToken string) config.Config {
+func buildDemoConfig(node1URL, node2URL string, apiKey string) config.Config {
 	return config.Config{
 		Proxy: config.ProxyConfig{
 			Port: 11437,
@@ -220,7 +220,6 @@ func buildDemoConfig(node1URL, node2URL string, apiKey, adminToken string) confi
 					RateLimit: 1000,
 				},
 			},
-			AdminToken: adminToken,
 		},
 		Nodes: []config.NodeConfig{
 			{Name: "node-1", URL: node1URL, GPUModel: "Demo GPU (mock)"},
@@ -329,9 +328,8 @@ func sendDemoTraffic(proxyURL, apiKey string) {
 func main() {
 	log.SetPrefix("[ollama-mesh demo] ")
 
-	// Generate a stable API key and admin token for the demo session.
+	// Generate a stable API key for the demo session.
 	apiKey := "demo-key-ollama-mesh-2026"
-	adminToken := "demo-admin-token-2026"
 
 	// Start 2 mock Ollama nodes. Both have llama3:8b warm in VRAM.
 	log.Println("Starting mock Ollama node 1 (warm: llama3:8b)...")
@@ -350,7 +348,7 @@ func main() {
 	log.Printf("node-2: %s", node2.addr)
 
 	// Build in-memory config (no config.yaml needed).
-	cfg := buildDemoConfig(node1.addr, node2.addr, apiKey, adminToken)
+	cfg := buildDemoConfig(node1.addr, node2.addr, apiKey)
 
 	// Wire up the mesh stack.
 	authMw := auth.NewMiddleware(cfg.Auth)
@@ -368,6 +366,7 @@ func main() {
 
 	adminSrv := admin.NewServer(r, authMw, cfg)
 	adminSrv.SetAuditLogger(auditLog)
+	adminSrv.SetDemoMode(true) // no store attached; admin/admin login without a DB
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	wrapped := authMw.Handler(proxyHandler)
@@ -416,7 +415,7 @@ func main() {
 	fmt.Printf("  API key:         %s\n", apiKey)
 	fmt.Println()
 	fmt.Println("  Open dashboard:  http://localhost:8082")
-	fmt.Printf("  Admin token:     %s\n", adminToken)
+	fmt.Println("  Dashboard login: admin / admin")
 	fmt.Println()
 	fmt.Println("  Press Ctrl-C to stop.")
 	fmt.Println("================================================================")

@@ -17,9 +17,8 @@ func TestHandleKeysReportsTokensAndCost(t *testing.T) {
 	cfg := config.Config{
 		Savings: config.SavingsConfig{ReferenceCostPer1K: 0.01},
 		Auth: config.AuthConfig{
-			Enabled:    config.BoolPtr(true),
-			AdminToken: "admin-tok",
-			Keys:       []config.KeyConfig{{Name: "team", Key: "sk-team", RateLimit: 1000}},
+			Enabled: config.BoolPtr(true),
+			Keys:    []config.KeyConfig{{Name: "team", Key: "sk-team", RateLimit: 1000}},
 		},
 	}
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
@@ -31,7 +30,7 @@ func TestHandleKeysReportsTokensAndCost(t *testing.T) {
 	s.LogRequest("team", "", "llama3", "node-a", "warm", 100, 200)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/keys", nil)
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 

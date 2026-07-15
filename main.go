@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -11,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,54 +31,164 @@ import (
 // Defaults to "dev" for local/untagged builds.
 var Version = "dev"
 
-// printFirstRunBanner prints the zero-config first-run summary to stdout.
-func printFirstRunBanner(fr *config.FirstRunResult, cfgPath string, saved bool) {
+// stringSliceFlag implements flag.Value for a repeatable string flag
+// (the standard library's flag package has no built-in for this).
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ", ") }
+func (s *stringSliceFlag) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+// printStartupBanner prints a one-time onboarding summary when the database
+// has no nodes or API keys yet - there is no config.yaml to point at
+// anymore, so the dashboard is the only setup path.
+func printStartupBanner(cfg *config.Config, dbPath string) {
 	line := "================================================================"
 	fmt.Println()
 	fmt.Println(line)
-	fmt.Println("  ollama-mesh - first run (no config file found)")
+	fmt.Println("  ollama-mesh - blank slate (no nodes or API keys configured yet)")
 	fmt.Println(line)
 	fmt.Println()
-	if fr.OllamaFound {
-		fmt.Printf("  [ok] Local Ollama detected at %s\n", fr.OllamaURL)
-		fmt.Println("       Registered as node \"local\". Requests now route through the mesh.")
-	} else {
-		fmt.Printf("  [!]  No local Ollama detected at %s\n", fr.OllamaURL)
-		fmt.Printf("       Starting with zero nodes. Add nodes to %s and restart:\n", cfgPath)
-		fmt.Println()
-		fmt.Println("         nodes:")
-		fmt.Println("           - name: my-gpu")
-		fmt.Println("             url: http://<host>:11434")
-	}
-	fmt.Println()
-	fmt.Printf("  Point your apps at:  http://localhost:%d\n", fr.Config.Proxy.Port)
-	fmt.Printf("  API key:             %s\n", fr.APIKey)
+	fmt.Printf("  Database:            %s\n", dbPath)
+	fmt.Printf("  Point your apps at:  http://localhost:%d\n", cfg.Proxy.Port)
 	fmt.Println()
 	fmt.Println("  Dashboard:           http://localhost:8080")
-	fmt.Println("  Dashboard login:     see startup log for admin username and password")
+	fmt.Println("  Dashboard login:     admin / admin (you'll be asked to set a new password on first login)")
 	fmt.Println()
-	if saved {
-		fmt.Printf("  Config saved to %s - your key and token are stable across restarts.\n", cfgPath)
-	} else {
-		fmt.Printf("  WARNING: could not write %s - key and token are NOT saved and\n", cfgPath)
-		fmt.Println("  will be regenerated on the next start.")
-	}
+	fmt.Println("  Add your first GPU node and API key from the dashboard - or run")
+	fmt.Println("  install.sh's network probe to discover and add them automatically.")
 	fmt.Println(line)
 	fmt.Println()
+}
+
+// seedNodesToStore parses repeatable --seed-node "name=...,url=...,runtime=..."
+// values and writes them directly into the database, then exits without
+// starting any servers. Used by install.sh's interactive runtime-probe
+// wizard so shell code never needs to know the SQLite schema.
+func seedNodesToStore(dbPath string, specs []string) error {
+	st, err := store.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer st.Close()
+
+	for _, spec := range specs {
+		fields := map[string]string{}
+		for _, part := range strings.Split(spec, ",") {
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) != 2 {
+				return fmt.Errorf("invalid --seed-node field %q (want key=value)", part)
+			}
+			fields[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		}
+		name, url := fields["name"], fields["url"]
+		if name == "" || url == "" {
+			return fmt.Errorf("--seed-node %q: name and url are required", spec)
+		}
+		runtime := fields["runtime"]
+		if runtime == "" {
+			runtime = "ollama"
+		}
+		switch runtime {
+		case "ollama", "vllm", "tgi", "llamacpp":
+		default:
+			return fmt.Errorf("--seed-node %q: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp)", spec, runtime)
+		}
+		if err := st.UpsertNode(store.NodeRecord{Name: name, URL: url, Runtime: runtime}); err != nil {
+			return fmt.Errorf("seed node %q: %w", name, err)
+		}
+		fmt.Printf("Added node %q (%s, runtime=%s)\n", name, url, runtime)
+	}
+	return nil
+}
+
+// applyPersistedSettings overlays every SQLite-backed setting onto cfg before
+// the servers start. This is the sole configuration path now that
+// config.yaml is gone (2026-07 elimination) - cfg starts from Validate()'s
+// built-in defaults, and every field an operator can change through the
+// dashboard's Settings page has a corresponding settings key here.
+func applyPersistedSettings(cfg *config.Config, st store.Store) {
+	cfg.Timezone = store.GetStringSetting(st, "timezone", cfg.Timezone)
+
+	cfg.Proxy.Port = store.GetIntSetting(st, "proxy_port", cfg.Proxy.Port)
+	cfg.Proxy.LogFormat = store.GetStringSetting(st, "proxy_log_format", cfg.Proxy.LogFormat)
+	accessLog := store.GetBoolSetting(st, "proxy_access_log", cfg.Proxy.AccessLog == nil || *cfg.Proxy.AccessLog)
+	cfg.Proxy.AccessLog = &accessLog
+
+	cfg.Admin.BindAddress = store.GetStringSetting(st, "admin_bind_address", cfg.Admin.BindAddress)
+	cfg.Admin.CORSOrigin = store.GetStringSetting(st, "admin_cors_origin", cfg.Admin.CORSOrigin)
+
+	if v := store.GetStringSetting(st, "routing_strategy", ""); v != "" {
+		cfg.Routing.Strategy = v
+	}
+	cfg.Routing.Fallback = store.GetStringSetting(st, "routing_fallback", cfg.Routing.Fallback)
+	cfg.Routing.UpstreamTimeoutMs = store.GetIntSetting(st, "routing_upstream_timeout_ms", cfg.Routing.UpstreamTimeoutMs)
+	cfg.Routing.MaxRetries = store.GetIntSetting(st, "routing_max_retries", cfg.Routing.MaxRetries)
+	cfg.Routing.AllowManagementEndpoints = store.GetBoolSetting(st, "routing_allow_management_endpoints", cfg.Routing.AllowManagementEndpoints)
+	cfg.Routing.SessionAffinity = store.GetBoolSetting(st, "routing_session_affinity", cfg.Routing.SessionAffinity)
+	cfg.Routing.SessionAffinityTTL = store.GetStringSetting(st, "routing_session_affinity_ttl", cfg.Routing.SessionAffinityTTL)
+	cfg.Routing.NvidiaPollIntervalMs = store.GetIntSetting(st, "routing_nvidia_poll_interval_ms", cfg.Routing.NvidiaPollIntervalMs)
+	cfg.Routing.QueueMaxDepth = store.GetIntSetting(st, "routing_queue_max_depth", cfg.Routing.QueueMaxDepth)
+	cfg.Routing.QueueTimeoutMs = store.GetIntSetting(st, "routing_queue_timeout_ms", cfg.Routing.QueueTimeoutMs)
+	cfg.Routing.HealthFailureThreshold = store.GetIntSetting(st, "routing_health_failure_threshold", cfg.Routing.HealthFailureThreshold)
+	cfg.Routing.HealthSuccessThreshold = store.GetIntSetting(st, "routing_health_success_threshold", cfg.Routing.HealthSuccessThreshold)
+	cfg.Routing.OverflowSLAMs = store.GetIntSetting(st, "routing_overflow_sla_ms", cfg.Routing.OverflowSLAMs)
+	cfg.Routing.ThermalWatchdog.Enabled = store.GetBoolSetting(st, "routing_thermal_watchdog_enabled", cfg.Routing.ThermalWatchdog.Enabled)
+	cfg.Routing.ThermalWatchdog.MaxTempCelsius = store.GetFloatSetting(st, "routing_thermal_watchdog_max_temp_celsius", cfg.Routing.ThermalWatchdog.MaxTempCelsius)
+	cfg.Routing.ThermalWatchdog.ConsecutiveBreaches = store.GetIntSetting(st, "routing_thermal_watchdog_consecutive_breaches", cfg.Routing.ThermalWatchdog.ConsecutiveBreaches)
+	store.GetJSONSetting(st, "routing_fallback_chains", &cfg.Routing.FallbackChains)
+
+	cfg.Metrics.Enabled = store.GetBoolSetting(st, "metrics_enabled", cfg.Metrics.Enabled)
+	cfg.Metrics.Port = store.GetIntSetting(st, "metrics_port", cfg.Metrics.Port)
+
+	cfg.LiteLLM.Enabled = store.GetBoolSetting(st, "litellm_enabled", cfg.LiteLLM.Enabled)
+	cfg.LiteLLM.URL = store.GetStringSetting(st, "litellm_url", cfg.LiteLLM.URL)
+
+	cfg.Docker.Enabled = store.GetBoolSetting(st, "docker_enabled", cfg.Docker.Enabled)
+	cfg.Docker.Socket = store.GetStringSetting(st, "docker_socket", cfg.Docker.Socket)
+	cfg.Docker.PollIntervalMs = store.GetIntSetting(st, "docker_poll_interval_ms", cfg.Docker.PollIntervalMs)
+
+	cfg.Audit.Enabled = store.GetBoolSetting(st, "audit_enabled", cfg.Audit.Enabled)
+
+	cfg.Webhook.Enabled = store.GetBoolSetting(st, "webhook_enabled", cfg.Webhook.Enabled)
+	cfg.Webhook.URL = store.GetStringSetting(st, "webhook_url", cfg.Webhook.URL)
+	cfg.Webhook.Secret = store.GetStringSetting(st, "webhook_secret", cfg.Webhook.Secret)
+
+	cfg.Savings.ReferenceCostPer1K = store.GetFloatSetting(st, "savings_reference_cost_per_1k", cfg.Savings.ReferenceCostPer1K)
+
+	cfg.HA.Enabled = store.GetBoolSetting(st, "ha_enabled", cfg.HA.Enabled)
+	cfg.HA.HeartbeatIntervalMs = store.GetIntSetting(st, "ha_heartbeat_interval_ms", cfg.HA.HeartbeatIntervalMs)
+	cfg.HA.PeerTimeoutMs = store.GetIntSetting(st, "ha_peer_timeout_ms", cfg.HA.PeerTimeoutMs)
+	store.GetJSONSetting(st, "ha_peers", &cfg.HA.Peers)
+
+	cfg.Warmup.Enabled = store.GetBoolSetting(st, "warmup_enabled", cfg.Warmup.Enabled)
+	cfg.Warmup.IntervalMs = store.GetIntSetting(st, "warmup_interval_ms", cfg.Warmup.IntervalMs)
+	cfg.Warmup.KeepAlive = store.GetStringSetting(st, "warmup_keep_alive", cfg.Warmup.KeepAlive)
+	store.GetJSONSetting(st, "warmup_models", &cfg.Warmup.Models)
+
+	cfg.CloudBudget.DailyUSDCap = store.GetFloatSetting(st, "cloud_daily_usd_cap", cfg.CloudBudget.DailyUSDCap)
+	cfg.CloudBudget.MonthlyUSDCap = store.GetFloatSetting(st, "cloud_monthly_usd_cap", cfg.CloudBudget.MonthlyUSDCap)
+
+	cfg.HuggingFace.Token = store.GetStringSetting(st, "huggingface_token", cfg.HuggingFace.Token)
+
+	store.GetJSONSetting(st, "context_windows", &cfg.ContextWindows)
 }
 
 func main() {
 	var (
 		showVersion   = flag.Bool("version", false, "print version and exit")
-		cfgFlag       = flag.String("config", "", "path to config file (overrides CONFIG_PATH env; default config.yaml)")
-		validateOnly  = flag.Bool("validate", false, "load and validate the config file, then exit (0 = valid, 1 = invalid)")
+		dbFlag        = flag.String("db", "", "path to the SQLite database (overrides MESH_DB_PATH env; default mesh.db)")
 		logFormatFlag = flag.String("log-format", "", "log output format: text (default) or json")
+		seedNodes     stringSliceFlag
 	)
+	flag.Var(&seedNodes, "seed-node", `add a node directly to the database and exit, format: "name=...,url=...,runtime=..." (repeatable)`)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "ollama-mesh %s - warm-model-aware load balancer with cloud overflow for Ollama\n\n", Version)
 		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh [flags]\n\nFlags:\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nWith no config file present, the first run auto-detects local Ollama,\ngenerates keys, and writes config.yaml.\n")
+		fmt.Fprintf(os.Stderr, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (admin/admin on first run).\n")
 	}
 	// Subcommand dispatch: check before flag.Parse() so each subcommand
 	// owns its own flag set and does not pollute the main flag namespace.
@@ -96,46 +204,46 @@ func main() {
 		return
 	}
 
-	cfgPath := *cfgFlag
-	if cfgPath == "" {
-		cfgPath = os.Getenv("CONFIG_PATH")
+	dbPath := *dbFlag
+	if dbPath == "" {
+		dbPath = os.Getenv("MESH_DB_PATH")
 	}
-	if cfgPath == "" {
-		cfgPath = "config.yaml"
+	if dbPath == "" {
+		dbPath = "mesh.db"
 	}
 
-	// --validate: load and validate the existing config, report, and exit.
-	// It never triggers first-run generation - it only checks what is there.
-	if *validateOnly {
-		if _, vErr := config.LoadConfig(cfgPath); vErr != nil {
-			fmt.Fprintf(os.Stderr, "config %s: INVALID: %v\n", cfgPath, vErr)
-			os.Exit(1)
+	if len(seedNodes) > 0 {
+		if err := seedNodesToStore(dbPath, seedNodes); err != nil {
+			log.Fatalf("seed nodes: %v", err)
 		}
-		fmt.Printf("config %s: OK\n", cfgPath)
 		return
 	}
 
-	cfg, err := config.LoadConfig(cfgPath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			log.Fatalf("Failed to load config: %v", err)
-		}
-		// Zero-config first run: no config.yaml found.
-		fr, frErr := config.GenerateFirstRun(config.DefaultOllamaURL, config.DefaultProbeTimeout)
-		if frErr != nil {
-			log.Fatalf("First-run setup failed: %v", frErr)
-		}
-		cfg = fr.Config
-		saved := true
-		if saveErr := config.SaveConfig(cfgPath, *cfg); saveErr != nil {
-			saved = false
-			log.Printf("WARNING: could not save %s: %v", cfgPath, saveErr)
-			log.Printf("WARNING: continuing with in-memory config; generated keys will change on next restart")
-		}
-		printFirstRunBanner(fr, cfgPath, saved)
+	cfg := &config.Config{}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid default config: %v", err)
 	}
 
-	// Configure structured logging. CLI flag takes precedence over config file.
+	// Open the SQLite persistence store. "-" disables it (NopStore) for
+	// advanced/ephemeral/test use only - since SQLite is now the sole
+	// configuration store, nothing added via the dashboard survives a
+	// restart in that mode.
+	var st store.Store = store.NopStore{}
+	if dbPath != "-" {
+		var stErr error
+		st, stErr = store.Open(dbPath)
+		if stErr != nil {
+			log.Fatalf("failed to open store: %v", stErr)
+		}
+		defer st.Close()
+	}
+
+	// Apply every persisted setting before anything below reads cfg, since
+	// this is now the only configuration source (no config.yaml).
+	applyPersistedSettings(cfg, st)
+
+	// Configure structured logging. CLI flag takes precedence over the
+	// persisted setting.
 	logFormat := cfg.Proxy.LogFormat
 	if *logFormatFlag != "" {
 		logFormat = *logFormatFlag
@@ -150,39 +258,11 @@ func main() {
 	}
 
 	log.Printf("ollama-mesh %s starting...", Version)
+	log.Printf("Database        : %s", dbPath)
 	log.Printf("Proxy port      : %d", cfg.Proxy.Port)
 	log.Printf("Auth enabled    : %t", cfg.Auth.IsEnabled())
 	log.Printf("Metrics port    : %d", cfg.Metrics.Port)
 	log.Printf("Poll interval   : %dms", cfg.Routing.PollIntervalMs)
-	log.Printf("Nodes registered: %d", len(cfg.Nodes))
-	for _, n := range cfg.Nodes {
-		log.Printf("  - %s (%s) -> %s", n.Name, n.GPUModel, n.URL)
-	}
-
-	// Loud, unmissable warning when the proxy is running without authentication.
-	// auth.enabled defaults to the bool zero value (false), so a hand-written
-	// config that omits the flag silently exposes an unauthenticated LLM gateway
-	// that forwards to backend GPU nodes. First-run configs always set it true;
-	// this catches the dangerous omit-the-flag case.
-	if !cfg.Auth.IsEnabled() {
-		log.Printf("WARNING: ================================================================")
-		log.Printf("WARNING: AUTHENTICATION IS DISABLED - every request is forwarded with no")
-		log.Printf("WARNING: API key check. Anyone who can reach :%d has full access to your", cfg.Proxy.Port)
-		log.Printf("WARNING: backend models. Set 'auth: {enabled: true}' with at least one key")
-		log.Printf("WARNING: for any non-loopback or shared deployment.")
-		log.Printf("WARNING: ================================================================")
-	}
-
-	// Open the SQLite persistence store. "-" disables; empty defaults to mesh.db.
-	var st store.Store = store.NopStore{}
-	if cfg.Storage.DBPath != "-" {
-		var stErr error
-		st, stErr = store.Open(cfg.Storage.DBPath)
-		if stErr != nil {
-			log.Fatalf("failed to open store: %v", stErr)
-		}
-		defer st.Close()
-	}
 
 	authMw := auth.NewMiddleware(cfg.Auth)
 
@@ -191,29 +271,39 @@ func main() {
 		log.Printf("WARNING: could not restore key counters from store: %v", err)
 	}
 
-	// Overlay runtime API keys from the store (keys added via admin API that
-	// aren't in config.yaml). Config-file keys always win on name collision
-	// because NewMiddleware already loaded them; AddKey is idempotent on dup key token.
+	// All API keys live in the store now - no config.yaml keys to merge.
+	keyCount := 0
 	if runtimeKeys, err := st.AllKeys(); err == nil {
 		for _, k := range runtimeKeys {
 			if k.Revoked {
 				authMw.RevokeKey(k.Name)
-			} else {
-				authMw.AddKey(config.KeyConfig{
-					Name:         k.Name,
-					Key:          k.Key,
-					RateLimit:    k.RateLimit,
-					DailyLimit:   k.DailyLimit,
-					MonthlyLimit: k.MonthlyLimit,
-					Models:       k.Models,
-				})
+				continue
 			}
+			authMw.AddKey(config.KeyConfig{
+				Name:         k.Name,
+				Key:          k.Key,
+				RateLimit:    k.RateLimit,
+				DailyLimit:   k.DailyLimit,
+				MonthlyLimit: k.MonthlyLimit,
+				Models:       k.Models,
+			})
+			keyCount++
 		}
-		if len(runtimeKeys) > 0 {
-			log.Printf("store: loaded %d runtime key(s)", len(runtimeKeys))
+		if keyCount > 0 {
+			log.Printf("store: loaded %d API key(s)", keyCount)
 		}
 	} else {
-		log.Printf("WARNING: could not load runtime keys from store: %v", err)
+		log.Printf("WARNING: could not load API keys from store: %v", err)
+	}
+
+	// Loud, unmissable warning when the proxy is running without authentication.
+	if !cfg.Auth.IsEnabled() {
+		log.Printf("WARNING: ================================================================")
+		log.Printf("WARNING: AUTHENTICATION IS DISABLED - every request is forwarded with no")
+		log.Printf("WARNING: API key check. Anyone who can reach :%d has full access to your", cfg.Proxy.Port)
+		log.Printf("WARNING: backend models. Enable auth and add at least one key from the")
+		log.Printf("WARNING: dashboard for any non-loopback or shared deployment.")
+		log.Printf("WARNING: ================================================================")
 	}
 
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)
@@ -233,9 +323,9 @@ func main() {
 	defer cancel()
 	go r.Start(ctx)
 
-	// Overlay runtime nodes from the store (nodes added via admin API).
-	// Nodes already in config are already registered; AddNode is called for
-	// runtime-only nodes. Overrides and drain states are applied to all nodes.
+	// Nodes: entirely store-driven now (added via the dashboard or
+	// install.sh's --seed-node wizard).
+	nodeCount := 0
 	if runtimeNodes, err := st.AllNodes(); err == nil {
 		for _, n := range runtimeNodes {
 			vram := int64(0)
@@ -252,12 +342,13 @@ func main() {
 				Runtime:     rt,
 				VRAMTotalMB: vram,
 			})
+			nodeCount++
 		}
-		if len(runtimeNodes) > 0 {
-			log.Printf("store: loaded %d runtime node(s)", len(runtimeNodes))
+		if nodeCount > 0 {
+			log.Printf("store: loaded %d node(s)", nodeCount)
 		}
 	} else {
-		log.Printf("WARNING: could not load runtime nodes from store: %v", err)
+		log.Printf("WARNING: could not load nodes from store: %v", err)
 	}
 	if overrides, err := st.NodeOverrides(); err == nil {
 		for name, ov := range overrides {
@@ -270,6 +361,29 @@ func main() {
 				r.DrainNode(name, ds.Reason)
 			}
 		}
+	}
+
+	// Cloud providers: entirely store-driven now.
+	if providers, err := st.AllCloudProviders(); err == nil {
+		clouds := make([]config.CloudProvider, len(providers))
+		for i, p := range providers {
+			clouds[i] = config.CloudProvider{
+				Name:            p.Name,
+				Provider:        p.Provider,
+				BaseURL:         p.BaseURL,
+				APIKey:          p.APIKey,
+				DefaultModel:    p.DefaultModel,
+				CostPer1KTokens: p.CostPer1KTokens,
+				Enabled:         p.Enabled,
+			}
+		}
+		r.SetClouds(clouds)
+		cfg.CloudProviders = clouds
+		if len(clouds) > 0 {
+			log.Printf("store: loaded %d cloud provider(s)", len(clouds))
+		}
+	} else {
+		log.Printf("WARNING: could not load cloud providers from store: %v", err)
 	}
 
 	// Load persisted predictive transition history so the predictive engine
@@ -325,58 +439,6 @@ func main() {
 		}
 	}
 
-	// Load persisted timezone from the KV store.
-	if tzVal, err := st.GetSetting("timezone"); err == nil && tzVal != "" {
-		cfg.Timezone = tzVal
-		r.SetTimezone(tzVal)
-		log.Printf("store: loaded timezone %q", tzVal)
-	}
-
-	// Load persisted routing strategy from the KV store.
-	if stratVal, err := st.GetSetting("routing_strategy"); err == nil && stratVal != "" {
-		if err := r.SetStrategy(stratVal); err != nil {
-			log.Printf("store: ignoring invalid persisted routing strategy %q: %v", stratVal, err)
-		} else {
-			log.Printf("store: loaded routing strategy %q", stratVal)
-		}
-	}
-
-	// Load remaining Settings-page scalars persisted via the Phase 2 SQLite
-	// migration (see admin.go handleUpdateSettings), applying them over
-	// config.yaml's value before the servers below start listening.
-	if v, err := st.GetSetting("proxy_port"); err == nil && v != "" {
-		if port, convErr := strconv.Atoi(v); convErr == nil && port > 0 {
-			cfg.Proxy.Port = port
-		}
-	}
-	if v, err := st.GetSetting("proxy_log_format"); err == nil && v != "" {
-		cfg.Proxy.LogFormat = v
-	}
-	if v, err := st.GetSetting("litellm_url"); err == nil && v != "" {
-		cfg.LiteLLM.URL = v
-	}
-	if v, err := st.GetSetting("litellm_enabled"); err == nil && v != "" {
-		cfg.LiteLLM.Enabled = v == "true"
-	}
-	if v, err := st.GetSetting("cloud_daily_usd_cap"); err == nil && v != "" {
-		if cap, convErr := strconv.ParseFloat(v, 64); convErr == nil {
-			cfg.CloudBudget.DailyUSDCap = cap
-		}
-	}
-	if v, err := st.GetSetting("cloud_monthly_usd_cap"); err == nil && v != "" {
-		if cap, convErr := strconv.ParseFloat(v, 64); convErr == nil {
-			cfg.CloudBudget.MonthlyUSDCap = cap
-		}
-	}
-	if v, err := st.GetSetting("metrics_enabled"); err == nil && v != "" {
-		cfg.Metrics.Enabled = v == "true"
-	}
-	if v, err := st.GetSetting("metrics_port"); err == nil && v != "" {
-		if port, convErr := strconv.Atoi(v); convErr == nil && port > 0 {
-			cfg.Metrics.Port = port
-		}
-	}
-
 	// Load persisted schedules (warmup/drain/undrain) from the KV store.
 	if raw, err := st.GetSetting("schedules"); err == nil && raw != "" {
 		var scheds []router.Schedule
@@ -386,7 +448,7 @@ func main() {
 		}
 	}
 
-	// Load persisted routing rules (fixes audit finding #30).
+	// Load persisted routing rules.
 	if rules, err := st.AllRoutingRules(); err == nil {
 		for _, rule := range rules {
 			r.AddRule(config.RoutingRule{
@@ -402,6 +464,10 @@ func main() {
 		}
 	} else {
 		log.Printf("WARNING: could not load routing rules from store: %v", err)
+	}
+
+	if nodeCount == 0 && keyCount == 0 {
+		printStartupBanner(cfg, dbPath)
 	}
 
 	// Periodically flush usage counters so a restart preserves quota/usage
@@ -427,7 +493,6 @@ func main() {
 	adminSrv := admin.NewServer(r, authMw, *cfg, st)
 	adminSrv.SetAuditLogger(auditLog)
 	adminSrv.SetVersion(Version)
-	adminSrv.SetConfigPath(cfgPath)
 	if err := adminSrv.LoadFromStore(); err != nil {
 		log.Printf("WARNING: could not restore analytics from store: %v", err)
 	}
@@ -450,7 +515,7 @@ func main() {
 	log.Printf("Access log     : %t (stdout, JSON lines)", accessEnabled)
 	// RecoverMiddleware is the outermost wrapper so a handler panic returns a
 	// clean 500 and increments a metric instead of an ugly connection drop.
-	wrapped := proxy.RecoverMiddleware(authMw.Handler(proxyHandler))
+	wrapped := proxy.RecoverMiddleware(proxy.SecurityHeaders(authMw.Handler(proxyHandler)))
 
 	proxySrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Proxy.Port),
@@ -483,7 +548,7 @@ func main() {
 
 	adminHttpSrv := &http.Server{
 		Addr:              cfg.Admin.BindAddress,
-		Handler:           proxy.RecoverMiddleware(adminSrv.Handler()),
+		Handler:           proxy.RecoverMiddleware(proxy.SecurityHeaders(adminSrv.Handler())),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -511,17 +576,13 @@ func main() {
 	for {
 		select {
 		case <-reloadCh:
-			newCfg, err := config.LoadConfig(cfgPath)
+			added, removed, authKeys, cloudProviders, err := adminSrv.ReloadFromStore()
 			if err != nil {
-				log.Printf("config reload failed: %v (keeping previous config)", err)
+				log.Printf("reload from store failed: %v (keeping previous state)", err)
 				continue
 			}
-			authMw.Reload(newCfg.Auth)
-			r.SetWarmupConfig(newCfg.Warmup)
-			r.SetClouds(newCfg.CloudProviders)
-			added, removed := r.SyncNodes(newCfg.Nodes)
-			log.Printf("config reloaded from %s (auth keys: %d, warmup: %v, nodes: +%d/-%d, cloud providers: %d)",
-				cfgPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled, added, removed, len(newCfg.CloudProviders))
+			log.Printf("reloaded from store (auth keys: %d, nodes: +%d/-%d, cloud providers: %d)",
+				authKeys, added, removed, cloudProviders)
 			continue
 		case <-sig:
 		}

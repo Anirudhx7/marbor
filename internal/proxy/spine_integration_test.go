@@ -78,8 +78,7 @@ func buildSpineStack(t *testing.T) (handler http.Handler, adminSrv *admin.Server
 	// 3. Admin server.
 	cfg := config.Config{
 		Auth: config.AuthConfig{
-			Enabled:    config.BoolPtr(true),
-			AdminToken: "admin-spine-token",
+			Enabled: config.BoolPtr(true),
 			Keys: []config.KeyConfig{
 				{Name: spineTestKeyName, Key: spineTestKeyVal, RateLimit: 1000},
 			},
@@ -189,7 +188,7 @@ func TestSpineIntegration(t *testing.T) {
 		}
 
 		adminReq := httptest.NewRequest(http.MethodGet, "/admin/requests/live", nil)
-		adminReq.Header.Set("Authorization", "Bearer "+adminSrv.AdminToken())
+		adminReq.AddCookie(&http.Cookie{Name: "mesh_session", Value: adminSrv.AdminToken()})
 		adminRec := httptest.NewRecorder()
 		adminSrv.Handler().ServeHTTP(adminRec, adminReq)
 		if adminRec.Code != http.StatusOK {
