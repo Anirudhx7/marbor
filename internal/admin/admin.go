@@ -1309,6 +1309,10 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		masked.Webhook.Secret = "***"
 	}
 
+	if masked.LiteLLM.APIKey != "" {
+		masked.LiteLLM.APIKey = "***"
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(masked)
 }
@@ -3232,7 +3236,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if cfg.Webhook.Secret != "" {
 		cfg.Webhook.Secret = "***"
 	}
-
+	if cfg.LiteLLM.APIKey != "" {
+		cfg.LiteLLM.APIKey = "***"
+	}
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
 	if username == "" {
 		username = "admin"
@@ -3288,6 +3294,9 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if incoming.Webhook.Secret == "" || incoming.Webhook.Secret == "***" {
 		incoming.Webhook.Secret = s.cfg.Webhook.Secret
 	}
+	if incoming.LiteLLM.APIKey == "" || incoming.LiteLLM.APIKey == "***" {
+		incoming.LiteLLM.APIKey = s.cfg.LiteLLM.APIKey
+	}
 
 	if err := incoming.Validate(); err != nil {
 		s.mu.Unlock()
@@ -3302,6 +3311,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		s.mgmtEndpoints.SetAllowManagementEndpoints(incoming.Routing.AllowManagementEndpoints)
 	}
 	s.router.SetTimezone(incoming.Timezone)
+	s.router.SetLiteLLM(incoming.LiteLLM)
 	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
 		log.Printf("admin: failed to persist timezone setting: %v", err)
 	}
@@ -3321,6 +3331,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"proxy_access_log":      strconv.FormatBool(incoming.Proxy.AccessLog == nil || *incoming.Proxy.AccessLog),
 		"litellm_url":           incoming.LiteLLM.URL,
 		"litellm_enabled":       strconv.FormatBool(incoming.LiteLLM.Enabled),
+		"litellm_api_key":       incoming.LiteLLM.APIKey,
 		"cloud_daily_usd_cap":   strconv.FormatFloat(incoming.CloudBudget.DailyUSDCap, 'f', -1, 64),
 		"cloud_monthly_usd_cap": strconv.FormatFloat(incoming.CloudBudget.MonthlyUSDCap, 'f', -1, 64),
 		"metrics_enabled":       strconv.FormatBool(incoming.Metrics.Enabled),

@@ -354,6 +354,10 @@ type MetricsConfig struct {
 type LiteLLMConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
 	URL     string `yaml:"url" json:"url"`
+	// APIKey is the LiteLLM virtual/master key sent as Authorization: Bearer
+	// <key> - required for any real LiteLLM deployment that isn't running
+	// with auth disabled.
+	APIKey string `yaml:"api_key" json:"api_key"`
 }
 
 type CloudProvider struct {

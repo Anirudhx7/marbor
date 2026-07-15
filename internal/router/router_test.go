@@ -1114,13 +1114,16 @@ func TestCloudChainUsesLiteLLMWhenEnabled(t *testing.T) {
 		{Name: "openai", Provider: "openai", BaseURL: "https://api.openai.com", APIKey: "sk-a", Enabled: true, Priority: 10},
 	}
 	r := New(config.RoutingConfig{}, []config.NodeConfig{}, clouds)
-	r.SetLiteLLM(config.LiteLLMConfig{Enabled: true, URL: "http://localhost:4000"})
+	r.SetLiteLLM(config.LiteLLMConfig{Enabled: true, URL: "http://localhost:4000", APIKey: "sk-litellm"})
 	chain := r.CloudChain()
 	if len(chain) != 1 {
 		t.Fatalf("len(CloudChain()) = %d, want 1 (litellm only)", len(chain))
 	}
 	if chain[0].Name != "litellm" || chain[0].BaseURL != "http://localhost:4000" {
 		t.Errorf("CloudChain()[0] = %+v, want synthetic litellm provider", chain[0])
+	}
+	if chain[0].APIKey != "sk-litellm" {
+		t.Errorf("CloudChain()[0].APIKey = %q, want sk-litellm", chain[0].APIKey)
 	}
 	// Per-provider list is ignored entirely while LiteLLM is enabled - only
 	// the synthetic entry appears, the "openai" provider above must not.
