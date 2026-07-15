@@ -416,6 +416,7 @@ export async function fetchSummary() {
     nodesOnline: d.nodes_online ?? 0,
     nodesDraining: d.nodes_draining ?? 0,
     totalNodes: d.total_nodes ?? 0,
+    warmHitRatio: d.warm_hit_ratio ?? 0,
   };
 }
 

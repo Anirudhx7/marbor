@@ -642,7 +642,7 @@ export function APIKeys() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Daily Cloud Spend Cap ({currency.code})</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5 sm:h-10 flex sm:items-end">Daily Cloud Spend Cap ({currency.code})</label>
               <input type="number" min="0" step="0.01"
                 value={editForm.dailyUsdCap.trim() === '' ? '' : roundDisplay(toDisplay(parseFloat(editForm.dailyUsdCap) || 0))}
                 onChange={e => setEditForm({ ...editForm, dailyUsdCap: e.target.value.trim() === '' ? '' : String(toUSD(parseFloat(e.target.value) || 0)) })}
@@ -651,7 +651,7 @@ export function APIKeys() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Monthly Cloud Spend Cap ({currency.code})</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5 sm:h-10 flex sm:items-end">Monthly Cloud Spend Cap ({currency.code})</label>
               <input type="number" min="0" step="0.01"
                 value={editForm.monthlyUsdCap.trim() === '' ? '' : roundDisplay(toDisplay(parseFloat(editForm.monthlyUsdCap) || 0))}
                 onChange={e => setEditForm({ ...editForm, monthlyUsdCap: e.target.value.trim() === '' ? '' : String(toUSD(parseFloat(e.target.value) || 0)) })}

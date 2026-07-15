@@ -68,6 +68,11 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	w.Write(b)
 }
 
+type TokenEvent struct {
+	Time   time.Time
+	Tokens int64
+}
+
 type Server struct {
 	router        *router.Router
 	auth          *auth.Middleware
@@ -94,6 +99,9 @@ type Server struct {
 	logWg         sync.WaitGroup
 	pullsMu       sync.Mutex      // guards pullsInFlight
 	pullsInFlight map[string]bool // "node|model" -> in progress; ephemeral, never persisted
+	coldStarts    int64           // atomic - total cold start events
+	warmHits      int64           // atomic - total warm hit events
+	tokenEvents   []TokenEvent    // protected by mu
 }
 
 // SetVersion sets the version string reported by /health.
@@ -170,6 +178,44 @@ func (s *Server) LoadFromStore() error {
 		s.mu.Unlock()
 	} else {
 		log.Printf("store: could not load request log: %v", err)
+	}
+
+	// Restore global and per-node metrics from persistent audit log on startup
+	if entries, err := s.st.QueryAuditLog(store.AuditQuery{Limit: 10000}); err == nil {
+		var historicCold int64
+		var historicWarm int64
+		nodeCold := make(map[string]int64)
+		nodeWarm := make(map[string]int64)
+		nodeLatency := make(map[string]int64)
+		nodeLatencyCount := make(map[string]int64)
+
+		for _, entry := range entries {
+			if entry.Status == "loading" {
+				historicCold++
+				nodeCold[entry.Node]++
+			} else if entry.Status == "warm" {
+				historicWarm++
+				nodeWarm[entry.Node]++
+			}
+			if !entry.Cloud {
+				nodeLatency[entry.Node] += int64(entry.LatencyMs)
+				nodeLatencyCount[entry.Node]++
+			}
+		}
+		atomic.StoreInt64(&s.coldStarts, historicCold)
+		atomic.StoreInt64(&s.warmHits, historicWarm)
+
+		// Seed node-level counters
+		for _, n := range s.router.Nodes() {
+			n.Lock()
+			n.ColdStarts = nodeCold[n.Name]
+			n.WarmHits = nodeWarm[n.Name]
+			n.LatencySumMs = nodeLatency[n.Name]
+			n.LatencyCount = nodeLatencyCount[n.Name]
+			n.Unlock()
+		}
+	} else {
+		log.Printf("store: could not load audit log for metrics initialization: %v", err)
 	}
 	// Restore hourly analytics buckets so the dashboard's traffic chart shows
 	// continuous history immediately after a restart instead of a gap (see
@@ -251,10 +297,11 @@ type nodeResp struct {
 	ActiveConns     int32              `json:"activeConns"`
 	RequestsTotal   int64              `json:"requestsTotal"`
 	HealthHistory   []float64          `json:"healthHistory"`
-	// PendingPrewarmMB is real in-flight warmup VRAM reservation data (never
-	// a separate estimate) from the same accounting used for headroom checks.
-	// 0 means no prewarm currently in flight for this node.
-	PendingPrewarmMB int64 `json:"pendingPrewarmMB"`
+	PendingPrewarmMB int64             `json:"pendingPrewarmMB"`
+	ColdStarts      int64              `json:"coldStarts"`
+	TokensTotal     int64              `json:"tokensTotal"`
+	AvgLatencyMs    float64            `json:"avgLatencyMs"`
+	WarmHitRatio    float64            `json:"warmHitRatio"`
 }
 
 type SystemInfo struct {
@@ -633,6 +680,20 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		// Empty history stays empty ([] in JSON)  --  the UI renders a "no data" state.
 		hist := make([]float64, len(n.HealthHistory))
 		copy(hist, n.HealthHistory)
+
+		avgLatencyNode := 0.0
+		latCount := atomic.LoadInt64(&n.LatencyCount)
+		if latCount > 0 {
+			avgLatencyNode = float64(atomic.LoadInt64(&n.LatencySumMs)) / float64(latCount)
+		}
+		coldNode := atomic.LoadInt64(&n.ColdStarts)
+		warmNode := atomic.LoadInt64(&n.WarmHits)
+		warmHitRatioNode := 0.0
+		totalHitsNode := warmNode + coldNode
+		if totalHitsNode > 0 {
+			warmHitRatioNode = float64(warmNode) / float64(totalHitsNode)
+		}
+
 		out[i] = nodeResp{
 			ID:               fmt.Sprintf("gpu-%d", i),
 			Name:             n.Name,
@@ -654,6 +715,10 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			RequestsTotal:    atomic.LoadInt64(&n.RequestsTotal),
 			HealthHistory:    hist,
 			PendingPrewarmMB: s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+			ColdStarts:       coldNode,
+			TokensTotal:      atomic.LoadInt64(&n.TokensTotal),
+			AvgLatencyMs:     avgLatencyNode,
+			WarmHitRatio:     warmHitRatioNode,
 		}
 		n.RUnlock()
 	}
@@ -885,6 +950,47 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		}
 		totalConns += atomic.LoadInt32(&n.ActiveConns)
 	}
+
+	// Compute average latency from the rolling last 50 requests
+	s.mu.RLock()
+	reqs := make([]RequestLog, len(s.requests))
+	copy(reqs, s.requests)
+	s.mu.RUnlock()
+
+	var sumLatency int64
+	var latencyCount int64
+	for _, req := range reqs {
+		if req.Latency > 0 {
+			sumLatency += int64(req.Latency)
+			latencyCount++
+		}
+	}
+	avgLatency := 0.0
+	if latencyCount > 0 {
+		avgLatency = float64(sumLatency) / float64(latencyCount)
+	}
+
+	// Compute rolling tokens per minute
+	s.mu.Lock()
+	cutoff := time.Now().Add(-time.Minute)
+	var keep []TokenEvent
+	var tokensLastMin int64
+	for _, e := range s.tokenEvents {
+		if e.Time.After(cutoff) {
+			tokensLastMin += e.Tokens
+			keep = append(keep, e)
+		}
+	}
+	s.tokenEvents = keep
+	s.mu.Unlock()
+
+	coldStarts := atomic.LoadInt64(&s.coldStarts)
+	warmHits := atomic.LoadInt64(&s.warmHits)
+	warmHitRatio := 0.0
+	if warmHits+coldStarts > 0 {
+		warmHitRatio = float64(warmHits) / float64(warmHits+coldStarts)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"active_requests": totalConns,
@@ -892,6 +998,10 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		"nodes_draining":  draining,
 		"total_nodes":     len(nodes),
 		"queue_depth":     s.router.QueueDepth(),
+		"avg_latency":     avgLatency,
+		"tokens_per_min":  tokensLastMin,
+		"cold_starts":     coldStarts,
+		"warm_hit_ratio":  warmHitRatio,
 	})
 }
 
@@ -2809,7 +2919,27 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
 	}
+	s.tokenEvents = append(s.tokenEvents, TokenEvent{Time: now, Tokens: tokens})
 	s.mu.Unlock()
+
+	if status == "loading" {
+		atomic.AddInt64(&s.coldStarts, 1)
+	} else if status == "warm" {
+		atomic.AddInt64(&s.warmHits, 1)
+	}
+
+	if n := s.router.FindNode(node); n != nil {
+		if status == "loading" {
+			atomic.AddInt64(&n.ColdStarts, 1)
+		} else if status == "warm" {
+			atomic.AddInt64(&n.WarmHits, 1)
+		}
+		atomic.AddInt64(&n.TokensTotal, tokens)
+		if latencyMs > 0 {
+			atomic.AddInt64(&n.LatencySumMs, int64(latencyMs))
+			atomic.AddInt64(&n.LatencyCount, 1)
+		}
+	}
 
 	// Parse status code for the store record.
 	statusCode := 200

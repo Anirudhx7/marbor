@@ -66,6 +66,10 @@ export interface GPUNode {
   // Real in-flight warmup VRAM reservation (never a separate estimate) from
   // the same accounting used for headroom checks. 0 = nothing pending.
   pendingPrewarmMB?: number;
+  coldStarts?: number;
+  tokensTotal?: number;
+  avgLatencyMs?: number;
+  warmHitRatio?: number;
 }
 
 export interface LoadedModel {

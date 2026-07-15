@@ -9,7 +9,8 @@ import {
   Shield,
   Layers,
   Database,
-  DollarSign
+  DollarSign,
+  Flame
 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
@@ -167,6 +168,7 @@ export function Dashboard() {
     nodesOnline: 0,
     nodesDraining: 0,
     totalNodes: 0,
+    warmHitRatio: 0,
   });
   const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
   const [savingsLoading, setSavingsLoading] = useState(!demoMode);
@@ -260,6 +262,7 @@ export function Dashboard() {
   const displayTokens = isLive ? summary.tokensPerMin : "--";
   const displayColdStarts = isLive ? summary.coldStarts : '--';
   const displayQueue = isLive ? summary.queueDepth : 0;
+  const displayWarmHitRatio = isLive ? summary.warmHitRatio : 0;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -296,7 +299,7 @@ export function Dashboard() {
       )}
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
         <MetricCard
           title="Active Requests"
           value={displayActive.toString()}
@@ -311,7 +314,7 @@ export function Dashboard() {
         />
         <MetricCard
           title="Avg Latency"
-          value={isLive ? displayLatency.toString() : '--'}
+          value={isLive ? displayLatency.toFixed(0) : '--'}
           unit={isLive ? 'ms' : undefined}
           icon={<Clock className="w-5 h-5" />}
         />
@@ -319,6 +322,11 @@ export function Dashboard() {
           title="Tokens/min"
           value={displayTokens.toString()}
           icon={<Zap className="w-5 h-5" />}
+        />
+        <MetricCard
+          title="Warm Hit Ratio"
+          value={isLive ? `${(displayWarmHitRatio * 100).toFixed(0)}%` : '--'}
+          icon={<Flame className="w-5 h-5 text-orange-400" />}
         />
         <MetricCard
           title="Cold Starts"
@@ -379,13 +387,35 @@ export function Dashboard() {
                   </div>
                 </div>
 
-                <div className="mb-4">
+                <div className="mb-3">
                   <VramBar
                     used={node.vramUsedMB / 1024}
                     total={node.vramTotalMB / 1024}
                     size="sm"
                     pending={(node.pendingPrewarmMB ?? 0) / 1024}
                   />
+                </div>
+
+                {/* Node telemetry metrics */}
+                <div className="grid grid-cols-3 gap-2 mb-4 text-[11px] border-t border-border/40 pt-3">
+                  <div>
+                    <span className="text-muted-foreground block text-[9px] uppercase font-semibold tracking-wider">Warm Hit</span>
+                    <span className="font-semibold text-foreground font-mono mt-0.5 block">
+                      {node.warmHitRatio !== undefined ? `${(node.warmHitRatio * 100).toFixed(0)}%` : '--'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[9px] uppercase font-semibold tracking-wider">Cold Starts</span>
+                    <span className="font-semibold text-foreground font-mono mt-0.5 block">
+                      {node.coldStarts !== undefined ? node.coldStarts : '--'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-[9px] uppercase font-semibold tracking-wider">Avg Latency</span>
+                    <span className="font-semibold text-foreground font-mono mt-0.5 block">
+                      {node.avgLatencyMs !== undefined && node.avgLatencyMs > 0 ? `${node.avgLatencyMs.toFixed(0)}ms` : '--'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5">
