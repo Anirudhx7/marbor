@@ -2276,6 +2276,12 @@ func (s *Server) handleSuspendUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.st.DeleteUserSessionsByUserID(id)
+	if user.APIKeyName != "" {
+		if s.auth != nil {
+			s.auth.RevokeKey(user.APIKeyName)
+		}
+		_ = s.st.RevokeKey(user.APIKeyName)
+	}
 	s.logSystemChange(r, "suspend_user", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{}`))
@@ -2317,6 +2323,12 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"failed to delete user"}`))
 		return
+	}
+	if user.APIKeyName != "" {
+		if s.auth != nil {
+			s.auth.RevokeKey(user.APIKeyName)
+		}
+		_ = s.st.RevokeKey(user.APIKeyName)
 	}
 	s.logSystemChange(r, "delete_user", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
