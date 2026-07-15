@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { fetchAnalytics } from '../lib/api';
 import { mockAnalytics } from '../lib/mockData';
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { Analytics, HourlyBucket, ModelStat } from '../types';
 
 function formatHourLabel(hour: string): string {
@@ -64,7 +64,7 @@ export function Analytics() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (location.pathname !== '/analytics') return;
+    if (currentAppPath() !== '/analytics') return;
     if (demoMode) {
       setData(mockAnalytics);
       setLoading(false);
@@ -74,14 +74,14 @@ export function Analytics() {
     const load = async () => {
       try {
         const d = await fetchAnalytics();
-        if (!active || location.pathname !== '/analytics') return;
+        if (!active || currentAppPath() !== '/analytics') return;
         setData(d);
         setError(null);
       } catch (e: unknown) {
-        if (!active || location.pathname !== '/analytics') return;
+        if (!active || currentAppPath() !== '/analytics') return;
         setError(e instanceof Error ? e.message : 'Failed to load analytics');
       } finally {
-        if (active && location.pathname === '/analytics') {
+        if (active && currentAppPath() === '/analytics') {
           setLoading(false);
         }
       }

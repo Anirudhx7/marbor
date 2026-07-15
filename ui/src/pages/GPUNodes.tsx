@@ -330,7 +330,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   );
 }
 
-import { useDemoMode } from '../hooks/useDemoMode';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 export function GPUNodes() {
   const { demoMode } = useDemoMode();
@@ -358,7 +358,7 @@ export function GPUNodes() {
   const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
 
   const loadPinned = async (nodeList: GPUNode[], active: boolean = true) => {
-    if (demoMode || nodeList.length === 0 || !active || location.pathname !== '/gpu-nodes') return;
+    if (demoMode || nodeList.length === 0 || !active || currentAppPath() !== '/gpu-nodes') return;
     const entries = await Promise.all(nodeList.map(async (n) => {
       try {
         return [n.name, await getPinned(n.name)] as const;
@@ -366,14 +366,14 @@ export function GPUNodes() {
         return [n.name, []] as const; // pinned-fetch failure just means no badges for this node
       }
     }));
-    if (active && location.pathname === '/gpu-nodes') {
+    if (active && currentAppPath() === '/gpu-nodes') {
       setPinnedByNode(Object.fromEntries(entries));
     }
   };
 
   const loadNodes = async (active: boolean = true) => {
     if (demoMode) {
-      if (!active || location.pathname !== '/gpu-nodes') return;
+      if (!active || currentAppPath() !== '/gpu-nodes') return;
       setNodes(mockGPUNodes);
       setIsLive(false);
       setError(null);
@@ -381,13 +381,13 @@ export function GPUNodes() {
     }
     try {
       const data = await fetchNodes();
-      if (!active || location.pathname !== '/gpu-nodes') return;
+      if (!active || currentAppPath() !== '/gpu-nodes') return;
       setNodes(data || []);
       setIsLive(true);
       setError(null);
       await loadPinned(data || [], active);
     } catch (e: any) {
-      if (!active || location.pathname !== '/gpu-nodes') return;
+      if (!active || currentAppPath() !== '/gpu-nodes') return;
       setIsLive(false);
       setNodes([]);
       setError(e.message || 'Failed to connect to backend');
@@ -395,26 +395,26 @@ export function GPUNodes() {
   };
 
   const loadModelFit = async (active: boolean = true) => {
-    if (demoMode || !active || location.pathname !== '/gpu-nodes') return;
+    if (demoMode || !active || currentAppPath() !== '/gpu-nodes') return;
     setModelFitLoading(true);
     try {
       const data = await fetchModelFit();
-      if (!active || location.pathname !== '/gpu-nodes') return;
+      if (!active || currentAppPath() !== '/gpu-nodes') return;
       setModelFit(data);
       setModelFitError(null);
     } catch (e: unknown) {
-      if (!active || location.pathname !== '/gpu-nodes') return;
+      if (!active || currentAppPath() !== '/gpu-nodes') return;
       const msg = e instanceof Error ? e.message : 'Failed to fetch model fit data';
       setModelFitError(msg);
     } finally {
-      if (active && location.pathname === '/gpu-nodes') {
+      if (active && currentAppPath() === '/gpu-nodes') {
         setModelFitLoading(false);
       }
     }
   };
 
   useEffect(() => {
-    if (location.pathname !== '/gpu-nodes') return;
+    if (currentAppPath() !== '/gpu-nodes') return;
     let active = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadNodes(active);
@@ -427,7 +427,7 @@ export function GPUNodes() {
   }, [demoMode, location.pathname]);
 
   useEffect(() => {
-    if (location.pathname !== '/gpu-nodes') return;
+    if (currentAppPath() !== '/gpu-nodes') return;
     let active = true;
     if (!demoMode) {
       // eslint-disable-next-line react-hooks/set-state-in-effect

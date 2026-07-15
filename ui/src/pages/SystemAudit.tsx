@@ -4,6 +4,7 @@ import { Shield, Search, RefreshCw, Eye, Calendar, User, Terminal, Globe, Filter
 import { fetchSystemAudit } from '../lib/api';
 import type { SystemAuditEntry } from '../types';
 import { Modal } from '../components/Modal';
+import { currentAppPath } from '../hooks/useDemoMode';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 
@@ -60,23 +61,23 @@ export function SystemAudit() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadLogs = useCallback(async (silent = false, active = true) => {
-    if (location.pathname !== '/system-audit') return;
-    if (!silent && active && location.pathname === '/system-audit') setLoading(true);
-    if (active && location.pathname === '/system-audit') setRefreshSpin(true);
+    if (currentAppPath() !== '/system-audit') return;
+    if (!silent && active && currentAppPath() === '/system-audit') setLoading(true);
+    if (active && currentAppPath() === '/system-audit') setRefreshSpin(true);
     try {
       const data = await fetchSystemAudit(200);
-      if (!active || location.pathname !== '/system-audit') return;
+      if (!active || currentAppPath() !== '/system-audit') return;
       setEntries(data);
       setError(null);
       setLastRefreshed(new Date());
     } catch (err: any) {
-      if (!active || location.pathname !== '/system-audit') return;
+      if (!active || currentAppPath() !== '/system-audit') return;
       setError(err.message || 'Failed to load system audit trail');
     } finally {
-      if (active && location.pathname === '/system-audit') {
+      if (active && currentAppPath() === '/system-audit') {
         if (!silent) setLoading(false);
         setTimeout(() => {
-          if (active && location.pathname === '/system-audit') {
+          if (active && currentAppPath() === '/system-audit') {
             setRefreshSpin(false);
           }
         }, 500);
@@ -86,11 +87,11 @@ export function SystemAudit() {
 
   // Initial load + auto-refresh every 30 s
   useEffect(() => {
-    if (location.pathname !== '/system-audit') return;
+    if (currentAppPath() !== '/system-audit') return;
     let active = true;
     loadLogs(false, active);
     intervalRef.current = setInterval(() => {
-      if (active && location.pathname === '/system-audit') {
+      if (active && currentAppPath() === '/system-audit') {
         loadLogs(true, active);
       }
     }, AUTO_REFRESH_INTERVAL_MS);
