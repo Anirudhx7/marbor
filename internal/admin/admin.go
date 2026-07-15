@@ -50,11 +50,13 @@ const sessionCookieName = "mesh_session"
 
 // sessionTokenFromRequest reads the session token from the httpOnly cookie.
 func sessionTokenFromRequest(r *http.Request) string {
-	c, err := r.Cookie(sessionCookieName)
-	if err != nil {
-		return ""
+	if c, err := r.Cookie(sessionCookieName); err == nil {
+		return c.Value
 	}
-	return c.Value
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	return ""
 }
 
 // isRequestSecure reports whether the request should be treated as HTTPS for

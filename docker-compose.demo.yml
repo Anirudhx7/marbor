@@ -114,10 +114,10 @@ services:
         condition: service_healthy
       ollama-node-b:
         condition: service_healthy
-    environment:
-      CONFIG_PATH: /config.yaml
+
+    command: sh -c "cp /demo/mesh.demo.db /root/mesh.db && exec ./ollama-mesh"
     volumes:
-      - ./config.demo.yaml:/config.yaml:ro
+      - ./mesh.demo.db:/demo/mesh.demo.db:ro
     ports:
       - "11434:11434"
       - "8080:8080"

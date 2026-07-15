@@ -243,12 +243,12 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>This is the best fit because Open WebUI treats the mesh exactly like a single Ollama instance and can enumerate models automatically.</p>
 <ol><li>Open Open WebUI and go to <strong>Admin Settings</strong> (gear icon, top-right).</li><li>Navigate to <strong>Connections &gt; Ollama</strong>.</li><li>In the URL field, enter:</li></ol>
 <p>   ``<code>    http://&lt;mesh-host&gt;:11434    </code>`<code>    Replace </code>&lt;mesh-host&gt;<code> with the IP or hostname of the machine running ollama-mesh. If Open WebUI is running in Docker on the same host, use </code>host.docker.internal<code> instead of </code>localhost`.</p>
-<ol><li>Open WebUI will probe <code>/api/tags</code> and <code>/v1/models</code> to enumerate models. The mesh aggregates model lists from all healthy nodes, so every model available across your fleet appears in one dropdown.</li><li><strong>API key</strong>: Open WebUI's Ollama connection type does not send an <code>Authorization</code> header by default. If <code>auth.enabled: true</code> in your mesh config, you have two options:</li><li>Set <code>auth.enabled: false</code> and rely on network-level access control (only recommended on a trusted LAN).</li><li>Use the OpenAI connection type (Option B below), which has an explicit API key field.</li></ol>
+<ol><li>Open WebUI will probe <code>/api/tags</code> and <code>/v1/models</code> to enumerate models. The mesh aggregates model lists from all healthy nodes, so every model available across your fleet appears in one dropdown.</li><li><strong>API key</strong>: Open WebUI's Ollama connection type does not send an <code>Authorization</code> header by default. If API-key auth is enabled (<strong>Settings &gt; Proxy Configuration &gt; Authentication Mode</strong> in the mesh dashboard), you have two options:</li><li>Switch the mesh to "No Authentication" and rely on network-level access control (only recommended on a trusted LAN).</li><li>Use the OpenAI connection type (Option B below), which has an explicit API key field.</li></ol>
 <hr/>
 <h2 id="option-b---openai-compatible-connection-type">Option B - OpenAI-compatible connection type<a class="anchor" href="#option-b---openai-compatible-connection-type" aria-label="Link to section">#</a></h2>
 <p>Use this when you want to supply the mesh API key through the UI, or when you are already using Open WebUI's OpenAI connection slot.</p>
 <ol><li>Go to <strong>Admin Settings &gt; Connections &gt; OpenAI</strong> (in Open WebUI v0.5+, labeled under <strong>Connections</strong>).</li><li>Click <strong>Add Connection</strong> (the <code>+</code> button).</li><li>Fill in the fields:</li></ol>
-<p>   | Field | Value |    |-------|-------|    | <strong>URL</strong> | <code>http://&lt;mesh-host&gt;:11434/v1</code> |    | <strong>API Key</strong> | Your <code>sk-mesh-...</code> key from <code>config.yaml</code> |</p>
+<p>   | Field | Value |    |-------|-------|    | <strong>URL</strong> | <code>http://&lt;mesh-host&gt;:11434/v1</code> |    | <strong>API Key</strong> | Your <code>sk-mesh-...</code> key from the mesh dashboard's <strong>API Keys</strong> page |</p>
 <ol><li>Click <strong>Save</strong>. Open WebUI calls <code>GET /v1/models</code> - the mesh returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.</li></ol>
 <blockquote>The exact label for the OpenAI connection section has shifted between Open WebUI versions. Look for <strong>Connections</strong> under Admin Settings; the OpenAI slot is the one that has a separate <strong>URL</strong> and <strong>API Key</strong> field pair.</blockquote>
 <hr/>
@@ -276,9 +276,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
       - "11434:11434"
       - "8080:8080"
     volumes:
-      - ./config.yaml:/config.yaml
-    environment:
-      CONFIG_PATH: /config.yaml
+      - mesh-data:/root   # persists mesh.db - add nodes/keys once via the dashboard
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -293,7 +291,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
       - ollama-mesh
 
 volumes:
-  open-webui:</code></pre>
+  open-webui:
+  mesh-data:</code></pre>
 <hr/>
 <h2 id="verifying-the-connection">Verifying the connection<a class="anchor" href="#verifying-the-connection" aria-label="Link to section">#</a></h2>
 <p>After saving the connection, confirm models appear in the Open WebUI model selector. You can also check the mesh side:</p>
@@ -306,13 +305,13 @@ curl http://&lt;mesh-host&gt;:11434/v1/models \
 <p><strong>Models not appearing in the dropdown</strong></p>
 <ul><li>Confirm at least one Ollama node is reachable and has models loaded (<code>ollama list</code> on the node).</li><li>Check the mesh admin dashboard to verify nodes show as healthy.</li><li>For the Ollama connection type, Open WebUI calls <code>/api/tags</code>. For the OpenAI connection type it calls <code>/v1/models</code>. Both are served by the mesh.</li><li>If you added the connection via Docker env var and models still don't appear, see the <code>ConfigVar</code> note above - the persisted value may be overriding your env var.</li></ul>
 <p><strong>401 Unauthorized</strong></p>
-<p>Your API key is missing or wrong. Verify the key matches one of the <code>auth.keys[].key</code> values in <code>config.yaml</code>. The mesh requires the exact key string as a <code>Bearer</code> token - no substring matching.</p>
+<p>Your API key is missing or wrong. Verify the key matches one of the keys shown on the mesh dashboard's <strong>API Keys</strong> page. The mesh requires the exact key string as a <code>Bearer</code> token - no substring matching.</p>
 <p><strong>403 Forbidden on a specific model</strong></p>
-<p>The key you are using has a <code>models:</code> allow-list in <code>config.yaml</code> that does not include the requested model. Either add the model to the key's allow-list or use a key with <code>models: []</code> (empty = allow all).</p>
+<p>The key you are using has a model allow-list set (edit it from the <strong>API Keys</strong> page) that does not include the requested model. Either add the model to the key's allow-list or use a key with no allow-list ("All models" - allow all).</p>
 <p><strong>Connection refused / timeout</strong></p>
-<ul><li>If Open WebUI is in Docker and the mesh is on the host, use <code>http://host.docker.internal:11434</code> not <code>http://localhost:11434</code>.</li><li>Confirm the mesh is running: <code>curl http://&lt;mesh-host&gt;:11434/api/tags</code> from the Open WebUI host (no auth needed for this endpoint if <code>auth.enabled: false</code>, or add the header if enabled).</li></ul>
+<ul><li>If Open WebUI is in Docker and the mesh is on the host, use <code>http://host.docker.internal:11434</code> not <code>http://localhost:11434</code>.</li><li>Confirm the mesh is running: <code>curl http://&lt;mesh-host&gt;:11434/api/tags</code> from the Open WebUI host (no auth needed for this endpoint if authentication is disabled, or add the header if enabled).</li></ul>
 <p><strong>Slow model list on startup</strong></p>
-<p>If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's <code>routing.upstream_timeout_ms</code> in <code>config.yaml</code>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
+<p>If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's upstream timeout in <strong>Settings &gt; Advanced Routing &gt; Upstream Timeout</strong>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
 
       <div class="doc-foot-edit">
         <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">View on GitHub →</a>

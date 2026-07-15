@@ -228,7 +228,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Production Deployment Guide</span></div>
     <article class="doc-content">
       <h1 id="production-deployment-guide">Production Deployment Guide<a class="anchor" href="#production-deployment-guide" aria-label="Link to section">#</a></h1>
-<p>This guide covers running ollama-mesh in a real production environment. It assumes you have already configured <code>config.yaml</code> from <code>config.example.yaml</code>.</p>
+<p>This guide covers running ollama-mesh in a real production environment. There is no config file - ollama-mesh is DB-first (<code>mesh.db</code>, SQLite). Point it at a persistent path with <code>--db</code> (or <code>MESH_DB_PATH</code>), boot it once, and configure nodes/keys/routing/everything else through the admin dashboard or the <code>/admin/v1/...</code> REST API (see the <a href="../README.html#configuration">Configuration section of the README</a>).</p>
 <hr/>
 <h2 id="ports">Ports<a class="anchor" href="#ports" aria-label="Link to section">#</a></h2>
 <div class="table-scroll"><table>
@@ -250,11 +250,9 @@ Type=simple
 User=ollama-mesh
 Group=ollama-mesh
 WorkingDirectory=/opt/ollama-mesh
-ExecStart=/opt/ollama-mesh/ollama-mesh
+ExecStart=/opt/ollama-mesh/ollama-mesh --db /opt/ollama-mesh/mesh.db
 Restart=on-failure
 RestartSec=5
-# Config path defaults to ./config.yaml; override if needed:
-# Environment=CONFIG_PATH=/etc/ollama-mesh/config.yaml
 
 # Graceful shutdown: SIGTERM triggers a 15-second drain before exit.
 # The unit will wait up to TimeoutStopSec before sending SIGKILL.
@@ -271,14 +269,14 @@ WantedBy=multi-user.target</code></pre>
 <pre class="code" data-lang="bash"><code>sudo useradd -r -s /sbin/nologin ollama-mesh
 sudo mkdir -p /opt/ollama-mesh
 sudo cp ollama-mesh /opt/ollama-mesh/
-sudo cp config.yaml /opt/ollama-mesh/
 sudo chown -R ollama-mesh:ollama-mesh /opt/ollama-mesh
 sudo systemctl daemon-reload
 sudo systemctl enable --now ollama-mesh
 sudo journalctl -u ollama-mesh -f</code></pre>
+<p>First boot creates <code>/opt/ollama-mesh/mesh.db</code> blank-slate. Log in at <code>http://&lt;host&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login) and add your nodes/API keys from the dashboard - or run <code>install.sh</code>'s network-discovery wizard beforehand to seed nodes automatically.</p>
 <hr/>
 <h2 id="docker-compose">Docker Compose<a class="anchor" href="#docker-compose" aria-label="Link to section">#</a></h2>
-<p>The repo ships a working <code>docker-compose.yml</code>. For production, the key fields to set in your environment or a <code>.env</code> file:</p>
+<p>The repo ships a working <code>docker-compose.yml</code>. It mounts a single named volume for <code>mesh.db</code> - that's the only state that needs to survive a restart:</p>
 <pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
 services:
   ollama-mesh:
@@ -288,43 +286,17 @@ services:
       - "8080:8080"
       - "9090:9090"
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      - ./usage-state.json:/app/usage-state.json   # persist quota state
-      - ./audit.log:/app/audit.log                 # persist audit log
-      - /var/run/docker.sock:/var/run/docker.sock  # only if docker.enabled: true
+      - mesh-data:/root                            # persists mesh.db across restarts
+      - /var/run/docker.sock:/var/run/docker.sock  # only if Docker auto-discovery is enabled
     restart: unless-stopped
-    environment:
-      - CONFIG_PATH=/app/config.yaml</code></pre>
-<p>The <code>usage-state.json</code> volume mount is important: without it, per-key quota counters reset on every container restart.</p>
+
+volumes:
+  mesh-data:</code></pre>
+<p>The <code>mesh-data</code> volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate <code>mesh.db</code> inside the volume - configure it via the dashboard at <code>http://localhost:8080</code> (<code>admin</code>/<code>admin</code>, forced password change on first login).</p>
 <hr/>
 <h2 id="kubernetes">Kubernetes<a class="anchor" href="#kubernetes" aria-label="Link to section">#</a></h2>
-<p>Minimal manifest. Adjust resource limits and image tag for your cluster.</p>
-<pre class="code" data-lang="yaml"><code>apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ollama-mesh-config
-  namespace: ai-infra
-data:
-  config.yaml: |
-    proxy:
-      port: 11434
-      log_level: info
-    auth:
-      enabled: true
-      state_path: /data/usage-state.json
-    nodes:
-      - name: gpu-0
-        url: http://ollama-gpu-0.ai-infra.svc.cluster.local:11434
-    routing:
-      strategy: warm-first
-      poll_interval_ms: 2000
-      fallback: least-connections
-      max_retries: 2
-    metrics:
-      enabled: true
-      port: 9090
----
-apiVersion: apps/v1
+<p>Minimal manifest. Adjust resource limits and image tag for your cluster. There is no ConfigMap - <code>mesh.db</code> lives on the PVC below, and nodes/keys/routing are set via the dashboard or <code>/admin/v1/...</code> REST API after the pod is up. GitOps-style operators can drive that same REST API from a post-deploy Job instead of hand-editing a file.</p>
+<pre class="code" data-lang="yaml"><code>apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ollama-mesh
@@ -346,9 +318,7 @@ spec:
       containers:
         - name: ollama-mesh
           image: ghcr.io/ollama-mesh/ollama-mesh:latest
-          env:
-            - name: CONFIG_PATH
-              value: /config/config.yaml
+          args: ["--db", "/data/mesh.db"]
           ports:
             - containerPort: 11434   # endpoint
             - containerPort: 8080    # admin
@@ -373,15 +343,9 @@ spec:
               memory: "256Mi"
               cpu: "500m"
           volumeMounts:
-            - name: config
-              mountPath: /config
-              readOnly: true
             - name: data
               mountPath: /data
       volumes:
-        - name: config
-          configMap:
-            name: ollama-mesh-config
         - name: data
           persistentVolumeClaim:
             claimName: ollama-mesh-data
@@ -482,7 +446,7 @@ server {
 <div class="table-scroll"><table>
 <thead><tr><th>Data</th><th>Persistence</th></tr></thead>
 <tbody><tr><td>Per-key token usage, quota counters</td><td>Persisted to <code>auth.state_path</code> (default: <code>usage-state.json</code>) every 30 seconds and on clean shutdown. A crash loses at most 30 seconds of counter updates. Set <code>state_path: "-"</code> to disable.</td></tr>
-<tr><td>API key config, node config</td><td>In <code>config.yaml</code> - your source of truth.</td></tr>
+<tr><td>API key config, node config, routing/settings</td><td>In <code>mesh.db</code> (SQLite) - the sole source of truth. Set via the dashboard or <code>/admin/v1/...</code> REST API.</td></tr>
 <tr><td>Audit log</td><td>Append-only JSON-lines file at <code>audit.path</code> if <code>audit.enabled: true</code>.</td></tr>
 <tr><td>Request log / analytics</td><td>In-memory only. Lost on restart by design - these are operational views, not a database. SQLite persistence is on the roadmap.</td></tr>
 <tr><td>GPU telemetry</td><td>Live reads from nvidia-smi on the mesh host. Not persisted.</td></tr></tbody>
