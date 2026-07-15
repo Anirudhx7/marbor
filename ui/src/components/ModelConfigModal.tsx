@@ -598,7 +598,7 @@ export function ModelConfigModal({
             </p>
           )}
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-4 mt-2 border-t border-border">
             <button
               onClick={() => setResetConfirmOpen(true)}
               disabled={saving}
