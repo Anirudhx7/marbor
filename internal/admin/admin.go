@@ -278,30 +278,30 @@ type RequestLog struct {
 }
 
 type nodeResp struct {
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Port            int                `json:"port"`
-	GPUModel        string             `json:"gpuModel"`
-	VRAMTotalMB     int64              `json:"vramTotalMB"`
-	VRAMUsedMB      int64              `json:"vramUsedMB"`
-	VRAMSource      string             `json:"vramSource"`
-	PowerDrawW      float64            `json:"powerDrawW"`
-	Temperature     *float64           `json:"temperature"`
-	Runtime         string             `json:"runtime"`
-	Health          string             `json:"health"`
-	Draining        bool               `json:"draining"`
-	DrainedReason   string             `json:"drainedReason,omitempty"`
-	PrewarmDisabled bool               `json:"prewarmDisabled"`
-	Uptime          string             `json:"uptime"`
-	LoadedModels    []router.ModelInfo `json:"loadedModels"`
-	ActiveConns     int32              `json:"activeConns"`
-	RequestsTotal   int64              `json:"requestsTotal"`
-	HealthHistory   []float64          `json:"healthHistory"`
-	PendingPrewarmMB int64             `json:"pendingPrewarmMB"`
-	ColdStarts      int64              `json:"coldStarts"`
-	TokensTotal     int64              `json:"tokensTotal"`
-	AvgLatencyMs    float64            `json:"avgLatencyMs"`
-	WarmHitRatio    float64            `json:"warmHitRatio"`
+	ID               string             `json:"id"`
+	Name             string             `json:"name"`
+	Port             int                `json:"port"`
+	GPUModel         string             `json:"gpuModel"`
+	VRAMTotalMB      int64              `json:"vramTotalMB"`
+	VRAMUsedMB       int64              `json:"vramUsedMB"`
+	VRAMSource       string             `json:"vramSource"`
+	PowerDrawW       float64            `json:"powerDrawW"`
+	Temperature      *float64           `json:"temperature"`
+	Runtime          string             `json:"runtime"`
+	Health           string             `json:"health"`
+	Draining         bool               `json:"draining"`
+	DrainedReason    string             `json:"drainedReason,omitempty"`
+	PrewarmDisabled  bool               `json:"prewarmDisabled"`
+	Uptime           string             `json:"uptime"`
+	LoadedModels     []router.ModelInfo `json:"loadedModels"`
+	ActiveConns      int32              `json:"activeConns"`
+	RequestsTotal    int64              `json:"requestsTotal"`
+	HealthHistory    []float64          `json:"healthHistory"`
+	PendingPrewarmMB int64              `json:"pendingPrewarmMB"`
+	ColdStarts       int64              `json:"coldStarts"`
+	TokensTotal      int64              `json:"tokensTotal"`
+	AvgLatencyMs     float64            `json:"avgLatencyMs"`
+	WarmHitRatio     float64            `json:"warmHitRatio"`
 }
 
 type SystemInfo struct {
