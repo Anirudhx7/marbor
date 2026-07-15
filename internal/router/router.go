@@ -579,10 +579,11 @@ func (r *Router) CloudChain() []config.CloudProvider {
 	defer r.mu.RUnlock()
 	if r.liteLLM.Enabled && r.liteLLM.URL != "" {
 		return []config.CloudProvider{{
-			Name:    "litellm",
+			Name: "litellm",
+			// TODO(task-5): add APIKey once config.LiteLLMConfig.APIKey lands.
 			Provider: "openai",
-			BaseURL: r.liteLLM.URL,
-			Enabled: true,
+			BaseURL:  r.liteLLM.URL,
+			Enabled:  true,
 		}}
 	}
 	out := make([]config.CloudProvider, 0, len(r.clouds))
