@@ -255,6 +255,7 @@ export const defaultSettings: Settings = {
 
   auditEnabled: false,
   auditRetentionDays: 30,
+  systemAuditRetentionDays: 0,
   webhookEnabled: false,
   webhookUrl: '',
   webhookSecret: '',

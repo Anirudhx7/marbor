@@ -1389,6 +1389,24 @@ func (s *sqliteStore) QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error)
 	return entries, nil
 }
 
+// PruneSystemAuditLog deletes system_audit_log rows older than
+// retentionDays. This is the admin action trail (who changed what) - much
+// lower volume and higher security value than the per-request audit_log, so
+// it has its own retention setting rather than sharing Audit.RetentionDays.
+// retentionDays <= 0 is a no-op (an explicit "keep forever" choice, and the
+// default here since this table costs little to keep indefinitely).
+func (s *sqliteStore) PruneSystemAuditLog(retentionDays int) error {
+	if retentionDays <= 0 {
+		return nil
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays).Format(time.RFC3339)
+	_, err := s.db.Exec(`DELETE FROM system_audit_log WHERE ts < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("store: PruneSystemAuditLog: %w", err)
+	}
+	return nil
+}
+
 func (s *sqliteStore) AllSettings() (map[string]string, error) {
 	rows, err := s.db.Query(`SELECT key, value FROM settings`)
 	if err != nil {
