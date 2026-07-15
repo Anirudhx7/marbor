@@ -289,14 +289,10 @@ func TestHandleSavingsNullWhenNoTokenData(t *testing.T) {
 // TestAdmin_SettingsExcludesSecrets verifies that GET /admin/settings never
 // returns the admin token value or cloud provider API keys in the response body.
 func TestAdmin_SettingsExcludesSecrets(t *testing.T) {
-	adminToken := "super-secret-admin-token-xyz"
 	cloudAPIKey := "sk-openai-should-not-appear"
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
 	cfg := config.Config{
-		Auth: config.AuthConfig{
-			AdminToken: adminToken,
-		},
 		CloudProviders: []config.CloudProvider{
 			{
 				Name:    "openai",
@@ -308,7 +304,6 @@ func TestAdmin_SettingsExcludesSecrets(t *testing.T) {
 	s := NewServer(r, nil, cfg)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
 	rec := httptest.NewRecorder()
 	s.handleSettings(rec, req)
 
@@ -317,9 +312,6 @@ func TestAdmin_SettingsExcludesSecrets(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if strings.Contains(body, adminToken) {
-		t.Errorf("/admin/settings response contains admin token %q; it must be excluded", adminToken)
-	}
 	if strings.Contains(body, cloudAPIKey) {
 		t.Errorf("/admin/settings response contains cloud API key %q; it must be masked", cloudAPIKey)
 	}
@@ -343,7 +335,7 @@ func TestAdmin_KeysNeverPlaintext(t *testing.T) {
 	s := NewServer(r, a, cfg)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/v1/keys", nil)
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
@@ -381,7 +373,7 @@ func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 
 	body := bytes.NewReader([]byte(`{"name":"newkey","rate_limit":100}`))
 	req := httptest.NewRequest(http.MethodPost, "/admin/keys", body)
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -399,7 +391,7 @@ func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 	}
 	// Now verify that a subsequent GET /admin/keys does NOT contain this key.
 	req2 := httptest.NewRequest(http.MethodGet, "/admin/keys", nil)
-	req2.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req2.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	rec2 := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec2, req2)
 
@@ -460,7 +452,7 @@ func doScheduleRequest(s *Server, method, path, body string) *httptest.ResponseR
 		r = strings.NewReader(body)
 	}
 	req := httptest.NewRequest(method, path, r)
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -746,7 +738,7 @@ func TestHandlePredictiveDecisions_ReturnsRecordedDecisions(t *testing.T) {
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/predictive/decisions", nil)
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 

@@ -2,15 +2,13 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"net/url"
-	"os"
 	"runtime"
 	"strings"
 	"time"
 	_ "time/tzdata"
-
-	"gopkg.in/yaml.v3"
 )
 
 // ValidateNodeURL checks that raw is a usable http(s) backend URL and rejects
@@ -94,7 +92,6 @@ type Config struct {
 	HA               HAConfig          `yaml:"ha" json:"ha"`
 	Warmup           WarmupConfig      `yaml:"warmup" json:"warmup"`
 	HuggingFace      HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
-	Storage          StorageConfig     `yaml:"storage" json:"storage"`
 	CloudBudget      CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
 	HideDemoBanner   bool              `yaml:"hide_demo_banner" json:"hide_demo_banner"`
 	HideBudgetBanner bool              `yaml:"hide_budget_banner" json:"hide_budget_banner"`
@@ -119,13 +116,6 @@ type CloudBudgetConfig struct {
 	// SoftBudgetPct is the fraction (0-1) of either cap at which a warning
 	// should surface without blocking cloud fallback. 0 disables the warning.
 	SoftBudgetPct float64 `yaml:"soft_budget_pct,omitempty" json:"soft_budget_pct,omitempty"`
-}
-
-// StorageConfig controls the SQLite persistence layer.
-// DBPath is the file path for the SQLite database. A value of "-" disables
-// persistence (NopStore). Empty string defaults to "mesh.db" in Validate().
-type StorageConfig struct {
-	DBPath string `yaml:"db_path" json:"db_path"`
 }
 
 type HuggingFaceConfig struct {
@@ -192,7 +182,10 @@ type AdminConfig struct {
 	// CORSOrigin is the value sent in Access-Control-Allow-Origin on admin API
 	// responses. Empty (default) sends no CORS headers, so the API is only
 	// callable same-origin (the embedded dashboard). Set a specific origin to
-	// allow a separate front-end; "*" is allowed but not recommended.
+	// allow a separate front-end. The admin session is an httpOnly cookie, so
+	// a non-empty origin also gets Access-Control-Allow-Credentials: true
+	// paired with it - "*" will NOT work here (browsers reject a wildcard
+	// origin combined with credentials), so this must be one concrete origin.
 	CORSOrigin string `yaml:"cors_origin,omitempty" json:"cors_origin,omitempty"`
 }
 
@@ -202,10 +195,6 @@ type AuthConfig struct {
 	// Read via IsEnabled(), never the field directly.
 	Enabled *bool       `yaml:"enabled,omitempty"`
 	Keys    []KeyConfig `yaml:"keys"`
-	// AdminToken is the bearer token for the admin dashboard API.
-	// Optional: when empty, the first auth key (or "admin") is used,
-	// preserving pre-first-run behavior.
-	AdminToken string `yaml:"admin_token,omitempty" json:"-"`
 }
 
 type KeyConfig struct {
@@ -367,47 +356,6 @@ type CloudProvider struct {
 	Enabled         bool    `yaml:"enabled" json:"enabled"`
 }
 
-func LoadConfig(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
-	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
-	}
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("validate config: %w", err)
-	}
-	return &cfg, nil
-}
-
-// SaveConfig writes cfg to path atomically (temp file + rename) with mode
-// 0600. It is intentionally restricted to bootstrap use (first-run and
-// --validate). Runtime mutations persist to SQLite via the admin API; this
-// function must not be called from handleUpdateSettings or similar paths.
-func SaveConfig(path string, cfg Config) error {
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	// Narrow permissions before writing content so the key is never
-	// transiently world-readable, even on an existing file.
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return fmt.Errorf("write config: %w", err)
-	}
-	if err := os.Chmod(tmp, 0600); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("chmod config: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("rename config: %w", err)
-	}
-	return nil
-}
-
 // IsEnabled reports whether auth enforcement is on.
 // Defaults to true when the field is absent (nil) from the config file.
 func (c AuthConfig) IsEnabled() bool {
@@ -418,6 +366,25 @@ func (c AuthConfig) IsEnabled() bool {
 // values (e.g. AuthConfig.Enabled) in code and tests, including from other
 // packages.
 func BoolPtr(b bool) *bool { return &b }
+
+// warnIfAdminBindsAllInterfaces logs a one-time startup warning when the
+// admin dashboard/API listens on every network interface (2026-07-14 audit,
+// Priority 6). The default is intentionally kept at ":8080" for Docker port
+// mapping compatibility (`-p 8080:8080` requires the process inside the
+// container to listen on 0.0.0.0, not 127.0.0.1) - changing the default
+// would break the project's own docker-compose.yml. Surfacing this via a
+// runtime log line (not just a config file comment) means an operator on an
+// untrusted network actually sees it in `docker logs`, not just documentation
+// most people don't read.
+func warnIfAdminBindsAllInterfaces(bindAddress string) {
+	host, _, err := net.SplitHostPort(bindAddress)
+	if err != nil {
+		host = bindAddress
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		log.Printf("WARNING: admin dashboard is bound to all interfaces (%s). If this host is reachable from an untrusted network, set admin.bind_address to 127.0.0.1:8080 (or the equivalent host-side binding) or place it behind a firewall/reverse proxy.", bindAddress)
+	}
+}
 
 func (c *Config) Validate() error {
 	if c.Timezone == "" {
@@ -442,6 +409,7 @@ func (c *Config) Validate() error {
 	if c.Admin.BindAddress == "" {
 		c.Admin.BindAddress = ":8080"
 	}
+	warnIfAdminBindsAllInterfaces(c.Admin.BindAddress)
 	if c.Routing.Strategy == "" {
 		c.Routing.Strategy = "warm-first"
 	}
@@ -474,10 +442,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
-	}
-
-	if c.Storage.DBPath == "" {
-		c.Storage.DBPath = "mesh.db"
 	}
 
 	// Auth defaults to enabled: make an absent key explicit so a saved config

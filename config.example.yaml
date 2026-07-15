@@ -17,7 +17,10 @@ admin:
   bind_address: ":8080"
   # Access-Control-Allow-Origin for the admin API. Empty (default) sends no CORS
   # headers, so the API is only callable same-origin (the embedded dashboard).
-  # Set a specific origin only if you serve a separate front-end. Avoid "*".
+  # Set a specific origin only if you serve a separate front-end. The admin
+  # session is an httpOnly cookie, so this also enables
+  # Access-Control-Allow-Credentials - "*" will NOT work (browsers reject
+  # wildcard origin + credentials), must be one concrete origin.
   cors_origin: ""
 
 auth:

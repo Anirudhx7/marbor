@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig } from '../types';
 
 const BASE = '/admin';
 
@@ -34,42 +34,53 @@ function demoRandomToken(prefix: string): string {
 }
 
 // --- Session management ---
-
-export function getSessionToken(): string {
-  return localStorage.getItem('sessionToken') ?? localStorage.getItem('adminToken') ?? '';
-}
+//
+// The session token itself lives only in a server-set httpOnly cookie now -
+// never in localStorage, never readable by JS. What's persisted here is
+// non-secret UI display state (role/username/must-change-password) so a page
+// reload can render the dashboard optimistically instead of flashing the
+// login screen; the cookie (sent automatically by the browser) is what
+// actually authenticates each request, and apiFetch's 401 handling bounces
+// back to Login if it turns out to be missing/expired.
 
 export function saveSession(data: LoginResponse): void {
-  localStorage.setItem('sessionToken', data.token);
   localStorage.setItem('sessionRole', data.role);
   localStorage.setItem('sessionUsername', data.username);
   localStorage.setItem('sessionMustChangePassword', String(data.must_change_password));
 }
 
 export function loadSession(): SessionData | null {
-  const token = localStorage.getItem('sessionToken') ?? localStorage.getItem('adminToken') ?? '';
-  if (!token) return null;
+  const username = localStorage.getItem('sessionUsername');
+  if (!username) return null;
   return {
-    token,
     role: localStorage.getItem('sessionRole') ?? 'admin',
-    username: localStorage.getItem('sessionUsername') ?? '',
+    username,
     mustChangePassword: localStorage.getItem('sessionMustChangePassword') === 'true',
   };
 }
 
 export function clearSession(): void {
-  localStorage.removeItem('sessionToken');
-  localStorage.removeItem('adminToken');
   localStorage.removeItem('sessionRole');
   localStorage.removeItem('sessionUsername');
   localStorage.removeItem('sessionMustChangePassword');
 }
 
+// Called from ForceChangePassword's "Skip for now" - reissues the session
+// server-side with must_change_password cleared for THIS session only (the
+// server never updates the user's row), so the dashboard's normal API calls
+// stop getting rejected by adminAuth/sessionAuth's forced-change gate. The
+// next fresh login still forces the prompt again, since the user's own
+// must_change_password flag was never touched.
+export async function skipPasswordChangeThisSession(): Promise<void> {
+  const r = await apiFetch('/skip-password-change', { method: 'POST' });
+  if (!r.ok) {
+    throw new Error('Failed to skip password change');
+  }
+  localStorage.setItem('sessionMustChangePassword', 'false');
+}
+
 // Backward compat aliases
-export function setSessionToken(token: string): void { localStorage.setItem('sessionToken', token); }
 export function clearSessionToken(): void { clearSession(); }
-export function getAdminToken(): string { return getSessionToken(); }
-export function clearAdminToken(): void { clearSession(); }
 
 // --- Auth ---
 
@@ -90,6 +101,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
+    credentials: 'include',
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
@@ -103,6 +115,7 @@ export async function userLogin(username: string, password: string): Promise<Log
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
+    credentials: 'include',
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
@@ -113,7 +126,7 @@ export async function userLogin(username: string, password: string): Promise<Log
 
 export async function logout(): Promise<void> {
   try {
-    await fetch(`${BASE}/v1/logout`, { method: 'POST', headers: authHeaders() });
+    await fetch(`${BASE}/v1/logout`, { method: 'POST', headers: authHeaders(), credentials: 'include' });
   } finally {
     clearSession();
   }
@@ -361,14 +374,17 @@ export async function updateSchedule(id: string, patch: Partial<Omit<Schedule, '
   return res.json();
 }
 
-function authHeaders(): { Authorization: string } {
-  return { Authorization: `Bearer ${getSessionToken()}` };
+// No-op now that the session lives in an httpOnly cookie sent automatically
+// by the browser - kept so the many `{ ...authHeaders(), ... }` call sites
+// below don't all need touching.
+function authHeaders(): Record<string, string> {
+  return {};
 }
 
 let isRedirectingToLogin = false;
 
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(input, init);
+  const res = await fetch(input, { ...init, credentials: 'include' });
   if (res.status === 401) {
     clearSessionToken();
     if (!isRedirectingToLogin) {
@@ -585,12 +601,42 @@ export async function fetchCloudProviders(): Promise<CloudProvider[]> {
   return res.json();
 }
 
-export async function reloadConfig(): Promise<{ reloaded: boolean; config_path: string; auth_keys: number; warmup_enabled: boolean }> {
+export async function addCloudProvider(data: CloudProviderInput): Promise<void> {
+  const res = await apiFetch(`${BASE}/cloud/providers`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to add cloud provider'); }
+}
+
+export async function updateCloudProvider(name: string, data: CloudProviderInput): Promise<void> {
+  const res = await apiFetch(`${BASE}/cloud/providers/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to update cloud provider'); }
+}
+
+export async function deleteCloudProvider(name: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/cloud/providers/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to delete cloud provider');
+}
+
+// reloadFromStore re-syncs live nodes/API keys/cloud providers from the
+// database without restarting (no config.yaml to reload anymore - 2026-07
+// elimination). Settings not covered by this (Docker/HA/Webhook wiring,
+// listen ports/addresses) take effect on next restart.
+export async function reloadFromStore(): Promise<{ reloaded: boolean; auth_keys: number; nodes_added: number; nodes_removed: number; cloud_providers: number }> {
   const res = await apiFetch(`${BASE}/config/reload`, {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Config reload failed');
+  if (!res.ok) throw new Error('Reload failed');
   return res.json();
 }
 

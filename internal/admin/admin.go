@@ -42,12 +42,60 @@ type ctxKey string
 
 const ctxKeyUsername ctxKey = "username"
 
-func extractBearerToken(hdr string) string {
-	parts := strings.SplitN(hdr, " ", 2)
-	if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-		return parts[1]
+// sessionCookieName is the httpOnly cookie holding the admin session token.
+// The token itself never reaches client-side JS or localStorage (Priority 2,
+// 2026-07-14 audit) - only this cookie carries it, and only the server reads
+// it back.
+const sessionCookieName = "mesh_session"
+
+// sessionTokenFromRequest reads the session token from the httpOnly cookie.
+func sessionTokenFromRequest(r *http.Request) string {
+	c, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return ""
 	}
-	return ""
+	return c.Value
+}
+
+// isRequestSecure reports whether the request should be treated as HTTPS for
+// cookie Secure-flag purposes: either a direct TLS connection, or fronted by
+// a reverse proxy that says so via X-Forwarded-Proto. The header is only
+// meaningful behind a real reverse proxy - on a direct, un-proxied listener
+// a client could set it itself, but the worst case is just Secure not being
+// set when it ideally would be, not a new hole (the cookie is still
+// HttpOnly either way).
+func isRequestSecure(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// setSessionCookie sets the httpOnly session cookie. expiry zero-value means
+// a session cookie (cleared when the browser closes) rather than persistent.
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string, expiry time.Time) {
+	cookie := &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isRequestSecure(r),
+		SameSite: http.SameSiteLaxMode,
+	}
+	if !expiry.IsZero() {
+		cookie.Expires = expiry
+	}
+	http.SetCookie(w, cookie)
+}
+
+// clearSessionCookie expires the session cookie immediately (logout).
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isRequestSecure(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
 }
 
 // writeJSONError writes a well-formed {"error": msg} JSON body with the given
@@ -69,41 +117,70 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	w.Write(b)
 }
 
+// newCorrelationID returns a short request-scoped ID for tying a generic
+// client-facing error to the detailed server log line, without ever putting
+// the real error text on the wire (2026-07-14 audit, Priority 4).
+func newCorrelationID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("r%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+// writeServerError logs the real error server-side with a correlation ID and
+// writes only a generic message + that ID to the client (HTTP 500) - never
+// err.Error(), which can leak DB/file/library internals (2026-07-14 audit,
+// Priority 4). Use this for any failure that isn't pure request-shape
+// validation (DB errors, marshal errors, hashing errors, etc).
+func writeServerError(w http.ResponseWriter, r *http.Request, err error) {
+	writeCorrelatedError(w, r, http.StatusInternalServerError, "internal error", err)
+}
+
+// writeCorrelatedError is writeServerError with a caller-chosen status, for
+// non-500 failures (e.g. a 502 relaying an upstream/network error) that must
+// still never echo err.Error() to the client.
+func writeCorrelatedError(w http.ResponseWriter, r *http.Request, status int, publicMsg string, err error) {
+	id := newCorrelationID()
+	log.Printf("admin: request %s %s error (id=%s, status=%d): %v", r.Method, r.URL.Path, id, status, err)
+	writeJSONError(w, status, fmt.Sprintf("%s (request id: %s)", publicMsg, id))
+}
+
 type TokenEvent struct {
 	Time   time.Time
 	Tokens int64
 }
 
 type Server struct {
-	router        *router.Router
-	auth          *auth.Middleware
-	cfg           config.Config
-	version       string
-	configPath    string
-	mu            sync.RWMutex
-	requests      []RequestLog
-	localCount    int64   // atomic - requests served by local nodes
-	cloudCount    int64   // atomic - requests forwarded to cloud
-	localTokens   int64   // atomic - real token counts parsed from local node responses
-	cloudTokens   int64   // atomic - real token counts parsed from cloud responses
-	cloudSpentUSD float64 // protected by mu
-	refCostPer1K  float64 // reference cloud rate used to value local tokens (immutable after construction)
-	startTime     time.Time
-	analytics     *analyticsStore
-	auditLog      *audit.Logger
-	haMonitor     *ha.Monitor // nil when HA disabled
-	st            store.Store // never nil; NopStore when persistence disabled
-	demoMode      bool        // when true, login accepts admin/admin without DB
-	loginLimiter  *loginRateLimiter
-	logChan       chan store.RequestRecord
-	logDone       chan struct{} // closed by Shutdown to signal drain-and-stop
-	logWg         sync.WaitGroup
-	pullsMu       sync.Mutex                // guards pullsInFlight
-	pullsInFlight map[string]bool           // "node|model" -> in progress; ephemeral, never persisted
-	coldStarts    int64                     // atomic - total cold start events
-	warmHits      int64                     // atomic - total warm hit events
-	tokenEvents   []TokenEvent              // protected by mu
-	mgmtEndpoints managementEndpointsSetter // nil until wired via SetProxyHandler
+	router         *router.Router
+	auth           *auth.Middleware
+	cfg            config.Config
+	version        string
+	mu             sync.RWMutex
+	requests       []RequestLog
+	localCount     int64   // atomic - requests served by local nodes
+	cloudCount     int64   // atomic - requests forwarded to cloud
+	localTokens    int64   // atomic - real token counts parsed from local node responses
+	cloudTokens    int64   // atomic - real token counts parsed from cloud responses
+	cloudSpentUSD  float64 // protected by mu
+	refCostPer1K   float64 // reference cloud rate used to value local tokens (immutable after construction)
+	startTime      time.Time
+	analytics      *analyticsStore
+	auditLog       *audit.Logger
+	haMonitor      *ha.Monitor // nil when HA disabled
+	st             store.Store // never nil; NopStore when persistence disabled
+	demoMode       bool        // when true, login accepts admin/admin without DB
+	loginLimiter   *loginRateLimiter
+	resetPwLimiter *loginRateLimiter // 3/hour per IP on admin-triggered password resets
+	logChan        chan store.RequestRecord
+	logDone        chan struct{} // closed by Shutdown to signal drain-and-stop
+	logWg          sync.WaitGroup
+	pullsMu        sync.Mutex                // guards pullsInFlight
+	pullsInFlight  map[string]bool           // "node|model" -> in progress; ephemeral, never persisted
+	coldStarts     int64                     // atomic - total cold start events
+	warmHits       int64                     // atomic - total warm hit events
+	tokenEvents    []TokenEvent              // protected by mu
+	mgmtEndpoints  managementEndpointsSetter // nil until wired via SetProxyHandler
 }
 
 // managementEndpointsSetter is satisfied by *proxy.Handler. Defined locally
@@ -122,11 +199,6 @@ func (s *Server) SetProxyHandler(p managementEndpointsSetter) { s.mgmtEndpoints 
 // Call this from main with the ldflags-injected version before serving.
 func (s *Server) SetVersion(v string) {
 	s.version = v
-}
-
-// SetConfigPath sets the path used by handleUpdateSettings to persist config.
-func (s *Server) SetConfigPath(p string) {
-	s.configPath = p
 }
 
 // SetAuditLogger wires the audit logger into the admin server for query access.
@@ -369,19 +441,19 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		stImpl = st[0]
 	}
 	s := &Server{
-		router:        r,
-		auth:          a,
-		cfg:           cfg,
-		version:       "dev",
-		configPath:    "config.yaml",
-		refCostPer1K:  refRate,
-		startTime:     time.Now(),
-		analytics:     newAnalyticsStore(refRate),
-		st:            stImpl,
-		loginLimiter:  newLoginRateLimiter(),
-		logChan:       make(chan store.RequestRecord, 5000),
-		logDone:       make(chan struct{}),
-		pullsInFlight: make(map[string]bool),
+		router:         r,
+		auth:           a,
+		cfg:            cfg,
+		version:        "dev",
+		refCostPer1K:   refRate,
+		startTime:      time.Now(),
+		analytics:      newAnalyticsStore(refRate),
+		st:             stImpl,
+		loginLimiter:   newLoginRateLimiter(),
+		resetPwLimiter: newResetPasswordRateLimiter(),
+		logChan:        make(chan store.RequestRecord, 5000),
+		logDone:        make(chan struct{}),
+		pullsInFlight:  make(map[string]bool),
 	}
 	s.ensureAdminUser()
 	s.logWg.Add(1)
@@ -486,6 +558,9 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
 	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
 	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
+	reg("POST /admin/cloud/providers", s.cors(s.adminAuth(s.handleAddCloudProvider)))
+	reg("PUT /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleUpdateCloudProvider)))
+	reg("DELETE /admin/cloud/providers/{name}", s.cors(s.adminAuth(s.handleDeleteCloudProvider)))
 	reg("GET /admin/analytics", s.cors(s.adminAuth(s.handleAnalytics)))
 	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
@@ -525,8 +600,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /admin/login", s.cors(s.handleAdminLogin))
 	reg("POST /admin/logout", s.cors(s.adminAuth(s.handleLogout)))
 	reg("POST /admin/change-password", s.cors(s.adminAuth(s.handleChangePassword)))
+	reg("POST /admin/skip-password-change", s.cors(s.adminAuth(s.handleSkipPasswordChange)))
 	// Role-agnostic endpoints - any valid session (admin or user).
 	mux.HandleFunc("POST /change-password", s.cors(s.sessionAuth(s.handleChangePassword)))
+	mux.HandleFunc("POST /skip-password-change", s.cors(s.sessionAuth(s.handleSkipPasswordChange)))
 	mux.HandleFunc("POST /logout", s.cors(s.sessionAuth(s.handleLogout)))
 
 	// User management (admin only, no /admin/* duplicate - these are v1-only)
@@ -589,6 +666,10 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			// Required for the session cookie to be sent/read cross-origin at
+			// all - safe to pair with a configured origin since it's never a
+			// wildcard here (reflects exactly the one configured cors_origin).
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Vary", "Origin")
 		}
 		if r.Method == "OPTIONS" {
@@ -603,13 +684,15 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 // non-admin users must also reach (change-password, logout).
 func (s *Server) sessionAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := extractBearerToken(r.Header.Get("Authorization"))
+		token := sessionTokenFromRequest(r)
 		if token != "" {
 			if session, found, err := s.st.GetUserSession(token); err == nil && found {
 				if session.MustChangePassword {
 					p := r.URL.Path
 					allowed := p == "/change-password" ||
 						p == "/admin/v1/change-password" || p == "/admin/change-password" ||
+						p == "/skip-password-change" ||
+						p == "/admin/v1/skip-password-change" || p == "/admin/skip-password-change" ||
 						p == "/logout" || p == "/admin/v1/logout" || p == "/admin/logout"
 					if !allowed {
 						w.Header().Set("Content-Type", "application/json")
@@ -631,7 +714,7 @@ func (s *Server) sessionAuth(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := extractBearerToken(r.Header.Get("Authorization"))
+		token := sessionTokenFromRequest(r)
 
 		// Demo mode: accept the literal "demo-session" token so the GitHub Pages
 		// demo works without a DB. Not a security concern - demo mode is opt-in,
@@ -663,6 +746,7 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 		if session.MustChangePassword {
 			p := r.URL.Path
 			allowed := p == "/admin/v1/change-password" || p == "/admin/change-password" ||
+				p == "/admin/v1/skip-password-change" || p == "/admin/skip-password-change" ||
 				p == "/admin/v1/logout" || p == "/admin/logout"
 			if !allowed {
 				w.Header().Set("Content-Type", "application/json")
@@ -1052,7 +1136,7 @@ func (s *Server) handleSetPredictiveEngine(w http.ResponseWriter, r *http.Reques
 		val = "false"
 	}
 	if err := s.st.SetSetting("predictive_engine_enabled", val); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	s.logSystemChange(r, "set_predictive_engine", "global", fmt.Sprintf("Enabled: %v", body.Enabled))
@@ -1087,39 +1171,98 @@ func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"triggered"}`))
 }
 
-// handleConfigReload reloads the config file from disk without restarting.
-// POST /admin/config/reload (also /admin/v1/config/reload)
-// Equivalent to sending SIGHUP - useful in container environments where
-// sending Unix signals is inconvenient (Kubernetes, Nomad, etc.).
+// ReloadFromStore re-syncs live router/auth state from SQLite - the
+// mesh.db-first replacement for the old "reload config.yaml from disk"
+// behavior. Used by both handleConfigReload (POST /admin/config/reload) and
+// main.go's SIGHUP handler, since there is no file left to re-read; SQLite
+// (already the source of truth for nodes/keys/cloud providers/settings) is
+// re-applied to the live router/auth instead.
+func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudProviders int, err error) {
+	runtimeKeys, kErr := s.st.AllKeys()
+	if kErr != nil {
+		return 0, 0, 0, 0, fmt.Errorf("load keys: %w", kErr)
+	}
+	keys := make([]config.KeyConfig, 0, len(runtimeKeys))
+	for _, k := range runtimeKeys {
+		if k.Revoked {
+			continue
+		}
+		keys = append(keys, config.KeyConfig{
+			Name:         k.Name,
+			Key:          k.Key,
+			RateLimit:    k.RateLimit,
+			DailyLimit:   k.DailyLimit,
+			MonthlyLimit: k.MonthlyLimit,
+			Models:       k.Models,
+		})
+	}
+	s.mu.RLock()
+	authEnabled := s.cfg.Auth.Enabled
+	s.mu.RUnlock()
+	s.auth.Reload(config.AuthConfig{Enabled: authEnabled, Keys: keys})
+
+	providers, cErr := s.st.AllCloudProviders()
+	if cErr != nil {
+		return 0, 0, 0, 0, fmt.Errorf("load cloud providers: %w", cErr)
+	}
+	cloudCfgs := make([]config.CloudProvider, len(providers))
+	for i, p := range providers {
+		cloudCfgs[i] = config.CloudProvider{
+			Name: p.Name, Provider: p.Provider, BaseURL: p.BaseURL,
+			APIKey: p.APIKey, DefaultModel: p.DefaultModel,
+			CostPer1KTokens: p.CostPer1KTokens, Enabled: p.Enabled,
+		}
+	}
+	s.router.SetClouds(cloudCfgs)
+
+	runtimeNodes, nErr := s.st.AllNodes()
+	if nErr != nil {
+		return 0, 0, 0, 0, fmt.Errorf("load nodes: %w", nErr)
+	}
+	nodeCfgs := make([]config.NodeConfig, len(runtimeNodes))
+	for i, n := range runtimeNodes {
+		vram := int64(0)
+		if n.VRAMTotalMB != nil {
+			vram = *n.VRAMTotalMB
+		}
+		rt := n.Runtime
+		if rt == "" {
+			rt = "ollama"
+		}
+		nodeCfgs[i] = config.NodeConfig{Name: n.Name, URL: n.URL, Runtime: rt, VRAMTotalMB: vram}
+	}
+	added, removed := s.router.SyncNodes(nodeCfgs)
+
+	s.mu.Lock()
+	s.cfg.Auth.Keys = keys
+	s.cfg.CloudProviders = cloudCfgs
+	s.cfg.Nodes = nodeCfgs
+	s.mu.Unlock()
+
+	return added, removed, len(keys), len(cloudCfgs), nil
+}
+
+// handleConfigReload re-syncs live state from SQLite without restarting.
+// POST /admin/config/reload (also /admin/v1/config/reload) - useful in
+// container environments where sending SIGHUP is inconvenient (Kubernetes,
+// Nomad, etc.).
 func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
-	newCfg, err := config.LoadConfig(s.configPath)
+	added, removed, authKeys, cloudProviders, err := s.ReloadFromStore()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusInternalServerError)
+		writeServerError(w, r, err)
 		return
 	}
-	s.auth.Reload(newCfg.Auth)
-	s.router.SetWarmupConfig(newCfg.Warmup)
-	s.router.SetTimezone(newCfg.Timezone)
-	s.router.SetClouds(newCfg.CloudProviders)
-	added, removed := s.router.SyncNodes(newCfg.Nodes)
-	if s.mgmtEndpoints != nil {
-		s.mgmtEndpoints.SetAllowManagementEndpoints(newCfg.Routing.AllowManagementEndpoints)
-	}
-	s.mu.Lock()
-	s.cfg = *newCfg
-	s.mu.Unlock()
-	log.Printf("config reloaded via API from %s (auth keys: %d, warmup: %v, nodes: +%d/-%d, cloud providers: %d)",
-		s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled, added, removed, len(newCfg.CloudProviders))
+	log.Printf("config reloaded via API from store (auth keys: %d, nodes: +%d/-%d, cloud providers: %d)",
+		authKeys, added, removed, cloudProviders)
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"reloaded":true,"config_path":%q,"auth_keys":%d,"warmup_enabled":%v,"nodes_added":%d,"nodes_removed":%d,"cloud_providers":%d}`,
-		s.configPath, len(newCfg.Auth.Keys), newCfg.Warmup.Enabled, added, removed, len(newCfg.CloudProviders))
+	fmt.Fprintf(w, `{"reloaded":true,"auth_keys":%d,"nodes_added":%d,"nodes_removed":%d,"cloud_providers":%d}`,
+		authKeys, added, removed, cloudProviders)
 }
 
 // handleGetConfig returns the current running config with all secret values masked.
 // GET /admin/config (also /admin/v1/config)
-// AdminToken is already json:"-"; this handler additionally masks API key values
-// and cloud provider keys so the response is safe to log or share for debugging.
+// Masks API key values, cloud provider keys, webhook secret, and HuggingFace
+// token so the response is safe to log or share for debugging.
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	cfg := s.cfg
@@ -1214,6 +1357,132 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	_ = s.st.DeleteNode(name)
 	_ = s.st.SetSetting("warmup:node:"+name, "") // drop any warmup setting for the node
 	s.logSystemChange(r, "remove_node", name, "")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// syncCloudProvidersToRouter reloads every persisted cloud provider from the
+// store and pushes the full list to the live router, so add/update/delete
+// take effect immediately (same pattern as node add/remove).
+func (s *Server) syncCloudProvidersToRouter() ([]config.CloudProvider, error) {
+	providers, err := s.st.AllCloudProviders()
+	if err != nil {
+		return nil, err
+	}
+	clouds := make([]config.CloudProvider, len(providers))
+	for i, p := range providers {
+		clouds[i] = config.CloudProvider{
+			Name: p.Name, Provider: p.Provider, BaseURL: p.BaseURL,
+			APIKey: p.APIKey, DefaultModel: p.DefaultModel,
+			CostPer1KTokens: p.CostPer1KTokens, Enabled: p.Enabled,
+		}
+	}
+	s.router.SetClouds(clouds)
+	s.mu.Lock()
+	s.cfg.CloudProviders = clouds
+	s.mu.Unlock()
+	return clouds, nil
+}
+
+// handleAddCloudProvider adds (or, on name collision, replaces) a cloud
+// fallback provider. POST /admin/cloud/providers.
+func (s *Server) handleAddCloudProvider(w http.ResponseWriter, r *http.Request) {
+	var cp store.CloudProviderRecord
+	if err := json.NewDecoder(r.Body).Decode(&cp); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if cp.Name == "" || cp.Provider == "" {
+		writeJSONError(w, http.StatusBadRequest, "name and provider are required")
+		return
+	}
+	if cp.Enabled {
+		if cp.BaseURL == "" || cp.APIKey == "" {
+			writeJSONError(w, http.StatusBadRequest, "base_url and api_key are required when enabled")
+			return
+		}
+		if err := config.ValidateNodeURL(cp.BaseURL); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "base_url must be http(s) with a host")
+			return
+		}
+	}
+	if err := s.st.UpsertCloudProvider(cp); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if _, err := s.syncCloudProvidersToRouter(); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	s.logSystemChange(r, "add_cloud_provider", cp.Name, fmt.Sprintf("Provider: %s, Enabled: %v", cp.Provider, cp.Enabled))
+	w.WriteHeader(http.StatusCreated)
+}
+
+// handleUpdateCloudProvider updates an existing cloud provider by name.
+// PUT /admin/cloud/providers/{name}.
+func (s *Server) handleUpdateCloudProvider(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSONError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	var cp store.CloudProviderRecord
+	if err := json.NewDecoder(r.Body).Decode(&cp); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	cp.Name = name
+	// The client echoes back the masked "***" placeholder when the operator
+	// didn't change the key; preserve the real value instead of clobbering it.
+	if cp.APIKey == "" || cp.APIKey == "***" {
+		existing, err := s.st.AllCloudProviders()
+		if err == nil {
+			for _, p := range existing {
+				if p.Name == name {
+					cp.APIKey = p.APIKey
+					break
+				}
+			}
+		}
+	}
+	if cp.Enabled {
+		if cp.BaseURL == "" || cp.APIKey == "" {
+			writeJSONError(w, http.StatusBadRequest, "base_url and api_key are required when enabled")
+			return
+		}
+		if err := config.ValidateNodeURL(cp.BaseURL); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "base_url must be http(s) with a host")
+			return
+		}
+	}
+	if err := s.st.UpsertCloudProvider(cp); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if _, err := s.syncCloudProvidersToRouter(); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	s.logSystemChange(r, "update_cloud_provider", name, fmt.Sprintf("Provider: %s, Enabled: %v", cp.Provider, cp.Enabled))
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleDeleteCloudProvider removes a cloud provider by name.
+// DELETE /admin/cloud/providers/{name}.
+func (s *Server) handleDeleteCloudProvider(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSONError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if err := s.st.DeleteCloudProvider(name); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if _, err := s.syncCloudProvidersToRouter(); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	s.logSystemChange(r, "delete_cloud_provider", name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1317,8 +1586,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		w.WriteHeader(http.StatusBadGateway)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeCorrelatedError(w, r, http.StatusBadGateway, "failed to unload model on node", err)
 		return
 	}
 	s.logSystemChange(r, "unload_model", name, fmt.Sprintf("Model: %s", body.Model))
@@ -1598,7 +1866,7 @@ func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -1625,7 +1893,7 @@ func (s *Server) handleModelConfigCapabilities(w http.ResponseWriter, r *http.Re
 func (s *Server) handleListModelConfigs(w http.ResponseWriter, r *http.Request) {
 	cfgs, err := s.st.AllModelConfigs()
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if cfgs == nil {
@@ -1697,7 +1965,7 @@ func (s *Server) handleSetModelConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.st.SetModelConfig(cfg); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	s.logSystemChange(r, "set_model_config", cfg.Model+"@"+cfg.Node, "updated model configuration profile")
@@ -1720,7 +1988,7 @@ func (s *Server) handleDeleteModelConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := s.st.DeleteModelConfig(model, node); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	s.logSystemChange(r, "delete_model_config", model+"@"+node, "reset model configuration profile to defaults")
@@ -1761,13 +2029,26 @@ type loginAttemptState struct {
 	lockedUntil time.Time
 }
 
-func newLoginRateLimiter() *loginRateLimiter {
+// newRateLimiter builds an IP-keyed sliding-window limiter with the given
+// parameters - shared constructor for both the login and reset-password
+// limiters below (2026-07-14 audit, Priority 5).
+func newRateLimiter(maxAttempts int, window, lockDuration time.Duration) *loginRateLimiter {
 	return &loginRateLimiter{
 		attempts:     make(map[string]*loginAttemptState),
-		maxAttempts:  5,
-		window:       5 * time.Minute,
-		lockDuration: 15 * time.Minute,
+		maxAttempts:  maxAttempts,
+		window:       window,
+		lockDuration: lockDuration,
 	}
+}
+
+// newLoginRateLimiter: 5 attempts per minute per IP on login.
+func newLoginRateLimiter() *loginRateLimiter {
+	return newRateLimiter(5, time.Minute, 15*time.Minute)
+}
+
+// newResetPasswordRateLimiter: 3 attempts per hour per IP on password reset.
+func newResetPasswordRateLimiter() *loginRateLimiter {
+	return newRateLimiter(3, time.Hour, time.Hour)
 }
 
 // allow reports whether a login attempt from ip should proceed. If the IP is
@@ -1901,8 +2182,8 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 				s.loginLimiter.recordSuccess(ip)
 			}
 			expiry := time.Now().Add(30 * 24 * time.Hour)
+			setSessionCookie(w, r, "demo-session", expiry)
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"token":                "demo-session",
 				"role":                 "admin",
 				"username":             "admin",
 				"must_change_password": false,
@@ -1977,8 +2258,8 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		return
 	}
 	go s.st.PruneExpiredUserSessions()
+	setSessionCookie(w, r, sessionToken, expiry)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"token":                sessionToken,
 		"role":                 user.Role,
 		"username":             user.Username,
 		"must_change_password": user.MustChangePassword,
@@ -1987,9 +2268,10 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	token := extractBearerToken(r.Header.Get("Authorization"))
+	token := sessionTokenFromRequest(r)
 	_ = s.st.DeleteUserSession(token)
 	_ = s.st.DeleteSession(token) // backward compat: also clear old admin_sessions
+	clearSessionCookie(w, r)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{}`))
 }
@@ -2069,8 +2351,41 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		MustChangePassword: false,
 		ExpiresAt:          expiry,
 	})
+	setSessionCookie(w, r, newToken, expiry)
 	json.NewEncoder(w).Encode(map[string]string{
-		"token":      newToken,
+		"expires_at": expiry.Format(time.RFC3339),
+	})
+}
+
+// handleSkipPasswordChange lets an admin dismiss the forced-password-change
+// screen for this session only (Grafana-style "Skip for now"), without
+// touching the user's MustChangePassword flag in the users table - so the
+// next fresh login still forces the prompt again. Reachable only via the
+// same must-change-password bypass list as change-password/logout.
+func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	username, _ := r.Context().Value(ctxKeyUsername).(string)
+	user, err := s.st.GetUserByUsername(username)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	_ = s.st.DeleteUserSessionsByUserID(user.ID)
+	b := make([]byte, 32)
+	rand.Read(b)
+	newToken := hex.EncodeToString(b)
+	expiry := time.Now().Add(30 * 24 * time.Hour)
+	_ = s.st.CreateUserSession(store.UserSession{
+		Token:              newToken,
+		UserID:             user.ID,
+		Role:               user.Role,
+		Username:           user.Username,
+		MustChangePassword: false,
+		ExpiresAt:          expiry,
+	})
+	setSessionCookie(w, r, newToken, expiry)
+	json.NewEncoder(w).Encode(map[string]string{
 		"expires_at": expiry.Format(time.RFC3339),
 	})
 }
@@ -2417,6 +2732,15 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	if s.resetPwLimiter != nil {
+		ip := clientIP(r)
+		if ok, retryAfter := s.resetPwLimiter.allow(ip); !ok {
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())+1))
+			writeJSONError(w, http.StatusTooManyRequests, "too many password resets, try again later")
+			return
+		}
+		s.resetPwLimiter.recordFailure(ip)
+	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -2492,9 +2816,17 @@ func generatePassword(length int) string {
 	return string(result)
 }
 
+// defaultAdminPassword is the well-known first-run admin password (same
+// pattern as Grafana's default admin/admin). It is never logged or printed -
+// it's public knowledge, documented in the startup banner and README, and
+// MustChangePassword forces a change (or an explicit skip) before the
+// account can be used for anything beyond the change-password endpoint.
+const defaultAdminPassword = "admin"
+
 // ensureAdminUser sets up the initial admin in the users table on first run.
 // If the legacy admin_credentials table has data, it migrates that row.
-// On a completely fresh install it generates a random password and logs it.
+// On a completely fresh install it creates admin/admin and forces a
+// password change on first login - no secret is generated or logged.
 func (s *Server) ensureAdminUser() {
 	if count, err := s.st.CountAdminUsers(); err == nil && count > 0 {
 		return // already set up
@@ -2519,9 +2851,8 @@ func (s *Server) ensureAdminUser() {
 			}
 		}
 	}
-	// Fresh install: generate password and force change on first login.
-	password := generatePassword(12)
-	hash, hashErr := hashPassword(password)
+	// Fresh install: well-known default, force change on first login.
+	hash, hashErr := hashPassword(defaultAdminPassword)
 	if hashErr != nil {
 		log.Printf("admin: could not hash initial admin password: %v", hashErr)
 		return
@@ -2538,30 +2869,7 @@ func (s *Server) ensureAdminUser() {
 		log.Printf("admin: could not persist admin user: %v", err)
 		return
 	}
-	log.Printf("admin dashboard - username: admin  password: %s  (you will be prompted to change this on first login)", password)
-}
-
-// ensureAdminCreds creates default admin credentials in the store if none exist.
-// Called once on startup; prints the generated password so the operator can log in.
-func (s *Server) ensureAdminCreds() {
-	if _, err := s.st.GetAdminCreds(); err == nil {
-		return // credentials already configured
-	}
-	password := generatePassword(12)
-	hash, err := hashPassword(password)
-	if err != nil {
-		log.Printf("admin: could not hash initial admin credentials: %v", err)
-		return
-	}
-	if err := s.st.SetAdminCreds(store.AdminCreds{
-		Username:     "admin",
-		PasswordHash: hash,
-		Salt:         "",
-	}); err != nil {
-		log.Printf("admin: could not persist admin credentials: %v", err)
-		return
-	}
-	log.Printf("admin dashboard login - username: admin  password: %s  (change this in Settings -> Admin Credentials)", password)
+	log.Printf("admin: created default admin account (username: admin); password must be changed on first login")
 }
 
 // maskKey returns a non-reversible preview of an API key so the list endpoint
@@ -2577,7 +2885,7 @@ func maskKey(k string) string {
 func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	var k config.KeyConfig
 	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if k.Name == "" {
@@ -2706,7 +3014,7 @@ func (s *Server) handleRoutingRules(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAddRoutingRule(w http.ResponseWriter, r *http.Request) {
 	var rule config.RoutingRule
 	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if rule.ID == "" {
@@ -2769,11 +3077,11 @@ func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request
 		Strategy string `json:"strategy"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if err := s.router.SetStrategy(req.Strategy); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	_ = s.st.SetSetting("routing_strategy", req.Strategy)
@@ -2791,9 +3099,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 			cfg.CloudProviders[i].APIKey = "***"
 		}
 	}
-	cfg.Auth.AdminToken = ""
 	if cfg.HuggingFace.Token != "" {
 		cfg.HuggingFace.Token = "***"
+	}
+	if cfg.Webhook.Secret != "" {
+		cfg.Webhook.Secret = "***"
 	}
 
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
@@ -2839,7 +3149,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
 		s.mu.Unlock()
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	// The client echoes back the masked "***" placeholder (or omits the field
@@ -2847,6 +3157,9 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// both cases instead of clobbering it with the mask.
 	if incoming.HuggingFace.Token == "" || incoming.HuggingFace.Token == "***" {
 		incoming.HuggingFace.Token = s.cfg.HuggingFace.Token
+	}
+	if incoming.Webhook.Secret == "" || incoming.Webhook.Secret == "***" {
+		incoming.Webhook.Secret = s.cfg.Webhook.Secret
 	}
 
 	if err := incoming.Validate(); err != nil {
@@ -2878,15 +3191,74 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	scalarSettings := map[string]string{
 		"proxy_port":            strconv.Itoa(incoming.Proxy.Port),
 		"proxy_log_format":      incoming.Proxy.LogFormat,
+		"proxy_access_log":      strconv.FormatBool(incoming.Proxy.AccessLog == nil || *incoming.Proxy.AccessLog),
 		"litellm_url":           incoming.LiteLLM.URL,
 		"litellm_enabled":       strconv.FormatBool(incoming.LiteLLM.Enabled),
 		"cloud_daily_usd_cap":   strconv.FormatFloat(incoming.CloudBudget.DailyUSDCap, 'f', -1, 64),
 		"cloud_monthly_usd_cap": strconv.FormatFloat(incoming.CloudBudget.MonthlyUSDCap, 'f', -1, 64),
 		"metrics_enabled":       strconv.FormatBool(incoming.Metrics.Enabled),
 		"metrics_port":          strconv.Itoa(incoming.Metrics.Port),
+		"huggingface_token":     incoming.HuggingFace.Token,
+
+		// Admin & Security (2026-07 config.yaml elimination - Phase 2).
+		"admin_bind_address": incoming.Admin.BindAddress,
+		"admin_cors_origin":  incoming.Admin.CORSOrigin,
+
+		// Advanced routing.
+		"routing_fallback":                              incoming.Routing.Fallback,
+		"routing_upstream_timeout_ms":                   strconv.Itoa(incoming.Routing.UpstreamTimeoutMs),
+		"routing_max_retries":                           strconv.Itoa(incoming.Routing.MaxRetries),
+		"routing_allow_management_endpoints":            strconv.FormatBool(incoming.Routing.AllowManagementEndpoints),
+		"routing_session_affinity":                      strconv.FormatBool(incoming.Routing.SessionAffinity),
+		"routing_session_affinity_ttl":                  incoming.Routing.SessionAffinityTTL,
+		"routing_nvidia_poll_interval_ms":               strconv.Itoa(incoming.Routing.NvidiaPollIntervalMs),
+		"routing_queue_max_depth":                       strconv.Itoa(incoming.Routing.QueueMaxDepth),
+		"routing_queue_timeout_ms":                      strconv.Itoa(incoming.Routing.QueueTimeoutMs),
+		"routing_health_failure_threshold":              strconv.Itoa(incoming.Routing.HealthFailureThreshold),
+		"routing_health_success_threshold":              strconv.Itoa(incoming.Routing.HealthSuccessThreshold),
+		"routing_overflow_sla_ms":                       strconv.Itoa(incoming.Routing.OverflowSLAMs),
+		"routing_thermal_watchdog_enabled":              strconv.FormatBool(incoming.Routing.ThermalWatchdog.Enabled),
+		"routing_thermal_watchdog_max_temp_celsius":     strconv.FormatFloat(incoming.Routing.ThermalWatchdog.MaxTempCelsius, 'f', -1, 64),
+		"routing_thermal_watchdog_consecutive_breaches": strconv.Itoa(incoming.Routing.ThermalWatchdog.ConsecutiveBreaches),
+
+		// Docker auto-discovery.
+		"docker_enabled":          strconv.FormatBool(incoming.Docker.Enabled),
+		"docker_socket":           incoming.Docker.Socket,
+		"docker_poll_interval_ms": strconv.Itoa(incoming.Docker.PollIntervalMs),
+
+		// Audit, webhooks, savings.
+		"audit_enabled":                 strconv.FormatBool(incoming.Audit.Enabled),
+		"webhook_enabled":               strconv.FormatBool(incoming.Webhook.Enabled),
+		"webhook_url":                   incoming.Webhook.URL,
+		"webhook_secret":                incoming.Webhook.Secret,
+		"savings_reference_cost_per_1k": strconv.FormatFloat(incoming.Savings.ReferenceCostPer1K, 'f', -1, 64),
+
+		// High availability / peer monitoring.
+		"ha_enabled":               strconv.FormatBool(incoming.HA.Enabled),
+		"ha_heartbeat_interval_ms": strconv.Itoa(incoming.HA.HeartbeatIntervalMs),
+		"ha_peer_timeout_ms":       strconv.Itoa(incoming.HA.PeerTimeoutMs),
+
+		// Global warmup (distinct from the per-node toggle in Warmup.tsx).
+		"warmup_enabled":     strconv.FormatBool(incoming.Warmup.Enabled),
+		"warmup_interval_ms": strconv.Itoa(incoming.Warmup.IntervalMs),
+		"warmup_keep_alive":  incoming.Warmup.KeepAlive,
 	}
 	for key, val := range scalarSettings {
 		if err := s.st.SetSetting(key, val); err != nil {
+			log.Printf("admin: failed to persist %s setting: %v", key, err)
+		}
+	}
+
+	// List/map-typed fields: JSON-encoded, not representable as a single
+	// scalar settings value.
+	jsonSettings := map[string]any{
+		"ha_peers":                incoming.HA.Peers,
+		"warmup_models":           incoming.Warmup.Models,
+		"routing_fallback_chains": incoming.Routing.FallbackChains,
+		"context_windows":         incoming.ContextWindows,
+	}
+	for key, val := range jsonSettings {
+		if err := store.SetJSONSetting(s.st, key, val); err != nil {
 			log.Printf("admin: failed to persist %s setting: %v", key, err)
 		}
 	}
@@ -3506,9 +3878,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		"stream": false,
 	})
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `{"error":"marshal error: %s"}`, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -3620,7 +3990,7 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := s.auditLog.Query(opts)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeServerError(w, r, err)
 		return
 	}
 	if entries == nil {
@@ -3646,7 +4016,7 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := s.st.QuerySystemAuditLog(limit)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusInternalServerError)
+		writeServerError(w, r, err)
 		return
 	}
 	if entries == nil {

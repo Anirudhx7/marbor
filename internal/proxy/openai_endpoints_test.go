@@ -60,8 +60,7 @@ func buildOEStack(t *testing.T, mockHandler http.HandlerFunc) (handler http.Hand
 
 	cfg := config.Config{
 		Auth: config.AuthConfig{
-			Enabled:    config.BoolPtr(true),
-			AdminToken: "admin-oe-token",
+			Enabled: config.BoolPtr(true),
 			Keys: []config.KeyConfig{
 				{Name: oeTestKeyName, Key: oeTestKey, RateLimit: 1000},
 			},

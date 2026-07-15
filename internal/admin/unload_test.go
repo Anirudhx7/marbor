@@ -31,7 +31,7 @@ func TestHandleUnloadModel_PinnedRejected(t *testing.T) {
 
 	body := `{"model":"guarded-model"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/unload", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 
@@ -73,7 +73,7 @@ func TestHandleUnloadModel_NonPinnedStillWorks(t *testing.T) {
 
 	body := `{"model":"llama3:8b"}`
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/unload", strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+s.AdminToken())
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("name", "gpu-0")
 

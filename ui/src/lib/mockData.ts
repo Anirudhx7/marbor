@@ -229,6 +229,46 @@ export const defaultSettings: Settings = {
   hideBudgetBanner: false,
   huggingFaceToken: '',
   allowManagementEndpoints: false,
+
+  adminBindAddress: ':8080',
+  adminCorsOrigin: '',
+  proxyAccessLog: true,
+
+  routingFallback: 'least-connections',
+  routingUpstreamTimeoutMs: 120000,
+  routingMaxRetries: 2,
+  routingSessionAffinity: false,
+  routingSessionAffinityTtl: '10m',
+  routingNvidiaPollIntervalMs: 30000,
+  routingQueueMaxDepth: 100,
+  routingQueueTimeoutMs: 30000,
+  routingHealthFailureThreshold: 3,
+  routingHealthSuccessThreshold: 2,
+  routingOverflowSlaMs: 0,
+  thermalWatchdogEnabled: false,
+  thermalWatchdogMaxTempCelsius: 0,
+  thermalWatchdogConsecutiveBreaches: 3,
+
+  dockerEnabled: false,
+  dockerSocket: '',
+  dockerPollIntervalMs: 30000,
+
+  auditEnabled: false,
+  webhookEnabled: false,
+  webhookUrl: '',
+  webhookSecret: '',
+  savingsReferenceCostPer1k: 0.002,
+
+  haEnabled: false,
+  haPeers: [],
+  haHeartbeatIntervalMs: 5000,
+  haPeerTimeoutMs: 3000,
+
+  warmupEnabled: false,
+  warmupIntervalMs: 300000,
+  warmupKeepAlive: '10m',
+
+  contextWindows: {},
 };
 
 export const mockSavings: Savings = {
