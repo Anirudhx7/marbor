@@ -30,22 +30,14 @@ API keys are defined in `config.yaml` under `auth.keys`. Each key is a static Be
 - The `usage-state.json` file stores per-key counters (token totals, quota counters). It does not store key values.
 - Keys are never echoed back through any admin API response.
 
-### Admin token
+### Admin dashboard login
 
-The admin dashboard and `/admin/v1/` API require a separate Bearer token configured at `auth.admin_token`.
+The admin dashboard and `/admin/v1/` API are gated by username/password login, not a static token. `auth.admin_token` in `config.yaml` is a legacy field kept only for pre-migration installs and is not read by the login/session checks - do not rely on it.
 
-**Set this explicitly.** If `admin_token` is left blank, the process falls back to your first API key, which grants dashboard access to every holder of that key. The config comment warns about this directly.
-
-```yaml
-auth:
-  admin_token: sk-admin-change-me   # set a strong, unique value
-```
-
-Generate a token with at least 32 bytes of entropy:
-
-```bash
-openssl rand -hex 32
-```
+- Passwords are bcrypt-hashed; a fresh install creates a well-known `admin` / `admin` account and forces a password change (or an explicit skip) on first login. **Change it immediately in any deployment reachable beyond your own workstation.**
+- A successful login issues a session token stored server-side (SQLite) and delivered to the browser as an `HttpOnly`, `SameSite=Lax` cookie - never in `localStorage`, never readable by JavaScript.
+- Login is rate-limited to 5 attempts per minute per client IP; admin-triggered password resets are limited to 3 per hour per IP. Both return a generic error on lockout (never revealing whether a username exists).
+- The admin server listens on `:8080` (all interfaces) by default for Docker port-mapping compatibility. On a bare-metal or VM deployment reachable from an untrusted network, set `admin.bind_address: "127.0.0.1:8080"` and access it via SSH tunnel or reverse proxy instead.
 
 ---
 

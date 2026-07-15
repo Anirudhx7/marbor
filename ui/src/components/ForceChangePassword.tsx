@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { changePassword, saveSession } from '../lib/api';
+import { changePassword, saveSession, skipPasswordChangeThisSession } from '../lib/api';
 import type { SessionData } from '../types';
 
 interface Props {
@@ -22,23 +22,34 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const result = await changePassword('', newPw);
-      const updated: SessionData = {
-        ...session,
-        mustChangePassword: false,
-        token: result.token || session.token,
-      };
+      await changePassword('', newPw);
+      const updated: SessionData = { ...session, mustChangePassword: false };
       saveSession({
-        token: updated.token,
         role: updated.role,
         username: updated.username,
         must_change_password: false,
-        expires_at: result.expires_at || '',
+        expires_at: '',
       });
       onSuccess(updated);
     } catch (err: any) {
       setError(err.message || 'Failed to change password');
     } finally {
+      setSaving(false);
+    }
+  }
+
+  // Grafana-style skip: lets the admin explore this session without
+  // changing the password. Session-only - closing the tab or logging back
+  // in re-prompts, since the user's own must_change_password flag is
+  // untouched; only this session is reissued without the gate.
+  async function handleSkip() {
+    setSaving(true);
+    setError(null);
+    try {
+      await skipPasswordChangeThisSession();
+      onSuccess({ ...session, mustChangePassword: false });
+    } catch (err: any) {
+      setError(err.message || 'Failed to skip password change');
       setSaving(false);
     }
   }
@@ -105,6 +116,15 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
               className="w-full py-2 px-4 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Set Password & Continue'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSkip}
+              disabled={saving}
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Skip for now
             </button>
           </form>
         </div>

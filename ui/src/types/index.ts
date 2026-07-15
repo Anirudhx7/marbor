@@ -1,5 +1,7 @@
 export interface LoginResponse {
-  token: string;
+  // No longer sent - the session lives in an httpOnly cookie the server sets
+  // directly. Kept optional only for the demo-mode mock login response.
+  token?: string;
   role: string;
   username: string;
   must_change_password: boolean;
@@ -7,7 +9,6 @@ export interface LoginResponse {
 }
 
 export interface SessionData {
-  token: string;
   role: string;
   username: string;
   mustChangePassword: boolean;
@@ -155,6 +156,54 @@ export interface Settings {
   hideBudgetBanner?: boolean;
   huggingFaceToken?: string;
   allowManagementEndpoints?: boolean;
+
+  // Admin & Security - no config.yaml anymore, so these need a UI home too
+  // (2026-07 config.yaml elimination).
+  adminBindAddress: string;
+  adminCorsOrigin: string;
+  proxyAccessLog: boolean;
+
+  // Advanced routing knobs.
+  routingFallback: string;
+  routingUpstreamTimeoutMs: number;
+  routingMaxRetries: number;
+  routingSessionAffinity: boolean;
+  routingSessionAffinityTtl: string;
+  routingNvidiaPollIntervalMs: number;
+  routingQueueMaxDepth: number;
+  routingQueueTimeoutMs: number;
+  routingHealthFailureThreshold: number;
+  routingHealthSuccessThreshold: number;
+  routingOverflowSlaMs: number;
+  thermalWatchdogEnabled: boolean;
+  thermalWatchdogMaxTempCelsius: number;
+  thermalWatchdogConsecutiveBreaches: number;
+
+  // Docker auto-discovery.
+  dockerEnabled: boolean;
+  dockerSocket: string;
+  dockerPollIntervalMs: number;
+
+  // Audit log, webhooks, savings rate.
+  auditEnabled: boolean;
+  webhookEnabled: boolean;
+  webhookUrl: string;
+  webhookSecret: string;
+  savingsReferenceCostPer1k: number;
+
+  // High availability / peer monitoring (observability only, not failover).
+  haEnabled: boolean;
+  haPeers: string[];
+  haHeartbeatIntervalMs: number;
+  haPeerTimeoutMs: number;
+
+  // Global warmup (distinct from the per-node toggle on the Warmup page).
+  warmupEnabled: boolean;
+  warmupIntervalMs: number;
+  warmupKeepAlive: string;
+
+  // Model name -> max context window in tokens, for admission-time checks.
+  contextWindows: Record<string, number>;
 }
 
 export interface SystemAuditEntry {
@@ -199,6 +248,19 @@ export interface CloudProvider {
   name: string;
   provider: string;
   base_url: string;
+  default_model: string;
+  cost_per_1k_tokens: number;
+  enabled: boolean;
+}
+
+// CloudProviderInput is the add/edit payload - includes api_key (masked as
+// "***" when read back from an existing provider; omit/leave masked to keep
+// the stored key unchanged).
+export interface CloudProviderInput {
+  name: string;
+  provider: string;
+  base_url: string;
+  api_key: string;
   default_model: string;
   cost_per_1k_tokens: number;
   enabled: boolean;

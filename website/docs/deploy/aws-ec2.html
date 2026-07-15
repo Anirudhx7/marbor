@@ -253,7 +253,6 @@ chmod +x /usr/local/bin/ollama-mesh</code></pre>
 admin: { bind_address: "127.0.0.1:8080" }   # reach via SSH tunnel; don't expose
 auth:
   enabled: true
-  admin_token: &lt;generate-a-strong-token&gt;
   state_path: /opt/usage-state.json          # quotas survive restarts
   keys:
     - { name: app, key: &lt;generate-a-strong-key&gt;, rate_limit: 1000 }
@@ -278,7 +277,9 @@ WantedBy=multi-user.target</code></pre>
 <pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh</code></pre>
 <h2 id="3-security-group">3. Security group<a class="anchor" href="#3-security-group" aria-label="Link to section">#</a></h2>
 <ul><li><strong>Endpoint <code>:11434</code></strong> - open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> - keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
-<p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. The admin token is sensitive.</p>
+<p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. Login is username/password
+  (bcrypt-hashed, default <code>admin</code>/<code>admin</code> on first run - change it immediately);
+  a successful login issues an <code>HttpOnly</code> session cookie, which is what's sensitive here.</p>
 <ul><li><strong>Node <code>:11434</code></strong> - open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
 <h2 id="4-verify">4. Verify<a class="anchor" href="#4-verify" aria-label="Link to section">#</a></h2>
 <pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}

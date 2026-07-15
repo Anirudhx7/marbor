@@ -106,7 +106,6 @@ data:
       log_level: info
     auth:
       enabled: true
-      admin_token: sk-admin-change-me   # override via Secret in real deployments
       state_path: /data/usage-state.json
     nodes:
       - name: gpu-0

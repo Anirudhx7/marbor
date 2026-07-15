@@ -27,7 +27,6 @@ export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
         : await login(username.trim(), password.trim());
       saveSession(data);
       onSuccess({
-        token: data.token,
         role: data.role,
         username: data.username,
         mustChangePassword: data.must_change_password,

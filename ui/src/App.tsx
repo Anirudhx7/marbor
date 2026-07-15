@@ -171,7 +171,6 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
 // time, which only .github/workflows/pages.yml does - `make build` (the
 // binary users install) never sets it, so real installs always hit Login.
 const DEMO_SESSION: SessionData = {
-  token: 'demo',
   role: 'admin',
   username: 'demo',
   mustChangePassword: false,
