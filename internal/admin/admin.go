@@ -2919,7 +2919,17 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
 	}
+	// Trim here (not just in handleSummary) so tokenEvents can't grow
+	// unbounded when nothing is polling the summary endpoint.
 	s.tokenEvents = append(s.tokenEvents, TokenEvent{Time: now, Tokens: tokens})
+	cutoff := now.Add(-time.Minute)
+	kept := s.tokenEvents[:0]
+	for _, e := range s.tokenEvents {
+		if e.Time.After(cutoff) {
+			kept = append(kept, e)
+		}
+	}
+	s.tokenEvents = kept
 	s.mu.Unlock()
 
 	if status == "loading" {
