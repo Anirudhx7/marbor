@@ -5,7 +5,7 @@ import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
 import { defaultSettings, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, reloadFromStore, changePassword } from '../lib/api';
+import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reloadFromStore, changePassword } from '../lib/api';
 import type { Settings, CloudProvider, CloudProviderInput } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
@@ -133,6 +133,7 @@ export function SettingsPage() {
   const [cloudModalOpen, setCloudModalOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<CloudProviderInput | null>(null);
   const [cloudSaving, setCloudSaving] = useState(false);
+  const [cloudTesting, setCloudTesting] = useState(false);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
 
@@ -369,8 +370,22 @@ export function SettingsPage() {
       setCloudError('API key is required');
       return;
     }
-    setCloudSaving(true);
     setCloudError(null);
+    // Only a real, freshly-typed key is testable - '***' means the operator
+    // left the existing stored key unchanged, so there's nothing new to verify.
+    const hasNewKey = editingProvider.api_key.trim() !== '' && editingProvider.api_key !== '***';
+    if (hasNewKey) {
+      setCloudTesting(true);
+      try {
+        await testCloudProvider(editingProvider.base_url, editingProvider.api_key);
+      } catch (err: any) {
+        setCloudError(err.message || 'Could not verify API key');
+        setCloudTesting(false);
+        return;
+      }
+      setCloudTesting(false);
+    }
+    setCloudSaving(true);
     try {
       if (isNew) {
         await addCloudProvider(editingProvider);
@@ -1482,8 +1497,10 @@ export function SettingsPage() {
                 setEditingProvider({
                   ...editingProvider,
                   provider,
-                  base_url: preset?.baseUrl || editingProvider.base_url || '',
-                  default_model: preset?.defaultModel || editingProvider.default_model || '',
+                  // 'custom' has no preset base URL - always clear it rather than
+                  // carrying over whatever the previously selected provider had.
+                  base_url: provider === 'custom' ? '' : (preset?.baseUrl || editingProvider.base_url || ''),
+                  default_model: provider === 'custom' ? '' : (preset?.defaultModel || editingProvider.default_model || ''),
                 });
               }}
               className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
@@ -1521,15 +1538,16 @@ export function SettingsPage() {
           </div>
           {cloudError && <p className="text-sm text-destructive">{cloudError}</p>}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <button onClick={() => { setCloudModalOpen(false); setEditingProvider(null); }} disabled={cloudSaving} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
+            <button onClick={() => { setCloudModalOpen(false); setEditingProvider(null); }} disabled={cloudSaving || cloudTesting} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
               Cancel
             </button>
             <button
               onClick={() => handleSaveCloudProvider(!cloudProviders.some(p => p.name === editingProvider.name))}
-              disabled={cloudSaving}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+              disabled={cloudSaving || cloudTesting}
+              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
             >
-              {cloudSaving ? 'Saving...' : 'Save'}
+              {(cloudSaving || cloudTesting) && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              {cloudTesting ? 'Testing key...' : cloudSaving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
