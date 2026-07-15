@@ -126,6 +126,9 @@ type Store interface {
 	UpsertCloudProvider(cp CloudProviderRecord) error
 	DeleteCloudProvider(name string) error
 	AllCloudProviders() ([]CloudProviderRecord, error)
+	// SetCloudProviderPriorities renumbers providers to match the given order,
+	// highest priority first (order[0] gets the highest int).
+	SetCloudProviderPriorities(order []string) error
 
 	// Warmup configuration
 	GetWarmupConfig() (WarmupConfigRecord, error)
@@ -532,6 +535,7 @@ func (NopStore) AllSettings() (map[string]string, error)           { return nil,
 func (NopStore) UpsertCloudProvider(_ CloudProviderRecord) error   { return nil }
 func (NopStore) DeleteCloudProvider(_ string) error                { return nil }
 func (NopStore) AllCloudProviders() ([]CloudProviderRecord, error) { return nil, nil }
+func (NopStore) SetCloudProviderPriorities(_ []string) error       { return nil }
 func (NopStore) GetWarmupConfig() (WarmupConfigRecord, error) {
 	return WarmupConfigRecord{}, ErrNotFound
 }

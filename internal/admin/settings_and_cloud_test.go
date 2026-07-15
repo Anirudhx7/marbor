@@ -217,6 +217,38 @@ func TestCloudProviderCRUD(t *testing.T) {
 	}
 }
 
+// TestHandleReorderCloudProviders verifies that PUT
+// /admin/cloud/providers/reorder renumbers the persisted providers to match
+// the caller's desired order and re-syncs the live router so CloudChain()
+// reflects the new order immediately.
+func TestHandleReorderCloudProviders(t *testing.T) {
+	s := newRealStoreTestServer(t)
+
+	for _, name := range []string{"a", "b"} {
+		body, _ := json.Marshal(map[string]interface{}{
+			"name": name, "provider": "openai", "base_url": "https://api.openai.com/v1",
+			"api_key": "sk-test", "enabled": true,
+		})
+		rec := httptest.NewRecorder()
+		s.handleAddCloudProvider(rec, httptest.NewRequest(http.MethodPost, "/admin/cloud/providers", bytes.NewReader(body)))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("seed provider %s: status = %d, body=%s", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	reorderBody, _ := json.Marshal(map[string]interface{}{"order": []string{"b", "a"}})
+	rec := httptest.NewRecorder()
+	s.handleReorderCloudProviders(rec, httptest.NewRequest(http.MethodPut, "/admin/cloud/providers/reorder", bytes.NewReader(reorderBody)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reorder: status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	got := s.router.CloudChain()
+	if len(got) != 2 || got[0].Name != "b" || got[1].Name != "a" {
+		t.Fatalf("CloudChain() after reorder = %v, want [b a]", got)
+	}
+}
+
 // TestFreshStore_BootsWithZeroRowsWithoutPanicking verifies that a brand-new
 // SQLite database (no config.yaml, no seeded rows - the 2026-07 blank-slate
 // boot path) produces a fully-functional server: auth enabled by default,

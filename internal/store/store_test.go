@@ -650,3 +650,27 @@ func TestPruneSystemAuditLog(t *testing.T) {
 		t.Fatalf("PruneSystemAuditLog(365): got %+v, want only the recent row", got)
 	}
 }
+
+// TestSetCloudProviderPrioritiesRenumbersInOrder verifies that
+// SetCloudProviderPriorities renumbers providers so AllCloudProviders (which
+// orders by priority DESC, name ASC) reflects the caller's desired order,
+// highest priority first.
+func TestSetCloudProviderPrioritiesRenumbersInOrder(t *testing.T) {
+	st := openTestDB(t)
+	for _, name := range []string{"a", "b", "c"} {
+		if err := st.UpsertCloudProvider(store.CloudProviderRecord{Name: name, Provider: "openai", BaseURL: "https://x", Enabled: true}); err != nil {
+			t.Fatalf("UpsertCloudProvider(%s): %v", name, err)
+		}
+	}
+	// New desired order: c first (highest priority), then a, then b.
+	if err := st.SetCloudProviderPriorities([]string{"c", "a", "b"}); err != nil {
+		t.Fatalf("SetCloudProviderPriorities: %v", err)
+	}
+	got, err := st.AllCloudProviders()
+	if err != nil {
+		t.Fatalf("AllCloudProviders: %v", err)
+	}
+	if len(got) != 3 || got[0].Name != "c" || got[1].Name != "a" || got[2].Name != "b" {
+		t.Fatalf("AllCloudProviders() order = %v, want [c a b]", got)
+	}
+}
