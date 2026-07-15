@@ -830,8 +830,24 @@ func (s *sqliteStore) AppendAuditLog(e AuditEntry) error {
 	if err != nil {
 		return fmt.Errorf("store: AppendAuditLog: %w", err)
 	}
-	// Trim to last 10000 entries to prevent unbounded growth.
-	_, _ = s.db.Exec(`DELETE FROM audit_log WHERE id NOT IN (SELECT id FROM audit_log ORDER BY id DESC LIMIT 10000)`)
+	return nil
+}
+
+// PruneAuditLog deletes audit_log rows older than retentionDays. Called
+// periodically (not on every insert - a per-request DELETE doesn't scale)
+// with the admin-configured retention window (Config.Audit.RetentionDays).
+// retentionDays <= 0 is a no-op: 0 is the admin's explicit "keep forever"
+// choice (see config.AuditConfig.RetentionDays), and negative never reaches
+// here because Config.Validate() rejects it first.
+func (s *sqliteStore) PruneAuditLog(retentionDays int) error {
+	if retentionDays <= 0 {
+		return nil
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays).Format(time.RFC3339Nano)
+	_, err := s.db.Exec(`DELETE FROM audit_log WHERE ts < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("store: PruneAuditLog: %w", err)
+	}
 	return nil
 }
 

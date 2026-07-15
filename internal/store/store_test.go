@@ -572,3 +572,40 @@ func TestQueryAuditLogSubstringFilters(t *testing.T) {
 		t.Fatalf("Node substring filter: got %+v, want single match r2", got)
 	}
 }
+
+// TestPruneAuditLog verifies time-based retention: rows older than the
+// window are deleted, recent rows survive, and retentionDays <= 0 is a
+// no-op (the admin's explicit "keep forever" choice), not "delete all".
+func TestPruneAuditLog(t *testing.T) {
+	s := openTestDB(t)
+
+	old := store.AuditEntry{RequestID: "old", Model: "llama3", Status: "200", Time: time.Now().Add(-60 * 24 * time.Hour)}
+	recent := store.AuditEntry{RequestID: "recent", Model: "llama3", Status: "200", Time: time.Now()}
+	for _, e := range []store.AuditEntry{old, recent} {
+		if err := s.AppendAuditLog(e); err != nil {
+			t.Fatalf("AppendAuditLog: %v", err)
+		}
+	}
+
+	if err := s.PruneAuditLog(0); err != nil {
+		t.Fatalf("PruneAuditLog(0): %v", err)
+	}
+	got, err := s.QueryAuditLog(store.AuditQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("QueryAuditLog: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("PruneAuditLog(0) must be a no-op (forever), got %d rows", len(got))
+	}
+
+	if err := s.PruneAuditLog(30); err != nil {
+		t.Fatalf("PruneAuditLog(30): %v", err)
+	}
+	got, err = s.QueryAuditLog(store.AuditQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("QueryAuditLog: %v", err)
+	}
+	if len(got) != 1 || got[0].RequestID != "recent" {
+		t.Fatalf("PruneAuditLog(30): got %+v, want only the recent row", got)
+	}
+}

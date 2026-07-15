@@ -495,10 +495,22 @@ func (s *Server) Shutdown() {
 }
 
 // StartPeriodicCleanup launches a background goroutine that prunes expired
-// user sessions every 12 hours. Call once after construction; ctx
-// cancellation stops the ticker, mirroring StartCounterFlush.
+// user sessions and audit_log rows past their retention window every 12
+// hours (plus once at startup, so a long-idle mesh doesn't wait 12h for its
+// first prune). Call once after construction; ctx cancellation stops the
+// ticker, mirroring StartCounterFlush.
 func (s *Server) StartPeriodicCleanup(ctx context.Context) {
+	prune := func() {
+		s.st.PruneExpiredUserSessions()
+		s.mu.RLock()
+		retentionDays := s.cfg.Audit.RetentionDays
+		s.mu.RUnlock()
+		if err := s.st.PruneAuditLog(retentionDays); err != nil {
+			log.Printf("admin: audit log prune failed: %v", err)
+		}
+	}
 	go func() {
+		prune()
 		ticker := time.NewTicker(12 * time.Hour)
 		defer ticker.Stop()
 		for {
@@ -506,7 +518,7 @@ func (s *Server) StartPeriodicCleanup(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				s.st.PruneExpiredUserSessions()
+				prune()
 			}
 		}
 	}()
@@ -3231,6 +3243,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 		// Audit, webhooks, savings.
 		"audit_enabled":                 strconv.FormatBool(incoming.Audit.Enabled),
+		"audit_retention_days":          strconv.Itoa(incoming.Audit.RetentionDays),
 		"webhook_enabled":               strconv.FormatBool(incoming.Webhook.Enabled),
 		"webhook_url":                   incoming.Webhook.URL,
 		"webhook_secret":                incoming.Webhook.Secret,
