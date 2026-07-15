@@ -110,11 +110,10 @@ services:
         condition: service_healthy
       ollama-node-b:
         condition: service_healthy
-    environment:
-      CONFIG_PATH: /config.yaml
-    configs:
-      - source: demo_mesh_config
-        target: /config.yaml
+
+    command: sh -c "cp /demo/mesh.demo.db /root/mesh.db && exec ./ollama-mesh"
+    volumes:
+      - ./mesh.demo.db:/demo/mesh.demo.db:ro
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -165,58 +164,6 @@ services:
       - prometheus
 
 configs:
-  demo_mesh_config:
-    content: |
-      proxy:
-        port: 11434
-        log_level: info
-      
-      admin:
-        port: 8080
-      
-      metrics:
-        enabled: true
-        port: 9090
-      
-      nodes:
-        - name: node-a
-          url: http://ollama-node-a:11434
-        - name: node-b
-          url: http://ollama-node-b:11434
-        # Multi-runtime demo nodes (mock vLLM/TGI/llama.cpp) — see cmd/mocknode
-        # and docker-compose.demo.yml's vllm-node/tgi-node/llamacpp-node services.
-        # Not started by smoke.sh's default gate; the router polls these
-        # gracefully as unhealthy until/unless they're brought up alongside mesh.
-        - name: vllm-node
-          url: http://vllm-node:11434
-          runtime: vllm
-        - name: tgi-node
-          url: http://tgi-node:11434
-          runtime: tgi
-        - name: llamacpp-node
-          url: http://llamacpp-node:11434
-          runtime: llamacpp
-      
-      auth:
-        enabled: true
-        # Admin dashboard token. Kept separate from API keys so dashboard access
-        # is not granted to every API-key holder.
-        admin_token: demo-admin-token
-        keys:
-          - name: demo-key
-            key: demo-api-key
-            rate_limit: 1000
-      
-      routing:
-        strategy: warm-first
-        poll_interval_ms: 2000
-        fallback: least-connections
-      
-      savings:
-        reference_cost_per_1k: 0.002
-      
-      audit:
-        enabled: false
   demo_prometheus_config:
     content: |
       global:

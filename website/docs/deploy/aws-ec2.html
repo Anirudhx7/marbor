@@ -228,7 +228,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>deploy</span><span class="sep">/</span><span class="current">Deploy ollama-mesh on AWS EC2</span></div>
     <article class="doc-content">
       <h1 id="deploy-ollama-mesh-on-aws-ec2">Deploy ollama-mesh on AWS EC2<a class="anchor" href="#deploy-ollama-mesh-on-aws-ec2" aria-label="Link to section">#</a></h1>
-<p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2. ollama-mesh is a single static binary - no runtime, no dependencies - so an EC2 deploy is "download, drop a config, start a service."</p>
+<p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2. ollama-mesh is a single static binary - no runtime, no dependencies, no config file - so an EC2 deploy is "download, start a service, configure from the dashboard."</p>
 <p>This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing, node-failure route-around, and self-healing recovery all verified live).</p>
 <h2 id="architecture">Architecture<a class="anchor" href="#architecture" aria-label="Link to section">#</a></h2>
 <pre class="code"><code>clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
@@ -248,38 +248,21 @@ ollama pull llama3.2:3b</code></pre>
 <pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/ollama-mesh \
   https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
 chmod +x /usr/local/bin/ollama-mesh</code></pre>
-<p><code>/opt/config.yaml</code>:</p>
-<pre class="code" data-lang="yaml"><code>proxy: { port: 11434, access_log: true }
-admin: { bind_address: "127.0.0.1:8080" }   # reach via SSH tunnel; don't expose
-auth:
-  enabled: true
-  state_path: /opt/usage-state.json          # quotas survive restarts
-  keys:
-    - { name: app, key: &lt;generate-a-strong-key&gt;, rate_limit: 1000 }
-nodes:
-  - { name: gpu-0, url: http://10.0.1.10:11434, gpu_model: "NVIDIA T4 16GB" }
-  - { name: gpu-1, url: http://10.0.1.11:11434, gpu_model: "NVIDIA A10G 24GB" }
-routing: { strategy: warm-first, poll_interval_ms: 2000, max_retries: 2 }
-metrics: { enabled: true, port: 9090 }
-savings: { reference_cost_per_1k: 0.002 }
-audit: { enabled: true, path: /opt/audit.log }</code></pre>
 <p>systemd unit (<code>/etc/systemd/system/ollama-mesh.service</code>):</p>
 <pre class="code" data-lang="ini"><code>[Unit]
 After=network-online.target
 Wants=network-online.target
 [Service]
 WorkingDirectory=/opt
-Environment=CONFIG_PATH=/opt/config.yaml
-ExecStart=/usr/local/bin/ollama-mesh
+ExecStart=/usr/local/bin/ollama-mesh --db /opt/mesh.db
 Restart=always
 [Install]
 WantedBy=multi-user.target</code></pre>
 <pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh</code></pre>
+<p>First boot creates a blank-slate <code>/opt/mesh.db</code>. Log in at <code>http://&lt;mesh&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login - do this immediately since the admin port is reachable from the SSH tunnel below) and, from <strong>Settings</strong>, set <code>admin.bind_address</code> to <code>127.0.0.1:8080</code> (restart required). Add your GPU nodes from the <strong>GPU Nodes</strong> page and an API key from <strong>API Keys</strong> - or run <code>install.sh</code>'s network-discovery wizard against your VPC beforehand to seed the nodes automatically.</p>
 <h2 id="3-security-group">3. Security group<a class="anchor" href="#3-security-group" aria-label="Link to section">#</a></h2>
 <ul><li><strong>Endpoint <code>:11434</code></strong> - open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> - keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
-<p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. Login is username/password
-  (bcrypt-hashed, default <code>admin</code>/<code>admin</code> on first run - change it immediately);
-  a successful login issues an <code>HttpOnly</code> session cookie, which is what's sensitive here.</p>
+<p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. Login is username/password   (bcrypt-hashed, default <code>admin</code>/<code>admin</code> on first run - change it immediately);   a successful login issues an <code>HttpOnly</code> session cookie, which is what's sensitive here.</p>
 <ul><li><strong>Node <code>:11434</code></strong> - open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
 <h2 id="4-verify">4. Verify<a class="anchor" href="#4-verify" aria-label="Link to section">#</a></h2>
 <pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}

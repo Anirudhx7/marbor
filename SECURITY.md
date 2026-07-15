@@ -23,21 +23,21 @@ Report privately via [GitHub Security Advisories](https://github.com/Anirudhx7/o
 
 ### API keys
 
-API keys are defined in `config.yaml` under `auth.keys`. Each key is a static Bearer token in the `Authorization: Bearer sk-mesh-...` header.
+API keys are generated and managed through the **API Keys** page of the admin dashboard. Each key is a static Bearer token in the `Authorization: Bearer sk-mesh-...` header.
 
 - Keys are matched by **exact string comparison** - substring matching is not used.
 - Key **names** are logged in the audit log and request log. The key value itself is never written to any log file.
-- The `usage-state.json` file stores per-key counters (token totals, quota counters). It does not store key values.
+- Key metadata and usage counters (token totals, quota counters) are persisted in the SQLite database (`mesh.db`).
 - Keys are never echoed back through any admin API response.
 
 ### Admin dashboard login
 
-The admin dashboard and `/admin/v1/` API are gated by username/password login, not a static token. `auth.admin_token` in `config.yaml` is a legacy field kept only for pre-migration installs and is not read by the login/session checks - do not rely on it.
+The admin dashboard and `/admin/v1/` API are gated by username/password login, not a static token.
 
 - Passwords are bcrypt-hashed; a fresh install creates a well-known `admin` / `admin` account and forces a password change (or an explicit skip) on first login. **Change it immediately in any deployment reachable beyond your own workstation.**
 - A successful login issues a session token stored server-side (SQLite) and delivered to the browser as an `HttpOnly`, `SameSite=Lax` cookie - never in `localStorage`, never readable by JavaScript.
 - Login is rate-limited to 5 attempts per minute per client IP; admin-triggered password resets are limited to 3 per hour per IP. Both return a generic error on lockout (never revealing whether a username exists).
-- The admin server listens on `:8080` (all interfaces) by default for Docker port-mapping compatibility. On a bare-metal or VM deployment reachable from an untrusted network, set `admin.bind_address: "127.0.0.1:8080"` and access it via SSH tunnel or reverse proxy instead.
+- The admin server listens on `:8080` (all interfaces) by default for Docker port-mapping compatibility. On a bare-metal or VM deployment reachable from an untrusted network, set the `admin_bind_address` setting to `"127.0.0.1:8080"` via the Settings dashboard, and access it via SSH tunnel or reverse proxy instead.
 
 ---
 
@@ -65,31 +65,23 @@ The metrics port (9090) should not be exposed to untrusted networks. Scrape it f
 | Cloud provider used | ✓ audit log (`cloud: true`) |
 | Request ID (`X-Request-ID`) | ✓ audit log |
 
-The audit log is an append-only JSON-lines file. Enable it in config:
-
-```yaml
-audit:
-  enabled: true
-  path: /var/log/ollama-mesh/audit.log
-```
-
-Protect the audit log with appropriate filesystem permissions - it contains request metadata (model names, key names, timestamps) that may be operationally sensitive.
+The audit log is stored directly in SQLite (`mesh.db`). Enable it via the admin Settings dashboard. Old audit entries are pruned automatically based on your configured retention period.
 
 ---
 
 ## Cloud Provider Keys
 
-Cloud provider API keys (OpenAI, Anthropic) are stored in `config.yaml`. Protect this file:
+Cloud provider API keys (OpenAI, Anthropic) are stored in the SQLite database (`mesh.db`). Protect this file:
 
 ```bash
-chmod 600 /opt/ollama-mesh/config.yaml
-chown ollama-mesh:ollama-mesh /opt/ollama-mesh/config.yaml
+chmod 600 /opt/ollama-mesh/mesh.db
+chown ollama-mesh:ollama-mesh /opt/ollama-mesh/mesh.db
 ```
 
-Cloud provider keys are never returned through any admin API endpoint.
+Cloud provider keys are never returned through any admin API endpoint (they are masked as `***` on read).
 
 ---
 
 ## Rate Limiting
 
-Every API key has a per-hour token bucket rate limit (`rate_limit` in config). Requests beyond the limit return `429 Too Many Requests`. Optional hard quotas (`daily_limit`, `monthly_limit`) reset at UTC midnight and month boundary respectively. This is enforced in-process and is not a substitute for network-level rate limiting on your reverse proxy.
+Every API key has a token bucket rate limit. Requests beyond the limit return `429 Too Many Requests`. Optional hard quotas (`daily_limit`, `monthly_limit`) reset at UTC midnight and month boundary respectively. Rate limits and quotas are configured per key in the dashboard, enforced in-process, and are not a substitute for network-level rate limiting on your reverse proxy.

@@ -1,5 +1,5 @@
 # Used by goreleaser: copies the prebuilt binary instead of building from source.
-# config.yaml is mounted at runtime, not baked into the image.
+# mesh.db is mounted/persisted at runtime, not baked into the image.
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates
 WORKDIR /root
