@@ -484,7 +484,7 @@ export function Metrics() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1">Grafana dashboard</p>
                   <a
-                    href="/grafana/ollama-mesh.json"
+                    href={`${import.meta.env.BASE_URL}grafana/ollama-mesh.json`}
                     download
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors"
                   >
