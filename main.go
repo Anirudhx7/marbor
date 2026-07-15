@@ -381,6 +381,7 @@ func main() {
 				DefaultModel:    p.DefaultModel,
 				CostPer1KTokens: p.CostPer1KTokens,
 				Enabled:         p.Enabled,
+				Priority:        p.Priority,
 			}
 		}
 		r.SetClouds(clouds)

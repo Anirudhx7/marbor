@@ -1392,6 +1392,7 @@ func (s *Server) syncCloudProvidersToRouter() ([]config.CloudProvider, error) {
 			Name: p.Name, Provider: p.Provider, BaseURL: p.BaseURL,
 			APIKey: p.APIKey, DefaultModel: p.DefaultModel,
 			CostPer1KTokens: p.CostPer1KTokens, Enabled: p.Enabled,
+			Priority: p.Priority,
 		}
 	}
 	s.router.SetClouds(clouds)
@@ -3788,6 +3789,7 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 		DefaultModel    string  `json:"default_model"`
 		CostPer1KTokens float64 `json:"cost_per_1k_tokens"`
 		Enabled         bool    `json:"enabled"`
+		Priority        int     `json:"priority"`
 	}
 	s.mu.RLock()
 	providers := make([]providerResp, 0, len(s.cfg.CloudProviders))
@@ -3799,6 +3801,7 @@ func (s *Server) handleCloudProviders(w http.ResponseWriter, r *http.Request) {
 			DefaultModel:    cp.DefaultModel,
 			CostPer1KTokens: cp.CostPer1KTokens,
 			Enabled:         cp.Enabled,
+			Priority:        cp.Priority,
 		})
 	}
 	s.mu.RUnlock()
