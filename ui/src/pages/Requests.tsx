@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type InputHTMLAttributes } from 'react';
+import { useState, useEffect, useMemo, type InputHTMLAttributes, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { RequestEntry } from '../types';
@@ -43,7 +43,7 @@ function SkeletonRow() {
 function ClearableInput(props: InputHTMLAttributes<HTMLInputElement> & { onClear: () => void }) {
   const { onClear, className, value, ...rest } = props;
   return (
-    <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-[220px]">
+    <div className="relative w-full">
       <input
         {...rest}
         value={value}
@@ -59,6 +59,18 @@ function ClearableInput(props: InputHTMLAttributes<HTMLInputElement> & { onClear
           <X className="w-3.5 h-3.5" />
         </button>
       )}
+    </div>
+  );
+}
+
+// FilterField adds a small label above a filter control - the bare inputs
+// (esp. the two datetime pickers and the tri-state selects) were impossible
+// to tell apart at a glance without one.
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
+      {children}
     </div>
   );
 }
@@ -209,124 +221,151 @@ export function Requests() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold text-foreground">Request Log</h1>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-              Live
-            </span>
+            {isDemoMode ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                Demo Mode
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                Live
+              </span>
+            )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Server-side filtered - auto-refreshes every 3s
+            {isDemoMode ? 'Showing static sample data' : 'Server-side filtered - auto-refreshes every 3s'}
           </p>
         </div>
       </div>
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <ClearableInput
-          type="text"
-          placeholder="Filter by model..."
-          value={modelInput}
-          onChange={(e) => setModelInput(e.target.value)}
-          onClear={() => setModelInput('')}
-          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        />
-        <ClearableInput
-          type="text"
-          list="request-key-options"
-          placeholder="Filter by key name..."
-          value={keyInput}
-          onChange={(e) => setKeyInput(e.target.value)}
-          onClear={() => setKeyInput('')}
-          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        />
-        <datalist id="request-key-options">
-          {keyOptions.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-        <ClearableInput
-          type="text"
-          list="request-node-options"
-          placeholder="Filter by node..."
-          value={nodeInput}
-          onChange={(e) => setNodeInput(e.target.value)}
-          onClear={() => setNodeInput('')}
-          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        />
-        <datalist id="request-node-options">
-          {nodeOptions.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-        <select
-          value={cloudFilter}
-          onChange={(e) => setCloudFilter(e.target.value as CloudFilter)}
-          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        >
-          <option value="all">All (local + cloud)</option>
-          <option value="local">Local only</option>
-          <option value="cloud">Cloud only</option>
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        >
-          <option value="all">All statuses</option>
-          <option value="success">Success (2xx)</option>
-          <option value="client_error">Client error (4xx)</option>
-          <option value="server_error">Server error (5xx)</option>
-        </select>
-        <select
-          value={sincePreset}
-          onChange={(e) => {
-            setSincePreset(e.target.value as SincePreset);
-            setSinceInput(''); // a quick preset always wins over a stale custom "From" value
-          }}
-          disabled={!!sinceInput}
-          title={sinceInput ? 'Clear the custom "From" date to use a quick preset' : undefined}
-          className="w-full sm:w-auto px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
-        >
-          <option value="all">Any time</option>
-          <option value="15m">Last 15 min</option>
-          <option value="1h">Last hour</option>
-          <option value="24h">Last 24h</option>
-        </select>
-        <ClearableInput
-          type="datetime-local"
-          value={sinceInput}
-          onChange={(e) => {
-            setSinceInput(e.target.value);
-            if (e.target.value) setSincePreset('all'); // custom "From" wins over a stale preset
-          }}
-          onClear={() => setSinceInput('')}
-          title="Only show requests at or after this time"
-          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        />
-        <ClearableInput
-          type="datetime-local"
-          value={untilInput}
-          onChange={(e) => setUntilInput(e.target.value)}
-          onClear={() => setUntilInput('')}
-          title="Only show requests before this time"
-          className="px-3 py-2 text-sm rounded-md border border-border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-        />
+      <div className="bg-card border border-border rounded-lg p-3 sm:p-4 space-y-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <FilterField label="Model">
+            <ClearableInput
+              type="text"
+              placeholder="e.g. llama3"
+              value={modelInput}
+              onChange={(e) => setModelInput(e.target.value)}
+              onClear={() => setModelInput('')}
+              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </FilterField>
+          <FilterField label="Key name">
+            <ClearableInput
+              type="text"
+              list="request-key-options"
+              placeholder="Any key"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              onClear={() => setKeyInput('')}
+              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <datalist id="request-key-options">
+              {keyOptions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          </FilterField>
+          <FilterField label="Node">
+            <ClearableInput
+              type="text"
+              list="request-node-options"
+              placeholder="Any node"
+              value={nodeInput}
+              onChange={(e) => setNodeInput(e.target.value)}
+              onClear={() => setNodeInput('')}
+              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <datalist id="request-node-options">
+              {nodeOptions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          </FilterField>
+          <FilterField label="Local / cloud">
+            <select
+              value={cloudFilter}
+              onChange={(e) => setCloudFilter(e.target.value as CloudFilter)}
+              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="all">All (local + cloud)</option>
+              <option value="local">Local only</option>
+              <option value="cloud">Cloud only</option>
+            </select>
+          </FilterField>
+          <FilterField label="Status">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            >
+              <option value="all">All statuses</option>
+              <option value="success">Success (2xx)</option>
+              <option value="client_error">Client error (4xx)</option>
+              <option value="server_error">Server error (5xx)</option>
+            </select>
+          </FilterField>
+          <FilterField label="Quick range">
+            <select
+              value={sincePreset}
+              onChange={(e) => {
+                setSincePreset(e.target.value as SincePreset);
+                setSinceInput(''); // a quick preset always wins over a stale custom "From" value
+              }}
+              disabled={!!sinceInput}
+              title={sinceInput ? 'Clear the custom "From" date to use a quick preset' : undefined}
+              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+            >
+              <option value="all">Any time</option>
+              <option value="15m">Last 15 min</option>
+              <option value="1h">Last hour</option>
+              <option value="24h">Last 24h</option>
+            </select>
+          </FilterField>
+          <FilterField label="From (custom)">
+            <ClearableInput
+              type="datetime-local"
+              value={sinceInput}
+              onChange={(e) => {
+                setSinceInput(e.target.value);
+                if (e.target.value) setSincePreset('all'); // custom "From" wins over a stale preset
+              }}
+              onClear={() => setSinceInput('')}
+              title="Only show requests at or after this time"
+              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </FilterField>
+          <FilterField label="Until">
+            <ClearableInput
+              type="datetime-local"
+              value={untilInput}
+              onChange={(e) => setUntilInput(e.target.value)}
+              onClear={() => setUntilInput('')}
+              title="Only show requests before this time"
+              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </FilterField>
+        </div>
         {hasActiveFilter && (
-          <button
-            onClick={() => {
-              setModelInput('');
-              setKeyInput('');
-              setNodeInput('');
-              setCloudFilter('all');
-              setStatusFilter('all');
-              setSincePreset('all');
-              setSinceInput('');
-              setUntilInput('');
-            }}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-2"
-          >
-            Clear filters
-          </button>
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                setModelInput('');
+                setKeyInput('');
+                setNodeInput('');
+                setCloudFilter('all');
+                setStatusFilter('all');
+                setSincePreset('all');
+                setSinceInput('');
+                setUntilInput('');
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
+            >
+              Clear all filters
+            </button>
+          </div>
         )}
       </div>
 
