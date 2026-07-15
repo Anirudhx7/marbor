@@ -153,6 +153,13 @@ type WebhookConfig struct {
 
 type AuditConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
+	// RetentionDays bounds how long audit_log rows are kept before a
+	// periodic prune deletes them. Admin-configurable rather than a fixed
+	// value: compliance-driven operators want months, disk-constrained
+	// self-hosted shops want days. 0 (even if persisted) is normalized to
+	// the default in Validate() - never an unbounded "keep forever" via a
+	// zero value someone forgot to set.
+	RetentionDays int `yaml:"retention_days" json:"retention_days"`
 }
 
 type DockerConfig struct {
@@ -442,6 +449,13 @@ func (c *Config) Validate() error {
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
+	}
+	// 0 is a deliberate, valid choice here (keep audit_log rows forever /
+	// disable pruning) - unlike other zero-valued fields in this func, it is
+	// NOT normalized to a default. The 30-day default only applies on first
+	// boot, before any admin choice exists (see main.go's settings overlay).
+	if c.Audit.RetentionDays < 0 {
+		return fmt.Errorf("audit.retention_days must be >= 0 (0 keeps audit log entries forever)")
 	}
 
 	// Auth defaults to enabled: make an absent key explicit so a saved config

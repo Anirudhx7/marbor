@@ -109,6 +109,34 @@ func TestNormalizeNodeURL(t *testing.T) {
 	}
 }
 
+// TestAuditRetentionDaysValidate verifies 0 (the admin's explicit "keep
+// audit log entries forever" choice) survives Validate() unchanged, while a
+// negative value is rejected. Regression for a version of this check that
+// silently coerced 0 back to a 30-day default, making "forever" impossible
+// for an admin to actually choose.
+func TestAuditRetentionDaysValidate(t *testing.T) {
+	cfg := Config{Audit: AuditConfig{RetentionDays: 0}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with RetentionDays=0: %v", err)
+	}
+	if cfg.Audit.RetentionDays != 0 {
+		t.Fatalf("RetentionDays=0 must be preserved as 'forever', got %d", cfg.Audit.RetentionDays)
+	}
+
+	cfg = Config{Audit: AuditConfig{RetentionDays: 90}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with RetentionDays=90: %v", err)
+	}
+	if cfg.Audit.RetentionDays != 90 {
+		t.Fatalf("RetentionDays=90 must be preserved, got %d", cfg.Audit.RetentionDays)
+	}
+
+	cfg = Config{Audit: AuditConfig{RetentionDays: -1}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() with RetentionDays=-1 should have failed")
+	}
+}
+
 func TestDuplicateKeyName(t *testing.T) {
 	cfg := Config{
 		Auth: AuthConfig{

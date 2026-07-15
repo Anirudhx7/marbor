@@ -198,6 +198,7 @@ export function SettingsPage() {
           dockerPollIntervalMs: settingsData.docker?.poll_interval_ms ?? 30000,
 
           auditEnabled: settingsData.audit?.enabled || false,
+          auditRetentionDays: settingsData.audit?.retention_days ?? 30,
           webhookEnabled: settingsData.webhook?.enabled || false,
           webhookUrl: settingsData.webhook?.url || '',
           webhookSecret: settingsData.webhook?.secret || '',
@@ -267,7 +268,7 @@ export function SettingsPage() {
         hide_demo_banner: settings.hideDemoBanner || false,
         hide_budget_banner: settings.hideBudgetBanner || false,
         docker: { enabled: settings.dockerEnabled, socket: settings.dockerSocket, poll_interval_ms: settings.dockerPollIntervalMs },
-        audit: { enabled: settings.auditEnabled },
+        audit: { enabled: settings.auditEnabled, retention_days: settings.auditRetentionDays },
         webhook: { enabled: settings.webhookEnabled, url: settings.webhookUrl, secret: settings.webhookSecret },
         savings: { reference_cost_per_1k: settings.savingsReferenceCostPer1k },
         ha: { enabled: settings.haEnabled, peers: settings.haPeers, heartbeat_interval_ms: settings.haHeartbeatIntervalMs, peer_timeout_ms: settings.haPeerTimeoutMs },
@@ -1239,6 +1240,20 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Append-only request audit trail</p>
               </div>
               <Toggle on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Audit Log Retention (days)</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={settings.auditRetentionDays}
+                onChange={(e) => setSettings({ ...settings, auditRetentionDays: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Requests older than this are pruned automatically (checked every 12h). Set to 0 to keep audit log entries forever.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Local Token Value ($/1k tokens)</label>

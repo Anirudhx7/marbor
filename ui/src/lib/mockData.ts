@@ -254,6 +254,7 @@ export const defaultSettings: Settings = {
   dockerPollIntervalMs: 30000,
 
   auditEnabled: false,
+  auditRetentionDays: 30,
   webhookEnabled: false,
   webhookUrl: '',
   webhookSecret: '',

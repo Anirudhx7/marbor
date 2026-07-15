@@ -72,6 +72,7 @@ type Store interface {
 	// Audit log (replaces audit/audit.go file-based logger)
 	AppendAuditLog(e AuditEntry) error
 	QueryAuditLog(opts AuditQuery) ([]AuditEntry, error)
+	PruneAuditLog(retentionDays int) error
 
 	// System audit log (administrative mutations)
 	AppendSystemAuditLog(e SystemAuditEntry) error
@@ -491,6 +492,7 @@ func (NopStore) AllKeys() ([]KeyRecord, error)                             { ret
 func (NopStore) KeySpendSince(_ string, _ time.Time) (float64, error)      { return 0, nil }
 func (NopStore) AppendAuditLog(_ AuditEntry) error                         { return nil }
 func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)          { return nil, nil }
+func (NopStore) PruneAuditLog(_ int) error                                 { return nil }
 func (NopStore) AppendSystemAuditLog(_ SystemAuditEntry) error             { return nil }
 func (NopStore) QuerySystemAuditLog(_ int) ([]SystemAuditEntry, error)     { return nil, nil }
 func (NopStore) GetAdminCreds() (AdminCreds, error)                        { return AdminCreds{}, ErrNoAdminCreds }
