@@ -2771,41 +2771,37 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	var incoming config.Config
+	s.mu.Lock()
+	// Start from the current config so any field the request body omits (the
+	// Settings page only ever sends a partial payload - most Routing/Auth/
+	// CloudProviders fields are managed via their own dedicated endpoints)
+	// keeps its existing value instead of being silently zeroed. Decoding
+	// JSON onto a populated struct only overwrites keys actually present in
+	// the body, which also makes explicit "false"/zero values (e.g.
+	// disabling routing.session_affinity) apply correctly instead of being
+	// mistaken for "unset".
+	incoming := s.cfg
+	// Auth.Enabled and Proxy.AccessLog are *bool: deep-copy them so decoding
+	// into incoming can't mutate the value s.cfg's pointer still points to
+	// if validation below fails and the update is discarded.
+	if s.cfg.Auth.Enabled != nil {
+		v := *s.cfg.Auth.Enabled
+		incoming.Auth.Enabled = &v
+	}
+	if s.cfg.Proxy.AccessLog != nil {
+		v := *s.cfg.Proxy.AccessLog
+		incoming.Proxy.AccessLog = &v
+	}
 	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		s.mu.Unlock()
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.mu.Lock()
-	// Preserve fields the UI doesn't send to avoid silently zeroing them.
-	if len(incoming.CloudProviders) == 0 {
-		incoming.CloudProviders = s.cfg.CloudProviders
-	}
-	if len(incoming.Auth.Keys) == 0 {
-		incoming.Auth.Keys = s.cfg.Auth.Keys
-	}
-	incoming.Auth.AdminToken = s.cfg.Auth.AdminToken
 	// The client echoes back the masked "***" placeholder (or omits the field
 	// entirely) when the operator didn't change it; preserve the real token in
 	// both cases instead of clobbering it with the mask.
 	if incoming.HuggingFace.Token == "" || incoming.HuggingFace.Token == "***" {
 		incoming.HuggingFace.Token = s.cfg.HuggingFace.Token
-	}
-	// The Settings page never sends these Routing sub-fields (they're managed
-	// via their own dedicated endpoints/pages) - preserve them from the
-	// current config instead of letting the wholesale s.cfg = incoming below
-	// silently zero them out.
-	if len(incoming.Routing.Rules) == 0 {
-		incoming.Routing.Rules = s.cfg.Routing.Rules
-	}
-	if len(incoming.Routing.FallbackChains) == 0 {
-		incoming.Routing.FallbackChains = s.cfg.Routing.FallbackChains
-	}
-	if !incoming.Routing.SessionAffinity {
-		incoming.Routing.SessionAffinity = s.cfg.Routing.SessionAffinity
-	}
-	if incoming.Routing.ThermalWatchdog == (config.ThermalWatchdogConfig{}) {
-		incoming.Routing.ThermalWatchdog = s.cfg.Routing.ThermalWatchdog
 	}
 
 	if err := incoming.Validate(); err != nil {
