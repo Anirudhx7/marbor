@@ -33,6 +33,11 @@ type NodeState struct {
 	LoadedModels  []ModelInfo
 	ActiveConns   int32
 	RequestsTotal int64 // atomic: lifetime requests routed to this node
+	ColdStarts    int64 // atomic
+	WarmHits      int64 // atomic
+	TokensTotal   int64 // atomic
+	LatencySumMs  int64 // atomic
+	LatencyCount  int64 // atomic
 	Healthy       bool
 	Draining      bool
 	// DrainedReason records why Draining was set (e.g. "manual", "thermal") -
@@ -1051,7 +1056,7 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 // RecordRequestOutcome logs whether a request routed to a node succeeded or failed.
 // Failure marks LastErrorAt, which triggers node cooldown.
 func (r *Router) RecordRequestOutcome(nodeName string, success bool) {
-	n := r.findNode(nodeName)
+	n := r.FindNode(nodeName)
 	if n == nil {
 		return
 	}
