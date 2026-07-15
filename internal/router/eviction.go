@@ -130,8 +130,8 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 	return nil
 }
 
-// findNode returns the node with the given name, or nil.
-func (r *Router) findNode(name string) *NodeState {
+// FindNode returns the node with the given name, or nil.
+func (r *Router) FindNode(name string) *NodeState {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, n := range r.nodes {
@@ -160,7 +160,7 @@ func (r *Router) nodeExistsLocked(name string) bool {
 // never-evict list  --  pinning blocks manual unload the same as auto-eviction;
 // the operator must unpin first.
 func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool, error) {
-	n := r.findNode(nodeName)
+	n := r.FindNode(nodeName)
 	if n == nil {
 		return false, nil
 	}
@@ -176,7 +176,7 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 // non-Ollama backends are skipped. Pinned models are skipped (not unloaded)
 // with a log line, same policy as the manual UnloadModel path.
 func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) {
-	n := r.findNode(nodeName)
+	n := r.FindNode(nodeName)
 	if n == nil {
 		log.Printf("scheduled unload skipped: node %q not found", nodeName)
 		return

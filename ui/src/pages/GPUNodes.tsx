@@ -188,7 +188,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
         <div className="bg-secondary rounded-lg p-3">
           <div className="flex items-center gap-2 text-muted-foreground mb-1">
             <Cpu className="w-3.5 h-3.5" />
@@ -208,6 +208,33 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
             node.temperature && node.temperature > 70 ? 'text-amber-500' : 'text-primary'
           }`}>
             {node.temperature ? `${node.temperature}°C` : 'N/A'}
+          </span>
+        </div>
+      </div>
+
+      {/* Telemetry Observability */}
+      <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/40 border border-border/20 rounded-lg p-3">
+        <div>
+          <span className="text-muted-foreground block text-[10px] uppercase font-semibold tracking-wider">Warm Hit</span>
+          <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
+            {node.warmHitRatio !== undefined ? `${(node.warmHitRatio * 100).toFixed(0)}%` : '--'}
+          </span>
+          {node.coldStarts !== undefined && node.coldStarts > 0 ? (
+            <span className="text-[9px] text-muted-foreground block mt-0.5 leading-none">
+              ({node.coldStarts} cold)
+            </span>
+          ) : null}
+        </div>
+        <div>
+          <span className="text-muted-foreground block text-[10px] uppercase font-semibold tracking-wider">Latency</span>
+          <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
+            {node.avgLatencyMs !== undefined && node.avgLatencyMs > 0 ? `${node.avgLatencyMs.toFixed(0)}ms` : '--'}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground block text-[10px] uppercase font-semibold tracking-wider">Tokens</span>
+          <span className="font-semibold text-foreground font-mono text-sm block mt-0.5 truncate" title={node.tokensTotal?.toLocaleString()}>
+            {node.tokensTotal !== undefined ? (node.tokensTotal >= 1000000 ? `${(node.tokensTotal / 1000000).toFixed(1)}M` : node.tokensTotal >= 1000 ? `${(node.tokensTotal / 1000).toFixed(1)}K` : node.tokensTotal) : '--'}
           </span>
         </div>
       </div>
