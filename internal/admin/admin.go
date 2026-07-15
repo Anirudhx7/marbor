@@ -205,14 +205,14 @@ func (s *Server) LoadFromStore() error {
 		atomic.StoreInt64(&s.coldStarts, historicCold)
 		atomic.StoreInt64(&s.warmHits, historicWarm)
 
-		// Seed node-level counters
+		// Seed node-level counters. These fields are otherwise only ever
+		// touched via atomic.Add/LoadInt64 (see LogRequest), so seed them
+		// the same way rather than mixing in a mutex-guarded plain write.
 		for _, n := range s.router.Nodes() {
-			n.Lock()
-			n.ColdStarts = nodeCold[n.Name]
-			n.WarmHits = nodeWarm[n.Name]
-			n.LatencySumMs = nodeLatency[n.Name]
-			n.LatencyCount = nodeLatencyCount[n.Name]
-			n.Unlock()
+			atomic.StoreInt64(&n.ColdStarts, nodeCold[n.Name])
+			atomic.StoreInt64(&n.WarmHits, nodeWarm[n.Name])
+			atomic.StoreInt64(&n.LatencySumMs, nodeLatency[n.Name])
+			atomic.StoreInt64(&n.LatencyCount, nodeLatencyCount[n.Name])
 		}
 	} else {
 		log.Printf("store: could not load audit log for metrics initialization: %v", err)
