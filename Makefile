@@ -4,6 +4,8 @@ all: ui backend
 
 ui:
 	cd ui && npm install && npm run build
+	mkdir -p internal/admin/web/dist/grafana
+	cp grafana/ollama-mesh.json internal/admin/web/dist/grafana/ollama-mesh.json
 
 backend:
 	go build -o ollama-mesh .

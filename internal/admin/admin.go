@@ -623,6 +623,9 @@ func (s *Server) Handler() http.Handler {
 		for _, f := range []string{"/favicon.svg", "/favicon.ico", "/manifest.json", "/robots.txt"} {
 			mux.Handle(f, s.noCache(http.FileServer(http.FS(sub))))
 		}
+		// Grafana dashboard JSON download - would otherwise fall through to the
+		// SPA catch-all and return index.html instead of the dashboard.
+		mux.Handle("/grafana/ollama-mesh.json", s.noCache(http.FileServer(http.FS(sub))))
 	} else {
 		fmt.Println("warn: failed to embed web UI:", err)
 	}
