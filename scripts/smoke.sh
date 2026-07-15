@@ -51,7 +51,7 @@ summary_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/a
 [ "$summary_status" = "200" ] || fail "expected 200 from /admin/metrics/summary, got $summary_status"
 
 metrics_body=$(curl -fsS "http://localhost:9090/metrics") || fail "metrics endpoint on :9090 unreachable"
-echo "$metrics_body" | grep -q "ollama_mesh_" || fail "metrics body missing ollama_mesh_ prefix"
+echo "$metrics_body" | grep -q "ollamamesh_" || fail "metrics body missing ollamamesh_ prefix"
 
 echo ""
 echo "=== SMOKE GREEN ==="
