@@ -217,6 +217,7 @@ export const defaultSettings: Settings = {
   authMode: 'api-key',
   liteLLMEnabled: false,
   liteLLMEndpoint: 'http://localhost:4000',
+  liteLLMApiKey: '',
   pollingInterval: 2000,
   prometheusEnabled: true,
   prometheusPort: 9090,
@@ -353,6 +354,7 @@ export const mockCloudProviders: CloudProvider[] = [
     default_model: 'gpt-4o',
     cost_per_1k_tokens: 0.005,
     enabled: true,
+    priority: 0,
   },
   {
     name: 'anthropic-claude',
@@ -361,6 +363,7 @@ export const mockCloudProviders: CloudProvider[] = [
     default_model: 'claude-3-5-sonnet-20241022',
     cost_per_1k_tokens: 0.003,
     enabled: false,
+    priority: 1,
   },
 ];
 
