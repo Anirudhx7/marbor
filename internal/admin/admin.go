@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"math/big"
@@ -2191,7 +2192,12 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 			Models       []string `json:"models"`
 		} `json:"create_key"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid JSON"}`))
+		return
+	}
 
 	approver, _ := r.Context().Value(ctxKeyUsername).(string)
 	now := time.Now()
@@ -2347,7 +2353,12 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 		Role  string `json:"role"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"invalid JSON"}`))
+		return
+	}
 
 	user, err := s.st.GetUserByID(id)
 	if err != nil {
