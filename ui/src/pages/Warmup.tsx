@@ -237,9 +237,9 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
   const sel = `w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground`;
 
   return (
-    <div className="overflow-hidden transition-opacity duration-300">
+    <div className="transition-opacity duration-300 first:rounded-t-xl last:rounded-b-xl">
       {/* View row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 gap-2 text-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 gap-2 text-sm first:rounded-t-xl last:rounded-b-xl">
         <div className="flex items-center gap-3 flex-wrap min-w-0">
           <Badge variant={s.action === 'warmup' ? 'success' : s.action === 'unload' ? 'destructive' : s.action === 'drain' ? 'warning' : 'muted'}>{s.action}</Badge>
           <span className="font-medium text-foreground">{s.node}</span>
@@ -268,7 +268,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
 
       {/* Inline edit form - visually attached, distinct bg */}
       {editing && (
-        <div className="border-t border-border bg-secondary/30 px-4 py-4 space-y-3">
+        <div className="border-t border-border bg-secondary/30 px-4 py-4 space-y-3 last:rounded-b-xl">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
@@ -477,7 +477,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
 function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (s: Schedule) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className="bg-card border border-border rounded-xl">
       <button onClick={() => setOpen(p => !p)}
         className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/40 transition-colors">
         <div className="flex items-center gap-1.5">
@@ -770,7 +770,7 @@ export function Warmup() {
               <>
                 {/* Active schedules */}
                 {active.length > 0 && (
-                  <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
+                  <div className="bg-card border border-border rounded-xl divide-y divide-border">
                     {active.map(row)}
                   </div>
                 )}
