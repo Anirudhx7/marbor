@@ -9,10 +9,9 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
-  overflowVisible?: boolean;
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', overflowVisible = false }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: ModalProps) {
   const maxWidthClass = {
     sm: 'max-w-sm',
     md: 'max-w-md',
@@ -41,9 +40,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', overf
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className={`relative w-full ${maxWidthClass} max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-card border border-border shadow-xl rounded-2xl flex flex-col ${
-              overflowVisible ? 'overflow-visible' : 'overflow-hidden'
-            }`}
+            className={`relative w-full ${maxWidthClass} max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-card border border-border shadow-xl rounded-2xl flex flex-col overflow-hidden`}
           >
             <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-border flex items-center justify-between shrink-0">
               <h3 className="text-lg font-semibold text-foreground">{title}</h3>
@@ -54,7 +51,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', overf
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className={`p-4 sm:p-6 flex-1 ${overflowVisible ? 'overflow-visible' : 'overflow-y-auto'}`}>
+            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
               {children}
             </div>
           </motion.div>
