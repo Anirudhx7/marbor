@@ -364,6 +364,283 @@ export function CustomDateTimePicker({
   );
 }
 
+interface CustomDatePickerProps {
+  value: string; // YYYY-MM-DD
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}
+
+export function CustomDatePicker({
+  value,
+  onChange,
+  placeholder = 'Select date...',
+  className = '',
+  disabled = false,
+}: CustomDatePickerProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Parsing state
+  const initialDate = value ? new Date(value + 'T00:00:00') : new Date();
+  const [viewYear, setViewYear] = useState(initialDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialDate.getMonth()); // 0-11
+  const [selectedDay, setSelectedDay] = useState<number | null>(
+    value ? new Date(value + 'T00:00:00').getDate() : null
+  );
+
+  // Sync state with incoming value changes
+  useEffect(() => {
+    if (value) {
+      const d = new Date(value + 'T00:00:00');
+      setViewYear(d.getFullYear());
+      setViewMonth(d.getMonth());
+      setSelectedDay(d.getDate());
+    } else {
+      setSelectedDay(null);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const daysOfWeek = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  // Helper calendar calculations
+  const getDaysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+  const getFirstDayOfMonth = (y: number, m: number) => new Date(y, m, 1).getDay();
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(viewYear - 1);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(viewYear + 1);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+  };
+
+  const selectDay = (day: number) => {
+    setSelectedDay(day);
+    updateValue(day);
+    setIsOpen(false);
+  };
+
+  const updateValue = (day: number) => {
+    const date = new Date(viewYear, viewMonth, day);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    onChange(`${yyyy}-${mm}-${dd}`);
+  };
+
+  const handleClear = () => {
+    onChange('');
+    setSelectedDay(null);
+    setIsOpen(false);
+  };
+
+  // Generate calendar days grid
+  const daysInMonth = getDaysInMonth(viewYear, viewMonth);
+  const firstDayIndex = getFirstDayOfMonth(viewYear, viewMonth);
+
+  const prevMonthDaysCount = getDaysInMonth(
+    viewMonth === 0 ? viewYear - 1 : viewYear,
+    viewMonth === 0 ? 11 : viewMonth - 1
+  );
+
+  const calendarGrid = [];
+
+  // Previous month padding days
+  for (let i = firstDayIndex - 1; i >= 0; i--) {
+    calendarGrid.push({
+      day: prevMonthDaysCount - i,
+      isCurrentMonth: false,
+      monthOffset: -1
+    });
+  }
+
+  // Current month days
+  for (let i = 1; i <= daysInMonth; i++) {
+    calendarGrid.push({
+      day: i,
+      isCurrentMonth: true,
+      monthOffset: 0
+    });
+  }
+
+  // Next month padding days
+  const remainingCells = 42 - calendarGrid.length;
+  for (let i = 1; i <= remainingCells; i++) {
+    calendarGrid.push({
+      day: i,
+      isCurrentMonth: false,
+      monthOffset: 1
+    });
+  }
+
+  // Format display text
+  const formatDisplay = () => {
+    if (!value) return '';
+    try {
+      const d = new Date(value + 'T00:00:00');
+      if (isNaN(d.getTime())) return value;
+      return d.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return value;
+    }
+  };
+
+  return (
+    <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>
+      <div className="relative">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setIsOpen(!isOpen)}
+          className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground px-3 py-2 text-sm rounded-lg text-left transition-all ${
+            disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-secondary/50'
+          }`}
+        >
+          <span className={`truncate ${!value ? 'text-muted-foreground/60' : ''}`}>
+            {value ? formatDisplay() : placeholder}
+          </span>
+          <CalendarIcon className="w-4 h-4 ml-2 shrink-0 text-primary" />
+        </button>
+
+        {!!value && !disabled && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1.5 p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in">
+          {/* Calendar header */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-semibold text-sm text-foreground">
+              {months[viewMonth]} {viewYear}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Days of week header */}
+          <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground/75 mb-2">
+            {daysOfWeek.map((d) => (
+              <div key={d} className="py-0.5">{d}</div>
+            ))}
+          </div>
+
+          {/* Calendar days grid */}
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {calendarGrid.map((cell, idx) => {
+              const isSelected =
+                cell.isCurrentMonth && selectedDay === cell.day;
+              
+              const isToday =
+                cell.isCurrentMonth &&
+                new Date().getDate() === cell.day &&
+                new Date().getMonth() === viewMonth &&
+                new Date().getFullYear() === viewYear;
+
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    if (cell.isCurrentMonth) {
+                      selectDay(cell.day);
+                    } else {
+                      // Switch month
+                      const targetDate = new Date(viewYear, viewMonth + cell.monthOffset, cell.day);
+                      setViewYear(targetDate.getFullYear());
+                      setViewMonth(targetDate.getMonth());
+                      setSelectedDay(targetDate.getDate());
+                      updateValue(targetDate.getDate());
+                    }
+                  }}
+                  className={`text-xs py-1.5 rounded-lg text-center font-medium transition-colors ${
+                    isSelected
+                      ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                      : cell.isCurrentMonth
+                      ? 'text-foreground hover:bg-secondary/60'
+                      : 'text-muted-foreground/40 hover:bg-secondary/40'
+                  } ${isToday && !isSelected ? 'border border-primary/50' : ''}`}
+                >
+                  {cell.day}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-border/80 text-xs">
+            <button
+              type="button"
+              onClick={handleClear}
+              className="px-2.5 py-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="px-3 py-1.5 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/95 transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface CustomTimePickerProps {
   value: string; // HH:MM
   onChange: (value: string) => void;

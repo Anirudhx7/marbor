@@ -19,6 +19,7 @@ function maskKey(key: string): string {
 
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
+import { CustomDatePicker } from '../components/DateTimePicker';
 
 export function APIKeys() {
   const { demoMode } = useDemoMode();
@@ -579,11 +580,10 @@ export function APIKeys() {
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               Expiry Date (optional)
             </label>
-            <input
-              type="date"
+            <CustomDatePicker
               value={newKeyForm.expiresAt}
-              onChange={(e) => setNewKeyForm({ ...newKeyForm, expiresAt: e.target.value })}
-              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              onChange={(val) => setNewKeyForm({ ...newKeyForm, expiresAt: val })}
+              placeholder="Never expires"
             />
           </div>
           
