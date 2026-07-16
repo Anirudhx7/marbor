@@ -29,7 +29,7 @@ gorun() {
 
 fail() { echo ""; echo "GATE RED: $*" >&2; exit 1; }
 
-echo "=== [1/5] UI: npm ci + build ==="
+echo "=== [1/6] UI: npm ci + build ==="
 if command -v powershell.exe &>/dev/null; then
   # Windows: neither 'rd /s /q' nor 'Remove-Item -Recurse' is 100% reliable
   # alone - Windows Defender or VS Code file watchers lock different packages
@@ -56,10 +56,10 @@ else
   (cd ui && npm ci && node node_modules/typescript/lib/tsc.js -b && node node_modules/vite/bin/vite.js build) || fail "UI build failed"
 fi
 
-echo "=== [2/5] Go: vet ==="
+echo "=== [2/6] Go: vet ==="
 gorun go vet ./... || fail "go vet failed"
 
-echo "=== [3/5] Go: gofmt check ==="
+echo "=== [3/6] Go: gofmt check ==="
 # Exclude gitignored worktrees/backups (.claude/, .local/) - CI's clean checkout never has
 # them, so scanning them here only surfaces stale local artifacts, not real formatting issues.
 unformatted=$(gorun bash -c "gofmt -l . | grep -v -e '^\.claude/' -e '^\./\.claude/' -e '^\.local/' -e '^\./\.local/'" || true)
@@ -68,11 +68,17 @@ if [ -n "$unformatted" ]; then
   fail "gofmt check failed"
 fi
 
-echo "=== [4/5] Go: test -race ==="
+echo "=== [4/6] Go: test -race ==="
 gorun go test -race -timeout 120s ./... || fail "go test failed"
 
-echo "=== [5/5] Go: govulncheck ==="
+echo "=== [5/6] Go: govulncheck ==="
 gorun sh -c "go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./..." || fail "govulncheck failed"
+
+echo "=== [6/6] Smoke test (mirrors ci.yml's smoke job) ==="
+if ! command -v docker &>/dev/null; then
+  fail "docker not found - gate.sh's smoke step requires Docker Desktop running (see ci.yml smoke job)"
+fi
+bash scripts/smoke.sh || fail "smoke test failed"
 
 echo ""
 echo "=== GATE GREEN ==="
