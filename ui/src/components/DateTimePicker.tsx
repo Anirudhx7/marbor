@@ -45,6 +45,20 @@ export function CustomDateTimePicker({
     }
   }, [value]);
 
+  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 340) {
+        setPosition('top');
+      } else {
+        setPosition('bottom');
+      }
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -89,6 +103,16 @@ export function CustomDateTimePicker({
     updateValue(day, hours, minutes);
   };
 
+  const updateValue = (day: number, h: number, m: number) => {
+    const date = new Date(viewYear, viewMonth, day, h, m);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    onChange(`${yyyy}-${mm}-${dd}T${hh}:${min}`);
+  };
+
   const handleHourChange = (h: number) => {
     // Wrap hours around 0-23
     let val = h;
@@ -109,16 +133,6 @@ export function CustomDateTimePicker({
     if (selectedDay !== null) {
       updateValue(selectedDay, hours, val);
     }
-  };
-
-  const updateValue = (day: number, h: number, m: number) => {
-    const date = new Date(viewYear, viewMonth, day, h, m);
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    const hh = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    onChange(`${yyyy}-${mm}-${dd}T${hh}:${min}`);
   };
 
   const handleClear = () => {
@@ -214,7 +228,9 @@ export function CustomDateTimePicker({
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1.5 p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in">
+        <div className={`absolute z-50 p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in ${
+          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+        }`}>
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
             <span className="font-semibold text-sm text-foreground">
@@ -402,6 +418,20 @@ export function CustomDatePicker({
     }
   }, [value]);
 
+  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 280) {
+        setPosition('top');
+      } else {
+        setPosition('bottom');
+      }
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -545,7 +575,9 @@ export function CustomDatePicker({
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1.5 p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in">
+        <div className={`absolute z-50 p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in ${
+          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+        }`}>
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
             <span className="font-semibold text-sm text-foreground">
@@ -670,6 +702,20 @@ export function CustomTimePicker({
     }
   }, [value]);
 
+  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 270) {
+        setPosition('top');
+      } else {
+        setPosition('bottom');
+      }
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -734,7 +780,9 @@ export function CustomTimePicker({
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1.5 p-4 border border-border bg-card rounded-xl shadow-xl w-64 animate-fade-in">
+        <div className={`absolute z-50 p-4 border border-border bg-card rounded-xl shadow-xl w-64 animate-fade-in ${
+          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+        }`}>
           {/* Main Large Clock Display */}
           <div className="flex justify-center items-center gap-1.5 font-mono text-3xl font-bold text-primary mb-5 select-none bg-secondary/20 py-2.5 rounded-xl border border-border/40">
             <span>{String(hours).padStart(2, '0')}</span>

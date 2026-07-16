@@ -28,6 +28,20 @@ export function CustomSelect({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 260) {
+        setPosition('top');
+      } else {
+        setPosition('bottom');
+      }
+    }
+  }, [isOpen]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -57,7 +71,9 @@ export function CustomSelect({
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1.5 border border-border bg-card rounded-lg shadow-xl max-h-60 overflow-y-auto animate-fade-in focus:outline-none">
+        <div className={`absolute z-50 w-full border border-border bg-card rounded-lg shadow-xl max-h-60 overflow-y-auto animate-fade-in focus:outline-none ${
+          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+        }`}>
           <div className="py-1">
             {options.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground text-center">No options</div>
@@ -110,6 +126,20 @@ export function CustomCombobox({
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+
+  useEffect(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 260) {
+        setPosition('top');
+      } else {
+        setPosition('bottom');
+      }
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -184,7 +214,9 @@ export function CustomCombobox({
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1.5 border border-border bg-card rounded-lg shadow-xl max-h-60 overflow-y-auto animate-fade-in focus:outline-none">
+        <div className={`absolute z-50 w-full border border-border bg-card rounded-lg shadow-xl max-h-60 overflow-y-auto animate-fade-in focus:outline-none ${
+          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+        }`}>
           <div className="py-1">
             {displayOptions.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground text-center">No options found</div>
