@@ -31,6 +31,11 @@ import (
 // before extracting the model name. Caps a memory-exhaustion DoS vector.
 const maxRequestBodyBytes = 32 << 20 // 32 MiB
 
+// prefixLocalityPromptChars bounds how much of a request's prompt text is
+// hashed for the prefix-locality routing hint (Step 6) - bounds the hashing
+// cost per request regardless of client prompt size.
+const prefixLocalityPromptChars = 200
+
 // apiError is the OpenAI-compatible error envelope. Every non-2xx response from
 // the proxy and auth middleware uses this shape so SDK clients can parse errors
 // without a separate error-detection path.
@@ -370,6 +375,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// policy). An unknown/anonymous key defaults to false (opted out).
 	allowLocalDegradation := h.auth != nil && h.auth.IsAllowLocalDegradation(keyName)
 
+	// Prefix-locality routing hint (Step 6): hash of model + prompt prefix,
+	// computed off the body already buffered above - zero new body reads, so
+	// R2 (streaming) is unaffected (that guard covers the response stream,
+	// not this already-buffered request body). Only computed when the
+	// feature is enabled, to avoid the hashing cost otherwise. Uses the
+	// final (possibly fallback-substituted) modelName, since that's the
+	// model whose node/warm-state affinity actually matters for routing.
+	var prefixHash string
+	if h.router.PrefixLocalityEnabled() {
+		prefixHash = router.PrefixHash(modelName, router.ExtractPromptPrefix(body, prefixLocalityPromptChars))
+	}
+
 	// Determine runtime filter from request path. Ollama-native paths (/api/*)
 	// must only route to Ollama nodes; /v1/* paths can reach any backend
 	// (vLLM, TGI, llama.cpp, Ollama). An empty filter means no restriction.
@@ -388,7 +405,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// This eliminates the previous discard-and-fall-through behavior where a valid
 	// Ollama node could be available but the request still hit 503 because a
 	// non-Ollama node was returned and silently discarded (#3).
-	node, warm, decision := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
+	node, warm, decision := h.router.WaitForNodeWithPrefix(r.Context(), modelName, sessionID, runtimeFilter, prefixHash)
 
 	// degradedOnce enforces the documented single-hop invariant across both
 	// trigger sites in this method: a request may substitute at most once,

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 func TestPlacementScoring(t *testing.T) {
@@ -280,8 +281,8 @@ func TestIsModelWarm_DigestMismatchNotWarm(t *testing.T) {
 	}
 
 	// computeNodeScore must not award the +50 warm bonus to the mismatched node either.
-	scoreA := r.computeNodeScore(r.nodes[0], "model-x")
-	scoreB := r.computeNodeScore(r.nodes[1], "model-x")
+	scoreA := r.computeNodeScore(r.nodes[0], "model-x", "", 0)
+	scoreB := r.computeNodeScore(r.nodes[1], "model-x", "", 0)
 	if scoreA <= scoreB {
 		t.Errorf("scoreA=%v scoreB=%v, want scoreA > scoreB (only node-a's digest-matched copy should get the warm bonus)", scoreA, scoreB)
 	}
@@ -369,8 +370,8 @@ func TestScoreComponentsSumEqualsComputeNodeScore(t *testing.T) {
 	}, nil)
 
 	t.Run("unpenalized", func(t *testing.T) {
-		want := r.computeNodeScore(r.nodes[0], "model-x")
-		got := sumComponents(r.scoreComponents(r.nodes[0], "model-x"))
+		want := r.computeNodeScore(r.nodes[0], "model-x", "", 0)
+		got := sumComponents(r.scoreComponents(r.nodes[0], "model-x", "", 0))
 		if got != want {
 			t.Errorf("sum(components) = %v, want %v (must equal computeNodeScore exactly)", got, want)
 		}
@@ -385,8 +386,8 @@ func TestScoreComponentsSumEqualsComputeNodeScore(t *testing.T) {
 		r.nodes[0].SuccessHistory = []bool{false}
 		r.nodes[0].LastErrorAt = time.Now()
 
-		want := r.computeNodeScore(r.nodes[0], "model-x")
-		components := r.scoreComponents(r.nodes[0], "model-x")
+		want := r.computeNodeScore(r.nodes[0], "model-x", "", 0)
+		components := r.scoreComponents(r.nodes[0], "model-x", "", 0)
 		got := sumComponents(components)
 		if got != want {
 			t.Errorf("sum(components) = %v, want %v (penalty must be the actual clamped delta)", got, want)
@@ -412,8 +413,8 @@ func TestScoreComponentsSumEqualsComputeNodeScore(t *testing.T) {
 		r2.nodes[0].LastErrorAt = time.Now()
 		r2.nodes[0].LastPollAt = time.Now().Add(-time.Hour)
 
-		want := r2.computeNodeScore(r2.nodes[0], "model-x")
-		components := r2.scoreComponents(r2.nodes[0], "model-x")
+		want := r2.computeNodeScore(r2.nodes[0], "model-x", "", 0)
+		components := r2.scoreComponents(r2.nodes[0], "model-x", "", 0)
 		got := sumComponents(components)
 		if got != want {
 			t.Errorf("sum(components) = %v, want %v", got, want)
@@ -530,6 +531,83 @@ func TestRouteDecisionReasons(t *testing.T) {
 		}
 		if decision.Reason == ReasonSessionAffinity {
 			t.Error("Reason should not be session_affinity once the sticky node failed validation")
+		}
+	})
+}
+
+// TestPrefixLocalityScoring covers spec §7 of step6-prefix-locality.md: the
+// prefix-locality bonus must contribute exactly its configured weight, and
+// must never flip a warm-vs-cold decision or apply to an excluded node.
+func TestPrefixLocalityScoring(t *testing.T) {
+	newPrefixTestRouter := func(nodesCfg []config.NodeConfig) *Router {
+		return New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, nodesCfg, nil)
+	}
+
+	t.Run("prefix match adds exactly the configured weight", func(t *testing.T) {
+		r := newPrefixTestRouter([]config.NodeConfig{
+			{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		})
+		base := r.computeNodeScore(r.nodes[0], "model-x", "", 10)
+		withMatch := r.computeNodeScore(r.nodes[0], "model-x", "node-a", 10)
+		if withMatch-base != 10 {
+			t.Errorf("prefix match delta = %v, want 10", withMatch-base)
+		}
+	})
+
+	t.Run("prefix match never flips a warm-vs-cold decision", func(t *testing.T) {
+		r := newPrefixTestRouter([]config.NodeConfig{
+			{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+			{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+		})
+		// node-a is warm for model-x (score +50); node-b is cold but has a
+		// matching prefix hint (score +10). Warm must still win.
+		r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-x", SizeVRAM: 4000}}
+		r.SeedPrefixLocalityHistory([]store.PrefixLocalityEntry{{PrefixHash: "hint-1", NodeName: "node-b"}})
+
+		node, warm, _ := r.RouteWithPrefix("model-x", "", "", "hint-1")
+		if node == nil {
+			t.Fatal("expected a node, got nil")
+		}
+		if node.Name != "node-a" {
+			t.Errorf("selected node %q, want \"node-a\" (warm must beat a cold prefix match)", node.Name)
+		}
+		if !warm {
+			t.Error("expected warm=true")
+		}
+	})
+
+	t.Run("prefix match on an excluded (unhealthy) node contributes nothing", func(t *testing.T) {
+		r := newPrefixTestRouter([]config.NodeConfig{
+			{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+			{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+		})
+		r.nodes[1].mu.Lock()
+		r.nodes[1].Healthy = false
+		r.nodes[1].mu.Unlock()
+		r.SeedPrefixLocalityHistory([]store.PrefixLocalityEntry{{PrefixHash: "hint-2", NodeName: "node-b"}})
+
+		node, _, _ := r.RouteWithPrefix("model-x", "", "", "hint-2")
+		if node == nil {
+			t.Fatal("expected a node, got nil")
+		}
+		if node.Name != "node-a" {
+			t.Errorf("selected node %q, want \"node-a\" (node-b is unhealthy, hint must not apply)", node.Name)
+		}
+	})
+
+	t.Run("disabled feature ignores the hint entirely", func(t *testing.T) {
+		r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+			{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+			{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+		}, nil)
+		r.SeedPrefixLocalityHistory([]store.PrefixLocalityEntry{{PrefixHash: "hint-3", NodeName: "node-b"}})
+
+		node, _, _ := r.RouteWithPrefix("model-x", "", "", "hint-3")
+		if node == nil {
+			t.Fatal("expected a node, got nil")
+		}
+		if node.Name != "node-a" {
+			t.Errorf("selected node %q, want \"node-a\" (lexicographic tiebreak; hint must be ignored when disabled)", node.Name)
 		}
 	})
 }

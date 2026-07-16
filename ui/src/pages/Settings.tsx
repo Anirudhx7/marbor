@@ -338,6 +338,8 @@ export function SettingsPage() {
           thermalWatchdogEnabled: settingsData.routing?.thermal_watchdog?.enabled || false,
           thermalWatchdogMaxTempCelsius: settingsData.routing?.thermal_watchdog?.max_temp_celsius || 0,
           thermalWatchdogConsecutiveBreaches: settingsData.routing?.thermal_watchdog?.consecutive_breaches ?? 3,
+          routingPrefixLocalityEnabled: settingsData.routing?.prefix_locality_enabled || false,
+          routingPrefixLocalityWeight: settingsData.routing?.prefix_locality_weight ?? 10,
 
           dockerEnabled: settingsData.docker?.enabled || false,
           dockerSocket: settingsData.docker?.socket || '',
@@ -422,6 +424,8 @@ export function SettingsPage() {
             max_temp_celsius: settings.thermalWatchdogMaxTempCelsius,
             consecutive_breaches: settings.thermalWatchdogConsecutiveBreaches,
           },
+          prefix_locality_enabled: settings.routingPrefixLocalityEnabled,
+          prefix_locality_weight: settings.routingPrefixLocalityWeight,
         },
         metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
         litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint, api_key: settings.liteLLMApiKey },
@@ -1389,6 +1393,23 @@ export function SettingsPage() {
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">Consecutive Breaches</label>
                   <input type="number" value={settings.thermalWatchdogConsecutiveBreaches} onChange={(e) => setSettings({ ...settings, thermalWatchdogConsecutiveBreaches: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Prefix Locality Hints</p>
+                <p className="text-xs text-muted-foreground">Soft preference for the node that last served a similar prompt prefix (KV-cache reuse) - never overrides warm residency</p>
+              </div>
+              <Toggle on={settings.routingPrefixLocalityEnabled} onToggle={() => setSettings({ ...settings, routingPrefixLocalityEnabled: !settings.routingPrefixLocalityEnabled })} />
+            </div>
+            {settings.routingPrefixLocalityEnabled && (
+              <div className="mt-3">
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Score Weight</label>
+                <input type="number" value={settings.routingPrefixLocalityWeight} onChange={(e) => setSettings({ ...settings, routingPrefixLocalityWeight: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                <p className="text-xs text-muted-foreground mt-1">Must stay below warm-residency (50) and queue-depth (15) weights so it can never flip a warm-vs-cold decision. Default 10.</p>
               </div>
             )}
           </div>

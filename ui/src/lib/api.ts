@@ -997,6 +997,22 @@ export async function fetchPredictiveDecisions(): Promise<PredictiveDecision[]> 
   return j.decisions ?? [];
 }
 
+export interface PrefixLocalityStats {
+  enabled: boolean;
+  hits: number;
+  misses: number;
+  hit_rate: number;
+}
+
+export async function fetchPrefixLocalityStats(): Promise<PrefixLocalityStats> {
+  if (DEMO) {
+    return demoDelay({ enabled: false, hits: 142, misses: 58, hit_rate: 142 / 200 });
+  }
+  const res = await apiFetch(`${BASE}/prefix-locality/stats`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch prefix-locality stats');
+  return res.json();
+}
+
 export async function fetchCloudBudgetStatus(): Promise<CloudBudgetStatus> {
   if (DEMO) {
     return demoDelay({

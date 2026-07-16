@@ -287,6 +287,14 @@ func (s *sqliteStore) migrate() error {
 			ts         TEXT NOT NULL
 		)`,
 
+		`CREATE TABLE IF NOT EXISTS prefix_locality (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			prefix_hash TEXT NOT NULL,
+			node_name   TEXT NOT NULL,
+			ts          TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_prefix_locality_hash ON prefix_locality(prefix_hash)`,
+
 		`CREATE TABLE IF NOT EXISTS runtime_keys (
 			name          TEXT PRIMARY KEY,
 			key           TEXT,
@@ -1633,6 +1641,46 @@ func (s *sqliteStore) PredictiveHistory() ([]PredictiveTransition, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: PredictiveHistory rows: %w", err)
+	}
+	return out, nil
+}
+
+// --- Prefix-locality routing hints (Step 6) ---
+
+func (s *sqliteStore) AppendPrefixLocality(prefixHash, nodeName string, ts time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT INTO prefix_locality (prefix_hash, node_name, ts) VALUES (?, ?, ?)`,
+		prefixHash, nodeName, ts.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("store: AppendPrefixLocality: %w", err)
+	}
+	// Trim to the same 500-entry cap the predictive_history table uses.
+	_, _ = s.db.Exec(`DELETE FROM prefix_locality WHERE id NOT IN (SELECT id FROM prefix_locality ORDER BY id DESC LIMIT 500)`)
+	return nil
+}
+
+func (s *sqliteStore) PrefixLocalityHistory() ([]PrefixLocalityEntry, error) {
+	rows, err := s.db.Query(`SELECT prefix_hash, node_name, ts FROM prefix_locality ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: PrefixLocalityHistory: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PrefixLocalityEntry
+	for rows.Next() {
+		var hash, node, tsRaw string
+		if err := rows.Scan(&hash, &node, &tsRaw); err != nil {
+			return nil, fmt.Errorf("store: PrefixLocalityHistory scan: %w", err)
+		}
+		ts, err := time.Parse(time.RFC3339Nano, tsRaw)
+		if err != nil {
+			continue
+		}
+		out = append(out, PrefixLocalityEntry{PrefixHash: hash, NodeName: node, Timestamp: ts})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: PrefixLocalityHistory rows: %w", err)
 	}
 	return out, nil
 }
