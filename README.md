@@ -295,6 +295,8 @@ There is no config file. ollama-mesh is DB-first: everything lives in `mesh.db` 
 ```
 The binary opens (or creates) `mesh.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Log in at `http://localhost:8080` with `admin` / `admin` - you'll be forced to set a new password on first login.
 
+**Secrets at rest:** cloud provider API keys, mesh-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `mesh.db` with AES-256-GCM. The encryption key lives in `mesh.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `mesh.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MESH_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `mesh.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
+
 From there, everything is a dashboard page or an `/admin/v1/...` API call:
 
 | Area | Where |
