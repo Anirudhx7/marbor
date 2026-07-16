@@ -17,3 +17,6 @@ ollama-mesh
 *.prof
 usage-state.json
 usage-state.json.tmp
+mesh.demo.db.tmp
+mesh.demo.db.tmp.key
+*.db.key

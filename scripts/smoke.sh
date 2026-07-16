@@ -26,8 +26,8 @@ if ! command -v sqlite3 &>/dev/null; then
 elif ! command -v go &>/dev/null; then
   echo "go not found on PATH, skipping drift check" >&2
 else
-  check_bin="$(mktemp -u)"
-  check_db="$(mktemp -u).db"
+  check_bin="$(mktemp)"
+  check_db="$(mktemp --suffix=.db)"
   go build -o "$check_bin" . || fail "build for mesh.demo.db drift check failed"
   "$check_bin" -db "$check_db" -seed-node "name=_schema_init,url=http://init,runtime=ollama" >/dev/null 2>&1 \
     || fail "seed-node step failed against freshly migrated schema"
