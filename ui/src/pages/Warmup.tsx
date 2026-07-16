@@ -12,6 +12,7 @@ import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
+import { CustomTimePicker } from '../components/DateTimePicker';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -300,7 +301,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Time (24h)</label>
-              <input type="time" value={at} onChange={e => setAt(e.target.value)} className={sel} />
+              <CustomTimePicker value={at} onChange={setAt} />
             </div>
           </div>
           <div>
@@ -413,8 +414,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Time (24h)</label>
-              <input type="time" value={at} onChange={e => setAt(e.target.value)}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground" />
+              <CustomTimePicker value={at} onChange={setAt} />
             </div>
             <div className="flex items-end gap-2">
               <button onClick={() => { setOpen(false); setError(null); }}
