@@ -46,8 +46,14 @@ export function BudgetBanner() {
     let active = true;
     const load = () => {
       fetchCloudBudgetStatus()
-        .then(s => { if (active) setStatus(s); })
-        .catch(() => { if (active) setStatus(null); });
+        .then(s => {
+          if (!active) return;
+          // Skip the setState entirely when the payload is unchanged - an
+          // unnecessary re-render here is exactly the kind of update that
+          // can interrupt a pending route transition (see LESSONS.md L11).
+          setStatus(prev => JSON.stringify(prev) === JSON.stringify(s) ? prev : s);
+        })
+        .catch(() => { if (active) setStatus(prev => prev === null ? prev : null); });
     };
     load();
     const id = setInterval(load, POLL_MS);
