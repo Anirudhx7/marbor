@@ -389,8 +389,8 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
           <Plus className="w-4 h-4" /> New schedule
         </button>
       ) : (
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4 shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
               <CustomSelect
@@ -416,39 +416,12 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
               <label className="block text-xs font-medium text-muted-foreground mb-1">Time (24h)</label>
               <CustomTimePicker value={at} onChange={setAt} />
             </div>
-            <div className="flex items-end gap-2">
-              <button onClick={() => { setOpen(false); setError(null); }}
-                className="flex-1 px-3 py-2 border border-border text-sm text-muted-foreground rounded-lg hover:bg-secondary">
-                Cancel
-              </button>
-              <button onClick={submit} disabled={saving}
-                className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
-                <Plus className="w-3.5 h-3.5" /> {saving ? 'Adding…' : 'Add'}
-              </button>
-            </div>
           </div>
 
           {(action === 'warmup' || action === 'unload') && availableModels.length > 0 && (
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">{action === 'unload' ? 'Models to unload' : 'Models to warm up'}</label>
-              <div className="flex flex-wrap gap-1.5">
-                {availableModels.map(model => (
-                  <label key={model}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-mono cursor-pointer transition-colors ${
-                      selectedModels.includes(model)
-                        ? 'bg-primary/10 border-primary/40 text-primary'
-                        : 'border-border text-muted-foreground hover:bg-secondary'
-                    }`}>
-                    <input type="checkbox" checked={selectedModels.includes(model)}
-                      onChange={e => {
-                        if (e.target.checked) setSelectedModels(p => [...p, model]);
-                        else setSelectedModels(p => p.filter(m => m !== model));
-                      }}
-                      className="sr-only" />
-                    {model}
-                  </label>
-                ))}
-              </div>
+              <ModelPills allModels={availableModels} selected={selectedModels} onChange={setSelectedModels} />
             </div>
           )}
 
@@ -456,7 +429,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
             <label className="block text-xs font-medium text-muted-foreground mb-1">Days</label>
             <div className="flex flex-wrap gap-1.5">
               {DAYS.map((d, i) => (
-                <button key={d} onClick={() => toggleDay(i)}
+                <button key={d} type="button" onClick={() => toggleDay(i)}
                   className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${days.includes(i) ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground hover:bg-secondary'}`}>
                   {d}
                 </button>
@@ -466,6 +439,17 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
           </div>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-border/50">
+            <button onClick={() => { setOpen(false); setError(null); }}
+              className="px-4 py-2 border border-border text-xs text-muted-foreground rounded-lg hover:bg-secondary transition-colors">
+              Cancel
+            </button>
+            <button onClick={submit} disabled={saving}
+              className="flex items-center justify-center gap-1 px-4 py-2 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm">
+              <Plus className="w-3.5 h-3.5" /> {saving ? 'Adding…' : 'Add Schedule'}
+            </button>
+          </div>
         </div>
       )}
     </div>
