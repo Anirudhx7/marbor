@@ -526,8 +526,20 @@ interface ScrollWheelProps {
 
 function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const localValueRef = useRef<number>(value);
   const isScrollingRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<any>(null);
+
+  // Sync scroll when value changes externally (or via click)
+  useEffect(() => {
+    if (value !== localValueRef.current) {
+      localValueRef.current = value;
+      const activeEl = containerRef.current?.querySelector(`[data-value="${value}"]`);
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [value]);
 
   // Initial scroll-into-view on load
   useEffect(() => {
@@ -536,16 +548,6 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
       activeEl.scrollIntoView({ block: 'center' });
     }
   }, []);
-
-  // Sync scroll when value changes externally (or via click)
-  useEffect(() => {
-    if (!isScrollingRef.current) {
-      const activeEl = containerRef.current?.querySelector(`[data-value="${value}"]`);
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }
-  }, [value]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     isScrollingRef.current = true;
@@ -559,8 +561,10 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
       if (containerRef.current) {
         const scrollTop = containerRef.current.scrollTop;
         const index = Math.round(scrollTop / 28);
-        if (options[index] !== undefined && options[index] !== value) {
-          onChange(options[index]);
+        const newValue = options[index];
+        if (newValue !== undefined && newValue !== value) {
+          localValueRef.current = newValue; // Sync locally first to avoid trigger loop
+          onChange(newValue);
         }
         isScrollingRef.current = false;
       }
@@ -582,6 +586,7 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
               type="button"
               data-value={opt}
               onClick={() => {
+                localValueRef.current = opt; // Sync locally first
                 onChange(opt);
               }}
               className={`block w-full py-1 text-center font-mono text-xs snap-center transition-all ${
