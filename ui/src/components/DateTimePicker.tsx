@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
 
 interface CustomDateTimePickerProps {
   value: string; // YYYY-MM-DDTHH:MM
@@ -90,7 +90,10 @@ export function CustomDateTimePicker({
   };
 
   const handleHourChange = (h: number) => {
-    const val = Math.max(0, Math.min(23, h));
+    // Wrap hours around 0-23
+    let val = h;
+    if (h > 23) val = 0;
+    if (h < 0) val = 23;
     setHours(val);
     if (selectedDay !== null) {
       updateValue(selectedDay, val, minutes);
@@ -98,7 +101,10 @@ export function CustomDateTimePicker({
   };
 
   const handleMinuteChange = (m: number) => {
-    const val = Math.max(0, Math.min(59, m));
+    // Wrap minutes around 0-59
+    let val = m;
+    if (m > 59) val = 0;
+    if (m < 0) val = 59;
     setMinutes(val);
     if (selectedDay !== null) {
       updateValue(selectedDay, hours, val);
@@ -107,7 +113,6 @@ export function CustomDateTimePicker({
 
   const updateValue = (day: number, h: number, m: number) => {
     const date = new Date(viewYear, viewMonth, day, h, m);
-    // Format YYYY-MM-DDTHH:MM
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
     const dd = String(date.getDate()).padStart(2, '0');
@@ -282,31 +287,57 @@ export function CustomDateTimePicker({
             })}
           </div>
 
-          {/* Time Picker Row */}
+          {/* Premium Time Picker Row */}
           <div className="border-t border-border/80 pt-3 flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-              <span className="font-semibold">Time:</span>
+              <span className="font-semibold">Time (24h)</span>
             </div>
 
-            <div className="flex items-center gap-1 font-mono text-sm">
-              <input
-                type="number"
-                min="0"
-                max="23"
-                value={String(hours).padStart(2, '0')}
-                onChange={(e) => handleHourChange(Number(e.target.value))}
-                className="w-10 px-1.5 py-1 text-center bg-secondary/80 border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <span className="text-muted-foreground font-semibold">:</span>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={String(minutes).padStart(2, '0')}
-                onChange={(e) => handleMinuteChange(Number(e.target.value))}
-                className="w-10 px-1.5 py-1 text-center bg-secondary/80 border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
+            <div className="flex items-center gap-1.5 font-mono">
+              {/* Hour control */}
+              <div className="flex flex-col items-center select-none">
+                <button
+                  type="button"
+                  onClick={() => handleHourChange(hours + 1)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-10 py-1 text-center bg-secondary/50 border border-border rounded-lg text-foreground text-sm font-semibold">
+                  {String(hours).padStart(2, '0')}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleHourChange(hours - 1)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <span className="text-muted-foreground font-bold text-lg -mt-3">:</span>
+
+              {/* Minute control */}
+              <div className="flex flex-col items-center select-none">
+                <button
+                  type="button"
+                  onClick={() => handleMinuteChange(minutes + 1)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-10 py-1 text-center bg-secondary/50 border border-border rounded-lg text-foreground text-sm font-semibold">
+                  {String(minutes).padStart(2, '0')}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleMinuteChange(minutes - 1)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -373,13 +404,17 @@ export function CustomTimePicker({
   }, []);
 
   const handleHourChange = (h: number) => {
-    const val = Math.max(0, Math.min(23, h));
+    let val = h;
+    if (h > 23) val = 0;
+    if (h < 0) val = 23;
     setHours(val);
     updateValue(val, minutes);
   };
 
   const handleMinuteChange = (m: number) => {
-    const val = Math.max(0, Math.min(59, m));
+    let val = m;
+    if (m > 59) val = 0;
+    if (m < 0) val = 59;
     setMinutes(val);
     updateValue(hours, val);
   };
@@ -390,9 +425,8 @@ export function CustomTimePicker({
     onChange(`${hh}:${mm}`);
   };
 
-  // Predefined quick select values
   const hourOptions = Array.from({ length: 24 }, (_, i) => i);
-  const minuteOptions = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+  const minuteOptions = Array.from({ length: 60 }, (_, i) => i);
 
   return (
     <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>
@@ -424,75 +458,37 @@ export function CustomTimePicker({
 
       {isOpen && (
         <div className="absolute z-50 mt-1.5 p-4 border border-border bg-card rounded-xl shadow-xl w-64 animate-fade-in">
-          {/* Scrollable selectors */}
-          <div className="flex gap-4 mb-4">
-            {/* Hours column */}
-            <div className="flex-1">
-              <span className="block text-[10px] uppercase font-bold text-muted-foreground/60 mb-1.5 text-center">Hours</span>
-              <div className="h-40 overflow-y-auto border border-border/80 rounded-lg bg-secondary/20 py-1 scrollbar-thin">
-                {hourOptions.map((h) => {
-                  const isSelected = h === hours;
-                  return (
-                    <button
-                      key={h}
-                      type="button"
-                      onClick={() => handleHourChange(h)}
-                      className={`block w-full py-1 text-center text-xs font-mono transition-colors hover:bg-primary/10 hover:text-primary ${
-                        isSelected ? 'bg-primary/15 text-primary font-bold' : 'text-foreground'
-                      }`}
-                    >
-                      {String(h).padStart(2, '0')}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Minutes column */}
-            <div className="flex-1">
-              <span className="block text-[10px] uppercase font-bold text-muted-foreground/60 mb-1.5 text-center">Minutes</span>
-              <div className="h-40 overflow-y-auto border border-border/80 rounded-lg bg-secondary/20 py-1 scrollbar-thin">
-                {minuteOptions.map((m) => {
-                  const isSelected = m === minutes;
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => handleMinuteChange(m)}
-                      className={`block w-full py-1 text-center text-xs font-mono transition-colors hover:bg-primary/10 hover:text-primary ${
-                        isSelected ? 'bg-primary/15 text-primary font-bold' : 'text-foreground'
-                      }`}
-                    >
-                      {String(m).padStart(2, '0')}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+          {/* Main Large Clock Display */}
+          <div className="flex justify-center items-center gap-1.5 font-mono text-3xl font-bold text-primary mb-5 select-none bg-secondary/20 py-2.5 rounded-xl border border-border/40">
+            <span>{String(hours).padStart(2, '0')}</span>
+            <span className="text-muted-foreground/50 animate-pulse">:</span>
+            <span>{String(minutes).padStart(2, '0')}</span>
           </div>
 
-          {/* Custom fine-tune controls */}
-          <div className="border-t border-border/80 pt-3 flex items-center justify-between text-xs text-muted-foreground">
-            <span>Manual adjustment:</span>
-            <div className="flex items-center gap-1 font-mono">
-              <input
-                type="number"
-                min="0"
-                max="23"
-                value={String(hours).padStart(2, '0')}
-                onChange={(e) => handleHourChange(Number(e.target.value))}
-                className="w-10 px-1 py-0.5 text-center bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <span>:</span>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={String(minutes).padStart(2, '0')}
-                onChange={(e) => handleMinuteChange(Number(e.target.value))}
-                className="w-10 px-1 py-0.5 text-center bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
+          {/* Premium Drum Wheel Picker */}
+          <div className="flex gap-4 mb-4 relative h-40 border border-border/80 rounded-xl bg-secondary/10 p-1.5 overflow-hidden">
+            {/* Soft linear fade mask overlays */}
+            <div className="absolute top-0 left-0 right-0 h-10 bg-gradient-to-b from-card to-transparent pointer-events-none z-10" />
+            <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-card to-transparent pointer-events-none z-10" />
+            
+            {/* Center target indicator overlay */}
+            <div className="absolute top-1/2 -translate-y-1/2 left-2 right-2 h-9 border border-primary/20 bg-primary/5 rounded-lg pointer-events-none z-0" />
+
+            {/* Hours Column */}
+            <ScrollWheel
+              options={hourOptions}
+              value={hours}
+              onChange={handleHourChange}
+              label="Hours"
+            />
+
+            {/* Minutes Column */}
+            <ScrollWheel
+              options={minuteOptions}
+              value={minutes}
+              onChange={handleMinuteChange}
+              label="Minutes"
+            />
           </div>
 
           {/* Footer Action buttons */}
@@ -517,6 +513,88 @@ export function CustomTimePicker({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+interface ScrollWheelProps {
+  options: number[];
+  value: number;
+  onChange: (val: number) => void;
+  label: string;
+}
+
+function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isScrollingRef = useRef<boolean>(false);
+  const scrollTimeoutRef = useRef<any>(null);
+
+  // Initial scroll-into-view on load
+  useEffect(() => {
+    const activeEl = containerRef.current?.querySelector(`[data-value="${value}"]`);
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'center' });
+    }
+  }, []);
+
+  // Sync scroll when value changes externally (or via click)
+  useEffect(() => {
+    if (!isScrollingRef.current) {
+      const activeEl = containerRef.current?.querySelector(`[data-value="${value}"]`);
+      if (activeEl) {
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [value]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    isScrollingRef.current = true;
+
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    // Scroll snapping detection (Height of each item is 28px)
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (containerRef.current) {
+        const scrollTop = containerRef.current.scrollTop;
+        const index = Math.round(scrollTop / 28);
+        if (options[index] !== undefined && options[index] !== value) {
+          onChange(options[index]);
+        }
+        isScrollingRef.current = false;
+      }
+    }, 150);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full relative">
+      <div
+        ref={containerRef}
+        onScroll={handleScroll}
+        className="h-full overflow-y-auto no-scrollbar py-[66px] snap-y snap-mandatory scroll-smooth z-10 relative"
+      >
+        {options.map((opt) => {
+          const isSelected = opt === value;
+          return (
+            <button
+              key={opt}
+              type="button"
+              data-value={opt}
+              onClick={() => {
+                onChange(opt);
+              }}
+              className={`block w-full py-1 text-center font-mono text-xs snap-center transition-all ${
+                isSelected
+                  ? 'text-primary font-bold text-sm scale-110'
+                  : 'text-foreground/40 hover:text-foreground/80 scale-95'
+              }`}
+            >
+              {String(opt).padStart(2, '0')}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
