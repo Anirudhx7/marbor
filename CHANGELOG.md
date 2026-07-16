@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Security
+- **Secrets are now encrypted at rest in `mesh.db`.** Cloud provider API keys, mesh-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret were previously stored as plaintext columns/settings - readable by anything with access to the SQLite file (backups, misconfigured storage, a copied `.db`). They're now AES-256-GCM encrypted, with the key held in a separate `mesh.db.key` file (0600) generated on first boot, or supplied via `MESH_ENCRYPTION_KEY` (base64 32-byte key) for operators who want to manage it themselves. Existing installs migrate transparently on first boot after upgrading - no manual step, no re-entering keys.
+
 ## [0.16.0] - 2026-07-16
 
 ### Added

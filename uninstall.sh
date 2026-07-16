@@ -104,7 +104,7 @@ ask_keep() {
 
 if [ -f "$DB_FILE" ]; then
   if [ "$(ask_keep "the SQLite database" "$DB_FILE" "$KEEP_DB")" = "no" ]; then
-    rm -f "$DB_FILE"
+    rm -f "$DB_FILE" "$DB_FILE.key"
     echo "Removed $DB_FILE"
   else
     echo "Kept $DB_FILE"
