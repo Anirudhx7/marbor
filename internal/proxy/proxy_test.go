@@ -378,15 +378,19 @@ func TestProxyQuantizationFallback_NoSubstitutionWhenPrimaryFits(t *testing.T) {
 	}
 }
 
-// TestAnthropicCompletionsReturns501 verifies that a /v1/completions request
-// routed to an Anthropic overflow provider is rejected with a clean 501 by the
-// mesh, rather than being proxied to Anthropic (which has no such endpoint) and
-// returning a confusing raw error to the client.
-func TestAnthropicCompletionsReturns501(t *testing.T) {
-	hit := false
+// TestAnthropicCompletionsTranslatedToMessages verifies that a
+// /v1/completions request routed to an Anthropic overflow provider is
+// translated to Anthropic's /v1/messages schema and actually proxied there
+// (see cloudtranslate_anthropic_test.go for the translation's own coverage),
+// rather than being rejected - Anthropic has no /v1/completions endpoint, but
+// the mesh now speaks Messages on the provider's behalf.
+func TestAnthropicCompletionsTranslatedToMessages(t *testing.T) {
+	var gotPath string
 	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hit = true
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)) //nolint:errcheck
 	}))
 	defer cloudSrv.Close()
 
@@ -408,11 +412,11 @@ func TestAnthropicCompletionsReturns501(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Errorf("Anthropic /v1/completions: got %d, want 501; body: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Anthropic /v1/completions: got %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	if hit {
-		t.Error("request reached the Anthropic backend; it must be rejected before proxying")
+	if gotPath != "/v1/messages" {
+		t.Errorf("Anthropic backend received path %q, want /v1/messages", gotPath)
 	}
 }
 

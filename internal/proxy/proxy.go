@@ -826,11 +826,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	metrics.CloudFallback(cloud.Name)
 	path := translateCloudPath(r.URL.Path)
 
-	// Anthropic's API only exposes /v1/messages - it has no /v1/completions or
-	// /v1/chat/completions. ollama-mesh does not translate those to the Anthropic
-	// Messages schema, so rather than proxy a request Anthropic will reject with a
-	// confusing raw error, return a clear 501 before the request leaves the mesh.
-	if strings.EqualFold(cloud.Provider, "anthropic") && (path == "/v1/completions" || path == "/v1/chat/completions") {
+	// Anthropic has no embeddings endpoint. Chat/completions requests are
+	// translated to Anthropic's native /v1/messages schema by
+	// anthropicTransport below; embeddings has no equivalent to translate to,
+	// so return a clear 501 before the request leaves the mesh.
+	if strings.EqualFold(cloud.Provider, "anthropic") && path == "/v1/embeddings" {
 		if hasNext {
 			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1)
 			return
@@ -865,15 +865,25 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	// once) so a hung provider does not leak goroutines/connections. Only the
 	// header wait is bounded - the streaming body is untouched, so R2 holds.
 	cloudTransport := h.cloudRoundTripper()
-	proxy.Transport = cloudTransport
+	var transport http.RoundTripper = cloudTransport
+	// Anthropic only exposes /v1/messages. Insert the Anthropic translator
+	// between the shared cloud transport and everything above it, so the
+	// rest of the pipeline keeps working against the OpenAI shape it already
+	// understands - it rewrites the outbound request into the Messages
+	// schema and rewrites the response back into OpenAI shape.
+	if strings.EqualFold(cloud.Provider, "anthropic") {
+		transport = &anthropicTransport{inner: cloudTransport, apiKey: cloud.APIKey}
+	}
+	proxy.Transport = transport
 	// When the original client path is Ollama-native (/api/chat or
 	// /api/generate) wrap the transport to translate the OpenAI response back
 	// into Ollama NDJSON. For /v1/... paths the cloud response passes through
 	// unchanged (current behavior preserved). The translating wrapper delegates
-	// to the same timeout-bounded transport via its inner round-tripper.
+	// to the same (possibly Anthropic-translating) transport via its inner
+	// round-tripper.
 	if isOllamaPath(r.URL.Path) {
 		proxy.Transport = &translatingTransport{
-			inner:        cloudTransport,
+			inner:        transport,
 			origPath:     r.URL.Path,
 			clientModel:  modelName,
 			clientStream: clientWantsStream(body),
