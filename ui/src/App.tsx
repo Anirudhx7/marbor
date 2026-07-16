@@ -187,7 +187,9 @@ function App() {
     const poll = async () => {
       try {
         const count = await getPendingUserCount();
-        if (active) setPendingCount(count);
+        // Skip the setState when the count hasn't moved - avoids a spurious
+        // re-render that could interrupt a pending route transition (LESSONS.md L11).
+        if (active) setPendingCount(prev => prev === count ? prev : count);
       } catch { /* ignore */ }
     };
     poll();
