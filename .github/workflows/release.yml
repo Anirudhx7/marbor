@@ -47,7 +47,7 @@ jobs:
           check_changed() {
             local image="$1"; shift
             if ! docker buildx imagetools inspect "ghcr.io/anirudhx7/$image:latest" >/dev/null 2>&1; then
-              echo "$image:latest not found in GHCR yet; building."
+              echo "$image:latest not found in GHCR yet; building." >&2
               echo true
               return
             fi
