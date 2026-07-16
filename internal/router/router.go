@@ -637,6 +637,20 @@ type Router struct {
 	// pollAll: a slow/unreachable agent host can otherwise let 2-3 poll
 	// cycles overlap, each incrementing NodeState.AgentFailures independently.
 	agentPollInFlight atomic.Bool
+
+	// Rolling prefix-locality routing preference (soft, tier-5, optimization
+	// only - see prefixlocality.go). prefixStore is the SOLE runtime
+	// authority for lookups; SQLite is restart-continuity persistence only,
+	// written best-effort and asynchronously, never consulted on the routing
+	// hot path. prefixLocalityEnabled/Weight are immutable after New() (same
+	// convention as sessionAffinity: settings-page changes persist to SQLite
+	// and apply on next restart via main.go's applyPersistedSettings, not
+	// live) so they are read without a lock. prefixStore owns its own
+	// independent mutex (see prefixLocalityStore), separate from both
+	// r.mu and affinityMu since it is an unrelated subsystem.
+	prefixStore           *prefixLocalityStore
+	prefixLocalityEnabled bool
+	prefixLocalityWeight  float64
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -787,6 +801,9 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		maxInFlightPerNode:       cfg.MaxInFlightPerNode,
 		lastAccuracyLogAt:        time.Now(),
 		lastTimeOfDayPrewarmHour: -1,
+		prefixStore:              newPrefixLocalityStore(),
+		prefixLocalityEnabled:    cfg.PrefixLocalityEnabled,
+		prefixLocalityWeight:     cfg.PrefixLocalityWeight,
 	}
 	rr = r
 	return r
@@ -1322,6 +1339,14 @@ func (r *Router) Start(ctx context.Context) {
 		case <-sweepTicker.C:
 			safeRun("sweepAffinity", r.sweepAffinity)
 			safeRun("FlushAffinity", r.FlushAffinity)
+			// Reuses this existing ticker rather than starting a new
+			// background loop - its cadence (affinityTTL/2, floored at 1m)
+			// is at or below prefix locality's own TTL/2 target (5m for the
+			// fixed 10m TTL), so entries are never retained past their TTL
+			// by more than one extra tick in the worst case.
+			if r.prefixLocalityEnabled {
+				safeRun("sweepPrefixLocality", r.prefixStore.sweep)
+			}
 		case <-warmupTickerC:
 			go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) })
 		case <-scheduleTicker.C:

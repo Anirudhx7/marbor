@@ -19,6 +19,10 @@ func (r *Router) SetStore(s store.Store) {
 	r.mu.Lock()
 	r.store = s
 	r.mu.Unlock()
+	// Boot reseed of the prefix-locality in-memory store - convenience
+	// durability only. A reseed failure or an empty history is not an error;
+	// the feature simply starts cold, same as any other soft optimization.
+	r.seedPrefixLocalityFromStore()
 }
 
 // warmStore returns the configured store, or nil. Reads under r.mu so it never

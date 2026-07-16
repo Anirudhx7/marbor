@@ -451,6 +451,19 @@ type RoutingConfig struct {
 	// One-directional - recovery always requires an admin to undrain
 	// manually. Disabled by default.
 	ThermalWatchdog ThermalWatchdogConfig `yaml:"thermal_watchdog" json:"thermal_watchdog"`
+	// PrefixLocalityEnabled gates a weak, additive placement-scoring signal:
+	// when a new request's conversation history rolls forward from one that
+	// recently completed successfully, the node that completed it gets a
+	// small score bonus (PrefixLocalityWeight), improving KV-cache reuse
+	// odds. This can NEVER override warm residency or any Hard Constraint -
+	// it is strictly weaker than warm_resident (50) and inverse_queue_depth
+	// (15) in scoreComponents. Default false: opt-in until proven on real
+	// traffic.
+	PrefixLocalityEnabled bool `yaml:"prefix_locality_enabled" json:"prefix_locality_enabled"`
+	// PrefixLocalityWeight is the score bonus (see PrefixLocalityEnabled).
+	// Must stay below warm_resident's 50 and inverse_queue_depth's 15 so it
+	// can never flip a warm-vs-cold or real-load-vs-idle decision. Default 10.
+	PrefixLocalityWeight float64 `yaml:"prefix_locality_weight" json:"prefix_locality_weight"`
 }
 
 // ThermalWatchdogConfig gates the auto-drain-on-sustained-overheat behavior.
@@ -620,6 +633,9 @@ func (c *Config) Validate() error {
 			}
 			seen[alt] = true
 		}
+	}
+	if c.Routing.PrefixLocalityWeight == 0 {
+		c.Routing.PrefixLocalityWeight = 10
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
