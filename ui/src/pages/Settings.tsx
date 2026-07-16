@@ -9,6 +9,7 @@ import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, u
 import type { Settings, CloudProvider, CloudProviderInput } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
+import { CustomSelect } from '../components/Select';
 
 // Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
 // auth and an OpenAI-compatible /chat/completions schema, matching this
@@ -541,17 +542,11 @@ export function SettingsPage() {
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                 Timezone
               </label>
-              <select
+              <CustomSelect
                 value={settings.timezone}
-                onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-              >
-                {timezones.map(tz => (
-                  <option key={tz} value={tz}>
-                    {getTimezoneLabel(tz)}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSettings({ ...settings, timezone: val })}
+                options={timezones.map(tz => ({ value: tz, label: getTimezoneLabel(tz) }))}
+              />
               <p className="text-[10px] text-muted-foreground mt-1">
                 Scheduler and prediction cycles will evaluate relative to this timezone.
               </p>
@@ -726,16 +721,16 @@ export function SettingsPage() {
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                 Log Level
               </label>
-              <select
+              <CustomSelect
                 value={settings.logLevel}
-                onChange={(e) => setSettings({ ...settings, logLevel: e.target.value as any })}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-              >
-                <option value="debug">Debug</option>
-                <option value="info">Info</option>
-                <option value="warn">Warning</option>
-                <option value="error">Error</option>
-              </select>
+                onChange={(val) => setSettings({ ...settings, logLevel: val as any })}
+                options={[
+                  { value: 'debug', label: 'Debug' },
+                  { value: 'info', label: 'Info' },
+                  { value: 'warn', label: 'Warning' },
+                  { value: 'error', label: 'Error' },
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -758,18 +753,14 @@ export function SettingsPage() {
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                   Display Currency
                 </label>
-                <select
+                <CustomSelect
                   value={currency.code}
-                  onChange={(e) => {
-                    const preset = CURRENCY_PRESETS.find(c => c.code === e.target.value);
-                    setCurrency({ ...currency, code: e.target.value, symbol: preset?.symbol || currency.symbol });
+                  onChange={(val) => {
+                    const preset = CURRENCY_PRESETS.find(c => c.code === val);
+                    setCurrency({ ...currency, code: val, symbol: preset?.symbol || currency.symbol });
                   }}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-                >
-                  {CURRENCY_PRESETS.map(c => (
-                    <option key={c.code} value={c.code}>{c.code}</option>
-                  ))}
-                </select>
+                  options={CURRENCY_PRESETS.map(c => ({ value: c.code, label: c.code }))}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
@@ -1039,14 +1030,14 @@ export function SettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Fallback Strategy</label>
-              <select
+              <CustomSelect
                 value={settings.routingFallback}
-                onChange={(e) => setSettings({ ...settings, routingFallback: e.target.value })}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-              >
-                <option value="least-connections">Least Connections</option>
-                <option value="round-robin">Round Robin</option>
-              </select>
+                onChange={(val) => setSettings({ ...settings, routingFallback: val })}
+                options={[
+                  { value: 'least-connections', label: 'Least Connections' },
+                  { value: 'round-robin', label: 'Round Robin' },
+                ]}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Upstream Timeout (ms)</label>
@@ -1533,26 +1524,20 @@ export function SettingsPage() {
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               Provider <span className="text-destructive">*</span>
             </label>
-            <select
+            <CustomSelect
               value={editingProvider.provider}
-              onChange={(e) => {
-                const provider = e.target.value;
+              onChange={(val) => {
+                const provider = val;
                 const preset = CLOUD_PROVIDER_PRESETS[provider];
                 setEditingProvider({
                   ...editingProvider,
                   provider,
-                  // 'custom' has no preset base URL - always clear it rather than
-                  // carrying over whatever the previously selected provider had.
                   base_url: provider === 'custom' ? '' : (preset?.baseUrl || editingProvider.base_url || ''),
                   default_model: provider === 'custom' ? '' : (preset?.defaultModel || editingProvider.default_model || ''),
                 });
               }}
-              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-            >
-              {Object.entries(CLOUD_PROVIDER_PRESETS).map(([value, preset]) => (
-                <option key={value} value={value}>{preset.label}</option>
-              ))}
-            </select>
+              options={Object.entries(CLOUD_PROVIDER_PRESETS).map(([value, preset]) => ({ value, label: preset.label }))}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
