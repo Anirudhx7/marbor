@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, type InputHTMLAttributes, type ReactNode 
 import { useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
+import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { RequestEntry } from '../types';
 import { fetchAuditLog, fetchNodes, fetchKeys } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
@@ -310,26 +311,20 @@ export function Requests() {
             />
           </FilterField>
           <FilterField label="From (custom)">
-            <ClearableInput
-              type="datetime-local"
+            <CustomDateTimePicker
               value={sinceInput}
-              onChange={(e) => {
-                setSinceInput(e.target.value);
-                if (e.target.value) setSincePreset('all'); // custom "From" wins over a stale preset
+              onChange={(val) => {
+                setSinceInput(val);
+                if (val) setSincePreset('all'); // custom "From" wins over a stale preset
               }}
-              onClear={() => setSinceInput('')}
-              title="Only show requests at or after this time"
-              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              placeholder="Any start time"
             />
           </FilterField>
           <FilterField label="Until">
-            <ClearableInput
-              type="datetime-local"
+            <CustomDateTimePicker
               value={untilInput}
-              onChange={(e) => setUntilInput(e.target.value)}
-              onClear={() => setUntilInput('')}
-              title="Only show requests before this time"
-              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              onChange={setUntilInput}
+              placeholder="Any end time"
             />
           </FilterField>
         </div>
