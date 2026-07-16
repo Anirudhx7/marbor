@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.16.0] - 2026-07-16
 
 ### Added
 - **Custom Select, date picker, and time picker components across the whole UI**, replacing native browser `<select>`/date/time inputs - consistent theming, no more browser-default styling breaking out of the dark UI, dropdowns that flip position instead of clipping out of modals, and styled native checkboxes/number-input spinners.
