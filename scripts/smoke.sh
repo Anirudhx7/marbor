@@ -9,13 +9,34 @@ COMPOSE="docker compose -f docker-compose.demo.yml"
 ADMIN_TOKEN="demo-admin-token"
 BAD_KEY="not-a-real-key"
 
+check_bin=""
+check_db=""
 cleanup() {
   echo "=== Tearing down demo stack ==="
   $COMPOSE down -v >/dev/null 2>&1 || true
+  rm -f "$check_bin" "$check_db" "${check_db:+$check_db.key}"
 }
 trap cleanup EXIT
 
 fail() { echo ""; echo "SMOKE FAILED: $*" >&2; exit 1; }
+
+echo "=== [0/5] mesh.demo.db drift check (schema vs live migrate() + seed_demo.sql) ==="
+if ! command -v sqlite3 &>/dev/null; then
+  echo "sqlite3 not found on PATH, skipping drift check" >&2
+elif ! command -v go &>/dev/null; then
+  echo "go not found on PATH, skipping drift check" >&2
+else
+  check_bin="$(mktemp -u)"
+  check_db="$(mktemp -u).db"
+  go build -o "$check_bin" . || fail "build for mesh.demo.db drift check failed"
+  "$check_bin" -db "$check_db" -seed-node "name=_schema_init,url=http://init,runtime=ollama" >/dev/null 2>&1 \
+    || fail "seed-node step failed against freshly migrated schema"
+  sqlite3 "$check_db" < scripts/seed_demo.sql || fail "seed_demo.sql failed against freshly migrated schema"
+  normalize() { sqlite3 "$1" ".schema" | tr '\n' ' ' | tr -s ' ' | sed 's/; */;\n/g' | sort; }
+  if ! diff <(normalize mesh.demo.db) <(normalize "$check_db") >/dev/null; then
+    fail "mesh.demo.db schema has drifted from current migrate()/seed_demo.sql - run 'make demo-db' to regenerate and commit the result"
+  fi
+fi
 
 echo "=== [1/5] Build + start demo stack ==="
 $COMPOSE build || fail "demo-build failed"

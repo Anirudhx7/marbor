@@ -1,4 +1,4 @@
-.PHONY: all build ui backend clean test dev demo demo-build demo-down bench smoke
+.PHONY: all build ui backend clean test dev demo demo-build demo-down demo-db bench smoke
 
 all: ui backend
 
@@ -38,6 +38,14 @@ demo: demo-build ## Spin up demo stack (all 4 runtimes), send 20 real requests, 
 
 demo-down: ## Stop and remove demo stack
 	docker compose -f docker-compose.demo.yml down -v
+
+demo-db: backend ## Regenerate mesh.demo.db from live schema (migrate()) + scripts/seed_demo.sql
+	rm -f mesh.demo.db.tmp mesh.demo.db.tmp.key
+	./ollama-mesh -db mesh.demo.db.tmp -seed-node "name=_schema_init,url=http://init,runtime=ollama"
+	sqlite3 mesh.demo.db.tmp < scripts/seed_demo.sql
+	mv mesh.demo.db.tmp mesh.demo.db
+	rm -f mesh.demo.db.tmp.key
+	@echo "mesh.demo.db regenerated - review with 'git diff mesh.demo.db' before committing"
 
 smoke: ## Gate the demo path: build, run, assert auth/routing/streaming/admin/metrics, tear down
 	bash scripts/smoke.sh

@@ -92,12 +92,31 @@ jobs:
         # If this becomes noisy due to false positives in indirect deps, add continue-on-error: true.
         run: govulncheck ./...
 
+  smoke:
+    # Real-binary e2e: builds the actual demo stack, sends real HTTP through the proxy,
+    # asserts auth/routing/streaming/admin/metrics. Unit tests + race detector don't prove
+    # the binary boots and routes - this catches "compiles but doesn't run" before docker-main.
+    needs: [go-checks, ui-build, govulncheck]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          check-latest: true
+
+      - name: Run smoke test
+        run: bash scripts/smoke.sh
+
   docker-main:
     # Bleeding-edge image for testing: ghcr.io/anirudhx7/ollama-mesh:main
     # Stable releases keep :latest and :vX.Y.Z via goreleaser on v* tags.
     # Runs only after all check lanes are green, and only on pushes to main.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [go-checks, ui-build, govulncheck]
+    needs: [go-checks, ui-build, govulncheck, smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read
