@@ -41,10 +41,9 @@ services:
 
   # Multi-runtime demo nodes  --  vLLM/TGI/llama.cpp mocks satisfying exactly
   # what internal/runtime's detect/health probes expect (see cmd/mocknode's
-  # package comment), not each project's full real API surface. Not part of
-  # smoke.sh's default gate (that only checks the 2 Ollama nodes + mesh);
-  # started via `make demo` or explicitly with `docker compose -f
-  # docker-compose.demo.yml up -d vllm-node tgi-node llamacpp-node`.
+  # package comment), not each project's full real API surface. Part of
+  # smoke.sh's default gate alongside the 2 Ollama nodes + mesh, so CI proves
+  # routing/auth/streaming across all 4 supported runtimes, not just Ollama.
   vllm-node:
     build:
       context: .
@@ -101,10 +100,12 @@ services:
 
   # mesh deliberately does NOT depend_on the 3 multi-runtime nodes above:
   # docker compose auto-starts a service's depends_on targets even when they
-  # weren't named explicitly, which would silently make smoke.sh (which only
-  # asks for `ollama-node-a ollama-node-b mesh`) start 3 extra containers.
-  # The router already handles a configured-but-not-yet-up node gracefully
-  # (marks it unhealthy until it responds), so mesh can start without them.
+  # weren't named explicitly in an `up` command, which would make any partial
+  # `up -d` invocation (e.g. bringing up just `mesh` for a manual debug
+  # session) silently drag in 3 extra containers. The router already handles
+  # a configured-but-not-yet-up node gracefully (marks it unhealthy until it
+  # responds), so mesh can start without them. smoke.sh starts all 5
+  # explicitly with `--wait` instead of relying on depends_on for this.
   mesh:
     build:
       context: .

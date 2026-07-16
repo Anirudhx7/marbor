@@ -41,9 +41,15 @@ else
   fi
 fi
 
-echo "=== [1/5] Build + start demo stack ==="
+echo "=== [1/5] Build + start demo stack (all 4 runtimes) ==="
 $COMPOSE build || fail "demo-build failed"
-$COMPOSE up -d ollama-node-a ollama-node-b mesh || fail "compose up failed"
+# --wait blocks until every listed service reports healthy (or the timeout
+# fails the command) - covers the 3 multi-runtime nodes' own healthchecks in
+# addition to mesh's, so routing/auth/streaming get exercised against
+# ollama/vllm/tgi/llamacpp, not just the 2 ollama nodes.
+$COMPOSE up -d --wait --wait-timeout 90 \
+  ollama-node-a ollama-node-b vllm-node tgi-node llamacpp-node mesh \
+  || fail "compose up failed (a node or mesh never reported healthy)"
 
 echo "=== [2/5] Wait for mesh health ==="
 ok=0
