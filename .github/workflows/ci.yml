@@ -108,6 +108,14 @@ jobs:
           go-version: '1.26'
           check-latest: true
 
+      - name: Stub UI embed dir
+        # smoke.sh's mesh.demo.db drift check does a bare `go build` on the runner (outside
+        # Docker) to trigger migrate() - go:embed web/dist in admin.go needs the dir to exist
+        # at compile time on a fresh checkout, same as the go-checks job above.
+        run: |
+          mkdir -p internal/admin/web/dist/assets
+          touch internal/admin/web/dist/index.html
+
       - name: Run smoke test
         run: bash scripts/smoke.sh
 

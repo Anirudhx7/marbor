@@ -32,7 +32,10 @@ else
   "$check_bin" -db "$check_db" -seed-node "name=_schema_init,url=http://init,runtime=ollama" >/dev/null 2>&1 \
     || fail "seed-node step failed against freshly migrated schema"
   sqlite3 "$check_db" < scripts/seed_demo.sql || fail "seed_demo.sql failed against freshly migrated schema"
-  normalize() { sqlite3 "$1" ".schema" | tr '\n' ' ' | tr -s ' ' | sed 's/; */;\n/g' | sort; }
+  # Compare sqlite_master DDL rows directly (one row per statement, already
+  # newline-free) rather than parsing `.schema` dot-command text - immune to
+  # any future sqlite3 CLI formatting changes in how it prints ".schema".
+  normalize() { sqlite3 "$1" "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name" | tr -s ' \t'; }
   if ! diff <(normalize mesh.demo.db) <(normalize "$check_db") >/dev/null; then
     fail "mesh.demo.db schema has drifted from current migrate()/seed_demo.sql - run 'make demo-db' to regenerate and commit the result"
   fi
