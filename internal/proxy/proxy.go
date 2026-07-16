@@ -377,6 +377,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// policy). An unknown/anonymous key defaults to false (opted out).
 	allowLocalDegradation := h.auth != nil && h.auth.IsAllowLocalDegradation(keyName)
 
+	// Rolling prefix-locality routing lookup: computed off the body already
+	// buffered above - zero new body reads, so streaming stays streaming
+	// (that guard covers the response stream, not this already-buffered
+	// request body). Uses the final (possibly fallback-substituted)
+	// modelName, since that's the model whose node/warm-state affinity
+	// actually matters for routing, and runs BEFORE injectModelDefaults
+	// mutates the body further below (that mutation is a per-node config
+	// overlay applied after a node is already chosen, not part of the
+	// client-sent conversation this lookup keys on). PrefixLocalityLookup
+	// itself no-ops (returns "", "") when the feature is disabled or the
+	// body doesn't resolve to a hashable conversation (multimodal, malformed,
+	// empty) - no branching needed here. prefixRecordKey is threaded through
+	// to the single completion-time record call below; it is never re-derived
+	// from a body that injectModelDefaults or a later degradation swap may
+	// have since mutated.
+	prefixRecordKey, prefixPreferredNode := h.router.PrefixLocalityLookup(r.Context(), modelName, body)
+
 	// Determine runtime filter from request path. Ollama-native paths (/api/*)
 	// must only route to Ollama nodes; /v1/* paths can reach any backend
 	// (vLLM, TGI, llama.cpp, Ollama). An empty filter means no restriction.
@@ -395,7 +412,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// This eliminates the previous discard-and-fall-through behavior where a valid
 	// Ollama node could be available but the request still hit 503 because a
 	// non-Ollama node was returned and silently discarded (#3).
-	node, warm, decision := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
+	node, warm, decision := h.router.WaitForNodeWithPrefix(r.Context(), modelName, sessionID, runtimeFilter, prefixPreferredNode)
 
 	// degradedOnce enforces the documented single-hop invariant across both
 	// trigger sites in this method: a request may substitute at most once,
@@ -663,6 +680,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.router.DecrModelInFlight(node, modelName)
 			success := rec.StatusCode() < 500 && !aborted
 			h.router.RecordRequestOutcome(node.Name, success)
+			// Rolling prefix locality is recorded ONLY here, on full
+			// successful completion of the request that actually finished -
+			// never at candidate selection, backend start, response headers,
+			// or first token, and never for a timeout/cancellation/error/
+			// aborted-stream outcome (all of those either return before this
+			// point or leave success false). node is whichever node actually
+			// completed the request - the one that served it after any
+			// retry/failover, not necessarily the one first selected.
+			h.router.RecordPrefixLocality(prefixRecordKey, node.Name, success)
 		}
 		break
 	}
