@@ -1,11 +1,13 @@
 package store_test
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	_ "modernc.org/sqlite"
 )
 
 func openTestDB(t *testing.T) store.Store {
@@ -746,5 +748,65 @@ func TestSetCloudProviderPrioritiesLeavesOmittedProvidersUntouched(t *testing.T)
 	// Verify "a" got priority 1 (second in the order slice, len=2 so 2-1=1).
 	if providerMap["a"].Priority != 1 {
 		t.Errorf("provider a: priority = %d, want 1", providerMap["a"].Priority)
+	}
+}
+
+// TestOpenUpgradesPreCapRuntimeKeysSchema simulates an existing mesh.db from
+// before the spend-cap columns existed: a runtime_keys table with none of
+// daily_usd_cap/monthly_usd_cap. Open() must ALTER TABLE them in via the
+// idempotent migration (sqlite.go migrate()) rather than erroring or leaving
+// AddKey/AllKeys broken - this is the regression guard for a non-additive
+// migration mistake going unnoticed (every other test uses a fresh DB where
+// the ALTERs permanently no-op).
+func TestOpenUpgradesPreCapRuntimeKeysSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "precap.db")
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE runtime_keys (
+		name          TEXT PRIMARY KEY,
+		key           TEXT,
+		rate_limit    INTEGER,
+		daily_limit   INTEGER,
+		monthly_limit INTEGER,
+		models        TEXT,
+		revoked       INTEGER
+	)`); err != nil {
+		t.Fatalf("create pre-cap runtime_keys: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("Open on pre-cap schema: %v", err)
+	}
+	defer s.Close()
+
+	k := store.KeyRecord{
+		Name:         "upgraded-key",
+		Key:          "sk-upgraded",
+		RateLimit:    100,
+		DailyLimit:   1000,
+		MonthlyLimit: 10000,
+		Models:       []string{"llama3"},
+	}
+	if err := s.UpsertKey(k); err != nil {
+		t.Fatalf("UpsertKey after schema upgrade: %v", err)
+	}
+
+	keys, err := s.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys after schema upgrade: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("expected 1 key, got %d", len(keys))
+	}
+	if keys[0].DailyUsdCap != 0 || keys[0].MonthlyUsdCap != 0 {
+		t.Errorf("expected caps backfilled to 0, got daily=%v monthly=%v",
+			keys[0].DailyUsdCap, keys[0].MonthlyUsdCap)
 	}
 }
