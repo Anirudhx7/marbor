@@ -329,8 +329,8 @@ func TestIsModelWarm_DigestMismatchNotWarm(t *testing.T) {
 	}
 
 	// computeNodeScore must not award the +50 warm bonus to the mismatched node either.
-	scoreA := r.computeNodeScore(r.nodes[0], "model-x")
-	scoreB := r.computeNodeScore(r.nodes[1], "model-x")
+	scoreA := r.computeNodeScore(r.nodes[0], "model-x", "")
+	scoreB := r.computeNodeScore(r.nodes[1], "model-x", "")
 	if scoreA <= scoreB {
 		t.Errorf("scoreA=%v scoreB=%v, want scoreA > scoreB (only node-a's digest-matched copy should get the warm bonus)", scoreA, scoreB)
 	}
@@ -447,8 +447,8 @@ func TestScoreComponentsSumEqualsComputeNodeScore(t *testing.T) {
 	}, nil)
 
 	t.Run("unpenalized", func(t *testing.T) {
-		want := r.computeNodeScore(r.nodes[0], "model-x")
-		got := sumComponents(r.scoreComponents(r.nodes[0], "model-x"))
+		want := r.computeNodeScore(r.nodes[0], "model-x", "")
+		got := sumComponents(r.scoreComponents(r.nodes[0], "model-x", ""))
 		if got != want {
 			t.Errorf("sum(components) = %v, want %v (must equal computeNodeScore exactly)", got, want)
 		}
@@ -463,8 +463,8 @@ func TestScoreComponentsSumEqualsComputeNodeScore(t *testing.T) {
 		r.nodes[0].SuccessHistory = []bool{false}
 		r.nodes[0].LastErrorAt = time.Now()
 
-		want := r.computeNodeScore(r.nodes[0], "model-x")
-		components := r.scoreComponents(r.nodes[0], "model-x")
+		want := r.computeNodeScore(r.nodes[0], "model-x", "")
+		components := r.scoreComponents(r.nodes[0], "model-x", "")
 		got := sumComponents(components)
 		if got != want {
 			t.Errorf("sum(components) = %v, want %v (penalty must be the actual clamped delta)", got, want)
@@ -490,8 +490,8 @@ func TestScoreComponentsSumEqualsComputeNodeScore(t *testing.T) {
 		r2.nodes[0].LastErrorAt = time.Now()
 		r2.nodes[0].LastPollAt = time.Now().Add(-time.Hour)
 
-		want := r2.computeNodeScore(r2.nodes[0], "model-x")
-		components := r2.scoreComponents(r2.nodes[0], "model-x")
+		want := r2.computeNodeScore(r2.nodes[0], "model-x", "")
+		components := r2.scoreComponents(r2.nodes[0], "model-x", "")
 		got := sumComponents(components)
 		if got != want {
 			t.Errorf("sum(components) = %v, want %v", got, want)
@@ -634,8 +634,8 @@ func TestPlacementScoring_TTFTWeightedLoad(t *testing.T) {
 	atomic.StoreInt32(&nodeB.ActiveConns, 8)
 	nodeB.RecentTTFT = []float64{0.08, 0.1, 0.09}
 
-	scoreA := r.computeNodeScore(nodeA, "model-x")
-	scoreB := r.computeNodeScore(nodeB, "model-x")
+	scoreA := r.computeNodeScore(nodeA, "model-x", "")
+	scoreB := r.computeNodeScore(nodeB, "model-x", "")
 	if scoreA >= scoreB {
 		t.Errorf("node-a (2 heavy prefill conns) score=%v, node-b (8 light decode conns) score=%v; want node-a < node-b", scoreA, scoreB)
 	}
@@ -653,5 +653,180 @@ func TestPlacementScoring_TTFTWeightedLoad(t *testing.T) {
 	nodeC := &NodeState{Name: "node-c", ActiveConns: 3}
 	if got := effectiveLoad(nodeC, atomic.LoadInt32(&nodeC.ActiveConns)); got != 3.0 {
 		t.Errorf("effectiveLoad with no RecentTTFT = %v, want 3.0 (raw conns, unweighted)", got)
+	}
+}
+
+// --- G1-C case 20: weight ordering with live-scoring numeric margins ---
+func TestScoreComponents_PrefixMatchOrdering(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+	}, nil)
+	n := r.nodes[0]
+
+	base := r.computeNodeScore(n, "model-x", "")
+	withMatch := r.computeNodeScore(n, "model-x", "node-a")
+	delta := withMatch - base
+	if delta != 10 {
+		t.Fatalf("prefix_match delta = %v, want exactly 10 (the configured weight)", delta)
+	}
+
+	// Live numeric margins against the actual component weights, not just
+	// their presence: prefix_match (10) < inverse_queue_depth (15) <
+	// warm_model_resident (50).
+	components := r.scoreComponents(n, "model-x", "node-a")
+	weights := map[string]float64{}
+	for _, c := range components {
+		weights[c.Name] = c.Weight
+	}
+	prefixW, ok := weights["prefix_match"]
+	if !ok {
+		t.Fatal("expected a prefix_match component when the feature is enabled")
+	}
+	if prefixW != 10 {
+		t.Errorf("prefix_match weight = %v, want 10", prefixW)
+	}
+	if margin := weights["inverse_queue_depth"] - prefixW; margin <= 0 {
+		t.Errorf("inverse_queue_depth (%v) must exceed prefix_match (%v), margin=%v", weights["inverse_queue_depth"], prefixW, margin)
+	}
+	if margin := weights["warm_model_resident"] - weights["inverse_queue_depth"]; margin <= 0 {
+		t.Errorf("warm_model_resident (%v) must exceed inverse_queue_depth (%v), margin=%v", weights["warm_model_resident"], weights["inverse_queue_depth"], margin)
+	}
+	// State the actual margins for the record: 15-10=5, 50-15=35.
+	if got := weights["inverse_queue_depth"] - prefixW; got != 5 {
+		t.Errorf("inverse_queue_depth - prefix_match margin = %v, want 5", got)
+	}
+	if got := weights["warm_model_resident"] - weights["inverse_queue_depth"]; got != 35 {
+		t.Errorf("warm_model_resident - inverse_queue_depth margin = %v, want 35", got)
+	}
+}
+
+// TestPrefixMatch_DisabledFeatureParity is the decision-parity requirement:
+// with the feature disabled, scoreComponents must return the exact same
+// slice (length included, not just the same summed score) as before the
+// prefix_match term existed - no 6th component at all, never a zeroed one.
+func TestPrefixMatch_DisabledFeatureParity(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+	}, nil)
+	components := r.scoreComponents(r.nodes[0], "model-x", "node-a") // even with a non-empty preferredNode
+	if len(components) != 7 {
+		t.Fatalf("len(components) = %d, want 7 (5 base terms + cooldown_penalty + stale_telemetry_penalty, no prefix_match when disabled)", len(components))
+	}
+	for _, c := range components {
+		if c.Name == "prefix_match" {
+			t.Fatal("prefix_match must not appear at all when the feature is disabled")
+		}
+	}
+}
+
+// --- G1-C case 10: eligibility precedence over locality hint ---
+func TestSelectBestNode_EligibilityBeatsPrefixHint(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+	// node-a is warm for model-x (score +50); node-b is cold but is the
+	// locality-preferred node (score +10). Warm residency must still win -
+	// eligibility/optimization tiers above locality are never overridden by
+	// a soft hint.
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-x", SizeVRAM: 4000}}
+
+	node, warm, _ := r.RouteWithPrefix("model-x", "", "", "node-b")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "node-a" {
+		t.Errorf("selected node %q, want \"node-a\" (warm residency must beat a cold prefix hint)", node.Name)
+	}
+	if !warm {
+		t.Error("expected warm=true")
+	}
+}
+
+// --- G1-C case 11: preferred-node failure/reroute ---
+func TestRouteWithPrefix_PreferredNodeUnhealthyReroutes(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Healthy = false
+	r.nodes[1].mu.Unlock()
+
+	node, _, _ := r.RouteWithPrefix("model-x", "", "", "node-b")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "node-a" {
+		t.Errorf("selected node %q, want \"node-a\" (node-b is unhealthy; hint on an ineligible node contributes nothing and traffic reroutes)", node.Name)
+	}
+}
+
+// --- G1-C case 14 (routing-layer half): RouteExcludingWithPrefix never
+// re-selects a failed/excluded preferred node through its locality entry,
+// because exclude filters the candidate slice before any scoring runs. ---
+func TestRouteExcludingWithPrefix_NeverReselectsExcludedPreferredNode(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+	// node-a is the locality-preferred node but has just failed and is
+	// excluded (simulating a retry after node-a's request errored).
+	exclude := map[string]bool{"http://node-a:11434": true}
+	node, _, _ := r.RouteExcludingWithPrefix("model-x", "", exclude, "node-a")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "node-b" {
+		t.Errorf("selected node %q, want \"node-b\" (excluded node-a must never be re-selected via its own locality entry)", node.Name)
+	}
+}
+
+// --- G1-C case 15: node removal invalidates a stale locality preference ---
+func TestRouteWithPrefix_RemovedNodeHintInert(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+	}, nil)
+	// "node-gone" is a plausible preferredNode value from a stale/expired
+	// record referencing a node no longer in the fleet - it must simply
+	// never match any live candidate, never panic or error.
+	node, _, _ := r.RouteWithPrefix("model-x", "", "", "node-gone")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "node-a" {
+		t.Errorf("selected node %q, want \"node-a\" (the only live node; the stale hint must be inert)", node.Name)
+	}
+}
+
+// TestRoute_DisabledPrefixLocality_BitIdenticalToBaseline is the decision-
+// parity requirement at the Route()/RouteWithPrefix() layer: with the
+// feature disabled, RouteWithPrefix("", ...) - and therefore every existing
+// caller of Route/WaitForNode/RouteExcluding, which always pass "" - must
+// produce byte-identical RoutingDecision output to a router that has never
+// heard of prefix locality at all.
+func TestRoute_DisabledPrefixLocality_BitIdenticalToBaseline(t *testing.T) {
+	newFleet := func() []config.NodeConfig {
+		return []config.NodeConfig{
+			{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+			{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+		}
+	}
+	baseline := New(config.RoutingConfig{Strategy: "warm-first"}, newFleet(), nil)
+	withHintButDisabled := New(config.RoutingConfig{Strategy: "warm-first"}, newFleet(), nil)
+
+	nodeB, wB, decB := baseline.Route("model-x", "", "")
+	// Even passing a non-empty preferredNode through RouteWithPrefix must be
+	// inert when the feature is disabled.
+	nodeH, wH, decH := withHintButDisabled.RouteWithPrefix("model-x", "", "", "node-b")
+
+	if nodeB == nil || nodeH == nil {
+		t.Fatal("expected a node from both routers")
+	}
+	if nodeB.Name != nodeH.Name || wB != wH {
+		t.Errorf("baseline=(%s,%v) hinted-but-disabled=(%s,%v), want identical", nodeB.Name, wB, nodeH.Name, wH)
+	}
+	if decB.Score != decH.Score || decB.Reason != decH.Reason || len(decB.Components) != len(decH.Components) {
+		t.Errorf("RoutingDecision diverged: baseline=%+v hinted-but-disabled=%+v", decB, decH)
 	}
 }
