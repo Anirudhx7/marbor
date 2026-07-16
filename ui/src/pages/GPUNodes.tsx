@@ -8,6 +8,7 @@ import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
+import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
@@ -825,17 +826,17 @@ export function GPUNodes() {
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               Runtime
             </label>
-            <select
-              value={newNode.runtime}
-              onChange={(e) => setNewNode({ ...newNode, runtime: e.target.value })}
-              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
-            >
-              <option value="auto">Auto-detect</option>
-              <option value="ollama">Ollama</option>
-              <option value="vllm">vLLM</option>
-              <option value="tgi">TGI (Text Generation Inference)</option>
-              <option value="llamacpp">llama.cpp</option>
-            </select>
+            <CustomSelect
+              value={newNode.runtime || 'auto'}
+              onChange={(val) => setNewNode({ ...newNode, runtime: val })}
+              options={[
+                { value: 'auto', label: 'Auto-detect' },
+                { value: 'ollama', label: 'Ollama' },
+                { value: 'vllm', label: 'vLLM' },
+                { value: 'tgi', label: 'TGI (Text Generation Inference)' },
+                { value: 'llamacpp', label: 'llama.cpp' },
+              ]}
+            />
             <p className="text-xs text-muted-foreground mt-1">
               Auto-detect probes the node on first health check. Pick a runtime directly if you know it.
             </p>
@@ -887,17 +888,17 @@ export function GPUNodes() {
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               Runtime
             </label>
-            <select
+            <CustomSelect
               value={editRuntime}
-              onChange={(e) => setEditRuntime(e.target.value)}
-              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 cursor-pointer"
-            >
-              <option value="auto">Auto-detect</option>
-              <option value="ollama">Ollama</option>
-              <option value="vllm">vLLM</option>
-              <option value="tgi">TGI (Text Generation Inference)</option>
-              <option value="llamacpp">llama.cpp</option>
-            </select>
+              onChange={setEditRuntime}
+              options={[
+                { value: 'auto', label: 'Auto-detect' },
+                { value: 'ollama', label: 'Ollama' },
+                { value: 'vllm', label: 'vLLM' },
+                { value: 'tgi', label: 'TGI (Text Generation Inference)' },
+                { value: 'llamacpp', label: 'llama.cpp' },
+              ]}
+            />
             <p className="text-xs text-muted-foreground mt-1">
               Setting Auto-detect re-probes the node on the next health check.
             </p>

@@ -3,6 +3,7 @@ import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowD
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
 import { ModelConfigModal } from '../components/ModelConfigModal';
+import { CustomSelect } from '../components/Select';
 import {
   pullModel,
   fetchSystemInfo,
@@ -649,17 +650,19 @@ export function ModelAdvisor() {
 
           <div className="flex flex-wrap gap-3 items-center text-xs">
             <label className="flex items-center gap-1.5">
-              <span className="text-muted-foreground font-medium">Sort:</span>
-              <select
+              <span className="text-muted-foreground font-medium shrink-0">Sort:</span>
+              <CustomSelect
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium cursor-pointer"
-              >
-                <option value="downloads">Most Downloads</option>
-                <option value="likes">Most Likes</option>
-                <option value="newest">Newest</option>
-                <option value="oldest">Oldest</option>
-              </select>
+                onChange={(val) => setSortBy(val as typeof sortBy)}
+                size="sm"
+                className="w-36"
+                options={[
+                  { value: 'downloads', label: 'Most Downloads' },
+                  { value: 'likes', label: 'Most Likes' },
+                  { value: 'newest', label: 'Newest' },
+                  { value: 'oldest', label: 'Oldest' },
+                ]}
+              />
             </label>
             <label className="flex items-center gap-1.5">
               <span className="text-muted-foreground font-medium">Min Downloads:</span>

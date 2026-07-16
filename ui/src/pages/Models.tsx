@@ -10,6 +10,7 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
+import { CustomSelect } from '../components/Select';
 
 function formatVRAM(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -420,18 +421,15 @@ export function Models() {
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">Target GPU Node</label>
-            <select
+            <CustomSelect
               value={pullSelectedNode}
-              onChange={(e) => setPullSelectedNode(e.target.value)}
+              onChange={setPullSelectedNode}
               disabled={pullLoading || pullSuccess}
-              className="w-full px-3 py-2 text-sm bg-secondary border border-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            >
-              {pullNodesList.map((n) => (
-                <option key={n.name} value={n.name}>
-                  {n.name} ({n.health})
-                </option>
-              ))}
-            </select>
+              options={pullNodesList.map((n) => ({
+                value: n.name,
+                label: `${n.name} (${n.health})`
+              }))}
+            />
           </div>
 
           <div className="space-y-1.5">

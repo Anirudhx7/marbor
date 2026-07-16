@@ -511,7 +511,7 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2 items-start">
         {/* Proxy Settings */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
