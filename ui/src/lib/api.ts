@@ -619,11 +619,11 @@ export async function updateCloudProvider(name: string, data: CloudProviderInput
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to update cloud provider'); }
 }
 
-export async function testCloudProvider(base_url: string, api_key: string): Promise<void> {
+export async function testCloudProvider(provider: string, base_url: string, api_key: string): Promise<void> {
   const res = await apiFetch(`${BASE}/cloud/providers/test`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ base_url, api_key }),
+    body: JSON.stringify({ provider, base_url, api_key }),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Could not verify API key'); }
 }

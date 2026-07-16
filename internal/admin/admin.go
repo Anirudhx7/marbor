@@ -1497,15 +1497,23 @@ func (s *Server) handleUpdateCloudProvider(w http.ResponseWriter, r *http.Reques
 const cloudProviderTestTimeout = 8 * time.Second
 
 // handleTestCloudProvider verifies a base_url + api_key pair actually
-// authenticates against the provider before it gets saved. All configured
-// providers speak the OpenAI-compatible surface (see proxyToCloud), so a
-// GET {base_url}/models with the same Bearer header used at request time is
-// a faithful, side-effect-free credential check.
+// authenticates against the provider before it gets saved. Most configured
+// providers speak the OpenAI-compatible surface (see proxyToCloud) and gate
+// GET /models on the Authorization header, so that's the default probe.
+// Two providers need a different probe because their /models (or equivalent)
+// does not faithfully gate on the key:
+//   - anthropic authenticates via "x-api-key" + "anthropic-version", not
+//     "Authorization: Bearer" - the generic probe always 401s a valid key.
+//   - openrouter's GET /v1/models is public and returns 200 for any key
+//     (even garbage), so it must use GET /api/v1/auth/key instead, which
+//     404/401s on a bad key.
+//
 // POST /admin/cloud/providers/test.
 func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		BaseURL string `json:"base_url"`
-		APIKey  string `json:"api_key"`
+		Provider string `json:"provider"`
+		BaseURL  string `json:"base_url"`
+		APIKey   string `json:"api_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -1522,12 +1530,22 @@ func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request)
 
 	ctx, cancel := context.WithTimeout(r.Context(), cloudProviderTestTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(body.BaseURL, "/")+"/models", nil)
+
+	testURL := strings.TrimSuffix(body.BaseURL, "/") + "/models"
+	if body.Provider == "openrouter" {
+		testURL = strings.TrimSuffix(body.BaseURL, "/") + "/auth/key"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, testURL, nil)
 	if err != nil {
 		writeServerError(w, r, err)
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+body.APIKey)
+	if body.Provider == "anthropic" {
+		req.Header.Set("x-api-key", body.APIKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	} else {
+		req.Header.Set("Authorization", "Bearer "+body.APIKey)
+	}
 
 	client := &http.Client{Timeout: cloudProviderTestTimeout}
 	resp, err := client.Do(req)
