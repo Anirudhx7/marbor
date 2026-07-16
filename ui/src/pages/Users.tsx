@@ -5,6 +5,7 @@ import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserP
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
@@ -114,11 +115,14 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
             {activeKeys.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">No active keys found.</p>
             ) : (
-              <select value={existingKeyName} onChange={e => setExistingKeyName(e.target.value)}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50">
-                <option value="">-- select a key --</option>
-                {activeKeys.map(k => <option key={k.name} value={k.name}>{k.name}</option>)}
-              </select>
+              <CustomSelect
+                value={existingKeyName}
+                onChange={setExistingKeyName}
+                options={[
+                  { value: '', label: '-- select a key --' },
+                  ...activeKeys.map(k => ({ value: k.name, label: k.name })),
+                ]}
+              />
             )}
           </div>
         ) : (
@@ -284,11 +288,14 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">Role</label>
-            <select value={role} onChange={e => setRole(e.target.value as any)}
-              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50">
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
+            <CustomSelect
+              value={role}
+              onChange={val => setRole(val as any)}
+              options={[
+                { value: 'user', label: 'User' },
+                { value: 'admin', label: 'Admin' },
+              ]}
+            />
           </div>
         </div>
 

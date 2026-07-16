@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
 import {
   fetchRoutingRules,
@@ -408,17 +409,16 @@ export function Routing() {
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                 Target Node <span className="text-destructive">*</span>
               </label>
-              <select
+              <CustomSelect
                 value={newRuleForm.targetNode}
-                onChange={(e) => setNewRuleForm({ ...newRuleForm, targetNode: e.target.value })}
-                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-              >
-                <option value="">Select node...</option>
-                <option value="any">Any Node (Dynamic Balancing)</option>
-                {availableNodes.map((node) => (
-                  <option key={node.id} value={node.name}>{node.name}</option>
-                ))}
-              </select>
+                onChange={(val) => setNewRuleForm({ ...newRuleForm, targetNode: val })}
+                placeholder="Select node..."
+                options={[
+                  { value: '', label: 'Select node...' },
+                  { value: 'any', label: 'Any Node (Dynamic Balancing)' },
+                  ...availableNodes.map((node) => ({ value: node.name, label: node.name })),
+                ]}
+              />
             </div>
           </div>
           

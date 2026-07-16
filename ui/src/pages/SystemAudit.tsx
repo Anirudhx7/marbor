@@ -4,6 +4,7 @@ import { Shield, Search, RefreshCw, Eye, Calendar, User, Terminal, Globe, Filter
 import { fetchSystemAudit } from '../lib/api';
 import type { SystemAuditEntry } from '../types';
 import { Modal } from '../components/Modal';
+import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
@@ -220,19 +221,16 @@ export function SystemAudit() {
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        <div className="flex items-center gap-2 w-full md:w-80">
           <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
-          <select
+          <CustomSelect
             value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value)}
-            className="w-full md:w-64 px-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-150 cursor-pointer"
-          >
-            {uniqueActions.map((act) => (
-              <option key={act} value={act}>
-                {act === 'all' ? 'All Action Types' : getActionLabel(act)}
-              </option>
-            ))}
-          </select>
+            onChange={setActionFilter}
+            options={uniqueActions.map((act) => ({
+              value: act,
+              label: act === 'all' ? 'All Action Types' : getActionLabel(act)
+            }))}
+          />
           {hasActiveFilters && (
             <button
               onClick={() => { setSearchQuery(''); setActionFilter('all'); }}
