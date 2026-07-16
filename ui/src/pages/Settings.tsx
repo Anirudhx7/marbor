@@ -393,7 +393,7 @@ export function SettingsPage() {
     if (hasNewKey) {
       setCloudTesting(true);
       try {
-        await testCloudProvider(editingProvider.base_url, editingProvider.api_key);
+        await testCloudProvider(editingProvider.provider, editingProvider.base_url, editingProvider.api_key);
       } catch (err: any) {
         setCloudError(err.message || 'Could not verify API key');
         setCloudTesting(false);
