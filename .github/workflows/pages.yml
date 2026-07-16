@@ -71,7 +71,7 @@ jobs:
           find site -name "*.html" -exec sed -i "s/{{VERSION}}/v${{ steps.version.outputs.version }}/g" {} \;
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
