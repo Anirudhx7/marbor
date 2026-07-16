@@ -17,6 +17,7 @@ import {
 } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse } from '../lib/mockData';
+import { CustomDatePicker } from '../components/DateTimePicker';
 
 function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   const styles = {
@@ -688,11 +689,10 @@ export function ModelAdvisor() {
             </label>
             <label className="flex items-center gap-1.5">
               <span className="text-muted-foreground font-medium">Created After:</span>
-              <input
-                type="date"
+              <CustomDatePicker
                 value={createdAfter}
-                onChange={(e) => setCreatedAfter(e.target.value)}
-                className="bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium"
+                onChange={setCreatedAfter}
+                className="w-36"
               />
             </label>
             {(minDownloads || minLikes || createdAfter || sortBy !== 'downloads') && (
