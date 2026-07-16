@@ -196,13 +196,14 @@ function NodeCard({ node, initial, availableModels, onSave }: {
 
 // ── Schedule row with inline edit ────────────────────────────────────────────
 
-function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDelete }: {
+function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDelete, isLast }: {
   schedule: Schedule;
   nodes: GPUNode[];
   availableModels: string[];
   onToggle: (enabled: boolean) => void;
   onSave: (patch: Partial<Omit<Schedule, 'id'>>) => Promise<void>;
   onDelete: () => void;
+  isLast?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [action, setAction] = useState<Schedule['action']>(schedule.action);
@@ -268,7 +269,7 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
 
       {/* Inline edit form - visually attached, distinct bg */}
       {editing && (
-        <div className="border-t border-border bg-secondary/30 px-4 py-4 space-y-3 last:rounded-b-xl">
+        <div className={`border-t border-border bg-secondary/30 px-4 py-4 space-y-3 ${isLast ? 'rounded-b-xl' : ''}`}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
@@ -458,7 +459,7 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
 
 // ── Paused schedules collapsible section ─────────────────────────────────────
 
-function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (s: Schedule) => React.ReactNode }) {
+function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (s: Schedule, isLast?: boolean) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="bg-card border border-border rounded-xl">
@@ -473,7 +474,7 @@ function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (
       </button>
       {open && (
         <div className="border-t border-border divide-y divide-border opacity-60">
-          {paused.map(renderRow)}
+          {paused.map((s, i) => renderRow(s, i === paused.length - 1))}
         </div>
       )}
     </div>
@@ -742,12 +743,13 @@ export function Warmup() {
           {(() => {
             const active = schedules.filter(s => s.enabled);
             const paused = schedules.filter(s => !s.enabled);
-            const row = (s: Schedule) => (
+            const row = (s: Schedule, isLast?: boolean) => (
               <ScheduleRow
                 key={s.id} schedule={s} nodes={nodes} availableModels={availableModels}
                 onToggle={(enabled) => editSchedule(s.id, { enabled })}
                 onSave={(patch) => editSchedule(s.id, patch)}
                 onDelete={() => { setScheduleDeleteError(null); setScheduleToDelete(s); }}
+                isLast={isLast}
               />
             );
             return (
@@ -755,7 +757,7 @@ export function Warmup() {
                 {/* Active schedules */}
                 {active.length > 0 && (
                   <div className="bg-card border border-border rounded-xl divide-y divide-border">
-                    {active.map(row)}
+                    {active.map((s, i) => row(s, i === active.length - 1))}
                   </div>
                 )}
 

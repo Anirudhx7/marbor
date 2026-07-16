@@ -31,15 +31,20 @@ export function CustomSelect({
   const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
 
   useEffect(() => {
-    if (isOpen && containerRef.current) {
+    if (!isOpen) return;
+    const updatePosition = () => {
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < 260) {
-        setPosition('top');
-      } else {
-        setPosition('bottom');
-      }
-    }
+      setPosition(spaceBelow < 260 ? 'top' : 'bottom');
+    };
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -130,15 +135,20 @@ export function CustomCombobox({
   const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
 
   useEffect(() => {
-    if (isOpen && containerRef.current) {
+    if (!isOpen) return;
+    const updatePosition = () => {
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < 260) {
-        setPosition('top');
-      } else {
-        setPosition('bottom');
-      }
-    }
+      setPosition(spaceBelow < 260 ? 'top' : 'bottom');
+    };
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
   }, [isOpen]);
 
   useEffect(() => {
