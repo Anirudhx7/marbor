@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { TrendingUp, DollarSign, Server, Cloud } from 'lucide-react';
+import { TrendingUp, DollarSign, Server, Cloud, Download } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { fetchAnalytics } from '../lib/api';
+import { fetchAnalytics, analyticsExportUrl } from '../lib/api';
 import { mockAnalytics } from '../lib/mockData';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { Analytics, HourlyBucket, ModelStat } from '../types';
@@ -53,6 +53,18 @@ function StatCard({
         <div className={`p-2 ${c.bg} rounded-lg ${c.icon}`}>{icon}</div>
       </div>
     </div>
+  );
+}
+
+function ExportButton({ type, label }: { type: 'hourly' | 'models'; label: string }) {
+  return (
+    <a
+      href={analyticsExportUrl(type)}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-secondary/50 text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
+    >
+      <Download className="w-3.5 h-3.5" />
+      {label}
+    </a>
   );
 }
 
@@ -109,16 +121,24 @@ export function Analytics() {
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       {/* Header */}
       <div className="border-b border-border pb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-success/10 rounded-lg">
-            <TrendingUp className="w-5 h-5 text-success" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-success/10 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-success" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Cost savings and routing breakdown - last 24 hours
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Cost savings and routing breakdown - last 24 hours
-            </p>
-          </div>
+          {!demoMode && (
+            <div className="flex items-center gap-2">
+              <ExportButton type="hourly" label="Export Hourly CSV" />
+              <ExportButton type="models" label="Export Models CSV" />
+            </div>
+          )}
         </div>
       </div>
 
