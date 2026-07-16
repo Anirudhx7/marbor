@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -13,7 +14,8 @@ import (
 
 // sqliteStore is the SQLite-backed Store implementation.
 type sqliteStore struct {
-	db *sql.DB
+	db        *sql.DB
+	secretKey []byte // AES-256 key for at-rest secret encryption, see secretbox.go
 }
 
 // Open opens (or creates) a SQLite database at path, runs migrations, and
@@ -39,7 +41,13 @@ func Open(path string) (Store, error) {
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(4)
 
-	s := &sqliteStore{db: db}
+	secretKey, err := loadOrCreateSecretKey(path)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("store: %w", err)
+	}
+
+	s := &sqliteStore{db: db, secretKey: secretKey}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: migrate: %w", err)
@@ -304,6 +312,96 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
+	}
+	if err := s.migrateEncryptSecrets(); err != nil {
+		return fmt.Errorf("migrate encrypt secrets: %w", err)
+	}
+	return nil
+}
+
+// migrateEncryptSecrets re-encrypts any secret column/setting still holding
+// legacy plaintext (no enc:v1: prefix) from before at-rest encryption was
+// added. Idempotent: rows already encrypted are left untouched, so this is
+// safe to run on every boot.
+func (s *sqliteStore) migrateEncryptSecrets() error {
+	rows, err := s.db.Query(`SELECT name, api_key FROM cloud_providers`)
+	if err != nil {
+		return fmt.Errorf("select cloud_providers: %w", err)
+	}
+	type plain struct{ name, value string }
+	var pending []plain
+	for rows.Next() {
+		var name, apiKey string
+		if err := rows.Scan(&name, &apiKey); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan cloud_providers: %w", err)
+		}
+		if apiKey != "" && !strings.HasPrefix(apiKey, secretEncPrefix) {
+			pending = append(pending, plain{name, apiKey})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("cloud_providers rows: %w", err)
+	}
+	for _, p := range pending {
+		enc, err := encryptSecret(s.secretKey, p.value)
+		if err != nil {
+			return fmt.Errorf("encrypt cloud_providers.api_key for %s: %w", p.name, err)
+		}
+		if _, err := s.db.Exec(`UPDATE cloud_providers SET api_key=? WHERE name=?`, enc, p.name); err != nil {
+			return fmt.Errorf("update cloud_providers.api_key for %s: %w", p.name, err)
+		}
+	}
+
+	rows, err = s.db.Query(`SELECT name, key FROM runtime_keys`)
+	if err != nil {
+		return fmt.Errorf("select runtime_keys: %w", err)
+	}
+	pending = pending[:0]
+	for rows.Next() {
+		var name, key string
+		if err := rows.Scan(&name, &key); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan runtime_keys: %w", err)
+		}
+		if key != "" && !strings.HasPrefix(key, secretEncPrefix) {
+			pending = append(pending, plain{name, key})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("runtime_keys rows: %w", err)
+	}
+	for _, p := range pending {
+		enc, err := encryptSecret(s.secretKey, p.value)
+		if err != nil {
+			return fmt.Errorf("encrypt runtime_keys.key for %s: %w", p.name, err)
+		}
+		if _, err := s.db.Exec(`UPDATE runtime_keys SET key=? WHERE name=?`, enc, p.name); err != nil {
+			return fmt.Errorf("update runtime_keys.key for %s: %w", p.name, err)
+		}
+	}
+
+	for settingKey := range sensitiveSettingKeys {
+		var value string
+		err := s.db.QueryRow(`SELECT value FROM settings WHERE key=?`, settingKey).Scan(&value)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("select settings %s: %w", settingKey, err)
+		}
+		if value == "" || strings.HasPrefix(value, secretEncPrefix) {
+			continue
+		}
+		enc, err := encryptSecret(s.secretKey, value)
+		if err != nil {
+			return fmt.Errorf("encrypt settings %s: %w", settingKey, err)
+		}
+		if _, err := s.db.Exec(`UPDATE settings SET value=? WHERE key=?`, enc, settingKey); err != nil {
+			return fmt.Errorf("update settings %s: %w", settingKey, err)
+		}
 	}
 	return nil
 }
@@ -757,11 +855,15 @@ func (s *sqliteStore) UpsertKey(k KeyRecord) error {
 	if k.Revoked {
 		revoked = 1
 	}
+	encKey, err := encryptSecret(s.secretKey, k.Key)
+	if err != nil {
+		return fmt.Errorf("store: UpsertKey: %w", err)
+	}
 	_, err = s.db.Exec(
 		`INSERT OR REPLACE INTO runtime_keys
 			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		k.Name, k.Key, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked,
+		k.Name, encKey, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
@@ -796,6 +898,20 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked); err != nil {
 			return nil, fmt.Errorf("store: AllKeys scan: %w", err)
 		}
+		dec, decErr := decryptSecret(s.secretKey, k.Key)
+		if decErr != nil {
+			// A single undecryptable row (corrupt data, rotated key) must not
+			// take every other key down with it - auth.go loads this whole
+			// list at boot/reload, so returning an error here would lock out
+			// every client, not just the owner of the bad row. The row is
+			// dropped rather than kept with Key="" - auth.go registers keys
+			// in a map keyed by the literal key string, and "" is reachable
+			// from a client sending "Authorization: Bearer " (trailing space,
+			// empty token), which would let it match and authenticate.
+			log.Printf("store: AllKeys: dropping %s: %v (re-enter its key to restore it)", k.Name, decErr)
+			continue
+		}
+		k.Key = dec
 		k.Revoked = revoked != 0
 		if strings.TrimSpace(modelsJSON) != "" && modelsJSON != "null" {
 			if err := json.Unmarshal([]byte(modelsJSON), &k.Models); err != nil {
@@ -1349,10 +1465,22 @@ func (s *sqliteStore) GetSetting(key string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("store: GetSetting: %w", err)
 	}
+	if sensitiveSettingKeys[key] {
+		if value, err = decryptSecret(s.secretKey, value); err != nil {
+			return "", fmt.Errorf("store: GetSetting decrypt %s: %w", key, err)
+		}
+	}
 	return value, nil
 }
 
 func (s *sqliteStore) SetSetting(key, value string) error {
+	if sensitiveSettingKeys[key] {
+		enc, err := encryptSecret(s.secretKey, value)
+		if err != nil {
+			return fmt.Errorf("store: SetSetting encrypt %s: %w", key, err)
+		}
+		value = enc
+	}
 	_, err := s.db.Exec(
 		`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
 		key, value,
@@ -1453,11 +1581,15 @@ func (s *sqliteStore) UpsertCloudProvider(cp CloudProviderRecord) error {
 	if cp.Enabled {
 		enabled = 1
 	}
-	_, err := s.db.Exec(
+	encKey, err := encryptSecret(s.secretKey, cp.APIKey)
+	if err != nil {
+		return fmt.Errorf("store: UpsertCloudProvider: %w", err)
+	}
+	_, err = s.db.Exec(
 		`INSERT OR REPLACE INTO cloud_providers
 			(name, provider, base_url, api_key, default_model, cost_per_1k_tokens, enabled, priority)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		cp.Name, cp.Provider, cp.BaseURL, cp.APIKey, cp.DefaultModel,
+		cp.Name, cp.Provider, cp.BaseURL, encKey, cp.DefaultModel,
 		cp.CostPer1KTokens, enabled, cp.Priority,
 	)
 	if err != nil {
@@ -1495,6 +1627,16 @@ func (s *sqliteStore) AllCloudProviders() ([]CloudProviderRecord, error) {
 			return nil, fmt.Errorf("store: AllCloudProviders scan: %w", err)
 		}
 		cp.Enabled = enabled != 0
+		dec, decErr := decryptSecret(s.secretKey, cp.APIKey)
+		if decErr != nil {
+			// Same reasoning as AllKeys: one bad row must not blank out every
+			// other cloud provider for every caller of this list, and an
+			// enabled provider with APIKey="" would still be wired into the
+			// router's fallback chain and attempt outbound calls with no key.
+			log.Printf("store: AllCloudProviders: dropping %s: %v (re-enter its api key to restore it)", cp.Name, decErr)
+			continue
+		}
+		cp.APIKey = dec
 		providers = append(providers, cp)
 	}
 	if err := rows.Err(); err != nil {

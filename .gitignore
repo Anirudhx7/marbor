@@ -42,6 +42,7 @@ mesh.db
 mesh.db-journal
 mesh.db-wal
 mesh.db-shm
+mesh.db.key
 
 # Go testing/coverage
 *.test
