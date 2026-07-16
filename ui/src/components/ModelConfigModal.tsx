@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, type ReactElement } from 'react';
 import { ChevronDown, RotateCcw, Loader2 } from 'lucide-react';
 import { Modal } from './Modal';
+import { CustomSelect } from './Select';
 import { fetchModelConfig, saveModelConfig, deleteModelConfig, fetchModelConfigCapabilities } from '../lib/api';
 import { getMockModelConfig, setMockModelConfig, deleteMockModelConfig, getMockModelConfigCapabilities } from '../lib/mockData';
 import type { ModelConfig } from '../types';
@@ -193,16 +194,17 @@ function Field({
   if (def.type === 'bool') {
     const boolVal = value as boolean | undefined;
     input = (
-      <select
+      <CustomSelect
         value={boolVal === undefined ? '' : boolVal ? 'true' : 'false'}
-        onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value === 'true')}
+        onChange={(val) => onChange(val === '' ? undefined : val === 'true')}
         disabled={disabled}
-        className="w-full px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <option value="">Default (unset)</option>
-        <option value="true">On</option>
-        <option value="false">Off</option>
-      </select>
+        size="sm"
+        options={[
+          { value: '', label: 'Default (unset)' },
+          { value: 'true', label: 'On' },
+          { value: 'false', label: 'Off' },
+        ]}
+      />
     );
   } else if (def.type === 'textarea') {
     input = (
@@ -228,20 +230,19 @@ function Field({
     );
   } else if (def.type === 'select') {
     input = (
-      <select
+      <CustomSelect
         value={value === undefined || value === null ? '' : String(value)}
-        onChange={(e) => {
-          if (e.target.value === '') return onChange(undefined);
-          onChange(def.numeric ? Number(e.target.value) : e.target.value);
+        onChange={(val) => {
+          if (val === '') return onChange(undefined);
+          onChange(def.numeric ? Number(val) : val);
         }}
         disabled={disabled}
-        className="w-full px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <option value="">Default (unset)</option>
-        {def.options?.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
+        size="sm"
+        options={[
+          { value: '', label: 'Default (unset)' },
+          ...(def.options?.map((o) => ({ value: String(o.value), label: o.label })) || []),
+        ]}
+      />
     );
   } else if (def.type === 'slider') {
     const min = def.min ?? 0;
@@ -505,17 +506,17 @@ export function ModelConfigModal({
       ) : (
         <div className="space-y-6">
           {nodes.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full">
               <label className="text-xs font-medium text-foreground shrink-0">Node</label>
-              <select
+              <CustomSelect
                 value={selectedNode}
-                onChange={(e) => setSelectedNode(e.target.value)}
-                className="flex-1 px-2.5 py-1.5 text-sm bg-secondary border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                {nodes.map((n) => (
-                  <option key={n.name} value={n.name}>{n.name} ({normalizeRuntime(n.runtime)})</option>
-                ))}
-              </select>
+                onChange={setSelectedNode}
+                size="sm"
+                options={nodes.map((n) => ({
+                  value: n.name,
+                  label: `${n.name} (${normalizeRuntime(n.runtime)})`
+                }))}
+              />
             </div>
           )}
 

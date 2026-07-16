@@ -11,6 +11,7 @@ import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { CustomSelect } from '../components/Select';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -270,28 +271,27 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
-              <select value={action} onChange={e => setAction(e.target.value as Schedule['action'])} className={sel}>
-                <option value="warmup">Warm up</option>
-                <option value="unload">Unload</option>
-                <option value="drain">Drain</option>
-                <option value="undrain">Undrain</option>
-              </select>
+              <CustomSelect
+                value={action}
+                onChange={val => setAction(val as Schedule['action'])}
+                options={[
+                  { value: 'warmup', label: 'Warm up' },
+                  { value: 'unload', label: 'Unload' },
+                  { value: 'drain', label: 'Drain' },
+                  { value: 'undrain', label: 'Undrain' },
+                ]}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Node</label>
-              <select value={node} onChange={e => setNode(e.target.value)} className={sel}>
-                {/* If the schedule's stored node is no longer registered (renamed/removed),
-                    render it as an explicit option so the <select>'s displayed value always
-                    matches the `node` state that will actually be submitted. Without this,
-                    the browser silently falls back to visually showing the first real
-                    <option> while `node` state still holds the stale name - so Save appears
-                    to target a live node but actually submits the dead one and gets
-                    rejected by the backend. */}
-                {node && !nodes.some(n => n.name === node) && (
-                  <option value={node}>{node} (not found)</option>
-                )}
-                {nodes.map(n => <option key={n.name} value={n.name}>{n.name}</option>)}
-              </select>
+              <CustomSelect
+                value={node}
+                onChange={setNode}
+                options={[
+                  ...(node && !nodes.some(n => n.name === node) ? [{ value: node, label: `${node} (not found)` }] : []),
+                  ...nodes.map(n => ({ value: n.name, label: n.name })),
+                ]}
+              />
               {node && !nodes.some(n => n.name === node) && (
                 <p className="text-[10px] text-destructive mt-1">
                   Node "{node}" is no longer registered. Pick a live node to fix this schedule.
@@ -392,20 +392,24 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Action</label>
-              <select value={action} onChange={e => setAction(e.target.value as Schedule['action'])}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground">
-                <option value="warmup">Warm up</option>
-                <option value="unload">Unload</option>
-                <option value="drain">Drain</option>
-                <option value="undrain">Undrain</option>
-              </select>
+              <CustomSelect
+                value={action}
+                onChange={val => setAction(val as Schedule['action'])}
+                options={[
+                  { value: 'warmup', label: 'Warm up' },
+                  { value: 'unload', label: 'Unload' },
+                  { value: 'drain', label: 'Drain' },
+                  { value: 'undrain', label: 'Undrain' },
+                ]}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Node</label>
-              <select value={node} onChange={e => setNode(e.target.value)}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground">
-                {nodes.map(n => <option key={n.name} value={n.name}>{n.name}</option>)}
-              </select>
+              <CustomSelect
+                value={node}
+                onChange={setNode}
+                options={nodes.map(n => ({ value: n.name, label: n.name }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Time (24h)</label>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, type InputHTMLAttributes, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { CustomSelect, CustomCombobox } from '../components/Select';
 import { RequestEntry } from '../types';
 import { fetchAuditLog, fetchNodes, fetchKeys } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
@@ -253,76 +254,60 @@ export function Requests() {
             />
           </FilterField>
           <FilterField label="Key name">
-            <ClearableInput
-              type="text"
-              list="request-key-options"
-              placeholder="Any key"
+            <CustomCombobox
               value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              onClear={() => setKeyInput('')}
-              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              onChange={setKeyInput}
+              options={keyOptions}
+              placeholder="Any key"
             />
-            <datalist id="request-key-options">
-              {keyOptions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
           </FilterField>
           <FilterField label="Node">
-            <ClearableInput
-              type="text"
-              list="request-node-options"
-              placeholder="Any node"
+            <CustomCombobox
               value={nodeInput}
-              onChange={(e) => setNodeInput(e.target.value)}
-              onClear={() => setNodeInput('')}
-              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              onChange={setNodeInput}
+              options={nodeOptions}
+              placeholder="Any node"
             />
-            <datalist id="request-node-options">
-              {nodeOptions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
           </FilterField>
           <FilterField label="Local / cloud">
-            <select
+            <CustomSelect
               value={cloudFilter}
-              onChange={(e) => setCloudFilter(e.target.value as CloudFilter)}
-              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="all">All (local + cloud)</option>
-              <option value="local">Local only</option>
-              <option value="cloud">Cloud only</option>
-            </select>
+              onChange={(val) => setCloudFilter(val as CloudFilter)}
+              options={[
+                { value: 'all', label: 'All (local + cloud)' },
+                { value: 'local', label: 'Local only' },
+                { value: 'cloud', label: 'Cloud only' },
+              ]}
+            />
           </FilterField>
           <FilterField label="Status">
-            <select
+            <CustomSelect
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="all">All statuses</option>
-              <option value="success">Success (2xx)</option>
-              <option value="client_error">Client error (4xx)</option>
-              <option value="server_error">Server error (5xx)</option>
-            </select>
+              onChange={(val) => setStatusFilter(val as StatusFilter)}
+              options={[
+                { value: 'all', label: 'All statuses' },
+                { value: 'success', label: 'Success (2xx)' },
+                { value: 'client_error', label: 'Client error (4xx)' },
+                { value: 'server_error', label: 'Server error (5xx)' },
+              ]}
+            />
           </FilterField>
           <FilterField label="Quick range">
-            <select
+            <CustomSelect
               value={sincePreset}
-              onChange={(e) => {
-                setSincePreset(e.target.value as SincePreset);
+              onChange={(val) => {
+                setSincePreset(val as SincePreset);
                 setSinceInput(''); // a quick preset always wins over a stale custom "From" value
               }}
               disabled={!!sinceInput}
-              title={sinceInput ? 'Clear the custom "From" date to use a quick preset' : undefined}
-              className="w-full px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
-            >
-              <option value="all">Any time</option>
-              <option value="15m">Last 15 min</option>
-              <option value="1h">Last hour</option>
-              <option value="24h">Last 24h</option>
-            </select>
+              placeholder={sinceInput ? 'Clear custom date to use preset' : 'Any time'}
+              options={[
+                { value: 'all', label: 'Any time' },
+                { value: '15m', label: 'Last 15 min' },
+                { value: '1h', label: 'Last hour' },
+                { value: '24h', label: 'Last 24h' },
+              ]}
+            />
           </FilterField>
           <FilterField label="From (custom)">
             <ClearableInput
