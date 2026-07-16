@@ -501,7 +501,6 @@ export function APIKeys() {
           setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
         }}
         title="Create New API Key"
-        overflowVisible={true}
       >
         <div className="space-y-4">
           {formErrors.length > 0 && (

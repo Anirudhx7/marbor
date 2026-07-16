@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
 
 interface CustomDateTimePickerProps {
@@ -48,15 +49,20 @@ export function CustomDateTimePicker({
   const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
 
   useEffect(() => {
-    if (isOpen && containerRef.current) {
+    if (!isOpen) return;
+    const updatePosition = () => {
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < 340) {
-        setPosition('top');
-      } else {
-        setPosition('bottom');
-      }
-    }
+      setPosition(spaceBelow < 340 ? 'top' : 'bottom');
+    };
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -282,11 +288,16 @@ export function CustomDateTimePicker({
                       selectDay(cell.day);
                     } else {
                       // Switch month
-                      const targetDate = new Date(viewYear, viewMonth + cell.monthOffset, cell.day);
+                      const targetDate = new Date(viewYear, viewMonth + cell.monthOffset, cell.day, hours, minutes);
                       setViewYear(targetDate.getFullYear());
                       setViewMonth(targetDate.getMonth());
                       setSelectedDay(targetDate.getDate());
-                      updateValue(targetDate.getDate(), hours, minutes);
+                      const yyyy = targetDate.getFullYear();
+                      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+                      const dd = String(targetDate.getDate()).padStart(2, '0');
+                      const hh = String(targetDate.getHours()).padStart(2, '0');
+                      const min = String(targetDate.getMinutes()).padStart(2, '0');
+                      onChange(`${yyyy}-${mm}-${dd}T${hh}:${min}`);
                     }
                   }}
                   className={`text-xs py-1.5 rounded-lg text-center font-medium transition-colors ${
@@ -397,6 +408,7 @@ export function CustomDatePicker({
 }: CustomDatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Parsing state
   const initialDate = value ? new Date(value + 'T00:00:00') : new Date();
@@ -418,23 +430,36 @@ export function CustomDatePicker({
     }
   }, [value]);
 
-  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
 
   useEffect(() => {
-    if (isOpen && containerRef.current) {
+    if (!isOpen) return;
+    const updateCoords = () => {
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
       if (spaceBelow < 280) {
-        setPosition('top');
+        setCoords({ left: rect.left, bottom: window.innerHeight - rect.top + 6 });
       } else {
-        setPosition('bottom');
+        setCoords({ left: rect.left, top: rect.bottom + 6 });
       }
-    }
+    };
+    updateCoords();
+    window.addEventListener('scroll', updateCoords, true);
+    window.addEventListener('resize', updateCoords);
+    return () => {
+      window.removeEventListener('scroll', updateCoords, true);
+      window.removeEventListener('resize', updateCoords);
+    };
   }, [isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        (!panelRef.current || !panelRef.current.contains(target))
+      ) {
         setIsOpen(false);
       }
     }
@@ -574,10 +599,12 @@ export function CustomDatePicker({
         )}
       </div>
 
-      {isOpen && (
-        <div className={`absolute z-50 p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in ${
-          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-        }`}>
+      {isOpen && coords && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, zIndex: 9999 }}
+          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in"
+        >
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
             <span className="font-semibold text-sm text-foreground">
@@ -613,7 +640,7 @@ export function CustomDatePicker({
             {calendarGrid.map((cell, idx) => {
               const isSelected =
                 cell.isCurrentMonth && selectedDay === cell.day;
-              
+
               const isToday =
                 cell.isCurrentMonth &&
                 new Date().getDate() === cell.day &&
@@ -633,7 +660,10 @@ export function CustomDatePicker({
                       setViewYear(targetDate.getFullYear());
                       setViewMonth(targetDate.getMonth());
                       setSelectedDay(targetDate.getDate());
-                      updateValue(targetDate.getDate());
+                      const yyyy = targetDate.getFullYear();
+                      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+                      const dd = String(targetDate.getDate()).padStart(2, '0');
+                      onChange(`${yyyy}-${mm}-${dd}`);
                     }
                   }}
                   className={`text-xs py-1.5 rounded-lg text-center font-medium transition-colors ${
@@ -667,7 +697,8 @@ export function CustomDatePicker({
               Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -705,15 +736,20 @@ export function CustomTimePicker({
   const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
 
   useEffect(() => {
-    if (isOpen && containerRef.current) {
+    if (!isOpen) return;
+    const updatePosition = () => {
+      if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < 270) {
-        setPosition('top');
-      } else {
-        setPosition('bottom');
-      }
-    }
+      setPosition(spaceBelow < 270 ? 'top' : 'bottom');
+    };
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
   }, [isOpen]);
 
   useEffect(() => {
