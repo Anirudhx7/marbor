@@ -39,7 +39,7 @@ func Run(args []string, version string) {
 	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "ollama-mesh agent - Node Agent: node-local execution point for the mesh (telemetry in v1; actions land later)\n\n")
+		fmt.Fprintf(os.Stderr, "ollama-mesh agent - Node Agent: node-local execution point for the mesh\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh agent --port=<port> --token=<token>   (runs in the foreground)\n")
 		fmt.Fprintf(os.Stderr, "  ollama-mesh agent service install --port=<port> --token=<token>\n")
 		fmt.Fprintf(os.Stderr, "                                                     (installs as a persistent OS service)\n")
