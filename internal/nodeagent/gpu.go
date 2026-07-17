@@ -2,117 +2,90 @@ package nodeagent
 
 import (
 	"context"
-	"encoding/xml"
-	"os/exec"
-	"strconv"
-	"strings"
-	"time"
+	"errors"
 )
 
-// GPU stats are collected by shelling out to nvidia-smi, using the same
-// query flags and units as internal/router/nvidia.go's local-node polling
-// path (-q -x, MiB, Celsius, Watts) so the agent and the mesh's own local
-// nvidia-smi reader never disagree on how a number was derived. The two
-// packages don't share the exact function (router's queryAllGPUs is
-// unexported, and this package must not import router to avoid coupling the
-// mesh binary's poller internals to the standalone agent binary), so the
-// parsing here is a deliberate faithful copy, extended with fan_speed since
-// the mesh's own local-GPU path doesn't currently report fan.
-type nvidiaSMILog struct {
-	GPUs []nvidiaGPU `xml:"gpu"`
+// errNoGPUBackend is returned by noGPUCollector.Collect - the explicit
+// "no GPU backend on this host" signal that makes Scheduler.refresh omit
+// the gpu block rather than treat a nil GPUCollector as a special case.
+var errNoGPUBackend = errors.New("nodeagent: no supported GPU backend detected on this host")
+
+// GPUCollector abstracts a single GPU-vendor telemetry source. nvidia-smi
+// (gpu_nvidia.go) is the only implementation today; AMD ROCm, Apple Silicon,
+// and Intel are meant to be added as additional GPUCollector implementations
+// without touching Scheduler, Server, or the wire schema - see
+// .local/specs/node-agent.md's evolution notes. Mirrors how
+// internal/runtime/probe.go already lets router.go support multiple
+// inference backends (Ollama/vLLM/TGI/llama.cpp) behind one interface.
+type GPUCollector interface {
+	// Name identifies the backend for logging and telemetry provenance
+	// (e.g. "nvidia"). Surfaced on GPUTelemetry.Vendor so a consumer can
+	// tell which backend produced a reading rather than assuming.
+	Name() string
+	// Available reports whether this backend's tooling is present on the
+	// host at all (e.g. "nvidia-smi" resolves on PATH). Called once at
+	// detection time, not on every refresh tick - selecting a GPU vendor
+	// doesn't change while the process is running, same assumption
+	// router.go's runtime auto-detect makes about a node's backend.
+	Available(ctx context.Context) bool
+	// Collect returns one GPU telemetry reading. An error means "couldn't
+	// read this cycle" - the caller omits the gpu block entirely rather
+	// than fabricating a value (R1), it never means "zero everything."
+	Collect(ctx context.Context) (GPUTelemetry, error)
 }
 
-type nvidiaGPU struct {
-	FanSpeed         string      `xml:"fan_speed"`
-	FBMemory         nvidiaMem   `xml:"fb_memory_usage"`
-	Temperature      nvidiaTemp  `xml:"temperature"`
-	PowerReadings    nvidiaPower `xml:"power_readings"`
-	GPUPowerReadings nvidiaPower `xml:"gpu_power_readings"`
+// gpuCandidates is the ordered list of GPU backends detectGPUCollector
+// tries. Add a new vendor by appending its GPUCollector implementation here
+// - nothing else in this package needs to change.
+var gpuCandidates = []GPUCollector{
+	nvidiaCollector{},
 }
 
-type nvidiaMem struct {
-	Total string `xml:"total"`
-	Used  string `xml:"used"`
+// noGPUCollector is the explicit null-object result when no candidate
+// backend is available on this host (a CPU-only node, or a GPU vendor this
+// agent doesn't support yet). Collect always errors so refresh() naturally
+// omits the gpu block - avoids nil-GPUCollector checks scattered through the
+// scheduler in favor of one typed "there is no GPU here" value (R1: explicit
+// unknown, never a guessed zero).
+type noGPUCollector struct{}
+
+func (noGPUCollector) Name() string                   { return "none" }
+func (noGPUCollector) Available(context.Context) bool { return true } // the always-eligible fallback
+func (noGPUCollector) Collect(context.Context) (GPUTelemetry, error) {
+	return GPUTelemetry{}, errNoGPUBackend
 }
 
-type nvidiaTemp struct {
-	GPUTemp string `xml:"gpu_temp"`
-}
-
-type nvidiaPower struct {
-	PowerDraw string `xml:"power_draw"`
-}
-
-func parseMiB(s string) int64 {
-	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "MiB"))
-	v, _ := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-	return v
-}
-
-func parseCelsius(s string) float64 {
-	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "C"))
-	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return v
-}
-
-func parseWatts(s string) float64 {
-	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "W"))
-	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return v
-}
-
-func parsePercent(s string) (float64, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "N/A" {
-		return 0, false
+// detectGPUCollector tries each candidate in order and returns the first
+// one whose backend tooling is present, or noGPUCollector{} if none is.
+// Called once, at Scheduler construction - not re-run on every refresh.
+func detectGPUCollector(ctx context.Context) GPUCollector {
+	for _, c := range gpuCandidates {
+		if c.Available(ctx) {
+			return c
+		}
 	}
-	s = strings.TrimSpace(strings.TrimSuffix(s, "%"))
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
+	return noGPUCollector{}
 }
 
-// collectGPU returns telemetry for GPU index 0 (the first GPU nvidia-smi
-// reports), or (zero, false) if nvidia-smi is unavailable, fails, or the
-// host has no GPU. The wire schema carries a single "gpu" object (not an
-// array), matching the node-agent's target topology of one agent process
-// per node reporting on its primary accelerator.
-func collectGPU() (GPUTelemetry, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "nvidia-smi", "-q", "-x").Output()
-	if err != nil {
-		return GPUTelemetry{}, false
-	}
-	return parseNvidiaSMIXML(out)
+// HostCollector abstracts the host (CPU/RAM/disk) telemetry source. Unlike
+// GPUCollector, there is exactly one implementation selected per platform at
+// compile time via Go build tags (host_linux.go/host_other.go) - that's
+// already the correct zero-cost abstraction for "one implementation per
+// GOOS," a different problem than GPU vendor selection (multiple vendors
+// can exist on the very same OS, which build tags can't resolve). This
+// interface exists for naming symmetry with GPUCollector and so a future
+// platform-specific alternate source (e.g. a Windows WMI-backed collector)
+// has a seam to slot into without changing Scheduler.
+type HostCollector interface {
+	Collect(ctx context.Context) *HostTelemetry
 }
 
-func parseNvidiaSMIXML(data []byte) (GPUTelemetry, bool) {
-	var log nvidiaSMILog
-	if err := xml.Unmarshal(data, &log); err != nil || len(log.GPUs) == 0 {
-		return GPUTelemetry{}, false
-	}
-	gpu := log.GPUs[0]
+type stdlibHostCollector struct{}
 
-	var out GPUTelemetry
-	out.VRAMTotalMB = parseMiB(gpu.FBMemory.Total)
-	out.VRAMUsedMB = parseMiB(gpu.FBMemory.Used)
+func (stdlibHostCollector) Collect(ctx context.Context) *HostTelemetry {
+	return collectHost()
+}
 
-	temp := parseCelsius(gpu.Temperature.GPUTemp)
-	out.TemperatureC = &temp
-
-	var watts float64
-	if gpu.PowerReadings.PowerDraw != "" && gpu.PowerReadings.PowerDraw != "N/A" {
-		watts = parseWatts(gpu.PowerReadings.PowerDraw)
-	} else {
-		watts = parseWatts(gpu.GPUPowerReadings.PowerDraw)
-	}
-	out.PowerWatts = &watts
-
-	if fan, ok := parsePercent(gpu.FanSpeed); ok {
-		out.FanPercent = &fan
-	}
-	return out, true
+func newHostCollector() HostCollector {
+	return stdlibHostCollector{}
 }
