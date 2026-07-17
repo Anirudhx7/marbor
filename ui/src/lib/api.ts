@@ -1009,6 +1009,13 @@ export async function fetchWarmupStatus(): Promise<{ enabled: boolean; interval_
   return res.json();
 }
 
+export async function triggerWarmupPing(): Promise<{ status: string }> {
+  if (DEMO) return demoDelay({ status: 'triggered' });
+  const res = await apiFetch(`${BASE}/warmup/ping`, { method: 'POST', headers: authHeaders() });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to trigger warmup'); }
+  return res.json();
+}
+
 // --- Node Agent (per-node optional telemetry agent, internal/nodeagent) ---
 //
 // The token is only ever returned by enable/regenerate - it is never
