@@ -19,14 +19,14 @@ const SchemaVersion = 1
 // its UI) can enable/disable features per node instead of assuming every
 // agent supports everything - the same problem runtime/router version
 // skew already has to handle for LLM backends, now extended to the agent
-// itself. Exactly one entry today: telemetry is the only thing implemented
-// (v1 scope, per .local/specs/node-agent.md section 6). Future capabilities
-// ("models", "diagnostics", "actions", "maintenance") get appended here in
-// the same commit that actually implements them - never speculatively,
-// since an agent claiming a capability it doesn't have would be exactly the
-// kind of fabrication R1 exists to prevent, just applied to self-description
+// itself. "actions.pull_model" (section 16) is the first capability beyond
+// telemetry (v1 scope, per .local/specs/node-agent.md section 6). Future
+// capabilities ("diagnostics", "maintenance") get appended here in the same
+// commit that actually implements them - never speculatively, since an
+// agent claiming a capability it doesn't have would be exactly the kind of
+// fabrication R1 exists to prevent, just applied to self-description
 // instead of a measurement.
-var capabilities = []string{"telemetry"}
+var capabilities = []string{"telemetry", "actions.pull_model"}
 
 // Telemetry is the canonical, versioned JSON payload served at GET /telemetry.
 // GET /metrics (Prometheus text format) is generated from this same struct,

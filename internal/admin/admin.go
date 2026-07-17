@@ -179,8 +179,8 @@ type Server struct {
 	logChan        chan store.RequestRecord
 	logDone        chan struct{} // closed by Shutdown to signal drain-and-stop
 	logWg          sync.WaitGroup
-	pullsMu        sync.Mutex                // guards pullsInFlight
-	pullsInFlight  map[string]bool           // "node|model" -> in progress; ephemeral, never persisted
+	pullsMu        sync.Mutex                // guards pullJobs
+	pullJobs       map[string]*pullJob       // "node|model" -> job state; ephemeral, never persisted
 	coldStarts     int64                     // atomic - total cold start events
 	warmHits       int64                     // atomic - total warm hit events
 	tokenEvents    []TokenEvent              // protected by mu
@@ -479,7 +479,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		resetPwLimiter: newResetPasswordRateLimiter(),
 		logChan:        make(chan store.RequestRecord, 5000),
 		logDone:        make(chan struct{}),
-		pullsInFlight:  make(map[string]bool),
+		pullJobs:       make(map[string]*pullJob),
 	}
 	s.ensureAdminUser()
 	s.logWg.Add(1)
@@ -609,6 +609,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
 	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
+	reg("GET /admin/nodes/{name}/pull/progress", s.cors(s.adminAuth(s.handlePullProgress)))
+	reg("DELETE /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleCancelPull)))
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
 	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
 	reg("POST /admin/nodes/{name}/prewarm", s.cors(s.adminAuth(s.handleSetNodePrewarm)))
@@ -4258,21 +4260,141 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // nodePullTimeout bounds how long ollama-mesh waits for a model pull to
-// finish on the target node before giving up and returning 502. handleNodePull
-// calls Ollama's /api/pull with "stream":false, so - unlike a normal chat/
-// generate request - the upstream sends no response at all (not even
-// headers) until the *entire* download completes. Model pulls, especially
+// finish (direct-to-Ollama streaming read, or the agent dispatch call)
+// before giving up and marking the job failed. Model pulls, especially
 // Hugging Face-sourced GGUF files (fetched directly from huggingface.co
 // rather than Ollama's CDN-backed registry), routinely take much longer than
-// a typical multi-GB-per-minute registry pull. A short client timeout here
-// aborts an otherwise-successful pull mid-download and surfaces to the admin
-// UI as a spurious "Bad Gateway", even though the node is still working.
+// a typical multi-GB-per-minute registry pull - a short timeout here would
+// abort an otherwise-successful pull mid-download.
 // A var (not const) so tests can override it to keep test runtimes short.
 var nodePullTimeout = 2 * time.Hour
 
-// handleNodePull triggers a model pull on a specific node via POST /api/pull.
-// Accepts: {"model": "llama3:8b"}
-// Returns 200 {"ok":true,"node":"...","model":"..."} on success.
+// pullJobMaxAge bounds how long a finished (success/failed) job stays in
+// s.pullJobs after completion - long enough for a client's SSE subscription
+// to catch the terminal event even if it connects a little late, short
+// enough that the map doesn't grow unbounded across a long-running mesh
+// process with many pulls over time.
+const pullJobMaxAge = 10 * time.Minute
+
+// pullJob tracks one in-flight or recently-finished model pull for the
+// progress UI (GET .../pull/progress). Real numbers only, never fabricated
+// (R1): BytesTotal/BytesCompleted are populated only for the direct-to-
+// Ollama streaming path, which is the only path that actually reports byte
+// counts today - Method distinguishes this so the UI knows to show a
+// determinate progress bar (direct) vs an elapsed-time-only indicator
+// (agent - see .local/specs/node-agent.md section 16, agent dispatch is a
+// single blocking call with no incremental progress yet).
+type pullJob struct {
+	mu             sync.Mutex
+	Node           string    `json:"node"`
+	Model          string    `json:"model"`
+	Method         string    `json:"method"` // "direct" | "agent"
+	Status         string    `json:"status"` // "downloading" | "success" | "failed" | "cancelled"
+	StartedAt      time.Time `json:"started_at"`
+	FinishedAt     time.Time `json:"finished_at,omitempty"`
+	BytesTotal     int64     `json:"bytes_total,omitempty"`
+	BytesCompleted int64     `json:"bytes_completed,omitempty"`
+	Error          string    `json:"error,omitempty"`
+	// cancel aborts the in-flight pull's context - unexported, so it never
+	// appears in the JSON progress payload the UI reads. Canceling the
+	// mesh's own outbound HTTP request (direct path: the streaming pull;
+	// agent path: the call to the agent) is real cancellation, not cosmetic:
+	// Go's http.Server cancels the handler's request context when the
+	// client connection drops, and the agent's action handler ties
+	// exec.CommandContext to that same context - so a cancel from the admin
+	// UI actually kills the download subprocess on the node, not just the
+	// mesh's view of it.
+	cancel context.CancelFunc
+}
+
+// pullJobSnapshot is pullJob's data with no mutex/cancel func - the type
+// snapshot() returns and JSON-encodes, so a copy is always safe to pass
+// around and vet never flags a struct-with-mutex copy.
+type pullJobSnapshot struct {
+	Node           string    `json:"node"`
+	Model          string    `json:"model"`
+	Method         string    `json:"method"`
+	Status         string    `json:"status"`
+	StartedAt      time.Time `json:"started_at"`
+	FinishedAt     time.Time `json:"finished_at,omitempty"`
+	BytesTotal     int64     `json:"bytes_total,omitempty"`
+	BytesCompleted int64     `json:"bytes_completed,omitempty"`
+	Error          string    `json:"error,omitempty"`
+}
+
+// snapshot returns a copy of j's data safe to JSON-encode without holding
+// j.mu across the write.
+func (j *pullJob) snapshot() pullJobSnapshot {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return pullJobSnapshot{
+		Node: j.Node, Model: j.Model, Method: j.Method, Status: j.Status,
+		StartedAt: j.StartedAt, FinishedAt: j.FinishedAt,
+		BytesTotal: j.BytesTotal, BytesCompleted: j.BytesCompleted, Error: j.Error,
+	}
+}
+
+func (j *pullJob) setProgress(total, completed int64) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.BytesTotal, j.BytesCompleted = total, completed
+}
+
+// finish sets a terminal status, unless one is already set - a cancel
+// requested from the admin UI races the pull goroutine's own eventual
+// failure/success report (the cancelled context surfaces as a request
+// error a moment later); the explicit "cancelled" outcome must win over
+// whatever generic error the goroutine sees as a side effect of that same
+// cancellation, not be silently overwritten by it.
+func (j *pullJob) finish(status, errMsg string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.Status != "downloading" {
+		return
+	}
+	j.Status = status
+	j.Error = errMsg
+	j.FinishedAt = time.Now()
+}
+
+// requestCancel marks j cancelled (if still downloading) and invokes its
+// context cancel func. Returns false if the job was already terminal - the
+// caller uses this to tell "cancelled" from "too late, already finished".
+func (j *pullJob) requestCancel() bool {
+	j.mu.Lock()
+	if j.Status != "downloading" {
+		j.mu.Unlock()
+		return false
+	}
+	j.Status = "cancelled"
+	j.Error = "cancelled by admin"
+	j.FinishedAt = time.Now()
+	cancel := j.cancel
+	j.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return true
+}
+
+// sweepOldPullJobs removes finished jobs older than pullJobMaxAge. Called
+// opportunistically from handleNodePull (bounded by how often pulls are
+// started - no separate ticker/goroutine needed for what is, in practice, a
+// tiny map).
+func (s *Server) sweepOldPullJobs() {
+	s.pullsMu.Lock()
+	defer s.pullsMu.Unlock()
+	for key, j := range s.pullJobs {
+		snap := j.snapshot()
+		if snap.Status != "downloading" && time.Since(snap.FinishedAt) > pullJobMaxAge {
+			delete(s.pullJobs, key)
+		}
+	}
+}
+
+// handleNodePull starts an async model pull on a specific node.
+// Accepts: {"model": "llama3:8b"}. Returns 202 immediately - the pull runs
+// in the background; progress is polled via GET .../pull/progress (SSE).
 func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Content-Type", "application/json")
@@ -4302,81 +4424,322 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.sweepOldPullJobs()
+
 	// Dedup concurrent pulls of the same model on the same node. State is
 	// ephemeral and in-memory only - it is never persisted and never wired
 	// into placement/warm-residency scoring, it just prevents two admin
 	// clicks from racing the same multi-GB download.
 	pullKey := nodeName + "|" + body.Model
 	s.pullsMu.Lock()
-	if s.pullsInFlight[pullKey] {
+	if existing, ok := s.pullJobs[pullKey]; ok && existing.snapshot().Status == "downloading" {
 		s.pullsMu.Unlock()
 		writeJSONError(w, http.StatusConflict, fmt.Sprintf("pull already in progress for %q on node %q", body.Model, nodeName))
 		return
 	}
-	s.pullsInFlight[pullKey] = true
-	s.pullsMu.Unlock()
-	defer func() {
-		s.pullsMu.Lock()
-		delete(s.pullsInFlight, pullKey)
-		s.pullsMu.Unlock()
-	}()
 
-	pullBody, err := json.Marshal(map[string]interface{}{
+	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	useAgent := agentOK && agentCfg.Enabled && nodeHasAgentCapability(s.router.Nodes(), nodeName, "actions.pull_model")
+	method := "direct"
+	if useAgent {
+		method = "agent"
+	}
+	// Detached context: this request returns immediately (202), so the pull
+	// itself must not be tied to r.Context(), which is canceled the moment
+	// the handler returns. Built before the job is published to s.pullJobs
+	// (not after, under a separate lock) so a DELETE .../pull landing the
+	// instant this job becomes visible can never observe a nil job.cancel -
+	// requestCancel() would silently no-op the real download in that window.
+	pullCtx, cancel := context.WithTimeout(context.Background(), nodePullTimeout)
+	job := &pullJob{Node: nodeName, Model: body.Model, Method: method, Status: "downloading", StartedAt: time.Now(), cancel: cancel}
+	s.pullJobs[pullKey] = job
+	s.pullsMu.Unlock()
+
+	if useAgent {
+		go func() {
+			defer cancel()
+			err := s.pullModelViaAgent(pullCtx, nodeURL, agentCfg, body.Model)
+			if err != nil {
+				job.finish("failed", err.Error())
+				return
+			}
+			job.finish("success", "")
+			s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s (via agent)", body.Model))
+		}()
+	} else {
+		go func() {
+			defer cancel()
+			s.runDirectPull(pullCtx, job, nodeURL, body.Model)
+			if job.snapshot().Status == "success" {
+				s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s", body.Model))
+			}
+		}()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":     true,
+		"node":   nodeName,
 		"model":  body.Model,
-		"stream": false,
+		"status": "downloading",
 	})
+}
+
+// runDirectPull streams Ollama's /api/pull (stream:true) and updates job
+// with real byte counts as they arrive - the only path that can report an
+// honest total/completed (R1: never fabricate a progress percentage).
+func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model string) {
+	pullBody, err := json.Marshal(map[string]interface{}{"model": model, "stream": true})
 	if err != nil {
-		writeServerError(w, r, err)
+		job.finish("failed", err.Error())
 		return
 	}
 
-	client := &http.Client{Timeout: nodePullTimeout}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, nodeURL+"/api/pull", bytes.NewReader(pullBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, nodeURL+"/api/pull", bytes.NewReader(pullBody))
 	if err != nil {
-		log.Printf("handleNodePull: build request for node %s: %v", nodeName, err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `{"error":"pull failed for node %s"}`, nodeName)
+		job.finish("failed", err.Error())
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	client := &http.Client{Timeout: nodePullTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("handleNodePull: request to node %s failed: %v", nodeName, err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("pull failed for node %s: %v", nodeName, err),
-		})
+		log.Printf("runDirectPull: request to node %s failed: %v", job.Node, err)
+		job.finish("failed", fmt.Sprintf("pull failed for node %s: %v", job.Node, err))
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Surface Ollama's own error body (e.g. "401 Unauthorized: gated
-		// repo", "invalid model tag") instead of a bare status code - a
-		// generic "Bad Gateway" gives the operator no way to tell a missing
-		// HF token apart from a malformed tag apart from a real outage.
 		upstreamMsg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		log.Printf("handleNodePull: node %s upstream returned %d: %s", nodeName, resp.StatusCode, upstreamMsg)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadGateway)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": fmt.Sprintf("pull node %s: upstream returned %d: %s", nodeName, resp.StatusCode, strings.TrimSpace(string(upstreamMsg))),
-		})
+		log.Printf("runDirectPull: node %s upstream returned %d: %s", job.Node, resp.StatusCode, upstreamMsg)
+		job.finish("failed", fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(upstreamMsg))))
 		return
 	}
 
-	s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s", body.Model))
+	// Ollama reports total/completed per layer (manifest, each blob, params,
+	// license, ...), not as a single running aggregate - naively forwarding
+	// each line's total/completed makes the bar jump back down every time a
+	// new layer starts. Track every layer's own total/completed by digest
+	// and sum them, so the reported progress only ever climbs across the
+	// whole pull (still real, server-reported bytes - just correctly added
+	// up, not fabricated - R1).
+	dec := json.NewDecoder(resp.Body)
+	var lastErr string
+	layerTotal := make(map[string]int64)
+	layerCompleted := make(map[string]int64)
+	var cumulativeTotal, cumulativeCompleted int64
+	for {
+		var line struct {
+			Status    string `json:"status"`
+			Error     string `json:"error"`
+			Digest    string `json:"digest"`
+			Total     int64  `json:"total"`
+			Completed int64  `json:"completed"`
+		}
+		if err := dec.Decode(&line); err != nil {
+			if err == io.EOF {
+				break
+			}
+			job.finish("failed", fmt.Sprintf("reading pull progress: %v", err))
+			return
+		}
+		if line.Error != "" {
+			lastErr = line.Error
+			continue
+		}
+		if line.Total > 0 && line.Digest != "" {
+			cumulativeTotal += line.Total - layerTotal[line.Digest]
+			layerTotal[line.Digest] = line.Total
+			cumulativeCompleted += line.Completed - layerCompleted[line.Digest]
+			layerCompleted[line.Digest] = line.Completed
+			job.setProgress(cumulativeTotal, cumulativeCompleted)
+		}
+	}
+	if lastErr != "" {
+		job.finish("failed", lastErr)
+		return
+	}
+	job.finish("success", "")
+}
+
+// handlePullProgress streams a pull job's state as Server-Sent Events until
+// it reaches a terminal state (success/failed) or the client disconnects.
+// GET .../pull/progress?model=...
+func (s *Server) handlePullProgress(w http.ResponseWriter, r *http.Request) {
+	nodeName := r.PathValue("name")
+	model := r.URL.Query().Get("model")
+	pullKey := nodeName + "|" + model
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSONError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	ticker := time.NewTicker(300 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		s.pullsMu.Lock()
+		job, ok := s.pullJobs[pullKey]
+		s.pullsMu.Unlock()
+		if !ok {
+			fmt.Fprintf(w, "event: not_found\ndata: {}\n\n")
+			flusher.Flush()
+			return
+		}
+
+		snap := job.snapshot()
+		data, _ := json.Marshal(snap)
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+
+		if snap.Status != "downloading" {
+			return
+		}
+
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// handleCancelPull aborts an in-flight pull job. DELETE .../pull?model=...
+// Cancellation is real, not cosmetic: it cancels the mesh's own outbound
+// request context (the streaming pull, or the call to the agent), which for
+// the agent path also tears down the download subprocess on the node itself
+// (see pullJob.cancel's doc comment). Returns 200 whether or not a job was
+// actually still downloading to cancel - the admin UI's confirm step is
+// what decides whether to call this at all; a late click racing the
+// download's own natural completion isn't an error.
+func (s *Server) handleCancelPull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte(`{"error":"method not allowed"}`))
+		return
+	}
+
+	nodeName := r.PathValue("name")
+	model := r.URL.Query().Get("model")
+	pullKey := nodeName + "|" + model
+
+	s.pullsMu.Lock()
+	job, ok := s.pullJobs[pullKey]
+	s.pullsMu.Unlock()
+
+	cancelled := false
+	if ok {
+		cancelled = job.requestCancel()
+	}
+	if cancelled {
+		s.logSystemChange(r, "pull_model_cancel", nodeName, fmt.Sprintf("Model: %s", model))
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ok":    true,
-		"node":  nodeName,
-		"model": body.Model,
-	})
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "cancelled": cancelled})
+}
+
+// nodeHasAgentCapability reports whether the node named name currently has
+// an agent whose live-polled AgentCapabilities (agent_poll.go) includes
+// capability.
+func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) bool {
+	for _, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		n.RLock()
+		caps := n.AgentCapabilities
+		n.RUnlock()
+		for _, c := range caps {
+			if c == capability {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// pullModelViaAgent dispatches a model pull to nodeURL's Node Agent
+// (POST /actions/pull_model) instead of the node's own runtime HTTP API,
+// forwarding the mesh's configured Hugging Face token per-request - never
+// stored on the agent side, only set in the pull subprocess's own
+// environment for its lifetime (see .local/specs/node-agent.md section 16).
+func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
+	actionURL, err := buildAgentActionURL(nodeURL, agentCfg.Port)
+	if err != nil {
+		return err
+	}
+
+	reqBody, err := json.Marshal(map[string]string{"model": model, "hf_token": s.cfg.HuggingFace.Token})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, nodePullTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodePullTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("agent pull failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("agent pull: could not decode response (status %d)", resp.StatusCode)
+	}
+	if !out.OK {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// buildAgentActionURL derives the agent's /actions/pull_model URL from the
+// node's own URL (same host) and the configured agent port, via url.Parse
+// per R5 - never arithmetic port derivation. Mirrors agent_poll.go's
+// buildAgentURL in internal/router (kept as a separate small function since
+// admin and router are different packages).
+func buildAgentActionURL(nodeURL string, port int) (string, error) {
+	u, err := url.Parse(nodeURL)
+	if err != nil {
+		return "", fmt.Errorf("parse node URL: %w", err)
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("node URL %q has no host", nodeURL)
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d/actions/pull_model", scheme, u.Hostname(), port), nil
 }
 
 // handleAudit queries the audit log with optional filters.

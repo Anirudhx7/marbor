@@ -5,7 +5,10 @@ WORKDIR /app/ui
 COPY ui/package*.json ./
 RUN npm ci
 COPY ui/ ./
-RUN npm run build
+COPY grafana/ ./../grafana/
+RUN npm run build && \
+    mkdir -p /app/internal/admin/web/dist/grafana && \
+    cp /app/grafana/ollama-mesh.json /app/internal/admin/web/dist/grafana/ollama-mesh.json
 
 # Build stage
 FROM golang:1.26-alpine AS builder
