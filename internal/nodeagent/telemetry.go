@@ -1,8 +1,9 @@
-// Package nodeagent implements the ollama-mesh Node Agent: a small HTTP
-// server that runs on a GPU node and reports GPU/host telemetry back to the
-// mesh on its existing poll cycle. See .local/specs/node-agent.md for the
-// full design (pull-only transport, versioned JSON schema, per-node opaque
-// bearer token).
+// Package nodeagent implements the ollama-mesh Node Agent: the node-local
+// execution point for the mesh. v1 ships telemetry only (GPU/host stats
+// reported back to the mesh on its existing poll cycle) - future versions add
+// node-local actions (model pull/delete, runtime restart/update, drain) behind
+// the same protocol. See .local/specs/node-agent.md for the full design
+// (pull-only transport, versioned JSON schema, per-node opaque bearer token).
 package nodeagent
 
 import "time"
