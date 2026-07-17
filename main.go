@@ -293,6 +293,7 @@ func main() {
 				DailyLimit:   k.DailyLimit,
 				MonthlyLimit: k.MonthlyLimit,
 				Models:       k.Models,
+				ExpiresAt:    k.ExpiresAt,
 			})
 			keyCount++
 		}

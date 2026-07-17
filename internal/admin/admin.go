@@ -3033,6 +3033,33 @@ func maskKey(k string) string {
 	return k[:7] + "…" + k[len(k)-4:]
 }
 
+// validateExpiresAt parses an optional key expiry string and rejects malformed
+// or already-past values. An empty string (no expiry) is always valid. Accepts
+// a bare date, the datetime-local format the UI's date/time picker emits, or
+// RFC3339, in that order.
+func validateExpiresAt(s string) error {
+	if s == "" {
+		return nil
+	}
+	var exp time.Time
+	var err error
+	for _, layout := range []string{"2006-01-02", "2006-01-02T15:04", time.RFC3339} {
+		if exp, err = time.Parse(layout, s); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("expires_at must be YYYY-MM-DD, YYYY-MM-DDTHH:MM, or RFC3339 format")
+	}
+	// Reject an already-past expiry: it would mint/patch a key that can never
+	// authenticate (keyExpired treats it as expired immediately), which is a
+	// silent footgun rather than an intended action.
+	if !exp.After(time.Now()) {
+		return fmt.Errorf("expires_at is in the past")
+	}
+	return nil
+}
+
 func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	var k config.KeyConfig
 	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
@@ -3051,26 +3078,9 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap must be >= 0"}`))
 		return
 	}
-	if k.ExpiresAt != "" {
-		exp, err1 := time.Parse("2006-01-02", k.ExpiresAt)
-		if err1 != nil {
-			exp, err1 = time.Parse(time.RFC3339, k.ExpiresAt)
-		}
-		if err1 != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"expires_at must be YYYY-MM-DD or RFC3339 format"}`))
-			return
-		}
-		// Reject an already-past expiry: it would mint a key that can never
-		// authenticate (keyExpired treats it as expired immediately), which is a
-		// silent footgun rather than an intended action.
-		if !exp.After(time.Now()) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"expires_at is in the past"}`))
-			return
-		}
+	if err := validateExpiresAt(k.ExpiresAt); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	if k.Key == "" {
 		k.Key = generateAPIKey(k.Name)
@@ -3088,6 +3098,7 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		MonthlyUsdCap: k.MonthlyUsdCap,
 		Models:        k.Models,
 		Revoked:       false,
+		ExpiresAt:     k.ExpiresAt,
 	})
 	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models))
 	w.Header().Set("Content-Type", "application/json")
@@ -3115,6 +3126,12 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
 		return
+	}
+	if patch.ExpiresAt != nil {
+		if err := validateExpiresAt(*patch.ExpiresAt); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	if s.auth == nil || !s.auth.PatchKey(name, patch) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
@@ -3150,9 +3167,12 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		if patch.Models != nil {
 			keyRecord.Models = patch.Models
 		}
+		if patch.ExpiresAt != nil {
+			keyRecord.ExpiresAt = *patch.ExpiresAt
+		}
 		_ = s.st.UpsertKey(*keyRecord)
 	}
-	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil))
+	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v, ExpiresAtChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil, patch.ExpiresAt != nil))
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"key":%q,"updated":true}`, name)
 }

@@ -8,6 +8,7 @@ interface CustomDateTimePickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  min?: string; // YYYY-MM-DDTHH:MM - days before this date are unselectable
 }
 
 export function CustomDateTimePicker({
@@ -16,6 +17,7 @@ export function CustomDateTimePicker({
   placeholder = 'Select date & time...',
   className = '',
   disabled = false,
+  min,
 }: CustomDateTimePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -104,7 +106,16 @@ export function CustomDateTimePicker({
     }
   };
 
+  const minDate = min ? new Date(min) : null;
+  const isDayDisabled = (y: number, m: number, day: number) => {
+    if (!minDate) return false;
+    const cell = new Date(y, m, day);
+    const minDay = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+    return cell < minDay;
+  };
+
   const selectDay = (day: number) => {
+    if (isDayDisabled(viewYear, viewMonth, day)) return;
     setSelectedDay(day);
     updateValue(day, hours, minutes);
   };
@@ -279,11 +290,16 @@ export function CustomDateTimePicker({
                 new Date().getMonth() === viewMonth &&
                 new Date().getFullYear() === viewYear;
 
+              const cellMonth = viewMonth + cell.monthOffset;
+              const isDisabled = isDayDisabled(viewYear, cellMonth, cell.day);
+
               return (
                 <button
                   key={idx}
                   type="button"
+                  disabled={isDisabled}
                   onClick={() => {
+                    if (isDisabled) return;
                     if (cell.isCurrentMonth) {
                       selectDay(cell.day);
                     } else {
@@ -301,7 +317,9 @@ export function CustomDateTimePicker({
                     }
                   }}
                   className={`text-xs py-1.5 rounded-lg text-center font-medium transition-colors ${
-                    isSelected
+                    isDisabled
+                      ? 'text-muted-foreground/25 cursor-not-allowed'
+                      : isSelected
                       ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                       : cell.isCurrentMonth
                       ? 'text-foreground hover:bg-secondary/60'

@@ -506,7 +506,7 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
   return res.json() as Promise<import('../types').GPUNode>;
 }
 
-export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[] }) {
+export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string }) {
   const res = await apiFetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
