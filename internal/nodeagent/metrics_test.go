@@ -13,6 +13,11 @@ func TestRenderPrometheusDerivedFromTelemetry(t *testing.T) {
 	tel := Telemetry{
 		SchemaVersion: 1,
 		AgentVersion:  "v0.16.0",
+		Capabilities:  []string{"telemetry"},
+		Platform:      "linux",
+		Architecture:  "amd64",
+		GPUVendor:     "nvidia",
+		Runtime:       "ollama",
 		GPU: &GPUTelemetry{
 			TemperatureC: &temp,
 			FanPercent:   &fan,
@@ -51,6 +56,14 @@ func TestRenderPrometheusDerivedFromTelemetry(t *testing.T) {
 	}
 	if !strings.Contains(out, "# TYPE nodeagent_gpu_temperature_celsius gauge") {
 		t.Error("missing TYPE line for gpu_temperature_celsius")
+	}
+
+	// nodeagent_info carries the agent's string metadata as labels (the
+	// standard Prometheus "info metric" convention) so a mixed fleet can be
+	// grouped/filtered by version, platform, GPU vendor, or detected runtime
+	// from Prometheus/Grafana directly, not just from /telemetry JSON.
+	if !strings.Contains(out, `nodeagent_info{agent_version="v0.16.0",platform="linux",architecture="amd64",gpu_vendor="nvidia",runtime="ollama",capabilities="telemetry"} 1`) {
+		t.Errorf("missing or wrong nodeagent_info line:\n%s", out)
 	}
 }
 

@@ -91,6 +91,11 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 		tel := nodeagent.Telemetry{
 			SchemaVersion: 1,
 			AgentVersion:  "v0.16.0",
+			Capabilities:  []string{"telemetry"},
+			Platform:      "linux",
+			Architecture:  "amd64",
+			GPUVendor:     "nvidia",
+			Runtime:       "ollama",
 			GPU: &nodeagent.GPUTelemetry{
 				TemperatureC: &temp,
 				FanPercent:   &fan,
@@ -144,6 +149,18 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 	if r.nodes[0].VRAMTotalMB != 16000 || r.nodes[0].VRAMUsedMB != 8000 {
 		t.Errorf("VRAM = %d/%d, want 8000/16000", r.nodes[0].VRAMUsedMB, r.nodes[0].VRAMTotalMB)
 	}
+	if len(r.nodes[0].AgentCapabilities) != 1 || r.nodes[0].AgentCapabilities[0] != "telemetry" {
+		t.Errorf("AgentCapabilities = %v, want [telemetry]", r.nodes[0].AgentCapabilities)
+	}
+	if r.nodes[0].AgentPlatform != "linux" || r.nodes[0].AgentArchitecture != "amd64" {
+		t.Errorf("AgentPlatform/AgentArchitecture = %q/%q, want linux/amd64", r.nodes[0].AgentPlatform, r.nodes[0].AgentArchitecture)
+	}
+	if r.nodes[0].AgentGPUVendor != "nvidia" {
+		t.Errorf("AgentGPUVendor = %q, want nvidia", r.nodes[0].AgentGPUVendor)
+	}
+	if r.nodes[0].AgentRuntime != "ollama" {
+		t.Errorf("AgentRuntime = %q, want ollama", r.nodes[0].AgentRuntime)
+	}
 }
 
 // TestPollAgentTelemetryWrongTokenClearsFields verifies that a configured
@@ -186,6 +203,10 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 		json.NewEncoder(w).Encode(nodeagent.Telemetry{
 			SchemaVersion: 1,
 			AgentVersion:  "v0.16.0",
+			Capabilities:  []string{"telemetry"},
+			Platform:      "linux",
+			Architecture:  "amd64",
+			GPUVendor:     "nvidia",
 			GPU:           &nodeagent.GPUTelemetry{FanPercent: &fan},
 		})
 	}))
@@ -216,5 +237,11 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	}
 	if r.nodes[0].FanPercent != nil {
 		t.Errorf("FanPercent = %v after disabling, want nil (cleared)", r.nodes[0].FanPercent)
+	}
+	if r.nodes[0].AgentCapabilities != nil {
+		t.Errorf("AgentCapabilities = %v after disabling, want nil (cleared)", r.nodes[0].AgentCapabilities)
+	}
+	if r.nodes[0].AgentPlatform != "" || r.nodes[0].AgentGPUVendor != "" {
+		t.Errorf("AgentPlatform/AgentGPUVendor = %q/%q after disabling, want cleared", r.nodes[0].AgentPlatform, r.nodes[0].AgentGPUVendor)
 	}
 }

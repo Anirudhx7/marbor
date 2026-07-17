@@ -509,7 +509,19 @@ export function GPUNodes() {
         windows: `$env:ROLE="agent"; $env:TOKEN="${token}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setNodes(prev => prev.map(n => n.name === agentNode.name
-        ? { ...n, agentPresent: true, agentVersion: '0.1.0', fanPercent: 55, ramUsedMB: Math.round(20 * 1024), diskFreeGB: 500 }
+        ? {
+            ...n,
+            agentPresent: true,
+            agentVersion: '0.1.0',
+            fanPercent: 55,
+            ramUsedMB: Math.round(20 * 1024),
+            diskFreeGB: 500,
+            agentCapabilities: ['telemetry'],
+            agentPlatform: 'linux',
+            agentArchitecture: 'amd64',
+            agentGpuVendor: 'nvidia',
+            agentRuntime: 'ollama',
+          }
         : n));
       setAgentBusy(false);
       return;
@@ -557,7 +569,19 @@ export function GPUNodes() {
     setAgentError(null);
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === agentToDisable
-        ? { ...n, agentPresent: false, agentVersion: undefined, fanPercent: undefined, ramUsedMB: undefined, diskFreeGB: undefined }
+        ? {
+            ...n,
+            agentPresent: false,
+            agentVersion: undefined,
+            fanPercent: undefined,
+            ramUsedMB: undefined,
+            diskFreeGB: undefined,
+            agentCapabilities: undefined,
+            agentPlatform: undefined,
+            agentArchitecture: undefined,
+            agentGpuVendor: undefined,
+            agentRuntime: undefined,
+          }
         : n));
       setAgentStatus(s => s ? { ...s, enabled: false } : s);
       setAgentInstallCommand(null);
@@ -1398,6 +1422,17 @@ export function GPUNodes() {
               <p className="text-sm text-foreground">
                 Enabled on port <span className="font-mono">{agentStatus.port}</span>.
               </p>
+              {agentNode?.agentPresent && (
+                <div className="text-xs text-muted-foreground space-y-1 bg-secondary/40 rounded-lg p-3">
+                  <p><span className="font-medium text-foreground">Agent version:</span> {agentNode.agentVersion || '--'}</p>
+                  <p><span className="font-medium text-foreground">Platform:</span> {agentNode.agentPlatform || '--'} / {agentNode.agentArchitecture || '--'}</p>
+                  <p><span className="font-medium text-foreground">GPU vendor:</span> {agentNode.agentGpuVendor || '--'}</p>
+                  {agentNode.agentRuntime && (
+                    <p><span className="font-medium text-foreground">Detected runtime:</span> {agentNode.agentRuntime}</p>
+                  )}
+                  <p><span className="font-medium text-foreground">Capabilities:</span> {agentNode.agentCapabilities?.length ? agentNode.agentCapabilities.join(', ') : '--'}</p>
+                </div>
+              )}
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={handleRegenerateAgentToken}

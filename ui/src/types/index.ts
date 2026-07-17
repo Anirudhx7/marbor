@@ -81,6 +81,15 @@ export interface GPUNode {
   fanPercent?: number | null;
   ramUsedMB?: number;
   diskFreeGB?: number;
+  // Agent self-reported metadata (capabilities/platform/architecture/GPU
+  // vendor/detected runtime) - lets the UI gate agent-dependent features on
+  // what this node's agent build actually supports, and helps debug a
+  // mixed-version fleet. Same agentPresent gating as the fields above.
+  agentCapabilities?: string[];
+  agentPlatform?: string;
+  agentArchitecture?: string;
+  agentGpuVendor?: string;
+  agentRuntime?: string;
 }
 
 export interface LoadedModel {
