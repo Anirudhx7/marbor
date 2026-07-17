@@ -650,7 +650,7 @@ export async function reorderCloudProviders(order: string[]): Promise<void> {
 
 // reloadFromStore re-syncs live nodes/API keys/cloud providers from the
 // database without restarting (no config.yaml to reload anymore - 2026-07
-// elimination). Settings not covered by this (Docker/HA/Webhook wiring,
+// elimination). Settings not covered by this (Docker/Webhook wiring,
 // listen ports/addresses) take effect on next restart.
 export async function reloadFromStore(): Promise<{ reloaded: boolean; auth_keys: number; nodes_added: number; nodes_removed: number; cloud_providers: number }> {
   const res = await apiFetch(`${BASE}/config/reload`, {

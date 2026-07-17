@@ -46,7 +46,7 @@ Platform teams often attempt to orchestrate local GPU nodes using generic networ
 |---|---|---|
 | **Routing Intelligence** | Round-robin or least-connections (model-blind; causes constant cold-starts) | **Hardware-aware (routes to the node that already has the model warm in VRAM)** |
 | **Failover Strategy** | Static failover or raw connection drop | **Cost-aware cloud overflow (retains 100% uptime with cloud fallback only when forced)** |
-| **High Availability** | Manual setup (complex nginx configurations and scripts) | **Active-Active stateless HA (cluster state synchronized natively across peers)** |
+| **Availability** | Manual setup (complex nginx configurations and scripts) | **Single-instance control plane; run behind your own TCP load balancer for redundancy** |
 | **Multi-Model VRAM Placement** | Handled manually per host | **Dynamic VRAM-fit placement based on active node capacity** |
 | **Enterprise Controls** | No native auth, quotas, or rate limiting | **Per-key auth, token-bucket rate limits, and monthly hard quotas** |
 | **Financial Visibility** | None (separate billing auditing required) | **Real-time savings dashboard tracked by actual token counts** |
