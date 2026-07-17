@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, ChevronUp, PauseCircle, PlayCircle, Pencil, BrainCircuit, CheckCircle2, XCircle } from 'lucide-react';
+import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, ChevronUp, PauseCircle, PlayCircle, Pencil, BrainCircuit, CheckCircle2, XCircle, Zap } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule, updateSchedule,
   fetchModels, getPinned, setPinned, fetchSystemInfo, fetchPredictiveDecisions,
-  fetchWarmupStatus, setPredictiveEngine,
+  fetchWarmupStatus, setPredictiveEngine, triggerWarmupPing,
 } from '../lib/api';
 import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
@@ -601,6 +601,8 @@ export function Warmup() {
   const [predictiveConfirmOpen, setPredictiveConfirmOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
   const [scheduleDeleteError, setScheduleDeleteError] = useState<string | null>(null);
+  const [pinging, setPinging] = useState(false);
+  const [pingMessage, setPingMessage] = useState<{ text: string; error: boolean } | null>(null);
 
   const load = useCallback(async (active: boolean) => {
     try {
@@ -730,6 +732,20 @@ export function Warmup() {
     }
   }
 
+  async function handlePingWarmup() {
+    setPinging(true);
+    setPingMessage(null);
+    try {
+      await triggerWarmupPing();
+      setPingMessage({ text: 'Warmup triggered.', error: false });
+    } catch (e: any) {
+      setPingMessage({ text: e.message || 'Failed to trigger warmup', error: true });
+    } finally {
+      setPinging(false);
+      setTimeout(() => setPingMessage(null), 4000);
+    }
+  }
+
   async function addSchedule(s: Omit<Schedule, 'id'>) {
     const created = await createSchedule(s);
     setSchedules(prev => [...prev, created]);
@@ -758,6 +774,13 @@ export function Warmup() {
         <div className="flex items-center gap-2.5">
           <Flame className="w-5 h-5 text-primary" />
           <h1 className="text-lg font-bold text-foreground">Warmup &amp; Scheduling</h1>
+          <button onClick={handlePingWarmup} disabled={pinging} title="Manually trigger a warmup pass on every node right now"
+            className="flex items-center gap-1.5 px-2.5 py-1 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50">
+            <Zap className="w-3.5 h-3.5" /> {pinging ? 'Pinging…' : 'Ping warmup'}
+          </button>
+          {pingMessage && (
+            <span className={`text-xs ${pingMessage.error ? 'text-destructive' : 'text-success'}`}>{pingMessage.text}</span>
+          )}
         </div>
         <div className="flex items-center bg-secondary rounded-lg p-0.5 text-sm w-full sm:w-auto">
           <button onClick={() => setTab('warmup')}
