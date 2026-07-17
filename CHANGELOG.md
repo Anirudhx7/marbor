@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Node Agent (v1): real GPU/host telemetry for remote nodes, read-only.** A new `ollama-mesh agent` subcommand runs a small HTTP server on the GPU node itself, reporting temperature, fan speed, power draw, VRAM, CPU, RAM, and disk free via a versioned JSON schema (`GET /telemetry`) plus a Prometheus-compatible `GET /metrics` derived from it. The mesh polls it on the existing node poll cycle - no new transport, no WebSockets/gRPC. Each node gets its own opaque bearer token (AES-256-GCM encrypted at rest, distinct from the mesh's client-facing API keys - a leaked agent token can only feed fake telemetry to one node, not access inference or other secrets). Enable/regenerate/disable an agent from the GPU Nodes page; nodes without an agent installed keep showing `-` for these fields exactly as before, never a fabricated estimate.
 - **API key expiry is now editable after creation, with time-of-day precision.** Previously `expires_at` could only be set at key creation and had no field at all in the edit modal - once created, a key's expiry could never be added, changed, or cleared. `PATCH /admin/keys/{name}` now accepts `expires_at`, and both the create and edit forms use a combined date/time picker (was date-only on create) so expiry can be scoped to the hour/minute, not just the day.
 
 ### Fixed
