@@ -339,7 +339,7 @@ export function SystemAudit() {
               <div
                 key={`${e.time}-${e.action}-${e.username}-${index}-card`}
                 onClick={() => setSelectedEntry(e)}
-                className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 cursor-pointer hover:bg-secondary/20 transition-all duration-150"
+                className="bg-card border border-border/60 rounded-xl p-4 cursor-pointer hover:bg-secondary/20 transition-all duration-150"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-1.5 font-medium text-foreground">
