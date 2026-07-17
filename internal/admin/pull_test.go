@@ -351,3 +351,43 @@ func TestHandleNodePull_SlowHFPullSucceedsWithGenerousTimeout(t *testing.T) {
 		t.Errorf("expected ok=true, got %v", resp["ok"])
 	}
 }
+
+// TestHandleNodePull_SurfacesUpstreamErrorBody documents the fix for the
+// reported "Bad Gateway" bug: Ollama's own error text (e.g. why a gated/
+// invalid Hugging Face tag was rejected) must reach the admin UI instead of
+// being collapsed into a bare "upstream returned 401" - an operator can't
+// tell a missing HF token apart from a malformed tag apart from a real
+// outage from a status code alone.
+func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"401 Unauthorized: this repo is gated, pass a valid HF token"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+
+	body := `{"model":"hf.co/gated-org/gated-repo:Q4_K_M"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("name", "gpu-0")
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	res := w.Result()
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.Contains(resp["error"], "gated") || !strings.Contains(resp["error"], "HF token") {
+		t.Errorf("expected error to surface upstream's message, got %q", resp["error"])
+	}
+}
