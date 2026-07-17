@@ -753,7 +753,13 @@ export async function pullModel(nodeName: string, model: string): Promise<void> 
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ model }),
   });
-  if (!res.ok) throw new Error(`Pull failed: ${res.statusText}`);
+  if (!res.ok) {
+    const detail = await res
+      .json()
+      .then((body) => body?.error)
+      .catch(() => null);
+    throw new Error(detail || `Pull failed: ${res.statusText}`);
+  }
 }
 
 // fetchModelConfig returns the configured default parameter profile for a
