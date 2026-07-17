@@ -1,12 +1,21 @@
 package nodeagent
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
+
+// defaultRefreshInterval is how often the background Collector re-collects
+// GPU/host telemetry when --refresh-interval isn't set. GPU temperature/VRAM/
+// etc. don't change fast enough to need per-request freshness, so this is
+// independent of (and normally much longer than a fraction of) the mesh's
+// own node poll interval.
+const defaultRefreshInterval = 5 * time.Second
 
 // Run is the "ollama-mesh agent" subcommand entry point (called from main.go
 // the same way "ollama-mesh bench" dispatches to internal/bench.Run) - same
@@ -18,6 +27,7 @@ func Run(args []string, version string) {
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port to serve /telemetry and /metrics on")
 	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
+	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "ollama-mesh agent - Node Agent: serves GPU/host telemetry for the mesh to poll\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh agent --port=<port> --token=<token>\n\nFlags:\n")
@@ -34,10 +44,24 @@ func Run(args []string, version string) {
 	if token == "" {
 		log.Fatal("nodeagent: a token is required: pass --token=<token> or set the TOKEN environment variable")
 	}
+	if *refreshInterval <= 0 {
+		log.Fatal("nodeagent: --refresh-interval must be positive")
+	}
 
-	srv := &Server{Token: token, Version: version}
+	// Seed synchronously so the very first request never observes an
+	// empty/never-collected cache, then hand refreshing off to a background
+	// goroutine - GET /telemetry and GET /metrics only ever read the cache
+	// (see collector.go, server.go), never fork nvidia-smi on the request
+	// path.
+	collector := NewCollector(version)
+	collector.Seed()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go collector.Start(ctx, *refreshInterval)
+
+	srv := &Server{Token: token, Version: version, Collector: collector}
 	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("ollama-mesh agent %s listening on %s (GET /telemetry, GET /metrics)", version, addr)
+	log.Printf("ollama-mesh agent %s listening on %s (GET /telemetry, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		log.Fatalf("nodeagent: %v", err)
 	}

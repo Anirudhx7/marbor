@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestTelemetryMarshalSchema(t *testing.T) {
@@ -10,9 +11,11 @@ func TestTelemetryMarshalSchema(t *testing.T) {
 	fan := 52.0
 	power := 218.0
 	cpu := 34.0
+	lastUpdated := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
 	tel := Telemetry{
 		SchemaVersion: SchemaVersion,
 		AgentVersion:  "v0.16.0",
+		LastUpdated:   lastUpdated,
 		GPU: &GPUTelemetry{
 			TemperatureC: &temp,
 			FanPercent:   &fan,
@@ -42,6 +45,9 @@ func TestTelemetryMarshalSchema(t *testing.T) {
 	}
 	if decoded["agent_version"] != "v0.16.0" {
 		t.Errorf("agent_version = %v", decoded["agent_version"])
+	}
+	if decoded["last_updated"] != lastUpdated.Format(time.RFC3339Nano) {
+		t.Errorf("last_updated = %v, want %v", decoded["last_updated"], lastUpdated.Format(time.RFC3339Nano))
 	}
 	gpu, ok := decoded["gpu"].(map[string]interface{})
 	if !ok {
