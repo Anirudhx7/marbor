@@ -22,6 +22,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/bench"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/ha"
+	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
@@ -203,6 +204,10 @@ func main() {
 		bench.Run(os.Args[2:])
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "agent" {
+		nodeagent.Run(os.Args[2:], Version)
+		return
+	}
 
 	flag.Parse()
 
@@ -370,6 +375,15 @@ func main() {
 				r.DrainNode(name, ds.Reason)
 			}
 		}
+	}
+	if agents, err := st.AllNodeAgents(); err == nil {
+		for _, a := range agents {
+			if a.Enabled {
+				r.SetNodeAgent(a.Name, true, a.Port, a.Token)
+			}
+		}
+	} else {
+		log.Printf("WARNING: could not load node agents from store: %v", err)
 	}
 
 	// Cloud providers: entirely store-driven now.

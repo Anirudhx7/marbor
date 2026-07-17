@@ -219,6 +219,12 @@ func (r *Router) pollNode(n *NodeState) {
 		metrics.NodeHealthy(n.Name, 0)
 	}
 
+	// Node Agent telemetry poll: opt-in per node (see internal/nodeagent),
+	// shares this same poll cycle rather than a second ticker/goroutine, per
+	// the build spec ("mesh polls it exactly like it already polls /api/ps
+	// today"). A no-op (clears stale fields) when no agent is configured.
+	r.pollAgentTelemetry(n)
+
 	if shouldThermalDrain {
 		r.DrainNode(nodeName, "thermal")
 		log.Printf("thermal watchdog: node %s auto-drained after %d consecutive polls at/above %.1f°C",
