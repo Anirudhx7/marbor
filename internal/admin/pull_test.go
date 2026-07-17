@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -389,5 +390,82 @@ func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 	}
 	if !strings.Contains(resp["error"], "gated") || !strings.Contains(resp["error"], "HF token") {
 		t.Errorf("expected error to surface upstream's message, got %q", resp["error"])
+	}
+}
+
+// TestHandleNodePull_DispatchesToAgentWhenCapable verifies the mesh routes a
+// pull to the node's Node Agent (not the direct Ollama /api/pull path) when
+// the node has an agent enabled and reporting "actions.pull_model" - and
+// that the mesh's configured Hugging Face token is forwarded per-request
+// (node-agent spec section 16). The direct-to-Ollama mock is never hit in
+// this scenario, proving dispatch actually took the agent branch.
+func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
+	ollamaHit := false
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ollamaHit = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	var gotAuth, gotBody string
+	mockAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/actions/pull_model" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		gotAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockAgent.Close()
+
+	agentPort := 0
+	fmt.Sscanf(strings.TrimPrefix(mockAgent.URL, "http://127.0.0.1:"), "%d", &agentPort)
+
+	cfg := config.Config{
+		Auth: config.AuthConfig{
+			Enabled: config.BoolPtr(true),
+			Keys:    []config.KeyConfig{{Name: "test", Key: "test-token"}},
+		},
+		HuggingFace: config.HuggingFaceConfig{Token: "hf_secret123"},
+	}
+	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	for _, n := range r.Nodes() {
+		if n.Name == "gpu-0" {
+			n.Lock()
+			n.AgentCapabilities = []string{"telemetry", "actions.pull_model"}
+			n.Unlock()
+		}
+	}
+	s := NewServer(r, nil, cfg)
+
+	body := `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("name", "gpu-0")
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	res := w.Result()
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, body)
+	}
+	if ollamaHit {
+		t.Error("direct Ollama /api/pull path was hit - should have dispatched to the agent instead")
+	}
+	if gotAuth != "Bearer agent-secret-token" {
+		t.Errorf("agent request Authorization = %q, want Bearer agent-secret-token", gotAuth)
+	}
+	if !strings.Contains(gotBody, "hf_secret123") {
+		t.Errorf("expected mesh's configured HF token forwarded to agent, got body %q", gotBody)
 	}
 }

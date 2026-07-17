@@ -4321,6 +4321,31 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		s.pullsMu.Unlock()
 	}()
 
+	// Prefer the Node Agent's local pull_model action when this node has one
+	// reporting the capability (node-agent spec section 16) - it runs the
+	// download locally on the node (no mesh-side HTTP client timeout bound
+	// to a transfer the mesh isn't a party to) and can inject the mesh's
+	// configured Hugging Face token, which the direct-to-Ollama-API path
+	// below has no way to do. Nodes without an agent, or an agent build
+	// predating this capability, fall through unchanged to that path.
+	if agentCfg, ok := s.router.NodeAgentSetting(nodeName); ok && agentCfg.Enabled && nodeHasAgentCapability(s.router.Nodes(), nodeName, "actions.pull_model") {
+		if err := s.pullModelViaAgent(r.Context(), nodeURL, agentCfg, body.Model); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s (via agent)", body.Model))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    true,
+			"node":  nodeName,
+			"model": body.Model,
+		})
+		return
+	}
+
 	pullBody, err := json.Marshal(map[string]interface{}{
 		"model":  body.Model,
 		"stream": false,
@@ -4377,6 +4402,96 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		"node":  nodeName,
 		"model": body.Model,
 	})
+}
+
+// nodeHasAgentCapability reports whether the node named name currently has
+// an agent whose live-polled AgentCapabilities (agent_poll.go) includes
+// capability.
+func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) bool {
+	for _, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		n.RLock()
+		caps := n.AgentCapabilities
+		n.RUnlock()
+		for _, c := range caps {
+			if c == capability {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// pullModelViaAgent dispatches a model pull to nodeURL's Node Agent
+// (POST /actions/pull_model) instead of the node's own runtime HTTP API,
+// forwarding the mesh's configured Hugging Face token per-request - never
+// stored on the agent side, only set in the pull subprocess's own
+// environment for its lifetime (see .local/specs/node-agent.md section 16).
+func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
+	actionURL, err := buildAgentActionURL(nodeURL, agentCfg.Port)
+	if err != nil {
+		return err
+	}
+
+	reqBody, err := json.Marshal(map[string]string{"model": model, "hf_token": s.cfg.HuggingFace.Token})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, nodePullTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodePullTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("agent pull failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("agent pull: could not decode response (status %d)", resp.StatusCode)
+	}
+	if !out.OK {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// buildAgentActionURL derives the agent's /actions/pull_model URL from the
+// node's own URL (same host) and the configured agent port, via url.Parse
+// per R5 - never arithmetic port derivation. Mirrors agent_poll.go's
+// buildAgentURL in internal/router (kept as a separate small function since
+// admin and router are different packages).
+func buildAgentActionURL(nodeURL string, port int) (string, error) {
+	u, err := url.Parse(nodeURL)
+	if err != nil {
+		return "", fmt.Errorf("parse node URL: %w", err)
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("node URL %q has no host", nodeURL)
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d/actions/pull_model", scheme, u.Hostname(), port), nil
 }
 
 // handleAudit queries the audit log with optional filters.

@@ -269,6 +269,9 @@ export interface Schedule {
   at: string;      // "HH:MM" 24h, server-local
   days?: number[]; // 0=Sun..6=Sat; empty = every day
   enabled: boolean;
+  last_run_at?: string;  // RFC3339 UTC, absent if never fired since boot
+  last_status?: 'ok' | 'error';
+  last_error?: string;
 }
 
 // Demo state so the static demo's Warmup page is populated and interactive.
@@ -285,8 +288,8 @@ function demoWarmupStore(): Record<string, NodeWarmup> {
 let demoSchedules: Schedule[] | null = null;
 function demoScheduleStore(): Schedule[] {
   if (!demoSchedules) demoSchedules = [
-    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['deepseek-r1:8b', 'qwen2.5:7b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true },
-    { id: 'sched-demo-2', action: 'drain',  node: 'gpu-node-03', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true },
+    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['deepseek-r1:8b', 'qwen2.5:7b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
+    { id: 'sched-demo-2', action: 'drain',  node: 'gpu-node-03', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
     { id: 'sched-demo-3', action: 'warmup', node: 'gpu-node-02', models: ['llama3.3:70b'], at: '09:00', days: [1, 2, 3, 4, 5], enabled: false },
   ];
   return demoSchedules;
@@ -746,12 +749,32 @@ export function analyticsExportUrl(type: 'hourly' | 'models'): string {
   return `${BASE}/analytics/export?format=csv&type=${type}`;
 }
 
+// normalizePullTag catches the most common way a pull request is malformed
+// before it ever reaches the mesh: pasting a bare Hugging Face repo id
+// (e.g. "unsloth/gemma-4-26B-A4B-it-GGUF", copied straight off a HF model
+// page) into the free-text "Pull Model from Registry" field. Ollama only
+// resolves a Hugging Face-hosted GGUF repo when the tag is explicitly
+// prefixed "hf.co/" - ModelAdvisor.tsx's own search-and-select flow already
+// builds tags this way; this closes the same gap for manual entry. Only
+// triggers on the "-gguf" suffix convention (a strong, narrow signal) so a
+// legitimate bare "namespace/model" Ollama-library tag is never mangled.
+function normalizePullTag(model: string): string {
+  const trimmed = model.trim();
+  if (trimmed.startsWith('hf.co/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+  if (/^[\w.-]+\/[\w.-]+-gguf(:.+)?$/i.test(trimmed)) {
+    return `hf.co/${trimmed}`;
+  }
+  return trimmed;
+}
+
 export async function pullModel(nodeName: string, model: string): Promise<void> {
   if (DEMO) return demoDelay(undefined);
   const res = await apiFetch(`${BASE}/v1/nodes/${encodeURIComponent(nodeName)}/pull`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model }),
+    body: JSON.stringify({ model: normalizePullTag(model) }),
   });
   if (!res.ok) {
     const detail = await res
