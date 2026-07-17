@@ -48,11 +48,11 @@ interface ChartCardProps {
 function ChartCard({ title, children, onExport }: ChartCardProps) {
   return (
     <div className="bg-card border border-border shadow-sm rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         <button
           onClick={onExport}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 rounded-lg transition-colors self-start sm:self-auto"
         >
           <Download className="w-3.5 h-3.5" />
           Export CSV

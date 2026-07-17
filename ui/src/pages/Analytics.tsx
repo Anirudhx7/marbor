@@ -262,46 +262,101 @@ export function Analytics() {
             No request data yet. Start sending requests through the proxy.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-secondary/50 text-muted-foreground">
-                  <th className="px-6 py-3 text-left font-medium">Model</th>
-                  <th className="px-6 py-3 text-right font-medium">Local</th>
-                  <th className="px-6 py-3 text-right font-medium">Cloud</th>
-                  <th className="px-6 py-3 text-right font-medium">Local %</th>
-                  <th className="px-6 py-3 text-right font-medium">Saved ($)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.by_model.slice(0, 10).map((m: ModelStat) => {
-                  const total = m.local + m.cloud;
-                  const pct = total > 0 ? Math.round((m.local / total) * 100) : 0;
-                  return (
-                    <tr key={m.model} className="hover:bg-secondary/50 transition-colors">
-                      <td className="px-6 py-3 font-mono font-medium text-foreground">
-                        {m.model}
-                      </td>
-                      <td className="px-6 py-3 text-right text-success font-medium">
-                        {m.local.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-3 text-right text-amber-500 font-medium">
-                        {m.cloud.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <span className={`font-semibold ${pct >= 90 ? 'text-success' : pct >= 70 ? 'text-primary' : 'text-amber-500'}`}>
+          <>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-secondary/50 text-muted-foreground">
+                    <th className="px-6 py-3 text-left font-medium">Model</th>
+                    <th className="px-6 py-3 text-right font-medium">Local</th>
+                    <th className="px-6 py-3 text-right font-medium">Cloud</th>
+                    <th className="px-6 py-3 text-right font-medium">Local %</th>
+                    <th className="px-6 py-3 text-right font-medium">Saved ($)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {data.by_model.slice(0, 10).map((m: ModelStat) => {
+                    const total = m.local + m.cloud;
+                    const pct = total > 0 ? Math.round((m.local / total) * 100) : 0;
+                    return (
+                      <tr key={m.model} className="hover:bg-secondary/50 transition-colors">
+                        <td className="px-6 py-3 font-mono font-medium text-foreground">
+                          {m.model}
+                        </td>
+                        <td className="px-6 py-3 text-right text-success font-medium">
+                          {m.local.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-3 text-right text-amber-500 font-medium">
+                          {m.cloud.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-3 text-right">
+                          <span className={`font-semibold ${pct >= 90 ? 'text-success' : pct >= 70 ? 'text-primary' : 'text-amber-500'}`}>
+                            {pct}%
+                          </span>
+                        </td>
+                        <td className="px-6 py-3 text-right font-mono font-medium text-success">
+                          ${(m.saved_usd ?? 0).toFixed(4)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="md:hidden space-y-3 p-4">
+              {data.by_model.slice(0, 10).map((m: ModelStat) => {
+                const total = m.local + m.cloud;
+                const pct = total > 0 ? Math.round((m.local / total) * 100) : 0;
+                return (
+                  <div
+                    key={m.model}
+                    className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4"
+                  >
+                    <p className="font-mono font-medium text-foreground text-sm mb-3 break-all">
+                      {m.model}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Local
+                        </p>
+                        <p className="text-sm text-success font-medium">
+                          {m.local.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Cloud
+                        </p>
+                        <p className="text-sm text-amber-500 font-medium">
+                          {m.cloud.toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Local %
+                        </p>
+                        <p
+                          className={`text-sm font-semibold ${pct >= 90 ? 'text-success' : pct >= 70 ? 'text-primary' : 'text-amber-500'}`}
+                        >
                           {pct}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-right font-mono font-medium text-success">
-                        ${(m.saved_usd ?? 0).toFixed(4)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Saved ($)
+                        </p>
+                        <p className="text-sm font-mono font-medium text-success">
+                          ${(m.saved_usd ?? 0).toFixed(4)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>

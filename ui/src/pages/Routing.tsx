@@ -293,7 +293,7 @@ export function Routing() {
       </div>
 
       {/* Rules Table */}
-      <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
+      <div className="hidden md:block bg-card border border-border shadow-sm rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -332,8 +332,8 @@ export function Routing() {
                     <button
                       onClick={() => setRuleToToggle(rule)}
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
-                        rule.enabled 
-                          ? 'bg-primary/10 text-primary' 
+                        rule.enabled
+                          ? 'bg-primary/10 text-primary'
                           : 'bg-muted text-muted-foreground'
                       }`}
                     >
@@ -370,6 +370,75 @@ export function Routing() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Rules Card List (mobile) */}
+      <div className="md:hidden space-y-3">
+        {loading && rules.length === 0 && (
+          <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 text-center text-sm text-muted-foreground">
+            Loading...
+          </div>
+        )}
+        {!loading && rules.length === 0 && (
+          <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 text-center text-sm text-muted-foreground">
+            No override rules configured.
+          </div>
+        )}
+        {rules.map((rule) => (
+          <div
+            key={rule.id}
+            className={`${rule.enabled ? 'opacity-100' : 'opacity-50'} bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-3`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Priority</p>
+                <span className="text-sm text-foreground font-mono font-medium">#{rule.priority}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setRuleToToggle(rule)}
+                  className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+                    rule.enabled
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {rule.enabled ? <Check className="w-4 h-4" /> : <span className="text-xs font-bold">✕</span>}
+                </button>
+                <button
+                  onClick={() => {
+                    setRuleToDelete(rule);
+                    setIsDeleteModalOpen(true);
+                  }}
+                  className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Condition</p>
+              <code className="text-xs px-2 py-1 bg-secondary rounded-md border border-border font-mono block w-fit max-w-full overflow-x-auto">
+                {rule.condition}
+              </code>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Target</p>
+                <div className="flex items-center gap-2">
+                  <Server className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-foreground font-medium">{rule.targetNode}</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Strategy</p>
+                <Badge variant="primary" size="sm">
+                  {STRATEGIES.find(s => s.value === rule.strategy)?.label || rule.strategy}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Create Rule Modal */}
