@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, PlayCircle, Pencil, BrainCircuit, CheckCircle2, XCircle } from 'lucide-react';
+import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, ChevronUp, PauseCircle, PlayCircle, Pencil, BrainCircuit, CheckCircle2, XCircle } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule, updateSchedule,
@@ -39,6 +39,76 @@ function ModelPills({ allModels, selected, onChange }: {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// KeepWarmList renders the "keep warm" set as an ordered, reorderable list -
+// list position doubles as priority (see internal/router/eviction.go
+// EvictForHeadroom): the top model always wins a VRAM contest over ones below
+// it when a node can't fit all of them at once. Reorder controls only show up
+// once there's more than one model, since order is meaningless otherwise.
+function KeepWarmList({ models, onChange }: { models: string[]; onChange: (models: string[]) => void }) {
+  if (models.length === 0) return null;
+
+  function move(index: number, dir: -1 | 1) {
+    const target = index + dir;
+    if (target < 0 || target >= models.length) return;
+    const next = [...models];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  }
+
+  return (
+    <div className="space-y-1.5 mb-2.5">
+      {models.map((model, index) => (
+        <div key={model} className="flex items-center justify-between gap-2 pl-1 pr-1.5 py-1.5 rounded-lg border border-border bg-secondary/30">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex items-center justify-center w-4 h-4 shrink-0 rounded bg-primary/10 text-primary text-[10px] font-mono font-medium">
+              {index + 1}
+            </span>
+            <span className="text-xs font-mono text-foreground truncate">{model}</span>
+          </div>
+          <div className="flex items-center gap-0.5 shrink-0">
+            {models.length > 1 && (
+              <>
+                <button type="button" onClick={() => move(index, -1)} disabled={index === 0}
+                  title="Raise priority"
+                  className="p-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <button type="button" onClick={() => move(index, 1)} disabled={index === models.length - 1}
+                  title="Lower priority"
+                  className="p-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+            <button type="button" onClick={() => onChange(models.filter(m => m !== model))}
+              title="Remove from keep-warm"
+              className="p-1 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// AddModelPills lists models NOT yet in the keep-warm set as click-to-add
+// chips - a distinct affordance from KeepWarmList's assigned/ordered rows, so
+// "add" and "reorder what's already added" never look like the same action.
+function AddModelPills({ options, onAdd }: { options: string[]; onAdd: (model: string) => void }) {
+  if (options.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(model => (
+        <button key={model} type="button" onClick={() => onAdd(model)}
+          className="px-2 py-1 rounded-md border border-border text-xs font-mono text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
+          + {model}
+        </button>
+      ))}
     </div>
   );
 }
@@ -141,7 +211,15 @@ function NodeCard({ node, initial, availableModels, onSave }: {
         </button>
         {showModels && (
           <div className="px-4 pb-3">
-            <ModelPills allModels={allModels} selected={selectedModels} onChange={setSelectedModels} />
+            <KeepWarmList models={selectedModels} onChange={setSelectedModels} />
+            {selectedModels.length > 1 && (
+              <p className="text-[10px] text-muted-foreground/60 mb-2.5">Order sets priority - if this node can't fit them all, #1 always stays warm first.</p>
+            )}
+            <AddModelPills
+              options={allModels.filter(m => !selectedModels.includes(m))}
+              onAdd={model => setSelectedModels(prev => [...prev, model])}
+            />
+            {allModels.length === 0 && <p className="text-xs text-muted-foreground">No models available.</p>}
           </div>
         )}
       </div>
