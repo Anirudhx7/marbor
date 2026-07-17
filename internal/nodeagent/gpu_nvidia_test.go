@@ -1,6 +1,57 @@
 package nodeagent
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+)
+
+// withLookPath temporarily replaces the package-level lookPath seam so
+// nvidia-smi presence/absence can be simulated deterministically, instead of
+// depending on whether the machine actually running this test has an NVIDIA
+// GPU (CI/sandboxes generally don't).
+func withLookPath(t *testing.T, fn func(string) (string, error)) {
+	t.Helper()
+	old := lookPath
+	lookPath = fn
+	t.Cleanup(func() { lookPath = old })
+}
+
+func TestNvidiaCollectorAvailableWhenOnPath(t *testing.T) {
+	withLookPath(t, func(string) (string, error) { return "/usr/bin/nvidia-smi", nil })
+	if !(nvidiaCollector{}).Available(context.Background()) {
+		t.Error("expected Available()=true when nvidia-smi resolves on PATH")
+	}
+}
+
+func TestNvidiaCollectorUnavailableWhenNotOnPath(t *testing.T) {
+	withLookPath(t, func(string) (string, error) { return "", errors.New("not found") })
+	if (nvidiaCollector{}).Available(context.Background()) {
+		t.Error("expected Available()=false when nvidia-smi is not on PATH")
+	}
+}
+
+func TestDetectGPUCollectorPicksNvidiaWhenAvailable(t *testing.T) {
+	withLookPath(t, func(string) (string, error) { return "/usr/bin/nvidia-smi", nil })
+	c := detectGPUCollector(context.Background())
+	if c.Name() != "nvidia" {
+		t.Errorf("Name() = %q, want nvidia", c.Name())
+	}
+}
+
+// TestDetectGPUCollectorFallsBackToNullObject verifies a host with no
+// recognized GPU backend gets the explicit noGPUCollector rather than a nil
+// GPUCollector - Scheduler never has to nil-check its gpu field.
+func TestDetectGPUCollectorFallsBackToNullObject(t *testing.T) {
+	withLookPath(t, func(string) (string, error) { return "", errors.New("not found") })
+	c := detectGPUCollector(context.Background())
+	if c.Name() != "none" {
+		t.Errorf("Name() = %q, want none", c.Name())
+	}
+	if _, err := c.Collect(context.Background()); err == nil {
+		t.Error("expected noGPUCollector.Collect to always error")
+	}
+}
 
 const sampleNvidiaSMIXML = `<?xml version="1.0" ?>
 <nvidia_smi_log>

@@ -93,13 +93,13 @@ func TestServerMetricsRequiresToken(t *testing.T) {
 }
 
 // TestServerServesCachedSnapshotBetweenRequests proves /telemetry reads the
-// Collector's cache rather than collecting fresh on every request: with the
+// Scheduler's cache rather than collecting fresh on every request: with the
 // background refresh loop never started, two requests in a row must report
 // the exact same LastUpdated timestamp from the single Seed() collection.
 func TestServerServesCachedSnapshotBetweenRequests(t *testing.T) {
-	collector := NewCollector("v-test")
-	collector.Seed()
-	srv := &Server{Token: "sekret", Version: "v-test", Collector: collector}
+	scheduler := NewScheduler("v-test")
+	scheduler.Seed()
+	srv := &Server{Token: "sekret", Version: "v-test", Scheduler: scheduler}
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
@@ -129,11 +129,11 @@ func TestServerServesCachedSnapshotBetweenRequests(t *testing.T) {
 	}
 }
 
-// TestServerFallsBackWithoutCollector verifies a Server built without a
-// Collector (its zero value) still serves a live reading rather than
+// TestServerFallsBackWithoutScheduler verifies a Server built without a
+// Scheduler (its zero value) still serves a live reading rather than
 // panicking - keeps the type usable in any test/caller that predates the
 // caching change.
-func TestServerFallsBackWithoutCollector(t *testing.T) {
+func TestServerFallsBackWithoutScheduler(t *testing.T) {
 	srv := &Server{Token: "sekret", Version: "v-test"}
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -150,6 +150,6 @@ func TestServerFallsBackWithoutCollector(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if tel.LastUpdated.IsZero() {
-		t.Error("expected a live LastUpdated even without a Collector wired up")
+		t.Error("expected a live LastUpdated even without a Scheduler wired up")
 	}
 }
