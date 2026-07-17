@@ -1410,14 +1410,26 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// nodeAgentInstallCommand returns the one-line command an operator runs on
-// the GPU node to start the Node Agent, using the mesh binary's own actual
-// invocation ("ollama-mesh agent ...") rather than a separate installer -
-// install.sh only downloads/starts the mesh control-plane role, not the
-// agent role, so it is not reused here (see .local/specs/node-agent.md
-// section 7).
-func nodeAgentInstallCommand(port int, token string) string {
-	return fmt.Sprintf("ollama-mesh agent --port=%d --token=%s", port, token)
+// nodeAgentInstallCommand returns the one-line commands an operator runs on
+// the GPU node to download the binary (if not already present) AND register
+// it as a persistent, auto-restarting OS service - install.sh/install.ps1's
+// ROLE=agent path (see .local/specs/node-agent.md section 12), which
+// downloads the binary then hands off to its own "ollama-mesh agent service
+// install" self-registration subcommand (internal/nodeagent/service). unix
+// covers Linux/macOS; windows is the PowerShell equivalent for Windows
+// nodes, since a POSIX sh script can't run there. Safe to re-run for an
+// upgrade or to rotate the token - install.sh/service install are both
+// idempotent.
+func nodeAgentInstallCommand(port int, token string) (unix string, windows string) {
+	unix = fmt.Sprintf(
+		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent TOKEN=%s PORT=%d sh",
+		token, port,
+	)
+	windows = fmt.Sprintf(
+		`$env:ROLE="agent"; $env:TOKEN="%s"; $env:PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+		token, port,
+	)
+	return unix, windows
 }
 
 // generateNodeAgentToken returns a 32-random-byte, base64url-encoded opaque
@@ -1490,13 +1502,15 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.router.SetNodeAgent(name, true, body.Port, token)
 	s.logSystemChange(r, "enable_node_agent", name, fmt.Sprintf("Port: %d", body.Port))
+	unixCmd, windowsCmd := nodeAgentInstallCommand(body.Port, token)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"node":            name,
-		"enabled":         true,
-		"port":            body.Port,
-		"token":           token,
-		"install_command": nodeAgentInstallCommand(body.Port, token),
+		"node":                    name,
+		"enabled":                 true,
+		"port":                    body.Port,
+		"token":                   token,
+		"install_command":         unixCmd,
+		"install_command_windows": windowsCmd,
 	})
 }
 
@@ -1543,12 +1557,14 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 	}
 	s.router.SetNodeAgent(name, true, rec.Port, token)
 	s.logSystemChange(r, "regenerate_node_agent_token", name, "")
+	unixCmd, windowsCmd := nodeAgentInstallCommand(rec.Port, token)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"node":            name,
-		"port":            rec.Port,
-		"token":           token,
-		"install_command": nodeAgentInstallCommand(rec.Port, token),
+		"node":                    name,
+		"port":                    rec.Port,
+		"token":                   token,
+		"install_command":         unixCmd,
+		"install_command_windows": windowsCmd,
 	})
 }
 
