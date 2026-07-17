@@ -323,7 +323,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
             <MemoryStick className="w-3 h-3" /> RAM Used
           </span>
           <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
-            {node.agentPresent && node.ramUsedMB ? `${(node.ramUsedMB / 1024).toFixed(1)} GB` : '--'}
+            {node.agentPresent && node.ramUsedMB != null ? `${(node.ramUsedMB / 1024).toFixed(1)} GB` : '--'}
           </span>
         </div>
         <div>
@@ -331,7 +331,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
             <HardDrive className="w-3 h-3" /> Disk Free
           </span>
           <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
-            {node.agentPresent && node.diskFreeGB ? `${node.diskFreeGB.toFixed(1)} GB` : '--'}
+            {node.agentPresent && node.diskFreeGB != null ? `${node.diskFreeGB.toFixed(1)} GB` : '--'}
           </span>
         </div>
       </div>
