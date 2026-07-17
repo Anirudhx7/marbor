@@ -120,6 +120,12 @@ type NodeState struct {
 	AgentArchitecture string
 	AgentGPUVendor    string
 	AgentRuntime      string
+	// agentSchemaWarned latches once a poll observes an agent reporting a
+	// schema_version newer than this mesh binary's own nodeagent.SchemaVersion
+	// - logged once per node (not every poll cycle) purely for operator
+	// visibility during a rolling upgrade where an agent got updated ahead of
+	// the mesh. Decoding itself never depends on this - see agent_poll.go.
+	agentSchemaWarned bool
 
 	mu sync.RWMutex
 }
