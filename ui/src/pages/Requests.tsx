@@ -21,9 +21,9 @@ function formatRelative(isoString: string): string {
 
 function StatusBadge({ status }: { status: number }) {
   let cls = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded ';
-  if (status >= 200 && status < 300) cls += 'bg-green-500/15 text-green-400';
-  else if (status >= 400 && status < 500) cls += 'bg-yellow-500/15 text-yellow-400';
-  else cls += 'bg-red-500/15 text-red-400';
+  if (status >= 200 && status < 300) cls += 'bg-green-500/15 text-green-600 dark:text-green-400';
+  else if (status >= 400 && status < 500) cls += 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400';
+  else cls += 'bg-red-500/15 text-red-600 dark:text-red-400';
   return <span className={cls}>{status}</span>;
 }
 
@@ -224,13 +224,13 @@ export function Requests() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold text-foreground">Request Log</h1>
             {isDemoMode ? (
-              <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
                 Demo Mode
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-xs font-medium text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 animate-pulse" />
                 Live
               </span>
             )}
@@ -373,86 +373,170 @@ export function Requests() {
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-secondary/30">
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Request ID</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Key</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Model</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Node</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground text-sm">
-                    {hasActiveFilter
-                      ? 'No requests match your filter.'
-                      : 'No requests yet. Send a request through the proxy to see it here.'}
-                  </td>
+      {/* Table (md and up) */}
+      <div className="hidden md:block">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/30">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Request ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Key</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Model</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Node</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency</th>
                 </tr>
-              ) : (
-                filtered.map((entry) => (
-                  <tr
-                    key={entry.id}
-                    className="border-b border-border last:border-0 hover:bg-secondary/50 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {formatRelative(entry.time)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="font-mono text-xs text-foreground"
-                        title={entry.id}
-                      >
-                        {entry.id}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {entry.key_name ? (
-                        <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                          {entry.key_name}
-                        </span>
-                      ) : entry.source_ip ? (
-                        <span className="font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
-                          {entry.source_ip}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/40 text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs text-foreground">{entry.model}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {entry.cloud ? (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
-                          cloud:{entry.node.replace('cloud:', '')}
-                        </span>
-                      ) : (
-                        <span className="text-foreground">{entry.node || '-'}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={entry.status} />
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
-                      {entry.latency_ms} ms
+              </thead>
+              <tbody>
+                {loading ? (
+                  [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground text-sm">
+                      {hasActiveFilter
+                        ? 'No requests match your filter.'
+                        : 'No requests yet. Send a request through the proxy to see it here.'}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filtered.map((entry) => (
+                    <tr
+                      key={entry.id}
+                      className="border-b border-border last:border-0 hover:bg-secondary/50 transition-colors"
+                    >
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        {formatRelative(entry.time)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className="font-mono text-xs text-foreground"
+                          title={entry.id}
+                        >
+                          {entry.id}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {entry.key_name ? (
+                          <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                            {entry.key_name}
+                          </span>
+                        ) : entry.source_ip ? (
+                          <span className="font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
+                            {entry.source_ip}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/40 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs text-foreground">{entry.model}</span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {entry.cloud ? (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                            cloud:{entry.node.replace('cloud:', '')}
+                          </span>
+                        ) : (
+                          <span className="text-foreground">{entry.node || '-'}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={entry.status} />
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
+                        {entry.latency_ms} ms
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+      </div>
+
+      {/* Card list (below md) */}
+      <div className="md:hidden space-y-3">
+        {loading ? (
+          [...Array(5)].map((_, i) => (
+            <div
+              key={i}
+              className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-2"
+            >
+              {[...Array(4)].map((_, j) => (
+                <div
+                  key={j}
+                  className="h-4 bg-secondary rounded animate-pulse"
+                  style={{ width: `${40 + (j * 17) % 50}%` }}
+                />
+              ))}
+            </div>
+          ))
+        ) : filtered.length === 0 ? (
+          <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-8 text-center text-muted-foreground text-sm">
+            {hasActiveFilter
+              ? 'No requests match your filter.'
+              : 'No requests yet. Send a request through the proxy to see it here.'}
+          </div>
+        ) : (
+          filtered.map((entry) => (
+            <div
+              key={entry.id}
+              className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-3 active:bg-secondary/50 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs text-foreground truncate" title={entry.id}>
+                  {entry.id}
+                </span>
+                <StatusBadge status={entry.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Time</div>
+                  <div className="text-sm text-foreground">{formatRelative(entry.time)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
+                  <div className="text-sm text-foreground font-mono">{entry.latency_ms} ms</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>
+                  <div className="text-sm text-foreground font-mono truncate">{entry.model}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Node</div>
+                  <div className="text-sm text-foreground">
+                    {entry.cloud ? (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                        cloud:{entry.node.replace('cloud:', '')}
+                      </span>
+                    ) : (
+                      entry.node || '-'
+                    )}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Key</div>
+                  <div className="text-sm text-foreground">
+                    {entry.key_name ? (
+                      <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                        {entry.key_name}
+                      </span>
+                    ) : entry.source_ip ? (
+                      <span className="font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
+                        {entry.source_ip}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/40 text-xs">-</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

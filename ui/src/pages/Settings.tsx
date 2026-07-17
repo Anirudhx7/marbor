@@ -748,7 +748,7 @@ export function SettingsPage() {
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                   Display Currency
@@ -1099,7 +1099,7 @@ export function SettingsPage() {
               <Toggle on={settings.thermalWatchdogEnabled} onToggle={() => setSettings({ ...settings, thermalWatchdogEnabled: !settings.thermalWatchdogEnabled })} />
             </div>
             {settings.thermalWatchdogEnabled && (
-              <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">Max Temp (°C)</label>
                   <input type="number" value={settings.thermalWatchdogMaxTempCelsius} onChange={(e) => setSettings({ ...settings, thermalWatchdogMaxTempCelsius: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
@@ -1245,7 +1245,7 @@ export function SettingsPage() {
                     className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 font-mono"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1.5">Heartbeat (ms)</label>
                     <input type="number" value={settings.haHeartbeatIntervalMs} onChange={(e) => setSettings({ ...settings, haHeartbeatIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
@@ -1279,7 +1279,7 @@ export function SettingsPage() {
               <Toggle on={settings.warmupEnabled} onToggle={() => setSettings({ ...settings, warmupEnabled: !settings.warmupEnabled })} />
             </div>
             {settings.warmupEnabled && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">Interval (ms)</label>
                   <input type="number" value={settings.warmupIntervalMs} onChange={(e) => setSettings({ ...settings, warmupIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
@@ -1551,7 +1551,7 @@ export function SettingsPage() {
             </label>
             <input type="password" value={editingProvider.api_key} onChange={(e) => setEditingProvider({ ...editingProvider, api_key: e.target.value })} autoComplete="off" placeholder={cloudProviders.some(p => p.name === editingProvider.name) ? 'Leave unchanged to keep current key' : ''} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Default Model</label>
               <input type="text" value={editingProvider.default_model} onChange={(e) => setEditingProvider({ ...editingProvider, default_model: e.target.value })} placeholder="gpt-4o" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />

@@ -48,46 +48,80 @@ function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Model</th>
-            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Size</th>
-            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Est. VRAM</th>
-            <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Fit</th>
-            <th className="text-left text-xs font-medium text-muted-foreground pb-2">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {nodeFit.models.map((m) => (
-            <tr key={m.name} className="border-b border-border/50 last:border-0">
-              <td className="py-2 pr-4 font-mono text-xs text-foreground">{m.name}</td>
-              <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.size_bytes)}</td>
-              <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.vram_estimate_bytes)}</td>
-              <td className="py-2 pr-4"><FitBadge fit={m.fit} /></td>
-              <td className="py-2">
-                {m.loaded && (
-                  <span className="inline-flex items-center gap-1 text-xs text-primary font-medium">
+    <>
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Model</th>
+              <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Size</th>
+              <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Est. VRAM</th>
+              <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Fit</th>
+              <th className="text-left text-xs font-medium text-muted-foreground pb-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {nodeFit.models.map((m) => (
+              <tr key={m.name} className="border-b border-border/50 last:border-0">
+                <td className="py-2 pr-4 font-mono text-xs text-foreground">{m.name}</td>
+                <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.size_bytes)}</td>
+                <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.vram_estimate_bytes)}</td>
+                <td className="py-2 pr-4"><FitBadge fit={m.fit} /></td>
+                <td className="py-2">
+                  {m.loaded && (
+                    <span className="inline-flex items-center gap-1 text-xs text-primary font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
+                      In VRAM
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="md:hidden space-y-3">
+        {nodeFit.models.map((m) => (
+          <div key={m.name} className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4">
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <span className="font-mono text-xs text-foreground break-all">{m.name}</span>
+              <FitBadge fit={m.fit} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">Size</span>
+                <span className="text-sm text-foreground">{formatBytes(m.size_bytes)}</span>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">Est. VRAM</span>
+                <span className="text-sm text-foreground">{formatBytes(m.vram_estimate_bytes)}</span>
+              </div>
+              <div>
+                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">Status</span>
+                {m.loaded ? (
+                  <span className="inline-flex items-center gap-1 text-sm text-primary font-medium">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
                     In VRAM
                   </span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">-</span>
                 )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
 function RuntimeBadge({ runtime }: { runtime: string }) {
   const runtimeStyles: Record<string, string> = {
-    ollama:   'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-    vllm:     'bg-purple-500/20 text-purple-400 border border-purple-500/30',
-    tgi:      'bg-orange-500/20 text-orange-400 border border-orange-500/30',
-    llamacpp: 'bg-green-500/20 text-green-400 border border-green-500/30',
+    ollama:   'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30',
+    vllm:     'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30',
+    tgi:      'bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30',
+    llamacpp: 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30',
   };
   const runtimeLabels: Record<string, string> = {
     ollama:   'Ollama',
@@ -137,7 +171,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               {node.draining && (
                 <span
                   title={node.drainedReason ? `Drained: ${node.drainedReason}` : undefined}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
                 >
                   DRAINING{node.drainedReason ? ` (${node.drainedReason})` : ''}
                 </span>
@@ -168,7 +202,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
           <button
             onClick={() => node.draining ? onUndrain(node.name) : onDrain(node.name)}
             title={node.draining ? 'Undrain node' : 'Drain node (stop new requests)'}
-            className={`p-1.5 transition-colors ${node.draining ? 'text-amber-400 hover:text-primary' : 'text-muted-foreground hover:text-amber-400'}`}
+            className={`p-1.5 transition-colors ${node.draining ? 'text-amber-600 dark:text-amber-400 hover:text-primary' : 'text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400'}`}
           >
             <Activity className="w-4 h-4" />
           </button>

@@ -397,8 +397,8 @@ export function APIKeys() {
         />
       </div>
 
-      {/* Keys Table */}
-      <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
+      {/* Keys Table (desktop/tablet) */}
+      <div className="hidden md:block bg-card border border-border shadow-sm rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -499,6 +499,91 @@ export function APIKeys() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Keys Cards (mobile) */}
+      <div className="md:hidden space-y-3">
+        {filteredKeys.map((key) => (
+          <div key={key.id} className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-1.5 bg-secondary rounded-lg text-muted-foreground shrink-0">
+                  <Key className="w-4 h-4" />
+                </div>
+                <span className="font-semibold text-foreground truncate">{key.name}</span>
+              </div>
+              <Badge
+                variant={
+                  key.status === 'active' ? 'success' :
+                  key.status === 'suspended' || key.status === 'revoked' ? 'muted' : 'warning'
+                }
+                size="sm"
+              >
+                {key.status}
+              </Badge>
+            </div>
+
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Key Value</p>
+              <code className="block font-mono text-sm text-foreground break-all">
+                {isLive ? key.key : maskKey(key.key)}
+              </code>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Created</p>
+                <p className="text-sm text-foreground">{key.created}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Rate Limit</p>
+                <p className="text-sm text-foreground font-mono">
+                  {(key.rateLimit ?? 0).toLocaleString()}<span className="text-muted-foreground font-sans">/hr</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Requests</p>
+                <p className="text-sm text-foreground font-mono">
+                  {formatNumber(key.requestsToday)} <span className="text-muted-foreground text-xs font-sans">today</span>
+                </p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {formatNumber(key.requestsThisMonth)} <span className="font-sans">this month</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Usage (mo)</p>
+                <p className="text-sm text-foreground font-mono">
+                  {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '-'} <span className="text-muted-foreground text-xs font-sans">tokens</span>
+                </p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {key.estimatedCostUsd > 0 ? `~$${key.estimatedCostUsd.toFixed(2)}` : '-'} <span className="font-sans">est.</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-1 pt-1 border-t border-border/60">
+              <button
+                onClick={() => openEditModal(key)}
+                disabled={(!isLive && !demoMode) || key.status === 'suspended' || key.status === 'revoked' || key.status === 'expired'}
+                title="Edit key limits"
+                className="p-2 text-muted-foreground hover:text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => {
+                  setRevokeError(null);
+                  setKeyToRevoke(key);
+                  setIsRevokeModalOpen(true);
+                }}
+                disabled={key.status === 'suspended' || key.status === 'revoked'}
+                className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {filteredKeys.length === 0 && (

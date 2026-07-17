@@ -478,7 +478,7 @@ export function Dashboard() {
           </div>
         </div>
         
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/50 border-b border-border text-muted-foreground">
@@ -500,8 +500,8 @@ export function Dashboard() {
                 </tr>
               )}
               {requests.slice(0, 10).map((req) => (
-                <tr 
-                  key={req.id} 
+                <tr
+                  key={req.id}
                   className={`transition-colors duration-200 ${
                     newRequestId === req.id ? 'bg-primary/5' : 'hover:bg-secondary/50'
                   }`}
@@ -535,6 +535,55 @@ export function Dashboard() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="md:hidden space-y-3 p-4">
+          {requests.length === 0 && requestsLive && (
+            <div className="text-center text-sm text-muted-foreground py-6">
+              No requests yet. Send a request to your proxy endpoint to see live traffic here.
+            </div>
+          )}
+          {requests.slice(0, 10).map((req) => (
+            <div
+              key={req.id}
+              className={`bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 transition-colors duration-200 ${
+                newRequestId === req.id ? 'bg-primary/5' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-foreground">{req.model}</span>
+                <Badge variant={req.status === 'warm' ? 'success' : 'warning'} size="sm">
+                  {req.status === 'warm' ? 'Warm' : 'Loading'}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">API Key</div>
+                  <div className="text-sm text-foreground font-mono truncate">{req.apiKey}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Routed To</div>
+                  <div className="text-sm text-foreground">{req.routedTo}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Tokens</div>
+                  <div className="text-sm text-foreground font-mono">{req.tokens > 0 ? req.tokens : '-'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">tok/s</div>
+                  <div className="text-sm text-foreground font-mono">
+                    {req.tokensPerSec > 0 ? req.tokensPerSec.toFixed(1) : '-'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
+                  <div className={`text-sm font-mono font-medium ${req.latency > 1000 ? 'text-amber-500' : 'text-primary'}`}>
+                    {req.latency}ms
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -415,7 +415,7 @@ export function Users() {
         ) : users.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">No users yet.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
@@ -491,6 +491,77 @@ export function Users() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!loading && users.length > 0 && (
+          <div className="md:hidden space-y-3 p-3">
+            {users.map(u => {
+              const sb = STATUS_BADGE[u.status] ?? { variant: 'muted' as const, label: u.status };
+              const rb = ROLE_BADGE[u.role] ?? { variant: 'muted' as const, label: u.role };
+              return (
+                <div key={u.id} className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{u.username}</p>
+                      <p className="text-sm text-foreground/80">{u.email || '-'}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                      <Badge variant={rb.variant}>{rb.label}</Badge>
+                      <Badge variant={sb.variant}>{sb.label}</Badge>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">API Key</p>
+                      <p className="text-sm text-foreground font-mono truncate">{u.api_key_name || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Created</p>
+                      <p className="text-sm text-foreground">{new Date(u.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1 pt-2 border-t border-border/60">
+                    {u.status === 'pending' && (
+                      <button onClick={() => setApproveTarget(u)}
+                        title="Approve user"
+                        className="p-1.5 rounded-md text-green-600 hover:bg-green-500/10 transition-colors">
+                        <Check className="w-4 h-4" />
+                      </button>
+                    )}
+                    {u.status === 'active' && (
+                      <button onClick={() => { setActionError(null); setSuspendTarget(u); }}
+                        title="Suspend user"
+                        className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
+                        <Ban className="w-4 h-4" />
+                      </button>
+                    )}
+                    {u.status === 'suspended' && (
+                      <button onClick={() => setApproveTarget(u)}
+                        title="Reactivate user"
+                        className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors">
+                        <UserCheck className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setActionError(null); setResetConfirmTarget(u); }}
+                      disabled={u.username === currentUsername}
+                      title={u.username === currentUsername ? 'Use Settings to change your own password' : 'Reset password'}
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => { setActionError(null); setDeleteTarget(u); }}
+                      title="Delete user"
+                      className="p-1.5 rounded-md text-destructive hover:bg-destructive/10 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -28,12 +28,12 @@ function formatDateTime(isoString: string): string {
 
 function getActionColor(action: string) {
   if (action.startsWith('add') || action.startsWith('create') || action.startsWith('approve') || action.startsWith('undrain')) {
-    return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20';
+    return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
   }
   if (action.startsWith('remove') || action.startsWith('delete') || action.startsWith('revoke') || action.startsWith('suspend') || action.startsWith('drain')) {
-    return 'bg-rose-500/15 text-rose-400 border-rose-500/20';
+    return 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/20';
   }
-  return 'bg-amber-500/15 text-amber-400 border-amber-500/20';
+  return 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20';
 }
 
 function getActionLabel(action: string): string {
@@ -175,7 +175,7 @@ export function SystemAudit() {
                 <p className="text-[10px] text-muted-foreground/60 mt-0.5">filtered from {totalFetched}</p>
               )}
             </div>
-            <div className="p-2.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg">
+            <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg">
               <Terminal className="w-5 h-5" />
             </div>
           </div>
@@ -188,7 +188,7 @@ export function SystemAudit() {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Operators</p>
               <h3 className="text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
             </div>
-            <div className="p-2.5 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-lg">
+            <div className="p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg">
               <User className="w-5 h-5" />
             </div>
           </div>
@@ -201,7 +201,7 @@ export function SystemAudit() {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Infrastructure Events</p>
               <h3 className="text-3xl font-extrabold mt-2 text-foreground">{infrastructureChanges}</h3>
             </div>
-            <div className="p-2.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg">
+            <div className="p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg">
               <Shield className="w-5 h-5" />
             </div>
           </div>
@@ -251,8 +251,8 @@ export function SystemAudit() {
             Loading system events...
           </div>
         ) : error ? (
-          <div className="p-8 text-center text-rose-400 text-sm flex flex-col items-center justify-center gap-2">
-            <AlertCircle className="w-6 h-6 text-rose-400" />
+          <div className="p-8 text-center text-rose-600 dark:text-rose-400 text-sm flex flex-col items-center justify-center gap-2">
+            <AlertCircle className="w-6 h-6 text-rose-600 dark:text-rose-400" />
             {error}
           </div>
         ) : filtered.length === 0 ? (
@@ -269,6 +269,7 @@ export function SystemAudit() {
             )}
           </div>
         ) : (
+          <div className="hidden md:block">
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
@@ -329,6 +330,53 @@ export function SystemAudit() {
                 ))}
               </tbody>
             </table>
+          </div>
+          </div>
+        )}
+        {!loading && !error && filtered.length > 0 && (
+          <div className="md:hidden space-y-3">
+            {filtered.map((e, index) => (
+              <div
+                key={`${e.time}-${e.action}-${e.username}-${index}-card`}
+                onClick={() => setSelectedEntry(e)}
+                className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 cursor-pointer hover:bg-secondary/20 transition-all duration-150"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    <div className="w-5 h-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {e.username.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="truncate">{e.username}</span>
+                  </div>
+                  <button
+                    onClick={(evt) => {
+                      evt.stopPropagation();
+                      setSelectedEntry(e);
+                    }}
+                    className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-secondary transition-colors cursor-pointer shrink-0"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActionColor(e.action)}`}>
+                    {getActionLabel(e.action)}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                    {formatDateTime(e.time)}
+                  </span>
+                </div>
+                <div className="mt-2 font-mono text-xs text-foreground truncate" title={e.target}>
+                  {e.target}
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="font-mono truncate">{e.source_ip || '-'}</span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground truncate" title={e.details}>
+                  {e.details}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

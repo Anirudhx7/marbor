@@ -2,6 +2,18 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
 
+// Popup panels render fixed-width (w-80/w-64) and must stay inside the
+// viewport on narrow (375px) screens even when their trigger field sits in a
+// non-first grid column (e.g. Requests.tsx's "Until" field at grid-cols-2) -
+// clamp the horizontal position, not just vertical, and keep a small margin
+// off both edges.
+const POPUP_VIEWPORT_MARGIN = 8;
+
+function clampLeft(left: number, panelWidth: number): number {
+  const maxLeft = window.innerWidth - panelWidth - POPUP_VIEWPORT_MARGIN;
+  return Math.max(POPUP_VIEWPORT_MARGIN, Math.min(left, maxLeft));
+}
+
 interface CustomDateTimePickerProps {
   value: string; // YYYY-MM-DDTHH:MM
   onChange: (value: string) => void;
@@ -21,6 +33,7 @@ export function CustomDateTimePicker({
 }: CustomDateTimePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Parsing state
   const initialDate = value ? new Date(value) : new Date();
@@ -48,28 +61,37 @@ export function CustomDateTimePicker({
     }
   }, [value]);
 
-  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    const updatePosition = () => {
+    const updateCoords = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      setPosition(spaceBelow < 340 ? 'top' : 'bottom');
+      const left = clampLeft(rect.left, 320); // w-80
+      if (spaceBelow < 340) {
+        setCoords({ left, bottom: window.innerHeight - rect.top + 6 });
+      } else {
+        setCoords({ left, top: rect.bottom + 6 });
+      }
     };
-    updatePosition();
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
+    updateCoords();
+    window.addEventListener('scroll', updateCoords, true);
+    window.addEventListener('resize', updateCoords);
     return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updateCoords, true);
+      window.removeEventListener('resize', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        (!panelRef.current || !panelRef.current.contains(target))
+      ) {
         setIsOpen(false);
       }
     }
@@ -244,10 +266,12 @@ export function CustomDateTimePicker({
         )}
       </div>
 
-      {isOpen && (
-        <div className={`absolute z-50 p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in ${
-          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-        }`}>
+      {isOpen && coords && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, zIndex: 9999 }}
+          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in"
+        >
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
             <span className="font-semibold text-sm text-foreground">
@@ -403,7 +427,8 @@ export function CustomDateTimePicker({
               Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -456,10 +481,11 @@ export function CustomDatePicker({
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
+      const left = clampLeft(rect.left, 320); // w-80
       if (spaceBelow < 280) {
-        setCoords({ left: rect.left, bottom: window.innerHeight - rect.top + 6 });
+        setCoords({ left, bottom: window.innerHeight - rect.top + 6 });
       } else {
-        setCoords({ left: rect.left, top: rect.bottom + 6 });
+        setCoords({ left, top: rect.bottom + 6 });
       }
     };
     updateCoords();
@@ -739,6 +765,7 @@ export function CustomTimePicker({
 }: CustomTimePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const [hours, setHours] = useState(value ? parseInt(value.split(':')[0], 10) : 0);
   const [minutes, setMinutes] = useState(value ? parseInt(value.split(':')[1], 10) : 0);
@@ -751,28 +778,37 @@ export function CustomTimePicker({
     }
   }, [value]);
 
-  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    const updatePosition = () => {
+    const updateCoords = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      setPosition(spaceBelow < 270 ? 'top' : 'bottom');
+      const left = clampLeft(rect.left, 256); // w-64
+      if (spaceBelow < 270) {
+        setCoords({ left, bottom: window.innerHeight - rect.top + 6 });
+      } else {
+        setCoords({ left, top: rect.bottom + 6 });
+      }
     };
-    updatePosition();
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
+    updateCoords();
+    window.addEventListener('scroll', updateCoords, true);
+    window.addEventListener('resize', updateCoords);
     return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updateCoords, true);
+      window.removeEventListener('resize', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        (!panelRef.current || !panelRef.current.contains(target))
+      ) {
         setIsOpen(false);
       }
     }
@@ -833,10 +869,12 @@ export function CustomTimePicker({
         )}
       </div>
 
-      {isOpen && (
-        <div className={`absolute z-50 p-4 border border-border bg-card rounded-xl shadow-xl w-64 animate-fade-in ${
-          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-        }`}>
+      {isOpen && coords && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, zIndex: 9999 }}
+          className="p-4 border border-border bg-card rounded-xl shadow-xl w-64 animate-fade-in"
+        >
           {/* Main Large Clock Display */}
           <div className="flex justify-center items-center gap-1.5 font-mono text-3xl font-bold text-primary mb-5 select-none bg-secondary/20 py-2.5 rounded-xl border border-border/40">
             <span>{String(hours).padStart(2, '0')}</span>
@@ -890,7 +928,8 @@ export function CustomTimePicker({
               Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
