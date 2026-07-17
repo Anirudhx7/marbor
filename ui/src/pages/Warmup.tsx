@@ -104,16 +104,16 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       {/* Node header */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Server className="w-4 h-4 text-primary" />
-          <span className="font-medium text-foreground">{node.name}</span>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 gap-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <Server className="w-4 h-4 text-primary shrink-0" />
+          <span className="font-medium text-foreground truncate max-w-[12rem] sm:max-w-xs">{node.name}</span>
           {initial.enabled && <Badge variant="success">warm</Badge>}
           {selectedModels.length > 0 && (
             <span className="text-xs text-muted-foreground font-mono">{selectedModels.length} model{selectedModels.length !== 1 ? 's' : ''}</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
             <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)}
               className="rounded border-border bg-background text-primary focus:ring-primary/20" />
