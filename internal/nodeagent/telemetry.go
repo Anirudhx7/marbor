@@ -5,6 +5,8 @@
 // bearer token).
 package nodeagent
 
+import "time"
+
 // SchemaVersion is the current /telemetry JSON schema version. New fields
 // added to Telemetry/GPUTelemetry/HostTelemetry must be optional (nil/omitted
 // means "unknown", never fabricated - R1) so an older agent talking to a
@@ -20,6 +22,14 @@ type Telemetry struct {
 	AgentVersion  string         `json:"agent_version,omitempty"`
 	GPU           *GPUTelemetry  `json:"gpu,omitempty"`
 	Host          *HostTelemetry `json:"host,omitempty"`
+	// LastUpdated is when this snapshot was actually collected, set by
+	// Collector.refresh - NOT the time of the HTTP request that served it,
+	// since /telemetry and /metrics serve a cached background snapshot
+	// (see collector.go) rather than collecting fresh on every request.
+	// Lets the mesh (or an operator reading /telemetry directly) tell a
+	// live-but-slightly-behind reading apart from one that's stopped
+	// updating because the collector loop died.
+	LastUpdated time.Time `json:"last_updated"`
 }
 
 // GPUTelemetry holds nvidia-smi-derived GPU stats. Every field the node
