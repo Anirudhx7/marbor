@@ -12,6 +12,7 @@ audit.log
 # Environment files
 .env
 .env.local
+.local/
 
 # IDE
 .vscode/
