@@ -88,10 +88,25 @@ type NodeState struct {
 	// runtime, so it is safe to read under RLock like any other field.
 	VRAMOverrides  map[string]int64
 	autoDetect     bool                    // true if config said runtime: auto; cleared after first detection
-	probe          runtimepkg.RuntimeProbe // backend-specific health + warm-model probe
+	probe          runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
 	LastErrorAt    time.Time
 	SuccessHistory []bool
-	mu             sync.RWMutex
+
+	// Node Agent-derived telemetry (see internal/nodeagent, .local/specs/node-agent.md).
+	// AgentPresent is true only after a successful poll of this node's agent
+	// on the most recent poll cycle; it is set back to false on any failure
+	// or when no agent is configured, so a stale AgentVersion/FanPercent
+	// value is never displayed as current (R1). AgentVersion is the agent
+	// binary's reported build version. FanPercent/RAMUsedMB/DiskFreeGB are
+	// only meaningful when AgentPresent is true - consumers must check the
+	// flag rather than treating a zero value as a measurement.
+	AgentPresent bool
+	AgentVersion string
+	FanPercent   *float64
+	RAMUsedMB    int64
+	DiskFreeGB   float64
+
+	mu sync.RWMutex
 }
 
 // TagsCache holds a cached result from /api/tags for a single node.
@@ -192,6 +207,13 @@ type Router struct {
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
 	nodeWarmup map[string]NodeWarmup
+	// nodeAgents holds per-node Node Agent poll configuration (enabled, port,
+	// bearer token), toggled via the admin API and persisted in the
+	// node_agent table (internal/store). Guarded by r.mu, same pattern as
+	// nodeWarmup. A node absent from this map (or present with Enabled:
+	// false) is polled for /api/ps as normal but never has its agent fields
+	// (AgentPresent, FanPercent, RAMUsedMB, DiskFreeGB) populated.
+	nodeAgents map[string]NodeAgentConfig
 	// schedules holds recurring time-of-day warmup/drain/undrain actions (guarded
 	// by r.mu). schedLastFired (guarded by schedMu) dedupes firing within a minute.
 	schedules      []Schedule
@@ -344,6 +366,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		affinityTTL:              affinityTTL,
 		sessionAffinity:          cfg.SessionAffinity,
 		nodeWarmup:               make(map[string]NodeWarmup),
+		nodeAgents:               make(map[string]NodeAgentConfig),
 		schedLastFired:           make(map[string]string),
 		lastUsed:                 make(map[string]time.Time),
 		pinned:                   make(map[string]map[string]bool),
@@ -407,6 +430,41 @@ func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
 	defer r.mu.RUnlock()
 	nw := r.nodeWarmup[name]
 	return NodeWarmup{Enabled: nw.Enabled, Models: append([]string(nil), nw.Models...)}
+}
+
+// NodeAgentConfig is the router's in-memory view of a node's Node Agent
+// poll configuration: whether the agent is enabled, which port it listens
+// on, and the bearer token the mesh presents when polling it.
+type NodeAgentConfig struct {
+	Enabled bool
+	Port    int
+	Token   string
+}
+
+// SetNodeAgent sets the per-node Node Agent poll config (admin-toggled,
+// store-persisted by the caller). Disabling removes the node from the map
+// entirely so pollAgentTelemetry's "no agent configured" branch runs on the
+// next poll, clearing any previously-reported agent fields.
+func (r *Router) SetNodeAgent(name string, enabled bool, port int, token string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.nodeAgents == nil {
+		r.nodeAgents = make(map[string]NodeAgentConfig)
+	}
+	if !enabled {
+		delete(r.nodeAgents, name)
+		return
+	}
+	r.nodeAgents[name] = NodeAgentConfig{Enabled: true, Port: port, Token: token}
+}
+
+// NodeAgentSetting returns the agent config for name and whether one is
+// configured (enabled) at all.
+func (r *Router) NodeAgentSetting(name string) (NodeAgentConfig, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cfg, ok := r.nodeAgents[name]
+	return cfg, ok
 }
 
 func (r *Router) SetDockerConfig(cfg config.DockerConfig) {
@@ -797,6 +855,7 @@ func (r *Router) RemoveNode(name string) {
 		}
 	}
 	delete(r.prevHealthy, name)
+	delete(r.nodeAgents, name)
 	if urlToRemove != "" {
 		delete(r.discoveredURLs, urlToRemove)
 		r.tagsMu.Lock()

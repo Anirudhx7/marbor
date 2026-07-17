@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"embed"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -390,6 +391,16 @@ type nodeResp struct {
 	TokensTotal      int64              `json:"tokensTotal"`
 	AvgLatencyMs     float64            `json:"avgLatencyMs"`
 	WarmHitRatio     float64            `json:"warmHitRatio"`
+	// Node Agent-derived fields (internal/nodeagent). AgentPresent is false
+	// (and every other field below zero-value) whenever no agent is
+	// configured for this node, or the most recent agent poll failed - the
+	// UI must check AgentPresent before displaying FanPercent/RAMUsedMB/
+	// DiskFreeGB/AgentVersion, never treat a zero as a real measurement (R1).
+	AgentPresent bool     `json:"agentPresent"`
+	AgentVersion string   `json:"agentVersion,omitempty"`
+	FanPercent   *float64 `json:"fanPercent"`
+	RAMUsedMB    int64    `json:"ramUsedMB"`
+	DiskFreeGB   float64  `json:"diskFreeGB"`
 }
 
 type SystemInfo struct {
@@ -588,6 +599,10 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
 	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
 	reg("POST /admin/nodes/{name}/prewarm", s.cors(s.adminAuth(s.handleSetNodePrewarm)))
+	reg("GET /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleGetNodeAgent)))
+	reg("POST /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleEnableNodeAgent)))
+	reg("DELETE /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleDisableNodeAgent)))
+	reg("POST /admin/nodes/{name}/agent/regenerate", s.cors(s.adminAuth(s.handleRegenerateNodeAgentToken)))
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/system-audit", s.cors(s.adminAuth(s.handleSystemAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
@@ -840,6 +855,11 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			TokensTotal:      atomic.LoadInt64(&n.TokensTotal),
 			AvgLatencyMs:     avgLatencyNode,
 			WarmHitRatio:     warmHitRatioNode,
+			AgentPresent:     n.AgentPresent,
+			AgentVersion:     n.AgentVersion,
+			FanPercent:       n.FanPercent,
+			RAMUsedMB:        n.RAMUsedMB,
+			DiskFreeGB:       n.DiskFreeGB,
 		}
 		n.RUnlock()
 	}
@@ -889,6 +909,11 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			ActiveConns:      atomic.LoadInt32(&n.ActiveConns),
 			HealthHistory:    hist,
 			PendingPrewarmMB: s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+			AgentPresent:     n.AgentPresent,
+			AgentVersion:     n.AgentVersion,
+			FanPercent:       n.FanPercent,
+			RAMUsedMB:        n.RAMUsedMB,
+			DiskFreeGB:       n.DiskFreeGB,
 		}
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
@@ -1379,10 +1404,152 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.router.RemoveNode(name)
-	_ = s.st.DeleteNode(name)
+	_ = s.st.DeleteNode(name)                    // cascades node_agent deletion, see sqliteStore.DeleteNode
 	_ = s.st.SetSetting("warmup:node:"+name, "") // drop any warmup setting for the node
 	s.logSystemChange(r, "remove_node", name, "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// nodeAgentInstallCommand returns the one-line command an operator runs on
+// the GPU node to start the Node Agent, using the mesh binary's own actual
+// invocation ("ollama-mesh agent ...") rather than a separate installer -
+// install.sh only downloads/starts the mesh control-plane role, not the
+// agent role, so it is not reused here (see .local/specs/node-agent.md
+// section 7).
+func nodeAgentInstallCommand(port int, token string) string {
+	return fmt.Sprintf("ollama-mesh agent --port=%d --token=%s", port, token)
+}
+
+// generateNodeAgentToken returns a 32-random-byte, base64url-encoded opaque
+// token (per .local/specs/node-agent.md section 5 - a distinct protocol
+// from the client-facing API-key mechanism, not a reuse of it).
+func generateNodeAgentToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// handleGetNodeAgent returns the current Node Agent configuration for a
+// node, without the token (the token is only ever returned by the
+// enable/regenerate endpoints, at the moment an operator needs to copy it
+// into the install command).
+// GET /admin/nodes/{name}/agent
+func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	rec, found, err := s.st.GetNodeAgent(name)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read node agent config")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if !found {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"node": name, "enabled": false, "port": 0,
+		})
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"node": name, "enabled": rec.Enabled, "port": rec.Port,
+	})
+}
+
+// handleEnableNodeAgent enables (or reconfigures) the Node Agent for a node:
+// generates a fresh token, persists {enabled, port, token}, pushes the
+// config to the live router so polling starts on the next cycle without a
+// restart, and returns the one-line install command with the token
+// embedded - the only response that ever carries the plaintext token.
+// POST /admin/nodes/{name}/agent  body: {"port": <int>}
+func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if _, found := s.router.NodeURLs()[name]; !found {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+	var body struct {
+		Port int `json:"port"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.Port <= 0 || body.Port > 65535 {
+		writeJSONError(w, http.StatusBadRequest, "port must be between 1 and 65535")
+		return
+	}
+	token, err := generateNodeAgentToken()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
+		return
+	}
+	rec := store.NodeAgentRecord{Name: name, Enabled: true, Port: body.Port, Token: token}
+	if err := s.st.UpsertNodeAgent(rec); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
+		return
+	}
+	s.router.SetNodeAgent(name, true, body.Port, token)
+	s.logSystemChange(r, "enable_node_agent", name, fmt.Sprintf("Port: %d", body.Port))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"node":            name,
+		"enabled":         true,
+		"port":            body.Port,
+		"token":           token,
+		"install_command": nodeAgentInstallCommand(body.Port, token),
+	})
+}
+
+// handleDisableNodeAgent disables and deletes the Node Agent config for a
+// node - the router stops polling it on the next cycle (pollAgentTelemetry's
+// "no agent configured" branch clears any previously-reported fields).
+// DELETE /admin/nodes/{name}/agent
+func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := s.st.DeleteNodeAgent(name); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to delete node agent config")
+		return
+	}
+	s.router.SetNodeAgent(name, false, 0, "")
+	s.logSystemChange(r, "disable_node_agent", name, "")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRegenerateNodeAgentToken issues a fresh token for an already-enabled
+// node agent, keeping its configured port. Returns 404 if the agent isn't
+// currently enabled for this node (regenerating a token for a disabled/
+// nonexistent agent has no meaning - use handleEnableNodeAgent instead).
+// POST /admin/nodes/{name}/agent/regenerate
+func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	rec, found, err := s.st.GetNodeAgent(name)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read node agent config")
+		return
+	}
+	if !found || !rec.Enabled {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node agent not enabled for %q", name))
+		return
+	}
+	token, err := generateNodeAgentToken()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
+		return
+	}
+	rec.Token = token
+	if err := s.st.UpsertNodeAgent(rec); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
+		return
+	}
+	s.router.SetNodeAgent(name, true, rec.Port, token)
+	s.logSystemChange(r, "regenerate_node_agent_token", name, "")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"node":            name,
+		"port":            rec.Port,
+		"token":           token,
+		"install_command": nodeAgentInstallCommand(rec.Port, token),
+	})
 }
 
 // syncCloudProvidersToRouter reloads every persisted cloud provider from the
