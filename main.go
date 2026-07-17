@@ -194,7 +194,7 @@ func main() {
 	flag.Var(&seedNodes, "seed-node", `add a node directly to the database and exit, format: "name=...,url=...,runtime=..." (repeatable)`)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "ollama-mesh %s - warm-model-aware load balancer with cloud overflow for Ollama\n\n", Version)
-		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh [flags]\n  ollama-mesh agent -h   (Node Agent: node-local execution point for the mesh; telemetry in v1)\n\nFlags:\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh [flags]\n  ollama-mesh agent -h   (Node Agent: node-local execution point for the mesh)\n\nFlags:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (admin/admin on first run).\n")
 	}
