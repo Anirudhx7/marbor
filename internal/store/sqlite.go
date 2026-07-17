@@ -154,7 +154,8 @@ func (s *sqliteStore) migrate() error {
 			daily_usd_cap REAL NOT NULL DEFAULT 0,
 			monthly_usd_cap REAL NOT NULL DEFAULT 0,
 			models        TEXT,
-			revoked       INTEGER
+			revoked       INTEGER,
+			expires_at    TEXT NOT NULL DEFAULT ''
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS audit_log (
@@ -308,6 +309,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE hourly_buckets ADD COLUMN gen_duration_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN daily_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE runtime_keys ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 	} {
@@ -861,9 +863,9 @@ func (s *sqliteStore) UpsertKey(k KeyRecord) error {
 	}
 	_, err = s.db.Exec(
 		`INSERT OR REPLACE INTO runtime_keys
-			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		k.Name, encKey, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked,
+			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.Name, encKey, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked, k.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
@@ -883,7 +885,7 @@ func (s *sqliteStore) RevokeKey(name string) error {
 
 func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked FROM runtime_keys`,
+		`SELECT name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at FROM runtime_keys`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllKeys: %w", err)
@@ -895,7 +897,7 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 		var k KeyRecord
 		var modelsJSON string
 		var revoked int
-		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked); err != nil {
+		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked, &k.ExpiresAt); err != nil {
 			return nil, fmt.Errorf("store: AllKeys scan: %w", err)
 		}
 		dec, decErr := decryptSecret(s.secretKey, k.Key)

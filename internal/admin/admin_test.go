@@ -400,6 +400,59 @@ func TestAdmin_AddKeyResponseContainsPlaintext(t *testing.T) {
 	}
 }
 
+func TestValidateExpiresAt(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		wantErr bool
+	}{
+		{"empty is valid (no expiry)", "", false},
+		{"future bare date", "2099-01-01", false},
+		{"future datetime-local (UI picker format)", "2099-01-01T15:04", false},
+		{"future RFC3339", "2099-01-01T15:04:00Z", false},
+		{"past bare date", "2020-01-01", true},
+		{"past datetime-local", "2020-01-01T15:04", true},
+		{"malformed", "not-a-date", true},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateExpiresAt(tt.in)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateExpiresAt(%q) error = %v, wantErr %v", tt.in, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestAdmin_PatchKeyExpiresAt is a regression test: expires_at could only be
+// set at creation - PATCH /admin/keys/{name} silently ignored it because
+// auth.KeyPatch had no field for it.
+func TestAdmin_PatchKeyExpiresAt(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	a := auth.NewMiddleware(config.AuthConfig{})
+	s := NewServer(r, a, config.Config{})
+	a.AddKey(config.KeyConfig{Name: "k1", Key: "sk-1", RateLimit: 1000})
+
+	patch := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/keys/k1", bytes.NewReader([]byte(body)))
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := patch(`{"expires_at":"2020-01-01"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("patching a past expires_at: status = %d, want 400", rec.Code)
+	}
+	if rec := patch(`{"expires_at":"2099-01-01"}`); rec.Code != http.StatusOK {
+		t.Errorf("patching a future expires_at: status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	if rec := patch(`{"expires_at":""}`); rec.Code != http.StatusOK {
+		t.Errorf("clearing expires_at: status = %d, want 200", rec.Code)
+	}
+}
+
 // TestShutdownDrainsAsyncLogQueue verifies that Shutdown() flushes any
 // buffered request logs to the store before returning, so LogRequest calls
 // made just before shutdown are not lost. Also verifies that a LogRequest

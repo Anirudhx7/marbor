@@ -69,3 +69,39 @@ func TestExpiredKeyRejected(t *testing.T) {
 		})
 	}
 }
+
+// TestPatchKeyExpiresAt is a regression test: expires_at was only settable at
+// key creation, with no way to add, change, or clear it afterward.
+func TestPatchKeyExpiresAt(t *testing.T) {
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: config.BoolPtr(true),
+		Keys: []config.KeyConfig{
+			{Name: "k1", Key: "sk-1", RateLimit: 1000, ExpiresAt: "2099-01-01"},
+		},
+	})
+	handler := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	past := "2020-01-01"
+	if !mw.PatchKey("k1", KeyPatch{ExpiresAt: &past}) {
+		t.Fatal("PatchKey returned false for existing key")
+	}
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "Bearer sk-1")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("after patching expires_at to the past: status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	cleared := ""
+	if !mw.PatchKey("k1", KeyPatch{ExpiresAt: &cleared}) {
+		t.Fatal("PatchKey returned false for existing key")
+	}
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("after clearing expires_at: status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}

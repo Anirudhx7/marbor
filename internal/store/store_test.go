@@ -171,6 +171,7 @@ func TestUpsertRevokeKey(t *testing.T) {
 		MonthlyLimit: 100000,
 		Models:       []string{"llama3", "mistral"},
 		Revoked:      false,
+		ExpiresAt:    "2099-01-01T15:04",
 	}
 
 	if err := s.UpsertKey(k); err != nil {
@@ -189,6 +190,11 @@ func TestUpsertRevokeKey(t *testing.T) {
 	}
 	if len(keys[0].Models) != 2 {
 		t.Errorf("expected 2 models, got %d: %v", len(keys[0].Models), keys[0].Models)
+	}
+	// Regression: ExpiresAt was applied in-memory at creation but never had a
+	// column in runtime_keys, so it was silently lost on every restart.
+	if keys[0].ExpiresAt != "2099-01-01T15:04" {
+		t.Errorf("expected ExpiresAt to survive UpsertKey/AllKeys round-trip, got %q", keys[0].ExpiresAt)
 	}
 
 	// Revoke it.

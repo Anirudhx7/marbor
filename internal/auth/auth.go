@@ -298,6 +298,7 @@ type KeyPatch struct {
 	DailyUsdCap   *float64 `json:"daily_usd_cap"`
 	MonthlyUsdCap *float64 `json:"monthly_usd_cap"`
 	Models        []string `json:"models"`
+	ExpiresAt     *string  `json:"expires_at"`
 }
 
 // PatchKey updates mutable fields of an existing key without rotating it.
@@ -328,6 +329,9 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 	}
 	if patch.Models != nil {
 		ks.models = patch.Models
+	}
+	if patch.ExpiresAt != nil {
+		ks.expiresAt = *patch.ExpiresAt
 	}
 	ks.mu.Unlock()
 	return true

@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **API key expiry is now editable after creation, with time-of-day precision.** Previously `expires_at` could only be set at key creation and had no field at all in the edit modal - once created, a key's expiry could never be added, changed, or cleared. `PATCH /admin/keys/{name}` now accepts `expires_at`, and both the create and edit forms use a combined date/time picker (was date-only on create) so expiry can be scoped to the hour/minute, not just the day.
+
+### Fixed
+- **Past dates were selectable in the API key expiry picker**, only rejected after a round-trip to the server. The picker now grays out and disables any day before today.
+- **A key's `expires_at` was silently dropped on mesh restart.** It was applied in-memory at creation but never written to `mesh.db` (`runtime_keys` had no `expires_at` column) and never re-loaded into the auth middleware at boot - a key created with an expiry effectively lost it the next time the mesh restarted.
+
 ### Security
 - **Secrets are now encrypted at rest in `mesh.db`.** Cloud provider API keys, mesh-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret were previously stored as plaintext columns/settings - readable by anything with access to the SQLite file (backups, misconfigured storage, a copied `.db`). They're now AES-256-GCM encrypted, with the key held in a separate `mesh.db.key` file (0600) generated on first boot, or supplied via `MESH_ENCRYPTION_KEY` (base64 32-byte key) for operators who want to manage it themselves. Existing installs migrate transparently on first boot after upgrading - no manual step, no re-entering keys.
 

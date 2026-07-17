@@ -261,6 +261,7 @@ type KeyRecord struct {
 	MonthlyUsdCap float64  `json:"monthly_usd_cap"`
 	Models        []string `json:"models"`
 	Revoked       bool     `json:"revoked"`
+	ExpiresAt     string   `json:"expires_at"`
 }
 
 // AuditEntry is one structured audit log record persisted to SQLite.
