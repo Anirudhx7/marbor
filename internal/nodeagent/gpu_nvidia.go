@@ -82,16 +82,36 @@ func parseMiB(s string) int64 {
 	return v
 }
 
-func parseCelsius(s string) float64 {
-	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "C"))
-	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return v
+// parseCelsius parses a temperature reading like "67 C". Returns ok=false
+// for "N/A" or anything unparseable (a real gap on some cards/drivers where
+// the sensor isn't reported) - callers must omit the field rather than use
+// the zero value as a real 0°C reading (R1).
+func parseCelsius(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "N/A" {
+		return 0, false
+	}
+	s = strings.TrimSpace(strings.TrimSuffix(s, "C"))
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
-func parseWatts(s string) float64 {
-	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "W"))
-	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return v
+// parseWatts parses a power reading like "218.00 W". Returns ok=false for
+// "N/A" or anything unparseable, same R1 reasoning as parseCelsius.
+func parseWatts(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "N/A" {
+		return 0, false
+	}
+	s = strings.TrimSpace(strings.TrimSuffix(s, "W"))
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 func parsePercent(s string) (float64, bool) {
@@ -122,16 +142,21 @@ func parseNvidiaSMIXML(data []byte) (GPUTelemetry, bool) {
 	out.VRAMTotalMB = parseMiB(gpu.FBMemory.Total)
 	out.VRAMUsedMB = parseMiB(gpu.FBMemory.Used)
 
-	temp := parseCelsius(gpu.Temperature.GPUTemp)
-	out.TemperatureC = &temp
-
-	var watts float64
-	if gpu.PowerReadings.PowerDraw != "" && gpu.PowerReadings.PowerDraw != "N/A" {
-		watts = parseWatts(gpu.PowerReadings.PowerDraw)
-	} else {
-		watts = parseWatts(gpu.GPUPowerReadings.PowerDraw)
+	if temp, ok := parseCelsius(gpu.Temperature.GPUTemp); ok {
+		out.TemperatureC = &temp
 	}
-	out.PowerWatts = &watts
+
+	// Power reading falls back from power_readings to gpu_power_readings
+	// when the primary is unavailable ("N/A") - only set PowerWatts if
+	// whichever source is actually used parses successfully; never
+	// fabricate a fallback-of-a-fallback 0 (R1).
+	watts, ok := parseWatts(gpu.PowerReadings.PowerDraw)
+	if !ok {
+		watts, ok = parseWatts(gpu.GPUPowerReadings.PowerDraw)
+	}
+	if ok {
+		out.PowerWatts = &watts
+	}
 
 	if fan, ok := parsePercent(gpu.FanSpeed); ok {
 		out.FanPercent = &fan

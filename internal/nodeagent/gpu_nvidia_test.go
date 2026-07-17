@@ -132,3 +132,32 @@ func TestParseNvidiaSMIXMLMissingFanSpeed(t *testing.T) {
 		t.Errorf("PowerWatts = %v, want 75 (fallback to gpu_power_readings)", gpu.PowerWatts)
 	}
 }
+
+// TestParseNvidiaSMIXMLMissingTemperatureAndPower verifies that a card
+// reporting "N/A" for temperature, and "N/A" on BOTH power sources, omits
+// TemperatureC/PowerWatts entirely rather than reporting a fabricated 0°C /
+// 0W (R1) - regression test for a bug where parseCelsius/parseWatts had no
+// (value, ok) signature and silently defaulted to 0 on unparseable input,
+// unlike parsePercent's existing correct pattern for FanPercent.
+func TestParseNvidiaSMIXMLMissingTemperatureAndPower(t *testing.T) {
+	xml := `<?xml version="1.0" ?>
+<nvidia_smi_log>
+	<gpu id="0">
+		<fan_speed>N/A</fan_speed>
+		<fb_memory_usage><total>100 MiB</total><used>50 MiB</used></fb_memory_usage>
+		<temperature><gpu_temp>N/A</gpu_temp></temperature>
+		<power_readings><power_draw>N/A</power_draw></power_readings>
+		<gpu_power_readings><power_draw>N/A</power_draw></gpu_power_readings>
+	</gpu>
+</nvidia_smi_log>`
+	gpu, ok := parseNvidiaSMIXML([]byte(xml))
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if gpu.TemperatureC != nil {
+		t.Errorf("TemperatureC should be nil when gpu_temp is N/A, got %v", *gpu.TemperatureC)
+	}
+	if gpu.PowerWatts != nil {
+		t.Errorf("PowerWatts should be nil when both power sources are N/A, got %v", *gpu.PowerWatts)
+	}
+}

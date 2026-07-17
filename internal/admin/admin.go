@@ -1472,6 +1472,10 @@ func generateNodeAgentToken() (string, error) {
 // GET /admin/nodes/{name}/agent
 func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if _, found := s.router.NodeURLs()[name]; !found {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
 	rec, found, err := s.st.GetNodeAgent(name)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read node agent config")
@@ -1542,6 +1546,10 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 // DELETE /admin/nodes/{name}/agent
 func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	if _, found := s.router.NodeURLs()[name]; !found {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
 	if err := s.st.DeleteNodeAgent(name); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to delete node agent config")
 		return
