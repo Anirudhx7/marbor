@@ -244,7 +244,7 @@ export function SystemAudit() {
       </div>
 
       {/* Main Table */}
-      <div className="bg-card/30 backdrop-blur-sm border border-border/60 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
         {loading ? (
           <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
             <RefreshCw className="w-6 h-6 animate-spin text-primary" />
