@@ -61,7 +61,7 @@ export function CustomDateTimePicker({
     }
   }, [value]);
 
-  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -69,11 +69,13 @@ export function CustomDateTimePicker({
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
       const left = clampLeft(rect.left, 320); // w-80
-      if (spaceBelow < 340) {
-        setCoords({ left, bottom: window.innerHeight - rect.top + 6 });
+      const margin = POPUP_VIEWPORT_MARGIN + 6;
+      if (spaceBelow < 340 && spaceAbove > spaceBelow) {
+        setCoords({ left, bottom: window.innerHeight - rect.top + 6, maxHeight: spaceAbove - margin });
       } else {
-        setCoords({ left, top: rect.bottom + 6 });
+        setCoords({ left, top: rect.bottom + 6, maxHeight: spaceBelow - margin });
       }
     };
     updateCoords();
@@ -269,8 +271,8 @@ export function CustomDateTimePicker({
       {isOpen && coords && createPortal(
         <div
           ref={panelRef}
-          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, zIndex: 9999 }}
-          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in"
+          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, maxHeight: coords.maxHeight, zIndex: 9999 }}
+          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 overflow-y-auto animate-fade-in"
         >
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
@@ -307,7 +309,7 @@ export function CustomDateTimePicker({
             {calendarGrid.map((cell, idx) => {
               const isSelected =
                 cell.isCurrentMonth && selectedDay === cell.day;
-              
+
               const isToday =
                 cell.isCurrentMonth &&
                 new Date().getDate() === cell.day &&
@@ -473,7 +475,7 @@ export function CustomDatePicker({
     }
   }, [value]);
 
-  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -481,11 +483,13 @@ export function CustomDatePicker({
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
       const left = clampLeft(rect.left, 320); // w-80
-      if (spaceBelow < 280) {
-        setCoords({ left, bottom: window.innerHeight - rect.top + 6 });
+      const margin = POPUP_VIEWPORT_MARGIN + 6;
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setCoords({ left, bottom: window.innerHeight - rect.top + 6, maxHeight: spaceAbove - margin });
       } else {
-        setCoords({ left, top: rect.bottom + 6 });
+        setCoords({ left, top: rect.bottom + 6, maxHeight: spaceBelow - margin });
       }
     };
     updateCoords();
@@ -646,8 +650,8 @@ export function CustomDatePicker({
       {isOpen && coords && createPortal(
         <div
           ref={panelRef}
-          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, zIndex: 9999 }}
-          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 animate-fade-in"
+          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, maxHeight: coords.maxHeight, zIndex: 9999 }}
+          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 overflow-y-auto animate-fade-in"
         >
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
@@ -778,7 +782,7 @@ export function CustomTimePicker({
     }
   }, [value]);
 
-  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -786,11 +790,13 @@ export function CustomTimePicker({
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
       const left = clampLeft(rect.left, 256); // w-64
-      if (spaceBelow < 270) {
-        setCoords({ left, bottom: window.innerHeight - rect.top + 6 });
+      const margin = POPUP_VIEWPORT_MARGIN + 6;
+      if (spaceBelow < 270 && spaceAbove > spaceBelow) {
+        setCoords({ left, bottom: window.innerHeight - rect.top + 6, maxHeight: spaceAbove - margin });
       } else {
-        setCoords({ left, top: rect.bottom + 6 });
+        setCoords({ left, top: rect.bottom + 6, maxHeight: spaceBelow - margin });
       }
     };
     updateCoords();
@@ -872,8 +878,8 @@ export function CustomTimePicker({
       {isOpen && coords && createPortal(
         <div
           ref={panelRef}
-          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, zIndex: 9999 }}
-          className="p-4 border border-border bg-card rounded-xl shadow-xl w-64 animate-fade-in"
+          style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, maxHeight: coords.maxHeight, zIndex: 9999 }}
+          className="p-4 border border-border bg-card rounded-xl shadow-xl w-64 overflow-y-auto animate-fade-in"
         >
           {/* Main Large Clock Display */}
           <div className="flex justify-center items-center gap-1.5 font-mono text-3xl font-bold text-primary mb-5 select-none bg-secondary/20 py-2.5 rounded-xl border border-border/40">
@@ -944,49 +950,87 @@ interface ScrollWheelProps {
 
 function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
   const localValueRef = useRef<number>(value);
-  const isScrollingRef = useRef<boolean>(false);
   const scrollTimeoutRef = useRef<any>(null);
+  const suppressScrollSyncRef = useRef<boolean>(false);
+  const wheelAccumRef = useRef<number>(0);
+  const wheelResetTimeoutRef = useRef<any>(null);
+
+  const getItemHeight = () => itemRefs.current.get(options[0])?.offsetHeight || 28;
+
+  const scrollToValue = (val: number, smooth: boolean) => {
+    const activeEl = itemRefs.current.get(val);
+    if (activeEl) {
+      suppressScrollSyncRef.current = true;
+      activeEl.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'center' });
+      // Native scroll settles almost immediately for 'auto'; give 'smooth' a moment
+      // before re-enabling scroll-driven onChange so the programmatic scroll
+      // doesn't get misread as a user gesture and fire a spurious onChange.
+      setTimeout(() => { suppressScrollSyncRef.current = false; }, smooth ? 350 : 50);
+    }
+  };
 
   // Sync scroll when value changes externally (or via click)
   useEffect(() => {
     if (value !== localValueRef.current) {
       localValueRef.current = value;
-      const activeEl = containerRef.current?.querySelector(`[data-value="${value}"]`);
-      if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      scrollToValue(value, true);
     }
   }, [value]);
 
   // Initial scroll-into-view on load
   useEffect(() => {
-    const activeEl = containerRef.current?.querySelector(`[data-value="${value}"]`);
-    if (activeEl) {
-      activeEl.scrollIntoView({ block: 'center' });
-    }
+    scrollToValue(value, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    isScrollingRef.current = true;
+  const handleScroll = () => {
+    if (suppressScrollSyncRef.current) return;
 
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
     }
 
-    // Scroll snapping detection (Height of each item is 28px)
+    // Wait for scroll to settle (native snap finishes) before committing a value.
     scrollTimeoutRef.current = setTimeout(() => {
       if (containerRef.current) {
+        const itemHeight = getItemHeight();
         const scrollTop = containerRef.current.scrollTop;
-        const index = Math.round(scrollTop / 28);
-        const newValue = options[index];
-        if (newValue !== undefined && newValue !== value) {
-          localValueRef.current = newValue; // Sync locally first to avoid trigger loop
+        const index = Math.round(scrollTop / itemHeight);
+        const clamped = Math.max(0, Math.min(options.length - 1, index));
+        const newValue = options[clamped];
+        if (newValue !== undefined && newValue !== localValueRef.current) {
+          localValueRef.current = newValue;
           onChange(newValue);
         }
-        isScrollingRef.current = false;
       }
-    }, 150);
+    }, 120);
+  };
+
+  // Mouse wheel is much more sensitive than touch/drag scrolling - a single
+  // notch can report a large deltaY and skip several values at once. Convert
+  // wheel input into fixed one-step-per-notch increments instead of letting
+  // the browser translate raw deltaY into scroll distance.
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    wheelAccumRef.current += e.deltaY;
+    const itemHeight = getItemHeight();
+    const threshold = itemHeight * 0.6;
+    if (Math.abs(wheelAccumRef.current) >= threshold) {
+      const step = wheelAccumRef.current > 0 ? 1 : -1;
+      wheelAccumRef.current = 0;
+      const currentIndex = options.indexOf(localValueRef.current);
+      const nextIndex = Math.max(0, Math.min(options.length - 1, currentIndex + step));
+      const newValue = options[nextIndex];
+      if (newValue !== undefined && newValue !== localValueRef.current) {
+        localValueRef.current = newValue;
+        onChange(newValue);
+        scrollToValue(newValue, false);
+      }
+    }
+    if (wheelResetTimeoutRef.current) clearTimeout(wheelResetTimeoutRef.current);
+    wheelResetTimeoutRef.current = setTimeout(() => { wheelAccumRef.current = 0; }, 200);
   };
 
   return (
@@ -994,6 +1038,8 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        onWheel={handleWheel}
+        aria-label={label}
         className="h-full overflow-y-auto no-scrollbar py-[66px] snap-y snap-mandatory scroll-smooth z-10 relative"
       >
         {options.map((opt) => {
@@ -1003,9 +1049,14 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
               key={opt}
               type="button"
               data-value={opt}
+              ref={(el) => {
+                if (el) itemRefs.current.set(opt, el);
+                else itemRefs.current.delete(opt);
+              }}
               onClick={() => {
                 localValueRef.current = opt; // Sync locally first
                 onChange(opt);
+                scrollToValue(opt, true);
               }}
               className={`block w-full py-1 text-center font-mono text-xs snap-center transition-all ${
                 isSelected
