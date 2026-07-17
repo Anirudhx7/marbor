@@ -1,11 +1,14 @@
 package router
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
@@ -243,5 +246,144 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	}
 	if r.nodes[0].AgentPlatform != "" || r.nodes[0].AgentGPUVendor != "" {
 		t.Errorf("AgentPlatform/AgentGPUVendor = %q/%q after disabling, want cleared", r.nodes[0].AgentPlatform, r.nodes[0].AgentGPUVendor)
+	}
+}
+
+// TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored proves the rolling-
+// upgrade contract for a NEWER agent talking to an OLDER mesh: extra JSON
+// fields this mesh binary's nodeagent.Telemetry struct doesn't define must
+// be silently ignored (Go's default json.Decoder behavior - no
+// DisallowUnknownFields anywhere in this path), never cause the poll to be
+// treated as a failure. Every currently-known field must still populate
+// correctly alongside the unrecognized ones.
+func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Hand-built JSON (not nodeagent.Telemetry) so it can include fields
+		// that don't exist in this mesh binary's struct yet - simulating a
+		// future agent build's response.
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"schema_version": 1,
+			"agent_version": "v99.0.0",
+			"capabilities": ["telemetry", "diagnostics", "actions"],
+			"platform": "linux",
+			"architecture": "amd64",
+			"gpu_vendor": "nvidia",
+			"a_field_this_mesh_has_never_heard_of": {"nested": ["stuff", 1, true]},
+			"another_unknown_field": 42,
+			"gpu": {"vendor": "nvidia", "vram_used_mb": 8000, "vram_total_mb": 16000},
+			"last_updated": "2026-07-17T00:00:00Z"
+		}`))
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.pollNode(r.nodes[0])
+
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+	if !r.nodes[0].AgentPresent {
+		t.Fatal("AgentPresent = false, want true - unknown fields must not fail the poll")
+	}
+	if r.nodes[0].AgentVersion != "v99.0.0" {
+		t.Errorf("AgentVersion = %q, want v99.0.0", r.nodes[0].AgentVersion)
+	}
+	// capabilities lists a future feature ("diagnostics"/"actions") this
+	// mesh doesn't implement anything for yet - it must still be stored
+	// verbatim, not truncated/rejected, so a future mesh build that DOES
+	// understand those capabilities doesn't need the agent to re-report.
+	if len(r.nodes[0].AgentCapabilities) != 3 {
+		t.Errorf("AgentCapabilities = %v, want 3 entries preserved as-is", r.nodes[0].AgentCapabilities)
+	}
+	if r.nodes[0].VRAMTotalMB != 16000 {
+		t.Errorf("VRAMTotalMB = %d, want 16000 (known fields must still decode alongside unknown ones)", r.nodes[0].VRAMTotalMB)
+	}
+}
+
+// TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown proves the
+// rolling-upgrade contract for an OLDER agent talking to a NEWER mesh: a
+// response missing fields this mesh's Telemetry struct now defines
+// (capabilities/platform/architecture/gpu_vendor/runtime, added after v1
+// shipped) must decode to their zero value and be treated as "not reported"
+// - never crash the poll, never be displayed as a real (empty-string/nil)
+// measurement instead of "unknown."
+func TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Simulates the very first v1 agent response shape, before
+		// capabilities/platform/architecture/gpu_vendor/runtime existed.
+		w.Write([]byte(`{"schema_version": 1, "agent_version": "v0.15.0", "last_updated": "2026-07-17T00:00:00Z"}`))
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.pollNode(r.nodes[0])
+
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+	if !r.nodes[0].AgentPresent {
+		t.Fatal("AgentPresent = false, want true - a missing new field must not fail the poll")
+	}
+	if r.nodes[0].AgentVersion != "v0.15.0" {
+		t.Errorf("AgentVersion = %q, want v0.15.0", r.nodes[0].AgentVersion)
+	}
+	if r.nodes[0].AgentCapabilities != nil {
+		t.Errorf("AgentCapabilities = %v, want nil (not reported by this old agent)", r.nodes[0].AgentCapabilities)
+	}
+	if r.nodes[0].AgentPlatform != "" || r.nodes[0].AgentGPUVendor != "" {
+		t.Errorf("AgentPlatform/AgentGPUVendor = %q/%q, want empty (not reported by this old agent)", r.nodes[0].AgentPlatform, r.nodes[0].AgentGPUVendor)
+	}
+}
+
+// TestPollAgentTelemetryNewerSchemaVersionLoggedOnce verifies the operator-
+// visibility log fires exactly once per node (not every poll cycle) when an
+// agent reports a schema_version ahead of what this mesh binary understands
+// - purely informational, per agent_poll.go's comment: decoding above
+// already works regardless, this never gates behavior.
+func TestPollAgentTelemetryNewerSchemaVersionLoggedOnce(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{
+			SchemaVersion: nodeagent.SchemaVersion + 1,
+			AgentVersion:  "v99.0.0",
+		})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+
+	var logBuf bytes.Buffer
+	oldOutput := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(oldOutput)
+
+	r.pollNode(r.nodes[0])
+	r.pollNode(r.nodes[0])
+	r.pollNode(r.nodes[0])
+
+	out := logBuf.String()
+	count := strings.Count(out, "newer than this mesh understands")
+	if count != 1 {
+		t.Errorf("schema-mismatch log appeared %d times across 3 polls, want exactly 1 (latched, not repeated)\nlog output:\n%s", count, out)
 	}
 }
