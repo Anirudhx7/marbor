@@ -1010,7 +1010,8 @@ export interface NodeAgentEnableResult {
   enabled: boolean;
   port: number;
   token: string;
-  install_command: string;
+  install_command: string; // Linux/macOS one-liner (install.sh, ROLE=agent)
+  install_command_windows: string; // Windows PowerShell one-liner (install.ps1, ROLE=agent)
 }
 
 export async function getNodeAgent(name: string): Promise<NodeAgentStatus> {

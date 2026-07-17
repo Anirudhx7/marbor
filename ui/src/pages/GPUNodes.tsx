@@ -459,17 +459,17 @@ export function GPUNodes() {
   const [agentNode, setAgentNode] = useState<GPUNode | null>(null);
   const [agentStatus, setAgentStatus] = useState<NodeAgentStatus | null>(null);
   const [agentPort, setAgentPort] = useState('11435');
-  const [agentInstallCommand, setAgentInstallCommand] = useState<string | null>(null);
+  const [agentInstallCommand, setAgentInstallCommand] = useState<{ unix: string; windows: string } | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
-  const [agentCopied, setAgentCopied] = useState(false);
+  const [agentCopiedWhich, setAgentCopiedWhich] = useState<'unix' | 'windows' | null>(null);
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
 
   const openAgentModal = async (node: GPUNode) => {
     setAgentNode(node);
     setAgentError(null);
     setAgentInstallCommand(null);
-    setAgentCopied(false);
+    setAgentCopiedWhich(null);
     if (demoMode) {
       setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
       setAgentPort('11435');
@@ -504,7 +504,10 @@ export function GPUNodes() {
     if (demoMode) {
       const token = `demo-${Math.random().toString(36).slice(2, 10)}`;
       setAgentStatus({ node: agentNode.name, enabled: true, port });
-      setAgentInstallCommand(`ollama-mesh agent --port=${port} --token=${token}`);
+      setAgentInstallCommand({
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent TOKEN=${token} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:TOKEN="${token}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+      });
       setNodes(prev => prev.map(n => n.name === agentNode.name
         ? { ...n, agentPresent: true, agentVersion: '0.1.0', fanPercent: 55, ramUsedMB: Math.round(20 * 1024), diskFreeGB: 500 }
         : n));
@@ -514,7 +517,7 @@ export function GPUNodes() {
     try {
       const res = await enableNodeAgent(agentNode.name, port);
       setAgentStatus({ node: agentNode.name, enabled: true, port: res.port });
-      setAgentInstallCommand(res.install_command);
+      setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
       await loadNodes();
     } catch (e: any) {
       setAgentError(e?.message || 'Failed to enable node agent');
@@ -529,13 +532,17 @@ export function GPUNodes() {
     setAgentError(null);
     if (demoMode) {
       const token = `demo-${Math.random().toString(36).slice(2, 10)}`;
-      setAgentInstallCommand(`ollama-mesh agent --port=${agentStatus?.port ?? 11435} --token=${token}`);
+      const port = agentStatus?.port ?? 11435;
+      setAgentInstallCommand({
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent TOKEN=${token} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:TOKEN="${token}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+      });
       setAgentBusy(false);
       return;
     }
     try {
       const res = await regenerateNodeAgentToken(agentNode.name);
-      setAgentInstallCommand(res.install_command);
+      setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
       setAgentStatus({ node: agentNode.name, enabled: true, port: res.port });
     } catch (e: any) {
       setAgentError(e?.message || 'Failed to regenerate node agent token');
@@ -571,14 +578,14 @@ export function GPUNodes() {
     }
   };
 
-  const copyAgentCommand = (text: string) => {
+  const copyAgentCommand = (text: string, which: 'unix' | 'windows') => {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text).catch(() => legacyCopyText(text));
     } else {
       legacyCopyText(text);
     }
-    setAgentCopied(true);
-    setTimeout(() => setAgentCopied(false), 2000);
+    setAgentCopiedWhich(which);
+    setTimeout(() => setAgentCopiedWhich(null), 2000);
   };
 
   // Same fallback approach as APIKeys.tsx's copyToClipboard - works on plain
@@ -1411,21 +1418,39 @@ export function GPUNodes() {
           )}
 
           {agentInstallCommand && (
-            <div className="p-4 bg-success/10 border border-success/30 rounded-xl">
-              <p className="text-sm font-semibold text-success mb-2">
-                Run this on the GPU node - the token is shown once and won't be shown again
+            <div className="p-4 bg-success/10 border border-success/30 rounded-xl space-y-4">
+              <p className="text-sm font-semibold text-success">
+                Run one of these on the GPU node - the token is shown once and won't be shown again
               </p>
-              <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
-                {agentInstallCommand}
-              </code>
-              <div className="flex justify-end mt-2">
-                <button
-                  onClick={() => copyAgentCommand(agentInstallCommand)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  {agentCopied ? 'Copied!' : 'Copy'}
-                </button>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Linux / macOS</p>
+                <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                  {agentInstallCommand.unix}
+                </code>
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => copyAgentCommand(agentInstallCommand.unix, 'unix')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    {agentCopiedWhich === 'unix' ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Windows (PowerShell, run as Administrator)</p>
+                <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                  {agentInstallCommand.windows}
+                </code>
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => copyAgentCommand(agentInstallCommand.windows, 'windows')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    {agentCopiedWhich === 'windows' ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
               </div>
             </div>
           )}
