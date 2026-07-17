@@ -1,0 +1,82 @@
+package nodeagent
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestRenderPrometheusDerivedFromTelemetry(t *testing.T) {
+	temp := 67.0
+	fan := 52.0
+	power := 218.0
+	cpu := 34.0
+	tel := Telemetry{
+		SchemaVersion: 1,
+		AgentVersion:  "v0.16.0",
+		GPU: &GPUTelemetry{
+			TemperatureC: &temp,
+			FanPercent:   &fan,
+			PowerWatts:   &power,
+			VRAMUsedMB:   21504,
+			VRAMTotalMB:  24576,
+		},
+		Host: &HostTelemetry{
+			CPUPercent: &cpu,
+			RAMUsedMB:  12000,
+			DiskFreeGB: 220,
+		},
+	}
+
+	out := RenderPrometheus(tel)
+
+	for _, want := range []string{
+		"nodeagent_gpu_temperature_celsius 67",
+		"nodeagent_gpu_fan_percent 52",
+		"nodeagent_gpu_power_watts 218",
+		"nodeagent_gpu_vram_used_mb 21504",
+		"nodeagent_gpu_vram_total_mb 24576",
+		"nodeagent_host_cpu_percent 34",
+		"nodeagent_host_ram_used_mb 12000",
+		"nodeagent_host_disk_free_gb 220",
+		"nodeagent_schema_version 1",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("prometheus output missing %q\nfull output:\n%s", want, out)
+		}
+	}
+
+	// Every metric must carry HELP/TYPE per the Prometheus text format.
+	if !strings.Contains(out, "# HELP nodeagent_gpu_temperature_celsius") {
+		t.Error("missing HELP line for gpu_temperature_celsius")
+	}
+	if !strings.Contains(out, "# TYPE nodeagent_gpu_temperature_celsius gauge") {
+		t.Error("missing TYPE line for gpu_temperature_celsius")
+	}
+}
+
+// TestRenderPrometheusOmitsUnknownFields verifies that fields absent from
+// the JSON telemetry (nil GPU/Host, or nil sub-fields) are simply not
+// rendered as metric lines, rather than rendered as a fabricated 0 (R1: the
+// Prometheus endpoint must never claim a measurement that wasn't taken).
+func TestRenderPrometheusOmitsUnknownFields(t *testing.T) {
+	tel := Telemetry{SchemaVersion: 1, AgentVersion: "v0.16.0"}
+	out := RenderPrometheus(tel)
+	for _, absent := range []string{
+		"nodeagent_gpu_temperature_celsius",
+		"nodeagent_gpu_fan_percent",
+		"nodeagent_gpu_power_watts",
+		"nodeagent_gpu_vram_used_mb",
+		"nodeagent_gpu_vram_total_mb",
+		"nodeagent_host_cpu_percent",
+		"nodeagent_host_ram_used_mb",
+		"nodeagent_host_disk_free_gb",
+	} {
+		if strings.Contains(out, absent) {
+			t.Errorf("expected %q to be absent when telemetry has no GPU/Host data, but it was rendered:\n%s", absent, out)
+		}
+	}
+	// Schema version is always known (it's a constant, not a measurement).
+	if !strings.Contains(out, "nodeagent_schema_version 1") {
+		t.Error("schema_version metric should always be present")
+	}
+}

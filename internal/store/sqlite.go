@@ -138,6 +138,16 @@ func (s *sqliteStore) migrate() error {
 			drained_reason TEXT NOT NULL DEFAULT ''
 		)`,
 
+		// node_agent holds the per-node Node Agent configuration (opaque
+		// bearer token, port, enabled flag). Token is encrypted at rest
+		// (enc:v1: prefix, see secretbox.go) by every writer below.
+		`CREATE TABLE IF NOT EXISTS node_agent (
+			name    TEXT PRIMARY KEY,
+			enabled INTEGER NOT NULL DEFAULT 0,
+			port    INTEGER NOT NULL DEFAULT 0,
+			token   TEXT NOT NULL DEFAULT ''
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS predictive_history (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
 			from_model TEXT NOT NULL,
@@ -382,6 +392,35 @@ func (s *sqliteStore) migrateEncryptSecrets() error {
 		}
 		if _, err := s.db.Exec(`UPDATE runtime_keys SET key=? WHERE name=?`, enc, p.name); err != nil {
 			return fmt.Errorf("update runtime_keys.key for %s: %w", p.name, err)
+		}
+	}
+
+	rows, err = s.db.Query(`SELECT name, token FROM node_agent`)
+	if err != nil {
+		return fmt.Errorf("select node_agent: %w", err)
+	}
+	pending = pending[:0]
+	for rows.Next() {
+		var name, token string
+		if err := rows.Scan(&name, &token); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan node_agent: %w", err)
+		}
+		if token != "" && !strings.HasPrefix(token, secretEncPrefix) {
+			pending = append(pending, plain{name, token})
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("node_agent rows: %w", err)
+	}
+	for _, p := range pending {
+		enc, err := encryptSecret(s.secretKey, p.value)
+		if err != nil {
+			return fmt.Errorf("encrypt node_agent.token for %s: %w", p.name, err)
+		}
+		if _, err := s.db.Exec(`UPDATE node_agent SET token=? WHERE name=?`, enc, p.name); err != nil {
+			return fmt.Errorf("update node_agent.token for %s: %w", p.name, err)
 		}
 	}
 
@@ -659,6 +698,13 @@ func (s *sqliteStore) DeleteNode(name string) error {
 	if err != nil {
 		return fmt.Errorf("store: DeleteNode: %w", err)
 	}
+	// A stale node-agent token for a deleted node is a real dangling-secret
+	// concern (R8), so it is cleaned up here even though node_overrides/
+	// node_drain rows for a deleted node are left behind by the existing
+	// pattern - don't invent broader cleanup discipline beyond this.
+	if err := s.DeleteNodeAgent(name); err != nil {
+		return fmt.Errorf("store: DeleteNode: cascade node_agent: %w", err)
+	}
 	return nil
 }
 
@@ -804,6 +850,104 @@ func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
 		return nil, fmt.Errorf("store: NodeDrainStates rows: %w", err)
 	}
 	return out, nil
+}
+
+// --- Node Agent (per-node telemetry agent config) ---
+
+// UpsertNodeAgent persists rec, encrypting the token at rest. Called both
+// when an operator enables/reconfigures the agent for a node and when a
+// token is regenerated.
+func (s *sqliteStore) UpsertNodeAgent(rec NodeAgentRecord) error {
+	enc, err := encryptSecret(s.secretKey, rec.Token)
+	if err != nil {
+		return fmt.Errorf("store: UpsertNodeAgent: encrypt token: %w", err)
+	}
+	enabled := 0
+	if rec.Enabled {
+		enabled = 1
+	}
+	_, err = s.db.Exec(
+		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
+		rec.Name, enabled, rec.Port, enc,
+	)
+	if err != nil {
+		return fmt.Errorf("store: UpsertNodeAgent: %w", err)
+	}
+	return nil
+}
+
+// GetNodeAgent returns the agent config for name. found is false if no row
+// exists. A decrypt failure is returned as-is (not dropped): the blast
+// radius of a single-node lookup failing is that one node's telemetry
+// falling back to "-", not every node's, so there is no whole-list
+// corruption risk here (unlike AllNodeAgents below).
+func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
+	var rec NodeAgentRecord
+	var enabled int
+	var encToken string
+	err := s.db.QueryRow(
+		`SELECT name, enabled, port, token FROM node_agent WHERE name = ?`, name,
+	).Scan(&rec.Name, &enabled, &rec.Port, &encToken)
+	if err == sql.ErrNoRows {
+		return NodeAgentRecord{}, false, nil
+	}
+	if err != nil {
+		return NodeAgentRecord{}, false, fmt.Errorf("store: GetNodeAgent: %w", err)
+	}
+	rec.Enabled = enabled != 0
+	token, err := decryptSecret(s.secretKey, encToken)
+	if err != nil {
+		return NodeAgentRecord{}, false, fmt.Errorf("store: GetNodeAgent: decrypt token: %w", err)
+	}
+	rec.Token = token
+	return rec, true, nil
+}
+
+// AllNodeAgents returns every configured node agent. A row whose token
+// fails to decrypt (corrupt data, rotated key) is dropped rather than
+// failing the whole read - this list feeds the router's boot-time agent
+// poll wiring, and one bad row must not blank out telemetry for every other
+// node (same discipline as AllKeys/AllCloudProviders). The row is dropped
+// entirely, never kept with Token="" - an empty token would never
+// authenticate against a real agent anyway (checkToken rejects blank
+// expected tokens), but dropping the row is the same defensive pattern
+// used everywhere else in this file for a corrupt secret.
+func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
+	rows, err := s.db.Query(`SELECT name, enabled, port, token FROM node_agent`)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllNodeAgents: %w", err)
+	}
+	defer rows.Close()
+
+	var out []NodeAgentRecord
+	for rows.Next() {
+		var rec NodeAgentRecord
+		var enabled int
+		var encToken string
+		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken); err != nil {
+			return nil, fmt.Errorf("store: AllNodeAgents scan: %w", err)
+		}
+		token, decErr := decryptSecret(s.secretKey, encToken)
+		if decErr != nil {
+			log.Printf("store: AllNodeAgents: dropping %s: %v (re-enable the agent to restore it)", rec.Name, decErr)
+			continue
+		}
+		rec.Enabled = enabled != 0
+		rec.Token = token
+		out = append(out, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllNodeAgents rows: %w", err)
+	}
+	return out, nil
+}
+
+func (s *sqliteStore) DeleteNodeAgent(name string) error {
+	_, err := s.db.Exec(`DELETE FROM node_agent WHERE name=?`, name)
+	if err != nil {
+		return fmt.Errorf("store: DeleteNodeAgent: %w", err)
+	}
+	return nil
 }
 
 // --- Predictive engine transition history ---
