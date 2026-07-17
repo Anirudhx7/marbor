@@ -105,6 +105,21 @@ type NodeState struct {
 	FanPercent   *float64
 	RAMUsedMB    int64
 	DiskFreeGB   float64
+	// AgentCapabilities lists what the polled agent build actually supports
+	// (e.g. "telemetry") - the mesh/UI must gate any agent-dependent feature
+	// on this list rather than assuming every agent supports everything,
+	// since a fleet naturally has agents on different builds over time.
+	// AgentPlatform/AgentArchitecture/AgentGPUVendor/AgentRuntime are
+	// self-reported agent metadata (runtime.GOOS/GOARCH, selected GPU
+	// backend, locally-detected inference runtime) surfaced for debugging a
+	// mixed-version/mixed-vendor/mixed-runtime fleet - all cleared alongside
+	// AgentPresent so a disabled/unreachable agent never displays stale
+	// metadata as current.
+	AgentCapabilities []string
+	AgentPlatform     string
+	AgentArchitecture string
+	AgentGPUVendor    string
+	AgentRuntime      string
 
 	mu sync.RWMutex
 }

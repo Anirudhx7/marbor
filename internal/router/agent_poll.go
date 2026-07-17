@@ -72,6 +72,11 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 	n.mu.Lock()
 	n.AgentPresent = true
 	n.AgentVersion = t.AgentVersion
+	n.AgentCapabilities = append([]string(nil), t.Capabilities...)
+	n.AgentPlatform = t.Platform
+	n.AgentArchitecture = t.Architecture
+	n.AgentGPUVendor = t.GPUVendor
+	n.AgentRuntime = t.Runtime
 	if t.Host != nil {
 		n.CPUPercent = derefOr(t.Host.CPUPercent, n.CPUPercent)
 		n.RAMUsedMB = t.Host.RAMUsedMB
@@ -125,6 +130,11 @@ func clearAgentTelemetry(n *NodeState) {
 	wasAgentSourced := n.VRAMSource == "agent"
 	n.AgentPresent = false
 	n.AgentVersion = ""
+	n.AgentCapabilities = nil
+	n.AgentPlatform = ""
+	n.AgentArchitecture = ""
+	n.AgentGPUVendor = ""
+	n.AgentRuntime = ""
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0
