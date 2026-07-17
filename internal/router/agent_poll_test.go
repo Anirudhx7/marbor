@@ -387,3 +387,47 @@ func TestPollAgentTelemetryNewerSchemaVersionLoggedOnce(t *testing.T) {
 		t.Errorf("schema-mismatch log appeared %d times across 3 polls, want exactly 1 (latched, not repeated)\nlog output:\n%s", count, out)
 	}
 }
+
+// TestPollAgentTelemetryStillPolledWhenAPIPSFails is a regression test for a
+// bug where pollNode returned early on a /api/ps probe failure before ever
+// reaching pollAgentTelemetry - a node whose Ollama process crashed while its
+// Node Agent stayed up would show frozen, stale agent telemetry forever
+// instead of the agent poll continuing to run (they're independent HTTP
+// endpoints; one failing must not freeze the other's last-reported state).
+func TestPollAgentTelemetryStillPolledWhenAPIPSFails(t *testing.T) {
+	// /api/ps returns 500 - simulates the node's runtime being down/crashed.
+	psSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer psSrv.Close()
+
+	fan := 61.0
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{
+			SchemaVersion: 1,
+			AgentVersion:  "v0.16.0",
+			GPU:           &nodeagent.GPUTelemetry{FanPercent: &fan},
+		})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+
+	r.pollNode(r.nodes[0])
+
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+	// pollNode still marks the node unhealthy via markFailure on the /api/ps
+	// failure - that part of the existing behavior is unchanged and expected;
+	// this test only asserts the agent poll ALSO ran.
+	if !r.nodes[0].AgentPresent {
+		t.Error("AgentPresent = false, want true - the agent poll must still run even when /api/ps fails")
+	}
+	if r.nodes[0].FanPercent == nil || *r.nodes[0].FanPercent != 61 {
+		t.Errorf("FanPercent = %v, want 61 - agent telemetry must be collected independently of /api/ps health", r.nodes[0].FanPercent)
+	}
+}

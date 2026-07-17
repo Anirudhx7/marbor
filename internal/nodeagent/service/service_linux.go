@@ -30,12 +30,27 @@ func unitPath() string {
 	return systemdUnitDir + "/" + Name + ".service"
 }
 
+// quoteIfNeeded wraps s in double quotes when it contains whitespace -
+// systemd.service(5) ExecStart= splits on unescaped whitespace, so an
+// operator-chosen INSTALL_DIR containing a space (install.sh's INSTALL_DIR
+// is user-overridable) would otherwise truncate/misparse the binary path.
+// Only quoting when needed keeps the common case's output unchanged.
+func quoteIfNeeded(s string) string {
+	if strings.ContainsAny(s, " \t") {
+		return `"` + s + `"`
+	}
+	return s
+}
+
 // systemdUnitContent builds the unit file text from cfg. Kept as a pure
 // string function (no file I/O, no exec.Command) so it's directly testable
 // without root or a real systemd - mirrors how gpu_nvidia.go's
 // parseNvidiaSMIXML is split out from the exec.Command call in Collect.
 func systemdUnitContent(cfg Config) string {
-	parts := append([]string{cfg.BinaryPath}, cfg.args()...)
+	parts := []string{quoteIfNeeded(cfg.BinaryPath)}
+	for _, a := range cfg.args() {
+		parts = append(parts, quoteIfNeeded(a))
+	}
 	execStart := strings.Join(parts, " ")
 
 	return fmt.Sprintf(`[Unit]
@@ -54,16 +69,23 @@ WantedBy=multi-user.target
 `, execStart)
 }
 
-// execStartBinary extracts the binary path (first whitespace-delimited token
-// after "ExecStart=") from an existing unit file's content, so Uninstall can
-// find the binary to purge without needing a Config passed in - the Manager
-// interface's Uninstall(purge bool) signature is shared across all three
-// platform implementations and must not change.
+// execStartBinary extracts the binary path (first token after "ExecStart=",
+// unquoted if quoteIfNeeded quoted it) from an existing unit file's content,
+// so Uninstall can find the binary to purge without needing a Config passed
+// in - the Manager interface's Uninstall(purge bool) signature is shared
+// across all three platform implementations and must not change. Same
+// quoted-or-unquoted-leading-token handling as service_windows.go's
+// parseBinaryPathFromQC.
 func execStartBinary(unitContent string) string {
 	for _, line := range strings.Split(unitContent, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "ExecStart=") {
-			cmd := strings.TrimPrefix(line, "ExecStart=")
+			cmd := strings.TrimSpace(strings.TrimPrefix(line, "ExecStart="))
+			if strings.HasPrefix(cmd, `"`) {
+				if end := strings.Index(cmd[1:], `"`); end != -1 {
+					return cmd[1 : end+1]
+				}
+			}
 			fields := strings.Fields(cmd)
 			if len(fields) > 0 {
 				return fields[0]

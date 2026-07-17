@@ -153,6 +153,11 @@ func clearAgentTelemetry(n *NodeState) {
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0
+	// CPUPercent (agent_poll.go's success path, above) is the only writer of
+	// NodeState.CPUPercent anywhere in the codebase - reset it here too, or a
+	// disabled/unreachable agent's last-reported CPU reading would linger
+	// forever with nothing to mark it stale (R1).
+	n.CPUPercent = 0
 	if wasAgentSourced {
 		// Fall back to whatever the node's declared/API-derived VRAM would
 		// otherwise be, same defaulting pollNode's non-local branch uses.

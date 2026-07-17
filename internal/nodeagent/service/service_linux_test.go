@@ -63,3 +63,39 @@ func TestExecStartBinaryMissing(t *testing.T) {
 		t.Errorf("execStartBinary() on content with no ExecStart = %q, want empty string", got)
 	}
 }
+
+// TestSystemdUnitContentQuotesPathWithSpaces is a regression test: a
+// BinaryPath containing a space (a supported install.sh INSTALL_DIR
+// override) must be quoted in ExecStart= so systemd doesn't split it into
+// two tokens, and execStartBinary must recover the full original path from
+// that quoted form, not just the substring up to the first space.
+func TestSystemdUnitContentQuotesPathWithSpaces(t *testing.T) {
+	cfg := Config{
+		BinaryPath: "/opt/my company/bin/ollama-mesh",
+		Port:       9200,
+		Token:      "sekret",
+	}
+	content := systemdUnitContent(cfg)
+
+	wantExecStart := `ExecStart="/opt/my company/bin/ollama-mesh" agent --port=9200 --token=sekret`
+	if !strings.Contains(content, wantExecStart) {
+		t.Errorf("systemdUnitContent() missing quoted ExecStart line %q, got:\n%s", wantExecStart, content)
+	}
+
+	got := execStartBinary(content)
+	want := "/opt/my company/bin/ollama-mesh"
+	if got != want {
+		t.Errorf("execStartBinary() = %q, want %q (full path recovered from quotes)", got, want)
+	}
+}
+
+// TestSystemdUnitContentNoQuotingWhenNotNeeded verifies the common case
+// (no whitespace anywhere) is completely unaffected by the quoting fix -
+// output is byte-identical to before.
+func TestSystemdUnitContentNoQuotingWhenNotNeeded(t *testing.T) {
+	cfg := Config{BinaryPath: "/usr/local/bin/ollama-mesh", Port: 9200, Token: "sekret"}
+	content := systemdUnitContent(cfg)
+	if strings.Contains(content, `"`) {
+		t.Errorf("systemdUnitContent() should not add quotes when nothing needs them, got:\n%s", content)
+	}
+}

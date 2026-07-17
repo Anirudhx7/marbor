@@ -106,6 +106,11 @@ func (r *Router) pollNode(n *NodeState) {
 			// Node was never actually contacted (transport-level failure) -
 			// leave autoDetect pending so the next poll interval retries,
 			// instead of permanently committing the "ollama" fallback.
+			// Still poll the agent (an independent HTTP endpoint, unrelated
+			// to /api/ps reachability) so a node whose runtime is down but
+			// whose agent is still up doesn't keep showing stale agent
+			// telemetry indefinitely (R1).
+			r.pollAgentTelemetry(n)
 			r.markFailure(n)
 			return
 		}
@@ -123,6 +128,10 @@ func (r *Router) pollNode(n *NodeState) {
 
 	result, err := probe.Probe(ctx, n.URL)
 	if err != nil {
+		// Same reasoning as the auto-detect failure path above: the agent is
+		// a fully independent HTTP endpoint from /api/ps, so a runtime crash
+		// must not freeze its last-reported telemetry as if still current.
+		r.pollAgentTelemetry(n)
 		r.markFailure(n)
 		return
 	}
