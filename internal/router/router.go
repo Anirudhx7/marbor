@@ -254,6 +254,14 @@ type Router struct {
 	// next /api/ps poll). Keyed by node -> model. Guarded by evictMu. See
 	// reserveWarmBytes in eviction.go for why this exists.
 	warmReserved map[string]map[string]warmReservation
+	// warmPriority ranks the "keep warm" set per node (0 = highest priority,
+	// i.e. first in the configured/toggled list). Refreshed every
+	// pingWarmupModels tick from the current config+toggle order. Used by
+	// EvictForHeadroom so that when two or more keep-warm models don't fit
+	// together, the same higher-priority model always wins - deterministically,
+	// not whichever happened to warm last. Guarded by warmPriorityMu.
+	warmPriorityMu sync.RWMutex
+	warmPriority   map[string]map[string]int
 	// store persists the warm-state residency map so the router starts warm after
 	// a restart instead of cold (Phase 1). Set once via SetStore before Start; nil
 	// disables all warm-state persistence (the default for tests). Guarded by r.mu.
