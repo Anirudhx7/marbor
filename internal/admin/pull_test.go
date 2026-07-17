@@ -28,6 +28,41 @@ func newPullTestServer(t *testing.T, nodes []config.NodeConfig) *Server {
 	return NewServer(r, nil, cfg)
 }
 
+func newPullRequest(t *testing.T, s *Server, node, body string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/"+node+"/pull", strings.NewReader(body))
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("name", node)
+	return req
+}
+
+// waitForJob polls s.pullJobs directly (same package - test has access to
+// the unexported field) until the job for node|model reaches a terminal
+// status or the timeout elapses. Pull handling is asynchronous (the HTTP
+// handler returns 202 immediately and the pull runs in a background
+// goroutine), so tests need this instead of asserting on the POST response
+// body the way the old synchronous handler allowed.
+func waitForJob(t *testing.T, s *Server, node, model string) pullJobSnapshot {
+	t.Helper()
+	key := node + "|" + model
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		s.pullsMu.Lock()
+		job, ok := s.pullJobs[key]
+		s.pullsMu.Unlock()
+		if ok {
+			snap := job.snapshot()
+			if snap.Status != "downloading" {
+				return snap
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("job %q did not reach a terminal state within timeout", key)
+	return pullJobSnapshot{}
+}
+
 func TestHandleNodePull_Success(t *testing.T) {
 	var receivedBody []byte
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -50,32 +85,24 @@ func TestHandleNodePull_Success(t *testing.T) {
 		{Name: "gpu-0", URL: mockOllama.URL},
 	})
 
-	body := `{"model":"llama3:8b"}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("name", "gpu-0")
-
 	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, req)
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
 
 	res := w.Result()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", res.StatusCode)
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", res.StatusCode)
 	}
-
 	var resp map[string]interface{}
 	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp["ok"] != true {
-		t.Errorf("expected ok=true, got %v", resp["ok"])
+	if resp["status"] != "downloading" {
+		t.Errorf("expected status=downloading, got %v", resp["status"])
 	}
-	if resp["node"] != "gpu-0" {
-		t.Errorf("expected node=gpu-0, got %v", resp["node"])
-	}
-	if resp["model"] != "llama3:8b" {
-		t.Errorf("expected model=llama3:8b, got %v", resp["model"])
+
+	final := waitForJob(t, s, "gpu-0", "llama3:8b")
+	if final.Status != "success" {
+		t.Fatalf("expected job to finish success, got %q (err=%q)", final.Status, final.Error)
 	}
 
 	var forwarded map[string]interface{}
@@ -85,8 +112,8 @@ func TestHandleNodePull_Success(t *testing.T) {
 	if forwarded["model"] != "llama3:8b" {
 		t.Errorf("expected forwarded model=llama3:8b, got %v", forwarded["model"])
 	}
-	if forwarded["stream"] != false {
-		t.Errorf("expected forwarded stream=false, got %v", forwarded["stream"])
+	if forwarded["stream"] != true {
+		t.Errorf("expected forwarded stream=true (progress requires streaming), got %v", forwarded["stream"])
 	}
 }
 
@@ -95,10 +122,8 @@ func TestHandleNodePull_Success(t *testing.T) {
 // proceed - the second must be rejected with 409 rather than racing the
 // first's multi-GB download. The dedup state is ephemeral and in-memory only.
 func TestHandleNodePull_DedupsConcurrentPullsOfSameModel(t *testing.T) {
-	reachedUpstream := make(chan struct{})
 	release := make(chan struct{})
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		close(reachedUpstream) // signal the first request has reached the upstream call
 		<-release
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"success"}`))
@@ -109,34 +134,22 @@ func TestHandleNodePull_DedupsConcurrentPullsOfSameModel(t *testing.T) {
 		{Name: "gpu-0", URL: mockOllama.URL},
 	})
 
-	body := `{"model":"llama3:8b"}`
-	newPullReq := func() *http.Request {
-		req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-		req.Header.Set("Content-Type", "application/json")
-		req.SetPathValue("name", "gpu-0")
-		return req
+	w1 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w1, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
+	if w1.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("first pull: expected 202, got %d", w1.Result().StatusCode)
 	}
 
-	firstDone := make(chan *httptest.ResponseRecorder, 1)
-	go func() {
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, newPullReq())
-		firstDone <- w
-	}()
-
-	<-reachedUpstream // first request is now blocked inside the upstream call
-
 	w2 := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w2, newPullReq())
+	s.Handler().ServeHTTP(w2, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
 	if w2.Result().StatusCode != http.StatusConflict {
 		t.Fatalf("second concurrent pull: expected 409, got %d", w2.Result().StatusCode)
 	}
 
 	close(release)
-	w1 := <-firstDone
-	if w1.Result().StatusCode != http.StatusOK {
-		t.Fatalf("first pull: expected 200, got %d", w1.Result().StatusCode)
+	final := waitForJob(t, s, "gpu-0", "llama3:8b")
+	if final.Status != "success" {
+		t.Fatalf("expected first pull to finish success, got %q", final.Status)
 	}
 }
 
@@ -154,25 +167,17 @@ func TestHandleNodePull_SlotFreedAfterCompletion(t *testing.T) {
 		{Name: "gpu-0", URL: mockOllama.URL},
 	})
 
-	body := `{"model":"llama3:8b"}`
-	newPullReq := func() *http.Request {
-		req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-		req.Header.Set("Content-Type", "application/json")
-		req.SetPathValue("name", "gpu-0")
-		return req
-	}
-
 	w1 := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w1, newPullReq())
-	if w1.Result().StatusCode != http.StatusOK {
-		t.Fatalf("first pull: expected 200, got %d", w1.Result().StatusCode)
+	s.Handler().ServeHTTP(w1, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
+	if w1.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("first pull: expected 202, got %d", w1.Result().StatusCode)
 	}
+	waitForJob(t, s, "gpu-0", "llama3:8b")
 
 	w2 := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w2, newPullReq())
-	if w2.Result().StatusCode != http.StatusOK {
-		t.Fatalf("second pull after first completed: expected 200, got %d", w2.Result().StatusCode)
+	s.Handler().ServeHTTP(w2, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
+	if w2.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("second pull after first completed: expected 202, got %d", w2.Result().StatusCode)
 	}
 }
 
@@ -225,18 +230,12 @@ func TestHandleNodePull_NodeNotFound(t *testing.T) {
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	})
 
-	body := `{"model":"llama3:8b"}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/does-not-exist/pull", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("name", "does-not-exist")
-
+	req := newPullRequest(t, s, "does-not-exist", `{"model":"llama3:8b"}`)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 
-	res := w.Result()
-	if res.StatusCode != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", res.StatusCode)
+	if w.Result().StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Result().StatusCode)
 	}
 }
 
@@ -245,18 +244,11 @@ func TestHandleNodePull_MissingModel(t *testing.T) {
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	})
 
-	body := `{}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("name", "gpu-0")
-
 	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, req)
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{}`))
 
-	res := w.Result()
-	if res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", res.StatusCode)
+	if w.Result().StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Result().StatusCode)
 	}
 }
 
@@ -272,20 +264,18 @@ func withNodePullTimeout(t *testing.T, d time.Duration) {
 }
 
 // TestHandleNodePull_ShortTimeoutCausesBadGateway documents the exact
-// mechanism behind the reported bug: /api/pull is called with "stream":false,
-// so Ollama sends nothing back - not even response headers - until the whole
-// download finishes. If the admin API's outbound HTTP client timeout is
-// shorter than a slow-but-otherwise-successful pull, the client call itself
-// fails (context deadline exceeded) and handleNodePull maps that to a 502
-// "Bad Gateway", even though the node was never unhealthy and would have
-// completed the pull. This is what real-world Hugging Face pulls of
+// mechanism behind the originally reported bug: if the admin API's outbound
+// HTTP client timeout is shorter than a slow-but-otherwise-successful pull,
+// the client call itself fails (context deadline exceeded) and the job
+// finishes "failed", even though the node was never unhealthy and would
+// have completed the pull. This is what real-world Hugging Face pulls of
 // multi-gigabyte GGUF files hit against the old hardcoded 5-minute timeout.
 func TestHandleNodePull_ShortTimeoutCausesBadGateway(t *testing.T) {
 	withNodePullTimeout(t, 50*time.Millisecond)
 
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate a slow-but-successful pull: nothing is written until the
-		// "download" finishes, matching Ollama's stream:false /api/pull.
+		// "download" finishes.
 		time.Sleep(150 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"success"}`))
@@ -296,26 +286,23 @@ func TestHandleNodePull_ShortTimeoutCausesBadGateway(t *testing.T) {
 		{Name: "gpu-0", URL: mockOllama.URL},
 	})
 
-	body := `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("name", "gpu-0")
-
 	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, req)
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`))
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Result().StatusCode)
+	}
 
-	res := w.Result()
-	if res.StatusCode != http.StatusBadGateway {
-		t.Fatalf("expected 502 with a too-short pull timeout, got %d", res.StatusCode)
+	final := waitForJob(t, s, "gpu-0", "hf.co/some-org/some-repo:Q4_K_M")
+	if final.Status != "failed" {
+		t.Fatalf("expected job to fail with a too-short pull timeout, got %q", final.Status)
 	}
 }
 
 // TestHandleNodePull_SlowHFPullSucceedsWithGenerousTimeout is the fix-side
 // counterpart to TestHandleNodePull_ShortTimeoutCausesBadGateway: with a
 // generous pull timeout (as production now defaults to via nodePullTimeout),
-// the same kind of slow, streaming-response-less pull completes successfully
-// instead of being killed mid-download and surfaced as 502.
+// the same kind of slow pull completes successfully instead of being killed
+// mid-download.
 func TestHandleNodePull_SlowHFPullSucceedsWithGenerousTimeout(t *testing.T) {
 	withNodePullTimeout(t, 2*time.Second)
 
@@ -330,35 +317,24 @@ func TestHandleNodePull_SlowHFPullSucceedsWithGenerousTimeout(t *testing.T) {
 		{Name: "gpu-0", URL: mockOllama.URL},
 	})
 
-	body := `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("name", "gpu-0")
-
 	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, req)
-
-	res := w.Result()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 with a generous pull timeout, got %d", res.StatusCode)
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`))
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Result().StatusCode)
 	}
 
-	var resp map[string]interface{}
-	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp["ok"] != true {
-		t.Errorf("expected ok=true, got %v", resp["ok"])
+	final := waitForJob(t, s, "gpu-0", "hf.co/some-org/some-repo:Q4_K_M")
+	if final.Status != "success" {
+		t.Fatalf("expected job to succeed with a generous pull timeout, got %q (err=%q)", final.Status, final.Error)
 	}
 }
 
 // TestHandleNodePull_SurfacesUpstreamErrorBody documents the fix for the
-// reported "Bad Gateway" bug: Ollama's own error text (e.g. why a gated/
-// invalid Hugging Face tag was rejected) must reach the admin UI instead of
-// being collapsed into a bare "upstream returned 401" - an operator can't
-// tell a missing HF token apart from a malformed tag apart from a real
-// outage from a status code alone.
+// originally reported "Bad Gateway" bug: Ollama's own error text (e.g. why a
+// gated/invalid Hugging Face tag was rejected) must reach the job's Error
+// field instead of being collapsed into a bare "upstream returned 401" - an
+// operator can't tell a missing HF token apart from a malformed tag apart
+// from a real outage from a status code alone.
 func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -370,26 +346,18 @@ func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 		{Name: "gpu-0", URL: mockOllama.URL},
 	})
 
-	body := `{"model":"hf.co/gated-org/gated-repo:Q4_K_M"}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("name", "gpu-0")
-
 	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, req)
-
-	res := w.Result()
-	if res.StatusCode != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", res.StatusCode)
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/gated-org/gated-repo:Q4_K_M"}`))
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Result().StatusCode)
 	}
 
-	var resp map[string]string
-	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
+	final := waitForJob(t, s, "gpu-0", "hf.co/gated-org/gated-repo:Q4_K_M")
+	if final.Status != "failed" {
+		t.Fatalf("expected job to fail, got %q", final.Status)
 	}
-	if !strings.Contains(resp["error"], "gated") || !strings.Contains(resp["error"], "HF token") {
-		t.Errorf("expected error to surface upstream's message, got %q", resp["error"])
+	if !strings.Contains(final.Error, "gated") || !strings.Contains(final.Error, "HF token") {
+		t.Errorf("expected job error to surface upstream's message, got %q", final.Error)
 	}
 }
 
@@ -445,19 +413,18 @@ func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 	}
 	s := NewServer(r, nil, cfg)
 
-	body := `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`
-	req := httptest.NewRequest(http.MethodPost, "/admin/v1/nodes/gpu-0/pull", strings.NewReader(body))
-	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("name", "gpu-0")
-
 	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, req)
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/some-org/some-repo:Q4_K_M"}`))
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Result().StatusCode)
+	}
 
-	res := w.Result()
-	if res.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(res.Body)
-		t.Fatalf("expected 200, got %d: %s", res.StatusCode, body)
+	final := waitForJob(t, s, "gpu-0", "hf.co/some-org/some-repo:Q4_K_M")
+	if final.Status != "success" {
+		t.Fatalf("expected job to succeed via agent, got %q (err=%q)", final.Status, final.Error)
+	}
+	if final.Method != "agent" {
+		t.Errorf("expected job.Method=agent, got %q", final.Method)
 	}
 	if ollamaHit {
 		t.Error("direct Ollama /api/pull path was hit - should have dispatched to the agent instead")
@@ -467,5 +434,106 @@ func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 	}
 	if !strings.Contains(gotBody, "hf_secret123") {
 		t.Errorf("expected mesh's configured HF token forwarded to agent, got body %q", gotBody)
+	}
+}
+
+// TestHandleCancelPull_StopsAnInFlightDownload verifies DELETE .../pull
+// marks a downloading job "cancelled" immediately, and that the pull
+// goroutine's own eventual result (which arrives moments later, as a side
+// effect of the same context cancellation aborting its in-flight
+// http.Client.Do call - stdlib-guaranteed behavior, not re-tested here)
+// cannot clobber that outcome back to "failed". The admin UI needs to tell
+// "I stopped this on purpose" apart from "this broke".
+func TestHandleCancelPull_StopsAnInFlightDownload(t *testing.T) {
+	release := make(chan struct{})
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Result().StatusCode)
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/admin/v1/nodes/gpu-0/pull?model=llama3:8b", nil)
+	delReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	delReq.SetPathValue("name", "gpu-0")
+	wDel := httptest.NewRecorder()
+	s.Handler().ServeHTTP(wDel, delReq)
+	if wDel.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from cancel, got %d", wDel.Result().StatusCode)
+	}
+	var delResp map[string]interface{}
+	if err := json.NewDecoder(wDel.Body).Decode(&delResp); err != nil {
+		t.Fatalf("decode cancel response: %v", err)
+	}
+	if delResp["cancelled"] != true {
+		t.Errorf("expected cancelled=true, got %v", delResp["cancelled"])
+	}
+
+	// Cancel takes effect synchronously inside handleCancelPull - the job
+	// must already read "cancelled" the instant the DELETE responds, not
+	// eventually.
+	s.pullsMu.Lock()
+	job := s.pullJobs["gpu-0|llama3:8b"]
+	s.pullsMu.Unlock()
+	if job.snapshot().Status != "cancelled" {
+		t.Fatalf("expected job.Status=cancelled immediately after DELETE, got %q", job.snapshot().Status)
+	}
+
+	// Let the mock's blocked handler finish naturally (as if the download
+	// had raced to completion right as it was cancelled) and confirm the
+	// goroutine's own finish() call can't overwrite the cancelled outcome.
+	close(release)
+	time.Sleep(50 * time.Millisecond)
+	if job.snapshot().Status != "cancelled" {
+		t.Fatalf("expected job.Status to stay cancelled, got %q", job.snapshot().Status)
+	}
+}
+
+// TestHandleCancelPull_AlreadyFinishedIsANoOp verifies a cancel arriving
+// after the pull already finished doesn't clobber its real outcome.
+func TestHandleCancelPull_AlreadyFinishedIsANoOp(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
+	waitForJob(t, s, "gpu-0", "llama3:8b")
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/admin/v1/nodes/gpu-0/pull?model=llama3:8b", nil)
+	delReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	delReq.SetPathValue("name", "gpu-0")
+	wDel := httptest.NewRecorder()
+	s.Handler().ServeHTTP(wDel, delReq)
+
+	var delResp map[string]interface{}
+	if err := json.NewDecoder(wDel.Body).Decode(&delResp); err != nil {
+		t.Fatalf("decode cancel response: %v", err)
+	}
+	if delResp["cancelled"] != false {
+		t.Errorf("expected cancelled=false for an already-finished job, got %v", delResp["cancelled"])
+	}
+
+	s.pullsMu.Lock()
+	job := s.pullJobs["gpu-0|llama3:8b"]
+	s.pullsMu.Unlock()
+	if job.snapshot().Status != "success" {
+		t.Errorf("cancel on a finished job must not overwrite its real outcome, got %q", job.snapshot().Status)
 	}
 }

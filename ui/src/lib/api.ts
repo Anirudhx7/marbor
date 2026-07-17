@@ -758,7 +758,9 @@ export function analyticsExportUrl(type: 'hourly' | 'models'): string {
 // builds tags this way; this closes the same gap for manual entry. Only
 // triggers on the "-gguf" suffix convention (a strong, narrow signal) so a
 // legitimate bare "namespace/model" Ollama-library tag is never mangled.
-function normalizePullTag(model: string): string {
+// Exported so pullProgress.ts's startPull() applies the same normalization -
+// pulls now go through the async job-tracked path, not this module.
+export function normalizePullTag(model: string): string {
   const trimmed = model.trim();
   if (trimmed.startsWith('hf.co/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     return trimmed;
@@ -767,22 +769,6 @@ function normalizePullTag(model: string): string {
     return `hf.co/${trimmed}`;
   }
   return trimmed;
-}
-
-export async function pullModel(nodeName: string, model: string): Promise<void> {
-  if (DEMO) return demoDelay(undefined);
-  const res = await apiFetch(`${BASE}/v1/nodes/${encodeURIComponent(nodeName)}/pull`, {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: normalizePullTag(model) }),
-  });
-  if (!res.ok) {
-    const detail = await res
-      .json()
-      .then((body) => body?.error)
-      .catch(() => null);
-    throw new Error(detail || `Pull failed: ${res.statusText}`);
-  }
 }
 
 // fetchModelConfig returns the configured default parameter profile for a
