@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -2360,12 +2361,21 @@ func (s *Server) handleDeleteModelConfig(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(map[string]string{"model": model, "node": node, "status": "reset"})
 }
 
-// generateAPIKey creates a cryptographically random API key of the form sk-<name>-<48 hex chars>.
+// generateAPIKey creates a cryptographically random API key of the form sk-<slug>-<48 hex chars>.
+// name is slugified (lowercased, non-alphanumerics collapsed to a single hyphen) so the token
+// stays a single whitespace-free string regardless of how the key's display name was entered.
 func generateAPIKey(name string) string {
 	b := make([]byte, 24)
 	_, _ = rand.Read(b)
-	return "sk-" + name + "-" + hex.EncodeToString(b)
+	slug := apiKeyNameSlugRe.ReplaceAllString(strings.ToLower(name), "-")
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		slug = "key"
+	}
+	return "sk-" + slug + "-" + hex.EncodeToString(b)
 }
+
+var apiKeyNameSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // loginRateLimiter throttles admin login attempts per client IP to defend
 // against brute-force credential guessing on the admin dashboard (port 8080).
@@ -3783,6 +3793,20 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		// Prevent blocking the proxy path if SQLite writes are completely backed up.
 		log.Printf("async logger: queue full, dropped request log %s", id)
 	}
+
+	// Cloud nodes are stored as "cloud:<name>" (e.g. "cloud:openai") - see
+	// the same check in handleLiveRequests.
+	isCloud := strings.HasPrefix(node, "cloud:")
+	s.auditLog.Log(audit.Entry{
+		Time:      now,
+		RequestID: id,
+		KeyName:   apiKey,
+		Model:     model,
+		Node:      node,
+		Status:    status,
+		LatencyMs: latencyMs,
+		Cloud:     isCloud,
+	})
 }
 
 // TrackLocalRequestModel tracks a local request with model-level granularity.
@@ -4124,7 +4148,15 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
 	modelMap := make(map[string]*modelEntry)
 
-	for _, n := range nodes {
+	type nodeSnapshot struct {
+		url     string
+		name    string
+		healthy bool
+		warmSet map[string]bool
+	}
+	snapshots := make([]nodeSnapshot, len(nodes))
+
+	for i, n := range nodes {
 		n.RLock()
 		nodeURL := n.URL
 		nodeName := n.Name
@@ -4148,25 +4180,46 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		n.RUnlock()
+		snapshots[i] = nodeSnapshot{url: nodeURL, name: nodeName, healthy: nodeHealthy, warmSet: warmSet}
+	}
 
-		// Also include models that are installed on disk but not currently loaded.
-		// FetchModelTags queries /api/tags which returns all available models.
-		if nodeHealthy && nodeURL != "" {
-			if tags, err := s.router.FetchModelTags(nodeURL); err == nil {
-				for _, tm := range tags {
-					if warmSet[tm.Name] {
-						continue // already added with warm count above
-					}
-					if modelMap[tm.Name] == nil {
-						modelMap[tm.Name] = &modelEntry{Name: tm.Name}
-					}
-					modelMap[tm.Name].Nodes = append(modelMap[tm.Name].Nodes, nodeInfo{
-						Name:    nodeName,
-						Healthy: nodeHealthy,
-					})
-					// WarmCount stays 0: model is available but not in VRAM
-				}
+	// Also include models that are installed on disk but not currently loaded.
+	// FetchModelTags queries /api/tags which returns all available models. Each
+	// call is a live HTTP round-trip (up to 5s) to a node - run them concurrently
+	// so a slow/degraded node adds seconds, not minutes, on a 4-20 node fleet.
+	type tagsResult struct {
+		snap nodeSnapshot
+		tags []router.TagModel
+	}
+	results := make([]tagsResult, len(snapshots))
+	var wg sync.WaitGroup
+	for i, snap := range snapshots {
+		if !snap.healthy || snap.url == "" {
+			continue
+		}
+		wg.Add(1)
+		go func(i int, snap nodeSnapshot) {
+			defer wg.Done()
+			if tags, err := s.router.FetchModelTags(snap.url); err == nil {
+				results[i] = tagsResult{snap: snap, tags: tags}
 			}
+		}(i, snap)
+	}
+	wg.Wait()
+
+	for _, res := range results {
+		for _, tm := range res.tags {
+			if res.snap.warmSet[tm.Name] {
+				continue // already added with warm count above
+			}
+			if modelMap[tm.Name] == nil {
+				modelMap[tm.Name] = &modelEntry{Name: tm.Name}
+			}
+			modelMap[tm.Name].Nodes = append(modelMap[tm.Name].Nodes, nodeInfo{
+				Name:    res.snap.name,
+				Healthy: res.snap.healthy,
+			})
+			// WarmCount stays 0: model is available but not in VRAM
 		}
 	}
 
@@ -4293,15 +4346,25 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		log.Printf("handleNodePull: request to node %s failed: %v", nodeName, err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		fmt.Fprintf(w, `{"error":"pull failed for node %s"}`, nodeName)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": fmt.Sprintf("pull failed for node %s: %v", nodeName, err),
+		})
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Surface Ollama's own error body (e.g. "401 Unauthorized: gated
+		// repo", "invalid model tag") instead of a bare status code - a
+		// generic "Bad Gateway" gives the operator no way to tell a missing
+		// HF token apart from a malformed tag apart from a real outage.
+		upstreamMsg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		log.Printf("handleNodePull: node %s upstream returned %d: %s", nodeName, resp.StatusCode, upstreamMsg)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
-		fmt.Fprintf(w, `{"error":"pull node %s: upstream returned %d"}`, nodeName, resp.StatusCode)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": fmt.Sprintf("pull node %s: upstream returned %d: %s", nodeName, resp.StatusCode, strings.TrimSpace(string(upstreamMsg))),
+		})
 		return
 	}
 
