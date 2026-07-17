@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2 } from 'lucide-react';
+import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
@@ -10,7 +10,8 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent } from '../lib/api';
+import type { NodeAgentStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -139,7 +140,30 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel }: {
+function AgentBadge({ present, version }: { present?: boolean; version?: string }) {
+  if (present) {
+    return (
+      <span
+        title={version ? `Node Agent installed (v${version})` : 'Node Agent installed'}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-primary/15 text-primary border border-primary/30 whitespace-nowrap"
+      >
+        <Radio className="w-3 h-3" />
+        Agent
+      </span>
+    );
+  }
+  return (
+    <span
+      title="No Node Agent installed - only local nvidia-smi telemetry available"
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-secondary text-muted-foreground border border-border whitespace-nowrap"
+    >
+      <Radio className="w-3 h-3 opacity-50" />
+      No Agent
+    </span>
+  );
+}
+
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent }: {
   node: GPUNode;
   pinnedModels: string[];
   onRemove: (name: string) => void;
@@ -149,6 +173,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onEdit: (node: GPUNode) => void;
   onUnload: (nodeName: string, model: string) => void;
   onConfigureModel: (modelName: string, nodeName: string, runtime: string) => void;
+  onManageAgent: (node: GPUNode) => void;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -188,10 +213,18 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <p className="text-sm text-muted-foreground">{node.gpuModel}</p>
               <RuntimeBadge runtime={node.runtime} />
+              <AgentBadge present={node.agentPresent} version={node.agentVersion} />
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
+          <button
+            onClick={() => onManageAgent(node)}
+            title="Manage Node Agent (fan/RAM/disk telemetry)"
+            className="p-1.5 text-muted-foreground hover:text-primary transition-colors"
+          >
+            <Radio className="w-4 h-4" />
+          </button>
           <button
             onClick={() => onEdit(node)}
             title="Edit node metadata"
@@ -270,6 +303,35 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
           <span className="text-muted-foreground block text-[10px] uppercase font-semibold tracking-wider">Tokens</span>
           <span className="font-semibold text-foreground font-mono text-sm block mt-0.5 truncate" title={node.tokensTotal?.toLocaleString()}>
             {node.tokensTotal !== undefined ? (node.tokensTotal >= 1000000 ? `${(node.tokensTotal / 1000000).toFixed(1)}M` : node.tokensTotal >= 1000 ? `${(node.tokensTotal / 1000).toFixed(1)}K` : node.tokensTotal) : '--'}
+          </span>
+        </div>
+      </div>
+
+      {/* Node Agent Telemetry - only ever real values from the agent poll;
+          '--' whenever agentPresent is false, never a fabricated number (R1). */}
+      <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/40 border border-border/20 rounded-lg p-3">
+        <div>
+          <span className="text-muted-foreground flex items-center gap-1 text-[10px] uppercase font-semibold tracking-wider">
+            <Fan className="w-3 h-3" /> Fan
+          </span>
+          <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
+            {node.agentPresent && node.fanPercent != null ? `${node.fanPercent}%` : '--'}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground flex items-center gap-1 text-[10px] uppercase font-semibold tracking-wider">
+            <MemoryStick className="w-3 h-3" /> RAM Used
+          </span>
+          <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
+            {node.agentPresent && node.ramUsedMB ? `${(node.ramUsedMB / 1024).toFixed(1)} GB` : '--'}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground flex items-center gap-1 text-[10px] uppercase font-semibold tracking-wider">
+            <HardDrive className="w-3 h-3" /> Disk Free
+          </span>
+          <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
+            {node.agentPresent && node.diskFreeGB ? `${node.diskFreeGB.toFixed(1)} GB` : '--'}
           </span>
         </div>
       </div>
@@ -392,6 +454,151 @@ export function GPUNodes() {
   const [prewarmToToggle, setPrewarmToToggle] = useState<{ name: string; disabled: boolean } | null>(null);
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
+
+  // --- Node Agent management ---
+  const [agentNode, setAgentNode] = useState<GPUNode | null>(null);
+  const [agentStatus, setAgentStatus] = useState<NodeAgentStatus | null>(null);
+  const [agentPort, setAgentPort] = useState('11435');
+  const [agentInstallCommand, setAgentInstallCommand] = useState<string | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentCopied, setAgentCopied] = useState(false);
+  const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
+
+  const openAgentModal = async (node: GPUNode) => {
+    setAgentNode(node);
+    setAgentError(null);
+    setAgentInstallCommand(null);
+    setAgentCopied(false);
+    if (demoMode) {
+      setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
+      setAgentPort('11435');
+      return;
+    }
+    try {
+      const status = await getNodeAgent(node.name);
+      setAgentStatus(status);
+      setAgentPort(String(status.port || 11435));
+    } catch (e: any) {
+      setAgentStatus({ node: node.name, enabled: false, port: 0 });
+      setAgentError(e?.message || 'Failed to fetch node agent status');
+    }
+  };
+
+  const closeAgentModal = () => {
+    setAgentNode(null);
+    setAgentStatus(null);
+    setAgentInstallCommand(null);
+    setAgentError(null);
+  };
+
+  const handleEnableAgent = async () => {
+    if (!agentNode) return;
+    const port = parseInt(agentPort, 10);
+    if (isNaN(port) || port <= 0 || port > 65535) {
+      setAgentError('Port must be between 1 and 65535');
+      return;
+    }
+    setAgentBusy(true);
+    setAgentError(null);
+    if (demoMode) {
+      const token = `demo-${Math.random().toString(36).slice(2, 10)}`;
+      setAgentStatus({ node: agentNode.name, enabled: true, port });
+      setAgentInstallCommand(`ollama-mesh agent --port=${port} --token=${token}`);
+      setNodes(prev => prev.map(n => n.name === agentNode.name
+        ? { ...n, agentPresent: true, agentVersion: '0.1.0', fanPercent: 55, ramUsedMB: Math.round(20 * 1024), diskFreeGB: 500 }
+        : n));
+      setAgentBusy(false);
+      return;
+    }
+    try {
+      const res = await enableNodeAgent(agentNode.name, port);
+      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port });
+      setAgentInstallCommand(res.install_command);
+      await loadNodes();
+    } catch (e: any) {
+      setAgentError(e?.message || 'Failed to enable node agent');
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleRegenerateAgentToken = async () => {
+    if (!agentNode) return;
+    setAgentBusy(true);
+    setAgentError(null);
+    if (demoMode) {
+      const token = `demo-${Math.random().toString(36).slice(2, 10)}`;
+      setAgentInstallCommand(`ollama-mesh agent --port=${agentStatus?.port ?? 11435} --token=${token}`);
+      setAgentBusy(false);
+      return;
+    }
+    try {
+      const res = await regenerateNodeAgentToken(agentNode.name);
+      setAgentInstallCommand(res.install_command);
+      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port });
+    } catch (e: any) {
+      setAgentError(e?.message || 'Failed to regenerate node agent token');
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const handleDisableAgent = async () => {
+    if (!agentToDisable) return;
+    setAgentBusy(true);
+    setAgentError(null);
+    if (demoMode) {
+      setNodes(prev => prev.map(n => n.name === agentToDisable
+        ? { ...n, agentPresent: false, agentVersion: undefined, fanPercent: undefined, ramUsedMB: undefined, diskFreeGB: undefined }
+        : n));
+      setAgentStatus(s => s ? { ...s, enabled: false } : s);
+      setAgentInstallCommand(null);
+      setAgentToDisable(null);
+      setAgentBusy(false);
+      return;
+    }
+    try {
+      await disableNodeAgent(agentToDisable);
+      setAgentStatus(s => s ? { ...s, enabled: false } : s);
+      setAgentInstallCommand(null);
+      setAgentToDisable(null);
+      await loadNodes();
+    } catch (e: any) {
+      setAgentError(e?.message || 'Failed to disable node agent');
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
+  const copyAgentCommand = (text: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).catch(() => legacyCopyText(text));
+    } else {
+      legacyCopyText(text);
+    }
+    setAgentCopied(true);
+    setTimeout(() => setAgentCopied(false), 2000);
+  };
+
+  // Same fallback approach as APIKeys.tsx's copyToClipboard - works on plain
+  // HTTP, must run synchronously inside a user-gesture handler.
+  const legacyCopyText = (text: string) => {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.setAttribute('readonly', '');
+    el.style.cssText = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    el.setSelectionRange(0, text.length);
+    try {
+      document.execCommand('copy');
+    } catch (_) {
+      // Last resort: nothing we can do silently
+    }
+    document.body.removeChild(el);
+  };
 
   const loadPinned = async (nodeList: GPUNode[], active: boolean = true) => {
     if (demoMode || nodeList.length === 0 || !active || currentAppPath() !== '/gpu-nodes') return;
@@ -732,7 +939,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={handleUndrainNode} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={handleUndrainNode} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} />
         ))}
       </div>
 
@@ -1129,6 +1336,141 @@ export function GPUNodes() {
               }`}
             >
               {prewarmToToggle?.disabled ? 'Disable Prewarm' : 'Re-enable Prewarm'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Manage Node Agent Modal */}
+      <Modal
+        isOpen={agentNode !== null}
+        onClose={closeAgentModal}
+        title={`Node Agent: ${agentNode?.name ?? ''}`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            The Node Agent is an optional process you run on this GPU node to report fan speed, RAM usage, and free disk space back to the mesh. Everything else (VRAM, temperature, power) is already collected without it.
+          </p>
+
+          {agentError && (
+            <p className="text-sm text-destructive">{agentError}</p>
+          )}
+
+          {agentStatus && !agentStatus.enabled && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                  Agent Port
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="65535"
+                  value={agentPort}
+                  onChange={(e) => setAgentPort(e.target.value)}
+                  className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Port the agent process listens on for the mesh to poll (default 11435).
+                </p>
+              </div>
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={handleEnableAgent}
+                  disabled={agentBusy}
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                >
+                  {agentBusy ? 'Enabling...' : 'Enable Agent'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {agentStatus && agentStatus.enabled && (
+            <div className="space-y-3">
+              <p className="text-sm text-foreground">
+                Enabled on port <span className="font-mono">{agentStatus.port}</span>.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handleRegenerateAgentToken}
+                  disabled={agentBusy}
+                  className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                >
+                  {agentBusy ? 'Working...' : 'Regenerate Token'}
+                </button>
+                <button
+                  onClick={() => setAgentToDisable(agentNode?.name ?? null)}
+                  disabled={agentBusy}
+                  className="px-4 py-2 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-sm transition-colors shadow-sm"
+                >
+                  Disable Agent
+                </button>
+              </div>
+            </div>
+          )}
+
+          {agentInstallCommand && (
+            <div className="p-4 bg-success/10 border border-success/30 rounded-xl">
+              <p className="text-sm font-semibold text-success mb-2">
+                Run this on the GPU node - the token is shown once and won't be shown again
+              </p>
+              <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                {agentInstallCommand}
+              </code>
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => copyAgentCommand(agentInstallCommand)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {agentCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-4 border-t border-border">
+            <button
+              onClick={closeAgentModal}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Disable Node Agent Confirmation Modal */}
+      <Modal
+        isOpen={agentToDisable !== null}
+        onClose={() => setAgentToDisable(null)}
+        title="Disable Node Agent"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to disable the Node Agent on <span className="text-foreground font-semibold">{agentToDisable}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Fan/RAM/disk telemetry stops updating for this node. VRAM, temperature, and power readings are unaffected. You can re-enable it later, but it will need a fresh token and a restart of the agent process on the node.
+          </p>
+          {agentError && (
+            <p className="text-sm text-destructive">{agentError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setAgentToDisable(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDisableAgent}
+              disabled={agentBusy}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {agentBusy ? 'Disabling...' : 'Disable Agent'}
             </button>
           </div>
         </div>

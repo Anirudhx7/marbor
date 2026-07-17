@@ -71,6 +71,16 @@ export interface GPUNode {
   tokensTotal?: number;
   avgLatencyMs?: number;
   warmHitRatio?: number;
+  // Node Agent-derived telemetry (internal/nodeagent). agentPresent is false
+  // whenever no agent is configured for this node, or the most recent agent
+  // poll failed - the UI must check agentPresent before displaying
+  // fanPercent/ramUsedMB/diskFreeGB/agentVersion as real measurements (R1),
+  // rendering '-' instead.
+  agentPresent?: boolean;
+  agentVersion?: string;
+  fanPercent?: number | null;
+  ramUsedMB?: number;
+  diskFreeGB?: number;
 }
 
 export interface LoadedModel {

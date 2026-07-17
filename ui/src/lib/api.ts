@@ -994,6 +994,58 @@ export async function fetchWarmupStatus(): Promise<{ enabled: boolean; interval_
   return res.json();
 }
 
+// --- Node Agent (per-node optional telemetry agent, internal/nodeagent) ---
+//
+// The token is only ever returned by enable/regenerate - it is never
+// retrievable again afterward (matches the API Keys "shown once" pattern).
+
+export interface NodeAgentStatus {
+  node: string;
+  enabled: boolean;
+  port: number;
+}
+
+export interface NodeAgentEnableResult {
+  node: string;
+  enabled: boolean;
+  port: number;
+  token: string;
+  install_command: string;
+}
+
+export async function getNodeAgent(name: string): Promise<NodeAgentStatus> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch node agent status');
+  return res.json();
+}
+
+export async function enableNodeAgent(name: string, port: number): Promise<NodeAgentEnableResult> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port }),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to enable node agent'); }
+  return res.json();
+}
+
+export async function regenerateNodeAgentToken(name: string): Promise<NodeAgentEnableResult> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent/regenerate`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to regenerate node agent token'); }
+  return res.json();
+}
+
+export async function disableNodeAgent(name: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to disable node agent'); }
+}
+
 export async function setPredictiveEngine(enabled: boolean): Promise<{ predictive_engine_enabled: boolean }> {
   if (DEMO) {
     return { predictive_engine_enabled: enabled };
