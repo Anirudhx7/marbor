@@ -400,6 +400,7 @@ type nodeResp struct {
 	AgentPresent bool     `json:"agentPresent"`
 	AgentVersion string   `json:"agentVersion,omitempty"`
 	FanPercent   *float64 `json:"fanPercent"`
+	CPUPercent   float64  `json:"cpuPercent"`
 	RAMUsedMB    int64    `json:"ramUsedMB"`
 	DiskFreeGB   float64  `json:"diskFreeGB"`
 	// AgentCapabilities/AgentPlatform/AgentArchitecture/AgentGPUVendor/
@@ -873,6 +874,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			AgentPresent:      n.AgentPresent,
 			AgentVersion:      n.AgentVersion,
 			FanPercent:        n.FanPercent,
+			CPUPercent:        n.CPUPercent,
 			RAMUsedMB:         n.RAMUsedMB,
 			DiskFreeGB:        n.DiskFreeGB,
 			AgentCapabilities: n.AgentCapabilities,
@@ -932,6 +934,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			AgentPresent:      n.AgentPresent,
 			AgentVersion:      n.AgentVersion,
 			FanPercent:        n.FanPercent,
+			CPUPercent:        n.CPUPercent,
 			RAMUsedMB:         n.RAMUsedMB,
 			DiskFreeGB:        n.DiskFreeGB,
 			AgentCapabilities: n.AgentCapabilities,

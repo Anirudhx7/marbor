@@ -263,7 +263,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
             <span className="text-xs font-medium">CPU</span>
           </div>
           <span className={`font-mono text-lg font-medium ${healthColor}`}>
-            {node.cpuPercent}%
+            {node.agentPresent && node.cpuPercent != null ? `${node.cpuPercent}%` : '--'}
           </span>
         </div>
         <div className="bg-secondary rounded-lg p-3">
@@ -1380,7 +1380,7 @@ export function GPUNodes() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            The Node Agent is an optional process you run on this GPU node to report fan speed, RAM usage, and free disk space back to the mesh. Everything else (VRAM, temperature, power) is already collected without it.
+            The Node Agent is an optional process you run on this GPU node to report CPU usage, fan speed, RAM usage, and free disk space back to the mesh. Everything else (VRAM, temperature, power) is already collected without it.
           </p>
 
           {agentError && (
