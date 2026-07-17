@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, PlayCircle, Pencil, BrainCircuit } from 'lucide-react';
+import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, PauseCircle, PlayCircle, Pencil, BrainCircuit, CheckCircle2, XCircle } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule, updateSchedule,
@@ -194,6 +194,17 @@ function NodeCard({ node, initial, availableModels, onSave }: {
 
 // ── Schedule create form (collapsed by default) ───────────────────────────────
 
+function formatScheduleRelative(isoString: string): string {
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  if (diffSecs < 60) return `${diffSecs}s ago`;
+  const diffMins = Math.floor(diffSecs / 60);
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.floor(diffHours / 24)}d ago`;
+}
+
 // ── Schedule row with inline edit ────────────────────────────────────────────
 
 function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDelete, isLast }: {
@@ -250,6 +261,17 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
           <span className="text-muted-foreground text-xs whitespace-nowrap">
             {s.at} &middot; {(s.days && s.days.length > 0) ? s.days.map(d => DAYS[d]).join(' ') : 'every day'}
           </span>
+          {s.last_run_at ? (
+            <span
+              className={`flex items-center gap-1 text-xs whitespace-nowrap ${s.last_status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}
+              title={s.last_status === 'error' ? `Last ran ${formatScheduleRelative(s.last_run_at)} - ${s.last_error || 'failed'}` : `Last ran ${formatScheduleRelative(s.last_run_at)}`}
+            >
+              {s.last_status === 'error' ? <XCircle className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3 text-success" />}
+              ran {formatScheduleRelative(s.last_run_at)}
+            </span>
+          ) : (
+            <span className="text-muted-foreground/50 text-xs whitespace-nowrap">never ran</span>
+          )}
         </div>
         <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
           <button onClick={() => onToggle(!s.enabled)} title={s.enabled ? 'Pause' : 'Resume'}
