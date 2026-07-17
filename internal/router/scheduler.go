@@ -21,6 +21,13 @@ type Schedule struct {
 	At      string   `json:"at"`               // "HH:MM", server-local time
 	Days    []int    `json:"days,omitempty"`   // 0=Sun..6=Sat; empty = every day
 	Enabled bool     `json:"enabled"`
+
+	// Last-run tracking, live runtime state only (never restored from
+	// SQLite as authoritative - a fresh boot shows "never" until the next
+	// fire, consistent with the State Hierarchy: live beats persisted).
+	LastRunAt  string `json:"last_run_at,omitempty"` // RFC3339, UTC
+	LastStatus string `json:"last_status,omitempty"` // "ok" | "error"
+	LastError  string `json:"last_error,omitempty"`
 }
 
 // ValidScheduleAction reports whether a is a supported schedule action.
@@ -98,10 +105,31 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	}
 	metrics.ScheduleFired(s.Action, s.Node)
 	if !found {
+		errMsg := fmt.Sprintf("node %q not found", s.Node)
 		log.Printf("schedule %q fired but node %q was not found: action=%s did nothing", s.ID, s.Node, s.Action)
+		r.recordScheduleRun(s.ID, "error", errMsg)
 		return
 	}
 	log.Printf("schedule %q fired: action=%s node=%s models=%v", s.ID, s.Action, s.Node, s.Models)
+	r.recordScheduleRun(s.ID, "ok", "")
+}
+
+// recordScheduleRun stamps the outcome of a schedule dispatch onto the
+// in-memory schedule so GET /admin/schedules can show "last ran" without a
+// separate log/history store. status reflects whether the schedule found and
+// dispatched to its target node - not the deeper async warmup/unload ping
+// result, which already has its own metrics.WarmupPing signal.
+func (r *Router) recordScheduleRun(id, status, errMsg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.schedules {
+		if r.schedules[i].ID == id {
+			r.schedules[i].LastRunAt = time.Now().UTC().Format(time.RFC3339)
+			r.schedules[i].LastStatus = status
+			r.schedules[i].LastError = errMsg
+			break
+		}
+	}
 }
 
 // WarmModels preloads the given models on a single node immediately via a real

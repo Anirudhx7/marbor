@@ -1,11 +1,10 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore } from 'react';
 import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X, Settings2 } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import {
-  pullModel,
   fetchSystemInfo,
   SystemInfo,
   fetchModelCatalog,
@@ -15,6 +14,7 @@ import {
   HFRepoDetails,
   ModelVariantFit,
 } from '../lib/api';
+import { startPull, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse } from '../lib/mockData';
 import { CustomDatePicker } from '../components/DateTimePicker';
@@ -54,10 +54,9 @@ function ModelDetailPanel({
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState<HFRepoDetails | null>(null);
   const [ctxLen, setCtxLen] = useState(8192);
-  const [pullingTag, setPullingTag] = useState<string | null>(null);
-  const [pulledTags, setPulledTags] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [configTag, setConfigTag] = useState<string | null>(null);
+  const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -117,19 +116,21 @@ function ModelDetailPanel({
 
   useEffect(() => { fetchDetails(ctxLen); }, [ctxLen, fetchDetails]);
 
-  const handlePull = async (variant: ModelVariantFit) => {
+  const handlePull = (variant: ModelVariantFit) => {
     if (!nodeName) return;
-    setPullingTag(variant.tag);
-    setError(null);
-    try {
-      await pullModel(nodeName, variant.tag);
-      setPulledTags(prev => new Set([...prev, variant.tag]));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Pull failed');
-    } finally {
-      setPullingTag(null);
-    }
+    startPull(nodeName, variant.tag, demoMode);
   };
+
+  // The pull-progress widget owns the download UI; this only needs to know
+  // when a pull it started here finishes, so the "Ready" checkmark (driven
+  // by the server's own `downloaded` flag, not local state) reflects it even
+  // after the admin dismisses the widget.
+  useEffect(() => {
+    if (pullJobs.some(j => j.node === nodeName && j.status === 'success')) {
+      fetchDetails(ctxLen);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pullJobs, nodeName]);
 
   const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
@@ -216,8 +217,8 @@ function ModelDetailPanel({
             </span>
             <div className="space-y-1.5">
               {details.variants.map((v) => {
-                const isPulled = v.downloaded || (v.tag && pulledTags.has(v.tag));
-                const isPulling = pullingTag === v.tag;
+                const isPulled = v.downloaded;
+                const isPulling = pullJobs.some(j => j.node === nodeName && j.model === v.tag && j.status === 'downloading');
                 const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
                 const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
                 return (

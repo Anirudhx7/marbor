@@ -140,8 +140,8 @@ func TestSchedulerMetadataFields(t *testing.T) {
 	s.Seed()
 	snap := s.Snapshot()
 
-	if len(snap.Capabilities) != 1 || snap.Capabilities[0] != "telemetry" {
-		t.Errorf("Capabilities = %v, want [telemetry]", snap.Capabilities)
+	if len(snap.Capabilities) != 2 || snap.Capabilities[0] != "telemetry" || snap.Capabilities[1] != "actions.pull_model" {
+		t.Errorf("Capabilities = %v, want [telemetry actions.pull_model]", snap.Capabilities)
 	}
 	if snap.Platform != runtime.GOOS {
 		t.Errorf("Platform = %q, want %q", snap.Platform, runtime.GOOS)

@@ -35,6 +35,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /telemetry", requireToken(s.Token, s.handleTelemetry))
 	mux.HandleFunc("GET /metrics", requireToken(s.Token, s.handleMetrics))
+	mux.HandleFunc("POST /actions/pull_model", requireToken(s.Token, s.handlePullModel))
 	return mux
 }
 

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Package, Download, Loader2, Settings2 } from 'lucide-react';
+import { Package, Download, Settings2 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
 import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
-import { fetchModels, pullModel, fetchNodes } from '../lib/api';
+import { fetchModels, fetchNodes } from '../lib/api';
+import { startPull } from '../lib/pullProgress';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
@@ -33,44 +34,21 @@ function SkeletonCard() {
   );
 }
 
-type PullStatus = 'idle' | 'pulling' | 'success' | 'error';
-
 function ModelCard({ model, demoMode, onConfigure }: { model: ModelEntry; demoMode: boolean; onConfigure: () => void }) {
   const isWarm = model.warm_count > 0;
   const [pullInput, setPullInput] = useState('');
-  const [pullStatus, setPullStatus] = useState<PullStatus>('idle');
-  const [pullError, setPullError] = useState('');
 
   // Pick the first healthy node for pull target, fall back to any node
   const targetNode = model.nodes.find((n) => n.healthy) ?? model.nodes[0];
 
-  const handlePull = async () => {
+  const handlePull = () => {
     const trimmed = pullInput.trim();
-    if (!trimmed) return;
-    setPullStatus('pulling');
-    setPullError('');
-    try {
-      if (demoMode) {
-        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-      } else {
-        if (!targetNode) { setPullStatus('error'); setPullError('No healthy node available'); return; }
-        await pullModel(targetNode.name, trimmed);
-      }
-      setPullStatus('success');
-      setPullInput('');
-    } catch (e: unknown) {
-      setPullStatus('error');
-      setPullError(e instanceof Error ? e.message : 'Pull failed');
-    } finally {
-      setTimeout(() => {
-        setPullStatus('idle');
-        setPullError('');
-      }, 3000);
-    }
+    if (!trimmed || !targetNode) return;
+    startPull(targetNode.name, trimmed, demoMode);
+    setPullInput('');
   };
 
-  const isPulling = pullStatus === 'pulling';
-  const pullDisabled = isPulling || !pullInput.trim() || !targetNode;
+  const pullDisabled = !pullInput.trim() || !targetNode;
 
   return (
     <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors ${
@@ -138,7 +116,6 @@ function ModelCard({ model, demoMode, onConfigure }: { model: ModelEntry; demoMo
                 onChange={(e) => setPullInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !pullDisabled && handlePull()}
                 placeholder="model:tag"
-                disabled={isPulling}
                 className="flex-1 px-2 py-1 text-xs bg-secondary border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
               />
               <button
@@ -146,15 +123,9 @@ function ModelCard({ model, demoMode, onConfigure }: { model: ModelEntry; demoMo
                 disabled={pullDisabled}
                 className="px-3 py-1 text-xs font-medium bg-secondary border border-border rounded-md text-foreground hover:bg-primary/10 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
-                {isPulling ? 'Pulling...' : 'Pull'}
+                Pull
               </button>
             </div>
-            {pullStatus === 'success' && (
-              <p className="mt-1.5 text-xs text-success font-medium">Pulled!</p>
-            )}
-            {pullStatus === 'error' && (
-              <p className="mt-1.5 text-xs text-destructive font-medium">{pullError}</p>
-            )}
           </div>
         )}
       </div>
@@ -174,9 +145,6 @@ export function Models() {
   const [pullNodesList, setPullNodesList] = useState<GPUNode[]>([]);
   const [pullSelectedNode, setPullSelectedNode] = useState('');
   const [pullModelName, setPullModelName] = useState('');
-  const [pullLoading, setPullLoading] = useState(false);
-  const [pullSuccess, setPullSuccess] = useState(false);
-  const [pullErrorMsg, setPullErrorMsg] = useState('');
   const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
   const [configModel, setConfigModel] = useState<string | null>(null);
 
@@ -242,27 +210,12 @@ export function Models() {
     }
   };
 
-  const handleGeneralPull = async () => {
+  const handleGeneralPull = () => {
     const trimmedModel = pullModelName.trim();
     if (!trimmedModel || !pullSelectedNode) return;
-    setPullLoading(true);
-    setPullErrorMsg('');
-    setPullSuccess(false);
-
-    try {
-      if (demoMode) {
-        await new Promise<void>(resolve => setTimeout(resolve, 1500));
-      } else {
-        await pullModel(pullSelectedNode, trimmedModel);
-      }
-      setPullSuccess(true);
-      setPullModelName('');
-      void loadModels().catch(console.error);
-    } catch (e: unknown) {
-      setPullErrorMsg(e instanceof Error ? e.message : 'Pull failed');
-    } finally {
-      setPullLoading(false);
-    }
+    startPull(pullSelectedNode, trimmedModel, demoMode);
+    setPullModelName('');
+    setIsPullModalOpen(false);
   };
 
   const loadModels = async (active: boolean = true) => {
@@ -404,13 +357,7 @@ export function Models() {
       {/* General Pull Model Modal */}
       <Modal
         isOpen={isPullModalOpen}
-        onClose={() => {
-          if (!pullLoading) {
-            setIsPullModalOpen(false);
-            setPullErrorMsg('');
-            setPullSuccess(false);
-          }
-        }}
+        onClose={() => setIsPullModalOpen(false)}
         title="Pull Model from Registry"
       >
         <div className="space-y-4">
@@ -424,7 +371,6 @@ export function Models() {
             <CustomSelect
               value={pullSelectedNode}
               onChange={setPullSelectedNode}
-              disabled={pullLoading || pullSuccess}
               options={pullNodesList.map((n) => ({
                 value: n.name,
                 label: `${n.name} (${n.health})`
@@ -438,53 +384,26 @@ export function Models() {
               type="text"
               value={pullModelName}
               onChange={(e) => setPullModelName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !pullLoading && pullModelName.trim() && pullSelectedNode && handleGeneralPull()}
+              onKeyDown={(e) => e.key === 'Enter' && pullModelName.trim() && pullSelectedNode && handleGeneralPull()}
               placeholder="e.g. llama3.2, gemma2, nomic-embed-text"
-              disabled={pullLoading || pullSuccess}
               className="w-full px-3 py-2 text-sm bg-secondary border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
             />
           </div>
 
-          {pullErrorMsg && (
-            <p className="text-xs text-destructive font-medium bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
-              {pullErrorMsg}
-            </p>
-          )}
-
-          {pullSuccess && (
-            <p className="text-xs text-success font-medium bg-success/10 border border-success/20 rounded-lg p-2.5">
-              Model pull request initiated successfully! The model will download in the background.
-            </p>
-          )}
-
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
-              onClick={() => {
-                setIsPullModalOpen(false);
-                setPullErrorMsg('');
-                setPullSuccess(false);
-              }}
-              disabled={pullLoading}
+              onClick={() => setIsPullModalOpen(false)}
               className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-foreground text-sm font-semibold rounded-lg transition-colors cursor-pointer"
             >
               Close
             </button>
             <button
               onClick={handleGeneralPull}
-              disabled={pullLoading || !pullModelName.trim() || !pullSelectedNode}
+              disabled={!pullModelName.trim() || !pullSelectedNode}
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-semibold rounded-lg transition-colors shadow-sm cursor-pointer"
             >
-              {pullLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Pulling...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  Pull Model
-                </>
-              )}
+              <Download className="w-4 h-4" />
+              Pull Model
             </button>
           </div>
         </div>

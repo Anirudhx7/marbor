@@ -89,6 +89,34 @@ func (r *Router) isPinned(node, model string) bool {
 	return r.pinned[node][model]
 }
 
+// --- keep-warm priority hierarchy (0 = highest priority) ---
+
+// setWarmPriority records the priority order of a node's keep-warm model set,
+// ranked (rank) is the model's position in the caller's ordered list - lower
+// rank = higher priority. Called once per pingWarmupModels tick so the ranking
+// always reflects the current config+toggle order, never a stale copy.
+func (r *Router) setWarmPriority(node string, ranked []string) {
+	r.warmPriorityMu.Lock()
+	defer r.warmPriorityMu.Unlock()
+	if r.warmPriority == nil {
+		r.warmPriority = make(map[string]map[string]int)
+	}
+	byModel := make(map[string]int, len(ranked))
+	for i, m := range ranked {
+		byModel[m] = i
+	}
+	r.warmPriority[node] = byModel
+}
+
+// warmRank returns model's keep-warm priority rank on node (0 = highest), and
+// whether model is part of that node's keep-warm set at all.
+func (r *Router) warmRank(node, model string) (int, bool) {
+	r.warmPriorityMu.RLock()
+	defer r.warmPriorityMu.RUnlock()
+	rank, ok := r.warmPriority[node][model]
+	return rank, ok
+}
+
 // unloadModel evicts a model from a node's VRAM immediately via Ollama's
 // keep_alive:0 on /api/generate (the inverse of a warmup preload). Only Ollama
 // backends support this; others are a no-op. reason is a short tag for the log
@@ -204,11 +232,21 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 }
 
 // EvictForHeadroom unloads the coldest non-pinned models on nodeName until at
-// least neededBytes of VRAM is free, or only pinned models remain (in which case
-// it logs the unmet pressure - a genuine OOM risk, surfaced rather than hidden).
-// Returns the number of models evicted. No-op when the node's total VRAM is
-// unknown (nothing to reason about).
-func (r *Router) EvictForHeadroom(ctx context.Context, nodeName string, neededBytes int64) int {
+// least neededBytes of VRAM is free, or only pinned/higher-priority models
+// remain (in which case it logs the unmet pressure - a genuine OOM risk,
+// surfaced rather than hidden). Returns the number of models evicted. No-op
+// when the node's total VRAM is unknown (nothing to reason about).
+//
+// forModel is the model this headroom is being made for. If forModel is
+// itself part of the node's keep-warm set (see setWarmPriority), any other
+// loaded model that outranks it (lower rank = higher priority, e.g. earlier in
+// the configured "keep warm" list) is protected from eviction - the same
+// higher-priority model always wins a VRAM contest instead of whichever one
+// happened to warm last. forModel outside the keep-warm set (manual/predictive/
+// scheduled warmup of an arbitrary model) gets no such protection: any
+// non-pinned loaded model, keep-warm or not, remains fair game via plain LRU,
+// matching prior behavior.
+func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string, neededBytes int64) int {
 	r.mu.RLock()
 	var target *NodeState
 	for _, n := range r.nodes {
@@ -240,6 +278,8 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName string, neededBy
 	}
 	free := totalBytes - usedBytes
 
+	forModelRank, forModelRanked := r.warmRank(nodeName, forModel)
+
 	evicted := 0
 	for free < neededBytes {
 		coldIdx := -1
@@ -248,13 +288,18 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName string, neededBy
 			if r.isPinned(nodeName, m.name) {
 				continue
 			}
+			if forModelRanked {
+				if rank, ok := r.warmRank(nodeName, m.name); ok && rank < forModelRank {
+					continue // higher-priority keep-warm model: protected
+				}
+			}
 			t := r.lastUsedAt(nodeName, m.name)
 			if coldIdx == -1 || t.Before(coldTime) {
 				coldIdx, coldTime = i, t
 			}
 		}
 		if coldIdx == -1 {
-			log.Printf("headroom: node %s needs %d more free bytes but only pinned models remain; cannot make room", nodeName, neededBytes-free)
+			log.Printf("headroom: node %s needs %d more free bytes for %q but only pinned/higher-priority models remain; cannot make room", nodeName, neededBytes-free, forModel)
 			break
 		}
 		victim := loaded[coldIdx]
@@ -518,5 +563,5 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	r.lastEvictAt[nodeName] = time.Now()
 	r.evictMu.Unlock()
 
-	r.EvictForHeadroom(ctx, nodeName, est+reservedByOthers)
+	r.EvictForHeadroom(ctx, nodeName, model, est+reservedByOthers)
 }
