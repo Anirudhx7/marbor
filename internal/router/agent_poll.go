@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -77,6 +78,19 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 	n.AgentArchitecture = t.Architecture
 	n.AgentGPUVendor = t.GPUVendor
 	n.AgentRuntime = t.Runtime
+	// Rolling-upgrade visibility only - decoding above already works
+	// regardless of schema_version (the protocol is additive-only: unknown
+	// fields are silently ignored by encoding/json's default Decode, and
+	// every field already treats its own zero value as "unknown", not a
+	// measurement). This just tells an operator when an agent build is
+	// ahead of what this mesh binary was compiled understanding, in case a
+	// future genuinely-breaking schema bump ever needs to be diagnosed - it
+	// never gates or changes any decode/routing behavior itself. Logged
+	// once per node, not every poll cycle.
+	if t.SchemaVersion > nodeagent.SchemaVersion && !n.agentSchemaWarned {
+		n.agentSchemaWarned = true
+		log.Printf("node %s: agent reports /telemetry schema_version %d, newer than this mesh understands (%d) - some new agent fields may not be recognized until the mesh is upgraded", n.Name, t.SchemaVersion, nodeagent.SchemaVersion)
+	}
 	if t.Host != nil {
 		n.CPUPercent = derefOr(t.Host.CPUPercent, n.CPUPercent)
 		n.RAMUsedMB = t.Host.RAMUsedMB
@@ -135,6 +149,7 @@ func clearAgentTelemetry(n *NodeState) {
 	n.AgentArchitecture = ""
 	n.AgentGPUVendor = ""
 	n.AgentRuntime = ""
+	n.agentSchemaWarned = false
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0
