@@ -1,5 +1,87 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Check, X } from 'lucide-react';
+
+// Dropdown menus render inside a scrollable modal body (Modal.tsx uses
+// overflow-y-auto). An `absolute`-positioned menu gets clipped at that
+// container's edge regardless of top/bottom flip math, which is what
+// produced the "cut off at bottom" bug. Portaling to document.body with
+// `position: fixed` coordinates (recomputed from the trigger's
+// getBoundingClientRect, same pattern Modal.tsx already uses) escapes any
+// ancestor's overflow clipping.
+interface MenuRect {
+  left: number;
+  width: number;
+  // Viewport-relative distance from the trigger's top edge to the top of
+  // the viewport, and from the trigger's bottom edge to the bottom of the
+  // viewport - the two numbers `position: fixed; top:`/`bottom:` need
+  // directly, so the render side has no follow-up math to get wrong.
+  triggerTopFromViewportTop: number;
+  triggerBottomFromViewportBottom: number;
+  openUp: boolean;
+}
+
+function useMenuPosition(containerRef: React.RefObject<HTMLDivElement | null>, isOpen: boolean) {
+  const [rect, setRect] = useState<MenuRect | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const update = () => {
+      if (!containerRef.current) return;
+      const r = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom;
+      const openUp = spaceBelow < 260 && r.top > spaceBelow;
+      setRect({
+        left: r.left,
+        width: r.width,
+        triggerTopFromViewportTop: r.top,
+        triggerBottomFromViewportBottom: window.innerHeight - r.bottom,
+        openUp,
+      });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [isOpen, containerRef]);
+
+  return rect;
+}
+
+// Shared gap between the trigger and the menu, and the hard floor/ceiling on
+// menu height - big enough to be usable, small enough to always fit in the
+// remaining space on that side of the trigger (this is what makes behavior
+// consistent regardless of where the trigger sits in the viewport, instead
+// of the old fixed `max-h-60` which could exceed the actual room available
+// and get clipped).
+const MENU_GAP = 6;
+const MENU_MIN_HEIGHT = 120;
+const MENU_MAX_HEIGHT = 288;
+
+function menuFixedStyle(rect: MenuRect): React.CSSProperties {
+  const base: React.CSSProperties = {
+    position: 'fixed',
+    left: rect.left,
+    width: rect.width,
+  };
+  if (rect.openUp) {
+    const available = rect.triggerTopFromViewportTop - MENU_GAP * 2;
+    return {
+      ...base,
+      bottom: window.innerHeight - rect.triggerTopFromViewportTop + MENU_GAP,
+      maxHeight: Math.min(Math.max(available, MENU_MIN_HEIGHT), MENU_MAX_HEIGHT),
+    };
+  }
+  const available = rect.triggerBottomFromViewportBottom - MENU_GAP * 2;
+  return {
+    ...base,
+    top: window.innerHeight - rect.triggerBottomFromViewportBottom + MENU_GAP,
+    maxHeight: Math.min(Math.max(available, MENU_MIN_HEIGHT), MENU_MAX_HEIGHT),
+  };
+}
 
 export interface SelectOption {
   value: string;
@@ -27,29 +109,16 @@ export function CustomSelect({
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const updatePosition = () => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setPosition(spaceBelow < 260 ? 'top' : 'bottom');
-    };
-    updatePosition();
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-    return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
-    };
-  }, [isOpen]);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRect = useMenuPosition(containerRef, isOpen);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     }
@@ -75,10 +144,12 @@ export function CustomSelect({
         <ChevronDown className={`w-4 h-4 ml-2 shrink-0 text-muted-foreground/80 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {isOpen && (
-        <div className={`absolute z-50 w-full border border-border bg-card rounded-lg shadow-xl max-h-60 overflow-y-auto animate-fade-in focus:outline-none ${
-          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-        }`}>
+      {isOpen && menuRect && createPortal(
+        <div
+          ref={menuRef}
+          style={menuFixedStyle(menuRect)}
+          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+        >
           <div className="py-1">
             {options.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground text-center">No options</div>
@@ -104,7 +175,8 @@ export function CustomSelect({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -130,30 +202,17 @@ export function CustomCombobox({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const updatePosition = () => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setPosition(spaceBelow < 260 ? 'top' : 'bottom');
-    };
-    updatePosition();
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-    return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
-    };
-  }, [isOpen]);
+  const menuRect = useMenuPosition(containerRef, isOpen);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     }
@@ -223,10 +282,12 @@ export function CustomCombobox({
         </div>
       </div>
 
-      {isOpen && (
-        <div className={`absolute z-50 w-full border border-border bg-card rounded-lg shadow-xl max-h-60 overflow-y-auto animate-fade-in focus:outline-none ${
-          position === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-        }`}>
+      {isOpen && menuRect && createPortal(
+        <div
+          ref={menuRef}
+          style={menuFixedStyle(menuRect)}
+          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+        >
           <div className="py-1">
             {displayOptions.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground text-center">No options found</div>
@@ -252,7 +313,8 @@ export function CustomCombobox({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
