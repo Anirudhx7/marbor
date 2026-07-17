@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestServerTelemetryRequiresToken(t *testing.T) {
@@ -88,5 +89,67 @@ func TestServerMetricsRequiresToken(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// TestServerServesCachedSnapshotBetweenRequests proves /telemetry reads the
+// Collector's cache rather than collecting fresh on every request: with the
+// background refresh loop never started, two requests in a row must report
+// the exact same LastUpdated timestamp from the single Seed() collection.
+func TestServerServesCachedSnapshotBetweenRequests(t *testing.T) {
+	collector := NewCollector("v-test")
+	collector.Seed()
+	srv := &Server{Token: "sekret", Version: "v-test", Collector: collector}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	get := func() Telemetry {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/telemetry", nil)
+		req.Header.Set("Authorization", "Bearer sekret")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		defer resp.Body.Close()
+		var tel Telemetry
+		if err := json.NewDecoder(resp.Body).Decode(&tel); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return tel
+	}
+
+	first := get()
+	if first.LastUpdated.IsZero() {
+		t.Fatal("expected LastUpdated to be set from Seed()")
+	}
+	time.Sleep(20 * time.Millisecond)
+	second := get()
+	if !second.LastUpdated.Equal(first.LastUpdated) {
+		t.Errorf("LastUpdated changed between requests with no refresh running (first=%v, second=%v) - handler must be re-collecting instead of reading the cache", first.LastUpdated, second.LastUpdated)
+	}
+}
+
+// TestServerFallsBackWithoutCollector verifies a Server built without a
+// Collector (its zero value) still serves a live reading rather than
+// panicking - keeps the type usable in any test/caller that predates the
+// caching change.
+func TestServerFallsBackWithoutCollector(t *testing.T) {
+	srv := &Server{Token: "sekret", Version: "v-test"}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/telemetry", nil)
+	req.Header.Set("Authorization", "Bearer sekret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	var tel Telemetry
+	if err := json.NewDecoder(resp.Body).Decode(&tel); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if tel.LastUpdated.IsZero() {
+		t.Error("expected a live LastUpdated even without a Collector wired up")
 	}
 }
