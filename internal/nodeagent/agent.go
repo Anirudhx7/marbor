@@ -23,14 +23,27 @@ const defaultRefreshInterval = 5 * time.Second
 // version is the mesh binary's own build version (main.Version), reported
 // back as agent_version so the dashboard can tell which agent build a node
 // is running.
+//
+// "ollama-mesh agent service ..." is dispatched here, before flag.Parse, the
+// same way main.go's own subcommand dispatch (e.g. "bench") checks os.Args
+// before parsing its own flag set - each subcommand owns its own flags
+// without polluting a shared namespace. See service_cmd.go.
 func Run(args []string, version string) {
+	if len(args) > 0 && args[0] == "service" {
+		runServiceCommand(args[1:], version)
+		return
+	}
+
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port to serve /telemetry and /metrics on")
 	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "ollama-mesh agent - Node Agent: serves GPU/host telemetry for the mesh to poll\n\n")
-		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh agent --port=<port> --token=<token>\n\nFlags:\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh agent --port=<port> --token=<token>   (runs in the foreground)\n")
+		fmt.Fprintf(os.Stderr, "  ollama-mesh agent service install --port=<port> --token=<token>\n")
+		fmt.Fprintf(os.Stderr, "                                                     (installs as a persistent OS service)\n")
+		fmt.Fprintf(os.Stderr, "  ollama-mesh agent service {uninstall|start|stop|status}\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
