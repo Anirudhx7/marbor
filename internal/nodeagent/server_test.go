@@ -97,7 +97,7 @@ func TestServerMetricsRequiresToken(t *testing.T) {
 // background refresh loop never started, two requests in a row must report
 // the exact same LastUpdated timestamp from the single Seed() collection.
 func TestServerServesCachedSnapshotBetweenRequests(t *testing.T) {
-	scheduler := NewScheduler("v-test")
+	scheduler := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
 	scheduler.Seed()
 	srv := &Server{Token: "sekret", Version: "v-test", Scheduler: scheduler}
 	ts := httptest.NewServer(srv.Handler())

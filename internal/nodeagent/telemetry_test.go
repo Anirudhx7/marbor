@@ -15,6 +15,11 @@ func TestTelemetryMarshalSchema(t *testing.T) {
 	tel := Telemetry{
 		SchemaVersion: SchemaVersion,
 		AgentVersion:  "v0.16.0",
+		Capabilities:  []string{"telemetry"},
+		Platform:      "linux",
+		Architecture:  "amd64",
+		GPUVendor:     "nvidia",
+		Runtime:       "ollama",
 		LastUpdated:   lastUpdated,
 		GPU: &GPUTelemetry{
 			TemperatureC: &temp,
@@ -48,6 +53,22 @@ func TestTelemetryMarshalSchema(t *testing.T) {
 	}
 	if decoded["last_updated"] != lastUpdated.Format(time.RFC3339Nano) {
 		t.Errorf("last_updated = %v, want %v", decoded["last_updated"], lastUpdated.Format(time.RFC3339Nano))
+	}
+	caps, ok := decoded["capabilities"].([]interface{})
+	if !ok || len(caps) != 1 || caps[0] != "telemetry" {
+		t.Errorf("capabilities = %v, want [telemetry]", decoded["capabilities"])
+	}
+	if decoded["platform"] != "linux" {
+		t.Errorf("platform = %v, want linux", decoded["platform"])
+	}
+	if decoded["architecture"] != "amd64" {
+		t.Errorf("architecture = %v, want amd64", decoded["architecture"])
+	}
+	if decoded["gpu_vendor"] != "nvidia" {
+		t.Errorf("gpu_vendor = %v, want nvidia", decoded["gpu_vendor"])
+	}
+	if decoded["runtime"] != "ollama" {
+		t.Errorf("runtime = %v, want ollama", decoded["runtime"])
 	}
 	gpu, ok := decoded["gpu"].(map[string]interface{})
 	if !ok {
@@ -98,6 +119,9 @@ func TestTelemetryOmitsUnknownFields(t *testing.T) {
 	}
 	if _, present := decoded["host"]; present {
 		t.Errorf("host should be omitted when nil, got %v", decoded["host"])
+	}
+	if _, present := decoded["runtime"]; present {
+		t.Errorf("runtime should be omitted when not detected, got %v", decoded["runtime"])
 	}
 }
 

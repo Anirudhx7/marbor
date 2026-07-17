@@ -51,6 +51,18 @@ func RenderPrometheus(t Telemetry) string {
 
 	fmt.Fprintf(&b, "# HELP nodeagent_schema_version The /telemetry JSON schema version served by this agent.\n# TYPE nodeagent_schema_version gauge\nnodeagent_schema_version %d\n", t.SchemaVersion)
 
+	// nodeagent_info follows the common Prometheus "info metric" convention
+	// (node_exporter's node_uname_info, kube_state_metrics' kube_pod_info,
+	// ...): string metadata that doesn't fit a numeric gauge is carried as
+	// labels on a constant value-1 series, so an operator's existing
+	// Prometheus/Grafana setup can group/filter by agent version, platform,
+	// GPU vendor, or detected runtime across a mixed fleet without needing a
+	// separate side-channel for that information.
+	fmt.Fprintf(&b,
+		"# HELP nodeagent_info Node Agent build/platform/vendor metadata (value is always 1; read the labels).\n# TYPE nodeagent_info gauge\nnodeagent_info{agent_version=%q,platform=%q,architecture=%q,gpu_vendor=%q,runtime=%q,capabilities=%q} 1\n",
+		t.AgentVersion, t.Platform, t.Architecture, t.GPUVendor, t.Runtime, strings.Join(t.Capabilities, ","),
+	)
+
 	return b.String()
 }
 

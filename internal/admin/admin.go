@@ -401,6 +401,18 @@ type nodeResp struct {
 	FanPercent   *float64 `json:"fanPercent"`
 	RAMUsedMB    int64    `json:"ramUsedMB"`
 	DiskFreeGB   float64  `json:"diskFreeGB"`
+	// AgentCapabilities/AgentPlatform/AgentArchitecture/AgentGPUVendor/
+	// AgentRuntime are the agent's self-reported metadata (see
+	// internal/nodeagent Telemetry.Capabilities/Platform/Architecture/
+	// GPUVendor/Runtime) - lets the UI gate agent-dependent features on
+	// what this specific node's agent build actually supports, and helps
+	// debug a mixed-version/mixed-vendor/mixed-runtime fleet. Cleared
+	// alongside AgentPresent, same R1 discipline as the fields above.
+	AgentCapabilities []string `json:"agentCapabilities,omitempty"`
+	AgentPlatform     string   `json:"agentPlatform,omitempty"`
+	AgentArchitecture string   `json:"agentArchitecture,omitempty"`
+	AgentGPUVendor    string   `json:"agentGpuVendor,omitempty"`
+	AgentRuntime      string   `json:"agentRuntime,omitempty"`
 }
 
 type SystemInfo struct {
@@ -831,35 +843,40 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		}
 
 		out[i] = nodeResp{
-			ID:               fmt.Sprintf("gpu-%d", i),
-			Name:             n.Name,
-			Port:             port,
-			GPUModel:         n.GPUModel,
-			VRAMTotalMB:      n.VRAMTotalMB,
-			VRAMUsedMB:       n.VRAMUsedMB,
-			VRAMSource:       n.VRAMSource,
-			PowerDrawW:       n.PowerDrawW,
-			Temperature:      n.Temperature,
-			Runtime:          n.Runtime,
-			Health:           health,
-			Draining:         n.Draining,
-			DrainedReason:    n.DrainedReason,
-			PrewarmDisabled:  n.PrewarmDisabled,
-			Uptime:           n.Uptime,
-			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
-			ActiveConns:      atomic.LoadInt32(&n.ActiveConns),
-			RequestsTotal:    atomic.LoadInt64(&n.RequestsTotal),
-			HealthHistory:    hist,
-			PendingPrewarmMB: s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
-			ColdStarts:       coldNode,
-			TokensTotal:      atomic.LoadInt64(&n.TokensTotal),
-			AvgLatencyMs:     avgLatencyNode,
-			WarmHitRatio:     warmHitRatioNode,
-			AgentPresent:     n.AgentPresent,
-			AgentVersion:     n.AgentVersion,
-			FanPercent:       n.FanPercent,
-			RAMUsedMB:        n.RAMUsedMB,
-			DiskFreeGB:       n.DiskFreeGB,
+			ID:                fmt.Sprintf("gpu-%d", i),
+			Name:              n.Name,
+			Port:              port,
+			GPUModel:          n.GPUModel,
+			VRAMTotalMB:       n.VRAMTotalMB,
+			VRAMUsedMB:        n.VRAMUsedMB,
+			VRAMSource:        n.VRAMSource,
+			PowerDrawW:        n.PowerDrawW,
+			Temperature:       n.Temperature,
+			Runtime:           n.Runtime,
+			Health:            health,
+			Draining:          n.Draining,
+			DrainedReason:     n.DrainedReason,
+			PrewarmDisabled:   n.PrewarmDisabled,
+			Uptime:            n.Uptime,
+			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
+			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
+			RequestsTotal:     atomic.LoadInt64(&n.RequestsTotal),
+			HealthHistory:     hist,
+			PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+			ColdStarts:        coldNode,
+			TokensTotal:       atomic.LoadInt64(&n.TokensTotal),
+			AvgLatencyMs:      avgLatencyNode,
+			WarmHitRatio:      warmHitRatioNode,
+			AgentPresent:      n.AgentPresent,
+			AgentVersion:      n.AgentVersion,
+			FanPercent:        n.FanPercent,
+			RAMUsedMB:         n.RAMUsedMB,
+			DiskFreeGB:        n.DiskFreeGB,
+			AgentCapabilities: n.AgentCapabilities,
+			AgentPlatform:     n.AgentPlatform,
+			AgentArchitecture: n.AgentArchitecture,
+			AgentGPUVendor:    n.AgentGPUVendor,
+			AgentRuntime:      n.AgentRuntime,
 		}
 		n.RUnlock()
 	}
@@ -890,30 +907,35 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		hist := make([]float64, len(n.HealthHistory))
 		copy(hist, n.HealthHistory)
 		out := nodeResp{
-			ID:               fmt.Sprintf("gpu-%d", i),
-			Name:             n.Name,
-			Port:             port,
-			GPUModel:         n.GPUModel,
-			VRAMTotalMB:      n.VRAMTotalMB,
-			VRAMUsedMB:       n.VRAMUsedMB,
-			VRAMSource:       n.VRAMSource,
-			PowerDrawW:       n.PowerDrawW,
-			Temperature:      n.Temperature,
-			Runtime:          n.Runtime,
-			Health:           health,
-			Draining:         n.Draining,
-			DrainedReason:    n.DrainedReason,
-			PrewarmDisabled:  n.PrewarmDisabled,
-			Uptime:           n.Uptime,
-			LoadedModels:     safeModelInfoSlice(n.LoadedModels),
-			ActiveConns:      atomic.LoadInt32(&n.ActiveConns),
-			HealthHistory:    hist,
-			PendingPrewarmMB: s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
-			AgentPresent:     n.AgentPresent,
-			AgentVersion:     n.AgentVersion,
-			FanPercent:       n.FanPercent,
-			RAMUsedMB:        n.RAMUsedMB,
-			DiskFreeGB:       n.DiskFreeGB,
+			ID:                fmt.Sprintf("gpu-%d", i),
+			Name:              n.Name,
+			Port:              port,
+			GPUModel:          n.GPUModel,
+			VRAMTotalMB:       n.VRAMTotalMB,
+			VRAMUsedMB:        n.VRAMUsedMB,
+			VRAMSource:        n.VRAMSource,
+			PowerDrawW:        n.PowerDrawW,
+			Temperature:       n.Temperature,
+			Runtime:           n.Runtime,
+			Health:            health,
+			Draining:          n.Draining,
+			DrainedReason:     n.DrainedReason,
+			PrewarmDisabled:   n.PrewarmDisabled,
+			Uptime:            n.Uptime,
+			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
+			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
+			HealthHistory:     hist,
+			PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+			AgentPresent:      n.AgentPresent,
+			AgentVersion:      n.AgentVersion,
+			FanPercent:        n.FanPercent,
+			RAMUsedMB:         n.RAMUsedMB,
+			DiskFreeGB:        n.DiskFreeGB,
+			AgentCapabilities: n.AgentCapabilities,
+			AgentPlatform:     n.AgentPlatform,
+			AgentArchitecture: n.AgentArchitecture,
+			AgentGPUVendor:    n.AgentGPUVendor,
+			AgentRuntime:      n.AgentRuntime,
 		}
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")

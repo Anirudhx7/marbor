@@ -38,6 +38,11 @@ export const mockGPUNodes: GPUNode[] = [
     fanPercent: 62,
     ramUsedMB: Math.round(41.5 * GB),
     diskFreeGB: 812.4,
+    agentCapabilities: ['telemetry'],
+    agentPlatform: 'linux',
+    agentArchitecture: 'amd64',
+    agentGpuVendor: 'nvidia',
+    agentRuntime: 'ollama',
   },
   {
     id: 'node-2',
