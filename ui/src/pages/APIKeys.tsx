@@ -19,7 +19,13 @@ function maskKey(key: string): string {
 
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
-import { CustomDatePicker } from '../components/DateTimePicker';
+import { CustomDateTimePicker } from '../components/DateTimePicker';
+
+function nowLocalISO(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export function APIKeys() {
   const { demoMode } = useDemoMode();
@@ -39,7 +45,7 @@ export function APIKeys() {
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [editKey, setEditKey] = useState<APIKey | null>(null);
-  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[] }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [] });
+  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[]; expiresAt: string }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [], expiresAt: '' });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -52,13 +58,14 @@ export function APIKeys() {
       dailyUsdCap: key.dailyUsdCap != null ? String(key.dailyUsdCap) : '',
       monthlyUsdCap: key.monthlyUsdCap != null ? String(key.monthlyUsdCap) : '',
       models: key.allowedModels ?? [],
+      expiresAt: key.expiresAt ?? '',
     });
     setEditError('');
   };
 
   const handleSaveKeyPatch = async () => {
     if (!editKey) return;
-    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[] } = {};
+    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string } = {};
     if (editForm.rateLimit.trim()) {
       const v = parseInt(editForm.rateLimit, 10);
       if (isNaN(v) || v < 0) { setEditError('Rate limit must be a non-negative integer'); return; }
@@ -90,6 +97,14 @@ export function APIKeys() {
     if (modelsChanged) {
       patch.models = editForm.models;
     }
+    const originalExpiresAt = editKey.expiresAt ?? '';
+    if (editForm.expiresAt !== originalExpiresAt) {
+      if (editForm.expiresAt && new Date(editForm.expiresAt).getTime() <= Date.now()) {
+        setEditError('Expiry date must be in the future');
+        return;
+      }
+      patch.expires_at = editForm.expiresAt;
+    }
     if (Object.keys(patch).length === 0) { setEditKey(null); return; }
 
     if (demoMode) {
@@ -102,6 +117,7 @@ export function APIKeys() {
             dailyUsdCap: patch.daily_usd_cap ?? k.dailyUsdCap,
             monthlyUsdCap: patch.monthly_usd_cap ?? k.monthlyUsdCap,
             allowedModels: patch.models ?? k.allowedModels,
+            expiresAt: patch.expires_at !== undefined ? (patch.expires_at || null) : k.expiresAt,
           }
         : k));
       setEditKey(null);
@@ -578,12 +594,13 @@ export function APIKeys() {
           
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Expiry Date (optional)
+              Expiry Date & Time (optional)
             </label>
-            <CustomDatePicker
+            <CustomDateTimePicker
               value={newKeyForm.expiresAt}
               onChange={(val) => setNewKeyForm({ ...newKeyForm, expiresAt: val })}
               placeholder="Never expires"
+              min={nowLocalISO()}
             />
           </div>
           
@@ -659,6 +676,17 @@ export function APIKeys() {
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Expiry Date & Time (optional)
+            </label>
+            <CustomDateTimePicker
+              value={editForm.expiresAt}
+              onChange={(val) => setEditForm({ ...editForm, expiresAt: val })}
+              placeholder="Never expires"
+              min={nowLocalISO()}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
