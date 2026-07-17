@@ -209,11 +209,6 @@ export function SettingsPage() {
           webhookSecret: settingsData.webhook?.secret || '',
           savingsReferenceCostPer1k: settingsData.savings?.reference_cost_per_1k ?? 0.002,
 
-          haEnabled: settingsData.ha?.enabled || false,
-          haPeers: settingsData.ha?.peers || [],
-          haHeartbeatIntervalMs: settingsData.ha?.heartbeat_interval_ms ?? 5000,
-          haPeerTimeoutMs: settingsData.ha?.peer_timeout_ms ?? 3000,
-
           warmupEnabled: settingsData.warmup?.enabled || false,
           warmupIntervalMs: settingsData.warmup?.interval_ms ?? 300000,
           warmupKeepAlive: settingsData.warmup?.keep_alive || '10m',
@@ -280,7 +275,6 @@ export function SettingsPage() {
         },
         webhook: { enabled: settings.webhookEnabled, url: settings.webhookUrl, secret: settings.webhookSecret },
         savings: { reference_cost_per_1k: settings.savingsReferenceCostPer1k },
-        ha: { enabled: settings.haEnabled, peers: settings.haPeers, heartbeat_interval_ms: settings.haHeartbeatIntervalMs, peer_timeout_ms: settings.haPeerTimeoutMs },
         warmup: { enabled: settings.warmupEnabled, interval_ms: settings.warmupIntervalMs, keep_alive: settings.warmupKeepAlive },
         context_windows: settings.contextWindows,
       };
@@ -1215,51 +1209,6 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* High Availability / Peer Monitoring */}
-        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-teal-500/10 rounded-lg">
-              <Activity className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Peer Health Monitoring</h3>
-              <p className="text-xs font-medium text-muted-foreground">Observability only - never failover or shared state</p>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-              <div>
-                <p className="text-sm font-medium text-foreground">Enable Peer Monitoring</p>
-              </div>
-              <Toggle on={settings.haEnabled} onToggle={() => setSettings({ ...settings, haEnabled: !settings.haEnabled })} />
-            </div>
-            {settings.haEnabled && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Peer URLs (one per line)</label>
-                  <textarea
-                    value={settings.haPeers.join('\n')}
-                    onChange={(e) => setSettings({ ...settings, haPeers: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })}
-                    placeholder={'http://peer-a:8080\nhttp://peer-b:8080'}
-                    rows={3}
-                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 font-mono"
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Heartbeat (ms)</label>
-                    <input type="number" value={settings.haHeartbeatIntervalMs} onChange={(e) => setSettings({ ...settings, haHeartbeatIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Peer Timeout (ms)</label>
-                    <input type="number" value={settings.haPeerTimeoutMs} onChange={(e) => setSettings({ ...settings, haPeerTimeoutMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
         {/* Global Warmup & Audit */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
@@ -1474,7 +1423,7 @@ export function SettingsPage() {
           Re-sync nodes, API keys, and cloud providers from the database into the running process?
         </p>
         <p className="text-xs text-muted-foreground">
-          Applies immediately without a restart. Other settings (listen ports/addresses, Docker/HA/Webhook wiring)
+          Applies immediately without a restart. Other settings (listen ports/addresses, Docker/Webhook wiring)
           require a restart to take effect.
         </p>
         {error && (

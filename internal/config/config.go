@@ -89,7 +89,6 @@ type Config struct {
 	Audit            AuditConfig       `yaml:"audit" json:"audit"`
 	Webhook          WebhookConfig     `yaml:"webhook" json:"webhook"`
 	Savings          SavingsConfig     `yaml:"savings" json:"savings"`
-	HA               HAConfig          `yaml:"ha" json:"ha"`
 	Warmup           WarmupConfig      `yaml:"warmup" json:"warmup"`
 	HuggingFace      HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
 	CloudBudget      CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
@@ -120,20 +119,6 @@ type CloudBudgetConfig struct {
 
 type HuggingFaceConfig struct {
 	Token string `yaml:"token" json:"token"`
-}
-
-// HAConfig controls the peer-health monitor: passive observability only.
-// When enabled, mesh reports whether the configured peers' /health endpoints
-// are reachable (surfaced at /admin/ha/peers and in logs). It performs NO
-// failover, NO shared state, and NO leader election - ollama-mesh is a
-// single-instance control plane. Distributing traffic across instances, if you
-// run more than one, is an external TCP load balancer's job, not this module's.
-// (The "ha" name is retained for config compatibility.)
-type HAConfig struct {
-	Enabled             bool     `yaml:"enabled" json:"enabled"`
-	Peers               []string `yaml:"peers" json:"peers"`
-	HeartbeatIntervalMs int      `yaml:"heartbeat_interval_ms" json:"heartbeat_interval_ms"`
-	PeerTimeoutMs       int      `yaml:"peer_timeout_ms" json:"peer_timeout_ms"`
 }
 
 // SavingsConfig controls how locally-served tokens are valued in the
@@ -549,22 +534,6 @@ func (c *Config) Validate() error {
 
 	if c.Savings.ReferenceCostPer1K <= 0 {
 		c.Savings.ReferenceCostPer1K = 0.002
-	}
-
-	if c.HA.HeartbeatIntervalMs <= 0 {
-		c.HA.HeartbeatIntervalMs = 5000
-	}
-	if c.HA.PeerTimeoutMs <= 0 {
-		c.HA.PeerTimeoutMs = 3000
-	}
-	for i, peer := range c.HA.Peers {
-		u, err := url.Parse(peer)
-		if err != nil {
-			return fmt.Errorf("ha peer %d: invalid URL %q: %w", i, peer, err)
-		}
-		if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("ha peer %d URL must be http(s) with a host: %s", i, peer)
-		}
 	}
 
 	if c.LiteLLM.Enabled && c.LiteLLM.URL == "" {
