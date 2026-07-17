@@ -20,7 +20,6 @@ import (
 	"net/url"
 	"regexp"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,7 +31,6 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/ha"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
@@ -171,7 +169,6 @@ type Server struct {
 	startTime      time.Time
 	analytics      *analyticsStore
 	auditLog       *audit.Logger
-	haMonitor      *ha.Monitor // nil when HA disabled
 	st             store.Store // never nil; NopStore when persistence disabled
 	demoMode       bool        // when true, login accepts admin/admin without DB
 	loginLimiter   *loginRateLimiter
@@ -209,9 +206,6 @@ func (s *Server) SetVersion(v string) {
 func (s *Server) SetAuditLogger(al *audit.Logger) {
 	s.auditLog = al
 }
-
-// SetHAMonitor wires the HA monitor into the admin server.
-func (s *Server) SetHAMonitor(m *ha.Monitor) { s.haMonitor = m }
 
 // SetDemoMode enables demo mode, where the dashboard login accepts admin/admin.
 func (s *Server) SetDemoMode(v bool) { s.demoMode = v }
@@ -634,7 +628,6 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/predictive/decisions", s.cors(s.adminAuth(s.handlePredictiveDecisions)))
 
-	reg("GET /admin/ha/peers", s.cors(s.adminAuth(s.handleHAPeers)))
 	reg("GET /admin/system-info", s.cors(s.adminAuth(s.handleSystemInfo)))
 	reg("GET /admin/cloud-budget-status", s.cors(s.adminAuth(s.handleCloudBudgetStatus)))
 
@@ -3641,11 +3634,6 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"webhook_secret":                incoming.Webhook.Secret,
 		"savings_reference_cost_per_1k": strconv.FormatFloat(incoming.Savings.ReferenceCostPer1K, 'f', -1, 64),
 
-		// High availability / peer monitoring.
-		"ha_enabled":               strconv.FormatBool(incoming.HA.Enabled),
-		"ha_heartbeat_interval_ms": strconv.Itoa(incoming.HA.HeartbeatIntervalMs),
-		"ha_peer_timeout_ms":       strconv.Itoa(incoming.HA.PeerTimeoutMs),
-
 		// Global warmup (distinct from the per-node toggle in Warmup.tsx).
 		"warmup_enabled":     strconv.FormatBool(incoming.Warmup.Enabled),
 		"warmup_interval_ms": strconv.Itoa(incoming.Warmup.IntervalMs),
@@ -3660,7 +3648,6 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// List/map-typed fields: JSON-encoded, not representable as a single
 	// scalar settings value.
 	jsonSettings := map[string]any{
-		"ha_peers":                incoming.HA.Peers,
 		"warmup_models":           incoming.Warmup.Models,
 		"routing_fallback_chains": incoming.Routing.FallbackChains,
 		"context_windows":         incoming.ContextWindows,
@@ -5044,32 +5031,6 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"nodes": result,
-	})
-}
-
-// handleHAPeers returns the HA peer reachability snapshot. Requires admin auth.
-func (s *Server) handleHAPeers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if s.haMonitor == nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"enabled": false,
-			"peers":   []struct{}{},
-		})
-		return
-	}
-	statuses := s.haMonitor.PeerStatuses()
-	type peerEntry struct {
-		URL       string `json:"url"`
-		Reachable bool   `json:"reachable"`
-	}
-	peers := make([]peerEntry, 0, len(statuses))
-	for peerURL, reachable := range statuses {
-		peers = append(peers, peerEntry{URL: peerURL, Reachable: reachable})
-	}
-	sort.Slice(peers, func(i, j int) bool { return peers[i].URL < peers[j].URL })
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"enabled": true,
-		"peers":   peers,
 	})
 }
 

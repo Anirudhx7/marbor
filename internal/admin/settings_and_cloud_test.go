@@ -52,10 +52,6 @@ func TestUpdateSettings_PersistsNewConfigYAMLEliminationFields(t *testing.T) {
 		Audit:   config.AuditConfig{Enabled: true},
 		Webhook: config.WebhookConfig{Enabled: true, URL: "https://hooks.example.com", Secret: "whsec-real"},
 		Savings: config.SavingsConfig{ReferenceCostPer1K: 0.05},
-		HA: config.HAConfig{
-			Enabled: true, Peers: []string{"http://peer-a:8080", "http://peer-b:8080"},
-			HeartbeatIntervalMs: 4000, PeerTimeoutMs: 2000,
-		},
 		Warmup: config.WarmupConfig{
 			Enabled: true, IntervalMs: 60000, KeepAlive: "15m",
 			Models: []config.WarmupEntry{{Model: "llama3:8b"}},
@@ -88,9 +84,6 @@ func TestUpdateSettings_PersistsNewConfigYAMLEliminationFields(t *testing.T) {
 		"webhook_enabled":                               "true",
 		"webhook_url":                                   "https://hooks.example.com",
 		"webhook_secret":                                "whsec-real",
-		"ha_enabled":                                    "true",
-		"ha_heartbeat_interval_ms":                      "4000",
-		"ha_peer_timeout_ms":                            "2000",
 		"warmup_enabled":                                "true",
 		"warmup_interval_ms":                            "60000",
 		"warmup_keep_alive":                             "15m",
@@ -104,12 +97,6 @@ func TestUpdateSettings_PersistsNewConfigYAMLEliminationFields(t *testing.T) {
 		if got != want {
 			t.Errorf("setting %q = %q, want %q", key, got, want)
 		}
-	}
-
-	var gotPeers []string
-	store.GetJSONSetting(s.st, "ha_peers", &gotPeers)
-	if len(gotPeers) != 2 || gotPeers[0] != "http://peer-a:8080" {
-		t.Errorf("ha_peers = %v, want 2 peers starting with peer-a", gotPeers)
 	}
 
 	var gotWindows map[string]int

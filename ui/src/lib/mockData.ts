@@ -271,11 +271,6 @@ export const defaultSettings: Settings = {
   webhookSecret: '',
   savingsReferenceCostPer1k: 0.002,
 
-  haEnabled: false,
-  haPeers: [],
-  haHeartbeatIntervalMs: 5000,
-  haPeerTimeoutMs: 3000,
-
   warmupEnabled: false,
   warmupIntervalMs: 300000,
   warmupKeepAlive: '10m',

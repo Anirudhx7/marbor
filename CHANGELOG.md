@@ -40,6 +40,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Security
 - **Secrets are now encrypted at rest in `mesh.db`.** Cloud provider API keys, mesh-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret were previously stored as plaintext columns/settings - readable by anything with access to the SQLite file (backups, misconfigured storage, a copied `.db`). They're now AES-256-GCM encrypted, with the key held in a separate `mesh.db.key` file (0600) generated on first boot, or supplied via `MESH_ENCRYPTION_KEY` (base64 32-byte key) for operators who want to manage it themselves. Existing installs migrate transparently on first boot after upgrading - no manual step, no re-entering keys.
 
+### Removed
+- **Peer health monitor (`ha` config block, `GET /admin/ha/peers`, "Peer Health Monitoring" Settings card) removed.** It only ever polled other ollama-mesh instances' `/health` endpoints for passive observability - no failover, no shared state, no leader election, and it never provided real HA despite the name. ollama-mesh is a single-instance control plane by design (see Architecture Laws); this module's premise (multiple mesh peers) doesn't fit that model, and Node Agent already covers the real multi-machine need (one mesh, many GPU nodes). Anyone who had `ha.enabled: true` set can safely drop it - the `ha` config block and its `ha_*`/`ha_peers` settings keys are silently ignored (not read, not migrated).
+
 ## [0.16.0] - 2026-07-16
 
 ### Added

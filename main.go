@@ -21,7 +21,6 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/bench"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/ha"
 	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
@@ -165,11 +164,6 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Webhook.Secret = store.GetStringSetting(st, "webhook_secret", cfg.Webhook.Secret)
 
 	cfg.Savings.ReferenceCostPer1K = store.GetFloatSetting(st, "savings_reference_cost_per_1k", cfg.Savings.ReferenceCostPer1K)
-
-	cfg.HA.Enabled = store.GetBoolSetting(st, "ha_enabled", cfg.HA.Enabled)
-	cfg.HA.HeartbeatIntervalMs = store.GetIntSetting(st, "ha_heartbeat_interval_ms", cfg.HA.HeartbeatIntervalMs)
-	cfg.HA.PeerTimeoutMs = store.GetIntSetting(st, "ha_peer_timeout_ms", cfg.HA.PeerTimeoutMs)
-	store.GetJSONSetting(st, "ha_peers", &cfg.HA.Peers)
 
 	cfg.Warmup.Enabled = store.GetBoolSetting(st, "warmup_enabled", cfg.Warmup.Enabled)
 	cfg.Warmup.IntervalMs = store.GetIntSetting(st, "warmup_interval_ms", cfg.Warmup.IntervalMs)
@@ -522,13 +516,6 @@ func main() {
 	}
 	adminSrv.StartCounterFlush(ctx)
 	adminSrv.StartPeriodicCleanup(ctx)
-
-	if cfg.HA.Enabled && len(cfg.HA.Peers) > 0 {
-		haMonitor := ha.New(cfg.HA)
-		adminSrv.SetHAMonitor(haMonitor)
-		go haMonitor.Start(ctx)
-		log.Printf("Peer health monitor enabled: %d peer(s) (observability only; not failover/HA)", haMonitor.PeerCount())
-	}
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	proxyHandler.SetAuth(authMw)

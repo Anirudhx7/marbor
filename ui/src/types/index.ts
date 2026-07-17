@@ -213,12 +213,6 @@ export interface Settings {
   webhookSecret: string;
   savingsReferenceCostPer1k: number;
 
-  // High availability / peer monitoring (observability only, not failover).
-  haEnabled: boolean;
-  haPeers: string[];
-  haHeartbeatIntervalMs: number;
-  haPeerTimeoutMs: number;
-
   // Global warmup (distinct from the per-node toggle on the Warmup page).
   warmupEnabled: boolean;
   warmupIntervalMs: number;
