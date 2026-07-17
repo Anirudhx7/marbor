@@ -236,6 +236,36 @@ func TestWarmupBothModelsStayResidentOnNodeWithHeadroom(t *testing.T) {
 	}
 }
 
+// TestPingWarmupModelsSetsPriorityInListOrder verifies the keep-warm priority
+// hierarchy (rank 0 = highest) matches the configured "keep warm" list order,
+// and is set synchronously before any async ping so a concurrent
+// EvictForHeadroom call always observes it. Regression test for the reported
+// bug where two always-warm models on a VRAM-constrained node flipped
+// resident/evicted at random because the warm set was built from a Go map
+// (randomized iteration order) instead of the configured order.
+func TestPingWarmupModelsSetsPriorityInListOrder(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes: []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		nodeWarmup: map[string]NodeWarmup{
+			"n1": {Enabled: true, Models: []string{"gemma4", "mxbai"}},
+		},
+	}
+	for i := 0; i < 5; i++ {
+		r.pingWarmupModels(context.Background())
+		if rank, ok := r.warmRank("n1", "gemma4"); !ok || rank != 0 {
+			t.Fatalf("iteration %d: gemma4 rank = %d, ok=%v, want 0, true", i, rank, ok)
+		}
+		if rank, ok := r.warmRank("n1", "mxbai"); !ok || rank != 1 {
+			t.Fatalf("iteration %d: mxbai rank = %d, ok=%v, want 1, true", i, rank, ok)
+		}
+	}
+}
+
 // TestPingNodeRequestBody verifies pingNode sends the correct JSON body to
 // /api/generate: model name, keep_alive string, and stream:false. This is the
 // critical correctness test - a malformed body would silently fail to keep the

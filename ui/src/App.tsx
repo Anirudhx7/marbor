@@ -5,6 +5,7 @@ import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { DemoBanner } from './components/DemoBanner';
 import { BudgetBanner } from './components/BudgetBanner';
+import { PullProgressWidget } from './components/PullProgressWidget';
 import { Login } from './components/Login';
 import { ForceChangePassword } from './components/ForceChangePassword';
 import { UserPortal } from './pages/UserPortal';
@@ -156,6 +157,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
           </ErrorBoundary>
         </div>
       </main>
+      <PullProgressWidget />
     </div>
   );
 }

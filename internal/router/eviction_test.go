@@ -243,7 +243,7 @@ func TestEvictForHeadroomEvictsColdestNonPinned(t *testing.T) {
 	r.SetPinnedModels("n1", []string{"pinned"})
 
 	// used = 120 MB, total ~125.8 MB, free ~5.8 MB. Need 40 MB → must evict.
-	n := r.EvictForHeadroom(context.Background(), "n1", 40*mib)
+	n := r.EvictForHeadroom(context.Background(), "n1", "newmodel", 40*mib)
 
 	if n < 1 {
 		t.Fatalf("expected at least 1 eviction, got %d", n)
@@ -275,7 +275,7 @@ func TestEvictForHeadroomStopsWhenOnlyPinned(t *testing.T) {
 		pinned:   map[string]map[string]bool{},
 	}
 	r.SetPinnedModels("n1", []string{"onlypinned"})
-	if n := r.EvictForHeadroom(context.Background(), "n1", 999*mib); n != 0 {
+	if n := r.EvictForHeadroom(context.Background(), "n1", "newmodel", 999*mib); n != 0 {
 		t.Errorf("evicted %d, want 0 (only pinned present)", n)
 	}
 }
@@ -287,8 +287,100 @@ func TestEvictForHeadroomUnknownVRAMNoop(t *testing.T) {
 		lastUsed: map[string]time.Time{},
 		pinned:   map[string]map[string]bool{},
 	}
-	if n := r.EvictForHeadroom(context.Background(), "n1", 40*mib); n != 0 {
+	if n := r.EvictForHeadroom(context.Background(), "n1", "a", 40*mib); n != 0 {
 		t.Errorf("evicted %d, want 0 (unknown VRAM)", n)
+	}
+}
+
+// TestEvictForHeadroomProtectsHigherPriorityKeepWarmModel verifies the
+// keep-warm priority hierarchy: when a node can't fit two keep-warm models
+// together, EvictForHeadroom must never evict the higher-priority one (lower
+// rank, e.g. first in the configured "keep warm" list) to make room for a
+// lower-priority one. Regression test for the reported bug where two
+// always-warm models on a VRAM-constrained node flipped resident/evicted at
+// random because eviction only used LRU with no notion of priority.
+func TestEvictForHeadroomProtectsHigherPriorityKeepWarmModel(t *testing.T) {
+	var mu sync.Mutex
+	evicted := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		for _, m := range []string{"high-priority", "low-priority"} {
+			if strings.Contains(string(b), `"`+m+`"`) {
+				evicted[m] = true
+			}
+		}
+		mu.Unlock()
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes: []*NodeState{{
+			Name: "n1", URL: srv.URL, Healthy: true,
+			VRAMTotalMB: 50, // fully consumed by high-priority alone
+			LoadedModels: []ModelInfo{
+				{Name: "high-priority", SizeVRAM: 50 * mib},
+			},
+		}},
+		lastUsed: map[string]time.Time{},
+		pinned:   map[string]map[string]bool{},
+	}
+	r.setWarmPriority("n1", []string{"high-priority", "low-priority"})
+
+	// low-priority needs 40MB; only the higher-priority model is loaded, and
+	// it must not be sacrificed for a lower-priority one.
+	n := r.EvictForHeadroom(context.Background(), "n1", "low-priority", 40*mib)
+	if n != 0 {
+		t.Fatalf("expected 0 evictions (only a higher-priority keep-warm model present), got %d", n)
+	}
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if evicted["high-priority"] {
+		t.Error("higher-priority keep-warm model must never be evicted for a lower-priority one")
+	}
+}
+
+// TestEvictForHeadroomLowerPriorityKeepWarmModelIsEvictable verifies the
+// inverse of the priority-protection test above: a lower-priority keep-warm
+// model IS evictable to make room for a higher-priority one.
+func TestEvictForHeadroomLowerPriorityKeepWarmModelIsEvictable(t *testing.T) {
+	var mu sync.Mutex
+	evicted := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		if strings.Contains(string(b), `"low-priority"`) {
+			evicted["low-priority"] = true
+		}
+		mu.Unlock()
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes: []*NodeState{{
+			Name: "n1", URL: srv.URL, Healthy: true,
+			VRAMTotalMB: 50,
+			LoadedModels: []ModelInfo{
+				{Name: "low-priority", SizeVRAM: 50 * mib},
+			},
+		}},
+		lastUsed: map[string]time.Time{},
+		pinned:   map[string]map[string]bool{},
+	}
+	r.setWarmPriority("n1", []string{"high-priority", "low-priority"})
+
+	n := r.EvictForHeadroom(context.Background(), "n1", "high-priority", 40*mib)
+	if n < 1 {
+		t.Fatalf("expected low-priority model to be evicted for high-priority one, got %d evictions", n)
+	}
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !evicted["low-priority"] {
+		t.Error("lower-priority keep-warm model should be evictable to make room for a higher-priority one")
 	}
 }
 

@@ -42,18 +42,28 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 	}
 	r.mu.RUnlock()
 
-	// Build the effective warm set (nodeName -> set of models): the union of the
-	// config-file warmup (optionally node-scoped) and per-node runtime warmup
-	// toggled via the admin API.
-	byNode := map[string]map[string]struct{}{}
+	// Build the effective warm set (nodeName -> ordered models): the union of
+	// the config-file warmup (optionally node-scoped) and per-node runtime
+	// warmup toggled via the admin API. Order is preserved and deduped
+	// (first-seen wins) rather than collapsed into a map, because it doubles
+	// as a priority hierarchy: when a node can't fit every keep-warm model at
+	// once, earlier-listed models always win the VRAM contest over
+	// later-listed ones (see setWarmPriority/EvictForHeadroom) instead of
+	// whichever happened to warm last under Go's randomized map iteration.
+	byNode := map[string][]string{}
+	seen := map[string]map[string]struct{}{}
 	add := func(nodeName, model string) {
 		if model == "" {
 			return
 		}
-		if byNode[nodeName] == nil {
-			byNode[nodeName] = map[string]struct{}{}
+		if seen[nodeName] == nil {
+			seen[nodeName] = map[string]struct{}{}
 		}
-		byNode[nodeName][model] = struct{}{}
+		if _, dup := seen[nodeName][model]; dup {
+			return
+		}
+		seen[nodeName][model] = struct{}{}
+		byNode[nodeName] = append(byNode[nodeName], model)
 	}
 	if cfg.Enabled {
 		for _, entry := range cfg.Models {
@@ -91,6 +101,10 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 		if rt := n.GetRuntime(); rt != "ollama" && rt != "" {
 			continue
 		}
+		// Publish this node's current priority order before warming, so
+		// EvictForHeadroom can protect a higher-priority keep-warm model from
+		// being evicted to make room for a lower-priority one below.
+		r.setWarmPriority(nodeName, models)
 		// Residency check (real, not cosmetic): record whether each target model
 		// is currently loaded in VRAM on this node, from the latest /api/ps poll.
 		n.mu.RLock()
@@ -99,10 +113,11 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			loaded[m.Name] = struct{}{}
 		}
 		n.mu.RUnlock()
-		// Collect this node's models into a slice so they can be warmed
-		// sequentially within a single goroutine (see below for why).
+		// Warm in priority order (highest first) so a higher-priority model is
+		// always already resident - and thus protected - by the time a
+		// lower-priority sibling's headroom check runs.
 		nodeModels := make([]string, 0, len(models))
-		for model := range models {
+		for _, model := range models {
 			_, resident := loaded[model]
 			metrics.WarmupResident(model, n.Name, resident)
 			nodeModels = append(nodeModels, model)
