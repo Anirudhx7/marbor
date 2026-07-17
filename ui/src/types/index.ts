@@ -50,7 +50,6 @@ export interface GPUNode {
   // /api/ps (real, total unknown); declared = total from config; none = no data.
   vramSource: 'nvidia' | 'api' | 'declared' | 'none';
   powerDrawW: number;
-  cpuPercent: number;
   temperature: number | null;
   health: 'healthy' | 'degraded' | 'down';
   runtime: string;
@@ -74,11 +73,12 @@ export interface GPUNode {
   // Node Agent-derived telemetry (internal/nodeagent). agentPresent is false
   // whenever no agent is configured for this node, or the most recent agent
   // poll failed - the UI must check agentPresent before displaying
-  // fanPercent/ramUsedMB/diskFreeGB/agentVersion as real measurements (R1),
-  // rendering '-' instead.
+  // cpuPercent/fanPercent/ramUsedMB/diskFreeGB/agentVersion as real
+  // measurements (R1), rendering '-' instead.
   agentPresent?: boolean;
   agentVersion?: string;
   fanPercent?: number | null;
+  cpuPercent?: number;
   ramUsedMB?: number;
   diskFreeGB?: number;
   // Agent self-reported metadata (capabilities/platform/architecture/GPU
