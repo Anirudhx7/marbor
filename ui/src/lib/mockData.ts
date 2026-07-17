@@ -31,6 +31,13 @@ export const mockGPUNodes: GPUNode[] = [
     tokensTotal: 245000,
     avgLatencyMs: 120,
     warmHitRatio: 0.98,
+    // Node Agent installed on this node (demo parity - other demo nodes show
+    // the no-agent state so both are visible side by side).
+    agentPresent: true,
+    agentVersion: '0.1.0',
+    fanPercent: 62,
+    ramUsedMB: Math.round(41.5 * GB),
+    diskFreeGB: 812.4,
   },
   {
     id: 'node-2',
