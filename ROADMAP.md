@@ -98,6 +98,7 @@ Ordered by pull, not promise - items graduate to "Next" when real deployments as
   traffic patterns rather than adding new prediction signals
 - **Deeper GPU observability** - per-model tokens/sec, cold-start counters, warm-hit
   ratios surfaced as first-class dashboard and Prometheus signals
+- **Concurrency & Queueing** - Enhancing queue scheduling (e.g., prioritizing low-latency requests, implementing fair-share queues per API key, or handling backpressure during high concurrency)
 - **SQLite write-path hardening at 20+ nodes** - the single-gateway design lives or dies
   on write throughput; benchmark and tune before it becomes a ceiling
 - **Additional runtime adapters** (TensorRT-LLM, SGLang, …) - strictly demand-driven;
