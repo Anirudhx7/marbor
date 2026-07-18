@@ -508,66 +508,6 @@ export const mockAnalytics: Analytics = {
   ],
 };
 
-export const configFileYAML = `# Ollama-Mesh Configuration
-# Generated: ${new Date().toISOString()}
-
-proxy:
-  port: 11434
-  host: 0.0.0.0
-  auth:
-    mode: api-key
-    jwt_secret: \${JWT_SECRET}
-    
-routing:
-  strategy: warm-first
-  fallback: least-connections
-  health_check_interval: 30s
-  
-litellm:
-  enabled: false
-  endpoint: http://localhost:4000
-  api_key: \${LITELLM_API_KEY}
-  
-gpu_nodes:
-  - name: gpu-node-01
-    host: 10.0.1.10
-    port: 11434
-    gpu: NVIDIA A100 80GB
-    labels:
-      tier: production
-      
-  - name: gpu-node-02
-    host: 10.0.1.11
-    port: 11435
-    gpu: NVIDIA A100 80GB
-    labels:
-      tier: production
-      
-  - name: gpu-node-03
-    host: 10.0.1.12
-    port: 11436
-    gpu: NVIDIA RTX 4090 24GB
-    labels:
-      tier: development
-      
-  - name: gpu-node-04
-    host: 10.0.1.13
-    port: 11437
-    gpu: NVIDIA RTX 4090 24GB
-    labels:
-      tier: development
-
-observability:
-  prometheus:
-    enabled: true
-    port: 9090
-    path: /metrics
-  logging:
-    level: info
-    format: json
-    output: stdout
-`;
-
 // Mock system info: single RTX 4090 node, 64 GB RAM, 24 cores
 export const mockSystemInfo: SystemInfo = {
   cpu_cores: 24,
@@ -1027,10 +967,6 @@ export function setMockModelConfig(cfg: ModelConfig): ModelConfig {
 
 export function deleteMockModelConfig(model: string, node: string): void {
   demoModelConfigStore().delete(modelConfigKey(model, node));
-}
-
-export function listMockModelConfigs(): ModelConfig[] {
-  return Array.from(demoModelConfigStore().values());
 }
 
 // --- Model config capabilities (demo) ---

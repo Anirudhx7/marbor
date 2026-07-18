@@ -79,9 +79,6 @@ export async function skipPasswordChangeThisSession(): Promise<void> {
   localStorage.setItem('sessionMustChangePassword', 'false');
 }
 
-// Backward compat aliases
-export function clearSessionToken(): void { clearSession(); }
-
 // --- Auth ---
 
 export async function login(username: string, password: string): Promise<LoginResponse> {
@@ -389,7 +386,7 @@ let isRedirectingToLogin = false;
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, { ...init, credentials: 'include' });
   if (res.status === 401) {
-    clearSessionToken();
+    clearSession();
     if (!isRedirectingToLogin) {
       isRedirectingToLogin = true;
       window.location.reload();
