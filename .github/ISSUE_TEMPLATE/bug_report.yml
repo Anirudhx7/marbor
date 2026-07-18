@@ -32,6 +32,6 @@ body:
   - type: textarea
     id: config
     attributes:
-      label: config.yaml (redacted)
-      description: Your config with keys removed. Helps reproduce routing issues.
-      render: yaml
+      label: Settings JSON (redacted)
+      description: Your /api/settings payload or custom database configuration (with keys redacted).
+      render: json
