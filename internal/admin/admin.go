@@ -1397,7 +1397,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		cfg.Runtime = "ollama"
 	}
 	if !isValidRuntime(cfg.Runtime) {
-		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)", cfg.Runtime))
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", cfg.Runtime))
 		return
 	}
 	s.router.AddNode(cfg)
@@ -2176,7 +2176,7 @@ func (s *Server) handleSetNodePrewarm(w http.ResponseWriter, r *http.Request) {
 // Shared by handleAddNode and handlePatchNode so both reject the same set.
 func isValidRuntime(runtime string) bool {
 	switch runtime {
-	case "ollama", "vllm", "tgi", "llamacpp", "auto":
+	case "ollama", "vllm", "tgi", "llamacpp", "mlx", "auto":
 		return true
 	default:
 		return false
@@ -2194,7 +2194,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if patch.Runtime != nil && !isValidRuntime(*patch.Runtime) {
-		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)", *patch.Runtime))
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", *patch.Runtime))
 		return
 	}
 	if !s.router.PatchNode(name, patch) {
@@ -2244,7 +2244,7 @@ func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
 // out of sync with the backend before). GET /admin/model-config/capabilities.
 func (s *Server) handleModelConfigCapabilities(w http.ResponseWriter, r *http.Request) {
 	out := map[string][]string{}
-	for _, runtime := range []string{"ollama", "vllm", "tgi", "llamacpp"} {
+	for _, runtime := range []string{"ollama", "vllm", "tgi", "llamacpp", "mlx"} {
 		out[runtime] = store.SupportedFieldsFor(runtime)
 	}
 	w.Header().Set("Content-Type", "application/json")

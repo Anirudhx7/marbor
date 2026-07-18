@@ -220,11 +220,11 @@ type NodeConfig struct {
 	// only sees the mesh host). Operator-declared, surfaced as "declared", never
 	// presented as a live measurement. 0 = unknown (UI shows capacity as "-").
 	VRAMTotalMB int64 `yaml:"vram_total_mb" json:"vram_total_mb"`
-	// Runtime identifies the inference backend. Valid: "ollama" (default), "vllm", "tgi", "llamacpp".
+	// Runtime identifies the inference backend. Valid: "ollama" (default), "vllm", "tgi", "llamacpp", "mlx".
 	// Controls which health endpoint and warm-model detection API the router uses.
 	Runtime string `yaml:"runtime" json:"runtime"`
 	// VRAMOverrides declares, per model name, how much VRAM (MB) that model
-	// consumes on this node. Non-Ollama runtimes (vllm, tgi, llamacpp) don't
+	// consumes on this node. Non-Ollama runtimes (vllm, tgi, llamacpp, mlx) don't
 	// expose per-model VRAM/disk size via their APIs, so without this the
 	// router has no way to size a not-yet-loaded model and silently disables
 	// predictive warmup and headroom/eviction checks for that node. Operator-
@@ -503,10 +503,10 @@ func (c *Config) Validate() error {
 			c.Nodes[i].VRAMOverrides = map[string]int64{}
 		}
 		switch c.Nodes[i].Runtime {
-		case "ollama", "vllm", "tgi", "llamacpp", "auto":
+		case "ollama", "vllm", "tgi", "llamacpp", "mlx", "auto":
 			// valid
 		default:
-			return fmt.Errorf("node %s: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, auto)", n.Name, c.Nodes[i].Runtime)
+			return fmt.Errorf("node %s: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", n.Name, c.Nodes[i].Runtime)
 		}
 	}
 	// Detect port collisions between proxy, admin, and metrics servers.

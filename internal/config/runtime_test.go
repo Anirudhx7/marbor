@@ -57,6 +57,19 @@ func TestNodeRuntimeLlamacppAccepted(t *testing.T) {
 	}
 }
 
+func TestNodeRuntimeMlxAccepted(t *testing.T) {
+	var cfg Config
+	cfg.Nodes = []NodeConfig{
+		{Name: "n", URL: "http://localhost:8080", Runtime: "mlx"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("runtime mlx should be accepted: %v", err)
+	}
+	if cfg.Nodes[0].Runtime != "mlx" {
+		t.Errorf("runtime = %q, want \"mlx\"", cfg.Nodes[0].Runtime)
+	}
+}
+
 func TestNodeRuntimeUnknownReturnsError(t *testing.T) {
 	var cfg Config
 	cfg.Nodes = []NodeConfig{

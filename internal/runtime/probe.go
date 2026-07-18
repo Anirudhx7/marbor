@@ -25,7 +25,7 @@ type RuntimeProbe interface {
 }
 
 // NewProbe returns the correct RuntimeProbe for the given runtime string.
-// Known values: "ollama" (or ""), "vllm", "tgi", "llamacpp".
+// Known values: "ollama" (or ""), "vllm", "tgi", "llamacpp", "mlx".
 // Any unknown value falls back to OllamaProbe so existing deployments are safe.
 func NewProbe(runtime string, client *http.Client) RuntimeProbe {
 	switch runtime {
@@ -35,6 +35,8 @@ func NewProbe(runtime string, client *http.Client) RuntimeProbe {
 		return &TGIProbe{client: client}
 	case "llamacpp":
 		return &LlamaCppProbe{client: client}
+	case "mlx":
+		return &MLXProbe{client: client}
 	default:
 		// "ollama", "", or any unrecognised value → Ollama (safe default)
 		return &OllamaProbe{client: client}

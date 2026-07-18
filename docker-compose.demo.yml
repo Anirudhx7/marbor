@@ -98,13 +98,33 @@ services:
       retries: 10
       start_period: 5s
 
-  # mesh deliberately does NOT depend_on the 3 multi-runtime nodes above:
+  mlx-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.mocknode
+    environment:
+      RUNTIME: mlx
+      NODE_NAME: mlx-node
+      PORT: "11434"
+      LATENCY_MS: "130"
+    ports:
+      - "11440:11434"
+    healthcheck:
+      # mlx has no /health route (real mlx_lm.server doesn't expose one) -
+      # /v1/models is the reachability signal, matching internal/runtime.MLXProbe.
+      test: ["CMD", "wget", "-qO-", "http://localhost:11434/v1/models"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # mesh deliberately does NOT depend_on the 4 multi-runtime nodes above:
   # docker compose auto-starts a service's depends_on targets even when they
   # weren't named explicitly in an `up` command, which would make any partial
   # `up -d` invocation (e.g. bringing up just `mesh` for a manual debug
-  # session) silently drag in 3 extra containers. The router already handles
+  # session) silently drag in 4 extra containers. The router already handles
   # a configured-but-not-yet-up node gracefully (marks it unhealthy until it
-  # responds), so mesh can start without them. smoke.sh starts all 5
+  # responds), so mesh can start without them. smoke.sh starts all 6
   # explicitly with `--wait` instead of relying on depends_on for this.
   mesh:
     build:

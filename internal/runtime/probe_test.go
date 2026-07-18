@@ -209,6 +209,53 @@ func TestLlamaCppProbe_HealthFails(t *testing.T) {
 	}
 }
 
+// --- MLXProbe tests ---
+
+func TestMLXProbe_HappyPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{"id": "mlx-community/Llama-3.2-3B-Instruct-4bit"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	probe := &MLXProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if len(result.LoadedModels) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(result.LoadedModels))
+	}
+	if result.LoadedModels[0].Name != "mlx-community/Llama-3.2-3B-Instruct-4bit" {
+		t.Errorf("unexpected model name: %s", result.LoadedModels[0].Name)
+	}
+	if result.VRAMUsedMB != 0 {
+		t.Errorf("expected VRAMUsedMB=0 for mlx, got %d", result.VRAMUsedMB)
+	}
+}
+
+func TestMLXProbe_ModelsUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	probe := &MLXProbe{client: testClient()}
+	_, err := probe.Probe(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for 503 /v1/models, got nil")
+	}
+}
+
 // --- NewProbe factory tests ---
 
 func TestNewProbe_KnownRuntimes(t *testing.T) {
@@ -222,6 +269,7 @@ func TestNewProbe_KnownRuntimes(t *testing.T) {
 		{"vllm", "*runtime.VLLMProbe"},
 		{"tgi", "*runtime.TGIProbe"},
 		{"llamacpp", "*runtime.LlamaCppProbe"},
+		{"mlx", "*runtime.MLXProbe"},
 	}
 	for _, tt := range tests {
 		p := NewProbe(tt.runtime, client)
