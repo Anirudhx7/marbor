@@ -326,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h3 id="what---means">What "-" Means<a class="anchor" href="#what---means" aria-label="Link to section">#</a></h3>
 <p>If requests were served but no token counts could be parsed from any response - for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk - the API returns <code>null</code> and the dashboard renders "-". ollama-mesh <strong>never</strong> substitutes an estimated or random number for missing token data.</p>
 <h3 id="counter-lifecycle">Counter Lifecycle<a class="anchor" href="#counter-lifecycle" aria-label="Link to section">#</a></h3>
-<p>Savings and spend counters are held in memory. Per-key token totals and quota counters are persisted to <code>usage-state.json</code> (configurable via <code>auth.state_path</code>) and survive restarts. Aggregate savings counters reset on process restart. The audit log (JSON-lines, if enabled) is the durable per-request record.</p>
+<p>Savings and spend counters are held in memory. Per-key token totals and quota counters are stored in-memory for zero-overhead routing and transactionally flushed to the SQLite <code>key_counters</code> table in <code>mesh.db</code> every 30 seconds and on clean shutdown. Aggregate savings counters reset on process restart. The audit log (if enabled) is the durable per-request record.</p>
 <hr/>
 <h2 id="configuration">Configuration<a class="anchor" href="#configuration" aria-label="Link to section">#</a></h2>
 <h3 id="setting-the-reference-rate">Setting the Reference Rate<a class="anchor" href="#setting-the-reference-rate" aria-label="Link to section">#</a></h3>
