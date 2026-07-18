@@ -10,7 +10,7 @@ ollama-mesh exposes two protocols on the same port:
 
 | Protocol | URL | When to use |
 |----------|-----|-------------|
-| Ollama-native | `http://<mesh-host>:11434` | Recommended. Full Ollama API passthrough including `/api/chat`, `/api/generate`, `/api/pull`. |
+| Ollama-native | `http://<mesh-host>:11434` | Recommended. Full Ollama inference passthrough including `/api/chat` and `/api/generate`. Management endpoints like `/api/pull`, `/api/push`, and `/api/delete` are blocked by default (enable via Advanced Routing settings for single-tenant setups). |
 | OpenAI-compatible | `http://<mesh-host>:11434/v1` | Use when connecting through Open WebUI's OpenAI connection type. |
 
 Both paths require your `sk-mesh-...` API key sent as a `Bearer` token.

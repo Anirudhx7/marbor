@@ -39,18 +39,16 @@ Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each
 Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh. For remote nodes, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
 
 ### Temperature and power draw
-GPU temperature and power draw are only available for the node running on the same host as ollama-mesh, via `nvidia-smi`. Remote nodes do not report temperature or power draw.
+GPU temperature and power draw are read from `nvidia-smi` on the host running ollama-mesh, without any node agent, for the local node.
 
-This is by design. Getting telemetry from remote nodes would require a lightweight agent running on each GPU host. ollama-mesh deliberately avoids that dependency to stay a single static binary with no remote components to deploy or maintain.
-
-If you need remote GPU temperature and power draw, options are: a Prometheus node exporter with the DCGM exporter on each GPU host, or a Grafana Agent with the nvidia_smi collector. These can be layered on top of ollama-mesh without any changes to the mesh itself.
+For remote nodes, the same telemetry (temperature, power draw, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent running on a given remote node, that node's temperature and power draw show as `-` in the dashboard, per this project's rule that missing data is always shown as `-`, never a fake estimate.
 
 ---
 
 ## Admin Dashboard Security
 
 ### Admin login lockout
-The admin login endpoint throttles failed attempts per client IP: 5 failures within a 5-minute window trigger a 15-minute lockout (`429 Too Many Requests`, with a generic error that never reveals whether the username exists). A successful login clears the failure count for that IP. This state is in-memory and resets on process restart - an acceptable tradeoff since a meaningful brute-force run takes far longer than a typical restart cycle, and rotating credentials (not restarting the process) is the right response to a suspected compromise.
+The admin login endpoint throttles failed attempts per client IP: 5 failures within a 1-minute window trigger a 15-minute lockout (`429 Too Many Requests`, with a generic error that never reveals whether the username exists). A successful login clears the failure count for that IP. This state is in-memory and resets on process restart - an acceptable tradeoff since a meaningful brute-force run takes far longer than a typical restart cycle, and rotating credentials (not restarting the process) is the right response to a suspected compromise.
 
 For defense in depth, still put a reverse proxy in front of the admin port (`8080`) and apply rate limiting there - nginx's `limit_req` directive or Cloudflare's rate limiting rules both work. The admin port should not be exposed to the public internet directly regardless.
 
@@ -88,7 +86,7 @@ Session affinity is implemented and gated by the `routing.session_affinity` flag
 ## Out of Scope
 The following are deliberate non-goals, not gaps to be filled:
 - **TLS termination.** ollama-mesh does not handle TLS. Put nginx or a load balancer in front for HTTPS. This keeps the binary simple and puts TLS configuration where operators already manage it.
-- **Remote GPU temperature and power draw.** Requires a node agent. Not built. Use DCGM exporter or nvidia_smi Prometheus collector on each GPU host.
+- **Auto-deployed remote telemetry.** Node Agent must be manually installed per node - mesh does not auto-deploy it to remote hosts.
 - **Multi-instance coordination.** No distributed consensus, no Raft, no etcd dependency. Single-host deployment only.
 - **Chat UI, model fine-tuning, or web scraping.** ollama-mesh is a proxy and router. These are out of scope.
-- **Cloud provider breadth.** OpenAI and Anthropic are supported for cloud overflow. Supporting 100 providers (LiteLLM's approach) is not a goal.
+- **Cloud provider breadth.** OpenAI-compatible providers are supported via built-in presets (OpenRouter, Groq, Together, Fireworks, DeepSeek, Mistral, xAI, Cerebras, NVIDIA NIM) or a custom base URL; Anthropic gets native translation. LiteLLM's approach of abstracting hundreds of providers behind one client SDK is not a goal.

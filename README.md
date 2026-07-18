@@ -167,7 +167,7 @@ Client Application (Agent / RAG / Copilot)
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
 | | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-reads config in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
-| | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: operator-declared `vram_total_mb`. Every figure labelled with its source (nvidia/api/declared). |
+| | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional Node Agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
 | **Multi-Backend** | Ollama, vLLM, TGI, llama.cpp, MLX | Declare `runtime: ollama/vllm/tgi/llamacpp/mlx` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. |
 | | Path-aware routing | `/api/*` routes to Ollama nodes only. `/v1/*` routes to any runtime. Non-Ollama nodes are transparent to OpenAI SDK clients. |

@@ -280,7 +280,7 @@ sudo journalctl -u ollama-mesh -f</code></pre>
 <pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
 services:
   ollama-mesh:
-    image: ghcr.io/ollama-mesh/ollama-mesh:latest
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -302,7 +302,7 @@ metadata:
   name: ollama-mesh
   namespace: ai-infra
 spec:
-  replicas: 1        # single instance - usage state is local file, not shared
+  replicas: 1        # single instance - mesh.db on the PVC is not a shared datastore
   selector:
     matchLabels:
       app: ollama-mesh
@@ -317,7 +317,7 @@ spec:
     spec:
       containers:
         - name: ollama-mesh
-          image: ghcr.io/ollama-mesh/ollama-mesh:latest
+          image: ghcr.io/anirudhx7/ollama-mesh:latest
           args: ["--db", "/data/mesh.db"]
           ports:
             - containerPort: 11434   # endpoint
@@ -368,7 +368,7 @@ spec:
     - name: metrics
       port: 9090
       targetPort: 9090</code></pre>
-<p>Note: the Kubernetes deployment above runs a single replica because <code>usage-state.json</code> is a local file. Running multiple replicas would split quota state across instances. A shared-state backend is on the Phase 3 roadmap.</p>
+<p>Note: the Kubernetes deployment above runs a single replica because <code>mesh.db</code> (SQLite) is the sole datastore and is not shared across instances. Running multiple replicas would split state across separate, inconsistent databases.</p>
 <hr/>
 <h2 id="nginx-tls-termination">nginx TLS Termination<a class="anchor" href="#nginx-tls-termination" aria-label="Link to section">#</a></h2>
 <p>ollama-mesh does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:</p>
@@ -429,7 +429,7 @@ server {
 <hr/>
 <h2 id="graceful-shutdown">Graceful Shutdown<a class="anchor" href="#graceful-shutdown" aria-label="Link to section">#</a></h2>
 <p>On SIGTERM, ollama-mesh starts a 15-second graceful shutdown:</p>
-<ol><li>Stops accepting new connections on all three ports.</li><li>Allows in-flight requests to complete (up to the timeout).</li><li>Flushes <code>usage-state.json</code> one final time so quota counters are not lost.</li><li>Exits cleanly.</li></ol>
+<ol><li>Stops accepting new connections on all three ports.</li><li>Allows in-flight requests to complete (up to the timeout).</li><li>Flushes in-memory per-key usage/quota counters to the <code>key_counters</code> table in <code>mesh.db</code> one final time.</li><li>Exits cleanly.</li></ol>
 <p>For systemd, the <code>TimeoutStopSec=30</code> in the unit file gives the process time to drain before systemd sends SIGKILL.</p>
 <hr/>
 <h2 id="resource-sizing">Resource Sizing<a class="anchor" href="#resource-sizing" aria-label="Link to section">#</a></h2>
@@ -445,11 +445,12 @@ server {
 <h2 id="durability-notes">Durability Notes<a class="anchor" href="#durability-notes" aria-label="Link to section">#</a></h2>
 <div class="table-scroll"><table>
 <thead><tr><th>Data</th><th>Persistence</th></tr></thead>
-<tbody><tr><td>Per-key token usage, quota counters</td><td>Persisted to <code>auth.state_path</code> (default: <code>usage-state.json</code>) every 30 seconds and on clean shutdown. A crash loses at most 30 seconds of counter updates. Set <code>state_path: "-"</code> to disable.</td></tr>
+<tbody><tr><td>Per-key token usage, quota counters</td><td>In-memory, flushed to the <code>key_counters</code> table in <code>mesh.db</code> every 30 seconds and on clean shutdown. A crash loses at most 30 seconds of counter updates.</td></tr>
 <tr><td>API key config, node config, routing/settings</td><td>In <code>mesh.db</code> (SQLite) - the sole source of truth. Set via the dashboard or <code>/admin/v1/...</code> REST API.</td></tr>
-<tr><td>Audit log</td><td>Append-only JSON-lines file at <code>audit.path</code> if <code>audit.enabled: true</code>.</td></tr>
-<tr><td>Request log / analytics</td><td>In-memory only. Lost on restart by design - these are operational views, not a database. SQLite persistence is on the roadmap.</td></tr>
-<tr><td>GPU telemetry</td><td>Live reads from nvidia-smi on the mesh host. Not persisted.</td></tr></tbody>
+<tr><td>Audit log (per-request)</td><td>The <code>audit_log</code> table in <code>mesh.db</code>, written when audit logging is enabled. Retention is configurable (<code>audit_retention_days</code> setting, default 30 days; 0 keeps rows forever) and enforced by a periodic prune job.</td></tr>
+<tr><td>Admin action trail</td><td>The separate <code>system_audit_log</code> table in <code>mesh.db</code> (who changed what in the dashboard/API). Independently retained (<code>audit_system_retention_days</code> setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log.</td></tr>
+<tr><td>Request log / analytics</td><td>Persisted to <code>request_log</code>, <code>hourly_buckets</code>, and <code>model_stats</code> tables in <code>mesh.db</code>, not purely in-memory.</td></tr>
+<tr><td>GPU telemetry</td><td>Live reads from nvidia-smi (or the Node Agent) on each node. Not persisted.</td></tr></tbody>
 </table></div>
 
       <div class="doc-foot-edit">

@@ -234,7 +234,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>ollama-mesh exposes two protocols on the same port:</p>
 <div class="table-scroll"><table>
 <thead><tr><th>Protocol</th><th>URL</th><th>When to use</th></tr></thead>
-<tbody><tr><td>Ollama-native</td><td><code>http://&lt;mesh-host&gt;:11434</code></td><td>Recommended. Full Ollama API passthrough including <code>/api/chat</code>, <code>/api/generate</code>, <code>/api/pull</code>.</td></tr>
+<tbody><tr><td>Ollama-native</td><td><code>http://&lt;mesh-host&gt;:11434</code></td><td>Recommended. Full Ollama inference passthrough including <code>/api/chat</code> and <code>/api/generate</code>. Management endpoints like <code>/api/pull</code>, <code>/api/push</code>, and <code>/api/delete</code> are blocked by default (enable via Advanced Routing settings for single-tenant setups).</td></tr>
 <tr><td>OpenAI-compatible</td><td><code>http://&lt;mesh-host&gt;:11434/v1</code></td><td>Use when connecting through Open WebUI's OpenAI connection type.</td></tr></tbody>
 </table></div>
 <p>Both paths require your <code>sk-mesh-...</code> API key sent as a <code>Bearer</code> token.</p>

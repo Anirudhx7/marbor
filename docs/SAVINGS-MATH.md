@@ -147,7 +147,7 @@ After break-even, every locally-served token is pure cost deflection. The hardwa
 
 3. **Reference rate** - operator-configured on the dashboard's **Settings > Global Warmup & Audit** page (Savings reference cost). Single flat rate applied to all locally-served tokens.
 
-4. **Cloud rates** - per-provider `cost_per_1k_tokens` in the `cloud_providers` config block.
+4. **Cloud rates** - per-provider `cost_per_1k_tokens`, configured per cloud provider via the dashboard or the admin API.
 
 ### What "-" Means
 
@@ -163,12 +163,7 @@ Savings and spend counters are held in memory. Per-key token totals and quota co
 
 ### Setting the Reference Rate
 
-```yaml
-savings:
-  reference_cost_per_1k: 0.015   # match your actual cloud model rate
-```
-
-Set this to the blended rate of the cloud model your traffic would otherwise consume:
+The reference rate (`reference_cost_per_1k`) is configured via the dashboard's **Settings > Global Warmup & Audit** page, or the admin API (`/admin/v1/settings`) - there is no config file. Set it to the blended rate of the cloud model your traffic would otherwise consume:
 
 | Cloud Model | Rate (per 1K tokens) | Blended (70% in / 30% out) | Notes |
 |-------------|---------------------|---------------------------|-------|
@@ -183,17 +178,7 @@ When the field is missing or zero, the default `$0.002/1K` applies. Changing the
 
 ### Per-Provider Cloud Rates
 
-```yaml
-cloud_providers:
-  - name: openai-overflow
-    provider: openai
-    cost_per_1k_tokens: 0.0025    # GPT-4o blended rate
-    enabled: true
-  - name: anthropic-overflow
-    provider: anthropic
-    cost_per_1k_tokens: 0.004     # Claude Sonnet 4 blended rate
-    enabled: true
-```
+Each cloud provider's `cost_per_1k_tokens` (along with `name`, `provider`, and `enabled`) is configured via the dashboard or the admin API (`/admin/v1/settings`) - for example, an `openai-overflow` provider at `0.0025` (GPT-4o blended rate) or an `anthropic-overflow` provider at `0.004` (Claude Sonnet 4 blended rate). There is no config file to edit.
 
 ---
 
