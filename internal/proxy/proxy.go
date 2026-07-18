@@ -618,7 +618,10 @@ func buildLocalProxy(targetURL *url.URL, body []byte, orig *http.Request, transp
 		req.Host = targetURL.Host
 		req.Header = make(http.Header)
 		for k, v := range orig.Header {
-			if k != "Authorization" {
+			// Authorization is the mesh's own API-key credential; Cookie carries
+			// the admin dashboard's httpOnly session cookie if this request came
+			// via a browser proxy path. Neither belongs on a backend GPU node.
+			if k != "Authorization" && k != "Cookie" {
 				req.Header[k] = v
 			}
 		}
@@ -897,6 +900,9 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		req.Host = targetURL.Host
 		req.Header = r.Header.Clone()
 		req.Header.Del("Authorization")
+		// Cookie carries the admin dashboard's httpOnly session cookie if this
+		// request came via a browser proxy path - never send it to a cloud provider.
+		req.Header.Del("Cookie")
 		req.Header.Set("Authorization", "Bearer "+cloud.APIKey)
 		if len(outBody) > 0 {
 			req.Body = io.NopCloser(bytes.NewReader(outBody))
