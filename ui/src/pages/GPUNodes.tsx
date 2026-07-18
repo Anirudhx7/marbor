@@ -732,6 +732,7 @@ export function GPUNodes() {
       const added: GPUNode = {
         id: `gpu-node-${Math.random().toString(36).substring(2, 9)}`,
         name: newNode.name,
+        host: newNode.host,
         gpuModel: newNode.gpuModel || 'Unknown GPU',
         port: parseInt(newNode.port, 10) || 11434,
         vramTotalMB: 24576,
@@ -868,32 +869,49 @@ export function GPUNodes() {
   };
 
   const [editNode, setEditNode] = useState<GPUNode | null>(null);
+  const [editHost, setEditHost] = useState('');
+  const [editPort, setEditPort] = useState('');
   const [editVRAM, setEditVRAM] = useState('');
   const [editGPUModel, setEditGPUModel] = useState('');
   const [editRuntime, setEditRuntime] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } | null>(null);
 
   const openEditModal = (node: GPUNode) => {
     setEditNode(node);
+    setEditHost(node.host ?? '');
+    setEditPort(node.port ? String(node.port) : '');
     setEditVRAM(node.vramTotalMB > 0 ? String(node.vramTotalMB) : '');
     setEditGPUModel(node.gpuModel ?? '');
     setEditRuntime(node.runtime || 'ollama');
     setEditError('');
   };
 
-  const handleSavePatch = async () => {
-    if (!editNode) return;
-    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string } = {};
+  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } | 'invalid' | null => {
+    if (!editNode) return null;
+    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } = {};
     if (editVRAM.trim() !== '') {
       const v = parseInt(editVRAM, 10);
-      if (isNaN(v) || v < 0) { setEditError('VRAM must be a non-negative integer (MB)'); return; }
+      if (isNaN(v) || v < 0) { setEditError('VRAM must be a non-negative integer (MB)'); return 'invalid'; }
       patch.vram_total_mb = v;
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
     if (editRuntime && editRuntime !== (editNode.runtime || 'ollama')) patch.runtime = editRuntime;
-    if (Object.keys(patch).length === 0) { setEditNode(null); return; }
+    const hostChanged = editHost.trim() !== '' && editHost.trim() !== (editNode.host ?? '');
+    const portChanged = editPort.trim() !== '' && editPort.trim() !== String(editNode.port ?? '');
+    if (hostChanged || portChanged) {
+      const host = editHost.trim() || editNode.host;
+      const port = editPort.trim() || String(editNode.port);
+      if (!host || !port || isNaN(parseInt(port, 10))) { setEditError('Host and port must both be set'); return 'invalid'; }
+      patch.url = `http://${host}:${port}`;
+    }
+    if (Object.keys(patch).length === 0) return null;
+    return patch;
+  };
 
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string }) => {
+    if (!editNode) return;
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === editNode.name
         ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel, runtime: patch.runtime ?? n.runtime }
@@ -909,11 +927,24 @@ export function GPUNodes() {
       await patchNode(editNode.name, patch);
       await loadNodes();
       setEditNode(null);
-    } catch (e) {
-      setEditError('Failed to save changes');
+    } catch (e: any) {
+      setEditError(e?.message || 'Failed to save changes');
     } finally {
       setEditSaving(false);
     }
+  };
+
+  const handleSavePatch = async () => {
+    const patch = buildPatch();
+    if (patch === 'invalid' || patch === null) return;
+    if (patch.url) {
+      // Address changes are surfaced behind a confirm dialog - the node's
+      // live health/warm-state resets (it's now pointing at a different
+      // physical backend), so this shouldn't happen from an accidental click.
+      setPendingPatch(patch);
+      return;
+    }
+    await applyPatch(patch);
   };
 
   return (
@@ -1151,6 +1182,37 @@ export function GPUNodes() {
           <p className="text-sm text-muted-foreground">
             Override runtime metadata. Changes apply immediately without restart.
           </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Host / IP
+              </label>
+              <input
+                type="text"
+                value={editHost}
+                onChange={(e) => setEditHost(e.target.value)}
+                placeholder="e.g., 192.168.1.50"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Port
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="65535"
+                value={editPort}
+                onChange={(e) => setEditPort(e.target.value)}
+                placeholder="e.g., 11434"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Changing host or port re-points the mesh at a different address and resets this node's live health/warm state - you'll be asked to confirm.
+          </p>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               GPU Model Label
@@ -1215,6 +1277,47 @@ export function GPUNodes() {
               className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {editSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Confirm Node Address Change Modal */}
+      <Modal
+        isOpen={pendingPatch !== null}
+        onClose={() => setPendingPatch(null)}
+        title="Change Node Address"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Change <span className="text-foreground font-semibold">{editNode?.name}</span>'s address to{' '}
+            <span className="text-foreground font-semibold">{pendingPatch?.url}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            The mesh will re-point at this new address immediately. This node's live health and warm-model state reset, since it's now treated as a different physical backend.
+          </p>
+          {editError && (
+            <p className="text-sm text-destructive">{editError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setPendingPatch(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!pendingPatch) return;
+                const patch = pendingPatch;
+                setPendingPatch(null);
+                await applyPatch(patch);
+              }}
+              disabled={editSaving}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {editSaving ? 'Saving...' : 'Confirm Change'}
             </button>
           </div>
         </div>
