@@ -967,6 +967,45 @@ func TestPatchNodeRuntime(t *testing.T) {
 	}
 }
 
+// TestPatchNodeRuntime_ExplicitFromPendingAutoDetectSetsProbe guards a nil
+// pointer panic in pollNode: a node created as Runtime: "auto" has a nil
+// probe until its first successful detection. Patching it straight to an
+// explicit runtime before that detection ever ran must set a matching
+// probe immediately - otherwise autoDetect goes false with probe still
+// nil, pollNode's needsDetect guard never re-arms, and the very next poll
+// dereferences a nil probe and crashes the whole (single-process) mesh.
+func TestPatchNodeRuntime_ExplicitFromPendingAutoDetectSetsProbe(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Runtime: "auto"},
+	}, nil)
+
+	r.nodes[0].mu.RLock()
+	if r.nodes[0].probe != nil {
+		t.Fatal("test setup invariant broken: expected nil probe before first auto-detect")
+	}
+	r.nodes[0].mu.RUnlock()
+
+	ollama := "ollama"
+	if !r.PatchNode("gpu-0", NodePatch{Runtime: &ollama}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+
+	r.nodes[0].mu.RLock()
+	probe := r.nodes[0].probe
+	autoDetect := r.nodes[0].autoDetect
+	r.nodes[0].mu.RUnlock()
+
+	if autoDetect {
+		t.Error("autoDetect should be false after patching to an explicit runtime")
+	}
+	if probe == nil {
+		t.Fatal("probe must not be nil after patching an auto-detect-pending node to an explicit runtime - the next poll would nil-panic")
+	}
+
+	// pollNode must not panic now that both flags agree.
+	r.pollNode(r.nodes[0])
+}
+
 func TestPatchNodeSkipsVRAMWhenNvidia(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434"},
