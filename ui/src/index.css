@@ -40,9 +40,9 @@
 @layer base {
   :root {
     /* Brand amber accent */
-    --brand: #8b6914;
-    --brand-dim: #6b5210;
-    --brand-bg: rgba(139,105,20,0.06);
+    --brand: #705206;
+    --brand-dim: #5c4308;
+    --brand-bg: rgba(112,82,6,0.06);
 
     /* Warm Ivory Light Theme (matches Dark Theme's warm hue-30 base) */
     --background: 30 25% 98%; /* Warm ivory */
@@ -52,14 +52,14 @@
     --popover: 30 20% 99%;
     --popover-foreground: 30 15% 9%;
 
-    --primary: 38 73% 30%; /* Brand gold/amber */
+    --primary: 43 90% 23%; /* Brand gold/amber (matches #705206) */
     --primary-foreground: 30 25% 98%;
 
     --secondary: 30 15% 94%; /* Warm sand */
     --secondary-foreground: 30 10% 15%;
 
     --muted: 30 15% 94%;
-    --muted-foreground: 30 8% 45%;
+    --muted-foreground: 30 12% 32%; /* Higher contrast muted text for dashboard readability */
 
     --accent: 30 15% 94%;
     --accent-foreground: 30 10% 15%;
@@ -78,7 +78,7 @@
 
     --border: 30 15% 88%; /* Warm border */
     --input: 30 15% 88%;
-    --ring: 38 73% 30%;
+    --ring: 43 90% 23%;
   }
 
   .dark {
