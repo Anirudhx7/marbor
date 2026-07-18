@@ -27,7 +27,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
    This spins up `ollama-mesh`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
 
 2. **Access the dashboards**:
-   * **ollama-mesh Dashboard**: [http://localhost:8080](http://localhost:8080) (Token: `demo-admin-token`)
+   * **ollama-mesh Dashboard**: [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`)
    * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
 
 3. **Run a manual benchmark**:
