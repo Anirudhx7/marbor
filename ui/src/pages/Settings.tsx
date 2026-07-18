@@ -668,7 +668,10 @@ export function SettingsPage() {
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Admin Bind Address</label>
               <input type="text" value={settings.adminBindAddress} onChange={(e) => setSettings({ ...settings, adminBindAddress: e.target.value })} placeholder=":8080" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
               <p className="text-[10px] text-muted-foreground mt-1">
-                Use 127.0.0.1:8080 to restrict the dashboard to localhost. Changing this can lock you out until you reach it via the new address - restart required.
+                Use 127.0.0.1:8080 to restrict the dashboard to localhost.
+              </p>
+              <p className="text-[10px] text-amber-500/80 mt-1">
+                Requires a mesh restart to take effect - changing this can lock you out until you reach it via the new address.
               </p>
             </div>
             <div>
@@ -713,14 +716,14 @@ export function SettingsPage() {
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
               <p className="text-[10px] text-muted-foreground mt-1">
-                Used by Model Advisor for Hugging Face API lookups. Stored server-side; masked here once saved.
+                Used by Model Advisor to query the Hugging Face API for model recommendations. Encrypted at rest; masked here once saved.
               </p>
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
                 <p className="text-sm font-medium text-foreground">Allow Management Endpoints</p>
-                <p className="text-xs text-muted-foreground">Let client API keys reach model create/delete/pull APIs. Single-tenant homelab only.</p>
+                <p className="text-xs text-muted-foreground">Let client API keys reach model create/delete/pull APIs, not just inference. Only enable if every client is trusted.</p>
               </div>
               <button
                 onClick={() => setSettings({ ...settings, allowManagementEndpoints: !settings.allowManagementEndpoints })}
