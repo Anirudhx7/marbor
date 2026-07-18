@@ -3,13 +3,16 @@ package router
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
@@ -385,6 +388,108 @@ func TestPollAgentTelemetryNewerSchemaVersionLoggedOnce(t *testing.T) {
 	count := strings.Count(out, "newer than this mesh understands")
 	if count != 1 {
 		t.Errorf("schema-mismatch log appeared %d times across 3 polls, want exactly 1 (latched, not repeated)\nlog output:\n%s", count, out)
+	}
+}
+
+// TestAgentDownUpWebhookFiresOnTransition verifies an operator gets an
+// agent_down webhook when a configured Node Agent stops responding, and an
+// agent_up webhook when it recovers - independent of the node's own
+// inference-runtime health webhooks (node_up/node_down), which cover a
+// different failure (Ollama itself, not the telemetry sidecar). The very
+// first poll of a freshly-enabled agent must not itself fire agent_up (no
+// prior "down" state to recover from), matching pollNode's node_up gate.
+func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		received []map[string]string
+	)
+	whSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]string
+		json.Unmarshal(body, &payload)
+		mu.Lock()
+		received = append(received, payload)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer whSrv.Close()
+
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	agentUp := true
+	var agentMu sync.Mutex
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agentMu.Lock()
+		up := agentUp
+		agentMu.Unlock()
+		if !up {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{SchemaVersion: 1, AgentVersion: "v0.16.0"})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetWebhookConfig(config.WebhookConfig{Enabled: true, URL: whSrv.URL})
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+
+	waitForCount := func(n int) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			mu.Lock()
+			got := len(received)
+			mu.Unlock()
+			if got >= n {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %d webhook call(s)", n)
+	}
+
+	// First successful poll: agent comes up for the first time ever - no
+	// agent_up webhook expected (nothing to "recover" from).
+	r.pollNode(r.nodes[0])
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	gotFirst := len(received)
+	mu.Unlock()
+	if gotFirst != 0 {
+		t.Fatalf("received %d webhook(s) after first-ever successful poll, want 0 (not a recovery)", gotFirst)
+	}
+
+	// Agent goes down.
+	agentMu.Lock()
+	agentUp = false
+	agentMu.Unlock()
+	r.pollNode(r.nodes[0])
+	waitForCount(1)
+
+	// Agent recovers.
+	agentMu.Lock()
+	agentUp = true
+	agentMu.Unlock()
+	r.pollNode(r.nodes[0])
+	waitForCount(2)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if received[0]["event"] != "agent_down" {
+		t.Errorf("first event = %q, want agent_down", received[0]["event"])
+	}
+	if received[1]["event"] != "agent_up" {
+		t.Errorf("second event = %q, want agent_up", received[1]["event"])
+	}
+	for _, p := range received {
+		if p["node"] != "gpu-0" {
+			t.Errorf("node = %q, want gpu-0", p["node"])
+		}
 	}
 }
 

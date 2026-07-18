@@ -35,12 +35,19 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 	cfg, ok := r.NodeAgentSetting(n.Name)
 	if !ok || !cfg.Enabled {
 		clearAgentTelemetry(n)
+		// No agent configured (or deliberately disabled) is not a failure -
+		// never fire agent_down for it, and drop any stale prior state so a
+		// later re-enable doesn't fire a spurious transition based on
+		// whatever the agent's state was before it was disabled.
+		r.mu.Lock()
+		delete(r.prevAgentPresent, n.Name)
+		r.mu.Unlock()
 		return
 	}
 
 	agentURL, err := buildAgentURL(nodeURL, cfg.Port)
 	if err != nil {
-		clearAgentTelemetry(n)
+		r.agentUnreachable(n, nodeURL)
 		return
 	}
 
@@ -48,25 +55,25 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, agentURL, nil)
 	if err != nil {
-		clearAgentTelemetry(n)
+		r.agentUnreachable(n, nodeURL)
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		clearAgentTelemetry(n)
+		r.agentUnreachable(n, nodeURL)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		clearAgentTelemetry(n)
+		r.agentUnreachable(n, nodeURL)
 		return
 	}
 
 	var t nodeagent.Telemetry
 	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		clearAgentTelemetry(n)
+		r.agentUnreachable(n, nodeURL)
 		return
 	}
 
@@ -123,6 +130,46 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 		n.FanPercent = nil
 	}
 	n.mu.Unlock()
+	r.agentReachable(n.Name, nodeURL)
+}
+
+// agentUnreachable clears a node's agent-derived telemetry and, if this is a
+// genuine down transition (the agent was previously confirmed reachable),
+// fires an "agent_down" webhook - the same reuse of the existing node_up/
+// node_down webhook mechanism (fireWebhook, router.go) as the transitions
+// pollNode/markFailure already fire for the node's own inference runtime
+// health, so an operator finds out even if they aren't staring at the GPU
+// Nodes dashboard when a Node Agent stops responding.
+func (r *Router) agentUnreachable(n *NodeState, nodeURL string) {
+	clearAgentTelemetry(n)
+	r.mu.Lock()
+	nodeName := n.Name
+	exists := r.nodeExistsLocked(nodeName)
+	prev, seen := r.prevAgentPresent[nodeName]
+	if exists {
+		r.prevAgentPresent[nodeName] = false
+	}
+	r.mu.Unlock()
+	if exists && seen && prev {
+		r.fireWebhook("agent_down", nodeName, nodeURL)
+	}
+}
+
+// agentReachable records a successful agent poll and, if this is a recovery
+// (the agent was previously down, not merely never-before-seen), fires an
+// "agent_up" webhook. Mirrors pollNode's node_up gate: a node's very first
+// successful poll is never treated as a "recovery."
+func (r *Router) agentReachable(nodeName, nodeURL string) {
+	r.mu.Lock()
+	exists := r.nodeExistsLocked(nodeName)
+	prev, seen := r.prevAgentPresent[nodeName]
+	if exists {
+		r.prevAgentPresent[nodeName] = true
+	}
+	r.mu.Unlock()
+	if exists && seen && !prev {
+		r.fireWebhook("agent_up", nodeName, nodeURL)
+	}
 }
 
 // derefOr returns *p if p is non-nil, else fallback - used to avoid
