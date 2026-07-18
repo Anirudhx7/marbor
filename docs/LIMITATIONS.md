@@ -9,12 +9,12 @@ This page documents what ollama-mesh does not do, what has been tested, and what
 ### What has been tested
 The validated topology is **one ollama-mesh process on a single host, routing to one or more remote Ollama nodes**. This includes bare-metal and EC2 deployments. Multi-node routing, failover, and cloud overflow have been exercised in this configuration.
 
-No distributed or multi-instance ollama-mesh topology has been tested. There is no coordination layer, no distributed lock, and no leader election. Running two instances of ollama-mesh pointing at the same config is not supported.
+No distributed or multi-instance ollama-mesh topology has been tested. There is no coordination layer, no distributed lock, and no leader election. Running two instances of ollama-mesh pointing at the same SQLite database file is not supported.
 
 ### No high availability or multi-region failover
 ollama-mesh is a single process. If the host running it goes down, inference traffic stops until the process restarts. There is no hot standby, no floating IP handoff, and no automatic failover between mesh instances.
 
-For production HA, the standard approach is to put a layer-4 load balancer (e.g., an AWS NLB) in front of two independent ollama-mesh instances, each with their own config, and accept that in-flight requests to the failed instance are lost. This works because ollama-mesh is stateless for the routing path - only the admin session is lost on restart.
+For production HA, the standard approach is to put a layer-4 load balancer (e.g., an AWS NLB) in front of two independent ollama-mesh instances, each with their own database file, and accept that in-flight requests to the failed instance are lost. This works because ollama-mesh is stateless for the routing path - only the admin session is lost on restart.
 
 ---
 
