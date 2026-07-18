@@ -100,6 +100,7 @@
   --accent: #d4a853;
   --accent-dim: #b8933f;
   --accent-bg: rgba(212,168,83,0.08);
+  --accent-bg-hover: rgba(212,168,83,0.14);
   --accent2: #7cb97c;
   --accent3: #c97c7c;
   --font-serif: "Georgia", "Times New Roman", "Liberation Serif", serif;
@@ -119,6 +120,7 @@ html.light {
   --accent: #8b6914;
   --accent-dim: #6b5210;
   --accent-bg: rgba(139,105,20,0.06);
+  --accent-bg-hover: rgba(139,105,20,0.12);
   --accent2: #2d662d;
   --accent3: #943d3d;
 }
@@ -295,7 +297,8 @@ h2.sec em { font-style: italic; color: var(--accent); }
 
 /* features as a list, terminal-doc style */
 .features { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border-subtle); }
-.feat { display: grid; grid-template-columns: 34px 1fr; gap: 16px; padding: 22px 0; border-bottom: 1px solid var(--border-subtle); }
+.feat { display: grid; grid-template-columns: 34px 1fr; gap: 16px; padding: 22px 16px; margin: 0 -16px; border-bottom: 1px solid var(--border-subtle); border-radius: var(--radius); transition: all .2s cubic-bezier(0.16, 1, 0.3, 1); }
+.feat:hover { background: var(--bg-elevated); transform: translateX(6px); }
 .feat .ic { color: var(--accent); width: 34px; height: 34px; display: flex; align-items: flex-start; justify-content: center; padding-top: 2px; }
 .feat .ic svg { width: 22px; height: 22px; }
 .feat.warm .ic { color: var(--accent); }
@@ -341,14 +344,17 @@ pre.code .g { color: var(--accent2); }
 pre.code .b { color: var(--accent); }
 
 /* compare table */
-.table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-elevated); }
+.table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-elevated); box-shadow: 0 4px 24px -12px rgba(0,0,0,0.5); }
 .table-scroll { overflow-x: auto; }
-table.compare { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
-table.compare th, table.compare td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+table.compare { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 560px; }
+table.compare th, table.compare td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); transition: background-color .15s ease; }
 table.compare thead th { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; background: var(--bg-surface); }
 table.compare thead th.us { color: var(--accent); }
 table.compare tbody td:first-child { color: var(--text); font-weight: 500; }
 table.compare td.col-us { background: var(--accent-bg); }
+table.compare tbody tr { transition: background-color .15s ease; }
+table.compare tbody tr:hover { background-color: var(--bg-surface); }
+table.compare tbody tr:hover td.col-us { background-color: var(--accent-bg-hover); }
 table.compare tr:last-child td { border-bottom: none; }
 .yes { color: var(--accent2); }
 .no { color: var(--text-faint); }
@@ -642,6 +648,28 @@ SPCS-FEATURE-END */
   color: var(--text);
   font-family: var(--font-mono);
   line-height: 1.5;
+}
+
+/* FAQ Card Styling */
+.faq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+}
+.faq-card {
+  padding: 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+  transition: all .2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px -12px rgba(0,0,0,0.5);
+}
+.faq-card:hover {
+  border-color: var(--border);
+  transform: translateY(-2px);
+  background: var(--bg-surface);
+  box-shadow: 0 8px 24px -12px rgba(0,0,0,0.7);
 }
 </style>
 </head>
@@ -1109,30 +1137,30 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
     <p class="eyebrow">Frequently Asked Questions</p>
     <h2 class="sec">Common questions about <em>self-hosted inference.</em></h2>
 
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; margin-top: 32px;">
-      <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">What is ollama-mesh?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;"><code>ollama-mesh</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
+    <div class="faq-grid">
+      <div class="faq-card">
+        <h3>What is ollama-mesh?</h3>
+        <p><code>ollama-mesh</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
       </div>
-      <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">How is ollama-mesh different from a plain load balancer like nginx or HAProxy?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. <code>ollama-mesh</code> reads live model residency and VRAM state on every node and schedules each request to a warm GPU.</p>
+      <div class="faq-card">
+        <h3>How is ollama-mesh different from a plain load balancer like nginx or HAProxy?</h3>
+        <p>Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. <code>ollama-mesh</code> reads live model residency and VRAM state on every node and schedules each request to a warm GPU.</p>
       </div>
-      <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Does ollama-mesh work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">All five. Despite the name, <code>ollama-mesh</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL.</p>
+      <div class="faq-card">
+        <h3>Does ollama-mesh work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?</h3>
+        <p>All five. Despite the name, <code>ollama-mesh</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL.</p>
       </div>
-      <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Can ollama-mesh replace cloud LLM APIs like OpenAI?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend.</p>
+      <div class="faq-card">
+        <h3>Can ollama-mesh replace cloud LLM APIs like OpenAI?</h3>
+        <p>That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend.</p>
       </div>
-      <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">How does high-availability failover work?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">If a node goes offline, <code>ollama-mesh</code> marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA.</p>
+      <div class="faq-card">
+        <h3>How does high-availability failover work?</h3>
+        <p>If a node goes offline, <code>ollama-mesh</code> marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA.</p>
       </div>
-      <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Can I add authentication and rate limiting in front of my models?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Yes. <code>ollama-mesh</code> acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code.</p>
+      <div class="faq-card">
+        <h3>Can I add authentication and rate limiting in front of my models?</h3>
+        <p>Yes. <code>ollama-mesh</code> acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code.</p>
       </div>
     </div>
   </div>
