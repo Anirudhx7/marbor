@@ -176,6 +176,7 @@ export function Models() {
         {
           id: 'gpu-0',
           name: 'gpu-0',
+          host: '10.0.0.11',
           gpuModel: 'NVIDIA A100',
           port: 11434,
           vramTotalMB: 81920,

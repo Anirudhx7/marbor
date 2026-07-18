@@ -1033,6 +1033,89 @@ type NodePatch struct {
 	VRAMTotalMB *int64  `json:"vram_total_mb"`
 	GPUModel    *string `json:"gpu_model"`
 	Runtime     *string `json:"runtime"`
+	// URL is handled separately from the other fields - see UpdateNodeURL -
+	// but is decoded here so a single PATCH body can carry it.
+	URL *string `json:"url"`
+}
+
+// UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
+// fields, URL cannot be mutated on the live *NodeState in place: proxy.go
+// reads node.URL on the hot path with no lock at all (it relies on URL never
+// changing once a *NodeState exists), so writing it under n.mu while proxy.go
+// reads it unlocked would be a data race. Instead this replaces the slice
+// entry wholesale under r.mu.Lock() - the same discipline AddNode/RemoveNode
+// already use - preserving the metadata that still applies (runtime, VRAM
+// overrides, GPU model) but resetting health/warm-state, since the node now
+// points at a different physical address and its prior live state is stale.
+// Returns an error if the node is not found or the new URL collides with
+// another node's.
+func (r *Router) UpdateNodeURL(name string, newURL string) error {
+	if err := config.ValidateNodeURL(newURL); err != nil {
+		return err
+	}
+	normURL := config.NormalizeNodeURL(newURL)
+
+	r.mu.Lock()
+	var old *NodeState
+	idx := -1
+	for i, n := range r.nodes {
+		if n.Name == name {
+			old = n
+			idx = i
+			continue
+		}
+		if config.NormalizeNodeURL(n.URL) == normURL {
+			r.mu.Unlock()
+			return fmt.Errorf("url already registered as node %q", n.Name)
+		}
+	}
+	if old == nil {
+		r.mu.Unlock()
+		return fmt.Errorf("node %q not found", name)
+	}
+
+	old.mu.Lock()
+	oldURL := old.URL
+	runtime := old.Runtime
+	autoDetect := old.autoDetect
+	gpuModel := old.GPUModel
+	nvidiaIndex := old.NvidiaIndex
+	vramOverrides := old.VRAMOverrides
+	vramTotalMBConfig := old.VRAMTotalMBConfig
+	old.mu.Unlock()
+
+	node := &NodeState{
+		Name:              name,
+		URL:               newURL,
+		GPUModel:          gpuModel,
+		NvidiaIndex:       nvidiaIndex,
+		VRAMOverrides:     vramOverrides,
+		VRAMTotalMBConfig: vramTotalMBConfig,
+		Healthy:           true,
+		FirstSeenAt:       time.Now(),
+		Runtime:           runtime,
+	}
+	if autoDetect {
+		node.autoDetect = true
+	} else {
+		node.probe = runtimepkg.NewProbe(runtime, r.client)
+	}
+	r.nodes[idx] = node
+
+	delete(r.discoveredURLs, oldURL)
+	r.tagsMu.Lock()
+	delete(r.tagsCache, oldURL)
+	r.tagsMu.Unlock()
+	st := r.store
+	r.mu.Unlock()
+
+	if st != nil {
+		if err := st.DeleteWarmStateByNode(name); err != nil {
+			log.Printf("warmstate: delete node %s (url change): %v", name, err)
+		}
+	}
+	go r.pollNode(node)
+	return nil
 }
 
 // PatchNode applies runtime metadata overrides to a node without restarting.
