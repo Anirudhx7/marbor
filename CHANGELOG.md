@@ -47,6 +47,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Removed
 - **Peer health monitor (`ha` config block, `GET /admin/ha/peers`, "Peer Health Monitoring" Settings card) removed.** It only ever polled other ollama-mesh instances' `/health` endpoints for passive observability - no failover, no shared state, no leader election, and it never provided real HA despite the name. ollama-mesh is a single-instance control plane by design (see Architecture Laws); this module's premise (multiple mesh peers) doesn't fit that model, and Node Agent already covers the real multi-machine need (one mesh, many GPU nodes). Anyone who had `ha.enabled: true` set can safely drop it - the `ha` config block and its `ha_*`/`ha_peers` settings keys are silently ignored (not read, not migrated).
+- **`GET /admin/config` (and its `/admin/v1/config` alias) removed.** Dead route - no UI caller, no docs, no test coverage. It returned a masked dump of the running config, but Settings.tsx already exposes every editable config field through `/admin/settings`; this was a leftover from before that page existed. `POST /admin/config/reload` (config reload) is unaffected.
 
 ## [0.16.0] - 2026-07-16
 
