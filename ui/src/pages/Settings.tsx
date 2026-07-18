@@ -538,8 +538,11 @@ export function SettingsPage() {
                 onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) || settings.proxyPort })}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               />
+              <p className="text-[10px] text-amber-500/80 mt-1">
+                Requires a mesh restart to take effect - saving here only stores the new port.
+              </p>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                 Timezone
