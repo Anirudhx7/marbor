@@ -92,9 +92,9 @@ func seedNodesToStore(dbPath string, specs []string) error {
 			runtime = "ollama"
 		}
 		switch runtime {
-		case "ollama", "vllm", "tgi", "llamacpp":
+		case "ollama", "vllm", "tgi", "llamacpp", "mlx":
 		default:
-			return fmt.Errorf("--seed-node %q: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp)", spec, runtime)
+			return fmt.Errorf("--seed-node %q: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx)", spec, runtime)
 		}
 		if err := st.UpsertNode(store.NodeRecord{Name: name, URL: url, Runtime: runtime}); err != nil {
 			return fmt.Errorf("seed node %q: %w", name, err)

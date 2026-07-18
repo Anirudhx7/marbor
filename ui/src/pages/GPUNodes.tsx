@@ -123,12 +123,14 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
     vllm:     'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30',
     tgi:      'bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30',
     llamacpp: 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30',
+    mlx:      'bg-pink-500/20 text-pink-600 dark:text-pink-400 border border-pink-500/30',
   };
   const runtimeLabels: Record<string, string> = {
     ollama:   'Ollama',
     vllm:     'vLLM',
     tgi:      'TGI',
     llamacpp: 'llama.cpp',
+    mlx:      'MLX (Apple Silicon)',
   };
   const key = (runtime || '').toLowerCase();
   const style = runtimeStyles[key] ?? 'bg-gray-500/20 text-gray-400 border border-gray-500/30';
@@ -1107,6 +1109,7 @@ export function GPUNodes() {
                 { value: 'vllm', label: 'vLLM' },
                 { value: 'tgi', label: 'TGI (Text Generation Inference)' },
                 { value: 'llamacpp', label: 'llama.cpp' },
+                { value: 'mlx', label: 'MLX (Apple Silicon)' },
               ]}
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -1169,6 +1172,7 @@ export function GPUNodes() {
                 { value: 'vllm', label: 'vLLM' },
                 { value: 'tgi', label: 'TGI (Text Generation Inference)' },
                 { value: 'llamacpp', label: 'llama.cpp' },
+                { value: 'mlx', label: 'MLX (Apple Silicon)' },
               ]}
             />
             <p className="text-xs text-muted-foreground mt-1">

@@ -45,6 +45,9 @@ var OpenAICompatExtraFields = map[string][]string{
 		"xtc_probability", "xtc_threshold", "ignore_eos",
 	},
 	"tgi": {}, // strict OpenAI schema only - TGI's OpenAI layer doesn't accept extras
+	"mlx": {}, // strict OpenAI schema only - mlx_lm.server's OpenAI-compatible
+	// endpoint has not been verified to accept any extra sampling fields
+	// beyond the base set, so none are declared here rather than guessing.
 }
 
 // OllamaLoadTimeFields are ModelConfig fields injected into Ollama's

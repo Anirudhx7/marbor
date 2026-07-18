@@ -48,14 +48,18 @@ type actionResponse struct {
 // the mechanism this agent uses to fetch a model for it. Adding a vendor
 // means adding one entry here - nothing else in this file changes. Runtimes
 // without a first-class standalone "pull without loading" primitive (vLLM,
-// llama.cpp) fall back to `huggingface-cli download`, which populates the
-// same local Hugging Face cache both runtimes read models from at load
-// time - the closest real equivalent of "pull" those runtimes have.
+// llama.cpp, mlx) fall back to `huggingface-cli download`, which populates
+// the same local Hugging Face cache those runtimes read models from at load
+// time - the closest real equivalent of "pull" they have. mlx-lm models are
+// downloaded the same way (safetensors + config.json in MLX's own quant
+// format, tagged library:mlx on HF) - mlx-lm itself has no standalone pull
+// command either.
 var pullCommands = map[string]func(ctx context.Context, model, hfToken string) error{
 	"ollama":   pullViaOllama,
 	"tgi":      pullViaTGI,
 	"vllm":     pullViaHFHub,
 	"llamacpp": pullViaHFHub,
+	"mlx":      pullViaHFHub,
 }
 
 // handlePullModel is the POST /actions/pull_model handler, gated by the same

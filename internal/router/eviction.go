@@ -320,7 +320,7 @@ const evictCooldown = 15 * time.Second
 
 // estimateModelSizeBytes estimates the VRAM a not-yet-loaded model needs from the
 // node's /api/tags on-disk size (a good proxy for GGUF weights). Non-Ollama
-// runtimes (vllm, tgi, llamacpp) don't expose /api/tags, so FetchModelTags
+// runtimes (vllm, tgi, llamacpp, mlx) don't expose /api/tags, so FetchModelTags
 // fails or the model is absent from the result; in that case, fall back to the
 // operator-declared vram_overrides size for that node+model (R1: an explicit
 // operator declaration, not a guess). Returns 0 when the size is unknown by
