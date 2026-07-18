@@ -16,6 +16,12 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
+  server: {
+    proxy: {
+      '/admin': 'http://localhost:8080',
+      '/login': 'http://localhost:8080',
+    },
+  },
   build: {
     outDir: isPages ? 'dist' : '../internal/admin/web/dist',
     emptyOutDir: true,

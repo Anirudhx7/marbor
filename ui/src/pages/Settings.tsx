@@ -286,7 +286,9 @@ export function SettingsPage() {
       setTimeout(() => setSaved(false), 2000);
       setError(null);
     } catch (err: any) {
-      setError(err.message || 'Failed to save settings');
+      setError(err instanceof TypeError
+        ? 'Could not reach the mesh backend. Check that the process is running and reachable from this browser.'
+        : (err.message || 'Failed to save settings'));
     }
   };
 
@@ -304,7 +306,9 @@ export function SettingsPage() {
       setError(null);
       setTimeout(() => setReloaded(false), 2000);
     } catch (err: any) {
-      setError(err.message || 'Reload failed');
+      setError(err instanceof TypeError
+        ? 'Could not reach the mesh backend. Check that the process is running and reachable from this browser.'
+        : (err.message || 'Reload failed'));
     } finally {
       setReloading(false);
       setReloadConfirmOpen(false);
@@ -507,7 +511,10 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2 items-start">
+      <div className="space-y-8 pt-2">
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">General</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Proxy Settings */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
@@ -583,6 +590,228 @@ export function SettingsPage() {
           </div>
         </div>
 
+        {/* Dashboard Preferences */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-indigo-500/10 rounded-lg">
+              <Sliders className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Dashboard Preferences</h3>
+              <p className="text-xs font-medium text-muted-foreground">Customize UI warning banners visibility</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Hide Demo Banner</p>
+                <p className="text-xs text-muted-foreground">Do not show warning banner in demo mode</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, hideDemoBanner: !settings.hideDemoBanner })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.hideDemoBanner ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.hideDemoBanner ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Hide Budget Banner</p>
+                <p className="text-xs text-muted-foreground">Do not show cloud spend warning banners</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, hideBudgetBanner: !settings.hideBudgetBanner })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.hideBudgetBanner ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.hideBudgetBanner ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Security & Access</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Admin & Security */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-rose-500/10 rounded-lg">
+              <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Admin & Security</h3>
+              <p className="text-xs font-medium text-muted-foreground">Dashboard listen address and CORS - takes effect on next restart</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Admin Bind Address</label>
+              <input type="text" value={settings.adminBindAddress} onChange={(e) => setSettings({ ...settings, adminBindAddress: e.target.value })} placeholder=":8080" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Use 127.0.0.1:8080 to restrict the dashboard to localhost. Changing this can lock you out until you reach it via the new address - restart required.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">CORS Origin</label>
+              <input type="text" value={settings.adminCorsOrigin} onChange={(e) => setSettings({ ...settings, adminCorsOrigin: e.target.value })} placeholder="https://your-frontend.example.com" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+              <p className="text-[10px] text-muted-foreground mt-1">Leave blank for same-origin only. Must be one concrete origin, not "*".</p>
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
+                <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
+              </div>
+              <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
+            </div>
+          </div>
+        </div>
+
+        {/* Developer Integrations & Security */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-rose-500/10 rounded-lg">
+              <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Developer Integrations & Security</h3>
+              <p className="text-xs font-medium text-muted-foreground">API tokens and proxy access controls</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Hugging Face API Token
+              </label>
+              <input
+                type="password"
+                value={settings.huggingFaceToken || ''}
+                onChange={(e) => setSettings({ ...settings, huggingFaceToken: e.target.value })}
+                placeholder="hf_..."
+                autoComplete="off"
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Used by Model Advisor for Hugging Face API lookups. Stored server-side; masked here once saved.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Allow Management Endpoints</p>
+                <p className="text-xs text-muted-foreground">Let client API keys reach model create/delete/pull APIs. Single-tenant homelab only.</p>
+              </div>
+              <button
+                onClick={() => setSettings({ ...settings, allowManagementEndpoints: !settings.allowManagementEndpoints })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.allowManagementEndpoints ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.allowManagementEndpoints ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Admin Credentials - hidden in demo mode */}
+        {!demoMode && (
+          <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 bg-rose-500/10 rounded-lg">
+                <KeyRound className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Admin Credentials</h3>
+                <p className="text-xs font-medium text-muted-foreground">Change your dashboard login password</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Current Password</label>
+                <input
+                  type="password"
+                  value={credCurrentPw}
+                  onChange={(e) => setCredCurrentPw(e.target.value)}
+                  placeholder="Required to make changes"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">New Password <span className="text-muted-foreground/60">(optional)</span></label>
+                <input
+                  type="password"
+                  value={credNewPw}
+                  onChange={(e) => setCredNewPw(e.target.value)}
+                  placeholder="Leave blank to keep current"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Confirm New Password</label>
+                <input
+                  type="password"
+                  value={credConfirmPw}
+                  onChange={(e) => setCredConfirmPw(e.target.value)}
+                  placeholder="Repeat new password"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+              </div>
+            </div>
+
+            {credError && (
+              <p className="mt-3 text-sm text-destructive">{credError}</p>
+            )}
+            {credSaved && (
+              <p className="mt-3 text-sm text-green-600 dark:text-green-400">Credentials updated. Re-login required on other sessions.</p>
+            )}
+
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleChangeCredentials}
+                disabled={credSaving || !credCurrentPw}
+                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {credSaving ? (
+                  'Saving...'
+                ) : credSaved ? (
+                  <><Check className="w-4 h-4" /> Saved</>
+                ) : (
+                  <><Save className="w-4 h-4" /> Update Credentials</>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Integrations & Cost</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* LiteLLM Integration */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
@@ -662,70 +891,6 @@ export function SettingsPage() {
                   {settings.pollingInterval}ms
                 </code>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Observability */}
-        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-purple-500/10 rounded-lg">
-              <Activity className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Observability</h3>
-              <p className="text-xs font-medium text-muted-foreground">Metrics and logging configuration</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-              <div>
-                <p className="text-sm font-medium text-foreground">Prometheus Metrics</p>
-                <p className="text-xs text-muted-foreground">Export metrics in Prometheus format</p>
-              </div>
-              <button
-                onClick={() => setSettings({ ...settings, prometheusEnabled: !settings.prometheusEnabled })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  settings.prometheusEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    settings.prometheusEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {settings.prometheusEnabled && (
-              <div className="animate-fade-in">
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-                  Prometheus Port
-                </label>
-                <input
-                  type="number"
-                  value={settings.prometheusPort}
-                  onChange={(e) => setSettings({ ...settings, prometheusPort: parseInt(e.target.value) || settings.prometheusPort })}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-                Log Level
-              </label>
-              <CustomSelect
-                value={settings.logLevel}
-                onChange={(val) => setSettings({ ...settings, logLevel: val as any })}
-                options={[
-                  { value: 'debug', label: 'Debug' },
-                  { value: 'info', label: 'Info' },
-                  { value: 'warn', label: 'Warning' },
-                  { value: 'error', label: 'Error' },
-                ]}
-              />
             </div>
           </div>
         </div>
@@ -826,110 +991,6 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Dashboard Preferences */}
-        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-indigo-500/10 rounded-lg">
-              <Sliders className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Dashboard Preferences</h3>
-              <p className="text-xs font-medium text-muted-foreground">Customize UI warning banners visibility</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-              <div>
-                <p className="text-sm font-medium text-foreground">Hide Demo Banner</p>
-                <p className="text-xs text-muted-foreground">Do not show warning banner in demo mode</p>
-              </div>
-              <button
-                onClick={() => setSettings({ ...settings, hideDemoBanner: !settings.hideDemoBanner })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  settings.hideDemoBanner ? 'bg-primary' : 'bg-muted-foreground/30'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    settings.hideDemoBanner ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-              <div>
-                <p className="text-sm font-medium text-foreground">Hide Budget Banner</p>
-                <p className="text-xs text-muted-foreground">Do not show cloud spend warning banners</p>
-              </div>
-              <button
-                onClick={() => setSettings({ ...settings, hideBudgetBanner: !settings.hideBudgetBanner })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  settings.hideBudgetBanner ? 'bg-primary' : 'bg-muted-foreground/30'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    settings.hideBudgetBanner ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Developer Integrations & Security */}
-        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-rose-500/10 rounded-lg">
-              <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Developer Integrations & Security</h3>
-              <p className="text-xs font-medium text-muted-foreground">API tokens and proxy access controls</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-                Hugging Face API Token
-              </label>
-              <input
-                type="password"
-                value={settings.huggingFaceToken || ''}
-                onChange={(e) => setSettings({ ...settings, huggingFaceToken: e.target.value })}
-                placeholder="hf_..."
-                autoComplete="off"
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Used by Model Advisor for Hugging Face API lookups. Stored server-side; masked here once saved.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-              <div>
-                <p className="text-sm font-medium text-foreground">Allow Management Endpoints</p>
-                <p className="text-xs text-muted-foreground">Let client API keys reach model create/delete/pull APIs. Single-tenant homelab only.</p>
-              </div>
-              <button
-                onClick={() => setSettings({ ...settings, allowManagementEndpoints: !settings.allowManagementEndpoints })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  settings.allowManagementEndpoints ? 'bg-primary' : 'bg-muted-foreground/30'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    settings.allowManagementEndpoints ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Cloud Providers */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
           <div className="flex items-center justify-between mb-5">
@@ -1010,6 +1071,12 @@ export function SettingsPage() {
           </div>
         </div>
 
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Routing & Reliability</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Advanced Routing */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
           <div className="flex items-center gap-3 mb-5">
@@ -1108,40 +1175,6 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Admin & Security */}
-        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-rose-500/10 rounded-lg">
-              <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Admin & Security</h3>
-              <p className="text-xs font-medium text-muted-foreground">Dashboard listen address and CORS - takes effect on next restart</p>
-            </div>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Admin Bind Address</label>
-              <input type="text" value={settings.adminBindAddress} onChange={(e) => setSettings({ ...settings, adminBindAddress: e.target.value })} placeholder=":8080" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Use 127.0.0.1:8080 to restrict the dashboard to localhost. Changing this can lock you out until you reach it via the new address - restart required.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">CORS Origin</label>
-              <input type="text" value={settings.adminCorsOrigin} onChange={(e) => setSettings({ ...settings, adminCorsOrigin: e.target.value })} placeholder="https://your-frontend.example.com" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-              <p className="text-[10px] text-muted-foreground mt-1">Leave blank for same-origin only. Must be one concrete origin, not "*".</p>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-              <div>
-                <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
-                <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
-              </div>
-              <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
-            </div>
-          </div>
-        </div>
-
         {/* Docker Auto-Discovery */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
@@ -1210,75 +1243,72 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Global Warmup & Audit */}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Observability & Limits</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Observability */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-amber-500/10 rounded-lg">
-              <Ruler className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            <div className="p-2 bg-purple-500/10 rounded-lg">
+              <Activity className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Global Warmup & Audit</h3>
-              <p className="text-xs font-medium text-muted-foreground">Distinct from per-node warmup toggles on the Warmup page</p>
+              <h3 className="text-sm font-semibold text-foreground">Observability</h3>
+              <p className="text-xs font-medium text-muted-foreground">Metrics and logging configuration</p>
             </div>
           </div>
+
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Enable Global Warmup</p>
+                <p className="text-sm font-medium text-foreground">Prometheus Metrics</p>
+                <p className="text-xs text-muted-foreground">Export metrics in Prometheus format</p>
               </div>
-              <Toggle on={settings.warmupEnabled} onToggle={() => setSettings({ ...settings, warmupEnabled: !settings.warmupEnabled })} />
+              <button
+                onClick={() => setSettings({ ...settings, prometheusEnabled: !settings.prometheusEnabled })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.prometheusEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.prometheusEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
-            {settings.warmupEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Interval (ms)</label>
-                  <input type="number" value={settings.warmupIntervalMs} onChange={(e) => setSettings({ ...settings, warmupIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Keep Alive</label>
-                  <input type="text" value={settings.warmupKeepAlive} onChange={(e) => setSettings({ ...settings, warmupKeepAlive: e.target.value })} placeholder="10m" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-                </div>
+
+            {settings.prometheusEnabled && (
+              <div className="animate-fade-in">
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                  Prometheus Port
+                </label>
+                <input
+                  type="number"
+                  value={settings.prometheusPort}
+                  onChange={(e) => setSettings({ ...settings, prometheusPort: parseInt(e.target.value) || settings.prometheusPort })}
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                />
               </div>
             )}
-            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-              <div>
-                <p className="text-sm font-medium text-foreground">Audit Log</p>
-                <p className="text-xs text-muted-foreground">Append-only request audit trail</p>
-              </div>
-              <Toggle on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
-            </div>
+
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Audit Log Retention (days)</label>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={settings.auditRetentionDays}
-                onChange={(e) => setSettings({ ...settings, auditRetentionDays: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Log Level
+              </label>
+              <CustomSelect
+                value={settings.logLevel}
+                onChange={(val) => setSettings({ ...settings, logLevel: val as any })}
+                options={[
+                  { value: 'debug', label: 'Debug' },
+                  { value: 'info', label: 'Info' },
+                  { value: 'warn', label: 'Warning' },
+                  { value: 'error', label: 'Error' },
+                ]}
               />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Requests older than this are pruned automatically (checked every 12h). Set to 0 to keep audit log entries forever.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">System Audit Retention (days)</label>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={settings.systemAuditRetentionDays}
-                onChange={(e) => setSettings({ ...settings, systemAuditRetentionDays: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Applies to the admin action trail (System Audit page), separate from request logs above. Defaults to 0 - keep forever - since this log is low-volume and security-sensitive.
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Local Token Value ($/1k tokens)</label>
-              <input type="number" step="0.001" value={settings.savingsReferenceCostPer1k} onChange={(e) => setSettings({ ...settings, savingsReferenceCostPer1k: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-              <p className="text-[10px] text-muted-foreground mt-1">Cloud rate used to value locally-served tokens in the dashboard's savings calculation.</p>
             </div>
           </div>
         </div>
@@ -1338,78 +1368,84 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Admin Credentials - hidden in demo mode */}
-        {!demoMode && (
-          <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="p-2 bg-rose-500/10 rounded-lg">
-                <KeyRound className="w-5 h-5 text-rose-600 dark:text-rose-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Admin Credentials</h3>
-                <p className="text-xs font-medium text-muted-foreground">Change your dashboard login password</p>
-              </div>
+        {/* Global Warmup & Audit */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-amber-500/10 rounded-lg">
+              <Ruler className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Current Password</label>
-                <input
-                  type="password"
-                  value={credCurrentPw}
-                  onChange={(e) => setCredCurrentPw(e.target.value)}
-                  placeholder="Required to make changes"
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">New Password <span className="text-muted-foreground/60">(optional)</span></label>
-                <input
-                  type="password"
-                  value={credNewPw}
-                  onChange={(e) => setCredNewPw(e.target.value)}
-                  placeholder="Leave blank to keep current"
-                  autoComplete="new-password"
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Confirm New Password</label>
-                <input
-                  type="password"
-                  value={credConfirmPw}
-                  onChange={(e) => setCredConfirmPw(e.target.value)}
-                  placeholder="Repeat new password"
-                  autoComplete="new-password"
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-                />
-              </div>
-            </div>
-
-            {credError && (
-              <p className="mt-3 text-sm text-destructive">{credError}</p>
-            )}
-            {credSaved && (
-              <p className="mt-3 text-sm text-green-600 dark:text-green-400">Credentials updated. Re-login required on other sessions.</p>
-            )}
-
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={handleChangeCredentials}
-                disabled={credSaving || !credCurrentPw}
-                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {credSaving ? (
-                  'Saving...'
-                ) : credSaved ? (
-                  <><Check className="w-4 h-4" /> Saved</>
-                ) : (
-                  <><Save className="w-4 h-4" /> Update Credentials</>
-                )}
-              </button>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Global Warmup & Audit</h3>
+              <p className="text-xs font-medium text-muted-foreground">Distinct from per-node warmup toggles on the Warmup page</p>
             </div>
           </div>
-        )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Enable Global Warmup</p>
+                </div>
+                <Toggle on={settings.warmupEnabled} onToggle={() => setSettings({ ...settings, warmupEnabled: !settings.warmupEnabled })} />
+              </div>
+              {settings.warmupEnabled && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Interval (ms)</label>
+                    <input type="number" value={settings.warmupIntervalMs} onChange={(e) => setSettings({ ...settings, warmupIntervalMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Keep Alive</label>
+                    <input type="text" value={settings.warmupKeepAlive} onChange={(e) => setSettings({ ...settings, warmupKeepAlive: e.target.value })} placeholder="10m" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+                  </div>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Local Token Value ($/1k tokens)</label>
+                <input type="number" step="0.001" value={settings.savingsReferenceCostPer1k} onChange={(e) => setSettings({ ...settings, savingsReferenceCostPer1k: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                <p className="text-[10px] text-muted-foreground mt-1">Cloud rate used to value locally-served tokens in the dashboard's savings calculation.</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Audit Log</p>
+                  <p className="text-xs text-muted-foreground">Append-only request audit trail</p>
+                </div>
+                <Toggle on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Audit Log Retention (days)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={settings.auditRetentionDays}
+                  onChange={(e) => setSettings({ ...settings, auditRetentionDays: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Requests older than this are pruned automatically (checked every 12h). Set to 0 to keep audit log entries forever.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">System Audit Retention (days)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={settings.systemAuditRetentionDays}
+                  onChange={(e) => setSettings({ ...settings, systemAuditRetentionDays: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Applies to the admin action trail (System Audit page), separate from request logs above. Defaults to 0 - keep forever - since this log is low-volume and security-sensitive.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+          </div>
+        </section>
       </div>
     </div>
 
