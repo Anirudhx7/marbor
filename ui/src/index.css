@@ -79,6 +79,7 @@
     --border: 45 18% 81%; /* Softer borders to reduce visual segmentation */
     --input: 45 18% 81%;
     --ring: 45 67% 24%;
+    --grid: rgba(102, 78, 20, 0.015);
   }
 
   .dark {
@@ -122,6 +123,7 @@
     --border: 30 8% 20%;
     --input: 30 8% 20%;
     --ring: 38 57% 58%;
+    --grid: rgba(255, 255, 255, 0.012);
   }
 }
 
@@ -134,6 +136,19 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
     transition: background-color 0.3s ease, color 0.3s ease;
+    position: relative;
+  }
+  
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(to right, var(--grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+    background-size: 56px 56px;
+    pointer-events: none;
+    z-index: 0;
   }
 
   code, pre, .mono {
