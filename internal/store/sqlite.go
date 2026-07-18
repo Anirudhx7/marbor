@@ -695,6 +695,18 @@ func (s *sqliteStore) UpsertNode(nc NodeRecord) error {
 	return nil
 }
 
+// UpdateNodeURL rewrites the URL of an already-registered node in place,
+// leaving its runtime/vram_total_mb columns untouched - a scoped column
+// update (like UpsertNodeOverride) rather than a full UpsertNode, so callers
+// don't need to re-supply fields they aren't changing.
+func (s *sqliteStore) UpdateNodeURL(name string, url string) error {
+	_, err := s.db.Exec(`UPDATE runtime_nodes SET url=? WHERE name=?`, url, name)
+	if err != nil {
+		return fmt.Errorf("store: UpdateNodeURL: %w", err)
+	}
+	return nil
+}
+
 func (s *sqliteStore) DeleteNode(name string) error {
 	_, err := s.db.Exec(`DELETE FROM runtime_nodes WHERE name=?`, name)
 	if err != nil {

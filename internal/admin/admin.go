@@ -365,6 +365,7 @@ type RequestLog struct {
 type nodeResp struct {
 	ID               string             `json:"id"`
 	Name             string             `json:"name"`
+	Host             string             `json:"host"`
 	Port             int                `json:"port"`
 	GPUModel         string             `json:"gpuModel"`
 	VRAMTotalMB      int64              `json:"vramTotalMB"`
@@ -812,8 +813,10 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	out := make([]nodeResp, len(nodes))
 	for i, n := range nodes {
 		n.RLock()
+		host := ""
 		port := 0
 		if u, err := url.Parse(n.URL); err == nil {
+			host = u.Hostname()
 			port, _ = strconv.Atoi(u.Port())
 		}
 		health := "healthy"
@@ -842,6 +845,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		out[i] = nodeResp{
 			ID:                fmt.Sprintf("gpu-%d", i),
 			Name:              n.Name,
+			Host:              host,
 			Port:              port,
 			GPUModel:          n.GPUModel,
 			VRAMTotalMB:       n.VRAMTotalMB,
@@ -892,8 +896,10 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		n.RLock()
+		host := ""
 		port := 0
 		if u, err := url.Parse(n.URL); err == nil {
+			host = u.Hostname()
 			port, _ = strconv.Atoi(u.Port())
 		}
 		health := "healthy"
@@ -907,6 +913,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 		out := nodeResp{
 			ID:                fmt.Sprintf("gpu-%d", i),
 			Name:              n.Name,
+			Host:              host,
 			Port:              port,
 			GPUModel:          n.GPUModel,
 			VRAMTotalMB:       n.VRAMTotalMB,
@@ -2160,12 +2167,27 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", *patch.Runtime))
 		return
 	}
-	if !s.router.PatchNode(name, patch) {
-		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
-		return
+	if patch.URL != nil {
+		if err := s.router.UpdateNodeURL(name, *patch.URL); err != nil {
+			status := http.StatusConflict
+			if strings.Contains(err.Error(), "not found") {
+				status = http.StatusNotFound
+			} else if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "must be http") || strings.Contains(err.Error(), "link-local") {
+				status = http.StatusBadRequest
+			}
+			writeJSONError(w, status, err.Error())
+			return
+		}
+		_ = s.st.UpdateNodeURL(name, *patch.URL)
 	}
-	_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime)
-	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v", patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil))
+	if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil {
+		if !s.router.PatchNode(name, patch) {
+			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+			return
+		}
+		_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime)
+	}
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
 }

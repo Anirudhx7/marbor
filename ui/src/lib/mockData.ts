@@ -8,6 +8,7 @@ export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-1',
     name: 'gpu-node-01',
+    host: '10.0.0.11',
     gpuModel: 'NVIDIA A100 80GB',
     port: 11434,
     runtime: 'ollama',
@@ -47,6 +48,7 @@ export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-2',
     name: 'gpu-node-02',
+    host: '10.0.0.12',
     gpuModel: 'NVIDIA A100 80GB',
     port: 8000,
     runtime: 'vllm',
@@ -83,6 +85,7 @@ export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-3',
     name: 'gpu-node-03',
+    host: '10.0.0.13',
     gpuModel: 'NVIDIA RTX 4090 24GB',
     port: 8080,
     runtime: 'tgi',
@@ -119,6 +122,7 @@ export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-4',
     name: 'gpu-node-04',
+    host: '10.0.0.14',
     gpuModel: 'NVIDIA RTX 3090 24GB',
     port: 8080,
     runtime: 'llamacpp',
@@ -156,6 +160,7 @@ export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-5',
     name: 'gpu-node-05',
+    host: '10.0.0.15',
     gpuModel: 'Apple M3 Max 128GB',
     port: 8080,
     runtime: 'mlx',

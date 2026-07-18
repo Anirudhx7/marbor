@@ -48,6 +48,7 @@ type Store interface {
 	UpsertNode(nc NodeRecord) error
 	DeleteNode(name string) error
 	AllNodes() ([]NodeRecord, error)
+	UpdateNodeURL(name string, url string) error
 
 	// Node overrides (vram, gpu_model)
 	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string) error
@@ -512,6 +513,7 @@ func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error)         
 func (NopStore) UpsertNode(_ NodeRecord) error                                     { return nil }
 func (NopStore) DeleteNode(_ string) error                                         { return nil }
 func (NopStore) AllNodes() ([]NodeRecord, error)                                   { return nil, nil }
+func (NopStore) UpdateNodeURL(_ string, _ string) error                            { return nil }
 func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string) error { return nil }
 func (NopStore) NodeOverrides() (map[string]NodeOverride, error)                   { return nil, nil }
 func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error                     { return nil }

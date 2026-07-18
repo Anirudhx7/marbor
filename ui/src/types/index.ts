@@ -41,6 +41,7 @@ export interface PredictiveDecision {
 export interface GPUNode {
   id: string;
   name: string;
+  host: string;
   gpuModel: string;
   port: number;
   vramTotalMB: number;
