@@ -31,8 +31,8 @@ export const mockGPUNodes: GPUNode[] = [
     tokensTotal: 245000,
     avgLatencyMs: 120,
     warmHitRatio: 0.98,
-    // Node Agent installed on this node (demo parity - other demo nodes show
-    // the no-agent state so both are visible side by side).
+    // Node Agent installed on this node (demo parity - all demo nodes run
+    // the agent so the fleet view shows full telemetry everywhere).
     agentPresent: true,
     agentVersion: '0.1.0',
     fanPercent: 62,
@@ -72,6 +72,13 @@ export const mockGPUNodes: GPUNode[] = [
     fanPercent: 55,
     ramUsedMB: Math.round(28.3 * GB),
     diskFreeGB: 1204.7,
+    agentPresent: true,
+    agentVersion: '0.1.0',
+    agentCapabilities: ['telemetry'],
+    agentPlatform: 'linux',
+    agentArchitecture: 'amd64',
+    agentGpuVendor: 'nvidia',
+    agentRuntime: 'vllm',
   },
   {
     id: 'node-3',
@@ -101,6 +108,13 @@ export const mockGPUNodes: GPUNode[] = [
     fanPercent: 71,
     ramUsedMB: Math.round(16.8 * GB),
     diskFreeGB: 340.2,
+    agentPresent: true,
+    agentVersion: '0.1.0',
+    agentCapabilities: ['telemetry'],
+    agentPlatform: 'linux',
+    agentArchitecture: 'amd64',
+    agentGpuVendor: 'nvidia',
+    agentRuntime: 'tgi',
   },
   {
     id: 'node-4',
@@ -131,6 +145,13 @@ export const mockGPUNodes: GPUNode[] = [
     fanPercent: 89,
     ramUsedMB: Math.round(9.6 * GB),
     diskFreeGB: 78.9,
+    agentPresent: true,
+    agentVersion: '0.1.0',
+    agentCapabilities: ['telemetry'],
+    agentPlatform: 'linux',
+    agentArchitecture: 'amd64',
+    agentGpuVendor: 'nvidia',
+    agentRuntime: 'llamacpp',
   },
   {
     id: 'node-5',
@@ -160,6 +181,13 @@ export const mockGPUNodes: GPUNode[] = [
     fanPercent: null,
     ramUsedMB: Math.round(38.6 * GB),
     diskFreeGB: 512.5,
+    agentPresent: true,
+    agentVersion: '0.1.0',
+    agentCapabilities: ['telemetry'],
+    agentPlatform: 'darwin',
+    agentArchitecture: 'arm64',
+    agentGpuVendor: 'apple',
+    agentRuntime: 'mlx',
   },
 ];
 
