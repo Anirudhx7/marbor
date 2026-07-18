@@ -40,45 +40,45 @@
 @layer base {
   :root {
     /* Brand amber accent */
-    --brand: #705206;
-    --brand-dim: #5c4308;
-    --brand-bg: rgba(112,82,6,0.06);
+    --brand: #664e14;
+    --brand-dim: #54400f;
+    --brand-bg: rgba(102,78,20,0.05);
 
-    /* Warm Ivory Light Theme (matches Dark Theme's warm hue-30 base) */
-    --background: 30 25% 98%; /* Warm ivory */
-    --foreground: 30 15% 9%; /* Warm near-black */
-    --card: 30 20% 99%; /* Warm white */
-    --card-foreground: 30 15% 9%;
-    --popover: 30 20% 99%;
-    --popover-foreground: 30 15% 9%;
+    /* Warm Paper Light Theme (matches Dark Theme's warm hue-30 base) */
+    --background: 45 23% 92%; /* Low-strain warm paper base */
+    --foreground: 45 9% 15%; /* Soft warm charcoal (prevents halation) */
+    --card: 42 43% 96%; /* Softer ivory for cards */
+    --card-foreground: 45 9% 15%;
+    --popover: 42 43% 96%;
+    --popover-foreground: 45 9% 15%;
 
-    --primary: 43 90% 23%; /* Brand gold/amber (matches #705206) */
-    --primary-foreground: 30 25% 98%;
+    --primary: 45 67% 24%; /* Soft antique bronze (matches #664e14) */
+    --primary-foreground: 45 23% 92%;
 
-    --secondary: 30 15% 94%; /* Warm sand */
-    --secondary-foreground: 30 10% 15%;
+    --secondary: 45 15% 88%; /* Soft sand */
+    --secondary-foreground: 45 9% 15%;
 
-    --muted: 30 15% 94%;
-    --muted-foreground: 30 12% 32%; /* Higher contrast muted text for dashboard readability */
+    --muted: 45 15% 88%;
+    --muted-foreground: 45 8% 30%; /* Softer text for secondary labels to avoid strain */
 
-    --accent: 30 15% 94%;
-    --accent-foreground: 30 10% 15%;
+    --accent: 45 15% 88%;
+    --accent-foreground: 45 9% 15%;
 
-    --destructive: 346.8 77.2% 49.8%;
-    --destructive-foreground: 30 25% 98%;
+    --destructive: 346.8 60% 40%; /* Softer red */
+    --destructive-foreground: 45 23% 92%;
 
-    --success: 142.1 70.6% 45.3%;
-    --success-foreground: 30 25% 98%;
+    --success: 142.1 40% 35%; /* Softer green */
+    --success-foreground: 45 23% 92%;
 
-    --warning: 24 95% 45%; /* Safety Orange (Light Theme) */
-    --warning-foreground: 30 25% 98%;
+    --warning: 24 75% 42%; /* Softer orange */
+    --warning-foreground: 45 23% 92%;
 
-    --info: 221.2 83.2% 53.3%;
-    --info-foreground: 30 25% 98%;
+    --info: 221.2 55% 40%; /* Softer blue */
+    --info-foreground: 45 23% 92%;
 
-    --border: 30 15% 88%; /* Warm border */
-    --input: 30 15% 88%;
-    --ring: 43 90% 23%;
+    --border: 45 18% 81%; /* Softer borders to reduce visual segmentation */
+    --input: 45 18% 81%;
+    --ring: 45 67% 24%;
   }
 
   .dark {

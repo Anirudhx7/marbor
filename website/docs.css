@@ -18,21 +18,21 @@
   --radius: 4px;
 }
 html.light {
-  --bg: #faf8f5;
-  --bg-elevated: #ffffff;
-  --bg-surface: #f5f2ed;
-  --bg-input: #ebe7e0;
-  --border: #ddd8d0;
-  --border-subtle: #e8e4dc;
-  --text: #1a1815;
-  --text-muted: #3d3a33;
-  --text-faint: #5e584d;
-  --accent: #705206;
-  --accent-dim: #5c4308;
-  --accent-bg: rgba(112,82,6,0.06);
-  --accent-bg-hover: rgba(112,82,6,0.12);
-  --accent2: #255c25;
-  --accent3: #8a3434;
+  --bg: #f0ede4;
+  --bg-elevated: #f9f6ef;
+  --bg-surface: #e6e2d9;
+  --bg-input: #e0dbd0;
+  --border: #d8d2c5;
+  --border-subtle: #e0dbd0;
+  --text: #2b2924;
+  --text-muted: #4a4740;
+  --text-faint: #6e6960;
+  --accent: #664e14;
+  --accent-dim: #54400f;
+  --accent-bg: rgba(102, 78, 20, 0.05);
+  --accent-bg-hover: rgba(102, 78, 20, 0.10);
+  --accent2: #1d4d1d;
+  --accent3: #702626;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
