@@ -285,10 +285,10 @@ function formatScheduleRelative(isoString: string): string {
 
 // ── Schedule row with inline edit ────────────────────────────────────────────
 
-function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDelete, isLast }: {
+function ScheduleRow({ schedule, nodes, modelsByNode, onToggle, onSave, onDelete, isLast }: {
   schedule: Schedule;
   nodes: GPUNode[];
-  availableModels: string[];
+  modelsByNode: Record<string, string[]>;
   onToggle: (enabled: boolean) => void;
   onSave: (patch: Partial<Omit<Schedule, 'id'>>) => Promise<void>;
   onDelete: () => void;
@@ -302,6 +302,10 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
   const [days, setDays] = useState<number[]>(schedule.days ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Union with already-selected models so a schedule saved against a model
+  // no longer on this node still shows it (rather than silently dropping it).
+  const availableModels = Array.from(new Set([...(modelsByNode[node] ?? []), ...selectedModels]));
 
   function startEdit() {
     setAction(schedule.action); setNode(schedule.node);
@@ -440,9 +444,9 @@ function ScheduleRow({ schedule, nodes, availableModels, onToggle, onSave, onDel
   );
 }
 
-function ScheduleForm({ nodes, availableModels, onCreate }: {
+function ScheduleForm({ nodes, modelsByNode, onCreate }: {
   nodes: GPUNode[];
-  availableModels: string[];
+  modelsByNode: Record<string, string[]>;
   onCreate: (s: Omit<Schedule, 'id'>) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -454,6 +458,8 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const availableModels = modelsByNode[node] ?? [];
+
   // Keep `node` pointed at a live node: also self-heal if the previously
   // selected node disappears from the list (e.g. removed/renamed) while this
   // form is open, not just when it starts out empty - otherwise the <select>
@@ -462,6 +468,13 @@ function ScheduleForm({ nodes, availableModels, onCreate }: {
   useEffect(() => {
     if (nodes.length > 0 && !nodes.some(n => n.name === node)) setNode(nodes[0].name);
   }, [nodes, node]);
+
+  // Switching nodes changes which models are even valid to pick - drop any
+  // selection that doesn't exist on the newly chosen node.
+  useEffect(() => {
+    setSelectedModels(prev => prev.filter(m => availableModels.includes(m)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node]);
 
   function toggleDay(d: number) {
     setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
@@ -883,7 +896,7 @@ export function Warmup() {
             const paused = schedules.filter(s => !s.enabled);
             const row = (s: Schedule, isLast?: boolean) => (
               <ScheduleRow
-                key={s.id} schedule={s} nodes={nodes} availableModels={availableModels}
+                key={s.id} schedule={s} nodes={nodes} modelsByNode={modelsByNode}
                 onToggle={(enabled) => editSchedule(s.id, { enabled })}
                 onSave={(patch) => editSchedule(s.id, patch)}
                 onDelete={() => { setScheduleDeleteError(null); setScheduleToDelete(s); }}
@@ -910,7 +923,7 @@ export function Warmup() {
               </>
             );
           })()}
-          <ScheduleForm nodes={nodes} availableModels={availableModels} onCreate={addSchedule} />
+          <ScheduleForm nodes={nodes} modelsByNode={modelsByNode} onCreate={addSchedule} />
         </section>
       )}
 
