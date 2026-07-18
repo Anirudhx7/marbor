@@ -403,7 +403,7 @@ export interface BudgetEntry {
 // ModelConfig is an operator-declared default parameter profile for a
 // specific (model, node) pair, applied whenever ollama-mesh routes to that
 // model on that node. The same model name can be resident on multiple nodes
-// with different runtimes (ollama/vllm/tgi/llamacpp) or VRAM budgets, so a
+// with different runtimes (ollama/vllm/tgi/llamacpp/mlx) or VRAM budgets, so a
 // profile is only ever meaningful scoped to one node - `model` and `node`
 // are both required. Every other field is optional - unset means "inherit
 // the backend's own default", never a fabricated value (R1). Field
