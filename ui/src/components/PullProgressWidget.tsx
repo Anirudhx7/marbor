@@ -65,7 +65,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
     );
 
   return (
-    <div className="w-80 max-w-[calc(100vw-2rem)] bg-card border border-border shadow-lg rounded-xl overflow-hidden">
+    <div className="w-auto min-w-80 max-w-[min(28rem,calc(100vw-2rem))] bg-card border border-border shadow-lg rounded-xl overflow-hidden">
       {/* Collapsed header - always visible, click toggles expand/collapse */}
       <button
         onClick={() => setExpanded((v) => !v)}
