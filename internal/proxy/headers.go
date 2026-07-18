@@ -11,7 +11,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
-		h.Set("Strict-Transport-Security", "max-age=15552000; includeSubDomains")
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		h.Set("Content-Security-Policy",
 			"default-src 'self'; "+
 				"style-src 'self' https://fonts.googleapis.com; "+

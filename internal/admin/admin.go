@@ -2575,7 +2575,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeServerError(w, r, err)
 		return
 	}
 	sessionToken := hex.EncodeToString(b)
@@ -2588,7 +2588,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		MustChangePassword: user.MustChangePassword,
 		ExpiresAt:          expiry,
 	}); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeServerError(w, r, err)
 		return
 	}
 	go s.st.PruneExpiredUserSessions()
