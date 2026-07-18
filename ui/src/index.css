@@ -156,10 +156,14 @@
   }
 }
 
-/* Scrollbar styling */
+/* Thin custom scrollbar */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -171,7 +175,7 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/30;
+  @apply bg-muted-foreground/40;
 }
 
 @keyframes fade-in {
