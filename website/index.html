@@ -10,7 +10,7 @@
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
 <title>ollama-mesh - The control plane for self-hosted AI inference</title>
-<meta name="description" content="The control plane for self-hosted AI inference. Turn your own GPUs into a high-availability alternative to cloud LLM APIs - warm, VRAM-aware routing across Ollama, vLLM, TGI, and llama.cpp, one OpenAI-compatible gateway, and cost-metered cloud overflow." />
+<meta name="description" content="The control plane for self-hosted AI inference. Turn your own GPUs into a high-availability alternative to cloud LLM APIs - warm, VRAM-aware routing across Ollama, vLLM, TGI, llama.cpp, and MLX, one OpenAI-compatible gateway, and cost-metered cloud overflow." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="canonical" href="https://anirudh.social/ollama-mesh/" />
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
@@ -20,7 +20,7 @@
 <meta property="og:site_name" content="ollama-mesh" />
 <meta property="og:locale" content="en_US" />
 <meta property="og:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
-<meta property="og:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI & llama.cpp, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
+<meta property="og:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
 <meta property="og:url" content="https://anirudh.social/ollama-mesh/" />
 <meta property="og:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
 <meta property="og:image:width" content="1200" />
@@ -28,7 +28,7 @@
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
-<meta name="twitter:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI & llama.cpp, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
+<meta name="twitter:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
 <meta name="twitter:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
 <script type="application/ld+json">
 [
@@ -36,7 +36,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "ollama-mesh",
-    "description": "The control plane for self-hosted AI inference. ollama-mesh schedules each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, and llama.cpp, exposing one OpenAI-compatible endpoint with authentication, rate limiting, and cost-metered cloud overflow to OpenAI or Anthropic - a self-hosted alternative to cloud LLM APIs.",
+    "description": "The control plane for self-hosted AI inference. ollama-mesh schedules each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint with authentication, rate limiting, and cost-metered cloud overflow to OpenAI or Anthropic - a self-hosted alternative to cloud LLM APIs.",
     "url": "https://anirudh.social/ollama-mesh/",
     "downloadUrl": "https://github.com/Anirudhx7/ollama-mesh/releases",
     "applicationCategory": "DeveloperApplication",
@@ -46,7 +46,7 @@
     "programmingLanguage": "Go",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "Anirudh Mehandru", "url": "https://anirudh.social" },
-    "keywords": "self-hosted LLM inference, self-hosted LLM gateway, on-prem LLM serving, private LLM inference, self-hosted OpenAI API alternative, GPU-aware LLM routing, warm model VRAM routing, LLM inference control plane, multi-runtime inference, Ollama load balancer, vLLM load balancing, llama.cpp, TGI, LLM cost control"
+    "keywords": "self-hosted LLM inference, self-hosted LLM gateway, on-prem LLM serving, private LLM inference, self-hosted OpenAI API alternative, GPU-aware LLM routing, warm model VRAM routing, LLM inference control plane, multi-runtime inference, Ollama load balancer, vLLM load balancing, llama.cpp, TGI, MLX, LLM cost control"
   },
   {
     "@context": "https://schema.org",
@@ -55,7 +55,7 @@
       {
         "@type": "Question",
         "name": "What is ollama-mesh?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, and llama.cpp, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs." }
+        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs." }
       },
       {
         "@type": "Question",
@@ -64,8 +64,8 @@
       },
       {
         "@type": "Question",
-        "name": "Does ollama-mesh work with vLLM, TGI, and llama.cpp - or only Ollama?",
-        "acceptedAnswer": { "@type": "Answer", "text": "All four. Despite the name, ollama-mesh is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, and llama.cpp, so you can mix runtimes behind a single URL." }
+        "name": "Does ollama-mesh work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?",
+        "acceptedAnswer": { "@type": "Answer", "text": "All five. Despite the name, ollama-mesh is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL." }
       },
       {
         "@type": "Question",
@@ -691,13 +691,13 @@ SPCS-FEATURE-END */
 <!-- HERO -->
 <header class="hero">
   <div class="page">
-    <span class="kicker"><span class="dot"></span>{{VERSION}}: vLLM, TGI, llama.cpp · self-hosted · Apache-2.0</span>
+    <span class="kicker"><span class="dot"></span>{{VERSION}}: vLLM, TGI, llama.cpp, MLX · self-hosted · Apache-2.0</span>
     <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
       A single-binary control plane that turns your own GPUs into a high-availability alternative to cloud LLM APIs.
       ollama-mesh routes each request to the node already holding the model warm in VRAM - eliminating cold starts,
       balancing queue depth across nodes, and metering cost-aware cloud overflow with full token accounting.
-      One OpenAI-compatible endpoint for Ollama, vLLM, TGI, and llama.cpp.
+      One OpenAI-compatible endpoint for Ollama, vLLM, TGI, llama.cpp, and MLX.
     </p>
 
     <div class="cta-row">
@@ -911,7 +911,7 @@ SPCS-FEATURE-END -->
   <div class="page">
     <p class="eyebrow">Built for platform engineers</p>
     <h2 class="sec">Everything you need to run <em>production AI on your own infrastructure.</em></h2>
-    <p class="sec-sub">Point every app at one OpenAI-compatible URL. ollama-mesh handles warm-state routing, high-availability failover, authentication, rate limiting, and cost analytics - across Ollama, vLLM, TGI, and llama.cpp.</p>
+    <p class="sec-sub">Point every app at one OpenAI-compatible URL. ollama-mesh handles warm-state routing, high-availability failover, authentication, rate limiting, and cost analytics - across Ollama, vLLM, TGI, llama.cpp, and MLX.</p>
 
     <div class="features">
       <div class="feat warm">
@@ -960,7 +960,7 @@ SPCS-FEATURE-END -->
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/><rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/><path d="M9 6.5h6M9 17.5h6M5.5 10v4M18.5 10v4"/></svg></div>
         <div>
           <h3>Multi-runtime load balancing</h3>
-          <p>Provides a unified OpenAI-compatible endpoint that transparently orchestrates Ollama, vLLM, llama.cpp, and TGI nodes. Handles protocol translation automatically, allowing you to mix and match runtimes based on performance needs.</p>
+          <p>Provides a unified OpenAI-compatible endpoint that transparently orchestrates Ollama, vLLM, llama.cpp, TGI, and MLX nodes. Handles protocol translation automatically, allowing you to mix and match runtimes based on performance needs.</p>
         </div>
       </div>
     </div>
@@ -984,23 +984,16 @@ SPCS-FEATURE-END -->
           <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="b">|</span> sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 
           <p style="margin-top: 1.2rem; margin-bottom: 0.5rem;">Option 2: Install, scan local network & run daemon in background</p>
-          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="b">|</span> <span class="g">PROBE</span>=1 <span class="g">START</span>=1 sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | PROBE=1 START=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="b">|</span> <span class="g">START</span>=1 sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
       <div class="step">
         <div class="num">2</div>
         <div>
           <h3>Point it at your nodes</h3>
-          <p>List your nodes and, optionally, a cloud key for fallback. Ollama, vLLM, TGI, and llama.cpp nodes all work - set <code>runtime:</code> per node.</p>
-          <div class="code-wrap"><pre class="code"><span class="c"># mesh.yaml</span>
-<span class="b">nodes:</span>
-  - <span class="b">name:</span> ollama-gpu
-    <span class="b">url:</span> http://gpu-01:11434
-    <span class="b">runtime:</span> <span class="g">ollama</span>
-  - <span class="b">name:</span> vllm-gpu
-    <span class="b">url:</span> http://10.0.1.20:8000
-    <span class="b">runtime:</span> <span class="g">vllm</span>
-<span class="b">fallback:</span> openai  <span class="c"># optional cloud overflow</span></pre><button class="copy-btn" aria-label="Copy" data-copy="# mesh.yaml&#10;nodes:&#10;  - name: ollama-gpu&#10;    url: http://gpu-01:11434&#10;    runtime: ollama&#10;  - name: vllm-gpu&#10;    url: http://10.0.1.20:8000&#10;    runtime: vllm&#10;fallback: openai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+          <p>Add nodes from the dashboard, or seed them at install time. No config file to write. Ollama, vLLM, TGI, llama.cpp, and MLX nodes all work - set <code>runtime</code> per node.</p>
+          <div class="code-wrap"><pre class="code"><span class="c"># seed at install time (repeatable flag)</span>
+ollama-mesh <span class="b">--seed-node</span> <span class="g">"name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama"</span> <span class="b">--seed-node</span> <span class="g">"name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"</span></pre><button class="copy-btn" aria-label="Copy" data-copy='ollama-mesh --seed-node "name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama" --seed-node "name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
       <div class="step">
@@ -1091,7 +1084,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
         <div class="stack-arrow">→</div>
         <div class="stack-node mesh">ollama-mesh<br><span style="font-size: 10px; opacity: 0.85">GPU Scheduling & VRAM Routing</span></div>
         <div class="stack-arrow">→</div>
-        <div class="stack-node runtime">Runtimes<br><span style="font-size: 10px; opacity: 0.85">Ollama, vLLM, TGI</span></div>
+        <div class="stack-node runtime">Runtimes<br><span style="font-size: 10px; opacity: 0.85">Ollama, vLLM, TGI, MLX</span></div>
         <div class="stack-arrow">→</div>
         <div class="stack-node runtime" style="border-color: var(--accent); color: var(--text);">GPUs<br><span style="font-size: 10px; color: var(--text-muted)">On-Premise / Private Cloud</span></div>
       </div>
@@ -1119,15 +1112,15 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 32px; margin-top: 32px;">
       <div>
         <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">What is ollama-mesh?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;"><code>ollama-mesh</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, and llama.cpp, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;"><code>ollama-mesh</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
       </div>
       <div>
         <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">How is ollama-mesh different from a plain load balancer like nginx or HAProxy?</h3>
         <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. <code>ollama-mesh</code> reads live model residency and VRAM state on every node and schedules each request to a warm GPU.</p>
       </div>
       <div>
-        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Does ollama-mesh work with vLLM, TGI, and llama.cpp - or only Ollama?</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">All four. Despite the name, <code>ollama-mesh</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, and llama.cpp, so you can mix runtimes behind a single URL.</p>
+        <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Does ollama-mesh work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?</h3>
+        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">All five. Despite the name, <code>ollama-mesh</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL.</p>
       </div>
       <div>
         <h3 style="font-family: var(--font-serif); font-size: 16px; margin: 0 0 10px; font-weight: 600; color: var(--text);">Can ollama-mesh replace cloud LLM APIs like OpenAI?</h3>
@@ -1176,7 +1169,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
           </div>
           <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
         </a>
-        <p>Warm-first routing and honest cost tracking for self-hosted GPU inference - Ollama, vLLM, TGI, and llama.cpp.</p>
+        <p>Warm-first routing and honest cost tracking for self-hosted GPU inference - Ollama, vLLM, TGI, llama.cpp, and MLX.</p>
         <a class="gh-link" href="https://github.com/Anirudhx7/ollama-mesh" aria-label="GitHub repository">
           <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
