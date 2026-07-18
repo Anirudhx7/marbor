@@ -471,7 +471,7 @@ export async function addNode(data: Record<string, unknown>) {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to add node');
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to add node'); }
 }
 
 export async function removeNode(name: string) {
