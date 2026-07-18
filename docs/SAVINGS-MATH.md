@@ -155,7 +155,7 @@ If requests were served but no token counts could be parsed from any response - 
 
 ### Counter Lifecycle
 
-Savings and spend counters are held in memory. Per-key token totals and quota counters are persisted to `usage-state.json` (configurable via `auth.state_path`) and survive restarts. Aggregate savings counters reset on process restart. The audit log (JSON-lines, if enabled) is the durable per-request record.
+Savings and spend counters are held in memory. Per-key token totals and quota counters are stored in-memory for zero-overhead routing and transactionally flushed to the SQLite `key_counters` table in `mesh.db` every 30 seconds and on clean shutdown. Aggregate savings counters reset on process restart. The audit log (if enabled) is the durable per-request record.
 
 ---
 
