@@ -36,12 +36,14 @@ Workarounds if a discovered node is unreachable:
 Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each node's `/api/ps` endpoint. This is available for all nodes - local and remote - without any node agent.
 
 ### VRAM capacity
-Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh. For remote nodes, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
+Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh (for NVIDIA GPUs). For Apple Silicon (MLX) nodes or remote nodes where `nvidia-smi` is not applicable or available, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
 
 ### Temperature and power draw
-GPU temperature and power draw are read from `nvidia-smi` on the host running ollama-mesh, without any node agent, for the local node.
+GPU temperature and power draw are read from `nvidia-smi` on the host running ollama-mesh, without any node agent, for local NVIDIA GPU nodes.
 
-For remote nodes, the same telemetry (temperature, power draw, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard. ollama-mesh enforces strict data honesty—we never substitute estimated or fabricated numbers for missing telemetry.
+For remote NVIDIA nodes, the same telemetry (temperature, power draw, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard. 
+
+For Apple Silicon (MLX) nodes, temperature and power metrics are currently not supported and will show `-` in the dashboard. ollama-mesh enforces strict data honesty—we never substitute estimated or fabricated numbers for missing telemetry.
 
 ---
 
