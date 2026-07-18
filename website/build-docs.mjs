@@ -236,6 +236,7 @@ function page({ slug, title, contentHtml, headings }) {
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="${r}docs/index.html">← Docs home</a>
+    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     ${docSidebar(slug)}
   </aside>
 

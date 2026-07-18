@@ -7,11 +7,15 @@ One OpenAI-compatible endpoint for all your self-hosted LLM traffic. ollama-mesh
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](https://anirudh.social/ollama-mesh/demo/)
+
 
 ![ollama-mesh dashboard](website/screenshots/dashboard.png)
 *Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings - all from real parsed token counts.*
 
 ---
+
+> **[→ Try the live demo](https://anirudh.social/ollama-mesh/demo/)** — see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
 
 ## Quick Start
 
