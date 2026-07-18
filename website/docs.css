@@ -61,6 +61,16 @@ a:hover { text-decoration: underline; }
 .serif { font-family: var(--font-serif); }
 .page { max-width: 1280px; margin: 0 auto; padding: 0 40px; }
 
+/* Thin custom scrollbar — replaces the OS default */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
 /* nav (shared with landing) */
 nav {
   padding: 18px 0; position: sticky; top: 0; z-index: 100;
