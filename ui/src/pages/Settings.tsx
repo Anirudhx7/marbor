@@ -680,6 +680,7 @@ export function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
                 <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
+                <p className="text-[10px] text-amber-500/80 mt-1">Requires a mesh restart to take effect.</p>
               </div>
               <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
             </div>
