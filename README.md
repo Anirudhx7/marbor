@@ -135,7 +135,7 @@ Client Application (Agent / RAG / Copilot)
   GPU Nodes     Cloud APIs     Prometheus :9090
   (Ollama/      (overflow)     Grafana Dashboard
    vLLM/TGI/
-   llama.cpp)
+   llama.cpp/MLX)
 ```
 
 **Single static Go binary. Zero runtime dependencies. No Python. No JVM. No Node.js.**
