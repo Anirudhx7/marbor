@@ -25,13 +25,14 @@ html.light {
   --border: #ddd8d0;
   --border-subtle: #e8e4dc;
   --text: #1a1815;
-  --text-muted: #534f46;
-  --text-faint: #756f64;
-  --accent: #8b6914;
-  --accent-dim: #6b5210;
-  --accent-bg: rgba(139,105,20,0.06);
-  --accent2: #2d662d;
-  --accent3: #943d3d;
+  --text-muted: #3d3a33;
+  --text-faint: #5e584d;
+  --accent: #705206;
+  --accent-dim: #5c4308;
+  --accent-bg: rgba(112,82,6,0.06);
+  --accent-bg-hover: rgba(112,82,6,0.12);
+  --accent2: #255c25;
+  --accent3: #8a3434;
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
