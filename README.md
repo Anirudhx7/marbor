@@ -165,7 +165,7 @@ Client Application (Agent / RAG / Copilot)
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
-| | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-reads config in place. Key rotations and routing changes take effect without dropping connections. |
+| | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-syncs state from `mesh.db` in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional Node Agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
@@ -371,17 +371,18 @@ Configure it in the dashboard's **Settings → Global Warmup** card: enable it, 
 
 ## Cloud Fallback Setup
 
-Cloud providers are used **only** when all local inference nodes (Ollama, vLLM, TGI, llama.cpp, MLX) are unavailable or at capacity. Local GPU always wins. Set `enabled: true` on any provider:
+Set a provider configuration (JSON format for `POST /admin/v1/cloud/providers` or dashboard):
 
-```yaml
-cloud_providers:
-  - name: openai-overflow
-    provider: openai
-    base_url: https://api.openai.com
-    api_key: sk-...
-    default_model: gpt-4o-mini
-    cost_per_1k_tokens: 0.00015
-    enabled: true
+```json
+{
+  "name": "openai-overflow",
+  "provider": "openai",
+  "base_url": "https://api.openai.com",
+  "api_key": "sk-...",
+  "default_model": "gpt-4o-mini",
+  "cost_per_1k_tokens": 0.00015,
+  "enabled": true
+}
 ```
 
 Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI response translated back to Ollama NDJSON - clients never see a format difference.
