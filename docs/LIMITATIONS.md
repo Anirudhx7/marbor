@@ -41,7 +41,7 @@ Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh. F
 ### Temperature and power draw
 GPU temperature and power draw are read from `nvidia-smi` on the host running ollama-mesh, without any node agent, for the local node.
 
-For remote nodes, the same telemetry (temperature, power draw, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent running on a given remote node, that node's temperature and power draw show as `-` in the dashboard, per this project's rule that missing data is always shown as `-`, never a fake estimate.
+For remote nodes, the same telemetry (temperature, power draw, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard. ollama-mesh enforces strict data honesty—we never substitute estimated or fabricated numbers for missing telemetry.
 
 ---
 
