@@ -319,6 +319,33 @@ h2.sec { font-family: var(--font-serif); font-weight: 400; font-size: clamp(26px
 h2.sec em { font-style: italic; color: var(--accent); }
 .sec-sub { font-family: var(--font-serif); color: var(--text-muted); font-size: 16px; line-height: 1.6; max-width: 58ch; margin: 0 0 36px; }
 
+/* CHIP / PILL — semantic status indicators */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 9px;
+  border-radius: 99px;
+  font-size: 11px; font-weight: 500;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.chip-yes  { color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); background: color-mix(in srgb, var(--accent2) 8%, transparent); }
+.chip-no   { color: var(--text-faint); border-color: var(--border-subtle); background: var(--bg-surface); }
+.chip-partial { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+/* PULSING BRAND DOT */
+.brand-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent2);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent2) 60%, transparent);
+  flex-shrink: 0;
+  animation: dot-pulse 2.4s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* features as a list, terminal-doc style */
 .features { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border-subtle); }
 .feat { display: grid; grid-template-columns: 34px 1fr; gap: 16px; padding: 22px 16px; margin: 0 -16px; border-bottom: 1px solid var(--border-subtle); border-radius: var(--radius); transition: all .2s cubic-bezier(0.16, 1, 0.3, 1); }
@@ -711,6 +738,7 @@ SPCS-FEATURE-END */
       </div>
       <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
       <span class="ver">{{VERSION}}</span>
+      <span class="brand-dot" title="Active"></span>
     </a>
     <div class="nav-right">
       <div class="nav-links">
@@ -1081,43 +1109,43 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
         <tbody>
           <tr>
             <td>Warm-state routing (knows which nodes have which models loaded)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No (nginx has no visibility into VRAM contents)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-no">✗ No — nginx has no VRAM visibility</span></td>
           </tr>
           <tr>
             <td>Model residency awareness (avoids unnecessary reloads)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No (routes blindly, causing constant model thrashing)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-no">✗ No — routes blindly, causes thrashing</span></td>
           </tr>
           <tr>
             <td>GPU locality scheduling (routes by where the model already lives)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No (cannot query GPU layouts or topology)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-no">✗ No — cannot query GPU layouts</span></td>
           </tr>
           <tr>
             <td>Queue-depth awareness (avoids piling requests on a busy node)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="partial">Partial (nginx balances TCP connections, but does not know Ollama's internal queues)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-partial">~ Partial — balances TCP, not LLM queues</span></td>
           </tr>
           <tr>
             <td>VRAM visibility (knows what is consuming memory across the cluster)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No (cannot access /api/ps or nvidia-smi metrics)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-no">✗ No — cannot read /api/ps or nvidia-smi</span></td>
           </tr>
           <tr>
             <td>Cold start handling (detects and routes around cold nodes)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No (routes to cold nodes, exposing 20-30s load times)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-no">✗ No — exposes 20–30s cold load to user</span></td>
           </tr>
           <tr>
             <td>Multi-runtime support (Ollama, vLLM, TGI, llama.cpp, MLX)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No (requires complex custom routing and API translation layers)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-no">✗ No — needs custom per-runtime config</span></td>
           </tr>
           <tr>
             <td>Cluster observability (unified view of all nodes)</td>
-            <td class="col-us"><span class="cell-ic yes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Yes</span></td>
-            <td><span class="no">No (requires setting up external Prometheus exporters and Grafana)</span></td>
+            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
+            <td><span class="chip chip-no">✗ No — requires Prometheus + Grafana setup</span></td>
           </tr>
         </tbody>
       </table>
