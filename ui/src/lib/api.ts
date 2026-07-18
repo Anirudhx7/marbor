@@ -312,7 +312,7 @@ export async function setNodeWarmup(name: string, nw: NodeWarmup): Promise<NodeW
 }
 
 export async function getPinned(nodeName: string): Promise<string[]> {
-  if (DEMO) return demoDelay(['qwen2.5:3b', 'nomic-embed-text']);
+  if (DEMO) return demoDelay(['qwen2.5']);
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(nodeName)}/pinned`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch pinned models');
   const j = await res.json();
