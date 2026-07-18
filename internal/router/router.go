@@ -77,7 +77,7 @@ type NodeState struct {
 	Uptime        string
 	HealthHistory []float64
 	FirstSeenAt   time.Time
-	// Runtime identifies the backend type: "ollama", "vllm", "tgi", "llamacpp".
+	// Runtime identifies the backend type: "ollama", "vllm", "tgi", "llamacpp", "mlx".
 	// Empty string is treated as "ollama" for backwards compatibility.
 	// "auto" means detection is pending; resolved to a real runtime on first poll.
 	Runtime string

@@ -186,6 +186,7 @@ func TestGgufOnlyRuntime(t *testing.T) {
 		{"llamacpp", true},
 		{"vllm", false},
 		{"tgi", false},
+		{"mlx", false},
 		{"auto", false},
 	}
 	for _, c := range cases {
@@ -204,6 +205,7 @@ func TestDetectSafetensorsQuant(t *testing.T) {
 		{[]string{"text-generation", "gptq"}, "GPTQ"},
 		{[]string{"text-generation", "bitsandbytes"}, "BNB"},
 		{[]string{"text-generation", "transformers"}, "FP16/BF16"},
+		{[]string{"text-generation", "mlx"}, "MLX"},
 	}
 	for _, c := range cases {
 		if got := detectSafetensorsQuant(c.tags); got != c.want {

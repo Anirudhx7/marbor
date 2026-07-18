@@ -120,6 +120,31 @@ export const mockGPUNodes: GPUNode[] = [
     avgLatencyMs: 450,
     warmHitRatio: 0.55,
   },
+  {
+    id: 'node-5',
+    name: 'gpu-node-05',
+    gpuModel: 'Apple M3 Max 128GB',
+    port: 8080,
+    runtime: 'mlx',
+    vramTotalMB: 128 * GB,
+    vramUsedMB: Math.round(22.4 * GB),
+    vramSource: 'declared',
+    powerDrawW: 0,
+    temperature: null,
+    health: 'healthy',
+    draining: false,
+    prewarmDisabled: false,
+    pendingPrewarmMB: 0,
+    uptime: '5d 19h',
+    loadedModels: [
+      { name: 'mlx-community/Llama-3.2-3B-Instruct-4bit', sizeVram: Math.round(2.0 * GiB) },
+    ],
+    healthHistory: Array(60).fill(0).map(() => 96 + Math.random() * 4),
+    coldStarts: 1,
+    tokensTotal: 58000,
+    avgLatencyMs: 96,
+    warmHitRatio: 0.97,
+  },
 ];
 
 export const mockAPIKeys: APIKey[] = [
@@ -702,6 +727,16 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       vram_source: 'declared',
       models: [],
     },
+    {
+      name: 'gpu-node-05',
+      url: 'http://10.0.1.23:8080',
+      runtime: 'mlx',
+      vram_free_bytes: 105 * 1024 * 1024 * 1024,
+      vram_total_bytes: 128 * 1024 * 1024 * 1024,
+      vram_used_bytes: 23 * 1024 * 1024 * 1024,
+      vram_source: 'declared',
+      models: [],
+    },
   ],
 };
 
@@ -907,7 +942,8 @@ export const mockHFRepoDetails: Record<string, any> = {
 // unconfigured - an all-fields-filled profile would look fabricated (R1).
 // Keyed by (model, node) - the same model name can carry a different
 // profile per node/runtime it's resident on (see mockGPUNodes/mockModelCatalog
-// above: gpu-node-01=ollama, gpu-node-02=vllm, gpu-node-03=tgi, gpu-node-04=llamacpp).
+// above: gpu-node-01=ollama, gpu-node-02=vllm, gpu-node-03=tgi, gpu-node-04=llamacpp,
+// gpu-node-05=mlx).
 const mockModelConfigSeed: ModelConfig[] = [
   {
     model: 'llama3.3:8b',
@@ -1019,6 +1055,7 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
       'system', 'rpm', 'tpm',
     ],
     tgi: [...OPENAI_COMPAT_BASE_FIELDS, 'system', 'rpm', 'tpm'],
+    mlx: [...OPENAI_COMPAT_BASE_FIELDS, 'system', 'rpm', 'tpm'],
     llamacpp: [
       ...OPENAI_COMPAT_BASE_FIELDS,
       'repeat_penalty', 'repeat_last_n', 'typical_p', 'mirostat', 'mirostat_tau', 'mirostat_eta',

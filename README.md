@@ -1,8 +1,8 @@
 # ollama-mesh
 
-**The self-hosted control plane for AI inference - warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, and llama.cpp**
+**The self-hosted control plane for AI inference - warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX**
 
-One OpenAI-compatible endpoint for all your self-hosted LLM traffic. ollama-mesh routes every request to the GPU node that already holds the model warm in VRAM - across Ollama, vLLM, TGI, and llama.cpp - turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
+One OpenAI-compatible endpoint for all your self-hosted LLM traffic. ollama-mesh routes every request to the GPU node that already holds the model warm in VRAM - across Ollama, vLLM, TGI, llama.cpp, and MLX (Apple Silicon) - turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
 
 [![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
@@ -169,7 +169,7 @@ Client Application (Agent / RAG / Copilot)
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: operator-declared `vram_total_mb`. Every figure labelled with its source (nvidia/api/declared). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
-| **Multi-Backend** | Ollama, vLLM, TGI, llama.cpp | Declare `runtime: ollama/vllm/tgi/llamacpp` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. |
+| **Multi-Backend** | Ollama, vLLM, TGI, llama.cpp, MLX | Declare `runtime: ollama/vllm/tgi/llamacpp/mlx` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. |
 | | Path-aware routing | `/api/*` routes to Ollama nodes only. `/v1/*` routes to any runtime. Non-Ollama nodes are transparent to OpenAI SDK clients. |
 | **Deployment** | Single binary | One static Go binary per platform. Drop onto a VM and run. No package manager, no virtualenv, no container runtime required. |
 | | Docker auto-discovery | Scans Docker socket for `ollama/ollama` containers. Auto-registers nodes. Zero config. |
@@ -228,6 +228,7 @@ ollama-mesh is runtime-agnostic. Declare `runtime:` per node and the router uses
 | vLLM | `vllm` | GET /health | GET /v1/models | /v1/* only |
 | TGI (HuggingFace) | `tgi` | GET /health | GET /info | /v1/* only |
 | llama.cpp server | `llamacpp` | GET /health | GET /v1/models | /v1/* only |
+| MLX (`mlx_lm.server`, Apple Silicon) | `mlx` | GET /v1/models | GET /v1/models | /v1/* only |
 
 `/api/*` paths (Ollama-native) route only to Ollama nodes. `/v1/*` paths route to any runtime - OpenAI SDK clients work unchanged against a mixed fleet.
 
@@ -248,6 +249,9 @@ nodes:
   - name: llamacpp-server
     url: http://10.0.1.22:8080
     runtime: llamacpp
+  - name: mlx-mac-studio
+    url: http://10.0.1.23:8080
+    runtime: mlx
 ```
 
 ---
@@ -356,7 +360,7 @@ Configure it in the dashboard's **Settings → Global Warmup** card: enable it, 
 
 ## Cloud Fallback Setup
 
-Cloud providers are used **only** when all local inference nodes (Ollama, vLLM, TGI, llama.cpp) are unavailable or at capacity. Local GPU always wins. Set `enabled: true` on any provider:
+Cloud providers are used **only** when all local inference nodes (Ollama, vLLM, TGI, llama.cpp, MLX) are unavailable or at capacity. Local GPU always wins. Set `enabled: true` on any provider:
 
 ```yaml
 cloud_providers:
@@ -448,7 +452,7 @@ Import `grafana/ollama-mesh.json` into Grafana. Point the Prometheus datasource 
 
 ### Use ollama-mesh when:
 
-- You have on-premises GPU hardware running Ollama, vLLM, TGI, or llama.cpp and want to maximize utilization before paying for cloud tokens.
+- You have on-premises GPU hardware running Ollama, vLLM, TGI, llama.cpp, or MLX (Apple Silicon) and want to maximize utilization before paying for cloud tokens.
 - You need per-key auth, rate limiting, cost attribution, and a usage dashboard without standing up a Python service.
 - You need GPU-warm-first routing to eliminate cold-start latency in multi-agent workflows.
 - You want cloud overflow that is explicitly opt-in - not a default that silently generates bills.

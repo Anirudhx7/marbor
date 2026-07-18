@@ -428,7 +428,13 @@ func ggufOnlyRuntime(runtime string) bool {
 
 // detectSafetensorsQuant labels a non-GGUF repo's quantization method from
 // its HF tags. Falls back to "FP16/BF16" for unquantized full-precision repos.
+// MLX repos are tagged "library:mlx" on HF and carry their own quant format
+// (distinct from AWQ/GPTQ/BNB) - the actual bit-width lives in config.json,
+// not in tags, so it's labeled generically as "MLX" here rather than
+// guessing a specific bit-width from tags alone (R1: no fabricated
+// precision).
 func detectSafetensorsQuant(tags []string) string {
+	isMLX := false
 	for _, t := range tags {
 		lt := strings.ToLower(t)
 		switch {
@@ -438,7 +444,12 @@ func detectSafetensorsQuant(tags []string) string {
 			return "GPTQ"
 		case strings.Contains(lt, "bitsandbytes"), strings.Contains(lt, "bnb"):
 			return "BNB"
+		case lt == "mlx" || strings.Contains(lt, "library:mlx"):
+			isMLX = true
 		}
+	}
+	if isMLX {
+		return "MLX"
 	}
 	return "FP16/BF16"
 }

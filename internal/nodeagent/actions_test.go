@@ -65,6 +65,25 @@ func TestHandlePullModel_KnownButUnavailableToolReturnsClearError(t *testing.T) 
 	}
 }
 
+// TestHandlePullModel_MlxUsesHFHubFallback verifies mlx, like vllm/llamacpp,
+// falls back to the huggingface-cli download path (mlx-lm has no standalone
+// pull command either) - must fail loudly when the tool isn't on PATH, never
+// fake success.
+func TestHandlePullModel_MlxUsesHFHubFallback(t *testing.T) {
+	srv := newTestServerWithRuntime(t, "mlx")
+	res := doPull(t, srv, `{"model":"mlx-community/repo"}`)
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false when huggingface-cli is not on PATH")
+	}
+}
+
 func TestHandlePullModel_MissingModelIsBadRequest(t *testing.T) {
 	srv := newTestServerWithRuntime(t, "ollama")
 	res := doPull(t, srv, `{}`)

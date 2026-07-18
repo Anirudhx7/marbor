@@ -1,20 +1,23 @@
 // cmd/mocknode/main.go - Mock inference-node HTTP server for the demo stack
 // and multi-runtime testing. RUNTIME selects which backend it impersonates:
 // "ollama" (default, unchanged from this tool's original mockollama name),
-// "vllm", "tgi", or "llamacpp". Configurable via env vars: RUNTIME,
+// "vllm", "tgi", "llamacpp", or "mlx". Configurable via env vars: RUNTIME,
 // NODE_NAME, MODEL_ID, WARM_MODELS, ALL_MODELS, PORT, LATENCY_MS.
 //
 // The non-Ollama runtimes deliberately implement only what ollama-mesh
 // itself actually calls (internal/runtime's detect/health probes, verified
 // against that package's source and tests) rather than each project's full
 // real API surface - this is a mock of the mesh's integration contract, not
-// a general-purpose vLLM/TGI/llama.cpp simulator:
+// a general-purpose vLLM/TGI/llama.cpp/MLX simulator:
 //   - vllm/llamacpp: GET /health, GET /v1/models (owned_by:"vllm" is what
 //     distinguishes vllm from llamacpp during auto-detection), POST
 //     /v1/chat/completions, POST /v1/completions.
 //   - tgi: GET /health, GET /info ({"model_id":...} is the only field the
 //     mesh reads), POST /v1/chat/completions.
-//   - None of the three implement /api/tags: the mesh already treats its
+//   - mlx: GET /v1/models only (no /health route - matches real
+//     mlx_lm.server, and is exactly what internal/runtime.MLXProbe checks),
+//     POST /v1/chat/completions, POST /v1/completions.
+//   - None of these implement /api/tags: the mesh already treats its
 //     absence as an expected, gracefully-degraded case (see
 //     internal/router/eviction.go's estimateModelSizeBytes comment).
 package main
@@ -107,7 +110,7 @@ func main() {
 	}
 
 	switch runtime {
-	case "vllm", "tgi", "llamacpp":
+	case "vllm", "tgi", "llamacpp", "mlx":
 		runOpenAICompatMock(runtime, nodeName, port, latencyMs)
 	default:
 		runOllamaMock(nodeName, port, latencyMs)
@@ -441,6 +444,8 @@ func defaultModelID(runtime string) string {
 		return "mistralai/Mistral-7B-Instruct-v0.3"
 	case "llamacpp":
 		return "llama-3.2-3b-instruct.Q4_K_M.gguf"
+	case "mlx":
+		return "mlx-community/Llama-3.2-3B-Instruct-4bit"
 	}
 	return "mock-model"
 }
@@ -452,13 +457,17 @@ func runOpenAICompatMock(runtime, nodeName, port string, latencyMs int) {
 
 	mux := http.NewServeMux()
 
-	// GET /health - liveness probe every one of these three runtimes needs
-	// (internal/runtime's shared checkHealth requires a bare 200).
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{}`)
-	})
+	if runtime != "mlx" {
+		// GET /health - liveness probe vllm/tgi/llamacpp all need
+		// (internal/runtime's shared checkHealth requires a bare 200). mlx
+		// is deliberately excluded: real mlx_lm.server has no /health route,
+		// and internal/runtime.MLXProbe never calls one - only /v1/models.
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{}`)
+		})
+	}
 
 	switch runtime {
 	case "tgi":
@@ -467,13 +476,12 @@ func runOpenAICompatMock(runtime, nodeName, port string, latencyMs int) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"model_id": modelID})
 		})
-	default: // vllm, llamacpp
+	default: // vllm, llamacpp, mlx
 		// GET /v1/models - owned_by:"vllm" is what internal/runtime/detect.go
-		// uses to tell vllm and llamacpp apart; llamacpp must NOT send that value.
-		ownedBy := "llamacpp"
-		if runtime == "vllm" {
-			ownedBy = "vllm"
-		}
+		// uses to tell vllm and llamacpp apart; llamacpp must NOT send that
+		// value. mlx is never auto-detected via this field (reached only by
+		// explicit runtime:mlx config), so its own runtime name is fine here.
+		ownedBy := runtime
 		mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{

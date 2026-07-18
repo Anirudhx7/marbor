@@ -24,7 +24,8 @@ VALUES ('node-a', 'http://ollama-node-a:11434', 'ollama', 24576),
        ('node-b', 'http://ollama-node-b:11434', 'ollama', 24576),
        ('vllm-node', 'http://vllm-node:11434', 'vllm', 24576),
        ('tgi-node', 'http://tgi-node:11434', 'tgi', 24576),
-       ('llamacpp-node', 'http://llamacpp-node:11434', 'llamacpp', 24576);
+       ('llamacpp-node', 'http://llamacpp-node:11434', 'llamacpp', 24576),
+       ('mlx-node', 'http://mlx-node:11434', 'mlx', 24576);
 
 -- Insert settings
 INSERT INTO settings (key, value)

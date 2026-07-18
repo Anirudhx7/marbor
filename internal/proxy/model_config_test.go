@@ -353,3 +353,27 @@ func TestInjectModelDefaultsOpenAICompatSystemPromptNoMessagesArray(t *testing.T
 		t.Fatalf("bare 'system' field should not be injected for non-Ollama runtimes: %v", m)
 	}
 }
+
+// TestInjectModelDefaultsMlxUsesOpenAICompatBranch verifies "mlx" falls into
+// the same OpenAI-compatible injection branch as vllm/tgi/llamacpp (mlx_lm.server
+// exposes the same wire shape) - no special-cased translation logic exists or
+// is needed for it.
+func TestInjectModelDefaultsMlxUsesOpenAICompatBranch(t *testing.T) {
+	cfg := store.ModelConfig{Model: "m", Node: "n", Temperature: fp(0.4), MaxTokens: ip(256)}
+	body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+	out := injectModelDefaults(body, "mlx", cfg)
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if m["temperature"] != 0.4 {
+		t.Errorf("temperature = %v, want 0.4", m["temperature"])
+	}
+	if m["max_tokens"] != float64(256) {
+		t.Errorf("max_tokens = %v, want 256", m["max_tokens"])
+	}
+	if _, ok := m["options"]; ok {
+		t.Errorf("mlx body should not carry an Ollama-style 'options' object: %v", m)
+	}
+}

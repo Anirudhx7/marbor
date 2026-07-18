@@ -33,7 +33,7 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 //     are top-level fields. Ollama itself detects when a resident model's
 //     active options differ from an incoming request's and reloads
 //     automatically - the mesh does not need a separate evict-then-reload step.
-//   - Every other runtime (vllm/tgi/llamacpp, reached via /v1/chat/completions,
+//   - Every other runtime (vllm/tgi/llamacpp/mlx, reached via /v1/chat/completions,
 //     /v1/completions): the subset of inference-time params that exist in the
 //     strict OpenAI schema are always injected at the top level, plus
 //     whatever additional fields store.OpenAICompatExtraFields[runtime]

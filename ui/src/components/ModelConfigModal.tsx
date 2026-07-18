@@ -39,7 +39,7 @@ const FIELD_ALIASES: Record<string, string[]> = {
 // anything outside the known runtime set) is treated as "ollama".
 function normalizeRuntime(runtime: string | undefined): string {
   const r = (runtime || '').toLowerCase();
-  return r === 'vllm' || r === 'tgi' || r === 'llamacpp' ? r : 'ollama';
+  return r === 'vllm' || r === 'tgi' || r === 'llamacpp' || r === 'mlx' ? r : 'ollama';
 }
 
 type FieldType = 'int' | 'float' | 'bool' | 'text' | 'textarea' | 'slider' | 'select';

@@ -814,7 +814,7 @@ export async function fetchAllModelConfigs(): Promise<ModelConfig[]> {
 }
 
 // fetchModelConfigCapabilities returns, for each known runtime (ollama, vllm,
-// tgi, llamacpp), the exact ModelConfig JSON field names that actually take
+// tgi, llamacpp, mlx), the exact ModelConfig JSON field names that actually take
 // effect when injected for that runtime. This is the single source of truth
 // the UI uses to decide which fields to render/enable per node - it must
 // never hand-duplicate this list from memory, since that's exactly what

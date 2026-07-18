@@ -1062,4 +1062,13 @@ func TestHandleModelConfigCapabilities(t *testing.T) {
 	if !contains(caps["llamacpp"], "mirostat") {
 		t.Errorf("llamacpp capabilities missing its mirostat extra: %v", caps["llamacpp"])
 	}
+	if _, ok := caps["mlx"]; !ok {
+		t.Errorf("capabilities response missing mlx runtime entry: %v", caps)
+	}
+	if contains(caps["mlx"], "num_ctx") {
+		t.Errorf("mlx capabilities should not include num_ctx (load-time, Ollama-only): %v", caps["mlx"])
+	}
+	if !contains(caps["mlx"], "temperature") {
+		t.Errorf("mlx capabilities missing base OpenAI-compat field temperature: %v", caps["mlx"])
+	}
 }
