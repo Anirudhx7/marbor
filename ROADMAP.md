@@ -3,7 +3,7 @@
 ollama-mesh is a **single-instance, self-hosted inference control plane**. This roadmap is
 the evolution of one thing - the **router's intelligence** - not a march toward distributed
 infrastructure. It runs as one static Go binary, SQLite only, in front of multiple GPU
-backends (Ollama, vLLM, TGI, llama.cpp) behind a single OpenAI-compatible endpoint.
+backends (Ollama, vLLM, TGI, llama.cpp, MLX) behind a single OpenAI-compatible endpoint.
 
 ## The moat: router intelligence progression
 

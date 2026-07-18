@@ -313,8 +313,8 @@ export const mockSavings: Savings = {
 
 export const mockModelCatalog: ModelCatalog = {
   total_models: 6,
-  total_nodes: 4,
-  healthy_nodes: 3,
+  total_nodes: 5,
+  healthy_nodes: 4,
   models: [
     {
       name: 'llama3.3:8b',
@@ -464,7 +464,7 @@ function makeHourKey(hoursAgo: number): string {
 
 // Deterministic hourly pattern: 80-person engineering org with 8-model fleet, clear work-day peaks
 // 24 entries, index 0 = 23h ago, index 23 = current hour
-// Cloud overflow only during peak hours when all 4 local nodes are saturated
+// Cloud overflow only during peak hours when all 5 local nodes are saturated
 const _hourlyLocal = [51, 43, 38, 42, 56, 74, 119, 194, 300, 420, 481, 458, 385, 266, 329, 427, 448, 385, 266, 180, 150, 117, 126, 105];
 const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,   2,   6,  10,  16,  19,  17,  12,   8,  11,  18,  21,  13,   8,   6,   4,   2,   4,  2];
 

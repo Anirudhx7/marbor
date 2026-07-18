@@ -544,7 +544,7 @@ export function ModelAdvisor() {
 
       {demoMode && (
         <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm font-medium">
-          Demo mode - 4 inference nodes (Ollama, vLLM, TGI, llama.cpp). Connect real nodes to see live data.
+          Demo mode - 5 inference nodes (Ollama, vLLM, TGI, llama.cpp, MLX). Connect real nodes to see live data.
         </div>
       )}
 
