@@ -23,9 +23,11 @@ func TestLaunchdPlistContent(t *testing.T) {
 		"<string>/usr/local/bin/ollama-mesh</string>",
 		"<string>agent</string>",
 		"<string>--port=9200</string>",
-		"<string>--token=sekret</string>",
 		"<key>Label</key>",
 		"<string>com.ollamamesh.agent</string>",
+		"<key>EnvironmentVariables</key>",
+		"<key>TOKEN</key>",
+		"<string>sekret</string>",
 		"<key>RunAtLoad</key>",
 		"<true/>",
 		"<key>KeepAlive</key>",
@@ -40,6 +42,12 @@ func TestLaunchdPlistContent(t *testing.T) {
 	// XML element, not shell-joined into a single string.
 	if strings.Contains(plist, "<string>agent --port=9200 --token=sekret</string>") {
 		t.Errorf("ProgramArguments must not be a single shell-joined string")
+	}
+	// The token must never appear inside ProgramArguments (argv is visible
+	// to any local user via ps/Activity Monitor) - only inside
+	// EnvironmentVariables.
+	if strings.Contains(plist, "--token") {
+		t.Errorf("launchdPlistContent must not embed --token in ProgramArguments, got:\n%s", plist)
 	}
 }
 

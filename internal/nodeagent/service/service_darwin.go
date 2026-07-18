@@ -60,6 +60,14 @@ func launchdPlistContent(cfg Config) string {
 	}
 	b.WriteString("\t</array>\n")
 
+	// Token travels via EnvironmentVariables, not ProgramArguments: argv is
+	// visible to any local user via `ps`/Activity Monitor regardless of file
+	// permissions, whereas a process's environment is only visible to its
+	// owner (root here) via `ps eww`, not to other local users.
+	b.WriteString("\t<key>EnvironmentVariables</key>\n\t<dict>\n")
+	b.WriteString("\t\t<key>TOKEN</key>\n\t\t<string>" + xmlEscape(cfg.Token) + "</string>\n")
+	b.WriteString("\t</dict>\n")
+
 	b.WriteString("\t<key>RunAtLoad</key>\n\t<true/>\n")
 	b.WriteString("\t<key>KeepAlive</key>\n\t<true/>\n")
 
@@ -94,8 +102,11 @@ func (launchdManager) Install(cfg Config) error {
 		return fmt.Errorf("service: launchctl not found on PATH: %w", err)
 	}
 
+	// 0600, not the more common 0644: this plist now carries the agent's
+	// bearer token in EnvironmentVariables, and launchd (running as root)
+	// doesn't need world-read access to load its own LaunchDaemon.
 	content := launchdPlistContent(cfg)
-	if err := os.WriteFile(launchdPlistPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(launchdPlistPath, []byte(content), 0600); err != nil {
 		return fmt.Errorf("service: writing plist %s: %w", launchdPlistPath, err)
 	}
 
