@@ -167,7 +167,10 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		if cfg.MaxTokens != nil {
 			setIfAbsent(top, "max_tokens", *cfg.MaxTokens)
 		}
-		if cfg.Seed != nil {
+		// seed and response_format aren't in every non-Ollama runtime's actual
+		// schema despite being in the strict-schema baseline (mlx_lm.server
+		// documents neither - see store.OpenAICompatUnsupportedBaseFields).
+		if cfg.Seed != nil && runtime != "mlx" {
 			setIfAbsent(top, "seed", *cfg.Seed)
 		}
 		if len(cfg.Stop) > 0 {
@@ -179,7 +182,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		if cfg.FrequencyPenalty != nil {
 			setIfAbsent(top, "frequency_penalty", *cfg.FrequencyPenalty)
 		}
-		if cfg.ResponseFormat != nil {
+		if cfg.ResponseFormat != nil && runtime != "mlx" {
 			setIfAbsent(top, "response_format", map[string]string{"type": *cfg.ResponseFormat})
 		}
 

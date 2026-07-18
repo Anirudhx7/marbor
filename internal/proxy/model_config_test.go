@@ -377,3 +377,45 @@ func TestInjectModelDefaultsMlxUsesOpenAICompatBranch(t *testing.T) {
 		t.Errorf("mlx body should not carry an Ollama-style 'options' object: %v", m)
 	}
 }
+
+// TestInjectModelDefaultsMlxOmitsUnsupportedFields verifies seed and
+// response_format - real fields on vllm/tgi/llamacpp - are never injected for
+// mlx, since mlx_lm.server's documented request schema (SERVER.md) has no
+// equivalent for either. Also verifies mlx's real extra fields (top_k,
+// min_p, repetition_penalty, logit_bias) DO get injected.
+func TestInjectModelDefaultsMlxOmitsUnsupportedFields(t *testing.T) {
+	cfg := store.ModelConfig{
+		Model: "m", Node: "n",
+		Seed:           ip(42),
+		ResponseFormat: strp("json"),
+		TopK:           ip(40),
+		MinP:           fp(0.05),
+		RepeatPenalty:  fp(1.1),
+		LogitBias:      map[string]float64{"123": -5},
+	}
+	body := []byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`)
+	out := injectModelDefaults(body, "mlx", cfg)
+
+	var m map[string]interface{}
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if _, ok := m["seed"]; ok {
+		t.Errorf("seed should not be injected for mlx (unsupported by mlx_lm.server): %v", m)
+	}
+	if _, ok := m["response_format"]; ok {
+		t.Errorf("response_format should not be injected for mlx (unsupported by mlx_lm.server): %v", m)
+	}
+	if m["top_k"] != float64(40) {
+		t.Errorf("top_k = %v, want 40", m["top_k"])
+	}
+	if m["min_p"] != 0.05 {
+		t.Errorf("min_p = %v, want 0.05", m["min_p"])
+	}
+	if m["repetition_penalty"] != 1.1 {
+		t.Errorf("repetition_penalty = %v, want 1.1", m["repetition_penalty"])
+	}
+	if _, ok := m["logit_bias"]; !ok {
+		t.Errorf("logit_bias should be injected for mlx: %v", m)
+	}
+}
