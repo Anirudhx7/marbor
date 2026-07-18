@@ -167,7 +167,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   }
 
   const allModels = Array.from(new Set([...availableModels, ...selectedModels]));
-  // Models that are pinned but not in availableModels (custom entries)
+  // Models that are pinned but not on this node's catalog (custom entries)
   const extraPinned = pinnedModels.filter(m => !availableModels.includes(m));
   const allPinnedModels = Array.from(new Set([...availableModels, ...extraPinned]));
 
@@ -591,6 +591,10 @@ export function Warmup() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  // Which of availableModels actually exist on each node (warm or on-disk) -
+  // NodeCard add/pin options must be scoped to this, not the mesh-wide list,
+  // or every node's card shows every other node's models as locally present.
+  const [modelsByNode, setModelsByNode] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'warmup' | 'schedules' | 'predictions'>('warmup');
@@ -657,15 +661,26 @@ export function Warmup() {
       }
 
       if (demoMode) {
-        setAvailableModels(['llama3.3:8b', 'mistral:7b', 'llama3.3:70b', 'qwen2.5-coder:14b', 'gemma2:9b', 'phi3:medium']);
+        const demoModels = ['llama3.3:8b', 'mistral:7b', 'llama3.3:70b', 'qwen2.5-coder:14b', 'gemma2:9b', 'phi3:medium'];
+        setAvailableModels(demoModels);
+        setModelsByNode(Object.fromEntries(safeNs.map(n => [n.name, demoModels])));
       } else {
         try {
           const data = await fetchModels();
           if (!active || currentAppPath() !== '/warmup') return;
-          setAvailableModels((data.models || []).map((m: any) => m.name));
+          const entries = data.models || [];
+          setAvailableModels(entries.map((m: any) => m.name));
+          const byNode: Record<string, string[]> = {};
+          for (const m of entries) {
+            for (const n of m.nodes || []) {
+              (byNode[n.name] ??= []).push(m.name);
+            }
+          }
+          setModelsByNode(byNode);
         } catch {
           if (!active || currentAppPath() !== '/warmup') return;
           setAvailableModels([]);
+          setModelsByNode({});
         }
       }
       setError(null);
@@ -816,7 +831,7 @@ export function Warmup() {
                 key={n.name}
                 node={n}
                 initial={warmup[n.name] ?? { enabled: false, models: [] }}
-                availableModels={availableModels}
+                availableModels={modelsByNode[n.name] ?? []}
                 onSave={saveWarmup}
               />
             ))
