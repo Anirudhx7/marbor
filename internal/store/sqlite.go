@@ -213,6 +213,7 @@ func (s *sqliteStore) migrate() error {
 			                     CHECK(status IN ('pending','active','suspended')),
 			api_key_name         TEXT NOT NULL DEFAULT '',
 			must_change_password INTEGER NOT NULL DEFAULT 0,
+			skip_password_count  INTEGER NOT NULL DEFAULT 0,
 			created_at           INTEGER NOT NULL,
 			approved_at          INTEGER,
 			approved_by          TEXT NOT NULL DEFAULT ''
@@ -316,6 +317,7 @@ func (s *sqliteStore) migrate() error {
 	for _, col := range []string{
 		`ALTER TABLE users ADD COLUMN deleted_at INTEGER`,
 		`ALTER TABLE users ADD COLUMN deleted_by TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN skip_password_count INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE hourly_buckets ADD COLUMN gen_duration_ms INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN daily_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
@@ -1306,7 +1308,7 @@ func (s *sqliteStore) scanUserRow(row *sql.Row) (User, error) {
 	var approvedAt, deletedAt sql.NullInt64
 	err := row.Scan(
 		&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Salt,
-		&u.Role, &u.Status, &u.APIKeyName, &mcp, &createdAt,
+		&u.Role, &u.Status, &u.APIKeyName, &mcp, &u.SkipPasswordCount, &createdAt,
 		&approvedAt, &u.ApprovedBy,
 		&deletedAt, &u.DeletedBy,
 	)
@@ -1330,7 +1332,7 @@ func (s *sqliteStore) scanUserRow(row *sql.Row) (User, error) {
 }
 
 const userSelectCols = `id, username, email, password_hash, salt, role, status,
-	api_key_name, must_change_password, created_at, approved_at, approved_by,
+	api_key_name, must_change_password, skip_password_count, created_at, approved_at, approved_by,
 	deleted_at, deleted_by`
 
 func (s *sqliteStore) GetUserByUsername(username string) (User, error) {
@@ -1362,7 +1364,7 @@ func (s *sqliteStore) ListUsers() ([]User, error) {
 		var approvedAt, deletedAt sql.NullInt64
 		if err := rows.Scan(
 			&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Salt,
-			&u.Role, &u.Status, &u.APIKeyName, &mcp, &createdAt,
+			&u.Role, &u.Status, &u.APIKeyName, &mcp, &u.SkipPasswordCount, &createdAt,
 			&approvedAt, &u.ApprovedBy,
 			&deletedAt, &u.DeletedBy,
 		); err != nil {
@@ -1393,10 +1395,10 @@ func (s *sqliteStore) UpdateUser(u User) error {
 	}
 	_, err := s.db.Exec(
 		`UPDATE users SET username=?, email=?, password_hash=?, salt=?, role=?, status=?,
-		 api_key_name=?, must_change_password=?, approved_at=?, approved_by=?
+		 api_key_name=?, must_change_password=?, skip_password_count=?, approved_at=?, approved_by=?
 		 WHERE id=?`,
 		u.Username, u.Email, u.PasswordHash, u.Salt, u.Role, u.Status,
-		u.APIKeyName, mcp, approvedAt, u.ApprovedBy, u.ID,
+		u.APIKeyName, mcp, u.SkipPasswordCount, approvedAt, u.ApprovedBy, u.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpdateUser: %w", err)

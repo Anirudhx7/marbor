@@ -13,6 +13,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
   const [confirmPw, setConfirmPw] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [skipLimitReached, setSkipLimitReached] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +42,9 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
   // Grafana-style skip: lets the admin explore this session without
   // changing the password. Session-only - closing the tab or logging back
   // in re-prompts, since the user's own must_change_password flag is
-  // untouched; only this session is reissued without the gate.
+  // untouched; only this session is reissued without the gate. Capped
+  // server-side (3 skips) so a default/known password can't be dismissed
+  // forever - once the cap is hit, the skip option is removed here too.
   async function handleSkip() {
     setSaving(true);
     setError(null);
@@ -49,7 +52,11 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
       await skipPasswordChangeThisSession();
       onSuccess({ ...session, mustChangePassword: false });
     } catch (err: any) {
-      setError(err.message || 'Failed to skip password change');
+      const message = err.message || 'Failed to skip password change';
+      setError(message);
+      if (message.includes('Skip limit reached')) {
+        setSkipLimitReached(true);
+      }
       setSaving(false);
     }
   }
@@ -118,14 +125,16 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
               {saving ? 'Saving...' : 'Set Password & Continue'}
             </button>
 
-            <button
-              type="button"
-              onClick={handleSkip}
-              disabled={saving}
-              className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              Skip for now
-            </button>
+            {!skipLimitReached && (
+              <button
+                type="button"
+                onClick={handleSkip}
+                disabled={saving}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                Skip for now
+              </button>
+            )}
           </form>
         </div>
       </div>

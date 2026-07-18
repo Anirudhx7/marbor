@@ -337,6 +337,7 @@ type User struct {
 	Status             string     `json:"status"` // "pending" | "active" | "suspended"
 	APIKeyName         string     `json:"api_key_name"`
 	MustChangePassword bool       `json:"must_change_password"`
+	SkipPasswordCount  int        `json:"skip_password_count"`
 	CreatedAt          time.Time  `json:"created_at"`
 	ApprovedAt         *time.Time `json:"approved_at,omitempty"`
 	ApprovedBy         string     `json:"approved_by,omitempty"`
