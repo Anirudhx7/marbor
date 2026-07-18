@@ -179,6 +179,11 @@ type Router struct {
 	// prevHealthy tracks the last known health state per node name for
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
+	// prevAgentPresent mirrors prevHealthy for Node Agent reachability, so an
+	// operator gets an agent_down/agent_up webhook when a configured agent
+	// stops/resumes responding - independent of the node's own inference
+	// runtime health, which pollNode/markFailure already cover separately.
+	prevAgentPresent map[string]bool
 	// tagsCache caches /api/tags results per node URL for 30 seconds.
 	tagsCache map[string]*TagsCache
 	tagsMu    sync.Mutex
@@ -382,6 +387,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		clouds:                   cloudsCopy,
 		discoveredURLs:           make(map[string]struct{}),
 		prevHealthy:              prev,
+		prevAgentPresent:         make(map[string]bool),
 		tagsCache:                make(map[string]*TagsCache),
 		tagsInflight:             make(map[string]*tagsInflightEntry),
 		upstreamTimeout:          upstreamTimeout,
@@ -884,6 +890,7 @@ func (r *Router) RemoveNode(name string) {
 		}
 	}
 	delete(r.prevHealthy, name)
+	delete(r.prevAgentPresent, name)
 	delete(r.nodeAgents, name)
 	if urlToRemove != "" {
 		delete(r.discoveredURLs, urlToRemove)
