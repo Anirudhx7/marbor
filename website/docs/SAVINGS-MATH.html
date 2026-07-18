@@ -119,6 +119,15 @@ html.light .theme-toggle .sun { display: none; }
 html.light .theme-toggle .moon { display: block; }
 .hamburger { display: none; }
 .nav-links { display: flex; align-items: center; gap: 24px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono);
+  font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: var(--radius);
+  cursor: pointer; border: 1px solid var(--border); transition: all .15s ease; background: var(--bg-elevated); color: var(--text);
+  text-decoration: none;
+}
+.btn:hover { text-decoration: none; border-color: var(--accent-dim); }
+.btn-demo { background: color-mix(in srgb, var(--accent2) 12%, transparent); color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); font-weight: 500; }
+.btn-demo:hover { background: color-mix(in srgb, var(--accent2) 22%, transparent); border-color: var(--accent2); color: var(--accent2); text-decoration: none; }
 
 /* doc shell */
 .doc-shell { max-width: 1280px; margin: 0 auto; padding: 0 40px; display: grid; grid-template-columns: 200px minmax(0,1fr) 200px; gap: 32px; align-items: start; }
@@ -248,15 +257,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span></a>
+    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../index.html#features">Features</a>
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="color:var(--accent2);">Demo&nbsp;↗</a>
+        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="btn btn-demo" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="padding:6px 14px;font-size:13px;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>

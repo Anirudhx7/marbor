@@ -99,6 +99,15 @@ html.light .theme-toggle .sun { display: none; }
 html.light .theme-toggle .moon { display: block; }
 .hamburger { display: none; }
 .nav-links { display: flex; align-items: center; gap: 24px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono);
+  font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: var(--radius);
+  cursor: pointer; border: 1px solid var(--border); transition: all .15s ease; background: var(--bg-elevated); color: var(--text);
+  text-decoration: none;
+}
+.btn:hover { text-decoration: none; border-color: var(--accent-dim); }
+.btn-demo { background: color-mix(in srgb, var(--accent2) 12%, transparent); color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); font-weight: 500; }
+.btn-demo:hover { background: color-mix(in srgb, var(--accent2) 22%, transparent); border-color: var(--accent2); color: var(--accent2); text-decoration: none; }
 
 /* doc shell */
 .doc-shell { max-width: 1280px; margin: 0 auto; padding: 0 40px; display: grid; grid-template-columns: 200px minmax(0,1fr) 200px; gap: 32px; align-items: start; }
