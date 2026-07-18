@@ -116,6 +116,7 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Proxy.LogFormat = store.GetStringSetting(st, "proxy_log_format", cfg.Proxy.LogFormat)
 	accessLog := store.GetBoolSetting(st, "proxy_access_log", cfg.Proxy.AccessLog == nil || *cfg.Proxy.AccessLog)
 	cfg.Proxy.AccessLog = &accessLog
+	cfg.Proxy.TrustProxyHeaders = store.GetBoolSetting(st, "proxy_trust_proxy_headers", cfg.Proxy.TrustProxyHeaders)
 
 	cfg.Admin.BindAddress = store.GetStringSetting(st, "admin_bind_address", cfg.Admin.BindAddress)
 	cfg.Admin.CORSOrigin = store.GetStringSetting(st, "admin_cors_origin", cfg.Admin.CORSOrigin)
@@ -520,6 +521,7 @@ func main() {
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	proxyHandler.SetAuth(authMw)
 	proxyHandler.SetAllowManagementEndpoints(cfg.Routing.AllowManagementEndpoints)
+	proxyHandler.SetTrustProxyHeaders(cfg.Proxy.TrustProxyHeaders)
 	adminSrv.SetProxyHandler(proxyHandler)
 	accessEnabled := cfg.Proxy.AccessLog == nil || *cfg.Proxy.AccessLog
 	proxyHandler.SetAccessLogger(proxy.NewAccessLogger(os.Stdout, accessEnabled))

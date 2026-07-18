@@ -182,6 +182,7 @@ export function SettingsPage() {
           adminBindAddress: settingsData.admin?.bind_address || ':8080',
           adminCorsOrigin: settingsData.admin?.cors_origin || '',
           proxyAccessLog: settingsData.proxy?.access_log !== false,
+          proxyTrustProxyHeaders: settingsData.proxy?.trust_proxy_headers || false,
 
           routingFallback: settingsData.routing?.fallback || 'least-connections',
           routingUpstreamTimeoutMs: settingsData.routing?.upstream_timeout_ms || 120000,
@@ -239,7 +240,7 @@ export function SettingsPage() {
       // Map UI settings to backend config format (also used in demo mode → localStorage)
       const payload = {
         timezone: settings.timezone,
-        proxy: { port: settings.proxyPort, log_level: settings.logLevel, access_log: settings.proxyAccessLog },
+        proxy: { port: settings.proxyPort, log_level: settings.logLevel, access_log: settings.proxyAccessLog, trust_proxy_headers: settings.proxyTrustProxyHeaders },
         admin: { bind_address: settings.adminBindAddress, cors_origin: settings.adminCorsOrigin },
         auth: { enabled: settings.authMode === 'api-key' },
         routing: {
@@ -686,6 +687,13 @@ export function SettingsPage() {
                 <p className="text-[10px] text-amber-500/80 mt-1">Requires a mesh restart to take effect.</p>
               </div>
               <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Trust Proxy Headers</p>
+                <p className="text-xs text-muted-foreground">Trust X-Forwarded-For/X-Real-IP for the logged client IP. Only enable if the mesh sits behind a trusted reverse proxy - otherwise these headers are forgeable by any direct client.</p>
+              </div>
+              <Toggle on={settings.proxyTrustProxyHeaders} onToggle={() => setSettings({ ...settings, proxyTrustProxyHeaders: !settings.proxyTrustProxyHeaders })} />
             </div>
           </div>
         </div>

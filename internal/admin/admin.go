@@ -189,6 +189,7 @@ type Server struct {
 // admin to reach the Server for its own request handling.
 type managementEndpointsSetter interface {
 	SetAllowManagementEndpoints(bool)
+	SetTrustProxyHeaders(bool)
 }
 
 // SetProxyHandler wires the proxy handler so routing.allow_management_endpoints
@@ -3553,6 +3554,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 	if s.mgmtEndpoints != nil {
 		s.mgmtEndpoints.SetAllowManagementEndpoints(incoming.Routing.AllowManagementEndpoints)
+		s.mgmtEndpoints.SetTrustProxyHeaders(incoming.Proxy.TrustProxyHeaders)
 	}
 	s.router.SetTimezone(incoming.Timezone)
 	s.router.SetLiteLLM(incoming.LiteLLM)
@@ -3570,17 +3572,18 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	scalarSettings := map[string]string{
-		"proxy_port":            strconv.Itoa(incoming.Proxy.Port),
-		"proxy_log_format":      incoming.Proxy.LogFormat,
-		"proxy_access_log":      strconv.FormatBool(incoming.Proxy.AccessLog == nil || *incoming.Proxy.AccessLog),
-		"litellm_url":           incoming.LiteLLM.URL,
-		"litellm_enabled":       strconv.FormatBool(incoming.LiteLLM.Enabled),
-		"litellm_api_key":       incoming.LiteLLM.APIKey,
-		"cloud_daily_usd_cap":   strconv.FormatFloat(incoming.CloudBudget.DailyUSDCap, 'f', -1, 64),
-		"cloud_monthly_usd_cap": strconv.FormatFloat(incoming.CloudBudget.MonthlyUSDCap, 'f', -1, 64),
-		"metrics_enabled":       strconv.FormatBool(incoming.Metrics.Enabled),
-		"metrics_port":          strconv.Itoa(incoming.Metrics.Port),
-		"huggingface_token":     incoming.HuggingFace.Token,
+		"proxy_port":                strconv.Itoa(incoming.Proxy.Port),
+		"proxy_log_format":          incoming.Proxy.LogFormat,
+		"proxy_access_log":          strconv.FormatBool(incoming.Proxy.AccessLog == nil || *incoming.Proxy.AccessLog),
+		"proxy_trust_proxy_headers": strconv.FormatBool(incoming.Proxy.TrustProxyHeaders),
+		"litellm_url":               incoming.LiteLLM.URL,
+		"litellm_enabled":           strconv.FormatBool(incoming.LiteLLM.Enabled),
+		"litellm_api_key":           incoming.LiteLLM.APIKey,
+		"cloud_daily_usd_cap":       strconv.FormatFloat(incoming.CloudBudget.DailyUSDCap, 'f', -1, 64),
+		"cloud_monthly_usd_cap":     strconv.FormatFloat(incoming.CloudBudget.MonthlyUSDCap, 'f', -1, 64),
+		"metrics_enabled":           strconv.FormatBool(incoming.Metrics.Enabled),
+		"metrics_port":              strconv.Itoa(incoming.Metrics.Port),
+		"huggingface_token":         incoming.HuggingFace.Token,
 
 		// Admin & Security (2026-07 config.yaml elimination - Phase 2).
 		"admin_bind_address": incoming.Admin.BindAddress,
