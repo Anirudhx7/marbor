@@ -89,6 +89,11 @@ type Handler struct {
 	// configured profile (store.ModelConfig). In-process only, matching the
 	// rest of this file's rate-limiting state.
 	modelLimiter *modelRateLimiter
+
+	// trustProxyHeaders gates whether X-Forwarded-For/X-Real-IP are trusted for
+	// the admin request log's client IP. Default false: these headers are
+	// client-supplied and forgeable by anyone who can reach the proxy directly.
+	trustProxyHeaders bool
 }
 
 // cloudRoundTripper returns the shared cloud transport, constructing it once.
@@ -143,6 +148,15 @@ func isBlockedManagementPath(path string) bool {
 		return true
 	}
 	return strings.HasPrefix(path, "/api/blobs/")
+}
+
+// SetTrustProxyHeaders toggles whether X-Forwarded-For/X-Real-IP are trusted
+// for the admin request log's client IP. Pass true only when the mesh sits
+// behind a trusted reverse proxy/load balancer that sets these headers itself
+// and is the sole path to the proxy port; otherwise a direct client can forge
+// them. Default false logs r.RemoteAddr (the real TCP peer) instead.
+func (h *Handler) SetTrustProxyHeaders(trust bool) {
+	h.trustProxyHeaders = trust
 }
 
 // SetAllowManagementEndpoints toggles the management-endpoint guard. Pass true
@@ -560,12 +574,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			logTokens = 0
 		}
 		clientIP := r.RemoteAddr
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
-				clientIP = strings.TrimSpace(parts[0])
+		if h.trustProxyHeaders {
+			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+				if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
+					clientIP = strings.TrimSpace(parts[0])
+				}
+			} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
+				clientIP = fwd2
 			}
-		} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
-			clientIP = fwd2
 		}
 		loggedModel := modelName
 		if modelName != requestedModelName {
@@ -952,12 +968,14 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			logTokens = 0
 		}
 		clientIP := r.RemoteAddr
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
-				clientIP = strings.TrimSpace(parts[0])
+		if h.trustProxyHeaders {
+			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+				if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
+					clientIP = strings.TrimSpace(parts[0])
+				}
+			} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
+				clientIP = fwd2
 			}
-		} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
-			clientIP = fwd2
 		}
 		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, logTokens)
 		if tokens >= 0 {

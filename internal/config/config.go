@@ -165,6 +165,13 @@ type ProxyConfig struct {
 	// AccessLog enables a structured JSON access-log line on stdout per request.
 	// Defaults to true (enabled) when unset. Set to false to silence it.
 	AccessLog *bool `yaml:"access_log,omitempty" json:"access_log,omitempty"`
+	// TrustProxyHeaders controls whether the proxy trusts client-supplied
+	// X-Forwarded-For/X-Real-IP headers when recording the "source IP" on the
+	// admin request log. Defaults to false: any directly-reachable client can
+	// forge these headers, so the mesh logs r.RemoteAddr (the real TCP peer)
+	// unless an operator explicitly confirms requests only ever arrive through
+	// a trusted reverse proxy/load balancer that sets these headers itself.
+	TrustProxyHeaders bool `yaml:"trust_proxy_headers,omitempty" json:"trust_proxy_headers,omitempty"`
 }
 
 // AdminConfig controls the admin dashboard/API listener.

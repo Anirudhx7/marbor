@@ -182,6 +182,7 @@ export interface Settings {
   adminBindAddress: string;
   adminCorsOrigin: string;
   proxyAccessLog: boolean;
+  proxyTrustProxyHeaders: boolean;
 
   // Advanced routing knobs.
   routingFallback: string;

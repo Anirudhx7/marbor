@@ -312,6 +312,7 @@ export const defaultSettings: Settings = {
   adminBindAddress: ':8080',
   adminCorsOrigin: '',
   proxyAccessLog: true,
+  proxyTrustProxyHeaders: false,
 
   routingFallback: 'least-connections',
   routingUpstreamTimeoutMs: 120000,
