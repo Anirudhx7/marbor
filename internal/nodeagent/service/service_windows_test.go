@@ -3,6 +3,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -14,9 +15,12 @@ func TestWindowsBinPath(t *testing.T) {
 		Token:      "sekret",
 	}
 	got := windowsBinPath(cfg)
-	want := `"C:\Program Files\ollama-mesh\ollama-mesh.exe" agent --port=9200 --token=sekret`
+	want := `"C:\Program Files\ollama-mesh\ollama-mesh.exe" agent --port=9200`
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "--token") {
+		t.Errorf("windowsBinPath() must not embed --token (visible via sc qc / Task Manager), got %q", got)
 	}
 }
 
@@ -28,7 +32,7 @@ func TestWindowsBinPath_WithRefreshInterval(t *testing.T) {
 		RefreshInterval: 30 * time.Second,
 	}
 	got := windowsBinPath(cfg)
-	want := `"C:\Program Files\ollama-mesh\ollama-mesh.exe" agent --port=9200 --token=sekret --refresh-interval=30s`
+	want := `"C:\Program Files\ollama-mesh\ollama-mesh.exe" agent --port=9200 --refresh-interval=30s`
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
 	}
@@ -41,7 +45,7 @@ func TestWindowsBinPath_NoSpacesStillQuoted(t *testing.T) {
 		Token:      "abc",
 	}
 	got := windowsBinPath(cfg)
-	want := `"C:\ollama-mesh\ollama-mesh.exe" agent --port=8080 --token=abc`
+	want := `"C:\ollama-mesh\ollama-mesh.exe" agent --port=8080`
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
 	}

@@ -14,9 +14,15 @@ func TestSystemdUnitContent(t *testing.T) {
 	}
 	content := systemdUnitContent(cfg)
 
-	wantExecStart := "ExecStart=/usr/local/bin/ollama-mesh agent --port=9200 --token=sekret"
+	wantExecStart := "ExecStart=/usr/local/bin/ollama-mesh agent --port=9200"
 	if !strings.Contains(content, wantExecStart) {
 		t.Errorf("systemdUnitContent() missing expected ExecStart line %q, got:\n%s", wantExecStart, content)
+	}
+	if strings.Contains(content, "--token") {
+		t.Errorf("systemdUnitContent() must not embed --token in ExecStart, got:\n%s", content)
+	}
+	if !strings.Contains(content, "EnvironmentFile="+tokenEnvFilePath) {
+		t.Errorf("systemdUnitContent() missing EnvironmentFile=%s, got:\n%s", tokenEnvFilePath, content)
 	}
 	if !strings.Contains(content, "Restart=on-failure") {
 		t.Errorf("systemdUnitContent() missing Restart=on-failure, got:\n%s", content)
@@ -77,7 +83,7 @@ func TestSystemdUnitContentQuotesPathWithSpaces(t *testing.T) {
 	}
 	content := systemdUnitContent(cfg)
 
-	wantExecStart := `ExecStart="/opt/my company/bin/ollama-mesh" agent --port=9200 --token=sekret`
+	wantExecStart := `ExecStart="/opt/my company/bin/ollama-mesh" agent --port=9200`
 	if !strings.Contains(content, wantExecStart) {
 		t.Errorf("systemdUnitContent() missing quoted ExecStart line %q, got:\n%s", wantExecStart, content)
 	}
