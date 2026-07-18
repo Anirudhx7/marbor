@@ -40,12 +40,24 @@ type Config struct {
 }
 
 // args returns the "agent ..." argument list (excluding the binary path
-// itself) that each platform implementation embeds into its service
-// definition (systemd ExecStart, launchd ProgramArguments, sc.exe binPath).
-// Centralized here so all three platforms build the exact same command line
-// from the same Config fields.
+// itself, and deliberately excluding --token) that each platform
+// implementation embeds into its service definition (systemd ExecStart,
+// launchd ProgramArguments, sc.exe binPath). Centralized here so all three
+// platforms build the exact same command line from the same Config fields.
+//
+// Token is intentionally NOT included here: a service definition's command
+// line is world-readable on every platform (systemd unit files/launchd
+// plists are world-readable by convention, and a running process's argv is
+// visible to any local user via ps/Task Manager regardless of file
+// permissions) - embedding the bearer token there would let any local user
+// on the node read or capture it. Each platform implementation instead
+// delivers Token via that platform's environment mechanism (systemd
+// EnvironmentFile, launchd EnvironmentVariables, Windows service registry
+// Environment value), and the agent already reads TOKEN from its process
+// environment as a fallback to --token (see nodeagent.Run), so no agent-side
+// change was needed to support this.
 func (c Config) args() []string {
-	a := []string{"agent", fmt.Sprintf("--port=%d", c.Port), fmt.Sprintf("--token=%s", c.Token)}
+	a := []string{"agent", fmt.Sprintf("--port=%d", c.Port)}
 	if c.RefreshInterval > 0 {
 		a = append(a, fmt.Sprintf("--refresh-interval=%s", c.RefreshInterval))
 	}

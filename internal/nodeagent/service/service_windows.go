@@ -59,6 +59,29 @@ func runSC(args ...string) (string, error) {
 	return buf.String(), err
 }
 
+// serviceRegistryKey is where sc.exe registers Name; setting an Environment
+// value here (read by every Windows service host at process start) is how
+// the token reaches the agent without putting it in binPath, which sc qc and
+// Task Manager's "Command line" column both expose to any local user.
+func serviceRegistryKey() string {
+	return `HKLM\SYSTEM\CurrentControlSet\Services\` + Name
+}
+
+// setServiceTokenEnv writes TOKEN=<token> as the service's Environment
+// registry value via reg.exe (same "shell out to a native OS tool" pattern
+// as sc.exe - no new dependency). REG_MULTI_SZ is the type Windows services
+// read their Environment block from.
+func setServiceTokenEnv(token string) error {
+	cmd := exec.Command("reg", "add", serviceRegistryKey(), "/v", "Environment", "/t", "REG_MULTI_SZ", "/d", "TOKEN="+token, "/f")
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("reg add Environment: %w: %s", err, strings.TrimSpace(buf.String()))
+	}
+	return nil
+}
+
 // serviceExists reports whether Name is already registered, by running
 // "sc query <Name>". Any error from that query (including the well-known
 // "The specified service does not exist" failure) is treated as "doesn't
@@ -87,6 +110,10 @@ func (windowsManager) Install(cfg Config) error {
 		if err != nil {
 			return fmt.Errorf("service: sc create failed: %w: %s", err, out)
 		}
+	}
+
+	if err := setServiceTokenEnv(cfg.Token); err != nil {
+		return fmt.Errorf("service: %w", err)
 	}
 
 	// Stop it if currently running (ignore errors - it may not be running),

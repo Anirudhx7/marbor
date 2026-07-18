@@ -18,6 +18,12 @@ import (
 
 const systemdUnitDir = "/etc/systemd/system"
 
+// tokenEnvFilePath holds the agent's bearer token as TOKEN=<value>, written
+// root-only (0600) so no local unprivileged user can read it - unlike the
+// unit file itself (0644 by systemd convention) or the process's own argv,
+// both of which are readable by any local user.
+const tokenEnvFilePath = "/etc/ollama-mesh-agent.env"
+
 // New returns the systemd-backed Manager - the only Manager implementation
 // on linux.
 func New() (Manager, error) { return newSystemdManager(), nil }
@@ -60,13 +66,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+EnvironmentFile=%s
 ExecStart=%s
 Restart=on-failure
 RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
-`, execStart)
+`, tokenEnvFilePath, execStart)
 }
 
 // execStartBinary extracts the binary path (first token after "ExecStart=",
@@ -112,6 +119,12 @@ func (systemdManager) Install(cfg Config) error {
 		return fmt.Errorf("service: systemd (systemctl) not found on this host")
 	}
 
+	// Written before the unit file, 0600, so a rotated token is in place
+	// before systemd ever tries to (re)start the service against it.
+	if err := os.WriteFile(tokenEnvFilePath, []byte("TOKEN="+cfg.Token+"\n"), 0600); err != nil {
+		return fmt.Errorf("service: writing token env file: %w", err)
+	}
+
 	content := systemdUnitContent(cfg)
 	if err := os.WriteFile(unitPath(), []byte(content), 0644); err != nil {
 		return fmt.Errorf("service: writing unit file: %w", err)
@@ -146,6 +159,9 @@ func (systemdManager) Uninstall(purge bool) error {
 	if err := os.Remove(unitPath()); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("service: removing unit file: %w", err)
 	}
+	// Best-effort: the token has no value once the service is gone, but a
+	// missing env file must never fail an otherwise-successful uninstall.
+	_ = os.Remove(tokenEnvFilePath)
 
 	if err := runSystemctl("daemon-reload"); err != nil {
 		return err
