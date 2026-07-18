@@ -156,6 +156,16 @@ a:hover { text-decoration: underline; }
 ::selection { background: var(--accent); color: var(--bg); }
 .serif { font-family: var(--font-serif); }
 
+/* Thin custom scrollbar — replaces the OS default */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
 /* LAYOUT */
 .page { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
 .divider { border: none; border-top: 1px solid var(--border-subtle); margin: 0; }
