@@ -26,6 +26,7 @@ const CLOUD_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; d
   mistral: { label: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', defaultModel: 'mistral-large-latest' },
   xai: { label: 'xAI (Grok)', baseUrl: 'https://api.x.ai/v1', defaultModel: 'grok-2-latest' },
   cerebras: { label: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1', defaultModel: 'llama-3.3-70b' },
+  nvidia: { label: 'NVIDIA NIM', baseUrl: 'https://integrate.api.nvidia.com/v1', defaultModel: 'nvidia/nemotron-3-8b-instruct' },
   custom: { label: 'Custom / Other', baseUrl: '', defaultModel: '' },
 };
 
