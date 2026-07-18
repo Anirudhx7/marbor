@@ -178,7 +178,7 @@ for chunk in llm.stream("Explain cloud overflow in plain English."):
 
 ## Notes
 
-- Your `sk-mesh-...` key never leaves the mesh. The client `Authorization` header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured `api_key` when a request overflows to cloud. Provider credentials live only in the mesh config.
-- If your key has a `models:` allow-list in config, requests for any other model return `403 Forbidden`.
+- Your `sk-mesh-...` key never leaves the mesh. The client `Authorization` header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured `api_key` when a request overflows to cloud. Provider credentials live only in the database (encrypted).
+- If your key has a `models:` allow-list configured, requests for any other model return `403 Forbidden`.
 - Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) are present on every response and follow the same conventions as the OpenAI API.
 - `GET /v1/models` returns the union of models loaded or downloaded across all healthy nodes.

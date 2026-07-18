@@ -11,7 +11,7 @@ The control plane for self-hosted AI inference - a GPU-aware scheduler and OpenA
 - Per-key API authentication with Bearer tokens
 - Per-key model allow-lists: 403 if key is not permitted for a model
 - Per-key rate limits (token bucket), daily limits, and monthly hard quotas
-- Durable quota persistence: counters survive restarts via atomic JSON flush
+- Durable quota persistence: counters survive restarts via SQLite database storage
 - Cost tracking: parses real eval_count/usage.total_tokens per response; shows local ($0) vs cloud cost
 - VRAM telemetry: live used-VRAM per node from /api/ps; total capacity from nvidia-smi (local) or declared vram_total_mb (remote)
 - Admin dashboard embedded in binary (React, served at :8080)
@@ -19,7 +19,7 @@ The control plane for self-hosted AI inference - a GPU-aware scheduler and OpenA
 - Pre-stream failover: if a node dies before first byte, retries alternate nodes then cloud
 - X-Request-ID on all responses
 - Audit log (append-only JSON-lines)
-- SIGHUP hot-reload for config changes without restart
+- SIGHUP hot-reload to re-sync settings from SQLite database without restart
 - Docker auto-discovery: scans for containers with OLLAMA_HOST env or ollama/ollama image
 - Zero-config first run: auto-detects localhost:11434, generates API keys, prints one URL
 
