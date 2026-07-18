@@ -634,7 +634,10 @@ export function GPUNodes() {
   };
 
   const loadPinned = async (nodeList: GPUNode[], active: boolean = true) => {
-    if (demoMode || nodeList.length === 0 || !active || currentAppPath() !== '/gpu-nodes') return;
+    // getPinned() already has its own DEMO branch (returns static mock data),
+    // so this must run in demo mode too - otherwise pinnedByNode stays empty
+    // forever and every model shows the unload button, pinned or not.
+    if (nodeList.length === 0 || !active || currentAppPath() !== '/gpu-nodes') return;
     const entries = await Promise.all(nodeList.map(async (n) => {
       try {
         return [n.name, await getPinned(n.name)] as const;
@@ -653,6 +656,7 @@ export function GPUNodes() {
       setNodes(mockGPUNodes);
       setIsLive(false);
       setError(null);
+      await loadPinned(mockGPUNodes, active);
       return;
     }
     try {
