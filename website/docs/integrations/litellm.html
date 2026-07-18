@@ -6,8 +6,8 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Deploy ollama-mesh on AWS EC2 · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Deploy ollama-mesh on AWS EC2." />
+<title>LiteLLM · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: LiteLLM." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <style>:root {
   --bg: #0f0e0c;
@@ -216,72 +216,112 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deploy</div>
-      <a class="doc-nav-link active" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
-      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../../docs/integrations/open-webui.html">Open WebUI</a>
+      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link active" href="../../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../../docs/integrations/open-webui.html">Open WebUI</a>
     </div>
   </aside>
 
   <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>deploy</span><span class="sep">/</span><span class="current">Deploy ollama-mesh on AWS EC2</span></div>
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">LiteLLM</span></div>
     <article class="doc-content">
-      <h1 id="deploy-ollama-mesh-on-aws-ec2">Deploy ollama-mesh on AWS EC2<a class="anchor" href="#deploy-ollama-mesh-on-aws-ec2" aria-label="Link to section">#</a></h1>
-<p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2. ollama-mesh is a single static binary - no runtime, no dependencies, no config file - so an EC2 deploy is "download, start a service, configure from the dashboard."</p>
-<p>This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing, node-failure route-around, and self-healing recovery all verified live).</p>
-<h2 id="architecture">Architecture<a class="anchor" href="#architecture" aria-label="Link to section">#</a></h2>
-<pre class="code"><code>clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
-                 │  warm-first routing + auth + dashboard + metrics
-                 ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
-                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre>
-<p>The mesh box does <strong>not</strong> need a GPU - it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
-<h2 id="1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)<a class="anchor" href="#1-gpu-instances-the-ollama-nodes" aria-label="Link to section">#</a></h2>
-<p>Cheapest CUDA option is <code>g4dn.xlarge</code> (NVIDIA T4 16GB). <code>g5.xlarge</code> (A10G) and <code>g6.xlarge</code> (L4) are faster. Use a Deep Learning AMI or install the NVIDIA driver on Amazon Linux 2023, then install Ollama and bind it to the VPC:</p>
-<pre class="code" data-lang="bash"><code>curl -fsSL https://ollama.com/install.sh | sh
-sudo systemctl edit ollama   # add: Environment=OLLAMA_HOST=0.0.0.0:11434
-sudo systemctl restart ollama
-ollama pull llama3.2:3b</code></pre>
-<blockquote><strong>Quota note:</strong> brand-new AWS accounts start with a GPU On-Demand vCPU quota of 0. Request an increase under Service Quotas → EC2 → "Running On-Demand G and VT instances" before launching. Approval can take hours to days.</blockquote>
-<h2 id="2-the-mesh-box">2. The mesh box<a class="anchor" href="#2-the-mesh-box" aria-label="Link to section">#</a></h2>
-<p>A small CPU instance (<code>t3.small</code> is plenty). Pull the release binary and point it at your GPU nodes' <strong>private</strong> IPs:</p>
-<pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/ollama-mesh \
-  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
-chmod +x /usr/local/bin/ollama-mesh</code></pre>
-<p>systemd unit (<code>/etc/systemd/system/ollama-mesh.service</code>):</p>
-<pre class="code" data-lang="ini"><code>[Unit]
-After=network-online.target
-Wants=network-online.target
-[Service]
-WorkingDirectory=/opt
-ExecStart=/usr/local/bin/ollama-mesh --db /opt/mesh.db
-Restart=always
-[Install]
-WantedBy=multi-user.target</code></pre>
-<pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh</code></pre>
-<p>First boot creates a blank-slate <code>/opt/mesh.db</code>. Log in at <code>http://&lt;mesh&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login - do this immediately since the admin port is reachable from the SSH tunnel below) and, from <strong>Settings</strong>, set <code>admin.bind_address</code> to <code>127.0.0.1:8080</code> (restart required). Add your GPU nodes from the <strong>GPU Nodes</strong> page and an API key from <strong>API Keys</strong> - or run <code>install.sh</code>'s network-discovery wizard against your VPC beforehand to seed the nodes automatically.</p>
-<h2 id="3-security-group">3. Security group<a class="anchor" href="#3-security-group" aria-label="Link to section">#</a></h2>
-<ul><li><strong>Endpoint <code>:11434</code></strong> - open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> - keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
-<p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. Login is username/password   (bcrypt-hashed, default <code>admin</code>/<code>admin</code> on first run - change it immediately);   a successful login issues an <code>HttpOnly</code> session cookie, which is what's sensitive here.</p>
-<ul><li><strong>Node <code>:11434</code></strong> - open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
-<h2 id="4-verify">4. Verify<a class="anchor" href="#4-verify" aria-label="Link to section">#</a></h2>
-<pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}
-curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/tags
-curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/generate \
-     -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'</code></pre>
-<p>Point any OpenAI-compatible client at <code>http://&lt;mesh&gt;:11434/v1</code> with your key.</p>
-<h2 id="cost-tip">Cost tip<a class="anchor" href="#cost-tip" aria-label="Link to section">#</a></h2>
-<p>Only the GPU nodes are expensive. Stop them when idle - the mesh box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
+      <h1 id="litellm">LiteLLM<a class="anchor" href="#litellm" aria-label="Link to section">#</a></h1>
+<p><a href="https://litellm.ai" target="_blank" rel="noopener">LiteLLM</a> is a popular and powerful API gateway for provider abstraction, enterprise authentication, and user-level rate limiting. </p>
+<p>Rather than a competitor, <strong>ollama-mesh operates as a complementary layer alongside LiteLLM</strong>. They can be integrated in two distinct topologies depending on your architecture:</p>
+<ul><li><strong>Option A: Upstream Gateway Setup (LiteLLM &amp;rarr; ollama-mesh)</strong>: LiteLLM sits in front of your applications as the entry point and routes local model requests to ollama-mesh.</li><li><strong>Option B: Cloud Fallback Gateway Setup (ollama-mesh &amp;rarr; LiteLLM)</strong>: ollama-mesh routes cloud fallback traffic (when all local GPUs are saturated or down) through a central LiteLLM instance instead of hitting cloud endpoints directly.</li></ul>
+<hr/>
+<h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to section">#</a></h2>
+<ul><li>LiteLLM running (Docker or bare-metal)</li><li>ollama-mesh running and reachable from the LiteLLM host</li><li>An API key from the ollama-mesh admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
+<hr/>
+<h2 id="option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh">Option A - Upstream Gateway Setup (LiteLLM &amp;rarr; ollama-mesh)<a class="anchor" href="#option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh" aria-label="Link to section">#</a></h2>
+<p>This is the recommended setup when you want to use LiteLLM's enterprise controls (such as SSO, virtual keys, and multi-cloud routing) while leveraging ollama-mesh's warm-first GPU load balancing and local VRAM scheduling.</p>
+<pre class="code"><code>Applications ────&gt; LiteLLM (Gateway) ────&gt; ollama-mesh (Scheduler) ────&gt; GPU Nodes</code></pre>
+<h3 id="litellm-configuration">LiteLLM Configuration<a class="anchor" href="#litellm-configuration" aria-label="Link to section">#</a></h3>
+<p>Add ollama-mesh as a custom provider in LiteLLM's <code>config.yaml</code> using the OpenAI-compatible endpoint:</p>
+<pre class="code" data-lang="yaml"><code>model_list:
+  - model_name: llama3.2
+    litellm_params:
+      model: openai/llama3.2
+      api_base: http://&lt;mesh-host&gt;:11434/v1
+      api_key: sk-mesh-your-api-key # Key generated from the ollama-mesh dashboard</code></pre>
+<p>Replace:</p>
+<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP address of the machine running ollama-mesh.</li><li><code>sk-mesh-your-api-key</code> with the API key created in the ollama-mesh dashboard.</li><li><code>llama3.2</code> with whatever model names are loaded on your local GPU nodes.</li></ul>
+<hr/>
+<h2 id="option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm">Option B - Cloud Fallback Gateway Setup (ollama-mesh &amp;rarr; LiteLLM)<a class="anchor" href="#option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm" aria-label="Link to section">#</a></h2>
+<p>If you already use LiteLLM to centralize your company's cloud LLM provider credentials (OpenAI, Anthropic, Groq, etc.), you can configure ollama-mesh to use LiteLLM as its single cloud fallback endpoint when local GPU nodes are saturated or offline.</p>
+<p>This is managed dynamically through the admin dashboard interface and stored in the SQLite database.</p>
+<pre class="code"><code>Applications ────&gt; ollama-mesh ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs</code></pre>
+<h3 id="admin-dashboard-configuration">Admin Dashboard Configuration<a class="anchor" href="#admin-dashboard-configuration" aria-label="Link to section">#</a></h3>
+<ol><li>Open the ollama-mesh dashboard and navigate to the <strong>Settings</strong> page.</li><li>Scroll to the <strong>Integrations &amp; Cost</strong> section.</li><li>Under <strong>LiteLLM Integration</strong>:</li><li>Toggle <strong>Enable LiteLLM</strong> to active.</li><li>Enter your <strong>LiteLLM Endpoint URL</strong> (e.g., <code>http://&lt;litellm-host&gt;:4000/v1</code>).</li><li>Enter the <strong>API Key</strong> (LiteLLM virtual or master key, sent as <code>Authorization: Bearer &lt;key&gt;</code> to the LiteLLM proxy).</li><li>Click <strong>Save Settings</strong> to persist the configuration to the SQLite store.</li></ol>
+<blockquote>[!IMPORTANT] Enabling <strong>LiteLLM Integration</strong> automatically disables and deactivates the native <strong>Cloud Providers</strong> config block on the settings page. You will see a banner indicating: <code>"Managed by LiteLLM while enabled - this list is inactive"</code>. All cloud fallback/overflow routing will be managed exclusively by the LiteLLM proxy.</blockquote>
+<hr/>
+<h2 id="docker-compose-setup">Docker Compose Setup<a class="anchor" href="#docker-compose-setup" aria-label="Link to section">#</a></h2>
+<p>If running both gateways on the same host, use a shared Docker network and service names for hostnames:</p>
+<pre class="code" data-lang="yaml"><code># docker-compose.yml
+services:
+  ollama-mesh:
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    ports:
+      - "11434:11434"
+      - "8080:8080"
+    volumes:
+      - mesh-data:/root
+    networks:
+      - shared-network
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: [ "--config", "/app/config.yaml" ]
+    depends_on:
+      - ollama-mesh
+    networks:
+      - shared-network
+
+networks:
+  shared-network:
+    driver: bridge
+
+volumes:
+  mesh-data:</code></pre>
+<p>Your <code>litellm-config.yaml</code> can then reference <code>http://ollama-mesh:11434/v1</code> as the <code>api_base</code>, and ollama-mesh's settings can use <code>http://litellm:4000/v1</code> as the <code>url</code>.</p>
+<hr/>
+<h2 id="model-discovery">Model Discovery<a class="anchor" href="#model-discovery" aria-label="Link to section">#</a></h2>
+<p>With Option A, LiteLLM queries the configured model base. Under the hood, LiteLLM calls the <code>/v1/models</code> endpoint of <code>ollama-mesh</code> on startup to populate its active models.</p>
+<p>ollama-mesh aggregates loaded models across all healthy GPU nodes dynamically and responds to <code>/v1/models</code> in real-time. If a model is not currently warm on any node, it will still appear in the list if it is registered in <code>ollama-mesh</code>'s model configuration.</p>
+<hr/>
+<h2 id="verification">Verification<a class="anchor" href="#verification" aria-label="Link to section">#</a></h2>
+<h3 id="upstream-litellm-rarr-ollama-mesh">Upstream (LiteLLM &amp;rarr; ollama-mesh)<a class="anchor" href="#upstream-litellm-rarr-ollama-mesh" aria-label="Link to section">#</a></h3>
+<ol><li>Send a request to LiteLLM:</li></ol>
+<p>   ``<code>bash    curl http://localhost:4000/chat/completions \      -H "Content-Type: application/json" \      -H "Authorization: Bearer your-litellm-key" \      -d '{        "model": "llama3.2",        "messages": [{"role": "user", "content": "Hello from LiteLLM!"}]      }'    </code>``</p>
+<ol><li>Verify the request appears in the ollama-mesh request log at <code>http://&lt;mesh-host&gt;:8080</code> with the correct model and node latency.</li></ol>
+<h3 id="fallback-ollama-mesh-rarr-litellm">Fallback (ollama-mesh &amp;rarr; LiteLLM)<a class="anchor" href="#fallback-ollama-mesh-rarr-litellm" aria-label="Link to section">#</a></h3>
+<ol><li>Drain or set all local nodes to offline via the ollama-mesh dashboard.</li><li>Send a request to ollama-mesh for a cloud model (e.g. <code>gpt-4o-mini</code>):</li></ol>
+<p>   ``<code>bash    curl http://localhost:11434/v1/chat/completions \      -H "Authorization: Bearer sk-mesh-abc123" \      -H "Content-Type: application/json" \      -d '{        "model": "gpt-4o-mini",        "messages": [{"role": "user", "content": "Test fallback"}]      }'    </code>``</p>
+<ol><li>Check the LiteLLM logs: the request should be logged as incoming from the mesh and forwarded to the cloud provider.</li></ol>
+<hr/>
+<h2 id="troubleshooting">Troubleshooting<a class="anchor" href="#troubleshooting" aria-label="Link to section">#</a></h2>
+<h3 id="401-unauthorized">401 Unauthorized<a class="anchor" href="#401-unauthorized" aria-label="Link to section">#</a></h3>
+<ul><li><strong>Option A</strong>: Verify the <code>api_key</code> in LiteLLM's <code>config.yaml</code> matches an active key listed in the ollama-mesh admin dashboard.</li><li><strong>Option B</strong>: Verify the API Key in the ollama-mesh Settings matches LiteLLM's master key or a valid virtual key.</li></ul>
+<h3 id="403-forbidden">403 Forbidden<a class="anchor" href="#403-forbidden" aria-label="Link to section">#</a></h3>
+<p>The key you are using has a model allow-list configured in the ollama-mesh dashboard that excludes the requested model. Either adjust the model allow-list or use a key with access to all models.</p>
+<h3 id="connection-refused-timeout">Connection Refused / Timeout<a class="anchor" href="#connection-refused-timeout" aria-label="Link to section">#</a></h3>
+<p>If running inside Docker, make sure both containers share a network. <code>localhost</code> inside a Docker container refers to the container itself; use the service name (e.g. <code>ollama-mesh</code> or <code>litellm</code>) or <code>host.docker.internal</code> for the host machine.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/deploy/aws-ec2.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/litellm.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#architecture">Architecture</a></li><li class="lvl-2"><a href="#1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)</a></li><li class="lvl-2"><a href="#2-the-mesh-box">2. The mesh box</a></li><li class="lvl-2"><a href="#3-security-group">3. Security group</a></li><li class="lvl-2"><a href="#4-verify">4. Verify</a></li><li class="lvl-2"><a href="#cost-tip">Cost tip</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#prerequisites">Prerequisites</a></li><li class="lvl-2"><a href="#option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh">Option A - Upstream Gateway Setup (LiteLLM &amp;rarr; ollama-mesh)</a></li><li class="lvl-3"><a href="#litellm-configuration">LiteLLM Configuration</a></li><li class="lvl-2"><a href="#option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm">Option B - Cloud Fallback Gateway Setup (ollama-mesh &amp;rarr; LiteLLM)</a></li><li class="lvl-3"><a href="#admin-dashboard-configuration">Admin Dashboard Configuration</a></li><li class="lvl-2"><a href="#docker-compose-setup">Docker Compose Setup</a></li><li class="lvl-2"><a href="#model-discovery">Model Discovery</a></li><li class="lvl-2"><a href="#verification">Verification</a></li><li class="lvl-3"><a href="#upstream-litellm-rarr-ollama-mesh">Upstream (LiteLLM &amp;rarr; ollama-mesh)</a></li><li class="lvl-3"><a href="#fallback-ollama-mesh-rarr-litellm">Fallback (ollama-mesh &amp;rarr; LiteLLM)</a></li><li class="lvl-2"><a href="#troubleshooting">Troubleshooting</a></li><li class="lvl-3"><a href="#401-unauthorized">401 Unauthorized</a></li><li class="lvl-3"><a href="#403-forbidden">403 Forbidden</a></li><li class="lvl-3"><a href="#connection-refused-timeout">Connection Refused / Timeout</a></li></ul>
   </aside>
 </div>
 
