@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -814,5 +815,173 @@ func TestOpenUpgradesPreCapRuntimeKeysSchema(t *testing.T) {
 	if keys[0].DailyUsdCap != 0 || keys[0].MonthlyUsdCap != 0 {
 		t.Errorf("expected caps backfilled to 0, got daily=%v monthly=%v",
 			keys[0].DailyUsdCap, keys[0].MonthlyUsdCap)
+	}
+}
+
+// TestOpenMigratesModelConfigsToNodeKeyed simulates an existing mesh.db from
+// before model_configs was keyed by (model, node): a model-only-PK table with
+// one row. Open() must detect the old schema via migrateModelConfigsToNodeKeyed
+// (sqlite.go), fan that row out to every known runtime_nodes entry, and
+// preserve its original config fields - rather than erroring, dropping data,
+// or leaving reads broken. This is the regression guard for the riskiest
+// migration in migrate() (a real table rebuild + transaction), which every
+// other test skips entirely because openTestDB/openTestDBAt always create the
+// current (model, node)-keyed schema directly, so the rebuild path never runs.
+func TestOpenMigratesModelConfigsToNodeKeyed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "premodelconfigs.db")
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE model_configs (
+		model       TEXT PRIMARY KEY,
+		config_json TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create pre-node model_configs: %v", err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE runtime_nodes (
+		name          TEXT PRIMARY KEY,
+		url           TEXT,
+		runtime       TEXT,
+		vram_total_mb INTEGER
+	)`); err != nil {
+		t.Fatalf("create runtime_nodes: %v", err)
+	}
+	for _, name := range []string{"gpu-node-01", "gpu-node-02"} {
+		if _, err := raw.Exec(`INSERT INTO runtime_nodes (name, url, runtime, vram_total_mb) VALUES (?, ?, ?, ?)`,
+			name, "http://"+name+":11434", "ollama", 24000); err != nil {
+			t.Fatalf("insert runtime_nodes %s: %v", name, err)
+		}
+	}
+	if _, err := raw.Exec(`INSERT INTO model_configs (model, config_json) VALUES (?, ?)`,
+		"the-model", `{"temperature":0.7}`); err != nil {
+		t.Fatalf("insert pre-node model_configs row: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("Open on pre-node model_configs schema: %v", err)
+	}
+	defer s.Close()
+
+	all, err := s.AllModelConfigs()
+	if err != nil {
+		t.Fatalf("AllModelConfigs after schema upgrade: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected 2 fanned-out rows, got %d: %+v", len(all), all)
+	}
+	byNode := make(map[string]store.ModelConfig, len(all))
+	for _, c := range all {
+		if c.Model != "the-model" {
+			t.Errorf("row model = %q, want the-model", c.Model)
+		}
+		if c.Temperature == nil || *c.Temperature != 0.7 {
+			t.Errorf("row %s temperature = %v, want 0.7", c.Node, c.Temperature)
+		}
+		byNode[c.Node] = c
+	}
+	if _, ok := byNode["gpu-node-01"]; !ok {
+		t.Error("missing fanned-out row for gpu-node-01")
+	}
+	if _, ok := byNode["gpu-node-02"]; !ok {
+		t.Error("missing fanned-out row for gpu-node-02")
+	}
+
+	got, err := s.GetModelConfig("the-model", "gpu-node-01")
+	if err != nil {
+		t.Fatalf("GetModelConfig after schema upgrade: %v", err)
+	}
+	if got.Temperature == nil || *got.Temperature != 0.7 {
+		t.Fatalf("GetModelConfig temperature = %v, want 0.7", got.Temperature)
+	}
+
+	// The migration patches a "node" key into each fanned-out row's JSON blob
+	// (sqlite.go migrateModelConfigsToNodeKeyed) - confirm it matches the row's
+	// own node rather than being left stale/shared across rows.
+	rows, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("reopen raw for json check: %v", err)
+	}
+	defer rows.Close()
+	r, err := rows.Query(`SELECT node, config_json FROM model_configs ORDER BY node`)
+	if err != nil {
+		t.Fatalf("query config_json: %v", err)
+	}
+	defer r.Close()
+	for r.Next() {
+		var node, cfgJSON string
+		if err := r.Scan(&node, &cfgJSON); err != nil {
+			t.Fatalf("scan config_json: %v", err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(cfgJSON), &m); err != nil {
+			t.Fatalf("unmarshal config_json for %s: %v", node, err)
+		}
+		var patchedNode string
+		if err := json.Unmarshal(m["node"], &patchedNode); err != nil {
+			t.Fatalf("unmarshal patched node field for %s: %v", node, err)
+		}
+		if patchedNode != node {
+			t.Errorf("row %s: patched json node = %q, want %q", node, patchedNode, node)
+		}
+	}
+}
+
+// TestOpenUpgradesPreReasonNodeDrainSchema simulates an existing mesh.db from
+// before node_drain had a drained_reason column. Open() must ALTER TABLE it
+// in via the idempotent migration (sqlite.go migrate()) rather than erroring
+// or leaving SetNodeDrain/NodeDrainStates broken. drained_reason is already
+// part of the fresh CREATE TABLE node_drain, so - like the runtime_keys spend
+// caps before this test existed - the ALTER for it permanently no-ops in
+// every other test's fresh DB and this is the only regression guard against
+// that migration silently breaking.
+func TestOpenUpgradesPreReasonNodeDrainSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prereason.db")
+
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	if _, err := raw.Exec(`CREATE TABLE node_drain (
+		name     TEXT PRIMARY KEY,
+		draining INTEGER
+	)`); err != nil {
+		t.Fatalf("create pre-reason node_drain: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO node_drain (name, draining) VALUES (?, ?)`,
+		"old-node", 1); err != nil {
+		t.Fatalf("insert pre-reason node_drain row: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("Open on pre-reason node_drain schema: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.SetNodeDrain("new-node", true, "maintenance"); err != nil {
+		t.Fatalf("SetNodeDrain after schema upgrade: %v", err)
+	}
+
+	states, err := s.NodeDrainStates()
+	if err != nil {
+		t.Fatalf("NodeDrainStates after schema upgrade: %v", err)
+	}
+	if !states["old-node"].Draining {
+		t.Error("old-node should still be draining after upgrade")
+	}
+	if states["old-node"].Reason != "" {
+		t.Errorf("old-node reason = %q, want empty (backfilled default)", states["old-node"].Reason)
+	}
+	if !states["new-node"].Draining || states["new-node"].Reason != "maintenance" {
+		t.Errorf("new-node = %+v, want draining=true reason=maintenance", states["new-node"])
 	}
 }
