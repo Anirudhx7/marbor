@@ -319,7 +319,7 @@ From there, everything is a dashboard page or an `/admin/v1/...` API call:
 | API keys, rate limits, model allow-lists, quotas | **API Keys** page |
 | Routing strategy, timeouts, retries, session affinity, queueing, thermal watchdog | **Settings → Advanced Routing** |
 | Cloud overflow providers (OpenAI/Anthropic), cost-per-1k, spend caps | **Settings → Cloud Providers** / **Cloud Spend Cap** |
-| Docker auto-discovery, HA peer monitoring, webhooks | **Settings** (dedicated cards for each) |
+| Docker auto-discovery, webhooks | **Settings** (dedicated cards for each) |
 | Model warmup schedule | **Settings → Global Warmup**, or per-node in the **Warmup** page |
 | Model context windows | **Settings → Model Context Windows** |
 | Proxy/admin ports, CORS, access log | **Settings → Proxy Configuration** / **Admin & Security** |
