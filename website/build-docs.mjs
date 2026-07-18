@@ -155,6 +155,7 @@ const DOC_GROUPS = [
   { title: "Integrations", items: [
     { slug: "integrations/continue", label: "Continue" },
     { slug: "integrations/librechat", label: "LibreChat" },
+    { slug: "integrations/litellm", label: "LiteLLM" },
     { slug: "integrations/open-webui", label: "Open WebUI" },
   ]},
 ];
