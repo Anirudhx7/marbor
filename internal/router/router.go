@@ -731,10 +731,27 @@ func (r *Router) localNow(now time.Time) time.Time {
 	return now
 }
 
+// safeRun invokes fn, recovering and logging any panic instead of letting it
+// escape. Go has no per-goroutine crash isolation - an unrecovered panic in
+// ANY goroutine (not just main's) terminates the entire process, and this
+// mesh is architecturally a single process for the whole fleet. Start's
+// background maintenance tasks all run against persisted/live state that can
+// contain surprises (a stale DB row, an unexpected node response); one bad
+// input in any of them must degrade that one task for one cycle, never take
+// the whole mesh down and lock an operator out of everything they run.
+func safeRun(label string, fn func()) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("router: recovered panic in %s: %v", label, rec)
+		}
+	}()
+	fn()
+}
+
 func (r *Router) Start(ctx context.Context) {
-	r.pollNvidiaAll()
-	r.pollAll()
-	r.discoverAndAddDockerNodes()
+	safeRun("pollNvidiaAll", r.pollNvidiaAll)
+	safeRun("pollAll", r.pollAll)
+	safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 
@@ -771,7 +788,7 @@ func (r *Router) Start(ctx context.Context) {
 	if warmupInterval <= 0 {
 		warmupInterval = 5 * time.Minute
 	}
-	go r.pingWarmupModels(ctx) // initial ping on startup
+	go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) }) // initial ping on startup
 	warmupTicker := time.NewTicker(warmupInterval)
 	defer warmupTicker.Stop()
 	warmupTickerC := warmupTicker.C
@@ -802,23 +819,23 @@ func (r *Router) Start(ctx context.Context) {
 			if r.pollInFlight.CompareAndSwap(false, true) {
 				go func() {
 					defer r.pollInFlight.Store(false)
-					r.pollAll()
+					safeRun("pollAll", r.pollAll)
 				}()
 			}
 		case <-dockerTicker.C:
-			r.discoverAndAddDockerNodes()
+			safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
 		case <-nvidiaTicker.C:
-			r.pollNvidiaAll()
+			safeRun("pollNvidiaAll", r.pollNvidiaAll)
 		case <-sweepTicker.C:
-			r.sweepAffinity()
+			safeRun("sweepAffinity", r.sweepAffinity)
 		case <-warmupTickerC:
-			go r.pingWarmupModels(ctx)
+			go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) })
 		case <-scheduleTicker.C:
-			r.runSchedules(ctx, time.Now())
+			safeRun("runSchedules", func() { r.runSchedules(ctx, time.Now()) })
 		case <-warmStateTicker.C:
-			go r.FlushWarmState()
+			go safeRun("FlushWarmState", r.FlushWarmState)
 		case <-predictiveTicker.C:
-			r.RunPredictionCycle(ctx, time.Now())
+			safeRun("RunPredictionCycle", func() { r.RunPredictionCycle(ctx, time.Now()) })
 		}
 	}
 }
@@ -1042,6 +1059,18 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 				// "auto" re-arms detection so the next poll re-probes the
 				// node instead of keeping whatever runtime it had before.
 				n.autoDetect = *patch.Runtime == "auto"
+				if !n.autoDetect {
+					// Mirror New()/AddNode(): an explicit runtime must always
+					// carry a matching probe. Without this, a node still
+					// awaiting its first auto-detect (probe == nil) that gets
+					// patched straight to an explicit runtime would leave
+					// autoDetect false with probe still nil - pollNode's
+					// needsDetect guard would then never re-arm detection,
+					// and the next poll dereferences a nil probe and panics
+					// (crashes the whole single-process mesh, R1/architecture
+					// law: one process for the entire mesh).
+					n.probe = runtimepkg.NewProbe(*patch.Runtime, r.client)
+				}
 			}
 			n.mu.Unlock()
 			return true

@@ -92,6 +92,22 @@ func (r *Router) pollAll() {
 }
 
 func (r *Router) pollNode(n *NodeState) {
+	// Hard reliability boundary: pollNode runs per-node, on its own goroutine,
+	// including synchronously off AddNode at boot for every persisted node.
+	// One node's bad/unexpected state (a stale DB record, a malformed probe,
+	// anything) must never be able to panic and take down the entire
+	// single-process mesh (architecture law) - that would mean a single bad
+	// row in mesh.db locks an operator out of their whole fleet, which is
+	// exactly the failure this recovers from. A panic here degrades only
+	// this one node (marked unhealthy for this cycle) instead of crashing
+	// the process; the poll loop naturally retries it next interval.
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("router: recovered panic in pollNode for node %s: %v", n.Name, rec)
+			r.markFailure(n)
+		}
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -125,6 +141,17 @@ func (r *Router) pollNode(n *NodeState) {
 	n.mu.RLock()
 	probe := n.probe
 	n.mu.RUnlock()
+	if probe == nil {
+		// Defense in depth: every path that clears autoDetect must also set
+		// probe (New/AddNode/PatchNode, and the auto-detect branch above).
+		// A nil probe here would otherwise panic and take down the whole
+		// mesh process (single-process architecture - R1/architecture law).
+		// If this is ever hit, something upstream regressed that invariant;
+		// treat it exactly like an unreachable node instead of crashing.
+		r.pollAgentTelemetry(n)
+		r.markFailure(n)
+		return
+	}
 
 	result, err := probe.Probe(ctx, n.URL)
 	if err != nil {
