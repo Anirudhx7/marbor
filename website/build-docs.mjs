@@ -222,15 +222,15 @@ function page({ slug, title, contentHtml, headings }) {
 <body>
 <nav>
   <div class="page">
-    <a href="${r}index.html" class="brand" aria-label="ollama-mesh home">${LOGO_HTML}<span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span></a>
+    <a href="${r}index.html" class="brand" aria-label="ollama-mesh home">${LOGO_HTML}<span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="${r}index.html#features">Features</a>
         <a class="link" href="${r}index.html#how">How it works</a>
         <a class="link" href="${r}index.html#compare">Compare</a>
         <a class="link active" href="${r}docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="color:var(--accent2);">Demo&nbsp;↗</a>
+        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="btn btn-demo" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="padding:6px 14px;font-size:13px;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,14 +318,15 @@ function docsIndexPage() {
 <body>
 <nav>
   <div class="page">
-    <a href="${r}index.html" class="brand" aria-label="ollama-mesh home">${LOGO_HTML}<span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span></a>
+    <a href="${r}index.html" class="brand" aria-label="ollama-mesh home">${LOGO_HTML}<span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="${r}index.html#features">Features</a>
         <a class="link" href="${r}index.html#how">How it works</a>
         <a class="link" href="${r}index.html#compare">Compare</a>
         <a class="link active" href="index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener">GitHub&nbsp;↗</a>
+        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="btn btn-demo" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="padding:6px 14px;font-size:13px;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -342,7 +343,8 @@ function docsIndexPage() {
   <a href="${r}index.html#how">How it works</a>
   <a href="${r}index.html#compare">Compare</a>
   <a href="index.html">Docs</a>
-  <a href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener">GitHub ↗</a>
+  <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
+  <a href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
 </div>
 
 <main class="doc-index">
