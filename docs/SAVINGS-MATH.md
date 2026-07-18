@@ -178,7 +178,7 @@ When the field is missing or zero, the default `$0.002/1K` applies. Changing the
 
 ### Per-Provider Cloud Rates
 
-Each cloud provider's `cost_per_1k_tokens` (along with `name`, `provider`, and `enabled`) is configured via the dashboard or the admin API (`/admin/v1/settings`) - for example, an `openai-overflow` provider at `0.0025` (GPT-4o blended rate) or an `anthropic-overflow` provider at `0.004` (Claude Sonnet 4 blended rate). There is no config file to edit.
+Each cloud provider's `cost_per_1k_tokens` (along with `name`, `provider`, and `enabled`) is configured via the dashboard or the admin API (`/admin/v1/cloud/providers`) - for example, an `openai-overflow` provider at `0.0025` (GPT-4o blended rate) or an `anthropic-overflow` provider at `0.004` (Claude Sonnet 4 blended rate). There is no config file to edit.
 
 ---
 

@@ -342,7 +342,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 </table></div>
 <p>When the field is missing or zero, the default <code>$0.002/1K</code> applies. Changing the rate only affects requests recorded after the change; it does not retroactively revalue earlier requests.</p>
 <h3 id="per-provider-cloud-rates">Per-Provider Cloud Rates<a class="anchor" href="#per-provider-cloud-rates" aria-label="Link to section">#</a></h3>
-<p>Each cloud provider's <code>cost_per_1k_tokens</code> (along with <code>name</code>, <code>provider</code>, and <code>enabled</code>) is configured via the dashboard or the admin API (<code>/admin/v1/settings</code>) - for example, an <code>openai-overflow</code> provider at <code>0.0025</code> (GPT-4o blended rate) or an <code>anthropic-overflow</code> provider at <code>0.004</code> (Claude Sonnet 4 blended rate). There is no config file to edit.</p>
+<p>Each cloud provider's <code>cost_per_1k_tokens</code> (along with <code>name</code>, <code>provider</code>, and <code>enabled</code>) is configured via the dashboard or the admin API (<code>/admin/v1/cloud/providers</code>) - for example, an <code>openai-overflow</code> provider at <code>0.0025</code> (GPT-4o blended rate) or an <code>anthropic-overflow</code> provider at <code>0.004</code> (Claude Sonnet 4 blended rate). There is no config file to edit.</p>
 <hr/>
 <h2 id="known-limitations">Known Limitations<a class="anchor" href="#known-limitations" aria-label="Link to section">#</a></h2>
 <div class="table-scroll"><table>
