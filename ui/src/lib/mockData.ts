@@ -1026,6 +1026,11 @@ const OPENAI_COMPAT_BASE_FIELDS = [
   'temperature', 'top_p', 'max_tokens', 'seed', 'stop',
   'presence_penalty', 'frequency_penalty', 'response_format',
 ];
+// mlx_lm.server's documented /v1/chat/completions schema (SERVER.md) has no
+// seed or response_format equivalent - excluded from its base set below.
+const MLX_BASE_FIELDS = OPENAI_COMPAT_BASE_FIELDS.filter(
+  (f) => f !== 'seed' && f !== 'response_format'
+);
 // Ollama-only, verified against Ollama's current api/types.go
 // Options/Runner structs - flash_attention, offload_kv_cache_to_gpu,
 // rope_frequency_base/scale, use_mlock, and tensor_parallelism removed:
@@ -1055,7 +1060,11 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
       'system', 'rpm', 'tpm',
     ],
     tgi: [...OPENAI_COMPAT_BASE_FIELDS, 'system', 'rpm', 'tpm'],
-    mlx: [...OPENAI_COMPAT_BASE_FIELDS, 'system', 'rpm', 'tpm'],
+    mlx: [
+      ...MLX_BASE_FIELDS,
+      'top_k', 'min_p', 'repetition_penalty', 'logit_bias',
+      'system', 'rpm', 'tpm',
+    ],
     llamacpp: [
       ...OPENAI_COMPAT_BASE_FIELDS,
       'repeat_penalty', 'repeat_last_n', 'typical_p', 'mirostat', 'mirostat_tau', 'mirostat_eta',
