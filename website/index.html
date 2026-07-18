@@ -22,14 +22,16 @@
 <meta property="og:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
 <meta property="og:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
 <meta property="og:url" content="https://anirudh.social/ollama-mesh/" />
-<meta property="og:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
+<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="ollama-mesh admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
 <meta name="twitter:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
-<meta name="twitter:image" content="https://opengraph.githubassets.com/1/Anirudhx7/ollama-mesh" />
+<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:image:alt" content="ollama-mesh admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
 <script type="application/ld+json">
 [
   {
@@ -233,8 +235,8 @@ h1.headline em { font-style: italic; color: var(--accent); }
 .btn svg { width: 15px; height: 15px; }
 .btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
 .btn-primary:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
-.btn-demo { background: color-mix(in srgb, var(--accent2) 12%, transparent); color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); font-weight: 500; }
-.btn-demo:hover { background: color-mix(in srgb, var(--accent2) 22%, transparent); border-color: var(--accent2); color: var(--accent2); text-decoration: none; }
+.btn-demo { background: rgba(82,183,136,0.12); background: color-mix(in srgb, var(--accent2) 12%, transparent); color: var(--accent2); border-color: rgba(82,183,136,0.35); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); font-weight: 500; }
+.btn-demo:hover { background: rgba(82,183,136,0.22); background: color-mix(in srgb, var(--accent2) 22%, transparent); border-color: var(--accent2); color: var(--accent2); text-decoration: none; }
 .btn-ghost:hover { color: var(--accent); }
 
 /* install line */
@@ -749,6 +751,7 @@ SPCS-FEATURE-END */
         <a class="link" href="#compare">Compare</a>
         <a class="link" href="docs/">Docs</a>
         <a class="link" href="https://github.com/Anirudhx7/ollama-mesh">GitHub&nbsp;↗</a>
+        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -1276,6 +1279,7 @@ base_url = <span class="g">"http://mesh:8080/v1"</span>
         <a href="#how">How it works</a>
         <a href="#compare">Compare</a>
         <a href="docs/SAVINGS-MATH.html">Savings math</a>
+        <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);">Live demo ↗</a>
       </div>
       <div class="foot-col">
         <h4>Docs</h4>

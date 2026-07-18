@@ -208,6 +208,15 @@ function page({ slug, title, contentHtml, headings }) {
 <title>${escapeHtml(title)} · ollama-mesh docs</title>
 <meta name="description" content="ollama-mesh documentation: ${escapeHtml(title)}." />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="ollama-mesh" />
+<meta property="og:title" content="${escapeHtml(title)} · ollama-mesh docs" />
+<meta property="og:description" content="ollama-mesh documentation: ${escapeHtml(title)}." />
+<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="${escapeHtml(title)} · ollama-mesh docs" />
+<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <style>${DOC_CSS}</style>
 </head>
 <body>
@@ -221,6 +230,7 @@ function page({ slug, title, contentHtml, headings }) {
         <a class="link" href="${r}index.html#compare">Compare</a>
         <a class="link active" href="${r}docs/index.html">Docs</a>
         <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener">GitHub&nbsp;↗</a>
+        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="color:var(--accent2);">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
