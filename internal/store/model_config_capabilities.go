@@ -45,9 +45,23 @@ var OpenAICompatExtraFields = map[string][]string{
 		"xtc_probability", "xtc_threshold", "ignore_eos",
 	},
 	"tgi": {}, // strict OpenAI schema only - TGI's OpenAI layer doesn't accept extras
-	"mlx": {}, // strict OpenAI schema only - mlx_lm.server's OpenAI-compatible
-	// endpoint has not been verified to accept any extra sampling fields
-	// beyond the base set, so none are declared here rather than guessing.
+	"mlx": {
+		"top_k", "min_p", "repetition_penalty", "logit_bias",
+	}, // verified against mlx-lm/mlx_lm/SERVER.md (github.com/ml-explore/mlx-lm,
+	// main branch): the /v1/chat/completions request fields documented there
+	// beyond strict OpenAI include top_k, min_p, repetition_penalty (plus its
+	// repetition_context_size, not currently a ModelConfig field), and
+	// logit_bias.
+}
+
+// OpenAICompatUnsupportedBaseFields declares, per non-Ollama runtime, which
+// OpenAICompatBaseFields that runtime's OpenAI-compatible server does NOT
+// actually accept, despite being in the strict-schema baseline assumed valid
+// everywhere else. A runtime absent from this map supports the full base set.
+var OpenAICompatUnsupportedBaseFields = map[string][]string{
+	"mlx": {"seed", "response_format"}, // verified against mlx-lm/mlx_lm/SERVER.md -
+	// its documented request fields include no "seed" and no "response_format"/
+	// structured-output equivalent.
 }
 
 // OllamaLoadTimeFields are ModelConfig fields injected into Ollama's
@@ -87,7 +101,20 @@ func SupportedFieldsFor(runtime string) []string {
 		fields = append(fields, "system", "template", "rpm", "tpm")
 		return fields
 	}
-	fields := append([]string{}, OpenAICompatBaseFields...)
+	fields := make([]string, 0, len(OpenAICompatBaseFields))
+	unsupported := OpenAICompatUnsupportedBaseFields[runtime]
+	for _, f := range OpenAICompatBaseFields {
+		skip := false
+		for _, u := range unsupported {
+			if f == u {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			fields = append(fields, f)
+		}
+	}
 	fields = append(fields, OpenAICompatExtraFields[runtime]...)
 	// system is supported here too: injectModelDefaults prepends it as a
 	// leading {"role":"system",...} message on chat-shaped ("messages"
