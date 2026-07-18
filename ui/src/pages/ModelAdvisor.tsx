@@ -38,6 +38,7 @@ function ModelDetailPanel({
   model,
   nodeName,
   nodeRuntime,
+  actualRuntime,
   isLive,
   demoMode,
   onClose,
@@ -45,6 +46,7 @@ function ModelDetailPanel({
   model: HFModel;
   nodeName: string | null;
   nodeRuntime: string | null;
+  actualRuntime: string | null;
   isLive: boolean;
   demoMode: boolean;
   onClose: () => void;
@@ -248,7 +250,7 @@ function ModelDetailPanel({
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
                           <Check className="w-3.5 h-3.5" /> Ready
                         </span>
-                      ) : (!nodeRuntime || nodeRuntime === 'ollama') ? (
+                      ) : (!actualRuntime || actualRuntime === 'ollama') ? (
                         <button
                           onClick={() => handlePull(v)}
                           disabled={!isLive || !nodeName || isPulling || v.fit === 'red'}
@@ -297,7 +299,7 @@ function ModelDetailPanel({
       <ModelConfigModal
         model={configTag}
         demoMode={demoMode}
-        nodes={nodeName ? [{ name: nodeName, runtime: nodeRuntime ?? 'ollama' }] : []}
+        nodes={nodeName ? [{ name: nodeName, runtime: actualRuntime ?? 'ollama' }] : []}
         presetNumCtx={ctxLen}
         onClose={() => setConfigTag(null)}
       />
@@ -379,6 +381,13 @@ export function ModelAdvisor() {
     [nodes, selectedNode]
   );
 
+  // Browse format defaults to the node's declared runtime but admins can
+  // override it manually (e.g. browse GGUF repos while the node itself runs
+  // MLX) - no auto-switch magic, always an explicit admin choice.
+  const [runtimeOverride, setRuntimeOverride] = useState<string | null>(null);
+  useEffect(() => { setRuntimeOverride(null); }, [selectedNode]);
+  const browseRuntime = runtimeOverride ?? activeNode?.runtime ?? null;
+
   // Track grid column count to insert panel at end of the correct row
   useEffect(() => {
     const update = () => {
@@ -459,7 +468,7 @@ export function ModelAdvisor() {
       setSearchError(null);
       try {
         const resp = await searchHFModels(debouncedSearch, {
-          runtime: activeNode?.runtime,
+          runtime: browseRuntime ?? undefined,
           sort: sortBy,
           minDownloads: minDl,
           minLikes: minLk,
@@ -474,7 +483,7 @@ export function ModelAdvisor() {
       }
     };
     doSearch();
-  }, [debouncedSearch, demoMode, sortBy, minDownloads, minLikes, createdAfter, activeNode?.runtime]);
+  }, [debouncedSearch, demoMode, sortBy, minDownloads, minLikes, createdAfter, browseRuntime]);
 
   // Close panel when search results change
   useEffect(() => { setSelectedModelId(null); }, [models]);
@@ -651,6 +660,23 @@ export function ModelAdvisor() {
           </div>
 
           <div className="flex flex-wrap gap-3 items-center text-xs">
+            <label className="flex items-center gap-1.5" title="Overrides the node's declared runtime for browsing only - Pull still respects the node's actual runtime.">
+              <span className="text-muted-foreground font-medium shrink-0">Browse format:</span>
+              <CustomSelect
+                value={runtimeOverride ?? '__auto__'}
+                onChange={(val) => setRuntimeOverride(val === '__auto__' ? null : val)}
+                size="sm"
+                className="w-44"
+                options={[
+                  { value: '__auto__', label: `Auto (${activeNode?.runtime ?? 'ollama'})` },
+                  { value: 'ollama', label: 'Ollama (GGUF)' },
+                  { value: 'llamacpp', label: 'llama.cpp (GGUF)' },
+                  { value: 'mlx', label: 'MLX (safetensors)' },
+                  { value: 'vllm', label: 'vLLM (safetensors)' },
+                  { value: 'tgi', label: 'TGI (safetensors)' },
+                ]}
+              />
+            </label>
             <label className="flex items-center gap-1.5">
               <span className="text-muted-foreground font-medium shrink-0">Sort:</span>
               <CustomSelect
@@ -738,7 +764,8 @@ export function ModelAdvisor() {
                     key="__panel__"
                     model={item.model}
                     nodeName={selectedNode}
-                    nodeRuntime={activeNode?.runtime ?? null}
+                    nodeRuntime={browseRuntime}
+                    actualRuntime={activeNode?.runtime ?? null}
                     isLive={isLive}
                     demoMode={demoMode}
                     onClose={() => setSelectedModelId(null)}
