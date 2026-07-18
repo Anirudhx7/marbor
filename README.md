@@ -232,26 +232,37 @@ ollama-mesh is runtime-agnostic. Declare `runtime:` per node and the router uses
 
 `/api/*` paths (Ollama-native) route only to Ollama nodes. `/v1/*` paths route to any runtime - OpenAI SDK clients work unchanged against a mixed fleet.
 
-**Mixed-fleet example:**
+**Mixed-fleet configuration payload (JSON structure for `POST /admin/v1/nodes` or dashboard config):**
 
-```yaml
-nodes:
-  - name: ollama-local
-    url: http://localhost:11434
-    runtime: ollama  # default
-  - name: vllm-gpu
-    url: http://10.0.1.20:8000
-    runtime: vllm
-    vram_total_mb: 81920
-  - name: tgi-server
-    url: http://10.0.1.21:8080
-    runtime: tgi
-  - name: llamacpp-server
-    url: http://10.0.1.22:8080
-    runtime: llamacpp
-  - name: mlx-mac-studio
-    url: http://10.0.1.23:8080
-    runtime: mlx
+```json
+[
+  {
+    "name": "ollama-local",
+    "url": "http://localhost:11434",
+    "runtime": "ollama"
+  },
+  {
+    "name": "vllm-gpu",
+    "url": "http://10.0.1.20:8000",
+    "runtime": "vllm",
+    "vram_total_mb": 81920
+  },
+  {
+    "name": "tgi-server",
+    "url": "http://10.0.1.21:8080",
+    "runtime": "tgi"
+  },
+  {
+    "name": "llamacpp-server",
+    "url": "http://10.0.1.22:8080",
+    "runtime": "llamacpp"
+  },
+  {
+    "name": "mlx-mac-studio",
+    "url": "http://10.0.1.23:8080",
+    "runtime": "mlx"
+  }
+]
 ```
 
 ---
