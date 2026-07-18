@@ -4491,7 +4491,17 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		upstreamMsg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		log.Printf("runDirectPull: node %s upstream returned %d: %s", job.Node, resp.StatusCode, upstreamMsg)
-		job.finish("failed", fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(upstreamMsg))))
+		errMsg := fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(upstreamMsg)))
+		if resp.StatusCode == http.StatusUnauthorized {
+			// Direct pulls hit the node's Ollama REST API directly, which has
+			// no field for a Hugging Face token - only a Node Agent can
+			// deliver one, via HF_TOKEN in the pull subprocess's own
+			// environment (actions.go runDownload). A 401 here almost always
+			// means a gated/token-required HF model on a node without an
+			// agent, not a mesh misconfiguration.
+			errMsg += " (this node has no Node Agent capable of pull_model - token-gated Hugging Face pulls require one; install/enable the Node Agent on this node or use a non-gated model)"
+		}
+		job.finish("failed", errMsg)
 		return
 	}
 
