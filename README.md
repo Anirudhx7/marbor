@@ -324,7 +324,7 @@ From there, everything is a dashboard page or an `/admin/v1/...` API call:
 | Model context windows | **Settings → Model Context Windows** |
 | Proxy/admin ports, CORS, access log | **Settings → Proxy Configuration** / **Admin & Security** |
 
-Prefer scripting it? Every one of those pages is a thin wrapper over `GET/PUT /admin/v1/settings`, `/admin/v1/nodes`, `/admin/v1/keys`, and `/admin/v1/cloud-providers` - GitOps-style operators can drive the same REST API from an init job instead of clicking through the UI.
+Prefer scripting it? Every one of those pages is a thin wrapper over `GET/PUT /admin/v1/settings`, `/admin/v1/nodes`, `/admin/v1/keys`, and `/admin/v1/cloud/providers` - GitOps-style operators can drive the same REST API from an init job instead of clicking through the UI.
 
 ---
 
