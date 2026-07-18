@@ -2665,6 +2665,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	user.PasswordHash = newHash
 	user.Salt = ""
 	user.MustChangePassword = false
+	user.SkipPasswordCount = 0
 	if err := s.st.UpdateUser(user); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not save credentials"}`))
@@ -2691,11 +2692,20 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// maxSkipPasswordChanges caps how many times the forced-password-change
+// screen can be dismissed (Grafana-style "Skip for now") before the account
+// must actually change its password. Without a cap, an admin/admin install
+// could stay on the public default password indefinitely - the cap forces
+// resolution while still allowing a few "not right now" dismissals.
+const maxSkipPasswordChanges = 3
+
 // handleSkipPasswordChange lets an admin dismiss the forced-password-change
-// screen for this session only (Grafana-style "Skip for now"), without
-// touching the user's MustChangePassword flag in the users table - so the
-// next fresh login still forces the prompt again. Reachable only via the
-// same must-change-password bypass list as change-password/logout.
+// screen for this session only, without touching the user's
+// MustChangePassword flag in the users table - so the next fresh login
+// still forces the prompt again. Each dismissal increments a persistent
+// per-user counter; once maxSkipPasswordChanges is reached, skipping is
+// refused and the caller must actually change the password. Reachable only
+// via the same must-change-password bypass list as change-password/logout.
 func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
@@ -2703,6 +2713,17 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	if user.SkipPasswordCount >= maxSkipPasswordChanges {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"skip_limit_reached","message":"password must be changed - skip limit reached"}`))
+		return
+	}
+	user.SkipPasswordCount++
+	if err := s.st.UpdateUser(user); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"could not update user"}`))
 		return
 	}
 	_ = s.st.DeleteUserSessionsByUserID(user.ID)
