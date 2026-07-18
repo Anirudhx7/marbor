@@ -165,7 +165,7 @@ Client Application (Agent / RAG / Copilot)
 | | Grafana dashboard | Included JSON (`grafana/ollama-mesh.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
 | | Audit trail | Append-only JSON-lines audit log. Every request recorded with crypto/rand request IDs. |
-| | Webhook alerts | `node_down`/`node_up` events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
+| | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (Node Agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
