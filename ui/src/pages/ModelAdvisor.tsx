@@ -659,77 +659,79 @@ export function ModelAdvisor() {
             )}
           </div>
 
-          <div className="flex flex-wrap gap-3 items-center text-xs">
-            <label className="flex items-center gap-1.5" title="Overrides the node's declared runtime for browsing only - Pull still respects the node's actual runtime.">
-              <span className="text-muted-foreground font-medium shrink-0">Browse format:</span>
-              <CustomSelect
-                value={runtimeOverride ?? '__auto__'}
-                onChange={(val) => setRuntimeOverride(val === '__auto__' ? null : val)}
-                size="sm"
-                className="w-44"
-                options={[
-                  { value: '__auto__', label: `Auto (${activeNode?.runtime ?? 'ollama'})` },
-                  { value: 'ollama', label: 'Ollama (GGUF)' },
-                  { value: 'llamacpp', label: 'llama.cpp (GGUF)' },
-                  { value: 'mlx', label: 'MLX (safetensors)' },
-                  { value: 'vllm', label: 'vLLM (safetensors)' },
-                  { value: 'tgi', label: 'TGI (safetensors)' },
-                ]}
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              <span className="text-muted-foreground font-medium shrink-0">Sort:</span>
-              <CustomSelect
-                value={sortBy}
-                onChange={(val) => setSortBy(val as typeof sortBy)}
-                size="sm"
-                className="w-36"
-                options={[
-                  { value: 'downloads', label: 'Most Downloads' },
-                  { value: 'likes', label: 'Most Likes' },
-                  { value: 'newest', label: 'Newest' },
-                  { value: 'oldest', label: 'Oldest' },
-                ]}
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              <span className="text-muted-foreground font-medium">Min Downloads:</span>
-              <input
-                type="number"
-                min="0"
-                value={minDownloads}
-                onChange={(e) => setMinDownloads(e.target.value)}
-                placeholder="0"
-                className="w-24 bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium"
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              <span className="text-muted-foreground font-medium">Min Likes:</span>
-              <input
-                type="number"
-                min="0"
-                value={minLikes}
-                onChange={(e) => setMinLikes(e.target.value)}
-                placeholder="0"
-                className="w-20 bg-secondary border border-border rounded-lg px-2 py-1.5 text-foreground font-medium"
-              />
-            </label>
-            <label className="flex items-center gap-1.5">
-              <span className="text-muted-foreground font-medium">Created After:</span>
-              <CustomDatePicker
-                value={createdAfter}
-                onChange={setCreatedAfter}
-                className="w-36"
-              />
-            </label>
-            {(minDownloads || minLikes || createdAfter || sortBy !== 'downloads') && (
-              <button
-                onClick={() => { setSortBy('downloads'); setMinDownloads(''); setMinLikes(''); setCreatedAfter(''); }}
-                className="text-primary hover:underline font-medium cursor-pointer"
-              >
-                Reset filters
-              </button>
-            )}
+          <div className="bg-secondary/20 border border-border rounded-xl p-3 sm:p-4">
+            <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
+              <label className="flex flex-col gap-1.5 min-w-[12rem]" title="Overrides the node's declared runtime for browsing only - Pull still respects the node's actual runtime.">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold shrink-0">Browse format</span>
+                <CustomSelect
+                  value={runtimeOverride ?? '__auto__'}
+                  onChange={(val) => setRuntimeOverride(val === '__auto__' ? null : val)}
+                  size="md"
+                  className="w-full"
+                  options={[
+                    { value: '__auto__', label: `Auto (${activeNode?.runtime ?? 'ollama'})` },
+                    { value: 'ollama', label: 'Ollama (GGUF)' },
+                    { value: 'llamacpp', label: 'llama.cpp (GGUF)' },
+                    { value: 'mlx', label: 'MLX (safetensors)' },
+                    { value: 'vllm', label: 'vLLM (safetensors)' },
+                    { value: 'tgi', label: 'TGI (safetensors)' },
+                  ]}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 min-w-[10rem]">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold shrink-0">Sort</span>
+                <CustomSelect
+                  value={sortBy}
+                  onChange={(val) => setSortBy(val as typeof sortBy)}
+                  size="md"
+                  className="w-full"
+                  options={[
+                    { value: 'downloads', label: 'Most Downloads' },
+                    { value: 'likes', label: 'Most Likes' },
+                    { value: 'newest', label: 'Newest' },
+                    { value: 'oldest', label: 'Oldest' },
+                  ]}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Min Downloads</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={minDownloads}
+                  onChange={(e) => setMinDownloads(e.target.value)}
+                  placeholder="0"
+                  className="w-28 bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground font-medium"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Min Likes</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={minLikes}
+                  onChange={(e) => setMinLikes(e.target.value)}
+                  placeholder="0"
+                  className="w-24 bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground font-medium"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">Created After</span>
+                <CustomDatePicker
+                  value={createdAfter}
+                  onChange={setCreatedAfter}
+                  className="w-40"
+                />
+              </label>
+              {(minDownloads || minLikes || createdAfter || sortBy !== 'downloads') && (
+                <button
+                  onClick={() => { setSortBy('downloads'); setMinDownloads(''); setMinLikes(''); setCreatedAfter(''); }}
+                  className="text-xs text-primary hover:underline font-medium cursor-pointer pb-2"
+                >
+                  Reset filters
+                </button>
+              )}
+            </div>
           </div>
 
           {searchError && (
