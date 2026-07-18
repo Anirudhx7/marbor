@@ -322,7 +322,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <ol><li><strong>Local token counts</strong> - parsed from the real upstream Ollama response, not estimated. ollama-mesh reads <code>eval_count</code> and <code>prompt_eval_count</code> from the final NDJSON object (Ollama native) or <code>usage.total_tokens</code> from the terminal SSE chunk (OpenAI-compatible).</li></ol>
 <ol><li><strong>Cloud token counts</strong> - parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.</li></ol>
 <ol><li><strong>Reference rate</strong> - operator-configured on the dashboard's <strong>Settings &gt; Global Warmup &amp; Audit</strong> page (Savings reference cost). Single flat rate applied to all locally-served tokens.</li></ol>
-<ol><li><strong>Cloud rates</strong> - per-provider <code>cost_per_1k_tokens</code> in the <code>cloud_providers</code> config block.</li></ol>
+<ol><li><strong>Cloud rates</strong> - per-provider <code>cost_per_1k_tokens</code>, configured per cloud provider via the dashboard or the admin API.</li></ol>
 <h3 id="what---means">What "-" Means<a class="anchor" href="#what---means" aria-label="Link to section">#</a></h3>
 <p>If requests were served but no token counts could be parsed from any response - for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk - the API returns <code>null</code> and the dashboard renders "-". ollama-mesh <strong>never</strong> substitutes an estimated or random number for missing token data.</p>
 <h3 id="counter-lifecycle">Counter Lifecycle<a class="anchor" href="#counter-lifecycle" aria-label="Link to section">#</a></h3>
@@ -330,9 +330,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <hr/>
 <h2 id="configuration">Configuration<a class="anchor" href="#configuration" aria-label="Link to section">#</a></h2>
 <h3 id="setting-the-reference-rate">Setting the Reference Rate<a class="anchor" href="#setting-the-reference-rate" aria-label="Link to section">#</a></h3>
-<pre class="code" data-lang="yaml"><code>savings:
-  reference_cost_per_1k: 0.015   # match your actual cloud model rate</code></pre>
-<p>Set this to the blended rate of the cloud model your traffic would otherwise consume:</p>
+<p>The reference rate (<code>reference_cost_per_1k</code>) is configured via the dashboard's <strong>Settings &gt; Global Warmup &amp; Audit</strong> page, or the admin API (<code>/admin/v1/settings</code>) - there is no config file. Set it to the blended rate of the cloud model your traffic would otherwise consume:</p>
 <div class="table-scroll"><table>
 <thead><tr><th>Cloud Model</th><th>Rate (per 1K tokens)</th><th>Blended (70% in / 30% out)</th><th>Notes</th></tr></thead>
 <tbody><tr><td>GPT-4o mini</td><td>$0.00015–$0.0006</td><td>~$0.00028/1K</td><td>Cheapest quality tier</td></tr>
@@ -344,15 +342,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 </table></div>
 <p>When the field is missing or zero, the default <code>$0.002/1K</code> applies. Changing the rate only affects requests recorded after the change; it does not retroactively revalue earlier requests.</p>
 <h3 id="per-provider-cloud-rates">Per-Provider Cloud Rates<a class="anchor" href="#per-provider-cloud-rates" aria-label="Link to section">#</a></h3>
-<pre class="code" data-lang="yaml"><code>cloud_providers:
-  - name: openai-overflow
-    provider: openai
-    cost_per_1k_tokens: 0.0025    # GPT-4o blended rate
-    enabled: true
-  - name: anthropic-overflow
-    provider: anthropic
-    cost_per_1k_tokens: 0.004     # Claude Sonnet 4 blended rate
-    enabled: true</code></pre>
+<p>Each cloud provider's <code>cost_per_1k_tokens</code> (along with <code>name</code>, <code>provider</code>, and <code>enabled</code>) is configured via the dashboard or the admin API (<code>/admin/v1/settings</code>) - for example, an <code>openai-overflow</code> provider at <code>0.0025</code> (GPT-4o blended rate) or an <code>anthropic-overflow</code> provider at <code>0.004</code> (Claude Sonnet 4 blended rate). There is no config file to edit.</p>
 <hr/>
 <h2 id="known-limitations">Known Limitations<a class="anchor" href="#known-limitations" aria-label="Link to section">#</a></h2>
 <div class="table-scroll"><table>

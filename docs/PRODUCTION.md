@@ -69,7 +69,7 @@ The repo ships a working `docker-compose.yml`. It mounts a single named volume f
 # docker-compose.yml (reference - already in repo)
 services:
   ollama-mesh:
-    image: ghcr.io/ollama-mesh/ollama-mesh:latest
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -98,7 +98,7 @@ metadata:
   name: ollama-mesh
   namespace: ai-infra
 spec:
-  replicas: 1        # single instance - usage state is local file, not shared
+  replicas: 1        # single instance - mesh.db on the PVC is not a shared datastore
   selector:
     matchLabels:
       app: ollama-mesh
@@ -113,7 +113,7 @@ spec:
     spec:
       containers:
         - name: ollama-mesh
-          image: ghcr.io/ollama-mesh/ollama-mesh:latest
+          image: ghcr.io/anirudhx7/ollama-mesh:latest
           args: ["--db", "/data/mesh.db"]
           ports:
             - containerPort: 11434   # endpoint
@@ -166,7 +166,7 @@ spec:
       targetPort: 9090
 ```
 
-Note: the Kubernetes deployment above runs a single replica because `usage-state.json` is a local file. Running multiple replicas would split quota state across instances. A shared-state backend is on the Phase 3 roadmap.
+Note: the Kubernetes deployment above runs a single replica because `mesh.db` (SQLite) is the sole datastore and is not shared across instances. Running multiple replicas would split state across separate, inconsistent databases.
 
 ---
 
@@ -246,7 +246,7 @@ On SIGTERM, ollama-mesh starts a 15-second graceful shutdown:
 
 1. Stops accepting new connections on all three ports.
 2. Allows in-flight requests to complete (up to the timeout).
-3. Flushes `usage-state.json` one final time so quota counters are not lost.
+3. Flushes in-memory per-key usage/quota counters to the `key_counters` table in `mesh.db` one final time.
 4. Exits cleanly.
 
 For systemd, the `TimeoutStopSec=30` in the unit file gives the process time to drain before systemd sends SIGKILL.
@@ -271,8 +271,9 @@ The bottleneck at high concurrency is almost always the upstream Ollama nodes or
 
 | Data | Persistence |
 |------|------------|
-| Per-key token usage, quota counters | Persisted to `auth.state_path` (default: `usage-state.json`) every 30 seconds and on clean shutdown. A crash loses at most 30 seconds of counter updates. Set `state_path: "-"` to disable. |
+| Per-key token usage, quota counters | In-memory, flushed to the `key_counters` table in `mesh.db` every 30 seconds and on clean shutdown. A crash loses at most 30 seconds of counter updates. |
 | API key config, node config, routing/settings | In `mesh.db` (SQLite) - the sole source of truth. Set via the dashboard or `/admin/v1/...` REST API. |
-| Audit log | Append-only JSON-lines file at `audit.path` if `audit.enabled: true`. |
-| Request log / analytics | In-memory only. Lost on restart by design - these are operational views, not a database. SQLite persistence is on the roadmap. |
-| GPU telemetry | Live reads from nvidia-smi on the mesh host. Not persisted. |
+| Audit log (per-request) | The `audit_log` table in `mesh.db`, written when audit logging is enabled. Retention is configurable (`audit_retention_days` setting, default 30 days; 0 keeps rows forever) and enforced by a periodic prune job. |
+| Admin action trail | The separate `system_audit_log` table in `mesh.db` (who changed what in the dashboard/API). Independently retained (`audit_system_retention_days` setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log. |
+| Request log / analytics | Persisted to `request_log`, `hourly_buckets`, and `model_stats` tables in `mesh.db`, not purely in-memory. |
+| GPU telemetry | Live reads from nvidia-smi (or the Node Agent) on each node. Not persisted. |
