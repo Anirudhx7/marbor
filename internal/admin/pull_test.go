@@ -239,6 +239,34 @@ func TestHandleNodePull_NodeNotFound(t *testing.T) {
 	}
 }
 
+// TestHandleNodePull_DownNodeFailsFast guards against forwarding a confusing
+// upstream error (e.g. a stray auth 401 from whatever happens to be
+// listening on a dead node's URL) when the real problem is simply that the
+// node is unreachable - the handler must reject with a clear reason before
+// ever attempting the pull.
+func TestHandleNodePull_DownNodeFailsFast(t *testing.T) {
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:11434"},
+	})
+
+	nodes := s.router.Nodes()
+	nodes[0].Lock()
+	nodes[0].Healthy = false
+	nodes[0].Unlock()
+
+	req := newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Result().StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Result().StatusCode)
+	}
+	body, _ := io.ReadAll(w.Result().Body)
+	if !strings.Contains(string(body), "down") {
+		t.Fatalf("expected error to mention node is down, got: %s", body)
+	}
+}
+
 func TestHandleNodePull_MissingModel(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},

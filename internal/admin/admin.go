@@ -4400,6 +4400,15 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A down node's URL may still be answering (e.g. some other service
+	// listening on that port), producing a confusing upstream error that
+	// looks model-specific when the real problem is just node reachability.
+	// Fail fast with an honest reason instead.
+	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before pulling", nodeName))
+		return
+	}
+
 	s.sweepOldPullJobs()
 
 	// Dedup concurrent pulls of the same model on the same node. State is
@@ -4636,6 +4645,22 @@ func (s *Server) handleCancelPull(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "cancelled": cancelled})
+}
+
+// nodeIsHealthy reports whether the node named name is currently marked
+// healthy by the router's poller. Returns false if the node isn't found -
+// callers already validated existence via NodeURLs() before reaching here.
+func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
+	for _, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		n.RLock()
+		healthy := n.Healthy
+		n.RUnlock()
+		return healthy
+	}
+	return false
 }
 
 // nodeHasAgentCapability reports whether the node named name currently has
