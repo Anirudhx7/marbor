@@ -543,7 +543,7 @@ func main() {
 		mux.Handle("/metrics", promhttp.Handler())
 		metricsSrv = &http.Server{
 			Addr:              fmt.Sprintf(":%d", cfg.Metrics.Port),
-			Handler:           mux,
+			Handler:           proxy.SecurityHeaders(mux),
 			ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout:       15 * time.Second,
 			WriteTimeout:      30 * time.Second,
