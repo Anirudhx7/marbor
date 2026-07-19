@@ -15,7 +15,7 @@ One OpenAI-compatible endpoint for all your self-hosted LLM traffic. ollama-mesh
 
 ---
 
-> **[→ Try the live demo](https://anirudh.social/ollama-mesh/demo/)** — see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
+> **[→ Try the live demo](https://anirudh.social/ollama-mesh/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
 
 ## Quick Start
 

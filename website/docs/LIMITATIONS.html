@@ -81,7 +81,7 @@ a:hover { text-decoration: underline; }
 .serif { font-family: var(--font-serif); }
 .page { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
 
-/* Thin custom scrollbar — replaces the OS default */
+/* Thin custom scrollbar - replaces the OS default */
 html {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
@@ -152,7 +152,7 @@ html.light .theme-toggle .moon { display: block; }
   50% { opacity: 0.3; }
 }
 
-/* CHIP / PILL — semantic status indicators */
+/* CHIP / PILL - semantic status indicators */
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
   height: 22px; padding: 0 9px;
@@ -325,7 +325,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h3 id="temperature-and-power-draw">Temperature and power draw<a class="anchor" href="#temperature-and-power-draw" aria-label="Link to section">#</a></h3>
 <p>GPU temperature and power draw are read from <code>nvidia-smi</code> on the host running ollama-mesh, without any node agent, for local NVIDIA GPU nodes.</p>
 <p>For remote NVIDIA nodes, the same telemetry (temperature, power draw, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show <code>-</code> for temperature and power draw in the dashboard. </p>
-<p>For Apple Silicon (MLX) nodes, temperature and power metrics are currently not supported and will show <code>-</code> in the dashboard. ollama-mesh enforces strict data honesty—we never substitute estimated or fabricated numbers for missing telemetry.</p>
+<p>For Apple Silicon (MLX) nodes, temperature and power metrics are currently not supported and will show <code>-</code> in the dashboard. ollama-mesh enforces strict data honesty-we never substitute estimated or fabricated numbers for missing telemetry.</p>
 <hr/>
 <h2 id="admin-dashboard-security">Admin Dashboard Security<a class="anchor" href="#admin-dashboard-security" aria-label="Link to section">#</a></h2>
 <h3 id="admin-login-lockout">Admin login lockout<a class="anchor" href="#admin-login-lockout" aria-label="Link to section">#</a></h3>

@@ -43,7 +43,7 @@ GPU temperature and power draw are read from `nvidia-smi` on the host running ol
 
 For remote NVIDIA nodes, the same telemetry (temperature, power draw, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard. 
 
-For Apple Silicon (MLX) nodes, temperature and power metrics are currently not supported and will show `-` in the dashboard. ollama-mesh enforces strict data honesty—we never substitute estimated or fabricated numbers for missing telemetry.
+For Apple Silicon (MLX) nodes, temperature and power metrics are currently not supported and will show `-` in the dashboard. ollama-mesh enforces strict data honesty-we never substitute estimated or fabricated numbers for missing telemetry.
 
 ---
 
