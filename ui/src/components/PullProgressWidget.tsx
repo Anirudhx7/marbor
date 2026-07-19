@@ -106,7 +106,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>{formatBytes(job.bytesCompleted)} / {formatBytes(job.bytesTotal)}</span>
                     <span>
-                      {job.speedBps > 0 ? formatSpeed(job.speedBps) : '—'}
+                      {job.speedBps > 0 ? formatSpeed(job.speedBps) : '-'}
                       {eta !== null && ` · ${formatDuration(eta)} left`}
                     </span>
                   </div>

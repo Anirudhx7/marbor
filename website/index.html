@@ -158,7 +158,7 @@ a:hover { text-decoration: underline; }
 ::selection { background: var(--accent); color: var(--bg); }
 .serif { font-family: var(--font-serif); }
 
-/* Thin custom scrollbar — replaces the OS default */
+/* Thin custom scrollbar - replaces the OS default */
 html {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
@@ -323,7 +323,7 @@ h2.sec { font-family: var(--font-serif); font-weight: 400; font-size: clamp(26px
 h2.sec em { font-style: italic; color: var(--accent); }
 .sec-sub { font-family: var(--font-serif); color: var(--text-muted); font-size: 16px; line-height: 1.6; max-width: 58ch; margin: 0 0 36px; }
 
-/* CHIP / PILL — semantic status indicators */
+/* CHIP / PILL - semantic status indicators */
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
   height: 22px; padding: 0 9px;
@@ -962,7 +962,7 @@ SPCS-FEATURE-END -->
   <div class="page" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
     <div style="display:flex;align-items:center;gap:10px;">
       <span class="brand-dot"></span>
-      <span style="font-size:13px;color:var(--text-muted);">See it running live — real admin dashboard, VRAM state, and request telemetry.</span>
+      <span style="font-size:13px;color:var(--text-muted);">See it running live - real admin dashboard, VRAM state, and request telemetry.</span>
     </div>
     <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" class="btn btn-demo" style="padding:6px 16px;font-size:12px;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" style="width:13px;height:13px;"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
@@ -1129,42 +1129,42 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
           <tr>
             <td>Warm-state routing (knows which nodes have which models loaded)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No — nginx has no VRAM visibility</span></td>
+            <td><span class="chip chip-no">✗ No - nginx has no VRAM visibility</span></td>
           </tr>
           <tr>
             <td>Model residency awareness (avoids unnecessary reloads)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No — routes blindly, causes thrashing</span></td>
+            <td><span class="chip chip-no">✗ No - routes blindly, causes thrashing</span></td>
           </tr>
           <tr>
             <td>GPU locality scheduling (routes by where the model already lives)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No — cannot query GPU layouts</span></td>
+            <td><span class="chip chip-no">✗ No - cannot query GPU layouts</span></td>
           </tr>
           <tr>
             <td>Queue-depth awareness (avoids piling requests on a busy node)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-partial">~ Partial — balances TCP, not LLM queues</span></td>
+            <td><span class="chip chip-partial">~ Partial - balances TCP, not LLM queues</span></td>
           </tr>
           <tr>
             <td>VRAM visibility (knows what is consuming memory across the cluster)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No — cannot read /api/ps or nvidia-smi</span></td>
+            <td><span class="chip chip-no">✗ No - cannot read /api/ps or nvidia-smi</span></td>
           </tr>
           <tr>
             <td>Cold start handling (detects and routes around cold nodes)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No — exposes 20–30s cold load to user</span></td>
+            <td><span class="chip chip-no">✗ No - exposes 20–30s cold load to user</span></td>
           </tr>
           <tr>
             <td>Multi-runtime support (Ollama, vLLM, TGI, llama.cpp, MLX)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No — needs custom per-runtime config</span></td>
+            <td><span class="chip chip-no">✗ No - needs custom per-runtime config</span></td>
           </tr>
           <tr>
             <td>Cluster observability (unified view of all nodes)</td>
             <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No — requires Prometheus + Grafana setup</span></td>
+            <td><span class="chip chip-no">✗ No - requires Prometheus + Grafana setup</span></td>
           </tr>
         </tbody>
       </table>
