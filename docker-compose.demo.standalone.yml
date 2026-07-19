@@ -2,9 +2,9 @@
 #   docker compose -f docker-compose.demo.standalone.yml up -d
 # All node/mesh/traffic-gen images are pulled from GHCR; all config files
 # (mesh config, Prometheus scrape config, Grafana provisioning + dashboard)
-# are inlined below via Compose 'configs: content:' — nothing extra to fetch.
+# are inlined below via Compose 'configs: content:' - nothing extra to fetch.
 #
-# For local development, use docker-compose.demo.yml + `make demo` instead —
+# For local development, use docker-compose.demo.yml + `make demo` instead -
 # that one builds from source so it tests your working tree.
 services:
   ollama-node-a:
@@ -238,7 +238,7 @@ configs:
         "annotations": {
           "list": []
         },
-        "description": "GPU-aware Ollama reverse proxy — requests, latency, routing, and node health",
+        "description": "GPU-aware Ollama reverse proxy - requests, latency, routing, and node health",
         "editable": true,
         "fiscalYearStartMonth": 0,
         "graphTooltip": 1,
