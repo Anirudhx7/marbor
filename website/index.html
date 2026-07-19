@@ -130,7 +130,7 @@ html.light {
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
 body {
   margin: 0;
   background: var(--bg);
@@ -169,7 +169,7 @@ html {
 ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 
 /* LAYOUT */
-.page { max-width: 1100px; margin: 0 auto; padding: 0 40px; }
+.page { max-width: 1200px; margin: 0 auto; padding: 0 40px; }
 .divider { border: none; border-top: 1px solid var(--border-subtle); margin: 0; }
 
 /* NAV */
@@ -776,7 +776,7 @@ SPCS-FEATURE-END */
 <!-- HERO -->
 <header class="hero">
   <div class="page">
-    <span class="kicker"><span class="dot"></span>{{VERSION}}: vLLM, TGI, llama.cpp, MLX · self-hosted · Apache-2.0</span>
+    <span class="kicker"><span class="dot"></span>{{VERSION}}: Supports Ollama, vLLM, TGI, llama.cpp, MLX · Self-hosted · Apache-2.0</span>
     <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
       A single-binary control plane that turns your own GPUs into a high-availability alternative to cloud LLM APIs.

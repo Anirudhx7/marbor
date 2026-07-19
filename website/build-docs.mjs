@@ -14,7 +14,7 @@
  *   node website/build-docs.mjs
  *   (CI runs this, then a sed pass injects {{VERSION}})
  */
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, relative, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,6 +35,10 @@ function inline(s) {
     return `__CODE_PLACEHOLDER_${codes.length - 1}__`;
   });
   s = escapeHtml(s);
+  // images ![alt](url)
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) =>
+    `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy">`
+  );
   // links [text](url)
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) => {
     let href = u;
@@ -51,11 +55,17 @@ function inline(s) {
   s = s.replace(/__CODE_PLACEHOLDER_(\d+)__/g, (_, i) => codes[+i]);
   return s;
 }
+
+const usedIds = new Map();
 function slugify(s) {
-  return s.toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+  let id = s.toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+  const count = usedIds.get(id) || 0;
+  usedIds.set(id, count + 1);
+  return count ? `${id}-${count}` : id;
 }
 
 function renderMarkdown(md) {
+  usedIds.clear();
   const lines = md.replace(/\r\n/g, "\n").split("\n");
   let html = "";
   const headings = [];
@@ -284,7 +294,7 @@ var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear(
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});
 var heads=ids.map(function(id){return document.getElementById(id);}).filter(Boolean);
-function onScroll(){var top=window.scrollY+120,cur=heads[0];for(var i=0;i<heads.length;i++){if(heads[i].offsetTop<=top)cur=heads[i];}links.forEach(function(a){a.classList.toggle("active",a.getAttribute("href")==="#"+(cur&&cur.id));});}
+function onScroll(){var top=window.scrollY+140,cur=heads[0];for(var i=0;i<heads.length;i++){if(heads[i].offsetTop<=top)cur=heads[i];}links.forEach(function(a){a.classList.toggle("active",a.getAttribute("href")==="#"+(cur&&cur.id));});}
 window.addEventListener("scroll",onScroll,{passive:true});onScroll();
 })();
 </script>
