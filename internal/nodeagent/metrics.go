@@ -22,7 +22,11 @@ func RenderPrometheus(t Telemetry) string {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n%s{%s=%q} %s\n", name, help, name, name, labelName, labelValue, formatFloat(value))
 	}
 
-	gpuVendor := "none"
+	// Empty, not the literal "none" - consistent with every other
+	// not-detected field on this wire format (empty string means "unknown/
+	// not applicable", the same convention agent_poll.go/admin.go already
+	// use for AgentGPUVendor when no GPU backend is selected on this host).
+	gpuVendor := ""
 	if t.GPU != nil {
 		g := t.GPU
 		if g.Vendor != "" {
