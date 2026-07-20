@@ -1,14 +1,15 @@
 package nodeagent
 
-// actions.go implements the Node Agent's first ActionExecutor (see
-// .local/specs/node-agent.md section 16): POST /actions/pull_model. The
-// agent runs the locally-detected runtime's own model-download mechanism
-// directly on the node, rather than the mesh reaching the node's runtime
-// HTTP API itself (admin.go's handleNodePull, the pre-existing path kept for
-// nodes without an agent or an agent build predating this capability). This
-// avoids two real problems with the old path: the mesh's own outbound HTTP
-// client timeout being the wrong thing to bound a transfer it isn't a party
-// to, and having no way to hand a Hugging Face token to the download at all.
+// actions.go implements the Node Agent Protocol's first mutating resource
+// (see .local/specs/node-agent.md section 16, node-agent-capabilities.md
+// Group 2): POST /v1/models, capability "models.pull". The agent runs the
+// locally-detected runtime's own model-download mechanism directly on the
+// node, rather than the mesh reaching the node's runtime HTTP API itself
+// (admin.go's handleNodePull, the pre-existing path kept for nodes without
+// an agent or an agent build predating this capability). This avoids two
+// real problems with the old path: the mesh's own outbound HTTP client
+// timeout being the wrong thing to bound a transfer it isn't a party to,
+// and having no way to hand a Hugging Face token to the download at all.
 
 import (
 	"bytes"
@@ -62,8 +63,8 @@ var pullCommands = map[string]func(ctx context.Context, model, hfToken string) e
 	"mlx":      pullViaHFHub,
 }
 
-// handlePullModel is the POST /actions/pull_model handler, gated by the same
-// per-node bearer token as /telemetry and /metrics (see server.go/auth.go -
+// handlePullModel is the POST /v1/models handler, gated by the same
+// per-node bearer token as /v1/status and /metrics (see server.go/auth.go -
 // no new auth mechanism for this action).
 func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
 	var req pullModelRequest
@@ -72,7 +73,10 @@ func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runtimeName := s.snapshot().Runtime
+	var runtimeName string
+	if rt := s.snapshot().Runtime; rt != nil {
+		runtimeName = rt.Name
+	}
 	fn, ok := pullCommands[runtimeName]
 	if !ok {
 		msg := fmt.Sprintf("unsupported: no pull primitive for runtime %q", runtimeName)

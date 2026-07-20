@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-func TestServerTelemetryRequiresToken(t *testing.T) {
+func TestServerStatusRequiresToken(t *testing.T) {
 	srv := &Server{Token: "sekret", Version: "v-test"}
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/telemetry", nil)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/status", nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
@@ -25,12 +25,12 @@ func TestServerTelemetryRequiresToken(t *testing.T) {
 	}
 }
 
-func TestServerTelemetryWithValidToken(t *testing.T) {
+func TestServerStatusWithValidToken(t *testing.T) {
 	srv := &Server{Token: "sekret", Version: "v-test"}
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/telemetry", nil)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer sekret")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -44,11 +44,11 @@ func TestServerTelemetryWithValidToken(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&tel); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if tel.SchemaVersion != SchemaVersion {
-		t.Errorf("schema_version = %d, want %d", tel.SchemaVersion, SchemaVersion)
+	if tel.Agent.ProtocolVersion != ProtocolVersion {
+		t.Errorf("agent.protocol_version = %d, want %d", tel.Agent.ProtocolVersion, ProtocolVersion)
 	}
-	if tel.AgentVersion != "v-test" {
-		t.Errorf("agent_version = %q, want v-test", tel.AgentVersion)
+	if tel.Agent.Version != "v-test" {
+		t.Errorf("agent.version = %q, want v-test", tel.Agent.Version)
 	}
 }
 
@@ -70,8 +70,8 @@ func TestServerMetricsWithValidToken(t *testing.T) {
 	body := make([]byte, 4096)
 	n, _ := resp.Body.Read(body)
 	out := string(body[:n])
-	if !strings.Contains(out, "nodeagent_schema_version") {
-		t.Errorf("metrics output missing nodeagent_schema_version:\n%s", out)
+	if !strings.Contains(out, "nodeagent_protocol_version") {
+		t.Errorf("metrics output missing nodeagent_protocol_version:\n%s", out)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestServerMetricsRequiresToken(t *testing.T) {
 	}
 }
 
-// TestServerServesCachedSnapshotBetweenRequests proves /telemetry reads the
+// TestServerServesCachedSnapshotBetweenRequests proves /v1/status reads the
 // Scheduler's cache rather than collecting fresh on every request: with the
 // background refresh loop never started, two requests in a row must report
 // the exact same LastUpdated timestamp from the single Seed() collection.
@@ -104,7 +104,7 @@ func TestServerServesCachedSnapshotBetweenRequests(t *testing.T) {
 	defer ts.Close()
 
 	get := func() Telemetry {
-		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/telemetry", nil)
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/status", nil)
 		req.Header.Set("Authorization", "Bearer sekret")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -138,7 +138,7 @@ func TestServerFallsBackWithoutScheduler(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/telemetry", nil)
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/v1/status", nil)
 	req.Header.Set("Authorization", "Bearer sekret")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

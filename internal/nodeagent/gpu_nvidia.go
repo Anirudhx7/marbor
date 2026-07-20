@@ -17,7 +17,9 @@ var lookPath = exec.LookPath
 // nvidiaCollector is the GPUCollector implementation for NVIDIA GPUs via
 // nvidia-smi. First (and, in v1, only) implementation of GPUCollector - see
 // gpu.go for the interface and how future vendors (ROCm, Apple Metal, Intel)
-// plug in alongside it.
+// plug in alongside it. One agent process reports every NVIDIA GPU on the
+// host as a single GPUBlock - never one agent per GPU (see
+// .local/specs/telemetry-v1-spec.md section 6's decision record).
 type nvidiaCollector struct{}
 
 func (nvidiaCollector) Name() string { return "nvidia" }
@@ -30,17 +32,16 @@ func (nvidiaCollector) Available(ctx context.Context) bool {
 	return err == nil
 }
 
-func (nvidiaCollector) Collect(ctx context.Context) (GPUTelemetry, error) {
+func (nvidiaCollector) Collect(ctx context.Context) (GPUBlock, error) {
 	out, err := exec.CommandContext(ctx, "nvidia-smi", "-q", "-x").Output()
 	if err != nil {
-		return GPUTelemetry{}, fmt.Errorf("nvidia-smi: %w", err)
+		return GPUBlock{}, fmt.Errorf("nvidia-smi: %w", err)
 	}
-	t, ok := parseNvidiaSMIXML(out)
+	block, ok := parseNvidiaSMIXML(out)
 	if !ok {
-		return GPUTelemetry{}, fmt.Errorf("nvidia-smi: could not parse output")
+		return GPUBlock{}, fmt.Errorf("nvidia-smi: could not parse output")
 	}
-	t.Vendor = "nvidia"
-	return t, nil
+	return block, nil
 }
 
 // Same query flags and units internal/router/nvidia.go's local-node polling
@@ -49,10 +50,13 @@ func (nvidiaCollector) Collect(ctx context.Context) (GPUTelemetry, error) {
 // two packages don't share the exact function (router's queryAllGPUs is
 // unexported, and this package must not import router to avoid coupling the
 // mesh binary's poller internals to the standalone agent binary), so the
-// parsing here is a deliberate faithful copy, extended with fan_speed since
-// the mesh's own local-GPU path doesn't currently report fan.
+// parsing here is a deliberate faithful copy, extended with fan_speed,
+// utilization (core%), and driver/CUDA version since the mesh's own
+// local-GPU path doesn't currently report those.
 type nvidiaSMILog struct {
-	GPUs []nvidiaGPU `xml:"gpu"`
+	DriverVersion string      `xml:"driver_version"`
+	CUDAVersion   string      `xml:"cuda_version"`
+	GPUs          []nvidiaGPU `xml:"gpu"`
 }
 
 type nvidiaGPU struct {
@@ -61,6 +65,7 @@ type nvidiaGPU struct {
 	Temperature      nvidiaTemp  `xml:"temperature"`
 	PowerReadings    nvidiaPower `xml:"power_readings"`
 	GPUPowerReadings nvidiaPower `xml:"gpu_power_readings"`
+	Utilization      nvidiaUtil  `xml:"utilization"`
 }
 
 type nvidiaMem struct {
@@ -74,6 +79,10 @@ type nvidiaTemp struct {
 
 type nvidiaPower struct {
 	PowerDraw string `xml:"power_draw"`
+}
+
+type nvidiaUtil struct {
+	GPUUtil string `xml:"gpu_util"`
 }
 
 func parseMiB(s string) int64 {
@@ -127,39 +136,57 @@ func parsePercent(s string) (float64, bool) {
 	return v, true
 }
 
-// parseNvidiaSMIXML parses `nvidia-smi -q -x` output for the first reported
-// GPU (index 0). The wire schema carries a single "gpu" object (not an
-// array), matching the node agent's target topology of one agent process
-// per node reporting on its primary accelerator.
-func parseNvidiaSMIXML(data []byte) (GPUTelemetry, bool) {
+// parseNvidiaSMIXML parses `nvidia-smi -q -x` output into a GPUBlock
+// carrying every reported <gpu> element (multi-GPU array, per
+// telemetry-v1-spec.md section 6 - one agent process owns the whole node,
+// including every GPU on it) plus the host-level driver/CUDA version.
+func parseNvidiaSMIXML(data []byte) (GPUBlock, bool) {
 	var log nvidiaSMILog
 	if err := xml.Unmarshal(data, &log); err != nil || len(log.GPUs) == 0 {
-		return GPUTelemetry{}, false
-	}
-	gpu := log.GPUs[0]
-
-	var out GPUTelemetry
-	out.VRAMTotalMB = parseMiB(gpu.FBMemory.Total)
-	out.VRAMUsedMB = parseMiB(gpu.FBMemory.Used)
-
-	if temp, ok := parseCelsius(gpu.Temperature.GPUTemp); ok {
-		out.TemperatureC = &temp
+		return GPUBlock{}, false
 	}
 
-	// Power reading falls back from power_readings to gpu_power_readings
-	// when the primary is unavailable ("N/A") - only set PowerWatts if
-	// whichever source is actually used parses successfully; never
-	// fabricate a fallback-of-a-fallback 0 (R1).
-	watts, ok := parseWatts(gpu.PowerReadings.PowerDraw)
-	if !ok {
-		watts, ok = parseWatts(gpu.GPUPowerReadings.PowerDraw)
-	}
-	if ok {
-		out.PowerWatts = &watts
+	block := GPUBlock{
+		Count:         len(log.GPUs),
+		Vendor:        "nvidia",
+		DriverVersion: strings.TrimSpace(log.DriverVersion),
+		CUDAVersion:   strings.TrimSpace(log.CUDAVersion),
+		Devices:       make([]GPUInfo, 0, len(log.GPUs)),
 	}
 
-	if fan, ok := parsePercent(gpu.FanSpeed); ok {
-		out.FanPercent = &fan
+	for i, gpu := range log.GPUs {
+		info := GPUInfo{
+			Index:       i,
+			Vendor:      "nvidia",
+			VRAMTotalMB: parseMiB(gpu.FBMemory.Total),
+			VRAMUsedMB:  parseMiB(gpu.FBMemory.Used),
+		}
+
+		if temp, ok := parseCelsius(gpu.Temperature.GPUTemp); ok {
+			info.TemperatureC = &temp
+		}
+
+		// Power reading falls back from power_readings to gpu_power_readings
+		// when the primary is unavailable ("N/A") - only set PowerWatts if
+		// whichever source is actually used parses successfully; never
+		// fabricate a fallback-of-a-fallback 0 (R1).
+		watts, ok := parseWatts(gpu.PowerReadings.PowerDraw)
+		if !ok {
+			watts, ok = parseWatts(gpu.GPUPowerReadings.PowerDraw)
+		}
+		if ok {
+			info.PowerWatts = &watts
+		}
+
+		if fan, ok := parsePercent(gpu.FanSpeed); ok {
+			info.FanPercent = &fan
+		}
+		if core, ok := parsePercent(gpu.Utilization.GPUUtil); ok {
+			info.CorePercent = &core
+		}
+
+		block.Devices = append(block.Devices, info)
 	}
-	return out, true
+
+	return block, true
 }

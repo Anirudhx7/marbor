@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
@@ -106,26 +107,57 @@ type NodeState struct {
 	RAMUsedMB    int64
 	DiskFreeGB   float64
 	// AgentCapabilities lists what the polled agent build actually supports
-	// (e.g. "telemetry") - the mesh/UI must gate any agent-dependent feature
-	// on this list rather than assuming every agent supports everything,
-	// since a fleet naturally has agents on different builds over time.
-	// AgentPlatform/AgentArchitecture/AgentGPUVendor/AgentRuntime are
-	// self-reported agent metadata (runtime.GOOS/GOARCH, selected GPU
-	// backend, locally-detected inference runtime) surfaced for debugging a
-	// mixed-version/mixed-vendor/mixed-runtime fleet - all cleared alongside
-	// AgentPresent so a disabled/unreachable agent never displays stale
-	// metadata as current.
+	// (e.g. "status", "models.pull") - the mesh/UI must gate any
+	// agent-dependent feature on this list rather than assuming every agent
+	// supports everything, since a fleet naturally has agents on different
+	// builds over time. AgentPlatform/AgentArchitecture/AgentGPUVendor/
+	// AgentRuntime are self-reported agent metadata (runtime.GOOS/GOARCH,
+	// selected GPU backend, locally-detected inference runtime) surfaced for
+	// debugging a mixed-version/mixed-vendor/mixed-runtime fleet - all
+	// cleared alongside AgentPresent so a disabled/unreachable agent never
+	// displays stale metadata as current.
 	AgentCapabilities []string
 	AgentPlatform     string
 	AgentArchitecture string
 	AgentGPUVendor    string
 	AgentRuntime      string
-	// agentSchemaWarned latches once a poll observes an agent reporting a
-	// schema_version newer than this mesh binary's own nodeagent.SchemaVersion
-	// - logged once per node (not every poll cycle) purely for operator
-	// visibility during a rolling upgrade where an agent got updated ahead of
-	// the mesh. Decoding itself never depends on this - see agent_poll.go.
-	agentSchemaWarned bool
+	// AgentNodeID is the agent's self-persisted node_id (internal/nodeagent
+	// identity.go) - a stable UUID surviving agent binary upgrades and
+	// hostname/IP/DNS changes. Not yet used to re-identify a node across a
+	// URL change (NodeState is still keyed by URL/Name); surfaced for
+	// fleet-debugging/future use, per .local/specs/node-agent.md's protocol
+	// v1 design notes.
+	AgentNodeID string
+	// AgentGPUCount/AgentGPUs/DriverVersion/CUDAVersion are the multi-GPU
+	// array and driver-stack metadata from the agent's gpu resource
+	// (nodeagent.GPUBlock) - AgentGPUs holds the full per-device snapshot
+	// for admin API serialization; the mesh's own routing/placement fields
+	// above (VRAMTotalMB etc.) stay the single-value aggregate they always
+	// were, unaffected by this addition.
+	AgentGPUCount int
+	AgentGPUs     []nodeagent.GPUInfo
+	DriverVersion string
+	CUDAVersion   string
+	// RAMTotalMB/DiskTotalGB/Hostname/UptimeSeconds/BootTime are the agent's
+	// host capacity/identity fields (nodeagent.HostTelemetry) - same
+	// AgentPresent-gated discipline as every other agent-derived field here.
+	RAMTotalMB    int64
+	DiskTotalGB   float64
+	Hostname      string
+	UptimeSeconds int64
+	BootTime      int64
+	// RuntimeVersion/RuntimeStatus are the agent-detected runtime's own
+	// reported version and live reachability (nodeagent.RuntimeInfo) -
+	// distinct from AgentRuntime (just the runtime name, already above).
+	RuntimeVersion string
+	RuntimeStatus  string
+	// agentProtocolWarned latches once a poll observes an agent reporting a
+	// protocol_version newer than this mesh binary's own
+	// nodeagent.ProtocolVersion - logged once per node (not every poll
+	// cycle) purely for operator visibility during a rolling upgrade where
+	// an agent got updated ahead of the mesh. Decoding itself never depends
+	// on this - see agent_poll.go.
+	agentProtocolWarned bool
 
 	mu sync.RWMutex
 }

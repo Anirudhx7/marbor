@@ -35,7 +35,7 @@ func Run(args []string, version string) {
 	}
 
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
-	port := fs.Int("port", 9200, "port to serve /telemetry and /metrics on")
+	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
 	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	fs.Usage = func() {
@@ -63,7 +63,7 @@ func Run(args []string, version string) {
 
 	// Seed synchronously so the very first request never observes an
 	// empty/never-collected cache, then hand refreshing off to a background
-	// goroutine - GET /telemetry and GET /metrics only ever read the cache
+	// goroutine - GET /v1/status and GET /metrics only ever read the cache
 	// (see scheduler.go, server.go), never fork nvidia-smi on the request
 	// path. NewScheduler also does GPU vendor detection once here, at
 	// startup - see gpu.go.
@@ -75,7 +75,7 @@ func Run(args []string, version string) {
 
 	srv := &Server{Token: token, Version: version, Scheduler: scheduler}
 	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("ollama-mesh agent %s listening on %s (GET /telemetry, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
+	log.Printf("ollama-mesh agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		log.Fatalf("nodeagent: %v", err)
 	}
