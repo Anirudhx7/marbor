@@ -276,4 +276,4 @@ The bottleneck at high concurrency is almost always the upstream Ollama nodes or
 | Audit log (per-request) | The `audit_log` table in `mesh.db`, written when audit logging is enabled. Retention is configurable (`audit_retention_days` setting, default 30 days; 0 keeps rows forever) and enforced by a periodic prune job. |
 | Admin action trail | The separate `system_audit_log` table in `mesh.db` (who changed what in the dashboard/API). Independently retained (`audit_system_retention_days` setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log. |
 | Request log / analytics | Persisted to `request_log`, `hourly_buckets`, and `model_stats` tables in `mesh.db`, not purely in-memory. |
-| GPU telemetry | Live reads from nvidia-smi (or the Node Agent) on each node. Not persisted. |
+| GPU telemetry | Live reads from `nvidia-smi` on local nodes, and via the optional Node Agent on remote GPU hosts. Not persisted. |

@@ -33,13 +33,13 @@ Workarounds if a discovered node is unreachable:
 ## GPU Telemetry
 
 ### VRAM usage
-Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each node's `/api/ps` endpoint. This is available for all nodes - local and remote - without any node agent.
+Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each node's `/api/ps` endpoint. That model-residency view is still available for every node, while richer remote GPU telemetry comes from the optional Node Agent when it is installed.
 
 ### VRAM capacity
 Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh (for NVIDIA GPUs). For Apple Silicon (MLX) nodes or remote nodes where `nvidia-smi` is not applicable or available, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
 
 ### Temperature and power draw
-GPU temperature and power draw are read from `nvidia-smi` on the host running ollama-mesh, without any node agent, for local NVIDIA GPU nodes.
+GPU temperature and power draw are read from `nvidia-smi` on the host running ollama-mesh for local NVIDIA GPU nodes.
 
 For remote nodes, the same telemetry (temperature, power draw, fan speed, GPU model, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It detects NVIDIA (`nvidia-smi`), AMD (`rocm-smi`), Intel (`xpu-smi`), or Apple Silicon (`system_profiler`) automatically, whichever is present on that host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard.
 

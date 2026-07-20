@@ -104,8 +104,30 @@ nav .page { max-width: 1200px; padding: 0 40px; display: flex; align-items: cent
 .brand .name { font-weight: 600; letter-spacing: -0.01em; }
 .brand .ver { color: var(--text-faint); font-size: 12px; }
 .nav-right { display: flex; align-items: center; gap: 4px; }
-.nav-right a.link { color: var(--text-muted); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; }
-.nav-right a.link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
+.nav-right a.link {
+  position: relative;
+  color: var(--text-muted);
+  padding: 6px 12px 9px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  transition: color .15s ease, background .15s ease;
+}
+.nav-right a.link::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform .2s ease;
+  opacity: .95;
+}
+.nav-right a.link:hover { color: var(--text); text-decoration: none; }
+.nav-right a.link:hover::after,
+.nav-right a.link.active::after { transform: scaleX(1); }
 .nav-right a.link.active { color: var(--accent); }
 .icon-btn {
   width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
@@ -199,6 +221,7 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 440px; }
 .doc-content th, .doc-content td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
 .doc-content thead th { background: var(--bg-surface); font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+.doc-content tbody tr:nth-child(odd) td { background: color-mix(in srgb, var(--bg) 58%, transparent); }
 .doc-content tbody tr:last-child td { border-bottom: none; }
 .doc-content td code { font-size: 11.5px; }
 .doc-foot-edit { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border-subtle); font-size: 13px; }
@@ -223,6 +246,9 @@ html.light .theme-toggle .moon { display: block; }
 .index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .index-card { display: block; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; transition: border-color .15s, transform .15s; }
 .index-card:hover { border-color: var(--accent-dim); transform: translateY(-1px); text-decoration: none; }
+.index-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.index-card-top .chip { height: 20px; padding: 0 8px; }
+.index-card-count { color: var(--text-faint); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .index-card h3 { font-family: var(--font-serif); font-weight: 600; font-size: 16px; margin: 0 0 7px; color: var(--text); }
 .index-card p { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.55; }
 .index-card .arrow { font-size: 12px; color: var(--accent); }
@@ -285,11 +311,11 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link active" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Use cases</a>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link active" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Use cases</a>
     </div>
     <div class="nav-group">
-      <div class="nav-group-title">Deploy</div>
-      <a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>

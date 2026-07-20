@@ -155,11 +155,11 @@ const DOC_GROUPS = [
   { title: "Guides", items: [
     { slug: "INTEGRATIONS", label: "Integrations" },
     { slug: "LIMITATIONS", label: "Known limitations" },
-    { slug: "PRODUCTION", label: "Production" },
     { slug: "SAVINGS-MATH", label: "Savings math" },
     { slug: "USE-CASES", label: "Use cases" },
   ]},
-  { title: "Deploy", items: [
+  { title: "Deployment", items: [
+    { slug: "PRODUCTION", label: "Production" },
     { slug: "deploy/aws-ec2", label: "AWS EC2" },
   ]},
   { title: "Integrations", items: [
@@ -363,13 +363,13 @@ function docsIndexPage() {
   <p class="lead">Everything you need to put ollama-mesh in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
   ${DOC_GROUPS.map((g) => `
     <section class="index-section">
-      <h2>${g.title}</h2>
+      <h2>${g.title} · ${g.items.length} pages</h2>
       <div class="index-grid">
         ${g.items.map((it) => {
           const md = readFileSync(join(DOCS_SRC, it.slug + ".md"), "utf8");
           const firstPara = (md.split("\n").find((l) => l.trim() && !l.startsWith("#") && !l.startsWith(">")) || "").trim();
-          return `<a class="index-card" href="${it.slug}.html"><h3>${it.label}</h3><p>${escapeHtml(firstPara.replace(/[*\`\[\]()]/g, "").replace(/https?:\S+/g,"").slice(0, 120))}...</p><span class="arrow">Read →</span></a>`;
-        }).join("")}
+        return `<a class="index-card" href="${it.slug}.html"><div class="index-card-top"><span class="index-card-count">${g.title} · ${g.items.length} pages</span></div><h3>${it.label}</h3><p>${escapeHtml(firstPara.replace(/[*\`\[\]()]/g, "").replace(/https?:\S+/g,"").slice(0, 120))}...</p><span class="arrow">Read →</span></a>`;
+      }).join("")}
       </div>
     </section>`).join("")}
 </main>

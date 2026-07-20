@@ -1,8 +1,10 @@
 # Who is ollama-mesh for?
 
-The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- in one Go binary.
+The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a Node Agent for remote telemetry, model operations, and node-side maintenance.
 
 You point your apps at ollama-mesh instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible `/v1` endpoints), so existing clients work unchanged.
+
+Where the Node Agent is installed on remote GPU hosts, ollama-mesh can surface richer live telemetry, perform node-side operations, and support maintenance workflows without changing the client-side API. Where it isn't installed, the core router still works and falls back to the best available telemetry.
 
 ---
 
@@ -22,7 +24,7 @@ With multiple Ollama nodes, a naive load balancer (nginx round-robin) sends requ
 
 ### 3. No visibility, no control
 
-Vanilla Ollama has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. ollama-mesh adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, and audit logging.
+Vanilla Ollama has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. ollama-mesh adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, audit logging, and a Node Agent for remote telemetry, operations, and maintenance.
 
 **Who feels this:** the platform engineer told "make AI work for the whole team" with on-prem GPUs and an OpenAI bill to justify.
 
