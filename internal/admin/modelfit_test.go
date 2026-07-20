@@ -180,3 +180,36 @@ func TestHandleModelFit_Unauthorized(t *testing.T) {
 		t.Errorf("status = %d, want 401", w.Code)
 	}
 }
+
+// TestVramFitSourceLabel guards against a real bug: an agent-sourced VRAM
+// total (any vendor other than the mesh's own local nvidia-smi) used to fall
+// through to a hardcoded "nvidia-smi" fallback regardless of which tool
+// actually produced the reading - an AMD or Intel node's Model Fit badge
+// would falsely claim "nvidia-smi" as its source (R1: a label is a claim
+// about provenance).
+func TestVramFitSourceLabel(t *testing.T) {
+	cases := []struct {
+		name           string
+		rawVramSource  string
+		agentGPUVendor string
+		want           string
+	}{
+		{"local nvidia-smi", "nvidia", "", "nvidia-smi"},
+		{"declared capacity", "declared", "", "declared"},
+		{"agent on nvidia node", "agent", "nvidia", "nvidia-smi"},
+		{"agent on rocm node", "agent", "rocm", "rocm-smi"},
+		{"agent on intel node", "agent", "intel", "xpu-smi"},
+		{"agent on apple node", "agent", "apple", "system_profiler"},
+		{"agent with unreported vendor", "agent", "", "agent"},
+		{"agent with unknown vendor string", "agent", "some-future-vendor", "agent"},
+		{"unexpected raw source never claims nvidia-smi", "api", "", "agent"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := vramFitSourceLabel(tc.rawVramSource, tc.agentGPUVendor)
+			if got != tc.want {
+				t.Errorf("vramFitSourceLabel(%q, %q) = %q, want %q", tc.rawVramSource, tc.agentGPUVendor, got, tc.want)
+			}
+		})
+	}
+}
