@@ -86,7 +86,7 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 	power := 250.0
 	cpu := 40.0
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/telemetry" {
+		if r.URL.Path != "/v1/status" {
 			http.NotFound(w, r)
 			return
 		}
@@ -95,25 +95,27 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 			return
 		}
 		tel := nodeagent.Telemetry{
-			SchemaVersion: 1,
-			AgentVersion:  "v0.16.0",
-			Capabilities:  []string{"telemetry"},
-			Platform:      "linux",
-			Architecture:  "amd64",
-			GPUVendor:     "nvidia",
-			Runtime:       "ollama",
-			GPU: &nodeagent.GPUTelemetry{
-				TemperatureC: &temp,
-				FanPercent:   &fan,
-				PowerWatts:   &power,
-				VRAMUsedMB:   8000,
-				VRAMTotalMB:  16000,
+			Agent: nodeagent.Agent{
+				NodeID:          "node-id-1",
+				Version:         "v0.16.0",
+				ProtocolVersion: 1,
+				Platform:        "linux",
+				Architecture:    "amd64",
+			},
+			Capabilities: []string{"status"},
+			GPU: &nodeagent.GPUBlock{
+				Count:  1,
+				Vendor: "nvidia",
+				Devices: []nodeagent.GPUInfo{
+					{Index: 0, Vendor: "nvidia", TemperatureC: &temp, FanPercent: &fan, PowerWatts: &power, VRAMUsedMB: 8000, VRAMTotalMB: 16000},
+				},
 			},
 			Host: &nodeagent.HostTelemetry{
 				CPUPercent: &cpu,
 				RAMUsedMB:  4000,
 				DiskFreeGB: 100,
 			},
+			Runtime: &nodeagent.RuntimeInfo{Name: "ollama"},
 		}
 		json.NewEncoder(w).Encode(tel)
 	}))
@@ -131,6 +133,9 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 	defer r.nodes[0].mu.RUnlock()
 	if !r.nodes[0].AgentPresent {
 		t.Fatal("AgentPresent = false, want true after a successful agent poll")
+	}
+	if r.nodes[0].AgentNodeID != "node-id-1" {
+		t.Errorf("AgentNodeID = %q, want node-id-1", r.nodes[0].AgentNodeID)
 	}
 	if r.nodes[0].AgentVersion != "v0.16.0" {
 		t.Errorf("AgentVersion = %q, want v0.16.0", r.nodes[0].AgentVersion)
@@ -155,14 +160,20 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 	if r.nodes[0].VRAMTotalMB != 16000 || r.nodes[0].VRAMUsedMB != 8000 {
 		t.Errorf("VRAM = %d/%d, want 8000/16000", r.nodes[0].VRAMUsedMB, r.nodes[0].VRAMTotalMB)
 	}
-	if len(r.nodes[0].AgentCapabilities) != 1 || r.nodes[0].AgentCapabilities[0] != "telemetry" {
-		t.Errorf("AgentCapabilities = %v, want [telemetry]", r.nodes[0].AgentCapabilities)
+	if len(r.nodes[0].AgentCapabilities) != 1 || r.nodes[0].AgentCapabilities[0] != "status" {
+		t.Errorf("AgentCapabilities = %v, want [status]", r.nodes[0].AgentCapabilities)
 	}
 	if r.nodes[0].AgentPlatform != "linux" || r.nodes[0].AgentArchitecture != "amd64" {
 		t.Errorf("AgentPlatform/AgentArchitecture = %q/%q, want linux/amd64", r.nodes[0].AgentPlatform, r.nodes[0].AgentArchitecture)
 	}
 	if r.nodes[0].AgentGPUVendor != "nvidia" {
 		t.Errorf("AgentGPUVendor = %q, want nvidia", r.nodes[0].AgentGPUVendor)
+	}
+	if r.nodes[0].AgentGPUCount != 1 {
+		t.Errorf("AgentGPUCount = %d, want 1", r.nodes[0].AgentGPUCount)
+	}
+	if len(r.nodes[0].AgentGPUs) != 1 {
+		t.Errorf("AgentGPUs = %v, want 1 device", r.nodes[0].AgentGPUs)
 	}
 	if r.nodes[0].AgentRuntime != "ollama" {
 		t.Errorf("AgentRuntime = %q, want ollama", r.nodes[0].AgentRuntime)
@@ -207,13 +218,9 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	fan := 61.0
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			SchemaVersion: 1,
-			AgentVersion:  "v0.16.0",
-			Capabilities:  []string{"telemetry"},
-			Platform:      "linux",
-			Architecture:  "amd64",
-			GPUVendor:     "nvidia",
-			GPU:           &nodeagent.GPUTelemetry{FanPercent: &fan},
+			Agent:        nodeagent.Agent{Version: "v0.16.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
+			Capabilities: []string{"status"},
+			GPU:          &nodeagent.GPUBlock{Count: 1, Vendor: "nvidia", Devices: []nodeagent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
 	}))
 	defer agentSrv.Close()
@@ -269,15 +276,18 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 		// future agent build's response.
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{
-			"schema_version": 1,
-			"agent_version": "v99.0.0",
-			"capabilities": ["telemetry", "diagnostics", "actions"],
-			"platform": "linux",
-			"architecture": "amd64",
-			"gpu_vendor": "nvidia",
+			"agent": {
+				"version": "v99.0.0",
+				"protocol_version": 1,
+				"platform": "linux",
+				"architecture": "amd64",
+				"a_future_agent_field": "surprise"
+			},
+			"capabilities": ["status", "diagnostics", "actions"],
 			"a_field_this_mesh_has_never_heard_of": {"nested": ["stuff", 1, true]},
 			"another_unknown_field": 42,
-			"gpu": {"vendor": "nvidia", "vram_used_mb": 8000, "vram_total_mb": 16000},
+			"gpu": {"vendor": "nvidia", "devices": [{"index": 0, "vram_used_mb": 8000, "vram_total_mb": 16000}]},
+			"health": {"runtime_reachable": false},
 			"last_updated": "2026-07-17T00:00:00Z"
 		}`))
 	}))
@@ -313,19 +323,19 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 // TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown proves the
 // rolling-upgrade contract for an OLDER agent talking to a NEWER mesh: a
 // response missing fields this mesh's Telemetry struct now defines
-// (capabilities/platform/architecture/gpu_vendor/runtime, added after v1
-// shipped) must decode to their zero value and be treated as "not reported"
-// - never crash the poll, never be displayed as a real (empty-string/nil)
-// measurement instead of "unknown."
+// (capabilities/platform/architecture/gpu vendor/runtime) must decode to
+// their zero value and be treated as "not reported" - never crash the poll,
+// never be displayed as a real (empty-string/nil) measurement instead of
+// "unknown."
 func TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown(t *testing.T) {
 	psSrv := nodePSServer()
 	defer psSrv.Close()
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// Simulates the very first v1 agent response shape, before
-		// capabilities/platform/architecture/gpu_vendor/runtime existed.
-		w.Write([]byte(`{"schema_version": 1, "agent_version": "v0.15.0", "last_updated": "2026-07-17T00:00:00Z"}`))
+		// Simulates a very early agent response shape, before
+		// capabilities/platform/architecture/gpu/runtime existed.
+		w.Write([]byte(`{"agent": {"version": "v0.15.0", "protocol_version": 1}, "last_updated": "2026-07-17T00:00:00Z"}`))
 	}))
 	defer agentSrv.Close()
 	agentPort := mustPort(t, agentSrv.URL)
@@ -352,19 +362,18 @@ func TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown(t *testing.T) {
 	}
 }
 
-// TestPollAgentTelemetryNewerSchemaVersionLoggedOnce verifies the operator-
+// TestPollAgentTelemetryNewerProtocolVersionLoggedOnce verifies the operator-
 // visibility log fires exactly once per node (not every poll cycle) when an
-// agent reports a schema_version ahead of what this mesh binary understands
-// - purely informational, per agent_poll.go's comment: decoding above
-// already works regardless, this never gates behavior.
-func TestPollAgentTelemetryNewerSchemaVersionLoggedOnce(t *testing.T) {
+// agent reports a protocol_version ahead of what this mesh binary
+// understands - purely informational, per agent_poll.go's comment: decoding
+// above already works regardless, this never gates behavior.
+func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 	psSrv := nodePSServer()
 	defer psSrv.Close()
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			SchemaVersion: nodeagent.SchemaVersion + 1,
-			AgentVersion:  "v99.0.0",
+			Agent: nodeagent.Agent{Version: "v99.0.0", ProtocolVersion: nodeagent.ProtocolVersion + 1},
 		})
 	}))
 	defer agentSrv.Close()
@@ -387,7 +396,7 @@ func TestPollAgentTelemetryNewerSchemaVersionLoggedOnce(t *testing.T) {
 	out := logBuf.String()
 	count := strings.Count(out, "newer than this mesh understands")
 	if count != 1 {
-		t.Errorf("schema-mismatch log appeared %d times across 3 polls, want exactly 1 (latched, not repeated)\nlog output:\n%s", count, out)
+		t.Errorf("protocol-mismatch log appeared %d times across 3 polls, want exactly 1 (latched, not repeated)\nlog output:\n%s", count, out)
 	}
 }
 
@@ -395,9 +404,9 @@ func TestPollAgentTelemetryNewerSchemaVersionLoggedOnce(t *testing.T) {
 // agent_down webhook when a configured Node Agent stops responding, and an
 // agent_up webhook when it recovers - independent of the node's own
 // inference-runtime health webhooks (node_up/node_down), which cover a
-// different failure (Ollama itself, not the telemetry sidecar). The very
-// first poll of a freshly-enabled agent must not itself fire agent_up (no
-// prior "down" state to recover from), matching pollNode's node_up gate.
+// different failure (Ollama itself, not the agent). The very first poll of a
+// freshly-enabled agent must not itself fire agent_up (no prior "down" state
+// to recover from), matching pollNode's node_up gate.
 func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 	var (
 		mu       sync.Mutex
@@ -427,7 +436,7 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{SchemaVersion: 1, AgentVersion: "v0.16.0"})
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{Agent: nodeagent.Agent{Version: "v0.16.0", ProtocolVersion: 1}})
 	}))
 	defer agentSrv.Close()
 	agentPort := mustPort(t, agentSrv.URL)
@@ -509,9 +518,8 @@ func TestPollAgentTelemetryStillPolledWhenAPIPSFails(t *testing.T) {
 	fan := 61.0
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			SchemaVersion: 1,
-			AgentVersion:  "v0.16.0",
-			GPU:           &nodeagent.GPUTelemetry{FanPercent: &fan},
+			Agent: nodeagent.Agent{Version: "v0.16.0", ProtocolVersion: 1},
+			GPU:   &nodeagent.GPUBlock{Count: 1, Devices: []nodeagent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
 	}))
 	defer agentSrv.Close()

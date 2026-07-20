@@ -79,55 +79,94 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 
 	n.mu.Lock()
 	n.AgentPresent = true
-	n.AgentVersion = t.AgentVersion
+	n.AgentNodeID = t.Agent.NodeID
+	n.AgentVersion = t.Agent.Version
 	n.AgentCapabilities = append([]string(nil), t.Capabilities...)
-	n.AgentPlatform = t.Platform
-	n.AgentArchitecture = t.Architecture
-	n.AgentGPUVendor = t.GPUVendor
-	n.AgentRuntime = t.Runtime
+	n.AgentPlatform = t.Agent.Platform
+	n.AgentArchitecture = t.Agent.Architecture
 	// Rolling-upgrade visibility only - decoding above already works
-	// regardless of schema_version (the protocol is additive-only: unknown
+	// regardless of protocol_version (the protocol is additive-only: unknown
 	// fields are silently ignored by encoding/json's default Decode, and
 	// every field already treats its own zero value as "unknown", not a
 	// measurement). This just tells an operator when an agent build is
 	// ahead of what this mesh binary was compiled understanding, in case a
-	// future genuinely-breaking schema bump ever needs to be diagnosed - it
-	// never gates or changes any decode/routing behavior itself. Logged
+	// future genuinely-breaking protocol bump ever needs to be diagnosed -
+	// it never gates or changes any decode/routing behavior itself. Logged
 	// once per node, not every poll cycle.
-	if t.SchemaVersion > nodeagent.SchemaVersion && !n.agentSchemaWarned {
-		n.agentSchemaWarned = true
-		log.Printf("node %s: agent reports /telemetry schema_version %d, newer than this mesh understands (%d) - some new agent fields may not be recognized until the mesh is upgraded", n.Name, t.SchemaVersion, nodeagent.SchemaVersion)
+	if t.Agent.ProtocolVersion > nodeagent.ProtocolVersion && !n.agentProtocolWarned {
+		n.agentProtocolWarned = true
+		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this mesh understands (%d) - some new agent fields may not be recognized until the mesh is upgraded", n.Name, t.Agent.ProtocolVersion, nodeagent.ProtocolVersion)
 	}
 	if t.Host != nil {
 		n.CPUPercent = derefOr(t.Host.CPUPercent, n.CPUPercent)
 		n.RAMUsedMB = t.Host.RAMUsedMB
 		n.DiskFreeGB = t.Host.DiskFreeGB
+		n.RAMTotalMB = t.Host.RAMTotalMB
+		n.DiskTotalGB = t.Host.DiskTotalGB
+		n.Hostname = t.Host.Hostname
+		n.UptimeSeconds = t.Host.UptimeSeconds
+		n.BootTime = t.Host.BootTime
 	} else {
 		n.RAMUsedMB = 0
 		n.DiskFreeGB = 0
+		n.RAMTotalMB = 0
+		n.DiskTotalGB = 0
+		n.Hostname = ""
+		n.UptimeSeconds = 0
+		n.BootTime = 0
 	}
 	if t.GPU != nil {
-		n.FanPercent = t.GPU.FanPercent
-		// Only let agent-reported GPU figures override Temperature/PowerDrawW/
-		// VRAM* when this node isn't already sourcing richer data from the
-		// mesh host's OWN local nvidia-smi (hasGPU) - a remote node with an
-		// agent is exactly the case this exists for; a local node polling its
-		// own nvidia-smi twice via two different paths would be the "two
-		// disagreeing telemetry pipelines" failure mode the build spec warns
-		// against (State Hierarchy: one live source, not two).
-		if !hasGPU {
-			n.Temperature = t.GPU.TemperatureC
-			if t.GPU.PowerWatts != nil {
-				n.PowerDrawW = *t.GPU.PowerWatts
+		n.AgentGPUVendor = t.GPU.Vendor
+		n.AgentGPUCount = t.GPU.Count
+		n.AgentGPUs = append([]nodeagent.GPUInfo(nil), t.GPU.Devices...)
+		n.DriverVersion = t.GPU.DriverVersion
+		n.CUDAVersion = t.GPU.CUDAVersion
+		// FanPercent/Temperature/PowerDrawW/VRAM* fall back to the primary
+		// (device 0) reading for the mesh's own single-value routing/UI
+		// fields, which predate the multi-GPU array - a node with more than
+		// one GPU still surfaces its full per-device breakdown via
+		// AgentGPUs, just not through these aggregate-shaped fields.
+		if len(t.GPU.Devices) > 0 {
+			primary := t.GPU.Devices[0]
+			n.FanPercent = primary.FanPercent
+			// Only let agent-reported GPU figures override Temperature/
+			// PowerDrawW/VRAM* when this node isn't already sourcing richer
+			// data from the mesh host's OWN local nvidia-smi (hasGPU) - a
+			// remote node with an agent is exactly the case this exists for;
+			// a local node polling its own nvidia-smi twice via two
+			// different paths would be the "two disagreeing telemetry
+			// pipelines" failure mode the build spec warns against (State
+			// Hierarchy: one live source, not two).
+			if !hasGPU {
+				n.Temperature = primary.TemperatureC
+				if primary.PowerWatts != nil {
+					n.PowerDrawW = *primary.PowerWatts
+				}
+				if primary.VRAMTotalMB > 0 || primary.VRAMUsedMB > 0 {
+					n.VRAMTotalMB = primary.VRAMTotalMB
+					n.VRAMUsedMB = primary.VRAMUsedMB
+					n.VRAMSource = "agent"
+				}
 			}
-			if t.GPU.VRAMTotalMB > 0 || t.GPU.VRAMUsedMB > 0 {
-				n.VRAMTotalMB = t.GPU.VRAMTotalMB
-				n.VRAMUsedMB = t.GPU.VRAMUsedMB
-				n.VRAMSource = "agent"
-			}
+		} else {
+			n.FanPercent = nil
 		}
 	} else {
+		n.AgentGPUVendor = ""
+		n.AgentGPUCount = 0
+		n.AgentGPUs = nil
+		n.DriverVersion = ""
+		n.CUDAVersion = ""
 		n.FanPercent = nil
+	}
+	if t.Runtime != nil {
+		n.AgentRuntime = t.Runtime.Name
+		n.RuntimeVersion = t.Runtime.Version
+		n.RuntimeStatus = t.Runtime.Status
+	} else {
+		n.AgentRuntime = ""
+		n.RuntimeVersion = ""
+		n.RuntimeStatus = ""
 	}
 	n.mu.Unlock()
 	r.agentReachable(n.Name, nodeURL)
@@ -190,16 +229,28 @@ func clearAgentTelemetry(n *NodeState) {
 	defer n.mu.Unlock()
 	wasAgentSourced := n.VRAMSource == "agent"
 	n.AgentPresent = false
+	n.AgentNodeID = ""
 	n.AgentVersion = ""
 	n.AgentCapabilities = nil
 	n.AgentPlatform = ""
 	n.AgentArchitecture = ""
 	n.AgentGPUVendor = ""
+	n.AgentGPUCount = 0
+	n.AgentGPUs = nil
+	n.DriverVersion = ""
+	n.CUDAVersion = ""
 	n.AgentRuntime = ""
-	n.agentSchemaWarned = false
+	n.RuntimeVersion = ""
+	n.RuntimeStatus = ""
+	n.agentProtocolWarned = false
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0
+	n.RAMTotalMB = 0
+	n.DiskTotalGB = 0
+	n.Hostname = ""
+	n.UptimeSeconds = 0
+	n.BootTime = 0
 	// CPUPercent (agent_poll.go's success path, above) is the only writer of
 	// NodeState.CPUPercent anywhere in the codebase - reset it here too, or a
 	// disabled/unreachable agent's last-reported CPU reading would linger
@@ -221,7 +272,7 @@ func clearAgentTelemetry(n *NodeState) {
 	}
 }
 
-// buildAgentURL derives the agent's /telemetry URL from the node's own URL
+// buildAgentURL derives the agent's /v1/status URL from the node's own URL
 // (same host) and the configured agent port, via url.Parse per R5 - never
 // arithmetic port derivation.
 func buildAgentURL(nodeURL string, port int) (string, error) {
@@ -236,5 +287,5 @@ func buildAgentURL(nodeURL string, port int) (string, error) {
 	if scheme == "" {
 		scheme = "http"
 	}
-	return fmt.Sprintf("%s://%s:%d/telemetry", scheme, u.Hostname(), port), nil
+	return fmt.Sprintf("%s://%s:%d/v1/status", scheme, u.Hostname(), port), nil
 }

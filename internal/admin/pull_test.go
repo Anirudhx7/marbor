@@ -391,10 +391,10 @@ func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 
 // TestHandleNodePull_DispatchesToAgentWhenCapable verifies the mesh routes a
 // pull to the node's Node Agent (not the direct Ollama /api/pull path) when
-// the node has an agent enabled and reporting "actions.pull_model" - and
-// that the mesh's configured Hugging Face token is forwarded per-request
-// (node-agent spec section 16). The direct-to-Ollama mock is never hit in
-// this scenario, proving dispatch actually took the agent branch.
+// the node has an agent enabled and reporting "models.pull" - and that the
+// mesh's configured Hugging Face token is forwarded per-request (node-agent
+// spec section 16). The direct-to-Ollama mock is never hit in this
+// scenario, proving dispatch actually took the agent branch.
 func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 	ollamaHit := false
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -406,7 +406,7 @@ func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 
 	var gotAuth, gotBody string
 	mockAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/actions/pull_model" || r.Method != http.MethodPost {
+		if r.URL.Path != "/v1/models" || r.Method != http.MethodPost {
 			http.NotFound(w, r)
 			return
 		}
@@ -435,7 +435,7 @@ func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
-			n.AgentCapabilities = []string{"telemetry", "actions.pull_model"}
+			n.AgentCapabilities = []string{"status", "models.pull"}
 			n.Unlock()
 		}
 	}

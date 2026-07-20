@@ -13,13 +13,13 @@ import (
 type fakeGPUCollector struct {
 	name      string
 	available bool
-	telemetry GPUTelemetry
+	telemetry GPUBlock
 	err       error
 }
 
 func (f fakeGPUCollector) Name() string                   { return f.name }
 func (f fakeGPUCollector) Available(context.Context) bool { return f.available }
-func (f fakeGPUCollector) Collect(context.Context) (GPUTelemetry, error) {
+func (f fakeGPUCollector) Collect(context.Context) (GPUBlock, error) {
 	return f.telemetry, f.err
 }
 
@@ -37,10 +37,13 @@ func (f fakeHostCollector) Collect(context.Context) *HostTelemetry { return f.te
 // detected" flaky).
 type fakeRuntimeDetector struct {
 	name  string
+	url   string
 	found bool
 }
 
-func (f fakeRuntimeDetector) Detect(context.Context) (string, bool) { return f.name, f.found }
+func (f fakeRuntimeDetector) Detect(context.Context) (string, string, bool) {
+	return f.name, f.url, f.found
+}
 
 // noRuntimeDetector is the fakeRuntimeDetector "nothing found" case, used by
 // every test below that isn't specifically exercising runtime-detection
@@ -53,20 +56,23 @@ func TestSchedulerSnapshotBeforeSeedIsUnknown(t *testing.T) {
 	if !snap.LastUpdated.IsZero() {
 		t.Errorf("LastUpdated = %v, want zero time before Seed has run", snap.LastUpdated)
 	}
-	if snap.GPU != nil || snap.Host != nil {
-		t.Errorf("expected nil GPU/Host before any collection, got GPU=%v Host=%v", snap.GPU, snap.Host)
+	if snap.GPU != nil || snap.Host != nil || snap.Runtime != nil {
+		t.Errorf("expected nil GPU/Host/Runtime before any collection, got GPU=%v Host=%v Runtime=%v", snap.GPU, snap.Host, snap.Runtime)
 	}
-	if snap.SchemaVersion != SchemaVersion || snap.AgentVersion != "v-test" {
-		t.Errorf("schema_version/agent_version should still be set: %+v", snap)
+	if snap.Agent.ProtocolVersion != ProtocolVersion || snap.Agent.Version != "v-test" {
+		t.Errorf("agent.protocol_version/version should still be set: %+v", snap.Agent)
 	}
-	// Metadata (capabilities/platform/architecture/gpu_vendor) is known at
+	// Metadata (node_id/capabilities/platform/architecture) is known at
 	// construction time, not collection time - it must be populated even
 	// before the first Seed/refresh.
+	if snap.Agent.NodeID == "" {
+		t.Error("expected node_id to be set even before Seed")
+	}
 	if len(snap.Capabilities) == 0 {
 		t.Error("expected capabilities to be set even before Seed")
 	}
-	if snap.Platform == "" || snap.Architecture == "" {
-		t.Errorf("expected platform/architecture to be set even before Seed, got platform=%q architecture=%q", snap.Platform, snap.Architecture)
+	if snap.Agent.Platform == "" || snap.Agent.Architecture == "" {
+		t.Errorf("expected platform/architecture to be set even before Seed, got platform=%q architecture=%q", snap.Agent.Platform, snap.Agent.Architecture)
 	}
 }
 
@@ -91,7 +97,7 @@ func TestSchedulerUsesInjectedGPUBackend(t *testing.T) {
 	fake := fakeGPUCollector{
 		name:      "test-vendor",
 		available: true,
-		telemetry: GPUTelemetry{Vendor: "test-vendor", VRAMTotalMB: 1000, VRAMUsedMB: 250},
+		telemetry: GPUBlock{Count: 1, Devices: []GPUInfo{{Index: 0, Vendor: "test-vendor", VRAMTotalMB: 1000, VRAMUsedMB: 250}}},
 	}
 	s := newSchedulerWithBackends("v-test", fake, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
 	s.Seed()
@@ -102,69 +108,96 @@ func TestSchedulerUsesInjectedGPUBackend(t *testing.T) {
 	if snap.GPU.Vendor != "test-vendor" {
 		t.Errorf("GPU.Vendor = %q, want test-vendor", snap.GPU.Vendor)
 	}
-	if snap.GPU.VRAMTotalMB != 1000 {
-		t.Errorf("GPU.VRAMTotalMB = %d, want 1000", snap.GPU.VRAMTotalMB)
-	}
-	// GPUVendor (top-level agent metadata) reflects the selected backend's
-	// Name() unconditionally - independent of the per-cycle GPU reading.
-	if snap.GPUVendor != "test-vendor" {
-		t.Errorf("GPUVendor = %q, want test-vendor", snap.GPUVendor)
+	if len(snap.GPU.Devices) != 1 || snap.GPU.Devices[0].VRAMTotalMB != 1000 {
+		t.Errorf("GPU.Devices = %v, want one device with VRAMTotalMB=1000", snap.GPU.Devices)
 	}
 }
 
-// TestSchedulerOmitsGPUOnBackendError proves a GPUCollector error (transient
-// read failure, or genuinely no GPU present) results in an omitted gpu
-// block, never a fabricated/zeroed one (R1) - but GPUVendor metadata still
-// reports which backend is selected, since that's a static fact about the
-// process, not a live reading that can fail.
-func TestSchedulerOmitsGPUOnBackendError(t *testing.T) {
+// TestSchedulerReportsGPUVendorOnBackendError proves a GPUCollector error
+// (transient read failure) still reports the gpu block with its Vendor set
+// and an empty device list, never a fabricated/zeroed device reading (R1) -
+// "which backend is selected" is a static fact about the process, not a live
+// reading that can fail.
+func TestSchedulerReportsGPUVendorOnBackendError(t *testing.T) {
 	fake := fakeGPUCollector{name: "test-vendor", available: true, err: errors.New("boom")}
 	s := newSchedulerWithBackends("v-test", fake, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
 	s.Seed()
 	snap := s.Snapshot()
-	if snap.GPU != nil {
-		t.Errorf("expected nil GPU on backend error, got %+v", snap.GPU)
+	if snap.GPU == nil {
+		t.Fatal("expected a non-nil gpu block even on a backend collection error")
 	}
-	if snap.GPUVendor != "test-vendor" {
-		t.Errorf("GPUVendor = %q, want test-vendor even when Collect() errors", snap.GPUVendor)
+	if snap.GPU.Vendor != "test-vendor" {
+		t.Errorf("GPU.Vendor = %q, want test-vendor even when Collect() errors", snap.GPU.Vendor)
+	}
+	if len(snap.GPU.Devices) != 0 {
+		t.Errorf("expected no devices on backend error, got %v", snap.GPU.Devices)
 	}
 }
 
-// TestSchedulerMetadataFields verifies capabilities/platform/architecture/
-// gpu_vendor/runtime all flow from the Scheduler's construction-time
-// detection through to every served snapshot.
+// TestSchedulerOmitsGPUWhenNoBackend verifies a host with no GPU backend at
+// all (detectGPUCollector fell back to noGPUCollector) reports no gpu block
+// whatsoever - there is nothing to report, not even a vendor.
+func TestSchedulerOmitsGPUWhenNoBackend(t *testing.T) {
+	s := newSchedulerWithBackends("v-test", fakeGPUCollector{name: "none", available: true}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
+	s.Seed()
+	if snap := s.Snapshot(); snap.GPU != nil {
+		t.Errorf("expected nil GPU on a no-GPU host, got %+v", snap.GPU)
+	}
+}
+
+// TestSchedulerMetadataFields verifies node_id/capabilities/platform/
+// architecture all flow from the Scheduler's construction-time detection
+// through to every served snapshot, and runtime detection populates the
+// runtime resource.
 func TestSchedulerMetadataFields(t *testing.T) {
-	gpu := fakeGPUCollector{name: "nvidia", available: true, telemetry: GPUTelemetry{Vendor: "nvidia"}}
-	rd := fakeRuntimeDetector{name: "ollama", found: true}
+	gpu := fakeGPUCollector{name: "nvidia", available: true, telemetry: GPUBlock{Vendor: "nvidia"}}
+	rd := fakeRuntimeDetector{name: "ollama", url: "http://localhost:11434", found: true}
 	s := newSchedulerWithBackends("v-test", gpu, fakeHostCollector{telemetry: &HostTelemetry{}}, rd)
 	s.Seed()
 	snap := s.Snapshot()
 
-	if len(snap.Capabilities) != 2 || snap.Capabilities[0] != "telemetry" || snap.Capabilities[1] != "actions.pull_model" {
-		t.Errorf("Capabilities = %v, want [telemetry actions.pull_model]", snap.Capabilities)
+	if snap.Agent.NodeID == "" {
+		t.Error("expected node_id to be set")
 	}
-	if snap.Platform != runtime.GOOS {
-		t.Errorf("Platform = %q, want %q", snap.Platform, runtime.GOOS)
+	if len(snap.Capabilities) != 2 || snap.Capabilities[0] != "status" || snap.Capabilities[1] != "models.pull" {
+		t.Errorf("Capabilities = %v, want [status models.pull]", snap.Capabilities)
 	}
-	if snap.Architecture != runtime.GOARCH {
-		t.Errorf("Architecture = %q, want %q", snap.Architecture, runtime.GOARCH)
+	if snap.Agent.Platform != runtime.GOOS {
+		t.Errorf("Platform = %q, want %q", snap.Agent.Platform, runtime.GOOS)
 	}
-	if snap.GPUVendor != "nvidia" {
-		t.Errorf("GPUVendor = %q, want nvidia", snap.GPUVendor)
+	if snap.Agent.Architecture != runtime.GOARCH {
+		t.Errorf("Architecture = %q, want %q", snap.Agent.Architecture, runtime.GOARCH)
 	}
-	if snap.Runtime != "ollama" {
-		t.Errorf("Runtime = %q, want ollama", snap.Runtime)
+	if snap.GPU == nil || snap.GPU.Vendor != "nvidia" {
+		t.Errorf("GPU.Vendor = %v, want nvidia", snap.GPU)
+	}
+	if snap.Runtime == nil || snap.Runtime.Name != "ollama" {
+		t.Fatalf("Runtime = %v, want name=ollama", snap.Runtime)
+	}
+}
+
+// TestSchedulerNodeIDStableAcrossConstructions verifies node_id is persisted
+// (via identity.go) and reused across separate Scheduler constructions in
+// the same environment - "still the same node" across an agent restart.
+func TestSchedulerNodeIDStableAcrossConstructions(t *testing.T) {
+	s1 := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
+	s2 := newSchedulerWithBackends("v-test-2", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
+	if s1.nodeID == "" || s2.nodeID == "" {
+		t.Fatal("expected both schedulers to have a non-empty node_id")
+	}
+	if s1.nodeID != s2.nodeID {
+		t.Errorf("node_id changed across constructions: %q vs %q", s1.nodeID, s2.nodeID)
 	}
 }
 
 // TestSchedulerOmitsRuntimeWhenNotDetected verifies "no local runtime found"
-// leaves Runtime empty (and therefore omitted from JSON via omitempty),
-// never a guessed value (R1).
+// leaves Runtime nil (and therefore omitted from JSON), never a guessed
+// value (R1).
 func TestSchedulerOmitsRuntimeWhenNotDetected(t *testing.T) {
 	s := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
 	s.Seed()
-	if snap := s.Snapshot(); snap.Runtime != "" {
-		t.Errorf("Runtime = %q, want empty when RuntimeDetector found nothing", snap.Runtime)
+	if snap := s.Snapshot(); snap.Runtime != nil {
+		t.Errorf("Runtime = %v, want nil when RuntimeDetector found nothing", snap.Runtime)
 	}
 }
 
@@ -225,10 +258,10 @@ func TestNewSchedulerRealDetection(t *testing.T) {
 	s := NewScheduler("v-test")
 	s.Seed()
 	snap := s.Snapshot()
-	if snap.Platform != runtime.GOOS || snap.Architecture != runtime.GOARCH {
-		t.Errorf("Platform/Architecture = %q/%q, want %q/%q", snap.Platform, snap.Architecture, runtime.GOOS, runtime.GOARCH)
+	if snap.Agent.Platform != runtime.GOOS || snap.Agent.Architecture != runtime.GOARCH {
+		t.Errorf("Platform/Architecture = %q/%q, want %q/%q", snap.Agent.Platform, snap.Agent.Architecture, runtime.GOOS, runtime.GOARCH)
 	}
-	if snap.GPUVendor == "" {
-		t.Error("expected GPUVendor to always be set (nvidia, or none)")
+	if snap.Agent.NodeID == "" {
+		t.Error("expected node_id to always be set")
 	}
 }

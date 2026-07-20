@@ -31,6 +31,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
@@ -411,6 +412,64 @@ type nodeResp struct {
 	AgentArchitecture string   `json:"agentArchitecture,omitempty"`
 	AgentGPUVendor    string   `json:"agentGpuVendor,omitempty"`
 	AgentRuntime      string   `json:"agentRuntime,omitempty"`
+	// AgentNodeID is the agent's self-persisted node_id (a stable UUID
+	// surviving agent upgrades/hostname changes - internal/nodeagent
+	// identity.go). AgentGPUCount/AgentGPUs/DriverVersion/CUDAVersion are the
+	// multi-GPU array + driver-stack metadata; RAMTotalMB/DiskTotalGB/
+	// Hostname/UptimeSeconds/BootTime are host capacity/identity;
+	// RuntimeVersion/RuntimeStatus are the detected runtime's own reported
+	// version/live reachability. All cleared alongside AgentPresent, same R1
+	// discipline as every other agent-derived field above.
+	AgentNodeID    string           `json:"agentNodeId,omitempty"`
+	AgentGPUCount  int              `json:"agentGpuCount,omitempty"`
+	AgentGPUs      []agentGPUDevice `json:"agentGpus,omitempty"`
+	DriverVersion  string           `json:"driverVersion,omitempty"`
+	CUDAVersion    string           `json:"cudaVersion,omitempty"`
+	RAMTotalMB     int64            `json:"ramTotalMB,omitempty"`
+	DiskTotalGB    float64          `json:"diskTotalGB,omitempty"`
+	Hostname       string           `json:"hostname,omitempty"`
+	UptimeSeconds  int64            `json:"uptimeSeconds,omitempty"`
+	BootTime       int64            `json:"bootTime,omitempty"`
+	RuntimeVersion string           `json:"runtimeVersion,omitempty"`
+	RuntimeStatus  string           `json:"runtimeStatus,omitempty"`
+}
+
+// agentGPUDevice is the admin API's camelCase projection of
+// nodeagent.GPUInfo (whose own JSON tags are snake_case, matching the
+// Node Agent Protocol wire format, not this admin API's convention) - one
+// entry per physical GPU device in a node's multi-GPU array.
+type agentGPUDevice struct {
+	Index        int      `json:"index"`
+	Vendor       string   `json:"vendor,omitempty"`
+	CorePercent  *float64 `json:"corePercent,omitempty"`
+	TemperatureC *float64 `json:"temperatureC,omitempty"`
+	FanPercent   *float64 `json:"fanPercent,omitempty"`
+	PowerWatts   *float64 `json:"powerWatts,omitempty"`
+	VRAMUsedMB   int64    `json:"vramUsedMB,omitempty"`
+	VRAMTotalMB  int64    `json:"vramTotalMB,omitempty"`
+}
+
+// toAgentGPUDevices converts the agent-protocol GPU array into the admin
+// API's camelCase projection above. Returns nil (omitted via omitempty) for
+// a nil/empty input, never an empty-but-present array.
+func toAgentGPUDevices(devices []nodeagent.GPUInfo) []agentGPUDevice {
+	if len(devices) == 0 {
+		return nil
+	}
+	out := make([]agentGPUDevice, len(devices))
+	for i, d := range devices {
+		out[i] = agentGPUDevice{
+			Index:        d.Index,
+			Vendor:       d.Vendor,
+			CorePercent:  d.CorePercent,
+			TemperatureC: d.TemperatureC,
+			FanPercent:   d.FanPercent,
+			PowerWatts:   d.PowerWatts,
+			VRAMUsedMB:   d.VRAMUsedMB,
+			VRAMTotalMB:  d.VRAMTotalMB,
+		}
+	}
+	return out
 }
 
 type SystemInfo struct {
@@ -879,6 +938,18 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			AgentArchitecture: n.AgentArchitecture,
 			AgentGPUVendor:    n.AgentGPUVendor,
 			AgentRuntime:      n.AgentRuntime,
+			AgentNodeID:       n.AgentNodeID,
+			AgentGPUCount:     n.AgentGPUCount,
+			AgentGPUs:         toAgentGPUDevices(n.AgentGPUs),
+			DriverVersion:     n.DriverVersion,
+			CUDAVersion:       n.CUDAVersion,
+			RAMTotalMB:        n.RAMTotalMB,
+			DiskTotalGB:       n.DiskTotalGB,
+			Hostname:          n.Hostname,
+			UptimeSeconds:     n.UptimeSeconds,
+			BootTime:          n.BootTime,
+			RuntimeVersion:    n.RuntimeVersion,
+			RuntimeStatus:     n.RuntimeStatus,
 		}
 		n.RUnlock()
 	}
@@ -942,6 +1013,18 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			AgentArchitecture: n.AgentArchitecture,
 			AgentGPUVendor:    n.AgentGPUVendor,
 			AgentRuntime:      n.AgentRuntime,
+			AgentNodeID:       n.AgentNodeID,
+			AgentGPUCount:     n.AgentGPUCount,
+			AgentGPUs:         toAgentGPUDevices(n.AgentGPUs),
+			DriverVersion:     n.DriverVersion,
+			CUDAVersion:       n.CUDAVersion,
+			RAMTotalMB:        n.RAMTotalMB,
+			DiskTotalGB:       n.DiskTotalGB,
+			Hostname:          n.Hostname,
+			UptimeSeconds:     n.UptimeSeconds,
+			BootTime:          n.BootTime,
+			RuntimeVersion:    n.RuntimeVersion,
+			RuntimeStatus:     n.RuntimeStatus,
 		}
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
@@ -4446,7 +4529,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
-	useAgent := agentOK && agentCfg.Enabled && nodeHasAgentCapability(s.router.Nodes(), nodeName, "actions.pull_model")
+	useAgent := agentOK && agentCfg.Enabled && nodeHasAgentCapability(s.router.Nodes(), nodeName, "models.pull")
 	method := "direct"
 	if useAgent {
 		method = "agent"
@@ -4707,10 +4790,11 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 }
 
 // pullModelViaAgent dispatches a model pull to nodeURL's Node Agent
-// (POST /actions/pull_model) instead of the node's own runtime HTTP API,
-// forwarding the mesh's configured Hugging Face token per-request - never
-// stored on the agent side, only set in the pull subprocess's own
-// environment for its lifetime (see .local/specs/node-agent.md section 16).
+// (POST /v1/models, capability "models.pull") instead of the node's own
+// runtime HTTP API, forwarding the mesh's configured Hugging Face token
+// per-request - never stored on the agent side, only set in the pull
+// subprocess's own environment for its lifetime (see
+// .local/specs/node-agent.md section 16).
 func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
 	actionURL, err := buildAgentActionURL(nodeURL, agentCfg.Port)
 	if err != nil {
@@ -4755,7 +4839,7 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 	return nil
 }
 
-// buildAgentActionURL derives the agent's /actions/pull_model URL from the
+// buildAgentActionURL derives the agent's POST /v1/models URL from the
 // node's own URL (same host) and the configured agent port, via url.Parse
 // per R5 - never arithmetic port derivation. Mirrors agent_poll.go's
 // buildAgentURL in internal/router (kept as a separate small function since
@@ -4772,7 +4856,7 @@ func buildAgentActionURL(nodeURL string, port int) (string, error) {
 	if scheme == "" {
 		scheme = "http"
 	}
-	return fmt.Sprintf("%s://%s:%d/actions/pull_model", scheme, u.Hostname(), port), nil
+	return fmt.Sprintf("%s://%s:%d/v1/models", scheme, u.Hostname(), port), nil
 }
 
 // handleAudit queries the audit log with optional filters.

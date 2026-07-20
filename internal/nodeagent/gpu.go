@@ -19,7 +19,7 @@ var errNoGPUBackend = errors.New("nodeagent: no supported GPU backend detected o
 // inference backends (Ollama/vLLM/TGI/llama.cpp) behind one interface.
 type GPUCollector interface {
 	// Name identifies the backend for logging and telemetry provenance
-	// (e.g. "nvidia"). Surfaced on GPUTelemetry.Vendor so a consumer can
+	// (e.g. "nvidia"). Surfaced on GPUBlock.Vendor so a consumer can
 	// tell which backend produced a reading rather than assuming.
 	Name() string
 	// Available reports whether this backend's tooling is present on the
@@ -28,10 +28,12 @@ type GPUCollector interface {
 	// doesn't change while the process is running, same assumption
 	// router.go's runtime auto-detect makes about a node's backend.
 	Available(ctx context.Context) bool
-	// Collect returns one GPU telemetry reading. An error means "couldn't
-	// read this cycle" - the caller omits the gpu block entirely rather
-	// than fabricating a value (R1), it never means "zero everything."
-	Collect(ctx context.Context) (GPUTelemetry, error)
+	// Collect returns this vendor's full GPU reading for the host - every
+	// device it found, plus any driver/CUDA-stack metadata. An error means
+	// "couldn't read this cycle" - the caller reports the block with an
+	// empty device list rather than fabricating a value (R1), it never
+	// means "zero everything."
+	Collect(ctx context.Context) (GPUBlock, error)
 }
 
 // gpuCandidates is the ordered list of GPU backends detectGPUCollector
@@ -51,8 +53,8 @@ type noGPUCollector struct{}
 
 func (noGPUCollector) Name() string                   { return "none" }
 func (noGPUCollector) Available(context.Context) bool { return true } // the always-eligible fallback
-func (noGPUCollector) Collect(context.Context) (GPUTelemetry, error) {
-	return GPUTelemetry{}, errNoGPUBackend
+func (noGPUCollector) Collect(context.Context) (GPUBlock, error) {
+	return GPUBlock{}, errNoGPUBackend
 }
 
 // detectGPUCollector tries each candidate in order and returns the first

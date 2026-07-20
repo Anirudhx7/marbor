@@ -35,7 +35,7 @@ func runServiceCommand(args []string, version string) {
 
 func runServiceInstall(args []string, version string) {
 	fs := flag.NewFlagSet("agent service install", flag.ExitOnError)
-	port := fs.Int("port", 9200, "port for the installed service to serve /telemetry and /metrics on")
+	port := fs.Int("port", 9200, "port for the installed service to serve /v1/status and /metrics on")
 	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
 	refreshInterval := fs.Duration("refresh-interval", 0, "how often the installed service re-collects telemetry (default: the agent's own built-in default)")
 	fs.Usage = func() {
