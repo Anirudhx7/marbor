@@ -1089,6 +1089,25 @@ export async function getNodeModels(name: string): Promise<LocalModel[]> {
   return data.models || [];
 }
 
+// deleteNodeModel removes a locally-downloaded model from a node, via the
+// node's Node Agent ("models.delete" capability). Callers must check
+// node.agentCapabilities?.includes('models.delete') before calling - a node
+// without the capability returns a 501, surfaced here as a thrown error.
+// model's "/"-delimited segments are each encodeURIComponent'd independently
+// then rejoined with a literal "/" - a name like "org/repo" is meant to land
+// on the backend as two path segments (mirroring the agent's own
+// "{name...}" wildcard route), but any other character ('#', '?', a space)
+// must still be escaped or it gets reinterpreted as a fragment/query
+// boundary, truncating the request to a different (shorter) model name.
+export async function deleteNodeModel(name: string, model: string): Promise<void> {
+  const encodedModel = model.split('/').map(encodeURIComponent).join('/');
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/models/${encodedModel}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to delete model'); }
+}
+
 export async function setPredictiveEngine(enabled: boolean): Promise<{ predictive_engine_enabled: boolean }> {
   if (DEMO) {
     return { predictive_engine_enabled: enabled };

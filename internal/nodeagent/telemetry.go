@@ -32,7 +32,7 @@ const ProtocolVersion = 1
 // speculatively, since an agent claiming a capability it doesn't have would
 // be exactly the kind of fabrication R1 exists to prevent, just applied to
 // self-description instead of a measurement.
-var capabilities = []string{"status", "models.pull", "models.list"}
+var capabilities = []string{"status", "models.pull", "models.list", "models.delete"}
 
 // Telemetry is the canonical, versioned JSON payload served at
 // GET /v1/status - the Node Agent Protocol's root resource. GET /metrics

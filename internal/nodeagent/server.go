@@ -39,6 +39,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /metrics", requireToken(s.Token, s.handleMetrics))
 	mux.HandleFunc("POST /v1/models", requireToken(s.Token, s.handlePullModel))
 	mux.HandleFunc("GET /v1/models", requireToken(s.Token, s.handleListModels))
+	// "{name...}" (not "{name}") deliberately - model names routinely
+	// contain "/" (e.g. "org/repo"), and the trailing "..." wildcard is what
+	// makes ServeMux capture the rest of the path, slashes included, instead
+	// of stopping at the first one.
+	mux.HandleFunc("DELETE /v1/models/{name...}", requireToken(s.Token, s.handleDeleteModel))
 	return mux
 }
 

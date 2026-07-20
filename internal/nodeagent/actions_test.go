@@ -1,11 +1,14 @@
 package nodeagent
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 )
@@ -35,6 +38,15 @@ func doPull(t *testing.T, srv *Server, body string) *http.Response {
 func doListModels(t *testing.T, srv *Server) *http.Response {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	return w.Result()
+}
+
+func doDeleteModel(t *testing.T, srv *Server, model string) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodDelete, "/v1/models/"+model, nil)
 	req.Header.Set("Authorization", "Bearer tok")
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, req)
@@ -232,6 +244,173 @@ func TestHandleListModels_RequiresBearerToken(t *testing.T) {
 	srv.Handler().ServeHTTP(w, req)
 	if w.Result().StatusCode != http.StatusUnauthorized {
 		t.Fatalf("expected 401 with no bearer token, got %d", w.Result().StatusCode)
+	}
+}
+
+// TestHandleDeleteModel_UnsupportedRuntimeReturnsClearError mirrors the pull
+// and list handlers' equivalent - no detected runtime must never silently
+// report ok:true for a delete that never happened (R1 extended to actions).
+func TestHandleDeleteModel_UnsupportedRuntimeReturnsClearError(t *testing.T) {
+	srv := newTestServerWithRuntime(t, "")
+	res := doDeleteModel(t, srv, "org/repo")
+	if res.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false for a node with no detected runtime")
+	}
+	if !strings.Contains(resp.Error, "no inference runtime detected") {
+		t.Errorf("unexpected error message: %q", resp.Error)
+	}
+}
+
+// TestHandleDeleteModel_OllamaMissingBinaryReturnsClearError covers the
+// ollama family the same way the pull handler's tool-missing tests cover
+// vllm/mlx: this test environment has no `ollama` binary on PATH, so the
+// delete must fail loudly (never fake success) - the same honest-failure
+// shape as a real node missing the CLI.
+func TestHandleDeleteModel_OllamaMissingBinaryReturnsClearError(t *testing.T) {
+	srv := newTestServerWithRuntime(t, "ollama")
+	res := doDeleteModel(t, srv, "llama3:8b")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false when the ollama binary is not on PATH")
+	}
+}
+
+// TestHandleDeleteModel_HFCacheRemovesRealDirectory verifies the non-Ollama
+// branch actually removes the model's directory from the real HF cache -
+// the closest equivalent to "delete" those runtimes have.
+func TestHandleDeleteModel_HFCacheRemovesRealDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	hub := filepath.Join(tmp, "hub")
+	modelDir := filepath.Join(hub, "models--org--repo", "snapshots", "abc123")
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("HF_HOME", tmp)
+
+	srv := newTestServerWithRuntime(t, "vllm")
+	res := doDeleteModel(t, srv, "org/repo")
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, body)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.OK {
+		t.Errorf("expected ok=true, got error %q", resp.Error)
+	}
+	if _, err := os.Stat(filepath.Join(hub, "models--org--repo")); !os.IsNotExist(err) {
+		t.Errorf("expected model directory to be removed, stat err = %v", err)
+	}
+}
+
+// TestHandleDeleteModel_HFCacheModelNotFoundReturnsClearError verifies a
+// model that was never downloaded produces an honest "not found" error, not
+// a fabricated success (R1 extended to actions).
+func TestHandleDeleteModel_HFCacheModelNotFoundReturnsClearError(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, "hub"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("HF_HOME", tmp)
+
+	srv := newTestServerWithRuntime(t, "llamacpp")
+	res := doDeleteModel(t, srv, "org/never-downloaded")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(resp.Error, "not found") {
+		t.Errorf("unexpected error message: %q", resp.Error)
+	}
+}
+
+func TestHandleDeleteModel_RequiresBearerToken(t *testing.T) {
+	srv := newTestServerWithRuntime(t, "ollama")
+	req := httptest.NewRequest(http.MethodDelete, "/v1/models/llama3:8b", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Result().StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with no bearer token, got %d", w.Result().StatusCode)
+	}
+}
+
+// TestDeleteViaHFCache_PathTraversalRejected verifies a model name crafted
+// to escape the HF cache directory (via the OS's own path separator, not
+// "/" - which the "--" replacement in deleteViaHFCache already neutralizes
+// on its own) is rejected by the explicit inside-hfCacheDir() check, and
+// that nothing outside the cache is ever touched. model comes straight off
+// the request path (attacker-influenced), so this is a real, not
+// hypothetical, guard for a destructive filesystem operation.
+func TestDeleteViaHFCache_PathTraversalRejected(t *testing.T) {
+	tmp := t.TempDir()
+	hub := filepath.Join(tmp, "hub")
+	if err := os.MkdirAll(hub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	secret := filepath.Join(tmp, "secret-outside-cache")
+	if err := os.MkdirAll(secret, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Setenv("HF_HOME", tmp)
+
+	sep := string(filepath.Separator)
+	traversal := "foo" + sep + ".." + sep + ".." + sep + "secret-outside-cache"
+	if err := deleteViaHFCache(context.Background(), traversal); err == nil {
+		t.Fatal("expected an error rejecting a path-traversal model name")
+	}
+	if _, err := os.Stat(secret); err != nil {
+		t.Fatalf("secret directory outside the cache must never be touched: %v", err)
+	}
+}
+
+// TestDeleteViaHFCache_SymlinkRejected verifies a "models--org--repo" entry
+// that is itself a symlink is rejected rather than followed - the prefix
+// check only proves the symlink's own path lives inside the cache dir, not
+// what it resolves to, so os.RemoveAll must never be handed a path whose
+// final component is a symlink pointing outside the cache. Skipped on
+// windows: os.Symlink there requires elevated privileges CI doesn't grant.
+func TestDeleteViaHFCache_SymlinkRejected(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("symlink creation requires elevated privileges on windows")
+	}
+	tmp := t.TempDir()
+	hub := filepath.Join(tmp, "hub")
+	if err := os.MkdirAll(hub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	secret := filepath.Join(tmp, "secret-outside-cache")
+	if err := os.MkdirAll(secret, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	link := filepath.Join(hub, "models--org--repo")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	t.Setenv("HF_HOME", tmp)
+
+	if err := deleteViaHFCache(context.Background(), "org/repo"); err == nil {
+		t.Fatal("expected an error rejecting a symlinked cache entry")
+	}
+	if _, err := os.Stat(secret); err != nil {
+		t.Fatalf("secret directory outside the cache must never be touched: %v", err)
 	}
 }
 

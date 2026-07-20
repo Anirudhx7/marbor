@@ -10,7 +10,7 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, getNodeModels } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, getNodeModels, deleteNodeModel } from '../lib/api';
 import type { NodeAgentStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus, LocalModel } from '../types';
 
@@ -489,6 +489,9 @@ export function GPUNodes() {
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
   const [localModels, setLocalModels] = useState<LocalModel[] | null>(null);
   const [localModelsError, setLocalModelsError] = useState<string | null>(null);
+  const [modelToDelete, setModelToDelete] = useState<{ nodeName: string; model: string } | null>(null);
+  const [deleteModelBusy, setDeleteModelBusy] = useState(false);
+  const [deleteModelError, setDeleteModelError] = useState<string | null>(null);
   // Tracks which node the modal is currently open for, so a getNodeModels
   // response that resolves after the user has already closed the modal or
   // opened a different node's doesn't clobber that node's state with a
@@ -539,6 +542,8 @@ export function GPUNodes() {
     setAgentError(null);
     setLocalModels(null);
     setLocalModelsError(null);
+    setDeleteModelError(null);
+    setModelToDelete(null);
   };
 
   const handleEnableAgent = async () => {
@@ -912,6 +917,35 @@ export function GPUNodes() {
       // so surface that clearly instead of silently dropping the click.
       setActionError(e?.message || `Failed to unload ${model} from ${nodeName}`);
       return false;
+    }
+  };
+
+  // Removes a locally-downloaded model from a node's disk (not just VRAM -
+  // see handleUnloadModel for that). Demo mode never mutates real state, so
+  // it short-circuits before calling the API at all, mirroring
+  // handleDrainNode's convention - not unloadModel's, since unloadModel's
+  // own DEMO check inside api.ts is the exception, not the rule, for this
+  // page's node-agent actions (getNodeModels has no such check either).
+  const handleDeleteModel = async (nodeName: string, model: string): Promise<boolean> => {
+    if (demoMode) {
+      setLocalModels(prev => (prev || []).filter(m => m.name !== model));
+      setNodes(prev => prev.map(n => n.name === nodeName
+        ? { ...n, localModels: (n.localModels || []).filter(m => m.name !== model) }
+        : n));
+      setDeleteModelError(null);
+      return true;
+    }
+    setDeleteModelBusy(true);
+    try {
+      await deleteNodeModel(nodeName, model);
+      setLocalModels(prev => (prev || []).filter(m => m.name !== model));
+      setDeleteModelError(null);
+      return true;
+    } catch (e: any) {
+      setDeleteModelError(e?.message || `Failed to delete ${model} from ${nodeName}`);
+      return false;
+    } finally {
+      setDeleteModelBusy(false);
     }
   };
 
@@ -1447,6 +1481,46 @@ export function GPUNodes() {
         </div>
       </Modal>
 
+      {/* Delete Local Model Confirmation Modal */}
+      <Modal
+        isOpen={modelToDelete !== null}
+        onClose={() => setModelToDelete(null)}
+        title="Delete Local Model"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Delete <span className="text-foreground font-semibold break-all">{modelToDelete?.model}</span> from{' '}
+            <span className="text-foreground font-semibold">{modelToDelete?.nodeName}</span>'s local storage?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This removes the downloaded model files from disk - not just from VRAM. Re-pulling it later will re-download the full model.
+          </p>
+          {deleteModelError && (
+            <p className="text-sm text-destructive">{deleteModelError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setModelToDelete(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!modelToDelete) return;
+                const ok = await handleDeleteModel(modelToDelete.nodeName, modelToDelete.model);
+                if (ok) setModelToDelete(null);
+              }}
+              disabled={deleteModelBusy}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {deleteModelBusy ? 'Deleting...' : 'Delete Model'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Drain Node Confirmation Modal */}
       <Modal
         isOpen={nodeToDrain !== null}
@@ -1627,6 +1701,7 @@ export function GPUNodes() {
                 <div className="text-xs text-muted-foreground space-y-1 bg-secondary/40 rounded-lg p-3">
                   <p className="font-medium text-foreground">Locally Available Models</p>
                   {localModelsError && <p className="text-destructive">{localModelsError}</p>}
+                  {deleteModelError && <p className="text-destructive">{deleteModelError}</p>}
                   {!localModelsError && localModels === null && <p>Loading...</p>}
                   {!localModelsError && localModels !== null && localModels.length === 0 && (
                     <p>No models downloaded on this node yet.</p>
@@ -1634,9 +1709,21 @@ export function GPUNodes() {
                   {!localModelsError && localModels && localModels.length > 0 && (
                     <ul className="flex flex-wrap gap-1.5 pt-1">
                       {localModels.map((m) => (
-                        <li key={m.name} className="px-2 py-1 bg-background rounded-md font-mono text-[11px] break-all">
-                          {m.name}
-                          {m.sizeBytes !== undefined ? ` (${formatBytes(m.sizeBytes)})` : ''}
+                        <li key={m.name} className="flex items-center gap-1.5 px-2 py-1 bg-background rounded-md font-mono text-[11px] max-w-full">
+                          <span className="break-all">
+                            {m.name}
+                            {m.sizeBytes !== undefined ? ` (${formatBytes(m.sizeBytes)})` : ''}
+                          </span>
+                          {agentNode?.agentCapabilities?.includes('models.delete') && (
+                            <button
+                              onClick={() => setModelToDelete({ nodeName: agentNode.name, model: m.name })}
+                              disabled={deleteModelBusy}
+                              title={`Delete ${m.name} from local storage`}
+                              className="shrink-0 p-0.5 text-muted-foreground hover:text-destructive disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>
