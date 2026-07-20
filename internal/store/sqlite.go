@@ -6,11 +6,21 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+// CurrentSchemaVersion is the mesh.db schema version this binary understands.
+// It is stamped into the settings table (key "schema_version") on every
+// successful migrate(). migrate() is otherwise forward-only and unversioned
+// (idempotent CREATE/ALTER, safe for older DBs) - this version check exists
+// solely to catch the opposite direction: an older binary opening a DB a
+// newer binary already wrote to. Bump only for a genuinely breaking
+// mesh.db schema change, not for ordinary additive migrations.
+const CurrentSchemaVersion = 1
 
 // sqliteStore is the SQLite-backed Store implementation.
 type sqliteStore struct {
@@ -70,6 +80,16 @@ func Open(path string) (Store, error) {
 }
 
 func (s *sqliteStore) migrate() error {
+	// Settings table must exist before the version gate can read it, even on
+	// a from-scratch DB. Idempotent - the full CREATE also appears later in
+	// the stmts list below; running it twice is a harmless no-op.
+	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
+		return fmt.Errorf("migrate: create settings table: %w", err)
+	}
+	if stored := GetIntSetting(s, "schema_version", 0); stored > CurrentSchemaVersion {
+		return fmt.Errorf("mesh.db schema_version %d is newer than this binary supports (%d) - refusing to start; upgrade the binary or restore an older mesh.db backup", stored, CurrentSchemaVersion)
+	}
+
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS request_log (
 			id          TEXT PRIMARY KEY,
@@ -329,6 +349,9 @@ func (s *sqliteStore) migrate() error {
 	}
 	if err := s.migrateEncryptSecrets(); err != nil {
 		return fmt.Errorf("migrate encrypt secrets: %w", err)
+	}
+	if err := s.SetSetting("schema_version", strconv.Itoa(CurrentSchemaVersion)); err != nil {
+		return fmt.Errorf("migrate: stamp schema_version: %w", err)
 	}
 	return nil
 }
