@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 	"time"
 )
@@ -149,10 +150,17 @@ func hfRepoID(model string) string {
 // stderr (trimmed) as the error on failure, since that is almost always the
 // actual reason (gated repo, 404, disk full, etc.) an operator needs to see
 // - never a bare "exit status 1".
+//
+// Always builds an explicit env with HOME guaranteed present: a node agent
+// running as a systemd service (or other stripped-down service environment)
+// may have no $HOME set, and ollama's own CLI panics rather than falling
+// back when it's missing - so the agent can't just trust its own inherited
+// environment to be complete before handing it to a child process.
 func runDownload(ctx context.Context, hfToken string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = ensureHome(os.Environ())
 	if hfToken != "" {
-		cmd.Env = append(os.Environ(), "HF_TOKEN="+hfToken)
+		cmd.Env = append(cmd.Env, "HF_TOKEN="+hfToken)
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -164,6 +172,22 @@ func runDownload(ctx context.Context, hfToken string, name string, args ...strin
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// ensureHome returns env with a HOME entry guaranteed present, resolving it
+// from the OS user database (not another read of $HOME) when missing so it
+// doesn't just reproduce the same gap it's meant to fix.
+func ensureHome(env []string) []string {
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "HOME=") && kv != "HOME=" {
+			return env
+		}
+	}
+	u, err := user.Current()
+	if err != nil || u.HomeDir == "" {
+		return env
+	}
+	return append(env, "HOME="+u.HomeDir)
 }
 
 func writeAction(w http.ResponseWriter, status int, resp actionResponse) {
