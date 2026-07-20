@@ -224,7 +224,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-1">
-              <p className="text-sm text-muted-foreground">{node.gpuModel}</p>
+              <p className="text-sm text-muted-foreground">{node.gpuModel || 'Unknown GPU'}</p>
               <RuntimeBadge runtime={node.runtime} />
               <AgentBadge present={node.agentPresent} version={node.agentVersion} />
             </div>
@@ -771,7 +771,7 @@ export function GPUNodes() {
     const nodeData = {
       name: newNode.name,
       url: `http://${newNode.host}:${newNode.port}`,
-      gpu_model: newNode.gpuModel || 'Unknown GPU',
+      gpu_model: newNode.gpuModel,
       runtime: newNode.runtime,
     };
 
