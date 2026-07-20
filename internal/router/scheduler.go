@@ -155,6 +155,10 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		return
 	}
 	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
+	// A scheduled warmup is an explicit "be warm again" request - it must
+	// override any suppression a prior manual/scheduled unload left behind,
+	// else the model would stay cold forever despite this schedule firing.
+	r.clearWarmupSuppress(target.Name, models...)
 	for _, m := range models {
 		if m == "" {
 			continue

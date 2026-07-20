@@ -400,6 +400,57 @@ func TestPingNodeDrainBody(t *testing.T) {
 	}
 }
 
+// TestScheduledUnloadSuppressesNextWarmupTick reproduces the reported bug: a
+// model on a node's keep-warm list gets a scheduled/manual unload, but the
+// next pingWarmupModels tick (the default 5m warmupTicker) immediately reloads
+// it, silently undoing the unload before an operator ever sees it gone. The
+// unload must suppress that model's next warmup ping.
+func TestScheduledUnloadSuppressesNextWarmupTick(t *testing.T) {
+	var generateHits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body struct {
+			Model     string `json:"model"`
+			KeepAlive any    `json:"keep_alive"`
+		}
+		_ = json.Unmarshal(raw, &body)
+		if body.Model == "gemma4:latest" {
+			// keep_alive:0 (numeric) is the unload call; anything else here would
+			// be a warmup ping - which must not happen while suppressed.
+			if ka, ok := body.KeepAlive.(float64); !ok || ka != 0 {
+				atomic.AddInt32(&generateHits, 1)
+			}
+		}
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes:      []*NodeState{{Name: "pve", URL: srv.URL, Healthy: true, Runtime: "ollama"}},
+		nodeWarmup: map[string]NodeWarmup{"pve": {Enabled: true, Models: []string{"gemma4:latest"}}},
+	}
+
+	// Scheduled unload (mirrors fireSchedule's action=="unload" dispatch).
+	r.UnloadModels(context.Background(), "pve", []string{"gemma4:latest"})
+	time.Sleep(200 * time.Millisecond)
+
+	// The very next warmup tick must skip the suppressed model.
+	r.pingWarmupModels(context.Background())
+	time.Sleep(200 * time.Millisecond)
+
+	if got := atomic.LoadInt32(&generateHits); got != 0 {
+		t.Fatalf("warmup pinged gemma4:latest %d time(s) right after a scheduled unload; want 0 (suppressed)", got)
+	}
+
+	// A scheduled warmup re-arms it: the tick after that must ping again.
+	r.WarmModels(context.Background(), "pve", []string{"gemma4:latest"})
+	time.Sleep(200 * time.Millisecond)
+
+	if got := atomic.LoadInt32(&generateHits); got == 0 {
+		t.Fatal("expected warmup to resume pinging gemma4:latest after a scheduled warmup re-armed it")
+	}
+}
+
 // TestEffectiveKeepAlive verifies the keep_alive is bumped past the interval so
 // models never unload between pings, and preserved when already long enough.
 func TestEffectiveKeepAlive(t *testing.T) {
