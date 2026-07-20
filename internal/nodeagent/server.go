@@ -8,10 +8,11 @@ import (
 // Server is the Node Agent Protocol's local HTTP server: GET /v1/status
 // (canonical JSON resource envelope), GET /metrics (Prometheus text, derived
 // from the same struct, left unversioned per Prometheus's own scrape-target
-// convention), and POST /v1/models (the first mutating resource - pull a
-// model onto this node) - all gated by an exact-match bearer token (see
-// auth.go). Pull-only, polled by the mesh's existing router poll cycle - see
-// .local/specs/node-agent.md section 3.
+// convention), and the "models" resource - POST /v1/models (pull), GET
+// /v1/models (list), DELETE /v1/models/{name...} (delete), POST
+// /v1/models/{name...} (unload) - all gated by an exact-match bearer token
+// (see auth.go), polled/dispatched by the mesh's existing router poll cycle -
+// see .local/specs/node-agent.md section 3.
 //
 // GET /v1/status and GET /metrics serve Scheduler's cached snapshot rather
 // than collecting on every request - see scheduler.go. Scheduler is normally
@@ -44,6 +45,11 @@ func (s *Server) Handler() http.Handler {
 	// makes ServeMux capture the rest of the path, slashes included, instead
 	// of stopping at the first one.
 	mux.HandleFunc("DELETE /v1/models/{name...}", requireToken(s.Token, s.handleDeleteModel))
+	// POST on the same "{name...}" path shape as the DELETE route above means
+	// "unload this model" (evict from VRAM, keep it on disk) - see
+	// handleUnloadModel's doc comment for why a literal "/unload" suffix
+	// isn't used (not expressible after a multi-segment wildcard).
+	mux.HandleFunc("POST /v1/models/{name...}", requireToken(s.Token, s.handleUnloadModel))
 	return mux
 }
 

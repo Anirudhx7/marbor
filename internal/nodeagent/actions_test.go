@@ -53,6 +53,15 @@ func doDeleteModel(t *testing.T, srv *Server, model string) *http.Response {
 	return w.Result()
 }
 
+func doUnloadModel(t *testing.T, srv *Server, model string) *http.Response {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/models/"+model, nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	return w.Result()
+}
+
 // TestHandlePullModel_UnsupportedRuntimeReturnsClearError verifies an
 // unrecognized/undetected runtime never silently no-ops - it must return a
 // clear, honest error (R1 extended to actions: an action that didn't happen
@@ -411,6 +420,87 @@ func TestDeleteViaHFCache_SymlinkRejected(t *testing.T) {
 	}
 	if _, err := os.Stat(secret); err != nil {
 		t.Fatalf("secret directory outside the cache must never be touched: %v", err)
+	}
+}
+
+// TestHandleUnloadModel_UnsupportedRuntimeReturnsClearError mirrors the
+// pull/list/delete handlers' equivalent - a runtime with no unload
+// primitive in unloadCommands (vLLM/TGI/llama.cpp/MLX today, per P31's
+// verify-before-build) must never silently report ok:true.
+func TestHandleUnloadModel_UnsupportedRuntimeReturnsClearError(t *testing.T) {
+	for _, rt := range []string{"", "vllm", "tgi", "llamacpp", "mlx"} {
+		srv := newTestServerWithRuntime(t, rt)
+		res := doUnloadModel(t, srv, "org/repo")
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("runtime %q: expected 422, got %d", rt, res.StatusCode)
+		}
+		var resp actionResponse
+		if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+			t.Fatalf("runtime %q: decode: %v", rt, err)
+		}
+		if resp.OK {
+			t.Errorf("runtime %q: expected ok=false", rt)
+		}
+		if !strings.Contains(resp.Error, "unsupported") && !strings.Contains(resp.Error, "no inference runtime detected") {
+			t.Errorf("runtime %q: unexpected error message: %q", rt, resp.Error)
+		}
+	}
+}
+
+// TestHandleUnloadModel_OllamaMissingBinaryReturnsClearError covers the
+// ollama case the same way the pull/delete handlers' tool-missing tests do:
+// this test environment has no `ollama` binary on PATH, so unload must fail
+// loudly (never fake success).
+func TestHandleUnloadModel_OllamaMissingBinaryReturnsClearError(t *testing.T) {
+	srv := newTestServerWithRuntime(t, "ollama")
+	res := doUnloadModel(t, srv, "llama3:8b")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false when the ollama binary is not on PATH")
+	}
+}
+
+func TestHandleUnloadModel_RequiresBearerToken(t *testing.T) {
+	srv := newTestServerWithRuntime(t, "ollama")
+	req := httptest.NewRequest(http.MethodPost, "/v1/models/llama3:8b", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Result().StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 with no bearer token, got %d", w.Result().StatusCode)
+	}
+}
+
+// TestPOSTModelsRouteShape_PullVsUnloadDisambiguation is a regression guard
+// for the route-shape decision recorded in .local/specs/node-agent.md: POST
+// /v1/models (no trailing segment) must always mean "pull" and POST
+// /v1/models/{name...} must always mean "unload" - both are POST, on
+// deliberately different path shapes, and a future change that makes them
+// collide would silently misroute pulls as unloads or vice versa.
+func TestPOSTModelsRouteShape_PullVsUnloadDisambiguation(t *testing.T) {
+	srv := newTestServerWithRuntime(t, "")
+
+	pullRes := doPull(t, srv, `{"model":"org/repo"}`)
+	var pullResp actionResponse
+	if err := json.NewDecoder(pullRes.Body).Decode(&pullResp); err != nil {
+		t.Fatalf("decode pull response: %v", err)
+	}
+	if !strings.Contains(pullResp.Error, "no pull primitive") && !strings.Contains(pullResp.Error, "no inference runtime detected") {
+		t.Errorf("POST /v1/models routed somewhere other than the pull handler: %q", pullResp.Error)
+	}
+
+	unloadRes := doUnloadModel(t, srv, "org/repo")
+	var unloadResp actionResponse
+	if err := json.NewDecoder(unloadRes.Body).Decode(&unloadResp); err != nil {
+		t.Fatalf("decode unload response: %v", err)
+	}
+	if !strings.Contains(unloadResp.Error, "no unload primitive") && !strings.Contains(unloadResp.Error, "no inference runtime detected") {
+		t.Errorf("POST /v1/models/{name} routed somewhere other than the unload handler: %q", unloadResp.Error)
 	}
 }
 

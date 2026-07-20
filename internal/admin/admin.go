@@ -1959,9 +1959,17 @@ func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"models": body.Models})
 }
 
-// handleUnloadModel evicts a single model from a node's VRAM on operator request
-// (Ollama keep_alive:0). It frees VRAM immediately without draining the node or
-// waiting for LRU pressure - the manual counterpart to auto-eviction.
+// handleUnloadModel evicts a single model from a node's VRAM on operator
+// request. It frees VRAM immediately without draining the node or waiting
+// for LRU pressure - the manual counterpart to auto-eviction. Dispatches
+// through the node's Node Agent (capability "models.unload") when available,
+// mirroring handleNodePull's dual-path shape - not handleNodeDeleteModel's
+// fallback-less 501 shape, since unload already has a legitimate direct
+// fallback today (Ollama's own keep_alive:0 HTTP trick, via
+// router.UnloadModel) that pull/delete/list never had. The agent path is
+// what makes this work for real on non-Ollama runtimes instead of silently
+// no-op-ing (R1) - see actions.go's unloadCommands for exactly which
+// runtimes that currently covers.
 func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var body struct {
@@ -1978,23 +1986,79 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"model is required"}`))
 		return
 	}
-	found, err := s.router.UnloadModel(r.Context(), name, body.Model)
-	if !found {
+
+	// Node-existence checked first, ahead of the pin check below - same
+	// priority order the pre-existing direct-only path had (router.UnloadModel
+	// returned 404 before ever consulting pin state). A stale pinned-map entry
+	// for a since-removed/renamed node name must not turn into a false 409;
+	// it should still 404 like any other unknown node.
+	nodeURL, nodeOK := s.router.NodeURLs()[name]
+	if !nodeOK {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	if errors.Is(err, router.ErrModelPinned) {
-		// Pinning means "never evict/unload without an explicit unpin first"  --
-		// this must be honored on the manual unload path exactly like it is on
-		// auto-eviction. There is no force-override; unpin, then unload.
+
+	// Pinning means "never evict/unload without an explicit unpin first" -
+	// checked once, ahead of the agent/direct branch, so it is honored on
+	// both paths identically rather than only on the direct one (where it
+	// used to live inside router.UnloadModel itself). There is no
+	// force-override; unpin, then unload.
+	if s.router.IsPinned(name, body.Model) {
 		w.WriteHeader(http.StatusConflict)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": router.ErrModelPinned.Error()})
 		return
 	}
-	if err != nil {
-		writeCorrelatedError(w, r, http.StatusBadGateway, "failed to unload model on node", err)
-		return
+
+	agentCfg, agentOK := s.router.NodeAgentSetting(name)
+	useAgent := agentOK && agentCfg.Enabled && nodeHasAgentCapability(s.router.Nodes(), name, "models.unload")
+
+	if useAgent {
+		// Same fail-fast reasoning as handleNodePull/handleNodeDeleteModel: a
+		// down node's URL may still answer with something (another service on
+		// that port), producing a confusing "failed to unload model on node:
+		// ..." error that looks capability-specific when the real problem is
+		// just reachability.
+		if !nodeIsHealthy(s.router.Nodes(), name) {
+			writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before unloading a model", name))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), nodeUnloadModelTimeout)
+		defer cancel()
+		if err := s.unloadModelViaAgent(ctx, nodeURL, agentCfg, body.Model); err != nil {
+			// The agent's own error text (e.g. "unsupported: no unload
+			// primitive for runtime \"vllm\"") is the whole point of R1 here -
+			// it is what turns a non-Ollama runtime into a clear "not
+			// supported" message in the UI instead of a correlation-id-only
+			// generic failure, matching deleteModelViaAgent's/
+			// listModelsViaAgent's convention (unlike the pre-existing direct
+			// path below, which keeps writeCorrelatedError for its own
+			// Ollama-HTTP-level failures).
+			writeJSONError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		// The agent path never goes through router.unloadModel, which is the
+		// only other place that suppresses the next warmupTicker ping and
+		// drops the model from warm state - without this, pingWarmupModels
+		// would silently reload the model straight back into VRAM on its next
+		// tick, undoing the operator's unload.
+		s.router.RecordManualUnload(name, body.Model)
+	} else {
+		found, err := s.router.UnloadModel(r.Context(), name, body.Model)
+		if !found {
+			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+			return
+		}
+		if errors.Is(err, router.ErrModelPinned) {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		if err != nil {
+			writeCorrelatedError(w, r, http.StatusBadGateway, "failed to unload model on node", err)
+			return
+		}
 	}
+
 	s.logSystemChange(r, "unload_model", name, fmt.Sprintf("Model: %s", body.Model))
 	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "model": body.Model, "unloaded": true})
 }
@@ -5116,6 +5180,73 @@ func escapeModelPathSegments(model string) string {
 		parts[i] = url.PathEscape(p)
 	}
 	return strings.Join(parts, "/")
+}
+
+// nodeUnloadModelTimeout bounds how long the admin API waits for a node
+// agent's POST /v1/models/{name} (unload) response. Short like
+// nodeDeleteModelTimeout - a local runtime call, never a transfer.
+var nodeUnloadModelTimeout = 30 * time.Second
+
+// unloadModelViaAgent dispatches a model unload to nodeURL's Node Agent
+// (POST /v1/models/{name...}, capability "models.unload") instead of the
+// node's own runtime HTTP API. See actions.go's handleUnloadModel for why
+// POST (not a literal "/unload" suffix) is the verb used on this path shape.
+func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
+	actionURL, err := buildAgentUnloadURL(nodeURL, agentCfg.Port, model)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodeUnloadModelTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("agent unload model failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("agent unload model: could not decode response (status %d)", resp.StatusCode)
+	}
+	if !out.OK {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// buildAgentUnloadURL derives the agent's POST /v1/models/{name...} URL from
+// the node's own URL (same host) and the configured agent port, via
+// url.Parse per R5 - never arithmetic port derivation. Reuses
+// escapeModelPathSegments (same reasoning as buildAgentDeleteURL): model is
+// percent-escaped per "/"-delimited segment so a name containing '#'/'?'/
+// spaces can't be reinterpreted as a fragment/query boundary, while the
+// segment split itself is preserved for the agent's "{name...}" wildcard.
+func buildAgentUnloadURL(nodeURL string, port int, model string) (string, error) {
+	u, err := url.Parse(nodeURL)
+	if err != nil {
+		return "", fmt.Errorf("parse node URL: %w", err)
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("node URL %q has no host", nodeURL)
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d/v1/models/%s", scheme, u.Hostname(), port, escapeModelPathSegments(model)), nil
 }
 
 // handleAudit queries the audit log with optional filters.
