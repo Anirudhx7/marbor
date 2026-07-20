@@ -89,6 +89,48 @@ func (r *Router) isPinned(node, model string) bool {
 	return r.pinned[node][model]
 }
 
+// --- warmup suppression (manual/scheduled unload must stick until re-armed) ---
+
+// suppressWarmup marks (node, model) so pingWarmupModels skips it on its next
+// tick, instead of immediately reloading a model an operator just unloaded.
+func (r *Router) suppressWarmup(node, model string) {
+	r.suppressMu.Lock()
+	defer r.suppressMu.Unlock()
+	if r.warmupSuppressed == nil {
+		r.warmupSuppressed = make(map[string]map[string]bool)
+	}
+	if r.warmupSuppressed[node] == nil {
+		r.warmupSuppressed[node] = make(map[string]bool)
+	}
+	r.warmupSuppressed[node][model] = true
+}
+
+// isWarmupSuppressed reports whether (node, model) is currently suppressed.
+func (r *Router) isWarmupSuppressed(node, model string) bool {
+	r.suppressMu.Lock()
+	defer r.suppressMu.Unlock()
+	return r.warmupSuppressed[node][model]
+}
+
+// clearWarmupSuppress re-arms warmup for the given models on node - called
+// when a "warmup" schedule/WarmModels explicitly asks for them to be warm
+// again, overriding any earlier unload suppression.
+func (r *Router) clearWarmupSuppress(node string, models ...string) {
+	r.suppressMu.Lock()
+	defer r.suppressMu.Unlock()
+	for _, m := range models {
+		delete(r.warmupSuppressed[node], m)
+	}
+}
+
+// clearAllWarmupSuppress re-arms warmup for every model on node - called when
+// the node's keep-warm configuration itself changes.
+func (r *Router) clearAllWarmupSuppress(node string) {
+	r.suppressMu.Lock()
+	defer r.suppressMu.Unlock()
+	delete(r.warmupSuppressed, node)
+}
+
 // --- keep-warm priority hierarchy (0 = highest priority) ---
 
 // setWarmPriority records the priority order of a node's keep-warm model set,
@@ -146,6 +188,16 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 		return fmt.Errorf("node %s returned %d unloading %q", n.Name, resp.StatusCode, model)
 	}
 	metrics.ModelEvicted(n.Name)
+	// A manual or scheduled unload is an operator decision that the model should
+	// stay cold; suppress the next warmupTicker ping for it so pingWarmupModels
+	// doesn't reload it straight back into VRAM (default 5m later) and silently
+	// undo the unload. Re-armed by SetNodeWarmup (config change) or a "warmup"
+	// schedule/WarmModels call. LRU-headroom eviction is deliberately excluded -
+	// that path evicts a keep-warm model only to make transient room for another
+	// request, and must remain eligible to warm back up on the very next tick.
+	if reason == "manual" || reason == "scheduled" {
+		r.suppressWarmup(n.Name, model)
+	}
 	// Drop the unloaded model from warm state immediately (Tier 1): a manual,
 	// scheduled, or LRU-headroom unload is a residency change that must not wait
 	// for the background flush, else a crash could restore an evicted model.

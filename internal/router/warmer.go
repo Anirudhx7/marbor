@@ -140,6 +140,12 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			// and avoids the runtime evicting one warmed model to satisfy the
 			// other.
 			for _, model := range nodeModels {
+				// A manual/scheduled unload suppressed this model - skip it so
+				// this tick doesn't silently reload what the operator just took
+				// cold (see suppressWarmup in eviction.go).
+				if r.isWarmupSuppressed(n.Name, model) {
+					continue
+				}
 				// Make VRAM room (evict coldest non-pinned) before loading, so
 				// warming several models on a tight node can't OOM.
 				r.ensureHeadroom(ctx, n, model)

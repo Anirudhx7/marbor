@@ -299,6 +299,12 @@ type Router struct {
 	// not whichever happened to warm last. Guarded by warmPriorityMu.
 	warmPriorityMu sync.RWMutex
 	warmPriority   map[string]map[string]int
+	// warmupSuppressed marks (node, model) pairs that a manual or scheduled
+	// unload just took cold, so pingWarmupModels skips them until explicitly
+	// re-armed (SetNodeWarmup or a "warmup" schedule/WarmModels call) instead of
+	// silently reloading them on the next warmup tick. Guarded by suppressMu.
+	suppressMu       sync.Mutex
+	warmupSuppressed map[string]map[string]bool
 	// store persists the warm-state residency map so the router starts warm after
 	// a restart instead of cold (Phase 1). Set once via SetStore before Start; nil
 	// disables all warm-state persistence (the default for tests). Guarded by r.mu.
@@ -488,6 +494,10 @@ func (r *Router) SetNodeWarmup(name string, enabled bool, models []string) {
 	}
 	cp := append([]string(nil), models...)
 	r.nodeWarmup[name] = NodeWarmup{Enabled: enabled, Models: cp}
+	// Config change re-arms warmup: an operator turning keep-warm back on (or
+	// changing which models it covers) always wins over a prior unload's
+	// suppression, else a still-suppressed model would never warm again.
+	r.clearAllWarmupSuppress(name)
 }
 
 // NodeWarmupSetting returns a copy of the per-node warmup config for name (the
