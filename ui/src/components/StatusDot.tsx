@@ -2,6 +2,7 @@ interface StatusDotProps {
   status: 'healthy' | 'degraded' | 'down' | 'online' | 'offline' | 'active' | 'suspended' | 'rate-limited';
   size?: 'sm' | 'md' | 'lg';
   pulse?: boolean;
+  title?: string;
 }
 
 const statusColors = {
@@ -21,9 +22,21 @@ const sizeClasses = {
   lg: 'w-2.5 h-2.5',
 };
 
-export function StatusDot({ status, size = 'md', pulse = false }: StatusDotProps) {
+const statusLabels = {
+  healthy: 'Healthy',
+  online: 'Online',
+  active: 'Active',
+  degraded: 'Degraded',
+  down: 'Down',
+  offline: 'Offline',
+  suspended: 'Suspended',
+  'rate-limited': 'Rate limited',
+};
+
+export function StatusDot({ status, size = 'md', pulse = false, title }: StatusDotProps) {
   return (
     <span
+      title={title ?? statusLabels[status]}
       className={`inline-block rounded-full ${statusColors[status]} ${sizeClasses[size]} ${
         pulse ? 'animate-pulse' : ''
       }`}
