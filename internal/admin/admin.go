@@ -4679,6 +4679,15 @@ func (s *Server) handlePullProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// This connection legitimately stays open for as long as the pull takes
+	// (often many minutes for multi-GB models), far past adminHttpSrv's
+	// server-wide 30s WriteTimeout (main.go). That timeout exists to bound
+	// slow/stuck clients on ordinary request/response routes; it is not
+	// meant for a deliberately long-lived SSE stream, so this handler alone
+	// is exempted from it rather than raising the timeout server-wide.
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
