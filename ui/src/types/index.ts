@@ -47,9 +47,11 @@ export interface GPUNode {
   vramTotalMB: number;
   vramUsedMB: number;
   // How VRAM figures were obtained, so the UI never presents a guess as a
-  // measurement: nvidia = live local nvidia-smi; api = summed from the node's own
-  // /api/ps (real, total unknown); declared = total from config; none = no data.
-  vramSource: 'nvidia' | 'api' | 'declared' | 'none';
+  // measurement: nvidia = live local nvidia-smi; agent = a remote Node Agent
+  // (any vendor - see agentGpuVendor below for which tool); api = summed from
+  // the node's own /api/ps (real, total unknown); declared = total from
+  // config; none = no data.
+  vramSource: 'nvidia' | 'agent' | 'api' | 'declared' | 'none';
   powerDrawW: number;
   temperature: number | null;
   health: 'healthy' | 'degraded' | 'down';

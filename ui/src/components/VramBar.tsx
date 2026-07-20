@@ -1,7 +1,12 @@
 interface VramBarProps {
   used: number; // GB
   total: number; // GB, 0 = unknown
-  source?: 'nvidia' | 'api' | 'declared' | 'none';
+  source?: 'nvidia' | 'agent' | 'api' | 'declared' | 'none';
+  // Which vendor tool the Node Agent detected on the host (e.g. "nvidia",
+  // "rocm", "intel", "apple") - only meaningful when source === 'agent', so
+  // the badge can show which tool actually produced the reading (e.g.
+  // "rocm-smi") instead of a vague "agent" for every vendor alike.
+  agentGpuVendor?: string;
   size?: 'sm' | 'md';
   // Real in-flight predictive-warmup VRAM reservation, GB. Rendered as a
   // ghosted overlay segment after the used bar - never folded into `used`,
@@ -15,11 +20,32 @@ const SOURCE_LABEL: Record<string, string> = {
   declared: 'declared',
 };
 
-export function VramBar({ used, total, source, size = 'md', pending = 0 }: VramBarProps) {
+// AGENT_VENDOR_LABEL maps a Node Agent's detected GPU vendor (GPUBlock.Vendor
+// in internal/nodeagent) to the actual command-line tool it read from, so an
+// agent-sourced reading's badge names the real source the same way the
+// local-nvidia-smi path's "nvidia-smi" badge already does, instead of a
+// vendor-blind "agent" for every card alike.
+const AGENT_VENDOR_LABEL: Record<string, string> = {
+  nvidia: 'nvidia-smi',
+  rocm: 'rocm-smi',
+  intel: 'xpu-smi',
+  apple: 'system_profiler',
+};
+
+function sourceLabel(source: VramBarProps['source'], agentGpuVendor?: string): string | null {
+  if (!source) return null;
+  if (source === 'agent') {
+    return (agentGpuVendor && AGENT_VENDOR_LABEL[agentGpuVendor]) || 'agent';
+  }
+  return SOURCE_LABEL[source] ?? null;
+}
+
+export function VramBar({ used, total, source, agentGpuVendor, size = 'md', pending = 0 }: VramBarProps) {
   const barHeight = `${size === 'sm' ? 'h-1.5' : 'h-2'}`;
-  const sourceTag = source && SOURCE_LABEL[source] ? (
+  const label = sourceLabel(source, agentGpuVendor);
+  const sourceTag = label ? (
     <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 font-mono">
-      {SOURCE_LABEL[source]}
+      {label}
     </span>
   ) : null;
 
