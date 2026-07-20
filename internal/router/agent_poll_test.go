@@ -180,6 +180,55 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 	}
 }
 
+// TestPollAgentTelemetryFillsGPUModelWhenUnset verifies a node added without
+// a GPU model label (empty, or the UI's literal "Unknown GPU" placeholder -
+// see GPUNodes.tsx) gets it auto-filled from the agent's reported card
+// product name, but a name an operator explicitly set is left untouched.
+func TestPollAgentTelemetryFillsGPUModelWhenUnset(t *testing.T) {
+	psSrv0 := nodePSServer()
+	defer psSrv0.Close()
+	psSrv1 := nodePSServer()
+	defer psSrv1.Close()
+
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{
+			GPU: &nodeagent.GPUBlock{
+				Count:  1,
+				Vendor: "nvidia",
+				Devices: []nodeagent.GPUInfo{
+					{Index: 0, Vendor: "nvidia", Model: "NVIDIA GeForce RTX 4090"},
+				},
+			},
+		})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv0.URL, GPUModel: "Unknown GPU"},
+		{Name: "gpu-1", URL: psSrv1.URL, GPUModel: "My Custom Label"},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "")
+	r.SetNodeAgent("gpu-1", true, agentPort, "")
+
+	r.pollNode(r.nodes[0])
+	r.pollNode(r.nodes[1])
+
+	r.nodes[0].mu.RLock()
+	got0 := r.nodes[0].GPUModel
+	r.nodes[0].mu.RUnlock()
+	if got0 != "NVIDIA GeForce RTX 4090" {
+		t.Errorf("GPUModel = %q, want agent-reported NVIDIA GeForce RTX 4090 to replace the Unknown GPU placeholder", got0)
+	}
+
+	r.nodes[1].mu.RLock()
+	got1 := r.nodes[1].GPUModel
+	r.nodes[1].mu.RUnlock()
+	if got1 != "My Custom Label" {
+		t.Errorf("GPUModel = %q, want operator-set label preserved, not overwritten by the agent", got1)
+	}
+}
+
 // TestPollAgentTelemetryWrongTokenClearsFields verifies that a configured
 // agent rejecting the mesh's token (401) is treated the same as an
 // unreachable agent: fields are cleared, not left at a stale prior value.
