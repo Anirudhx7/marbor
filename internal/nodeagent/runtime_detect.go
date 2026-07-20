@@ -16,10 +16,12 @@ import (
 // lifetime" shape as GPU vendor selection (gpu.go) - a node's runtime
 // doesn't change while the agent process is running.
 type RuntimeDetector interface {
-	// Detect returns the runtime name ("ollama", "vllm", "tgi", "llamacpp")
-	// and whether one was actually found. false means "couldn't tell" -
-	// callers must omit the field (R1), never guess.
-	Detect(ctx context.Context) (string, bool)
+	// Detect returns the runtime name ("ollama", "vllm", "tgi", "llamacpp"),
+	// the base URL it answered on (needed so Scheduler can re-probe it every
+	// refresh for warm models/reachability), and whether one was actually
+	// found. found=false means "couldn't tell" - callers must omit the
+	// runtime resource entirely (R1), never guess.
+	Detect(ctx context.Context) (name string, url string, found bool)
 }
 
 // localRuntimePorts are the well-known local ports each supported runtime
@@ -42,11 +44,11 @@ func newLocalhostRuntimeDetector() RuntimeDetector {
 	return localhostRuntimeDetector{client: &http.Client{Timeout: 3 * time.Second}}
 }
 
-func (d localhostRuntimeDetector) Detect(ctx context.Context) (string, bool) {
+func (d localhostRuntimeDetector) Detect(ctx context.Context) (string, string, bool) {
 	for _, url := range localRuntimePorts {
 		if name, reached := runtimepkg.DetectRuntime(ctx, url, d.client); reached {
-			return name, true
+			return name, url, true
 		}
 	}
-	return "", false
+	return "", "", false
 }

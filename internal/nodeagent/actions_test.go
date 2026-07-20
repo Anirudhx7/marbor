@@ -18,7 +18,7 @@ func newTestServerWithRuntime(t *testing.T, runtime string) *Server {
 
 func doPull(t *testing.T, srv *Server, body string) *http.Response {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/actions/pull_model", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/models", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer tok")
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, req)
@@ -94,7 +94,7 @@ func TestHandlePullModel_MissingModelIsBadRequest(t *testing.T) {
 
 func TestHandlePullModel_RequiresBearerToken(t *testing.T) {
 	srv := newTestServerWithRuntime(t, "ollama")
-	req := httptest.NewRequest(http.MethodPost, "/actions/pull_model", strings.NewReader(`{"model":"llama3:8b"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/models", strings.NewReader(`{"model":"llama3:8b"}`))
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, req)
 	if w.Result().StatusCode != http.StatusUnauthorized {

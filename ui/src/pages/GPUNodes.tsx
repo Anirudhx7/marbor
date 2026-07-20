@@ -22,6 +22,17 @@ function formatBytes(bytes: number): string {
   return `${mb.toFixed(0)} MB`;
 }
 
+// formatUptime renders a node agent's reported uptime_seconds as a compact
+// "Xd Yh" / "Xh Ym" string for the manage-agent modal.
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 function FitBadge({ fit }: { fit: FitStatus }) {
   const styles: Record<FitStatus, string> = {
     green:   'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
@@ -1537,11 +1548,43 @@ export function GPUNodes() {
                 <div className="text-xs text-muted-foreground space-y-1 bg-secondary/40 rounded-lg p-3">
                   <p><span className="font-medium text-foreground">Agent version:</span> {agentNode.agentVersion || '--'}</p>
                   <p><span className="font-medium text-foreground">Platform:</span> {agentNode.agentPlatform || '--'} / {agentNode.agentArchitecture || '--'}</p>
-                  <p><span className="font-medium text-foreground">GPU vendor:</span> {agentNode.agentGpuVendor || '--'}</p>
+                  <p><span className="font-medium text-foreground">GPU vendor:</span> {agentNode.agentGpuVendor || '--'}{agentNode.driverVersion ? ` (driver ${agentNode.driverVersion}${agentNode.cudaVersion ? `, CUDA ${agentNode.cudaVersion}` : ''})` : ''}</p>
                   {agentNode.agentRuntime && (
-                    <p><span className="font-medium text-foreground">Detected runtime:</span> {agentNode.agentRuntime}</p>
+                    <p>
+                      <span className="font-medium text-foreground">Detected runtime:</span> {agentNode.agentRuntime}
+                      {agentNode.runtimeVersion ? ` ${agentNode.runtimeVersion}` : ''}
+                      {agentNode.runtimeStatus ? ` (${agentNode.runtimeStatus})` : ''}
+                    </p>
                   )}
                   <p><span className="font-medium text-foreground">Capabilities:</span> {agentNode.agentCapabilities?.length ? agentNode.agentCapabilities.join(', ') : '--'}</p>
+                  {agentNode.hostname && (
+                    <p><span className="font-medium text-foreground">Host:</span> {agentNode.hostname}{agentNode.uptimeSeconds ? ` (up ${formatUptime(agentNode.uptimeSeconds)})` : ''}</p>
+                  )}
+                  {(agentNode.ramTotalMB || agentNode.diskTotalGB) && (
+                    <p>
+                      <span className="font-medium text-foreground">Host capacity:</span>{' '}
+                      {agentNode.ramTotalMB ? `${(agentNode.ramTotalMB / 1024).toFixed(1)} GB RAM` : '--'}
+                      {', '}
+                      {agentNode.diskTotalGB ? `${agentNode.diskTotalGB.toFixed(0)} GB disk` : '--'}
+                    </p>
+                  )}
+                  {agentNode.agentGpus && agentNode.agentGpus.length > 1 && (
+                    <div className="pt-1">
+                      <span className="font-medium text-foreground">GPUs ({agentNode.agentGpus.length}):</span>
+                      <ul className="mt-1 space-y-0.5">
+                        {agentNode.agentGpus.map((gpu) => (
+                          <li key={gpu.index} className="font-mono">
+                            #{gpu.index}: {gpu.vramUsedMB != null && gpu.vramTotalMB != null ? `${(gpu.vramUsedMB / 1024).toFixed(1)}/${(gpu.vramTotalMB / 1024).toFixed(1)} GB` : '--'}
+                            {gpu.corePercent != null ? `, ${gpu.corePercent}% util` : ''}
+                            {gpu.temperatureC != null ? `, ${gpu.temperatureC}°C` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {agentNode.agentNodeId && (
+                    <p className="pt-1 text-[10px] opacity-70">node_id: {agentNode.agentNodeId}</p>
+                  )}
                 </div>
               )}
               <div className="flex flex-wrap gap-3">
