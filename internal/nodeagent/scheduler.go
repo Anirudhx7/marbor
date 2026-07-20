@@ -39,10 +39,17 @@ type Scheduler struct {
 	// repeating that every 5s for a fact that never changes would be pure
 	// waste). The runtime's live reachability/warm-models ARE re-probed
 	// every refresh, via runtimeClient, since those genuinely change.
-	localRuntime  string
-	runtimeURL    string
-	runtimeClient *http.Client
-	snap          atomic.Pointer[Telemetry]
+	localRuntime string
+	runtimeURL   string
+	// runtimeVersion is detected once at construction, same "detect once"
+	// shape as localRuntime/runtimeURL - a runtime's own reported version
+	// string cannot change while its process keeps running, so re-running
+	// the version command every refresh tick would be pure waste (and, for
+	// "ollama version", a forked subprocess every 5s on every agent-enabled
+	// node in the fleet for an answer that's already known).
+	runtimeVersion string
+	runtimeClient  *http.Client
+	snap           atomic.Pointer[Telemetry]
 }
 
 // NewScheduler creates a Scheduler for the given agent_version string,
@@ -71,14 +78,23 @@ func newSchedulerWithBackends(version string, gpu GPUCollector, host HostCollect
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	name, url, _ := rd.Detect(ctx)
+	var runtimeVer string
+	if name != "" {
+		// Bounded independently of the detection timeout above - a version
+		// query is a single local command, not a multi-candidate sweep.
+		vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		runtimeVer = detectRuntimeVersion(vctx, name)
+		vcancel()
+	}
 	return &Scheduler{
-		version:       version,
-		nodeID:        loadOrCreateNodeID(),
-		gpu:           gpu,
-		host:          host,
-		localRuntime:  name,
-		runtimeURL:    url,
-		runtimeClient: &http.Client{Timeout: 5 * time.Second},
+		version:        version,
+		nodeID:         loadOrCreateNodeID(),
+		gpu:            gpu,
+		host:           host,
+		localRuntime:   name,
+		runtimeURL:     url,
+		runtimeVersion: runtimeVer,
+		runtimeClient:  &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
@@ -148,11 +164,15 @@ func (s *Scheduler) refresh() {
 	t.Host = s.host.Collect(ctx)
 
 	if s.localRuntime != "" {
-		ri := &RuntimeInfo{
-			Name:    s.localRuntime,
-			Version: detectRuntimeVersion(ctx, s.localRuntime),
-		}
-		if result, err := runtimepkg.NewProbe(s.localRuntime, s.runtimeClient).Probe(ctx, s.runtimeURL); err == nil {
+		ri := &RuntimeInfo{Name: s.localRuntime, Version: s.runtimeVersion}
+		// Independent timeout, not the same ctx already spent on GPU/host
+		// collection above - a slow nvidia-smi cycle must not starve this
+		// probe's budget and report a false "down" purely from an expired
+		// deadline it never got a fair share of.
+		pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		result, err := runtimepkg.NewProbe(s.localRuntime, s.runtimeClient).Probe(pctx, s.runtimeURL)
+		pcancel()
+		if err == nil {
 			ri.Status = "up"
 			for _, m := range result.LoadedModels {
 				ri.WarmModels = append(ri.WarmModels, m.Name)
