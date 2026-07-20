@@ -58,6 +58,7 @@ const sampleNvidiaSMIXML = `<?xml version="1.0" ?>
 	<driver_version>535.183.01</driver_version>
 	<cuda_version>12.2</cuda_version>
 	<gpu id="00000000:01:00.0">
+		<product_name>NVIDIA GeForce RTX 4090</product_name>
 		<fan_speed>52 %</fan_speed>
 		<fb_memory_usage>
 			<total>24576 MiB</total>
@@ -113,6 +114,9 @@ func TestParseNvidiaSMIXMLMultiGPU(t *testing.T) {
 	if d0.Index != 0 {
 		t.Errorf("Devices[0].Index = %d, want 0", d0.Index)
 	}
+	if d0.Model != "NVIDIA GeForce RTX 4090" {
+		t.Errorf("Devices[0].Model = %q, want NVIDIA GeForce RTX 4090", d0.Model)
+	}
 	if d0.VRAMTotalMB != 24576 || d0.VRAMUsedMB != 21504 {
 		t.Errorf("Devices[0] VRAM = %d/%d, want 21504/24576", d0.VRAMUsedMB, d0.VRAMTotalMB)
 	}
@@ -132,6 +136,9 @@ func TestParseNvidiaSMIXMLMultiGPU(t *testing.T) {
 	d1 := block.Devices[1]
 	if d1.Index != 1 {
 		t.Errorf("Devices[1].Index = %d, want 1", d1.Index)
+	}
+	if d1.Model != "" {
+		t.Errorf("Devices[1].Model = %q, want empty (no product_name reported)", d1.Model)
 	}
 	if d1.VRAMUsedMB != 4096 {
 		t.Errorf("Devices[1].VRAMUsedMB = %d, want 4096", d1.VRAMUsedMB)

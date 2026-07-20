@@ -355,6 +355,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
           used={node.vramUsedMB / 1024}
           total={node.vramTotalMB / 1024}
           source={node.vramSource}
+          agentGpuVendor={node.agentGpuVendor}
           pending={(node.pendingPrewarmMB ?? 0) / 1024}
         />
       </div>

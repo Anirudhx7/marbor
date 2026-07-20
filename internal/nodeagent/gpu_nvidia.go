@@ -60,6 +60,7 @@ type nvidiaSMILog struct {
 }
 
 type nvidiaGPU struct {
+	ProductName      string      `xml:"product_name"`
 	FanSpeed         string      `xml:"fan_speed"`
 	FBMemory         nvidiaMem   `xml:"fb_memory_usage"`
 	Temperature      nvidiaTemp  `xml:"temperature"`
@@ -158,6 +159,7 @@ func parseNvidiaSMIXML(data []byte) (GPUBlock, bool) {
 		info := GPUInfo{
 			Index:       i,
 			Vendor:      "nvidia",
+			Model:       strings.TrimSpace(gpu.ProductName),
 			VRAMTotalMB: parseMiB(gpu.FBMemory.Total),
 			VRAMUsedMB:  parseMiB(gpu.FBMemory.Used),
 		}
