@@ -22,6 +22,15 @@ function formatBytes(bytes: number): string {
   return `${mb.toFixed(0)} MB`;
 }
 
+// LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
+// (admin.go) can report for a value read straight from a vendor tool -
+// "nvidia-smi" for the mesh's own local card, or whatever tool the Node
+// Agent detected ("rocm-smi"/"xpu-smi"/"system_profiler"), plus its generic
+// "agent" fallback when the vendor itself somehow wasn't reported. All of
+// these get the same "live reading" badge color; only "declared"/"inferred"/
+// "unknown" are visually distinct.
+const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent']);
+
 // formatUptime renders a node agent's reported uptime_seconds as a compact
 // "Xd Yh" / "Xh Ym" string for the manage-agent modal.
 function formatUptime(seconds: number): string {
@@ -1065,7 +1074,7 @@ export function GPUNodes() {
                     </span>
                   )}
                   <span className={`px-1.5 py-0.5 rounded text-xs ${
-                    nodeFit.vram_source === 'nvidia-smi'
+                    LIVE_VRAM_TOOL_SOURCES.has(nodeFit.vram_source)
                       ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                       : nodeFit.vram_source === 'inferred'
                       ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
