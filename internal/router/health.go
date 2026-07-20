@@ -249,6 +249,9 @@ func (r *Router) pollNode(n *NodeState) {
 	nodeURL := n.URL
 	nowHealthy := n.Healthy
 	n.mu.Unlock()
+	for _, m := range models {
+		r.recordLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
+	}
 	if nowHealthy {
 		metrics.NodeHealthy(n.Name, 1)
 	} else {
