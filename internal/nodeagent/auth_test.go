@@ -50,7 +50,7 @@ func TestRequireTokenMiddleware(t *testing.T) {
 
 	t.Run("valid token passes through", func(t *testing.T) {
 		handlerCalled = false
-		req := httptest.NewRequest(http.MethodGet, "/telemetry", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 		req.Header.Set("Authorization", "Bearer mytoken")
 		w := httptest.NewRecorder()
 		h(w, req)
@@ -64,7 +64,7 @@ func TestRequireTokenMiddleware(t *testing.T) {
 
 	t.Run("invalid token rejected with 401", func(t *testing.T) {
 		handlerCalled = false
-		req := httptest.NewRequest(http.MethodGet, "/telemetry", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 		req.Header.Set("Authorization", "Bearer wrong")
 		w := httptest.NewRecorder()
 		h(w, req)
@@ -78,7 +78,7 @@ func TestRequireTokenMiddleware(t *testing.T) {
 
 	t.Run("missing token rejected with 401", func(t *testing.T) {
 		handlerCalled = false
-		req := httptest.NewRequest(http.MethodGet, "/telemetry", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 		w := httptest.NewRecorder()
 		h(w, req)
 		if handlerCalled {
@@ -98,7 +98,7 @@ func TestRequireTokenNeverAuthenticatesEmptyExpected(t *testing.T) {
 		t.Fatal("handler must never be called when no token is configured")
 	})
 	for _, authHeader := range []string{"", "Bearer ", "Bearer anything"} {
-		req := httptest.NewRequest(http.MethodGet, "/telemetry", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 		if authHeader != "" {
 			req.Header.Set("Authorization", authHeader)
 		}

@@ -5,37 +5,39 @@ import (
 	"net/http"
 )
 
-// Server is the Node Agent's local HTTP server: GET /telemetry (canonical
-// JSON) and GET /metrics (Prometheus text, derived from the same struct),
-// both gated by an exact-match bearer token (see auth.go). Pull-only,
-// polled by the mesh's existing router poll cycle - see
+// Server is the Node Agent Protocol's local HTTP server: GET /v1/status
+// (canonical JSON resource envelope), GET /metrics (Prometheus text, derived
+// from the same struct, left unversioned per Prometheus's own scrape-target
+// convention), and POST /v1/models (the first mutating resource - pull a
+// model onto this node) - all gated by an exact-match bearer token (see
+// auth.go). Pull-only, polled by the mesh's existing router poll cycle - see
 // .local/specs/node-agent.md section 3.
 //
-// Both routes serve Scheduler's cached snapshot rather than collecting on
-// every request - see scheduler.go. Scheduler is normally supplied by
-// agent.go's Run (seeded before the server starts, refreshed on a
-// background tick). A Server built with Scheduler left nil (e.g. an older
+// GET /v1/status and GET /metrics serve Scheduler's cached snapshot rather
+// than collecting on every request - see scheduler.go. Scheduler is normally
+// supplied by agent.go's Run (seeded before the server starts, refreshed on
+// a background tick). A Server built with Scheduler left nil (e.g. an older
 // test) falls back to a one-off Scheduler per request, so the zero value
 // stays usable rather than panicking - see snapshot() below.
 //
-// This type is deliberately just an HTTP router: adding a future action
-// route (e.g. POST /actions/restart-runtime) needs no change here beyond
-// registering it on the mux, since Server never encodes GPU/host/telemetry
-// assumptions itself - those live entirely behind the Scheduler/GPUCollector/
-// HostCollector seam.
+// This type is deliberately just an HTTP router: adding a future resource
+// route (e.g. GET /v1/models, POST /v1/runtime/restart) needs no change
+// here beyond registering it on the mux, since Server never encodes
+// GPU/host/runtime assumptions itself - those live entirely behind the
+// Scheduler/GPUCollector/HostCollector seam.
 type Server struct {
 	Token     string
 	Version   string
 	Scheduler *Scheduler
 }
 
-// Handler returns the agent's http.Handler with both routes registered and
+// Handler returns the agent's http.Handler with every route registered and
 // token-gated.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /telemetry", requireToken(s.Token, s.handleTelemetry))
+	mux.HandleFunc("GET /v1/status", requireToken(s.Token, s.handleStatus))
 	mux.HandleFunc("GET /metrics", requireToken(s.Token, s.handleMetrics))
-	mux.HandleFunc("POST /actions/pull_model", requireToken(s.Token, s.handlePullModel))
+	mux.HandleFunc("POST /v1/models", requireToken(s.Token, s.handlePullModel))
 	return mux
 }
 
@@ -54,7 +56,7 @@ func (s *Server) snapshot() Telemetry {
 	return sched.Snapshot()
 }
 
-func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	t := s.snapshot()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(t)
