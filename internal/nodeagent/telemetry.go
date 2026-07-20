@@ -92,8 +92,12 @@ type Agent struct {
 type GPUInfo struct {
 	// Index is this device's 0-based position within GPUBlock.Devices -
 	// stable for the process lifetime, not a hardware bus id.
-	Index        int      `json:"index"`
-	Vendor       string   `json:"vendor,omitempty"`
+	Index  int    `json:"index"`
+	Vendor string `json:"vendor,omitempty"`
+	// Model is the card's reported product name (e.g. "NVIDIA GeForce RTX
+	// 4090"), straight from the vendor tool - omitted, never guessed, when
+	// the backend doesn't report one (R1).
+	Model        string   `json:"model,omitempty"`
 	CorePercent  *float64 `json:"core_percent,omitempty"`
 	TemperatureC *float64 `json:"temperature_c,omitempty"`
 	FanPercent   *float64 `json:"fan_percent,omitempty"`

@@ -10,10 +10,10 @@ import (
 // the gpu block rather than treat a nil GPUCollector as a special case.
 var errNoGPUBackend = errors.New("nodeagent: no supported GPU backend detected on this host")
 
-// GPUCollector abstracts a single GPU-vendor telemetry source. nvidia-smi
-// (gpu_nvidia.go) is the only implementation today; AMD ROCm, Apple Silicon,
-// and Intel are meant to be added as additional GPUCollector implementations
-// without touching Scheduler, Server, or the wire schema - see
+// GPUCollector abstracts a single GPU-vendor telemetry source: nvidia-smi
+// (gpu_nvidia.go), rocm-smi (gpu_rocm.go), xpu-smi (gpu_intel.go), and
+// system_profiler (gpu_apple.go) each implement it independently without
+// Scheduler, Server, or the wire schema needing to change - see
 // .local/specs/node-agent.md's evolution notes. Mirrors how
 // internal/runtime/probe.go already lets router.go support multiple
 // inference backends (Ollama/vLLM/TGI/llama.cpp) behind one interface.
@@ -38,9 +38,15 @@ type GPUCollector interface {
 
 // gpuCandidates is the ordered list of GPU backends detectGPUCollector
 // tries. Add a new vendor by appending its GPUCollector implementation here
-// - nothing else in this package needs to change.
+// - nothing else in this package needs to change. Order doesn't matter in
+// practice: a single host's GPU vendor tooling is one of these, never more
+// than one, since nvidia-smi/rocm-smi/xpu-smi/system_profiler each only
+// resolve on PATH when that vendor's own driver stack installed it.
 var gpuCandidates = []GPUCollector{
 	nvidiaCollector{},
+	rocmCollector{},
+	intelCollector{},
+	appleCollector{},
 }
 
 // noGPUCollector is the explicit null-object result when no candidate
