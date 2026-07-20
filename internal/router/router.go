@@ -283,6 +283,15 @@ type Router struct {
 	lastUsed map[string]time.Time
 	lruMu    sync.Mutex
 	pinned   map[string]map[string]bool
+	// lastKnownVRAM caches the most recent REAL /api/ps size_vram observed for a
+	// (node, model) pair, keyed by modelKey, surviving after the model is
+	// unloaded/evicted. estimateModelSizeBytes prefers this over the on-disk
+	// weights size, since a model that doesn't fully fit in VRAM (partial
+	// GPU+CPU split) can have a real VRAM footprint far smaller than its file
+	// size - using the file size there overstates every future headroom
+	// reservation for it without bound. Guarded by vramSeenMu.
+	vramSeenMu    sync.Mutex
+	lastKnownVRAM map[string]int64
 	// lastEvictAt throttles auto-eviction per node (thrash guard), guarded by evictMu.
 	evictMu     sync.Mutex
 	lastEvictAt map[string]time.Time
