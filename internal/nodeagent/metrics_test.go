@@ -109,9 +109,10 @@ func TestRenderPrometheusOmitsUnknownFields(t *testing.T) {
 	if !strings.Contains(out, "nodeagent_protocol_version 1") {
 		t.Error("protocol_version metric should always be present")
 	}
-	// nodeagent_info should report gpu_vendor="none" and an empty runtime
-	// label when nothing was detected - never omitted or fabricated.
-	if !strings.Contains(out, `gpu_vendor="none"`) {
-		t.Errorf("expected gpu_vendor=\"none\" when no GPU block is present:\n%s", out)
+	// nodeagent_info should report gpu_vendor="" (empty, not a magic "none"
+	// string) and an empty runtime label when nothing was detected - never
+	// omitted or fabricated.
+	if !strings.Contains(out, `gpu_vendor=""`) {
+		t.Errorf("expected gpu_vendor=\"\" when no GPU block is present:\n%s", out)
 	}
 }

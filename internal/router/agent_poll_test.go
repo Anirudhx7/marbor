@@ -259,6 +259,81 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	}
 }
 
+// TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings is a regression
+// test: when a GPU backend is selected (vendor known) but a cycle's
+// Collect() failed - reported as gpu.vendor set with an empty devices array,
+// not a nil gpu block - the mesh must NOT keep showing the previous poll's
+// VRAM/temperature/power as current. AgentPresent stays true (the agent
+// itself is reachable) but every per-device reading must clear, the same way
+// a fully-absent gpu block already does (R1: a stale reading must never
+// survive under a "this is live" flag just because the vendor fact didn't
+// change).
+func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	temp := 70.0
+	power := 250.0
+	// First poll: a full, healthy reading with real VRAM/temperature/power.
+	// Second poll: same vendor known, but zero devices (the transient
+	// Collect() failure shape) - everything device-derived must clear.
+	var callCount int
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			json.NewEncoder(w).Encode(nodeagent.Telemetry{
+				Agent: nodeagent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+				GPU: &nodeagent.GPUBlock{
+					Count: 1, Vendor: "nvidia",
+					Devices: []nodeagent.GPUInfo{{Index: 0, TemperatureC: &temp, PowerWatts: &power, VRAMUsedMB: 8000, VRAMTotalMB: 16000}},
+				},
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{
+			Agent: nodeagent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+			GPU:   &nodeagent.GPUBlock{Count: 0, Vendor: "nvidia", Devices: []nodeagent.GPUInfo{}},
+		})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+
+	r.pollNode(r.nodes[0])
+	r.nodes[0].mu.RLock()
+	preTemp, preVRAM := r.nodes[0].Temperature, r.nodes[0].VRAMTotalMB
+	r.nodes[0].mu.RUnlock()
+	if preTemp == nil || *preTemp != 70 || preVRAM != 16000 {
+		t.Fatalf("precondition failed: first poll should have populated Temperature=70/VRAMTotalMB=16000, got %v/%d", preTemp, preVRAM)
+	}
+
+	r.pollNode(r.nodes[0])
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+	if !r.nodes[0].AgentPresent {
+		t.Fatal("AgentPresent = false, want true - the agent is still reachable, only its GPU reading failed this cycle")
+	}
+	if r.nodes[0].AgentGPUVendor != "nvidia" {
+		t.Errorf("AgentGPUVendor = %q, want nvidia (still known even when Collect() failed)", r.nodes[0].AgentGPUVendor)
+	}
+	if r.nodes[0].Temperature != nil {
+		t.Errorf("Temperature = %v after a zero-device poll, want nil (cleared, not stale)", r.nodes[0].Temperature)
+	}
+	if r.nodes[0].PowerDrawW != 0 {
+		t.Errorf("PowerDrawW = %v after a zero-device poll, want 0 (cleared, not stale)", r.nodes[0].PowerDrawW)
+	}
+	if r.nodes[0].VRAMTotalMB != 0 || r.nodes[0].VRAMUsedMB != 0 {
+		t.Errorf("VRAM = %d/%d after a zero-device poll, want 0/0 (cleared, not stale)", r.nodes[0].VRAMUsedMB, r.nodes[0].VRAMTotalMB)
+	}
+	if r.nodes[0].VRAMSource == "agent" {
+		t.Errorf("VRAMSource = %q, want reset off 'agent' once the agent's own reading failed", r.nodes[0].VRAMSource)
+	}
+}
+
 // TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored proves the rolling-
 // upgrade contract for a NEWER agent talking to an OLDER mesh: extra JSON
 // fields this mesh binary's nodeagent.Telemetry struct doesn't define must

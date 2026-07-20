@@ -149,7 +149,28 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 				}
 			}
 		} else {
+			// GPU vendor is known (a backend is selected on this node) but this
+			// cycle's Collect() failed - a transient nvidia-smi hiccup, not a
+			// permanent "no GPU" state. Clear every per-cycle reading derived
+			// from a device, the same way clearAgentTelemetry's wasAgentSourced
+			// branch does, so a stale VRAM/temperature/power figure from the
+			// last good poll never keeps displaying as current (R1) just
+			// because AgentPresent is still true.
 			n.FanPercent = nil
+			if !hasGPU {
+				n.Temperature = nil
+				n.PowerDrawW = 0
+				if n.VRAMSource == "agent" {
+					if n.VRAMTotalMBConfig > 0 {
+						n.VRAMTotalMB = n.VRAMTotalMBConfig
+						n.VRAMSource = "declared"
+					} else {
+						n.VRAMTotalMB = 0
+						n.VRAMSource = "none"
+					}
+					n.VRAMUsedMB = 0
+				}
+			}
 		}
 	} else {
 		n.AgentGPUVendor = ""

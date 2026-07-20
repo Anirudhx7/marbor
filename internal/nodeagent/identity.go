@@ -20,13 +20,21 @@ const nodeIDFileName = "node_id"
 
 // nodeIDDir returns the directory the agent persists its local state
 // (currently just node_id) in, creating it if necessary. Falls back to the
-// current working directory if the OS-standard per-user config dir can't be
-// determined - better a locally-visible fallback than a hard failure at
-// startup for a non-essential piece of state.
+// directory containing the running agent binary (not the process's current
+// working directory) if the OS-standard per-user config dir can't be
+// determined - a service/container invocation may not have $HOME/
+// $XDG_CONFIG_HOME set, but its binary path is always the same regardless of
+// what directory it was launched from, so this keeps node_id stable across
+// restarts in exactly the headless environments most likely to hit this
+// fallback. Only falls back to "." (truly last resort) if even that fails.
 func nodeIDDir() string {
 	base, err := os.UserConfigDir()
 	if err != nil || base == "" {
-		base = "."
+		if exe, exeErr := os.Executable(); exeErr == nil {
+			base = filepath.Dir(exe)
+		} else {
+			base = "."
+		}
 	}
 	dir := filepath.Join(base, "ollama-mesh-agent")
 	_ = os.MkdirAll(dir, 0o755)
