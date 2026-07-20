@@ -91,6 +91,41 @@ export interface GPUNode {
   agentArchitecture?: string;
   agentGpuVendor?: string;
   agentRuntime?: string;
+  // agentNodeId is the agent's self-persisted stable identity (survives
+  // agent upgrades/hostname changes) - shown for fleet debugging, not yet
+  // used to re-identify a node across a URL change.
+  agentNodeId?: string;
+  // agentGpuCount/agentGpus are the full multi-GPU array from the agent's
+  // gpu resource - agentGpus holds one entry per physical device so the UI
+  // can render a per-GPU breakdown instead of only the single aggregate
+  // vramTotalMB/vramUsedMB/temperature/powerDrawW/fanPercent fields above.
+  agentGpuCount?: number;
+  agentGpus?: AgentGPUDevice[];
+  driverVersion?: string;
+  cudaVersion?: string;
+  // Host capacity/identity - same agentPresent gating as the fields above.
+  ramTotalMB?: number;
+  diskTotalGB?: number;
+  hostname?: string;
+  uptimeSeconds?: number;
+  bootTime?: number;
+  // The detected runtime's own reported version and live reachability -
+  // distinct from agentRuntime (just the runtime name, already above).
+  runtimeVersion?: string;
+  runtimeStatus?: string;
+}
+
+// AgentGPUDevice mirrors internal/nodeagent.GPUInfo - one physical GPU
+// device from the agent's multi-GPU array.
+export interface AgentGPUDevice {
+  index: number;
+  vendor?: string;
+  corePercent?: number | null;
+  temperatureC?: number | null;
+  fanPercent?: number | null;
+  powerWatts?: number | null;
+  vramUsedMB?: number;
+  vramTotalMB?: number;
 }
 
 export interface LoadedModel {
