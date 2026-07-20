@@ -159,8 +159,8 @@ func TestSchedulerMetadataFields(t *testing.T) {
 	if snap.Agent.NodeID == "" {
 		t.Error("expected node_id to be set")
 	}
-	if len(snap.Capabilities) != 2 || snap.Capabilities[0] != "status" || snap.Capabilities[1] != "models.pull" {
-		t.Errorf("Capabilities = %v, want [status models.pull]", snap.Capabilities)
+	if len(snap.Capabilities) != 3 || snap.Capabilities[0] != "status" || snap.Capabilities[1] != "models.pull" || snap.Capabilities[2] != "models.list" {
+		t.Errorf("Capabilities = %v, want [status models.pull models.list]", snap.Capabilities)
 	}
 	if snap.Agent.Platform != runtime.GOOS {
 		t.Errorf("Platform = %q, want %q", snap.Agent.Platform, runtime.GOOS)
