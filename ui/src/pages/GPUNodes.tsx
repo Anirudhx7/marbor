@@ -276,7 +276,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
             <span className="text-xs font-medium">CPU</span>
           </div>
           <span className={`font-mono text-lg font-medium ${healthColor}`}>
-            {node.agentPresent && node.cpuPercent != null ? `${node.cpuPercent}%` : '--'}
+            {node.agentPresent && node.cpuPercent != null ? `${node.cpuPercent.toFixed(2)}%` : '--'}
           </span>
         </div>
         <div className="bg-secondary rounded-lg p-3">
@@ -405,7 +405,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                 >
                   {model.name}
                   <span className="ml-1.5 opacity-70 font-mono">
-                    {(model.sizeVram / 1024).toFixed(1)}GB
+                    {formatBytes(model.sizeVram)}
                   </span>
                   <button
                     onClick={() => onConfigureModel(model.name, node.name, node.runtime)}
