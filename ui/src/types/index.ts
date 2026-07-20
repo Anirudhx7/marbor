@@ -115,6 +115,18 @@ export interface GPUNode {
   // distinct from agentRuntime (just the runtime name, already above).
   runtimeVersion?: string;
   runtimeStatus?: string;
+  // localModels lists models already downloaded on this node (not just
+  // currently loaded - loadedModels above covers that), via the agent's
+  // "models.list" capability. Fetched separately (getNodeModels), not part
+  // of the bulk node list - only present here so demo mode has a static
+  // place to put mock data alongside the real per-node fetch.
+  localModels?: LocalModel[];
+}
+
+export interface LocalModel {
+  name: string;
+  sizeBytes?: number;
+  source: string;
 }
 
 // AgentGPUDevice mirrors internal/nodeagent.GPUInfo - one physical GPU

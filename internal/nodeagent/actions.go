@@ -17,10 +17,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -194,4 +196,204 @@ func writeAction(w http.ResponseWriter, status int, resp actionResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// listModelsTimeout bounds how long the agent waits to enumerate local
+// models. Deliberately short compared to pullTimeout - this is a read
+// (an HTTP GET or a directory scan), never a transfer, so there is no
+// legitimate reason for it to run long.
+var listModelsTimeout = 30 * time.Second
+
+// modelEntry is one entry in GET /v1/models' response - the Node Agent
+// Protocol's "models" resource, capability "models.list". SizeBytes is
+// omitted (never fabricated - R1) when the source can't report a real size.
+type modelEntry struct {
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"size_bytes,omitempty"`
+	// Source records where this entry came from ("ollama-tags" or
+	// "hf-cache") so a caller can tell "queried the runtime's own API" apart
+	// from "scanned a cache directory the runtime reads from but doesn't
+	// itself enumerate over HTTP" - the two have different freshness/
+	// completeness guarantees.
+	Source string `json:"source"`
+}
+
+type listModelsResponse struct {
+	Models []modelEntry `json:"models"`
+}
+
+// listCommands maps a locally-detected runtime name to how this agent
+// enumerates models already downloaded on this node (not just currently
+// loaded - node.loadedModels, sourced from the mesh's own runtime probe,
+// already covers that). Only Ollama exposes a real "everything downloaded"
+// primitive over HTTP (GET /api/tags); tgi/vllm/llamacpp/mlx have no such
+// endpoint - their own /v1/models (OpenAI-compat) reports only the
+// currently-loaded model, not the full local cache - so they fall back to
+// scanning the local Hugging Face cache directory, the same cache
+// pullViaHFHub (above) downloads into.
+var listCommands = map[string]func(ctx context.Context, runtimeURL string) ([]modelEntry, error){
+	"ollama":   listViaOllamaTags,
+	"tgi":      listViaHFCache,
+	"vllm":     listViaHFCache,
+	"llamacpp": listViaHFCache,
+	"mlx":      listViaHFCache,
+}
+
+// handleListModels is the GET /v1/models handler, gated by the same
+// per-node bearer token as every other route (see server.go/auth.go). A
+// list is never a mutating action, so unlike handlePullModel this never uses
+// actionResponse{ok,error} - success returns the model list directly, and
+// failure returns a plain {"error": "..."} body.
+func (s *Server) handleListModels(w http.ResponseWriter, r *http.Request) {
+	name, url := s.runtimeTarget()
+	fn, ok := listCommands[name]
+	if !ok {
+		msg := fmt.Sprintf("unsupported: no model-listing primitive for runtime %q", name)
+		if name == "" {
+			msg = "unsupported: no inference runtime detected on this node"
+		}
+		writeError(w, http.StatusUnprocessableEntity, msg)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), listModelsTimeout)
+	defer cancel()
+	models, err := fn(ctx, url)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(listModelsResponse{Models: models})
+}
+
+// listViaOllamaTags queries Ollama's own GET /api/tags - the one runtime
+// primitive in this fleet that genuinely reports "everything downloaded,"
+// independent of what's currently loaded. Uses its own client (Timeout left
+// zero, bounded purely by ctx) rather than Scheduler's runtimeClient - that
+// client is hardcoded to a 5s timeout for the periodic warm-model probe,
+// which would silently cap this read well under listModelsTimeout's
+// intended 30s budget for a node with a large model catalog.
+func listViaOllamaTags(ctx context.Context, runtimeURL string) ([]modelEntry, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, runtimeURL+"/api/tags", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ollama /api/tags returned status %d", resp.StatusCode)
+	}
+	var tags struct {
+		Models []struct {
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		return nil, err
+	}
+	models := make([]modelEntry, 0, len(tags.Models))
+	for _, m := range tags.Models {
+		models = append(models, modelEntry{Name: m.Name, SizeBytes: m.Size, Source: "ollama-tags"})
+	}
+	return models, nil
+}
+
+// listViaHFCache scans the local Hugging Face cache directory for
+// "models--<org>--<repo>" snapshot directories - the closest real equivalent
+// to "everything downloaded" that tgi/vllm/llamacpp/mlx have, since none of
+// them expose that over HTTP (see listCommands). runtimeURL is unused here
+// (part of the shared listCommands signature) - this source is purely a
+// filesystem read, never a network call.
+func listViaHFCache(_ context.Context, _ string) ([]modelEntry, error) {
+	dir, err := hfCacheDir()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []modelEntry{}, nil
+		}
+		return nil, err
+	}
+	models := make([]modelEntry, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "models--") {
+			continue
+		}
+		// A WalkDir error partway through (permission change, a file
+		// deleted mid-scan) leaves size holding only a partial sum - never
+		// report that as the real size (R1: an incomplete measurement is
+		// not a measurement), so size_bytes is omitted instead.
+		size, err := dirSize(filepath.Join(dir, e.Name()))
+		if err != nil {
+			size = 0
+		}
+		models = append(models, modelEntry{Name: hfCacheRepoID(e.Name()), SizeBytes: size, Source: "hf-cache"})
+	}
+	return models, nil
+}
+
+// hfCacheDir resolves the Hugging Face hub cache directory, honoring
+// HF_HOME same as huggingface-cli itself, falling back to the OS user
+// database (not another read of $HOME) when the environment doesn't have
+// it set - same reasoning as ensureHome above (a service environment may
+// have no $HOME at all).
+func hfCacheDir() (string, error) {
+	if v := os.Getenv("HF_HOME"); v != "" {
+		return filepath.Join(v, "hub"), nil
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		if u, err := user.Current(); err == nil {
+			home = u.HomeDir
+		}
+	}
+	if home == "" {
+		return "", errors.New("cannot resolve home directory to locate Hugging Face cache")
+	}
+	return filepath.Join(home, ".cache", "huggingface", "hub"), nil
+}
+
+// hfCacheRepoID converts a cache directory name ("models--org--repo") back
+// to the "org/repo" Hugging Face identifier it was downloaded from.
+func hfCacheRepoID(dirName string) string {
+	parts := strings.SplitN(strings.TrimPrefix(dirName, "models--"), "--", 2)
+	if len(parts) == 2 {
+		return parts[0] + "/" + parts[1]
+	}
+	return parts[0]
+}
+
+// dirSize sums the real on-disk size of every regular file under path -
+// never estimated (R1) - so a cached model's reported size reflects what's
+// actually on the node's disk.
+func dirSize(path string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			if info, err := d.Info(); err == nil {
+				total += info.Size()
+			}
+		}
+		return nil
+	})
+	return total, err
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{Error: msg})
 }
