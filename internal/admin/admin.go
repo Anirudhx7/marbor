@@ -666,6 +666,10 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
 	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
 	reg("GET /admin/nodes/{name}/models", s.cors(s.adminAuth(s.handleNodeModels)))
+	// "{model...}" (not "{model}") deliberately - model names routinely
+	// contain "/" (e.g. "org/repo"), same reasoning as the agent's own
+	// DELETE /v1/models/{name...} route (server.go).
+	reg("DELETE /admin/nodes/{name}/models/{model...}", s.cors(s.adminAuth(s.handleNodeDeleteModel)))
 	reg("GET /admin/nodes/{name}/pull/progress", s.cors(s.adminAuth(s.handlePullProgress)))
 	reg("DELETE /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleCancelPull)))
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
@@ -4977,6 +4981,141 @@ func buildAgentActionURL(nodeURL string, port int) (string, error) {
 		scheme = "http"
 	}
 	return fmt.Sprintf("%s://%s:%d/v1/models", scheme, u.Hostname(), port), nil
+}
+
+// nodeDeleteModelTimeout bounds how long the admin API waits for a node
+// agent's DELETE /v1/models/{name} response. Short like
+// nodeModelsListTimeout, not generous like nodePullTimeout - a delete is a
+// local filesystem removal, never a multi-GB transfer, so there is no
+// legitimate reason for it to run long.
+var nodeDeleteModelTimeout = 60 * time.Second
+
+// handleNodeDeleteModel removes a locally-downloaded model from a specific
+// node, via its Node Agent's DELETE /v1/models/{name} (capability
+// "models.delete"). No direct-HTTP fallback exists for this today (same
+// reasoning as handleNodeModels) - a node without an agent, or an agent
+// build predating this capability, returns a clear 501 rather than
+// silently reporting success for a delete that never happened (R1 extended
+// to actions).
+func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
+	nodeName := r.PathValue("name")
+	model := r.PathValue("model")
+	if model == "" {
+		writeJSONError(w, http.StatusBadRequest, "missing model name in path")
+		return
+	}
+
+	urls := s.router.NodeURLs()
+	nodeURL, ok := urls[nodeName]
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+		return
+	}
+
+	// Same fail-fast reasoning as handleNodePull/handleNodeModels: a down
+	// node's URL may still answer with something (another service on that
+	// port), producing a confusing "agent delete model failed: ..." error
+	// that looks capability-specific when the real problem is just
+	// reachability.
+	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before deleting a model", nodeName))
+		return
+	}
+
+	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "models.delete") {
+		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for deleting local models", nodeName))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), nodeDeleteModelTimeout)
+	defer cancel()
+	if err := s.deleteModelViaAgent(ctx, nodeURL, agentCfg, model); err != nil {
+		writeJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	s.logSystemChange(r, "delete_model", nodeName, fmt.Sprintf("Model: %s", model))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+// deleteModelViaAgent dispatches a model delete to nodeURL's Node Agent
+// (DELETE /v1/models/{name}, capability "models.delete").
+func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
+	actionURL, err := buildAgentDeleteURL(nodeURL, agentCfg.Port, model)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, actionURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodeDeleteModelTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("agent delete model failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("agent delete model: could not decode response (status %d)", resp.StatusCode)
+	}
+	if !out.OK {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// buildAgentDeleteURL derives the agent's DELETE /v1/models/{name} URL from
+// the node's own URL (same host) and the configured agent port, via
+// url.Parse per R5 - never arithmetic port derivation. model is appended
+// verbatim (not URL-escaped) so a name containing "/" (e.g. "org/repo")
+// lands on the agent side as multiple path segments, matching what its own
+// "{name...}" wildcard route expects - the same convention buildAgentActionURL
+// (POST /v1/models, request body instead of path) doesn't need but this
+// path-addressed route does.
+func buildAgentDeleteURL(nodeURL string, port int, model string) (string, error) {
+	u, err := url.Parse(nodeURL)
+	if err != nil {
+		return "", fmt.Errorf("parse node URL: %w", err)
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("node URL %q has no host", nodeURL)
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d/v1/models/%s", scheme, u.Hostname(), port, escapeModelPathSegments(model)), nil
+}
+
+// escapeModelPathSegments percent-escapes each "/"-delimited segment of a
+// model name independently, then rejoins with literal "/" - preserving the
+// path-segment split the agent's "{name...}" wildcard route expects while
+// still escaping characters ('#', '?', space, ...) that would otherwise be
+// reinterpreted as a fragment/query boundary by url.Parse/http.NewRequest,
+// silently truncating the path to a different (shorter) model name than the
+// caller intended.
+func escapeModelPathSegments(model string) string {
+	parts := strings.Split(model, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
 }
 
 // handleAudit queries the audit log with optional filters.
