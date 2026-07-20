@@ -187,8 +187,30 @@ nav .page { display: flex; align-items: center; justify-content: space-between; 
 .brand .name { font-weight: 600; letter-spacing: -0.01em; }
 .brand .ver { color: var(--text-faint); font-size: 12px; }
 .nav-right { display: flex; align-items: center; gap: 4px; }
-.nav-right a.link { color: var(--text-muted); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; }
-.nav-right a.link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
+  .nav-right a.link {
+    position: relative;
+    color: var(--text-muted);
+    padding: 6px 12px 9px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    transition: color .15s ease, background .15s ease;
+  }
+  .nav-right a.link::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 5px;
+    height: 1px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform .2s ease;
+    opacity: .95;
+  }
+  .nav-right a.link:hover { color: var(--text); text-decoration: none; }
+  .nav-right a.link:hover::after,
+  .nav-right a.link.active::after { transform: scaleX(1); }
 .icon-btn {
   width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
   background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
@@ -226,6 +248,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 
 /* buttons */
 .cta-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 28px; }
+.hero-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; max-width: 860px; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono);
   font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: var(--radius);
@@ -357,6 +380,8 @@ h2.sec em { font-style: italic; color: var(--accent); }
 .feat .ic { color: var(--accent); width: 34px; height: 34px; display: flex; align-items: flex-start; justify-content: center; padding-top: 2px; }
 .feat .ic svg { width: 22px; height: 22px; }
 .feat.warm .ic { color: var(--accent); }
+.feat-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.feat-meta .chip { height: 20px; padding: 0 8px; }
 .feat h3 { font-family: var(--font-serif); font-weight: 600; font-size: 18px; margin: 0 0 10px; letter-spacing: -0.005em; }
 .feat p { color: var(--text-muted); font-size: 14px; margin: 0; line-height: 1.65; }
 .feat p code { background: var(--bg-surface); padding: 1px 5px; border-radius: 3px; color: var(--text); font-size: 12px; border: 1px solid var(--border-subtle); }
@@ -399,14 +424,17 @@ pre.code .g { color: var(--accent2); }
 pre.code .b { color: var(--accent); }
 
 /* compare table */
+.compare-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 18px; }
+.compare-summary .chip { height: 22px; padding: 0 10px; font-weight: 600; }
 .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-elevated); box-shadow: 0 4px 24px -12px rgba(0,0,0,0.5); }
 .table-scroll { overflow-x: auto; }
 table.compare { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 560px; }
 table.compare th, table.compare td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); transition: background-color .15s ease; }
 table.compare thead th { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; background: var(--bg-surface); }
 table.compare thead th.us { color: var(--accent); }
-table.compare tbody td:first-child { color: var(--text); font-weight: 500; }
-table.compare td.col-us { background: var(--accent-bg); }
+table.compare tbody tr:nth-child(odd) td { background: color-mix(in srgb, var(--bg) 56%, transparent); }
+table.compare tbody td:first-child { color: var(--text); font-weight: 600; }
+table.compare td.col-us { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 table.compare tbody tr { transition: background-color .15s ease; }
 table.compare tbody tr:hover { background-color: var(--bg-surface); }
 table.compare tbody tr:hover td.col-us { background-color: var(--accent-bg-hover); }
@@ -779,10 +807,10 @@ SPCS-FEATURE-END */
     <span class="kicker"><span class="dot"></span>{{VERSION}}: Supports Ollama, vLLM, TGI, llama.cpp, MLX · Self-hosted · Apache-2.0</span>
     <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
-      A single-binary control plane that turns your own GPUs into a high-availability alternative to cloud LLM APIs.
+      A self-hosted control plane with a Node Agent for remote telemetry, model operations, and node-side maintenance.
       ollama-mesh routes each request to the node already holding the model warm in VRAM - eliminating cold starts,
       balancing queue depth across nodes, and metering cost-aware cloud overflow with full token accounting.
-      One OpenAI-compatible endpoint for Ollama, vLLM, TGI, llama.cpp, and MLX.
+      The core stays a single Go binary; the Node Agent extends it on remote GPU hosts with richer live data, lifecycle control, and fleet maintenance.
     </p>
 
     <div class="cta-row">
@@ -1015,14 +1043,24 @@ SPCS-FEATURE-END -->
     <div class="features">
       <div class="feat warm">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg></div>
-        <div>
-          <h3>Warm-state VRAM scheduling</h3>
-          <p>Schedules requests exclusively to GPU nodes where the target model is already resident in VRAM. Prevents the multi-second delay of thrashing models in and out of GPU memory, maximizing hardware lifetime and throughput.</p>
-        </div>
+          <div>
+            <div class="feat-meta">
+              <span class="chip chip-yes">warm hit</span>
+              <span class="chip chip-partial">resident VRAM</span>
+              <span class="chip chip-no">queue depth</span>
+            </div>
+            <h3>Warm-state VRAM scheduling</h3>
+            <p>Schedules requests exclusively to GPU nodes where the target model is already resident in VRAM. Prevents the multi-second delay of thrashing models in and out of GPU memory, maximizing hardware lifetime and throughput.</p>
+          </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg></div>
         <div>
+          <div class="feat-meta">
+            <span class="chip chip-yes">2 cloud backends</span>
+            <span class="chip chip-partial">auto reroute</span>
+            <span class="chip chip-no">saturation aware</span>
+          </div>
           <h3>High-availability failover & overflow</h3>
           <p>Spills traffic to backup cloud APIs (OpenAI or Anthropic) only when local GPUs are fully saturated. The scheduler automatically pulls traffic back to the local cluster the instant queue depth or VRAM capacity is freed, ensuring you only pay for cloud compute when your local hardware is genuinely full.</p>
         </div>
@@ -1030,6 +1068,11 @@ SPCS-FEATURE-END -->
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
         <div>
+          <div class="feat-meta">
+            <span class="chip chip-yes">per token</span>
+            <span class="chip chip-partial">cloud overflow</span>
+            <span class="chip chip-no">savings log</span>
+          </div>
           <h3>Cost-aware routing</h3>
           <p>Tracks, prices, and logs every cloud-overflow request per token. Provides a clear accounting of the dollar amount saved by serving requests locally versus what was spent on cloud fallback, directly in your terminal or dashboard.</p>
         </div>
@@ -1037,13 +1080,23 @@ SPCS-FEATURE-END -->
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
         <div>
-          <h3>Cluster observability</h3>
-          <p>Exposes real-time GPU utilization, active queue depths, VRAM occupancy, and model residency across all nodes. Served directly from the single binary with zero external telemetry agents, databases, or Grafana dashboards to configure.</p>
+          <div class="feat-meta">
+            <span class="chip chip-yes">node agent</span>
+            <span class="chip chip-partial">live nodes</span>
+            <span class="chip chip-no">node-side ops</span>
+          </div>
+          <h3>Node Agent observability and operations</h3>
+          <p>Turns each remote GPU host into a live, operator-visible node: real-time GPU utilization, active queue depth, VRAM occupancy, model residency, and node-side operations are all available through the same product surface. No separate exporters, databases, or Grafana stack to assemble just to observe, control, and maintain your cluster.</p>
         </div>
       </div>
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
         <div>
+          <div class="feat-meta">
+            <span class="chip chip-yes">1 binary</span>
+            <span class="chip chip-partial">&lt;10ms cold start</span>
+            <span class="chip chip-no">zero deps</span>
+          </div>
           <h3>Single-binary deployment</h3>
           <p>A static, self-contained Go binary with zero runtime dependencies. Cold-starts in under 10ms, has a negligible memory footprint, and requires no Python environment, node modules, or Docker containers to run.</p>
         </div>
@@ -1051,6 +1104,11 @@ SPCS-FEATURE-END -->
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div>
         <div>
+          <div class="feat-meta">
+            <span class="chip chip-yes">/v1/chat/completions</span>
+            <span class="chip chip-partial">API keys</span>
+            <span class="chip chip-no">quotas</span>
+          </div>
           <h3>OpenAI-compatible API gateway</h3>
           <p>Enforces API key authentication and token quotas. Supports the standard <code>/v1/chat/completions</code> endpoint for tools like Continue, LibreChat, Open WebUI, and custom applications by changing a single base URL.</p>
         </div>
@@ -1058,6 +1116,11 @@ SPCS-FEATURE-END -->
       <div class="feat">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/><rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/><path d="M9 6.5h6M9 17.5h6M5.5 10v4M18.5 10v4"/></svg></div>
         <div>
+          <div class="feat-meta">
+            <span class="chip chip-yes">5 runtimes</span>
+            <span class="chip chip-partial">protocol translation</span>
+            <span class="chip chip-no">mix &amp; match</span>
+          </div>
           <h3>Multi-runtime load balancing</h3>
           <p>Provides a unified OpenAI-compatible endpoint that transparently orchestrates Ollama, vLLM, llama.cpp, TGI, and MLX nodes. Handles protocol translation automatically, allowing you to mix and match runtimes based on performance needs.</p>
         </div>
@@ -1070,8 +1133,8 @@ SPCS-FEATURE-END -->
 <section id="how">
   <div class="page">
     <p class="eyebrow">From zero to routed in three steps</p>
-    <h2 class="sec">A unified control plane. <em>Zero-agent deployment.</em></h2>
-    <p class="sec-sub">No complex cluster agents or sidecars on your GPU nodes. ollama-mesh acts as a centralized control plane, communicating directly with your runtimes over standard HTTP APIs.</p>
+    <h2 class="sec">A unified control plane. <em>Optional Node Agent.</em></h2>
+    <p class="sec-sub">The core control plane is a single Go binary. When you want richer remote telemetry, model lifecycle operations, or node-side maintenance, install the Node Agent on the GPU hosts that need it. ollama-mesh still communicates with every runtime over standard HTTP APIs.</p>
 
     <div class="steps">
       <div class="step">
@@ -1115,6 +1178,11 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
     <p class="eyebrow">Where it fits</p>
     <h2 class="sec">Why a GPU-aware scheduler beats a <em>plain load balancer.</em></h2>
     <p class="sec-sub">Nginx, HAProxy, and Traefik balance TCP connections - they can't see which GPU holds your model warm. ollama-mesh schedules on live GPU and VRAM state instead. Here's the honest breakdown.</p>
+    <div class="compare-summary" aria-label="Comparison summary">
+      <span class="chip chip-yes">8 capability checks</span>
+      <span class="chip chip-partial">8/8 for ollama-mesh</span>
+      <span class="chip chip-no">0/8 for plain load balancers</span>
+    </div>
 
     <div class="table-wrap"><div class="table-scroll">
       <table class="compare">
@@ -1272,6 +1340,9 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
         <a class="gh-link" href="https://github.com/Anirudhx7/ollama-mesh" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer">
           <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
+        <a class="gh-link" href="https://www.linkedin.com/in/anirudh-mehandru/" aria-label="LinkedIn profile" target="_blank" rel="noopener noreferrer" style="margin-left:10px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.33V9h3.42v1.56h.05c.48-.9 1.66-1.85 3.42-1.85 3.66 0 4.33 2.41 4.33 5.54v6.2zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45z"/></svg>
+        </a>
       </div>
       <div class="foot-col">
         <h4>Product</h4>
@@ -1299,7 +1370,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
       </div>
     </div>
     <div class="foot-bottom">
-      <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
+      <span>© <span id="year">2026</span> ollama-mesh · Apache-2.0</span>
       <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span> · <a href="https://github.com/Anirudhx7/ollama-mesh/releases" class="gh-link">releases ↗</a></span>
     </div>
   </div>

@@ -95,8 +95,30 @@ nav .page { max-width: 1200px; padding: 0 40px; display: flex; align-items: cent
 .brand .name { font-weight: 600; letter-spacing: -0.01em; }
 .brand .ver { color: var(--text-faint); font-size: 12px; }
 .nav-right { display: flex; align-items: center; gap: 4px; }
-.nav-right a.link { color: var(--text-muted); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; }
-.nav-right a.link:hover { color: var(--text); background: var(--bg-surface); text-decoration: none; }
+.nav-right a.link {
+  position: relative;
+  color: var(--text-muted);
+  padding: 6px 12px 9px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  transition: color .15s ease, background .15s ease;
+}
+.nav-right a.link::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 5px;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform .2s ease;
+  opacity: .95;
+}
+.nav-right a.link:hover { color: var(--text); text-decoration: none; }
+.nav-right a.link:hover::after,
+.nav-right a.link.active::after { transform: scaleX(1); }
 .nav-right a.link.active { color: var(--accent); }
 .icon-btn {
   width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
@@ -190,6 +212,7 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 440px; }
 .doc-content th, .doc-content td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
 .doc-content thead th { background: var(--bg-surface); font-size: 11px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+.doc-content tbody tr:nth-child(odd) td { background: color-mix(in srgb, var(--bg) 58%, transparent); }
 .doc-content tbody tr:last-child td { border-bottom: none; }
 .doc-content td code { font-size: 11.5px; }
 .doc-foot-edit { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border-subtle); font-size: 13px; }
@@ -214,6 +237,9 @@ html.light .theme-toggle .moon { display: block; }
 .index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .index-card { display: block; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; transition: border-color .15s, transform .15s; }
 .index-card:hover { border-color: var(--accent-dim); transform: translateY(-1px); text-decoration: none; }
+.index-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.index-card-top .chip { height: 20px; padding: 0 8px; }
+.index-card-count { color: var(--text-faint); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .index-card h3 { font-family: var(--font-serif); font-weight: 600; font-size: 16px; margin: 0 0 7px; color: var(--text); }
 .index-card p { font-size: 13px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.55; }
 .index-card .arrow { font-size: 12px; color: var(--accent); }
@@ -283,21 +309,21 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   <p class="lead">Everything you need to put ollama-mesh in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
   
     <section class="index-section">
-      <h2>Guides</h2>
+      <h2>Guides · 4 pages</h2>
       <div class="index-grid">
-        <a class="index-card" href="INTEGRATIONS.html"><h3>Integrations</h3><p>ollama-mesh exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible /v1 endpoints u...</p><span class="arrow">Read →</span></a><a class="index-card" href="LIMITATIONS.html"><h3>Known limitations</h3><p>This page documents what ollama-mesh does not do, what has been tested, and what to plan around in production. Infrastru...</p><span class="arrow">Read →</span></a><a class="index-card" href="PRODUCTION.html"><h3>Production</h3><p>This guide covers running ollama-mesh in a real production environment. There is no config file - ollama-mesh is DB-firs...</p><span class="arrow">Read →</span></a><a class="index-card" href="SAVINGS-MATH.html"><h3>Savings math</h3><p>This document is the financial model behind ollama-mesh's savings tracking. It is designed for infrastructure directors ...</p><span class="arrow">Read →</span></a><a class="index-card" href="USE-CASES.html"><h3>Use cases</h3><p>The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aw...</p><span class="arrow">Read →</span></a>
+        <a class="index-card" href="INTEGRATIONS.html"><div class="index-card-top"><span class="index-card-count">Guides · 4 pages</span></div><h3>Integrations</h3><p>ollama-mesh exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible /v1 endpoints u...</p><span class="arrow">Read →</span></a><a class="index-card" href="LIMITATIONS.html"><div class="index-card-top"><span class="index-card-count">Guides · 4 pages</span></div><h3>Known limitations</h3><p>This page documents what ollama-mesh does not do, what has been tested, and what to plan around in production. Infrastru...</p><span class="arrow">Read →</span></a><a class="index-card" href="SAVINGS-MATH.html"><div class="index-card-top"><span class="index-card-count">Guides · 4 pages</span></div><h3>Savings math</h3><p>This document is the financial model behind ollama-mesh's savings tracking. It is designed for infrastructure directors ...</p><span class="arrow">Read →</span></a><a class="index-card" href="USE-CASES.html"><div class="index-card-top"><span class="index-card-count">Guides · 4 pages</span></div><h3>Use cases</h3><p>The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aw...</p><span class="arrow">Read →</span></a>
       </div>
     </section>
     <section class="index-section">
-      <h2>Deploy</h2>
+      <h2>Deployment · 2 pages</h2>
       <div class="index-grid">
-        <a class="index-card" href="deploy/aws-ec2.html"><h3>AWS EC2</h3><p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2....</p><span class="arrow">Read →</span></a>
+        <a class="index-card" href="PRODUCTION.html"><div class="index-card-top"><span class="index-card-count">Deployment · 2 pages</span></div><h3>Production</h3><p>This guide covers running ollama-mesh in a real production environment. There is no config file - ollama-mesh is DB-firs...</p><span class="arrow">Read →</span></a><a class="index-card" href="deploy/aws-ec2.html"><div class="index-card-top"><span class="index-card-count">Deployment · 2 pages</span></div><h3>AWS EC2</h3><p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2....</p><span class="arrow">Read →</span></a>
       </div>
     </section>
     <section class="index-section">
-      <h2>Integrations</h2>
+      <h2>Integrations · 4 pages</h2>
       <div class="index-grid">
-        <a class="index-card" href="integrations/continue.html"><h3>Continue</h3><p>Continue is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/librechat.html"><h3>LibreChat</h3><p>LibreChat supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU no...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/litellm.html"><h3>LiteLLM</h3><p>LiteLLM is a popular and powerful API gateway for provider abstraction, enterprise authentication, and user-level rate l...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/open-webui.html"><h3>Open WebUI</h3><p>Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes,...</p><span class="arrow">Read →</span></a>
+        <a class="index-card" href="integrations/continue.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>Continue</h3><p>Continue is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/librechat.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>LibreChat</h3><p>LibreChat supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU no...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/litellm.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>LiteLLM</h3><p>LiteLLM is a popular and powerful API gateway for provider abstraction, enterprise authentication, and user-level rate l...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/open-webui.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>Open WebUI</h3><p>Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes,...</p><span class="arrow">Read →</span></a>
       </div>
     </section>
 </main>
