@@ -5033,6 +5033,42 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// vramAgentVendorToolLabel maps a Node Agent's detected GPU vendor
+// (nodeagent.GPUBlock.Vendor - "nvidia"/"rocm"/"intel"/"apple") to the actual
+// command-line tool it read from, mirroring ui/src/components/VramBar.tsx's
+// AGENT_VENDOR_LABEL so the admin API and the GPU Nodes card never disagree
+// about what an agent-sourced reading's real source was.
+var vramAgentVendorToolLabel = map[string]string{
+	"nvidia": "nvidia-smi",
+	"rocm":   "rocm-smi",
+	"intel":  "xpu-smi",
+	"apple":  "system_profiler",
+}
+
+// vramFitSourceLabel names the tool that actually produced a node's VRAM
+// total, given its raw VRAMSource ("nvidia"/"agent"/"declared"/"api"/"none")
+// and (when the source is "agent") the vendor the Node Agent detected. Only
+// called when vramTotalMB > 0, so the caller has already established there
+// is a real total to attribute - this just names its source honestly instead
+// of defaulting every non-"nvidia"/"declared" case to a claimed "nvidia-smi"
+// origin regardless of which vendor tool actually produced it (R1: a label
+// is a claim about provenance, not a decoration).
+func vramFitSourceLabel(rawVramSource, agentGPUVendor string) string {
+	switch rawVramSource {
+	case "nvidia":
+		return "nvidia-smi"
+	case "declared":
+		return "declared"
+	case "agent":
+		if label, ok := vramAgentVendorToolLabel[agentGPUVendor]; ok {
+			return label
+		}
+		return "agent"
+	default:
+		return "agent"
+	}
+}
+
 // handleModelFit computes per-model VRAM fit status for every node.
 // GET /admin/nodes/model-fit (also /admin/v1/nodes/model-fit)
 //
@@ -5071,6 +5107,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		vramTotalMB := n.VRAMTotalMB
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
+		agentGPUVendor := n.AgentGPUVendor
 		loadedSet := make(map[string]bool)
 		for _, m := range n.LoadedModels {
 			loadedSet[m.Name] = true
@@ -5091,13 +5128,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
 			}
-			if rawVramSource == "nvidia" {
-				vramSource = "nvidia-smi"
-			} else if rawVramSource == "declared" {
-				vramSource = "declared"
-			} else {
-				vramSource = "nvidia-smi" // fallback
-			}
+			vramSource = vramFitSourceLabel(rawVramSource, agentGPUVendor)
 		} else if vramUsedMBFromPS > 0 {
 			// No nvidia-smi but we have ps data - use loaded model VRAM as lower bound.
 			vramTotalBytes = 0

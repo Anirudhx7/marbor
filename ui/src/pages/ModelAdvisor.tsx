@@ -19,6 +19,11 @@ import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse } from '../lib/mockData';
 import { CustomDatePicker } from '../components/DateTimePicker';
 
+// LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
+// (admin.go) can report for a value read straight from a vendor tool - see
+// the identical constant in GPUNodes.tsx for the full reasoning.
+const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent']);
+
 function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   const styles = {
     green: 'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
@@ -601,7 +606,7 @@ export function ModelAdvisor() {
               <span className="text-xs text-muted-foreground self-start sm:self-auto">
                 VRAM source:{' '}
                 <span className={`px-1.5 py-0.5 rounded font-semibold ${
-                  activeNode.vram_source === 'nvidia-smi'
+                  LIVE_VRAM_TOOL_SOURCES.has(activeNode.vram_source)
                     ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                     : activeNode.vram_source === 'inferred'
                     ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
