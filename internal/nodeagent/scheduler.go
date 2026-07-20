@@ -202,3 +202,11 @@ func (s *Scheduler) Snapshot() Telemetry {
 	}
 	return s.metadata()
 }
+
+// RuntimeTarget returns the once-detected local runtime's name and base
+// URL - the same detect-once facts Telemetry.Runtime.Name is built from,
+// exposed directly for callers (handleListModels) that need to dial the
+// runtime themselves rather than read its already-collected telemetry.
+func (s *Scheduler) RuntimeTarget() (name, url string) {
+	return s.localRuntime, s.runtimeURL
+}

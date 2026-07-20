@@ -665,6 +665,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/analytics/export", s.cors(s.adminAuth(s.handleAnalyticsExport)))
 	reg("GET /admin/models", s.cors(s.adminAuth(s.handleModels)))
 	reg("POST /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleNodePull)))
+	reg("GET /admin/nodes/{name}/models", s.cors(s.adminAuth(s.handleNodeModels)))
 	reg("GET /admin/nodes/{name}/pull/progress", s.cors(s.adminAuth(s.handlePullProgress)))
 	reg("DELETE /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleCancelPull)))
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
@@ -4775,6 +4776,116 @@ func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
 		return healthy
 	}
 	return false
+}
+
+// nodeModelsListTimeout bounds how long the admin API waits for a node
+// agent's GET /v1/models response. Short and synchronous, unlike pulls
+// (async, nodePullTimeout) - a list is a read, never a multi-GB transfer, so
+// there is no legitimate reason for the request to run long.
+var nodeModelsListTimeout = 15 * time.Second
+
+// nodeModelEntry is the admin API's JSON shape for one locally-available
+// model on a node - camelCase per this API's own convention, translated
+// from the agent's snake_case wire shape by listModelsViaAgent below.
+type nodeModelEntry struct {
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"sizeBytes,omitempty"`
+	Source    string `json:"source"`
+}
+
+// handleNodeModels lists models already downloaded (not just currently
+// loaded - see the node's own "Loaded Models" field for that) on a specific
+// node, via its Node Agent's GET /v1/models (capability "models.list"). No
+// direct-HTTP fallback exists for this today (unlike handleNodePull) - a
+// node without an agent, or an agent build predating this capability,
+// returns a clear 501 rather than a fabricated empty-but-successful list
+// (R1).
+func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
+	nodeName := r.PathValue("name")
+
+	urls := s.router.NodeURLs()
+	nodeURL, ok := urls[nodeName]
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+		return
+	}
+
+	// Same fail-fast reasoning as handleNodePull: a down node's URL may
+	// still answer with something (another service on that port), producing
+	// a confusing "agent list models failed: ..." error that looks
+	// capability-specific when the real problem is just reachability.
+	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before listing models", nodeName))
+		return
+	}
+
+	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "models.list") {
+		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for listing local models", nodeName))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), nodeModelsListTimeout)
+	defer cancel()
+	models, err := s.listModelsViaAgent(ctx, nodeURL, agentCfg)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"models": models})
+}
+
+// listModelsViaAgent queries nodeURL's Node Agent (GET /v1/models,
+// capability "models.list") and translates its snake_case wire response
+// into this API's camelCase nodeModelEntry shape.
+func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) ([]nodeModelEntry, error) {
+	actionURL, err := buildAgentActionURL(nodeURL, agentCfg.Port)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, actionURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodeModelsListTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("agent list models failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var out struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return nil, errors.New(msg)
+	}
+
+	var out struct {
+		Models []struct {
+			Name      string `json:"name"`
+			SizeBytes int64  `json:"size_bytes"`
+			Source    string `json:"source"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("agent list models: could not decode response (status %d)", resp.StatusCode)
+	}
+	models := make([]nodeModelEntry, 0, len(out.Models))
+	for _, m := range out.Models {
+		models = append(models, nodeModelEntry{Name: m.Name, SizeBytes: m.SizeBytes, Source: m.Source})
+	}
+	return models, nil
 }
 
 // nodeHasAgentCapability reports whether the node named name currently has

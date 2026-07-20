@@ -38,6 +38,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/status", requireToken(s.Token, s.handleStatus))
 	mux.HandleFunc("GET /metrics", requireToken(s.Token, s.handleMetrics))
 	mux.HandleFunc("POST /v1/models", requireToken(s.Token, s.handlePullModel))
+	mux.HandleFunc("GET /v1/models", requireToken(s.Token, s.handleListModels))
 	return mux
 }
 
@@ -54,6 +55,19 @@ func (s *Server) snapshot() Telemetry {
 	sched := NewScheduler(s.Version)
 	sched.Seed()
 	return sched.Snapshot()
+}
+
+// runtimeTarget returns the locally-detected runtime name and the base URL
+// it answered on - the same one-off-Scheduler-when-nil fallback as
+// snapshot() above, since handleListModels needs the runtime's own URL, not
+// just its name (which Telemetry.Runtime already exposes via snapshot()).
+func (s *Server) runtimeTarget() (name, url string) {
+	sched := s.Scheduler
+	if sched == nil {
+		sched = NewScheduler(s.Version)
+		sched.Seed()
+	}
+	return sched.RuntimeTarget()
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel } from '../types';
 
 const BASE = '/admin';
 
@@ -1075,6 +1075,18 @@ export async function disableNodeAgent(name: string): Promise<void> {
     headers: authHeaders(),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to disable node agent'); }
+}
+
+// getNodeModels lists models already downloaded on a node (not just
+// currently loaded - node.loadedModels covers that), via the node's Node
+// Agent ("models.list" capability). Callers must check
+// node.agentCapabilities?.includes('models.list') before calling - a node
+// without the capability returns a 501, surfaced here as a thrown error.
+export async function getNodeModels(name: string): Promise<LocalModel[]> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/models`, { headers: authHeaders() });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to fetch locally available models'); }
+  const data = await res.json();
+  return data.models || [];
 }
 
 export async function setPredictiveEngine(enabled: boolean): Promise<{ predictive_engine_enabled: boolean }> {
