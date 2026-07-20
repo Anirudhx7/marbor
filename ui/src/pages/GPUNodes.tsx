@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
@@ -10,9 +10,9 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, getNodeModels } from '../lib/api';
 import type { NodeAgentStatus } from '../lib/api';
-import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
+import type { GPUNode, ModelFitResponse, NodeFit, FitStatus, LocalModel } from '../types';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -487,15 +487,28 @@ export function GPUNodes() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentCopiedWhich, setAgentCopiedWhich] = useState<'unix' | 'windows' | null>(null);
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
+  const [localModels, setLocalModels] = useState<LocalModel[] | null>(null);
+  const [localModelsError, setLocalModelsError] = useState<string | null>(null);
+  // Tracks which node the modal is currently open for, so a getNodeModels
+  // response that resolves after the user has already closed the modal or
+  // opened a different node's doesn't clobber that node's state with a
+  // stale result.
+  const agentModalNodeRef = useRef<string | null>(null);
 
   const openAgentModal = async (node: GPUNode) => {
+    agentModalNodeRef.current = node.name;
     setAgentNode(node);
     setAgentError(null);
     setAgentInstallCommand(null);
     setAgentCopiedWhich(null);
+    setLocalModels(null);
+    setLocalModelsError(null);
     if (demoMode) {
       setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
       setAgentPort('11435');
+      if (node.agentCapabilities?.includes('models.list')) {
+        setLocalModels(node.localModels ?? []);
+      }
       return;
     }
     try {
@@ -506,13 +519,26 @@ export function GPUNodes() {
       setAgentStatus({ node: node.name, enabled: false, port: 0 });
       setAgentError(e?.message || 'Failed to fetch node agent status');
     }
+    if (node.agentCapabilities?.includes('models.list')) {
+      try {
+        const models = await getNodeModels(node.name);
+        if (agentModalNodeRef.current === node.name) setLocalModels(models);
+      } catch (e: any) {
+        if (agentModalNodeRef.current === node.name) {
+          setLocalModelsError(e?.message || 'Failed to fetch locally available models');
+        }
+      }
+    }
   };
 
   const closeAgentModal = () => {
+    agentModalNodeRef.current = null;
     setAgentNode(null);
     setAgentStatus(null);
     setAgentInstallCommand(null);
     setAgentError(null);
+    setLocalModels(null);
+    setLocalModelsError(null);
   };
 
   const handleEnableAgent = async () => {
@@ -1594,6 +1620,26 @@ export function GPUNodes() {
                   )}
                   {agentNode.agentNodeId && (
                     <p className="pt-1 text-[10px] opacity-70">node_id: {agentNode.agentNodeId}</p>
+                  )}
+                </div>
+              )}
+              {agentNode?.agentCapabilities?.includes('models.list') && (
+                <div className="text-xs text-muted-foreground space-y-1 bg-secondary/40 rounded-lg p-3">
+                  <p className="font-medium text-foreground">Locally Available Models</p>
+                  {localModelsError && <p className="text-destructive">{localModelsError}</p>}
+                  {!localModelsError && localModels === null && <p>Loading...</p>}
+                  {!localModelsError && localModels !== null && localModels.length === 0 && (
+                    <p>No models downloaded on this node yet.</p>
+                  )}
+                  {!localModelsError && localModels && localModels.length > 0 && (
+                    <ul className="flex flex-wrap gap-1.5 pt-1">
+                      {localModels.map((m) => (
+                        <li key={m.name} className="px-2 py-1 bg-background rounded-md font-mono text-[11px] break-all">
+                          {m.name}
+                          {m.sizeBytes !== undefined ? ` (${formatBytes(m.sizeBytes)})` : ''}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               )}
