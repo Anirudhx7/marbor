@@ -397,3 +397,119 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 		Error string `json:"error"`
 	}{Error: msg})
 }
+
+// deleteModelTimeout bounds how long the agent waits to remove a model.
+// Short like listModelsTimeout, not generous like pullTimeout - a delete is
+// a local rm/RemoveAll, never a network transfer, so there is no legitimate
+// reason for it to run long even for a large model directory.
+var deleteModelTimeout = 60 * time.Second
+
+// deleteCommands maps a locally-detected runtime name to how this agent
+// removes a downloaded model, mirroring pullCommands/listCommands. Ollama
+// has a first-class delete primitive (`ollama rm`); tgi/vllm/llamacpp/mlx do
+// not, so they fall back to removing the model's directory from the same
+// local Hugging Face cache pullViaHFHub downloads into and listViaHFCache
+// scans - the only place those runtimes' downloaded-but-not-loaded models
+// actually live on disk.
+var deleteCommands = map[string]func(ctx context.Context, model string) error{
+	"ollama":   deleteViaOllama,
+	"tgi":      deleteViaHFCache,
+	"vllm":     deleteViaHFCache,
+	"llamacpp": deleteViaHFCache,
+	"mlx":      deleteViaHFCache,
+}
+
+// handleDeleteModel is the DELETE /v1/models/{name...} handler, gated by the
+// same per-node bearer token as every other route. The model name is taken
+// from the path rather than a request body - model names routinely contain
+// "/" (e.g. "org/repo"), and Go's ServeMux "{name...}" wildcard captures the
+// remaining path including any slashes, so there is no routing footgun to
+// route around here the way a single-segment "{name}" would have.
+func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
+	model := r.PathValue("name")
+	if model == "" {
+		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing model name in path"})
+		return
+	}
+
+	runtimeName, _ := s.runtimeTarget()
+	fn, ok := deleteCommands[runtimeName]
+	if !ok {
+		msg := fmt.Sprintf("unsupported: no delete primitive for runtime %q", runtimeName)
+		if runtimeName == "" {
+			msg = "unsupported: no inference runtime detected on this node"
+		}
+		writeAction(w, http.StatusUnprocessableEntity, actionResponse{Error: msg})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), deleteModelTimeout)
+	defer cancel()
+	if err := fn(ctx, model); err != nil {
+		writeAction(w, http.StatusBadGateway, actionResponse{Error: err.Error()})
+		return
+	}
+	writeAction(w, http.StatusOK, actionResponse{OK: true})
+}
+
+// deleteViaOllama runs `ollama rm <model>` - same CLI-subprocess style as
+// pullViaOllama, for the same reason: Ollama's own CLI is what already
+// understands its model-name/tag format, so there is no benefit to
+// reimplementing that against its HTTP DELETE /api/delete instead.
+func deleteViaOllama(ctx context.Context, model string) error {
+	return runDownload(ctx, "", "ollama", "rm", model)
+}
+
+// deleteViaHFCache removes a model's directory from the local Hugging Face
+// cache - the fallback for runtimes with no first-class delete primitive of
+// their own (see deleteCommands). model is attacker-influenced (it comes
+// straight off the request path), so the directory name derived from it is
+// resolved to an absolute path and checked to still live inside hfCacheDir()
+// before anything is removed - a crafted model name must never be able to
+// walk this destructive call outside the cache directory it's scoped to.
+//
+// Removing a model's files while a runtime process still has them open
+// (mapped or loaded) is safe in practice: on Linux, unlink only detaches the
+// directory entry - any process that already holds an open handle to a file
+// underneath keeps working until it closes that handle on its own.
+func deleteViaHFCache(_ context.Context, model string) error {
+	dir, err := hfCacheDir()
+	if err != nil {
+		return err
+	}
+	cleanDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+
+	dirName := "models--" + strings.ReplaceAll(hfRepoID(model), "/", "--")
+	target, err := filepath.Abs(filepath.Join(cleanDir, dirName))
+	if err != nil {
+		return err
+	}
+	if target != cleanDir && !strings.HasPrefix(target, cleanDir+string(filepath.Separator)) {
+		return fmt.Errorf("invalid model name %q", model)
+	}
+
+	// Lstat (not Stat) deliberately does not follow a symlink here - the
+	// prefix check above only proves target's own path is inside cleanDir,
+	// not what it resolves to. Without this, a symlink planted at that exact
+	// path by any other process with write access to the cache dir would
+	// pass the prefix check yet make RemoveAll recurse through the symlink
+	// and delete whatever it points at outside the cache entirely.
+	info, err := os.Lstat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("model %q not found in local cache", model)
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("invalid model name %q", model)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("invalid model name %q", model)
+	}
+
+	return os.RemoveAll(target)
+}
