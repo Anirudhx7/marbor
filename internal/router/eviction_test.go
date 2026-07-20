@@ -422,6 +422,86 @@ func TestEnsureHeadroomEvictsWhenModelWontFit(t *testing.T) {
 	}
 }
 
+// TestEstimateModelSizeBytesPrefersLastKnownRealVRAM reproduces the reported
+// bug: a large quantized model that doesn't fully fit in VRAM (Ollama splits
+// it across GPU+CPU) reports a real /api/ps size_vram far smaller than its
+// on-disk weights size (an 8B Q4_K_M model was ~9.6GB on disk but only used
+// ~3.3GB of real VRAM). Before this model has ever been observed loaded,
+// estimateModelSizeBytes has nothing but the disk size to go on. But once a
+// poll has confirmed its real footprint, every later headroom/reservation
+// calculation must use that real number - continuing to use the disk size
+// forever inflated every sibling model's headroom math without bound, making
+// a tiny model (a few hundred MB) look permanently unfittable on a node that
+// actually had room for it.
+func TestEstimateModelSizeBytesPrefersLastKnownRealVRAM(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"models":[{"name":"gemma4:latest","size":9608350718}]}`))
+	}))
+	defer srv.Close()
+
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "pve", URL: srv.URL}}, nil)
+
+	// Never observed loaded yet: falls back to the on-disk size.
+	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest"); got != 9608350718 {
+		t.Fatalf("before any observation, estimate = %d, want on-disk size 9608350718", got)
+	}
+
+	// A poll confirms the real, much smaller VRAM footprint.
+	r.recordLastKnownVRAM("pve", "gemma4:latest", 3327739904)
+
+	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest"); got != 3327739904 {
+		t.Fatalf("after observing real VRAM usage, estimate = %d, want real size 3327739904", got)
+	}
+}
+
+// TestEnsureHeadroomUsesRealVRAMNotDiskSizeForSiblingReservation is the
+// end-to-end version of the same bug: with a node too small to hold BOTH
+// models at their on-disk sizes but big enough for their real VRAM
+// footprints, a sibling model's headroom check must not be blocked by an
+// in-flight reservation that (wrongly) used the other model's disk size.
+func TestEnsureHeadroomUsesRealVRAMNotDiskSizeForSiblingReservation(t *testing.T) {
+	var evicted bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			w.Write([]byte(`{"models":[{"name":"mxbai","size":671088640}]}`)) // 640 MiB on disk
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(b), `"keep_alive":0`) {
+			evicted = true
+		}
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "pve", URL: srv.URL}}, nil)
+	n := r.nodes[0]
+	n.Healthy = true
+	n.VRAMTotalMB = 4096 // 4 GiB total
+
+	// "gemma" is mid-reload (not yet resident): its own headroom check
+	// reserves against its estimate. Its disk size (9GiB) alone exceeds the
+	// entire node, but its real, previously-observed VRAM footprint (3200
+	// MiB) does not - the reservation must use the real figure.
+	r.recordLastKnownVRAM("pve", "gemma", 3200*mib)
+	r.reserveWarmBytes("pve", "gemma", r.estimateModelSizeBytes(srv.URL, "gemma"))
+
+	// mxbai (640 MiB on disk, never loaded before) should still fit in the
+	// ~896 MiB left over (4096 - 3200 MiB), not be blocked by a phantom 9GiB
+	// reservation for gemma. Nothing is actually resident yet (both mid-load),
+	// so there is nothing to evict either.
+	n.LoadedModels = nil
+	r.ensureHeadroom(context.Background(), n, "mxbai")
+
+	if evicted {
+		t.Error("ensureHeadroom triggered an eviction - mxbai should have fit in the real 896 MiB free without evicting anything")
+	}
+	const want = 3200*mib + 640*mib // gemma's real reservation + mxbai's own
+	if got := r.PendingPrewarmBytes("pve"); got != want {
+		t.Fatalf("pve pending reservations = %d, want %d - gemma's 9GiB disk size leaked into the total instead of its real 3200 MiB", got, want)
+	}
+}
+
 // TestReserveWarmBytesAccountsForInFlightSiblings verifies that a live
 // reservation for one model on a node is visible (as "bytes reserved by
 // others") to a subsequent reservation for a different model on the same

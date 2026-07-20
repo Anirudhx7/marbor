@@ -48,6 +48,30 @@ func (r *Router) lastUsedAt(node, model string) time.Time {
 	return r.lastUsed[modelKey(node, model)]
 }
 
+// recordLastKnownVRAM caches the real, currently-resident VRAM size for
+// (node, model), so it remains available as a size estimate after the model
+// is later unloaded/evicted (see lastKnownVRAM field doc). Called every poll
+// cycle for every currently-loaded model.
+func (r *Router) recordLastKnownVRAM(node, model string, bytes int64) {
+	if bytes <= 0 {
+		return
+	}
+	r.vramSeenMu.Lock()
+	defer r.vramSeenMu.Unlock()
+	if r.lastKnownVRAM == nil {
+		r.lastKnownVRAM = make(map[string]int64)
+	}
+	r.lastKnownVRAM[modelKey(node, model)] = bytes
+}
+
+// lastKnownVRAMBytes returns the most recent real VRAM size observed for
+// (node, model), or 0 if it has never been seen resident.
+func (r *Router) lastKnownVRAMBytes(node, model string) int64 {
+	r.vramSeenMu.Lock()
+	defer r.vramSeenMu.Unlock()
+	return r.lastKnownVRAM[modelKey(node, model)]
+}
+
 // --- pinned models (never evicted, regardless of pressure) ---
 
 // SetPinnedModels sets the never-evict model set for a node. Empty clears it.
@@ -370,14 +394,41 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 // sustained pressure can't thrash (rapid load/evict oscillation).
 const evictCooldown = 15 * time.Second
 
-// estimateModelSizeBytes estimates the VRAM a not-yet-loaded model needs from the
-// node's /api/tags on-disk size (a good proxy for GGUF weights). Non-Ollama
-// runtimes (vllm, tgi, llamacpp, mlx) don't expose /api/tags, so FetchModelTags
-// fails or the model is absent from the result; in that case, fall back to the
-// operator-declared vram_overrides size for that node+model (R1: an explicit
-// operator declaration, not a guess). Returns 0 when the size is unknown by
-// either path so callers can decline to evict/warm blindly.
+// estimateModelSizeBytes estimates the VRAM a not-yet-loaded model needs, in
+// priority order: (1) the real VRAM footprint last observed while this model
+// was actually resident on this node (lastKnownVRAM) - a model that doesn't
+// fully fit in VRAM (partial GPU+CPU split, e.g. a large quantized model on a
+// small GPU) can use far less real VRAM than its on-disk weights size, so once
+// we've actually seen it loaded, that beats guessing from the file forever
+// after; (2) the node's /api/tags on-disk size (a good proxy for GGUF weights
+// before the model has ever been observed loaded); (3) non-Ollama runtimes
+// (vllm, tgi, llamacpp, mlx) don't expose /api/tags, so FetchModelTags fails or
+// the model is absent from the result - fall back to the operator-declared
+// vram_overrides size for that node+model (R1: an explicit operator
+// declaration, not a guess). Returns 0 when the size is unknown by any path so
+// callers can decline to evict/warm blindly.
 func (r *Router) estimateModelSizeBytes(nodeURL, model string) int64 {
+	r.mu.RLock()
+	var nodeName string
+	var overrideMB int64
+	for _, n := range r.nodes {
+		if n.URL != nodeURL {
+			continue
+		}
+		nodeName = n.Name
+		n.mu.RLock()
+		overrideMB = n.VRAMOverrides[model]
+		n.mu.RUnlock()
+		break
+	}
+	r.mu.RUnlock()
+
+	if nodeName != "" {
+		if known := r.lastKnownVRAMBytes(nodeName, model); known > 0 {
+			return known
+		}
+	}
+
 	if tags, err := r.FetchModelTags(nodeURL); err == nil {
 		for _, t := range tags {
 			if t.Name == model {
@@ -385,19 +436,8 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string) int64 {
 			}
 		}
 	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	for _, n := range r.nodes {
-		if n.URL != nodeURL {
-			continue
-		}
-		n.mu.RLock()
-		mb, ok := n.VRAMOverrides[model]
-		n.mu.RUnlock()
-		if ok && mb > 0 {
-			return mb * 1024 * 1024
-		}
-		break
+	if overrideMB > 0 {
+		return overrideMB * 1024 * 1024
 	}
 	return 0
 }
