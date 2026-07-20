@@ -513,3 +513,80 @@ func deleteViaHFCache(_ context.Context, model string) error {
 
 	return os.RemoveAll(target)
 }
+
+// unloadModelTimeout bounds how long the agent waits to evict a model from
+// VRAM. Short like deleteModelTimeout - a local runtime call, never a
+// network transfer, so there is no legitimate reason for it to run long.
+var unloadModelTimeout = 30 * time.Second
+
+// unloadCommands maps a locally-detected runtime name to how this agent
+// evicts one model from VRAM while leaving the runtime process (and any
+// other loaded models) running, mirroring pullCommands/listCommands/
+// deleteCommands. Only Ollama gets an entry - per
+// .local/specs/node-agent-capabilities.md's verify-before-build note, this is
+// deliberate, not an oversight:
+//   - vLLM's sleep-mode (/sleep, /wake_up) is real but process-scoped (it
+//     unloads *the* model in that process, not one of several) and gated
+//     behind a dev-only env flag not safe to assume enabled.
+//   - TGI is strictly single-model-per-process and the project is now
+//     archived - unloading there is really "stop the process", a different
+//     capability.
+//   - The official mlx_lm.server has no multi-model or unload endpoint at
+//     all; only third-party wrappers do.
+//   - llama.cpp's router mode has a genuine per-model POST /models/unload
+//     primitive, but using it requires knowing the runtime's own local HTTP
+//     address - no existing capability resolves that today (pull/list/delete
+//     use CLI subprocesses or an HF-cache directory scan, never an HTTP call
+//     to the runtime itself). Deferred deliberately rather than guessed at;
+//     tracked as a follow-up queue item, not silently dropped.
+var unloadCommands = map[string]func(ctx context.Context, model string) error{
+	"ollama": unloadViaOllama,
+}
+
+// handleUnloadModel is the POST /v1/models/{name...} handler, capability
+// "models.unload", gated by the same per-node bearer token as every other
+// route. model comes from the path, not a request body, matching
+// handleDeleteModel's reasoning: model names routinely contain "/" (e.g.
+// "org/repo"), so the trailing "{name...}" wildcard - not a literal "/unload"
+// suffix - is what lets ServeMux capture the whole name including slashes.
+// A trailing literal segment after a multi-segment wildcard isn't
+// expressible in net/http's ServeMux, so POST (already unused on this path
+// shape - pull owns the bare "POST /v1/models", delete owns
+// "DELETE /v1/models/{name...}") is the verb that means "unload this model"
+// here, the same way DELETE already means "delete this model" on the
+// identical path shape.
+func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
+	model := r.PathValue("name")
+	if model == "" {
+		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing model name in path"})
+		return
+	}
+
+	runtimeName, _ := s.runtimeTarget()
+	fn, ok := unloadCommands[runtimeName]
+	if !ok {
+		msg := fmt.Sprintf("unsupported: no unload primitive for runtime %q", runtimeName)
+		if runtimeName == "" {
+			msg = "unsupported: no inference runtime detected on this node"
+		}
+		writeAction(w, http.StatusUnprocessableEntity, actionResponse{Error: msg})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), unloadModelTimeout)
+	defer cancel()
+	if err := fn(ctx, model); err != nil {
+		writeAction(w, http.StatusBadGateway, actionResponse{Error: err.Error()})
+		return
+	}
+	writeAction(w, http.StatusOK, actionResponse{OK: true})
+}
+
+// unloadViaOllama runs `ollama stop <model>` - Ollama's own CLI equivalent of
+// the keep_alive:0 HTTP trick, evicting the model from VRAM while leaving the
+// daemon and any other loaded models running. Same CLI-subprocess style as
+// pullViaOllama/deleteViaOllama, for the same reason: Ollama's own CLI
+// already understands its model-name/tag format.
+func unloadViaOllama(ctx context.Context, model string) error {
+	return runDownload(ctx, "", "ollama", "stop", model)
+}

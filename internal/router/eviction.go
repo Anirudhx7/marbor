@@ -113,6 +113,14 @@ func (r *Router) isPinned(node, model string) bool {
 	return r.pinned[node][model]
 }
 
+// IsPinned reports whether model is on node's never-evict list. Exported so
+// callers that need to enforce the pin policy before choosing how to unload
+// (e.g. admin.go deciding between the agent path and the direct Ollama path)
+// can check it without going through UnloadModel's own node-specific call.
+func (r *Router) IsPinned(node, model string) bool {
+	return r.isPinned(node, model)
+}
+
 // --- warmup suppression (manual/scheduled unload must stick until re-armed) ---
 
 // suppressWarmup marks (node, model) so pingWarmupModels skips it on its next
@@ -211,7 +219,21 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("node %s returned %d unloading %q", n.Name, resp.StatusCode, model)
 	}
-	metrics.ModelEvicted(n.Name)
+	r.recordUnloadSideEffects(n.Name, model, reason)
+	return nil
+}
+
+// recordUnloadSideEffects updates every piece of mesh-side bookkeeping that
+// must follow a real, successful eviction, regardless of which path
+// performed the actual eviction (this router's own direct HTTP call above,
+// or a Node Agent dispatch - see Router.RecordManualUnload). Skipping this
+// for an agent-dispatched unload would silently undo the operator's action:
+// without suppressWarmup, pingWarmupModels reloads the model straight back
+// into VRAM on its next tick (default 5m later); without DeleteWarmState, a
+// mesh restart before the next background flush would restore it from
+// SQLite as if it were still resident.
+func (r *Router) recordUnloadSideEffects(nodeName, model, reason string) {
+	metrics.ModelEvicted(nodeName)
 	// A manual or scheduled unload is an operator decision that the model should
 	// stay cold; suppress the next warmupTicker ping for it so pingWarmupModels
 	// doesn't reload it straight back into VRAM (default 5m later) and silently
@@ -220,18 +242,26 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 	// that path evicts a keep-warm model only to make transient room for another
 	// request, and must remain eligible to warm back up on the very next tick.
 	if reason == "manual" || reason == "scheduled" {
-		r.suppressWarmup(n.Name, model)
+		r.suppressWarmup(nodeName, model)
 	}
 	// Drop the unloaded model from warm state immediately (Tier 1): a manual,
 	// scheduled, or LRU-headroom unload is a residency change that must not wait
 	// for the background flush, else a crash could restore an evicted model.
 	if st := r.warmStore(); st != nil {
-		if err := st.DeleteWarmState(model, n.Name); err != nil {
-			log.Printf("warmstate: delete %q on %s after unload: %v", model, n.Name, err)
+		if err := st.DeleteWarmState(model, nodeName); err != nil {
+			log.Printf("warmstate: delete %q on %s after unload: %v", model, nodeName, err)
 		}
 	}
-	log.Printf("unloaded model %q from node %s (%s)", model, n.Name, reason)
-	return nil
+	log.Printf("unloaded model %q from node %s (%s)", model, nodeName, reason)
+}
+
+// RecordManualUnload applies the same post-eviction bookkeeping as a direct
+// unload (see recordUnloadSideEffects) for a model actually evicted by a
+// Node Agent dispatch instead of this router's own HTTP call - the agent
+// path has no other way to reach this router-internal state. Always
+// "manual" reason: the only caller is the operator-facing unload endpoint.
+func (r *Router) RecordManualUnload(nodeName, model string) {
+	r.recordUnloadSideEffects(nodeName, model, "manual")
 }
 
 // FindNode returns the node with the given name, or nil.
