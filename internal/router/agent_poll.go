@@ -128,6 +128,14 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 		// AgentGPUs, just not through these aggregate-shaped fields.
 		if len(t.GPU.Devices) > 0 {
 			primary := t.GPU.Devices[0]
+			// Auto-fill the node's display name from the card's own reported
+			// product name the first time the agent sees one - but only while
+			// the field is still empty or the UI's literal "Unknown GPU"
+			// placeholder (see admin.go handlePatchNode / GPUNodes.tsx), never
+			// overwriting a name an operator deliberately typed or PATCHed in.
+			if primary.Model != "" && (n.GPUModel == "" || n.GPUModel == "Unknown GPU") {
+				n.GPUModel = primary.Model
+			}
 			n.FanPercent = primary.FanPercent
 			// Only let agent-reported GPU figures override Temperature/
 			// PowerDrawW/VRAM* when this node isn't already sourcing richer
