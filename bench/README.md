@@ -126,14 +126,20 @@ cold first request).
 ### `bench/preflight.sh` - run this first
 
 Fails loudly, with a clear reason, before you waste time on a broken setup.
-Checks: your admin token actually works, the target node exists and is
-healthy, the model is loaded (or at least pulled), and - if you provide the
-sizes - that the model safely fits under 80% of the node's VRAM.
+Checks: admin login actually works, the target node exists and is healthy,
+the model is loaded (or at least pulled), and - if you provide the sizes -
+that the model safely fits under 80% of the node's VRAM.
+
+ollama-mesh is fully DB-based (`mesh.db`) - there's no config file to read a
+token from. Admin auth is the same session login the dashboard uses: an
+admin-role account's username and password (`admin`/`admin` in demo mode;
+otherwise whatever account you created via the dashboard's user setup).
 
 ```bash
 MESH_URL="http://localhost:11434" \
 ADMIN_URL="http://localhost:8080" \
-ADMIN_TOKEN="<your admin_token from mesh config>" \
+ADMIN_USERNAME="admin" \
+ADMIN_PASSWORD="<that account's password>" \
 NODE_NAME="<exact node name from GET /admin/nodes>" \
 MODEL="llama3.2:3b-q4_k_m" \
 MODEL_SIZE_GB=2.0 \
@@ -145,7 +151,8 @@ NODE_VRAM_GB=24 \
 |---|---|---|
 | `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
 | `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
-| `ADMIN_TOKEN` | **yes** | admin token from your mesh config |
+| `ADMIN_USERNAME` | **yes** | an admin-role account's username |
+| `ADMIN_PASSWORD` | **yes** | that account's password |
 | `NODE_NAME` | **yes** | exact node name, from `GET /admin/nodes` |
 | `MODEL` | **yes** | exact model tag you're about to benchmark |
 | `MODEL_SIZE_GB` | no | enables the automatic 80%-VRAM fit check |
@@ -172,7 +179,8 @@ sample is a genuine cold load, not just the first one in a batch.
 ```bash
 MESH_URL="http://localhost:11434" \
 ADMIN_URL="http://localhost:8080" \
-ADMIN_TOKEN="<your admin_token from mesh config>" \
+ADMIN_USERNAME="admin" \
+ADMIN_PASSWORD="<that account's password>" \
 NODE_NAME="<exact node name from GET /admin/nodes>" \
 MODEL="llama3.2:3b-q4_k_m" \
 API_KEY="<a valid client API key>" \
@@ -186,7 +194,8 @@ The trailing `10` is the sample count (n) - omit it to default to 10. Requires
 |---|---|---|
 | `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
 | `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
-| `ADMIN_TOKEN` | **yes** | admin token, used to evict the model each round |
+| `ADMIN_USERNAME` | **yes** | an admin-role account's username, used to log in before each eviction |
+| `ADMIN_PASSWORD` | **yes** | that account's password |
 | `NODE_NAME` | **yes** | exact node name to evict from |
 | `MODEL` | **yes** | exact model tag |
 | `API_KEY` | **yes** | client API key used for the actual benchmark requests |
