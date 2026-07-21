@@ -258,7 +258,7 @@ function ModelDetailPanel({
                       ) : (!actualRuntime || actualRuntime === 'ollama') ? (
                         <button
                           onClick={() => handlePull(v)}
-                          disabled={!isLive || !nodeName || isPulling || v.fit === 'red'}
+                          disabled={(!demoMode && !isLive) || !nodeName || isPulling || v.fit === 'red'}
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
                           title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
                         >
