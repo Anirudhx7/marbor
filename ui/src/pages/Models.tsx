@@ -150,10 +150,16 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal - onClose is gated on deleteBusy so the
+          backdrop/X can't dismiss it mid-request; without that guard a user
+          watching a slow real delete (large model, network storage) could
+          close the modal thinking it stalled, reopen it, and fire a second
+          overlapping delete for the same (model, node) pair - which is
+          exactly what produced a confusing "model not found" error from the
+          first delete's own success racing the second's request. */}
       <Modal
         isOpen={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
+        onClose={() => { if (!deleteBusy) setDeleteConfirmOpen(false); }}
         title="Delete Local Model"
         maxWidth="sm"
       >
@@ -165,13 +171,19 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
           <p className="text-xs text-muted-foreground">
             This removes the downloaded model files from disk - not just from VRAM. Re-pulling it later will re-download the full model.
           </p>
+          {deleteBusy && (
+            <p className="text-xs text-muted-foreground">
+              Deleting can take a minute or more for large models over slow or network storage - please wait, this dialog will close automatically.
+            </p>
+          )}
           {deleteError && (
             <p className="text-sm text-destructive">{deleteError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               onClick={() => setDeleteConfirmOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              disabled={deleteBusy}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Cancel
             </button>

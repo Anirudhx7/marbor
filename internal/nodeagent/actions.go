@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -167,13 +168,27 @@ func runDownload(ctx context.Context, hfToken string, name string, args ...strin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+		msg := strings.TrimSpace(stripANSI(stderr.String()))
 		if msg == "" {
 			msg = err.Error()
 		}
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// ansiEscapeSequence matches CSI (Control Sequence Introducer) escapes -
+// \x1b[ followed by any private-mode marker/parameter bytes and a final
+// letter, e.g. \x1b[?25l (hide cursor), \x1b[?2026h (synchronized-update
+// mode), \x1b[1G (cursor to column), \x1b[K (erase line). The `ollama` CLI
+// draws a terminal spinner using exactly these on stderr even when its
+// output is captured rather than attached to a real TTY - uncleaned, they
+// show up as garbled box characters in any error message surfaced to the
+// admin UI (R1: real error text, not real-but-unreadable error text).
+var ansiEscapeSequence = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	return ansiEscapeSequence.ReplaceAllString(s, "")
 }
 
 // ensureHome returns env with a HOME entry guaranteed present, resolving it
