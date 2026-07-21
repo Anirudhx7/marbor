@@ -6,10 +6,14 @@
 # Requires bench/ttft already built (see BENCH-RUNBOOK.md Step 2's docker build
 # command, or `go build -o bench/ttft ./bench` if Go is installed locally).
 #
+# ollama-mesh is fully DB-based (mesh.db) - there is no config.yaml. Admin
+# auth is session-based (POST /admin/login with an admin-role account's
+# username/password, same as the dashboard login), not a static bearer token.
+#
 # Usage:
 #   MESH_URL=http://localhost:11434 ADMIN_URL=http://localhost:8080 \
-#   ADMIN_TOKEN=<token> NODE_NAME=gpu-node-01 MODEL=llama3.2:3b-q4_k_m \
-#   API_KEY=<key> ./bench/cold-loop.sh [n]
+#   ADMIN_USERNAME=admin ADMIN_PASSWORD=<password> NODE_NAME=gpu-node-01 \
+#   MODEL=llama3.2:3b-q4_k_m API_KEY=<key> ./bench/cold-loop.sh [n]
 #
 # n defaults to 10. Prints p50/min/max at the end and writes raw samples to
 # cold_samples.log (overwritten each run) in the current directory.
@@ -17,7 +21,8 @@ set -uo pipefail
 
 : "${MESH_URL:=http://localhost:11434}"
 : "${ADMIN_URL:=http://localhost:8080}"
-: "${ADMIN_TOKEN:?ADMIN_TOKEN is required (admin_token from config.yaml)}"
+: "${ADMIN_USERNAME:?ADMIN_USERNAME is required (an admin-role account's username)}"
+: "${ADMIN_PASSWORD:?ADMIN_PASSWORD is required (that account's password)}"
 : "${NODE_NAME:?NODE_NAME is required (exact name from GET /admin/nodes)}"
 : "${MODEL:?MODEL is required (exact tag)}"
 : "${API_KEY:?API_KEY is required (a valid client API key)}"
@@ -25,11 +30,24 @@ set -uo pipefail
 N="${1:-10}"
 TTFT_BIN="$(dirname "${BASH_SOURCE[0]}")/ttft"
 LOG_FILE="cold_samples.log"
+COOKIEJAR="$(mktemp)"
+cleanup() { rm -f "$COOKIEJAR"; }
+trap cleanup EXIT
 
 if [ ! -x "$TTFT_BIN" ]; then
   echo "cold-loop.sh: ${TTFT_BIN} not found or not executable." >&2
   echo "Build it first (BENCH-RUNBOOK.md Step 2), e.g.:" >&2
   echo "  docker run --rm -v \"\${PWD}:/app\" -w /app -e GOFLAGS=-buildvcs=false golang:1.25.12 go build -o bench/ttft ./bench" >&2
+  exit 1
+fi
+
+echo "=== Admin login ==="
+login_status="$(curl -sS -o /dev/null -w '%{http_code}' -c "$COOKIEJAR" \
+  -X POST "${ADMIN_URL}/admin/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"${ADMIN_USERNAME}\",\"password\":\"${ADMIN_PASSWORD}\"}")"
+if [ "$login_status" != "200" ]; then
+  echo "cold-loop.sh: POST ${ADMIN_URL}/admin/login returned HTTP ${login_status} (expected 200) - check ADMIN_USERNAME/ADMIN_PASSWORD" >&2
   exit 1
 fi
 
@@ -42,7 +60,7 @@ for i in $(seq 1 "$N"); do
 
   unload_status="$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
     "${ADMIN_URL}/admin/nodes/${NODE_NAME}/unload" \
-    -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+    -b "$COOKIEJAR" \
     -H "Content-Type: application/json" \
     -d "{\"model\":\"${MODEL}\"}")"
 
