@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,24 +30,37 @@ type Scheduler struct {
 	nodeID  string
 	gpu     GPUCollector
 	host    HostCollector
-	// localRuntime/runtimeURL are the once-detected local inference runtime
-	// name and the base URL it answered on (see runtime_detect.go), or ""
-	// if none was found. Detected once at construction, same "detect once,
-	// use it for the process lifetime" shape as GPU vendor selection - a
-	// node's runtime doesn't change while the agent process is running, so
-	// there's no reason to re-probe *which* runtime on every refresh tick
-	// (each probe attempt carries its own multi-second timeout budget,
-	// repeating that every 5s for a fact that never changes would be pure
-	// waste). The runtime's live reachability/warm-models ARE re-probed
-	// every refresh, via runtimeClient, since those genuinely change.
+	// rd is retained (not just consulted once at construction) so refresh()
+	// can retry detection while localRuntime is still empty - see the
+	// re-probe comment below. Never used once localRuntime is non-empty.
+	rd RuntimeDetector
+	// runtimeMu guards localRuntime/runtimeURL/runtimeVersion below - unlike
+	// the original "written once at construction, read-only after" shape,
+	// refresh() may now write these on a later tick (see localRuntime's own
+	// comment), concurrently with RuntimeTarget() being read from an HTTP
+	// handler goroutine.
+	runtimeMu sync.RWMutex
+	// localRuntime/runtimeURL are the detected local inference runtime name
+	// and the base URL it answered on (see runtime_detect.go), or "" if none
+	// has been found *yet*. Detection is attempted once at construction and,
+	// if that finds nothing, retried on every refresh tick until it succeeds
+	// - an agent process routinely starts (systemd/launchd boot ordering,
+	// container restart) before its runtime is up and listening, and without
+	// a retry that race would permanently omit RuntimeInfo/warm_models from
+	// every /v1/status response for the rest of the agent's life, even once
+	// the runtime comes up moments later. Once a runtime is found, it is
+	// treated as fixed for the process lifetime (a node's runtime doesn't
+	// change while the agent keeps running) and never re-probed - only its
+	// live reachability/warm-models are re-probed every refresh, via
+	// runtimeClient, since those genuinely change.
 	localRuntime string
 	runtimeURL   string
-	// runtimeVersion is detected once at construction, same "detect once"
-	// shape as localRuntime/runtimeURL - a runtime's own reported version
-	// string cannot change while its process keeps running, so re-running
-	// the version command every refresh tick would be pure waste (and, for
-	// "ollama version", a forked subprocess every 5s on every agent-enabled
-	// node in the fleet for an answer that's already known).
+	// runtimeVersion is detected once, the same moment localRuntime is first
+	// found (construction, or a later refresh-tick retry) - a runtime's own
+	// reported version string cannot change while its process keeps running,
+	// so re-running the version command every refresh tick would be pure
+	// waste (and, for "ollama version", a forked subprocess every 5s on every
+	// agent-enabled node in the fleet for an answer that's already known).
 	runtimeVersion string
 	runtimeClient  *http.Client
 	snap           atomic.Pointer[Telemetry]
@@ -91,6 +105,7 @@ func newSchedulerWithBackends(version string, gpu GPUCollector, host HostCollect
 		nodeID:         loadOrCreateNodeID(),
 		gpu:            gpu,
 		host:           host,
+		rd:             rd,
 		localRuntime:   name,
 		runtimeURL:     url,
 		runtimeVersion: runtimeVer,
@@ -163,14 +178,38 @@ func (s *Scheduler) refresh() {
 
 	t.Host = s.host.Collect(ctx)
 
-	if s.localRuntime != "" {
-		ri := &RuntimeInfo{Name: s.localRuntime, Version: s.runtimeVersion}
+	s.runtimeMu.RLock()
+	name, url, version := s.localRuntime, s.runtimeURL, s.runtimeVersion
+	s.runtimeMu.RUnlock()
+
+	// Nothing found yet - retry detection this tick rather than leaving
+	// RuntimeInfo permanently omitted for the rest of the process's life (see
+	// the localRuntime field comment above). Cheap once a runtime is found:
+	// this branch is never reached again afterward.
+	if name == "" && s.rd != nil {
+		dctx, dcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		foundName, foundURL, found := s.rd.Detect(dctx)
+		dcancel()
+		if found {
+			vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
+			foundVersion := detectRuntimeVersion(vctx, foundName)
+			vcancel()
+
+			s.runtimeMu.Lock()
+			s.localRuntime, s.runtimeURL, s.runtimeVersion = foundName, foundURL, foundVersion
+			s.runtimeMu.Unlock()
+			name, url, version = foundName, foundURL, foundVersion
+		}
+	}
+
+	if name != "" {
+		ri := &RuntimeInfo{Name: name, Version: version}
 		// Independent timeout, not the same ctx already spent on GPU/host
 		// collection above - a slow nvidia-smi cycle must not starve this
 		// probe's budget and report a false "down" purely from an expired
 		// deadline it never got a fair share of.
 		pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-		result, err := runtimepkg.NewProbe(s.localRuntime, s.runtimeClient).Probe(pctx, s.runtimeURL)
+		result, err := runtimepkg.NewProbe(name, s.runtimeClient).Probe(pctx, url)
 		pcancel()
 		if err == nil {
 			ri.Status = "up"
@@ -203,10 +242,14 @@ func (s *Scheduler) Snapshot() Telemetry {
 	return s.metadata()
 }
 
-// RuntimeTarget returns the once-detected local runtime's name and base
-// URL - the same detect-once facts Telemetry.Runtime.Name is built from,
-// exposed directly for callers (handleListModels) that need to dial the
-// runtime themselves rather than read its already-collected telemetry.
+// RuntimeTarget returns the detected local runtime's name and base URL - the
+// same facts Telemetry.Runtime.Name is built from, exposed directly for
+// callers (handleListModels) that need to dial the runtime themselves rather
+// than read its already-collected telemetry. Empty until detection succeeds
+// (see localRuntime's field comment - detection retries on every refresh
+// tick until it does).
 func (s *Scheduler) RuntimeTarget() (name, url string) {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
 	return s.localRuntime, s.runtimeURL
 }
