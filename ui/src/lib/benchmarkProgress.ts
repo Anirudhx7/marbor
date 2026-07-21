@@ -13,6 +13,8 @@ const BASE = '/admin';
 
 export type BenchmarkPhase = 'idle' | 'evicting' | 'cold' | 'warm' | 'done' | 'error' | 'cancelled';
 
+const KNOWN_PHASES = new Set<BenchmarkPhase>(['idle', 'evicting', 'cold', 'warm', 'done', 'error', 'cancelled']);
+
 export interface BenchmarkProgressState {
   jobId: string;
   node: string;
@@ -34,6 +36,11 @@ const IDLE_STATE: BenchmarkProgressState = {
 let state: BenchmarkProgressState = IDLE_STATE;
 let eventSource: EventSource | null = null;
 const listeners = new Set<() => void>();
+// Tracks whether the CURRENT job was started in simulated mode (build-time
+// VITE_FORCE_DEMO or the runtime Demo Mode toggle), independent of DEMO -
+// cancel() needs this because a run started with `simulate: true` never gets
+// a jobId or EventSource, so `cancelBenchmarkJob` would have nothing to call.
+let simulating = false;
 
 function notify() {
   for (const l of listeners) l();
@@ -114,9 +121,10 @@ function runDemoBenchmark(node: string, model: string, n: number) {
 export function start(node: string, model: string, n: number, simulate: boolean = false): void {
   closeStream();
   state = { ...IDLE_STATE, node, model, n, phase: 'evicting', startedAtMs: Date.now() };
+  simulating = DEMO || simulate;
   notify();
 
-  if (DEMO || simulate) {
+  if (simulating) {
     runDemoBenchmark(node, model, n);
     return;
   }
@@ -142,19 +150,20 @@ function subscribeToProgress(jobId: string): void {
     } catch {
       return;
     }
+    // A phase this client build doesn't recognize (e.g. a newer server sent
+    // something added after this UI shipped) must still resolve to a state
+    // the page knows how to recover from, rather than silently rendering the
+    // raw string forever with the stream left open and no reset button.
+    const known = KNOWN_PHASES.has(data.phase);
     setState({
-      phase: data.phase || state.phase,
+      phase: known ? data.phase : 'error',
       coldSamplesMs: data.cold_samples_ms || [],
       warmSamplesMs: data.warm_samples_ms || [],
-      error: data.error || '',
+      error: known ? (data.error || '') : `Unrecognized server phase "${data.phase}" - this UI may be out of date.`,
       result: data.result || null,
     });
-    switch (data.phase) {
-      case 'done':
-      case 'error':
-      case 'cancelled':
-        closeStream();
-        break;
+    if (!known || data.phase === 'done' || data.phase === 'error' || data.phase === 'cancelled') {
+      closeStream();
     }
   };
 
@@ -168,7 +177,7 @@ function subscribeToProgress(jobId: string): void {
 }
 
 export function cancel(): void {
-  if (DEMO) {
+  if (simulating) {
     setState({ phase: 'cancelled', error: 'Cancelled.' });
     return;
   }
@@ -181,5 +190,6 @@ export function cancel(): void {
 export function reset(): void {
   closeStream();
   state = IDLE_STATE;
+  simulating = false;
   notify();
 }
