@@ -7,7 +7,7 @@
 // self-service validation/diagnostics tool, not a monitored dashboard
 // surface, so it deliberately has no nav-bar presence.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Gauge, Zap, Server, X, History } from 'lucide-react';
+import { Gauge, Zap, Server, X, History, Copy, Check } from 'lucide-react';
 import { fetchNodes, getNodeModels, fetchBenchmarkRuns } from '../lib/api';
 import { subscribe, getSnapshot, start, cancel, reset } from '../lib/benchmarkProgress';
 import { mockGPUNodes, mockBenchmarkRuns } from '../lib/mockData';
@@ -21,12 +21,26 @@ function fmtMs(ms: number): string {
 }
 
 function ResultCard({ result }: { result: BenchmarkRun }) {
+  const [copied, setCopied] = useState(false);
+
+  function copySummary() {
+    const text = `${result.node} · ${result.model}\n${result.speedup_x.toFixed(1)}x faster warm vs. cold (p50)\nCold TTFT (p50): ${fmtMs(result.cold_p50_ms)} (min ${fmtMs(result.cold_min_ms)}, max ${fmtMs(result.cold_max_ms)})\nWarm TTFT (p50): ${fmtMs(result.warm_p50_ms)} (min ${fmtMs(result.warm_min_ms)}, max ${fmtMs(result.warm_max_ms)})\nn=${result.n} samples per phase, measured via ollama-mesh's own proxy.`;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }
+
   return (
     <div className="bg-card border border-primary/30 rounded-xl p-6 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
         <Zap className="w-5 h-5 text-primary" />
         <h3 className="text-sm font-semibold text-foreground">Result</h3>
         <span className="text-xs text-muted-foreground font-mono">{result.node} · {result.model}</span>
+        <button onClick={copySummary}
+          className="ml-auto flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground border border-border rounded-md hover:bg-secondary transition-colors">
+          {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+        </button>
       </div>
       <div className="flex items-baseline gap-2 mb-5">
         <span className="text-4xl font-bold text-primary">{result.speedup_x.toFixed(1)}×</span>
@@ -45,7 +59,7 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
         </div>
       </div>
       <p className="text-[10px] text-muted-foreground/60 mt-4">
-        n={result.n} samples per phase, measured through this mesh's own proxy. Screenshot this card if you'd like to share it.
+        n={result.n} samples per phase, measured through this mesh's own proxy. Copy the summary as text, or screenshot this card to share it.
       </p>
     </div>
   );
@@ -64,6 +78,7 @@ export function Benchmark() {
   const [loading, setLoading] = useState(true);
   const [runError, setRunError] = useState<string | null>(null);
   const [history, setHistory] = useState<BenchmarkRun[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const healthyNodes = useMemo(() => nodes.filter(n => n.health !== 'down'), [nodes]);
 
@@ -84,10 +99,25 @@ export function Benchmark() {
         const healthy = ns.filter(n => n.health !== 'down');
         if (healthy.length === 1) setSelectedNode(healthy[0].name);
       })
+      .catch(() => { if (active) setRunError('Failed to load nodes - refresh the page to retry.'); })
       .finally(() => { if (active) setLoading(false); });
-    fetchBenchmarkRuns().then(runs => { if (active) setHistory(runs); }).catch(() => {});
+    refreshHistory();
     return () => { active = false; };
   }, [demoMode]);
+
+  function refreshHistory() {
+    if (demoMode) { setHistory(mockBenchmarkRuns); setHistoryError(null); return; }
+    fetchBenchmarkRuns()
+      .then(runs => { setHistory(runs); setHistoryError(null); })
+      .catch(() => setHistoryError('Failed to load benchmark history.'));
+  }
+
+  // Refresh history the moment a run finishes, so a completed benchmark shows
+  // up immediately instead of only after the user clicks "Run another".
+  useEffect(() => {
+    if (progress.phase === 'done') refreshHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress.phase]);
 
   useEffect(() => {
     if (!selectedNode) { setModels([]); return; }
@@ -125,8 +155,7 @@ export function Benchmark() {
 
   function handleReset() {
     reset();
-    if (demoMode) { setHistory(mockBenchmarkRuns); return; }
-    fetchBenchmarkRuns().then(setHistory).catch(() => {});
+    refreshHistory();
   }
 
   const phaseLabel: Record<string, string> = {
@@ -244,7 +273,9 @@ export function Benchmark() {
           <History className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">History</h3>
         </div>
-        {history.length === 0 ? (
+        {historyError ? (
+          <p className="text-sm text-destructive px-5 py-4">{historyError}</p>
+        ) : history.length === 0 ? (
           <p className="text-sm text-muted-foreground px-5 py-4">No benchmark runs yet.</p>
         ) : (
           <div className="divide-y divide-border">
