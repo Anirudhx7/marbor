@@ -14,6 +14,7 @@ package bench
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -75,7 +76,7 @@ func Run(args []string) {
 		fmt.Printf("Sending cold request (model loading from disk)...\n")
 	}
 	coldStart := time.Now()
-	coldMs, err := measureTTFT(client, *target, resolvedModel, *apiKey)
+	coldMs, err := MeasureChatTTFT(context.Background(), client, *target, resolvedModel, *apiKey)
 	_ = coldStart
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bench: cold request failed: %v\n", err)
@@ -86,7 +87,7 @@ func Run(args []string) {
 	if !*jsonOut {
 		fmt.Printf("Sending warm request (model in VRAM)...\n\n")
 	}
-	warmMs, err := measureTTFT(client, *target, resolvedModel, *apiKey)
+	warmMs, err := MeasureChatTTFT(context.Background(), client, *target, resolvedModel, *apiKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bench: warm request failed: %v\n", err)
 		os.Exit(1)
@@ -191,14 +192,24 @@ func detectModel(client *http.Client, target, apiKey string) (string, error) {
 	return list.Data[0].ID, nil
 }
 
-// measureTTFT sends a single streaming /v1/chat/completions request through
-// the mesh and returns the milliseconds until the first non-empty token
-// arrives in the SSE stream.
+// MeasureChatTTFT sends a single streaming /v1/chat/completions request
+// through the mesh and returns the milliseconds until the first non-empty
+// token arrives in the SSE stream. Exported so internal/admin's in-dashboard
+// hardware benchmark page can reuse the exact same measurement logic instead
+// of duplicating it.
 //
 // Using the OpenAI-compatible endpoint ensures the request travels through
 // the full mesh routing stack (proxy → router → backend), not a direct hop
 // to an Ollama node.
-func measureTTFT(client *http.Client, target, model, apiKey string) (int64, error) {
+//
+// ctx bounds the whole call, not just a client.Timeout: internal/admin's
+// benchmark job cancels this context immediately on admin cancel, so a
+// slow/stuck cold load (which can legitimately take minutes) aborts right
+// away instead of only after client.Do eventually returns on its own -
+// without this, a cancelled job's deferred ephemeral-key cleanup would wait
+// out the in-flight request first, leaving a live key on the wire for the
+// remainder of that window.
+func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, apiKey string) (int64, error) {
 	payload := map[string]any{
 		"model":  model,
 		"stream": true,
@@ -211,7 +222,7 @@ func measureTTFT(client *http.Client, target, model, apiKey string) (int64, erro
 		return 0, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, target+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return 0, fmt.Errorf("build request: %w", err)
 	}
