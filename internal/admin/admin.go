@@ -4393,6 +4393,53 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Also include idle (downloaded, not loaded) models on nodes whose Node
+	// Agent exposes the models.list capability - covers vLLM/TGI/llama.cpp/MLX
+	// nodes, which have no /api/tags equivalent (Architecture Law 5). Reuses
+	// handleNodeModels' own agent-dispatch path (listModelsViaAgent). Kept
+	// sequential (no goroutines) to stay within this handler's existing
+	// per-request node-loop shape rather than introduce a second concurrency
+	// model alongside the FetchModelTags fan-out above.
+	for _, snap := range snapshots {
+		if !snap.healthy || snap.url == "" {
+			continue
+		}
+		agentCfg, agentOK := s.router.NodeAgentSetting(snap.name)
+		if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(nodes, snap.name, "models.list") {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), nodeModelsListTimeout)
+		models, err := s.listModelsViaAgent(ctx, snap.url, agentCfg)
+		cancel()
+		if err != nil {
+			continue
+		}
+		for _, am := range models {
+			if snap.warmSet[am.Name] {
+				continue // already added as a warm model above
+			}
+			if entry := modelMap[am.Name]; entry != nil {
+				alreadyOnNode := false
+				for _, ni := range entry.Nodes {
+					if ni.Name == snap.name {
+						alreadyOnNode = true
+						break
+					}
+				}
+				if alreadyOnNode {
+					continue // already added via FetchModelTags for this node
+				}
+			} else {
+				modelMap[am.Name] = &modelEntry{Name: am.Name}
+			}
+			modelMap[am.Name].Nodes = append(modelMap[am.Name].Nodes, nodeInfo{
+				Name:    snap.name,
+				Healthy: snap.healthy,
+			})
+			// WarmCount stays 0: model is downloaded but not in VRAM
+		}
+	}
+
 	totalHealthy := 0
 	for _, n := range nodes {
 		n.RLock()
