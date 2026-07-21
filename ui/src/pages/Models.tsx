@@ -171,17 +171,13 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
           <div className="mt-3 pt-3 border-t border-border">
             <p className="text-xs font-medium text-muted-foreground mb-2">Delete from node</p>
             <div className="flex gap-2">
-              {model.nodes.length > 1 ? (
-                <CustomSelect
-                  value={deleteNode}
-                  onChange={setSelectedDeleteNode}
-                  options={model.nodes.map((n) => ({ value: n.name, label: n.name }))}
-                />
-              ) : (
-                <span className="flex-1 min-w-0 px-2 py-1 text-xs bg-secondary border border-border rounded-md text-foreground truncate">
-                  {model.nodes[0].name}
-                </span>
-              )}
+              <CustomSelect
+                value={deleteNode}
+                onChange={setSelectedDeleteNode}
+                options={model.nodes.map((n) => ({ value: n.name, label: n.name }))}
+                disabled={model.nodes.length <= 1}
+                size="sm"
+              />
               <button
                 onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
                 disabled={!deleteNode}
