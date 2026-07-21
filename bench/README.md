@@ -66,7 +66,7 @@ docker run --rm -v "${PWD}:/app" -w /app -e GOFLAGS=-buildvcs=false \
 - Two machines (or VMs) each running `ollama serve`
 - ollama-mesh configured with both nodes added via the dashboard's **GPU Nodes** page (or `--seed-node`)
 - The model you want to test pulled on both nodes (`ollama pull llama3.2:3b`)
-- An admin API key from your mesh config
+- A client API key issued from your running mesh instance (dashboard's API Keys page, or the admin API) - not a config file, ollama-mesh is fully DB-based
 
 **Step 1 - Record cold TTFT (Scenario A)**
 
@@ -122,6 +122,17 @@ The manual steps above work fine by hand, but two scripts remove the tedious
 and error-prone parts: checking your setup is actually ready, and evicting the
 model before every single cold sample (a real n≥10 cold baseline, not just a
 cold first request).
+
+**Prerequisites - these scripts don't install or start anything for you:**
+- ollama-mesh already running (admin API and proxy reachable - defaults
+  `:8080`/`:11434`)
+- At least one GPU backend node (Ollama/vLLM/TGI/llama.cpp/MLX) added and
+  healthy, with the model you want to test already pulled on it
+- `bash`, `curl`, and `python3` on PATH
+- `bench/ttft` built (see "Build the benchmark tool" above)
+- An admin account (default `admin`/`admin`) and a client API key from that
+  mesh instance
+- Real GPU hardware, not the demo/mock stack - see the honesty caveat above
 
 ### `bench/preflight.sh` - run this first
 
