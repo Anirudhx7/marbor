@@ -527,6 +527,82 @@ func TestHandleCancelPull_StopsAnInFlightDownload(t *testing.T) {
 	}
 }
 
+// TestHandleListActivePulls_ContinuityRestoresInFlightJobsAfterRefresh guards
+// the continuity-bug class (LESSONS.md L22): GET /admin/pulls (added in
+// f8d8049) must list a still-downloading job so PullProgressWidget.tsx can
+// resubscribe on mount after a browser refresh, instead of losing all
+// progress state because the widget's old in-memory-only tracking had
+// nothing server-side to restore from. Also verifies a finished job drops off
+// the active list, since the endpoint only returns status=="downloading".
+func TestHandleListActivePulls_ContinuityRestoresInFlightJobsAfterRefresh(t *testing.T) {
+	release := make(chan struct{})
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Result().StatusCode)
+	}
+
+	listReq := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "/admin/pulls", nil)
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+		return req
+	}
+
+	// Simulates a browser refresh mid-download: the widget resubscribes on
+	// mount by calling this endpoint, and the still-downloading job must be
+	// there for it to find.
+	wList := httptest.NewRecorder()
+	s.Handler().ServeHTTP(wList, listReq())
+	if wList.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", wList.Result().StatusCode)
+	}
+	var jobs []pullJobSnapshot
+	if err := json.NewDecoder(wList.Body).Decode(&jobs); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	found := false
+	for _, j := range jobs {
+		if j.Node == "gpu-0" && j.Model == "llama3:8b" {
+			found = true
+			if j.Status != "downloading" {
+				t.Errorf("expected status=downloading, got %q", j.Status)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected the in-flight pull job to appear in GET /admin/pulls")
+	}
+
+	close(release)
+	final := waitForJob(t, s, "gpu-0", "llama3:8b")
+	if final.Status != "success" {
+		t.Fatalf("expected job to finish success, got %q", final.Status)
+	}
+
+	wList2 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(wList2, listReq())
+	var jobs2 []pullJobSnapshot
+	if err := json.NewDecoder(wList2.Body).Decode(&jobs2); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, j := range jobs2 {
+		if j.Node == "gpu-0" && j.Model == "llama3:8b" {
+			t.Error("a finished job must not still appear in GET /admin/pulls")
+		}
+	}
+}
+
 // TestHandleCancelPull_AlreadyFinishedIsANoOp verifies a cancel arriving
 // after the pull already finished doesn't clobber its real outcome.
 func TestHandleCancelPull_AlreadyFinishedIsANoOp(t *testing.T) {

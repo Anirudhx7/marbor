@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -49,6 +50,28 @@ func (f fakeRuntimeDetector) Detect(context.Context) (string, string, bool) {
 // every test below that isn't specifically exercising runtime-detection
 // propagation, so they stay fast and deterministic.
 var noRuntimeDetector = fakeRuntimeDetector{}
+
+// flakyRuntimeDetector simulates a runtime that isn't up yet at agent
+// construction (a boot-ordering race) but comes up on a later refresh tick -
+// it fails Detect for its first failFor calls, then succeeds every call
+// after. Pointer receiver + mutex since refresh() may call Detect
+// concurrently with a test goroutine reading call counts.
+type flakyRuntimeDetector struct {
+	mu        sync.Mutex
+	calls     int
+	failFor   int
+	name, url string
+}
+
+func (f *flakyRuntimeDetector) Detect(context.Context) (string, string, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.calls <= f.failFor {
+		return "", "", false
+	}
+	return f.name, f.url, true
+}
 
 func TestSchedulerSnapshotBeforeSeedIsUnknown(t *testing.T) {
 	s := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
@@ -198,6 +221,55 @@ func TestSchedulerOmitsRuntimeWhenNotDetected(t *testing.T) {
 	s.Seed()
 	if snap := s.Snapshot(); snap.Runtime != nil {
 		t.Errorf("Runtime = %v, want nil when RuntimeDetector found nothing", snap.Runtime)
+	}
+}
+
+// TestRuntimeDetector_ContinuityRetriesAfterFailedStartupRace guards the
+// continuity-bug class (LESSONS.md L22 / commit 0e0747a): Detect() used to
+// run exactly once at Scheduler construction, so an agent starting before its
+// local runtime was up and listening permanently omitted RuntimeInfo/
+// warm_models for the rest of the process's life. This verifies a runtime
+// that isn't found at construction but becomes available by the next refresh
+// tick is picked up - RuntimeTarget() and the served snapshot both reflect it
+// - without needing a process restart. Run with -race: refresh() writes
+// localRuntime/runtimeURL/runtimeVersion on this later tick while
+// RuntimeTarget() is a legitimate concurrent reader from an HTTP handler.
+func TestRuntimeDetector_ContinuityRetriesAfterFailedStartupRace(t *testing.T) {
+	fd := &flakyRuntimeDetector{failFor: 1, name: "ollama", url: "http://127.0.0.1:11434"}
+	s := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, fd)
+
+	// Construction already spent Detect call #1 (the failing one) - the
+	// runtime must not be recorded yet.
+	if name, _ := s.RuntimeTarget(); name != "" {
+		t.Fatalf("RuntimeTarget name = %q before any successful detection, want empty", name)
+	}
+	if snap := s.Snapshot(); snap.Runtime != nil {
+		t.Errorf("Snapshot().Runtime = %v before any successful detection, want nil", snap.Runtime)
+	}
+
+	// Simulates the next refresh tick, after the runtime has come up -
+	// Detect call #2 succeeds per flakyRuntimeDetector's failFor=1.
+	s.Seed()
+
+	name, url := s.RuntimeTarget()
+	if name != "ollama" || url != "http://127.0.0.1:11434" {
+		t.Errorf("RuntimeTarget = (%q, %q), want (ollama, http://127.0.0.1:11434) after the retried detection succeeded", name, url)
+	}
+	snap := s.Snapshot()
+	if snap.Runtime == nil || snap.Runtime.Name != "ollama" {
+		t.Fatalf("Snapshot().Runtime = %v, want name=ollama after the retried detection succeeded", snap.Runtime)
+	}
+
+	// A further tick must not re-invoke detection (it's fixed for the process
+	// lifetime once found) - confirm the call count didn't grow.
+	fd.mu.Lock()
+	callsAfterFound := fd.calls
+	fd.mu.Unlock()
+	s.Seed()
+	fd.mu.Lock()
+	defer fd.mu.Unlock()
+	if fd.calls != callsAfterFound {
+		t.Errorf("Detect called again (%d -> %d) after a runtime was already found, want no further calls", callsAfterFound, fd.calls)
 	}
 }
 

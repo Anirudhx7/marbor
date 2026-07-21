@@ -630,6 +630,145 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 	}
 }
 
+// TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold
+// guards the continuity-bug class (LESSONS.md L22 / commit d6012d8):
+// pollAgentTelemetry used to clear ALL agent-derived telemetry on the very
+// first failed poll. This verifies telemetry survives (is not cleared)
+// through healthFailureThreshold-1 consecutive failures - a single dropped
+// TCP connection or timeout must not blank the dashboard for that node - and
+// only clears once AgentFailures actually crosses the threshold.
+func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	fan := 61.0
+	up := true
+	var upMu sync.Mutex
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upMu.Lock()
+		ok := up
+		upMu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{
+			Agent: nodeagent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+			GPU:   &nodeagent.GPUBlock{Count: 1, Devices: []nodeagent.GPUInfo{{Index: 0, FanPercent: &fan}}},
+		})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+
+	// Establish a healthy baseline.
+	r.pollNode(r.nodes[0])
+	r.nodes[0].mu.RLock()
+	if !r.nodes[0].AgentPresent {
+		r.nodes[0].mu.RUnlock()
+		t.Fatal("precondition failed: agent poll did not succeed")
+	}
+	r.nodes[0].mu.RUnlock()
+
+	upMu.Lock()
+	up = false
+	upMu.Unlock()
+
+	// healthFailureThreshold defaults to 3 (router.go) when unset, as here.
+	// The first threshold-1 failures must leave telemetry untouched.
+	for i := 0; i < r.healthFailureThreshold-1; i++ {
+		r.pollNode(r.nodes[0])
+		r.nodes[0].mu.RLock()
+		present, f := r.nodes[0].AgentPresent, r.nodes[0].FanPercent
+		r.nodes[0].mu.RUnlock()
+		if !present {
+			t.Fatalf("AgentPresent went false after only %d failure(s), want it to survive until the threshold (%d)", i+1, r.healthFailureThreshold)
+		}
+		if f == nil || *f != 61 {
+			t.Fatalf("FanPercent cleared after only %d failure(s), want it to survive until the threshold", i+1)
+		}
+	}
+
+	// The threshold-th failure must clear it.
+	r.pollNode(r.nodes[0])
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+	if r.nodes[0].AgentPresent {
+		t.Error("AgentPresent still true after crossing healthFailureThreshold consecutive failures, want cleared")
+	}
+	if r.nodes[0].FanPercent != nil {
+		t.Errorf("FanPercent = %v after crossing the threshold, want nil (cleared)", r.nodes[0].FanPercent)
+	}
+}
+
+// TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle guards the
+// continuity-bug class (LESSONS.md L22 / commit d6012d8): agentProtocolWarned
+// used to reset on every failed poll (inside clearAgentTelemetry), so a
+// flapping agent re-logged the "protocol newer than mesh understands" warning
+// on every recovery instead of once per node for the process lifetime. This
+// verifies the warning does NOT re-fire after a down/up cycle.
+func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	up := true
+	var upMu sync.Mutex
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upMu.Lock()
+		ok := up
+		upMu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		json.NewEncoder(w).Encode(nodeagent.Telemetry{
+			Agent: nodeagent.Agent{Version: "v99.0.0", ProtocolVersion: nodeagent.ProtocolVersion + 1},
+		})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+
+	var logBuf bytes.Buffer
+	oldOutput := log.Writer()
+	log.SetOutput(&logBuf)
+	defer log.SetOutput(oldOutput)
+
+	// First success: warning latches and logs once.
+	r.pollNode(r.nodes[0])
+
+	// Agent goes down long enough to cross the failure threshold and clear
+	// telemetry (agentProtocolWarned must NOT be reset by this).
+	upMu.Lock()
+	up = false
+	upMu.Unlock()
+	for i := 0; i < r.healthFailureThreshold; i++ {
+		r.pollNode(r.nodes[0])
+	}
+
+	// Agent recovers, still reporting the same newer protocol version. If the
+	// bug were present, agentProtocolWarned would have been reset to false by
+	// clearAgentTelemetry and this poll would log the warning a second time.
+	upMu.Lock()
+	up = true
+	upMu.Unlock()
+	r.pollNode(r.nodes[0])
+
+	out := logBuf.String()
+	count := strings.Count(out, "newer than this mesh understands")
+	if count != 1 {
+		t.Errorf("protocol-mismatch log appeared %d times across a down/up cycle, want exactly 1 (latched for the node's lifetime, not reset by clearing telemetry)\nlog output:\n%s", count, out)
+	}
+}
+
 // TestPollAgentTelemetryStillPolledWhenAPIPSFails is a regression test for a
 // bug where pollNode returned early on a /api/ps probe failure before ever
 // reaching pollAgentTelemetry - a node whose Ollama process crashed while its

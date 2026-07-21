@@ -165,6 +165,36 @@ func TestRunSchedulesUnloadFires(t *testing.T) {
 	}
 }
 
+// TestFireSchedule_ContinuityReflectsRealPerModelFailure guards the
+// continuity-bug class (LESSONS.md L22 / commit 2407d3d): fireSchedule used
+// to record LastStatus "ok" the instant WarmModels dispatched, before any
+// per-model ping had actually run or failed. This verifies a schedule whose
+// target node is unhealthy (so every model ping fails immediately) ends up
+// with LastStatus "error" and a non-empty LastError describing the real
+// per-model failure - never a stale "ok" from the dispatch alone.
+func TestFireSchedule_ContinuityReflectsRealPerModelFailure(t *testing.T) {
+	r := &Router{
+		nodes:          []*NodeState{{Name: "n1", Healthy: false}},
+		schedLastFired: map[string]string{},
+	}
+	now := time.Now()
+	at := fmt.Sprintf("%02d:%02d", now.Hour(), now.Minute())
+	r.SetSchedules([]Schedule{{ID: "s1", Action: "warmup", Node: "n1", Models: []string{"llama3"}, At: at, Enabled: true}})
+
+	r.runSchedules(context.Background(), now)
+
+	scheds := r.Schedules()
+	if len(scheds) != 1 {
+		t.Fatalf("expected 1 schedule, got %d", len(scheds))
+	}
+	if scheds[0].LastStatus != "error" {
+		t.Errorf("LastStatus = %q, want error (the model ping never had a chance to succeed against an unhealthy node)", scheds[0].LastStatus)
+	}
+	if scheds[0].LastError == "" {
+		t.Error("LastError is empty, want a real per-model failure message")
+	}
+}
+
 // TestRunSchedulesUnknownNodeDoesNotPanic verifies that a schedule pointed at
 // a node that no longer exists (renamed/removed after the schedule was
 // created) is a harmless no-op for every action type, instead of panicking
