@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
-import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, PullProgressState } from '../lib/pullProgress';
+import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, restoreActivePulls, PullProgressState } from '../lib/pullProgress';
 
 function formatBytes(n: number): string {
   if (n <= 0) return '0 B';
@@ -184,6 +184,13 @@ function PullJobCard({ job }: { job: PullProgressState }) {
 // several GPU nodes at once shows every one of them here simultaneously.
 export function PullProgressWidget() {
   const jobs = useSyncExternalStore(subscribe, getSnapshot);
+
+  // Reload wipes pullProgress.ts's in-memory job map, even for pulls still
+  // running server-side - ask the mesh what's still in flight and resubscribe,
+  // once, the first time the app shell mounts.
+  useEffect(() => {
+    restoreActivePulls();
+  }, []);
 
   if (jobs.length === 0) return null;
 

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+- **A model pull's progress bar vanished on browser refresh, even though the download was still running.** The progress widget tracked pulls in a module-level in-memory map with no persistence - a page reload wiped it, with nothing to re-populate it even though the pull kept running server-side as its own goroutine. A new `GET /admin/pulls` endpoint lists currently-downloading jobs from the mesh's own bookkeeping; the widget now calls it once on mount and resubscribes to each one's progress stream, so a refresh mid-download picks the bar right back up instead of losing it.
+- **A newly-pulled model didn't appear on the Models page until the next 5-second poll, or a manual refresh.** The pull-progress tracker and the Models page catalog were entirely decoupled - nothing told the page a pull had just finished. The Models page now listens for pull completions and refetches its catalog immediately when one succeeds, instead of waiting on the next poll tick.
+
 ## [0.17.4] - 2026-07-21
 
 ### Added

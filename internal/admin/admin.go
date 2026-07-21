@@ -677,6 +677,7 @@ func (s *Server) Handler() http.Handler {
 	// DELETE /v1/models/{name...} route (server.go).
 	reg("DELETE /admin/nodes/{name}/models/{model...}", s.cors(s.adminAuth(s.handleNodeDeleteModel)))
 	reg("GET /admin/nodes/{name}/pull/progress", s.cors(s.adminAuth(s.handlePullProgress)))
+	reg("GET /admin/pulls", s.cors(s.adminAuth(s.handleListActivePulls)))
 	reg("DELETE /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleCancelPull)))
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
 	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
@@ -4550,6 +4551,29 @@ func (s *Server) sweepOldPullJobs() {
 			delete(s.pullJobs, key)
 		}
 	}
+}
+
+// handleListActivePulls returns every currently-downloading pull job across
+// all nodes. It exists so the UI can restore its progress widget after a
+// browser refresh wipes the client-side tracking state (pullProgress.ts's
+// job map is module-level, in-memory JS - gone on reload) - the client has
+// no other way to learn which (node, model) keys have a job in flight to
+// resubscribe to. Only "downloading" jobs are returned: a finished job's
+// terminal state is only useful to a client that was already watching it
+// live, not one restoring cold after a reload.
+func (s *Server) handleListActivePulls(w http.ResponseWriter, r *http.Request) {
+	s.pullsMu.Lock()
+	snaps := make([]pullJobSnapshot, 0, len(s.pullJobs))
+	for _, j := range s.pullJobs {
+		snap := j.snapshot()
+		if snap.Status == "downloading" {
+			snaps = append(snaps, snap)
+		}
+	}
+	s.pullsMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(snaps)
 }
 
 // handleNodePull starts an async model pull on a specific node.
