@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.17.4] - 2026-07-21
 
 ### Added
 - **A keep-warm model that fails to warm now shows why, instead of silently never becoming resident.** Warmup ping failures were only visible as an unlabeled Prometheus counter bump - an admin watching the Warmup & Scheduling page had no way to tell a stuck model apart from one still warming up normally. Each node now tracks its last warmup-ping error per model (`GET /admin/nodes` / `GET /admin/nodes/{name}` gain `warmupErrors`), cleared the moment a later ping for that model succeeds. The Keep-Warm list on the Warmup & Scheduling page shows the error inline under the model name when present.
