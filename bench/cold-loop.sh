@@ -10,20 +10,18 @@
 # auth is session-based (POST /admin/login with an admin-role account's
 # username/password, same as the dashboard login), not a static bearer token.
 #
-# Usage:
-#   MESH_URL=http://localhost:11434 ADMIN_URL=http://localhost:8080 \
-#   ADMIN_USERNAME=admin ADMIN_PASSWORD=<password> NODE_NAME=gpu-node-01 \
+# Usage (MODEL and API_KEY required, everything else optional):
 #   MODEL=llama3.2:3b-q4_k_m API_KEY=<key> ./bench/cold-loop.sh [n]
 #
-# n defaults to 10. Prints p50/min/max at the end and writes raw samples to
-# cold_samples.log (overwritten each run) in the current directory.
+# ADMIN_USERNAME/ADMIN_PASSWORD default to admin/admin. NODE_NAME is
+# auto-detected when the mesh has exactly one node; set it explicitly if you
+# have more than one.
 set -uo pipefail
 
 : "${MESH_URL:=http://localhost:11434}"
 : "${ADMIN_URL:=http://localhost:8080}"
-: "${ADMIN_USERNAME:?ADMIN_USERNAME is required (an admin-role account's username)}"
-: "${ADMIN_PASSWORD:?ADMIN_PASSWORD is required (that account's password)}"
-: "${NODE_NAME:?NODE_NAME is required (exact name from GET /admin/nodes)}"
+: "${ADMIN_USERNAME:=admin}"
+: "${ADMIN_PASSWORD:=admin}"
 : "${MODEL:?MODEL is required (exact tag)}"
 : "${API_KEY:?API_KEY is required (a valid client API key)}"
 
@@ -49,6 +47,36 @@ login_status="$(curl -sS -o /dev/null -w '%{http_code}' -c "$COOKIEJAR" \
 if [ "$login_status" != "200" ]; then
   echo "cold-loop.sh: POST ${ADMIN_URL}/admin/login returned HTTP ${login_status} (expected 200) - check ADMIN_USERNAME/ADMIN_PASSWORD" >&2
   exit 1
+fi
+
+if [ -z "${NODE_NAME:-}" ]; then
+  nodes_json="$(curl -sS -b "$COOKIEJAR" "${ADMIN_URL}/admin/nodes")"
+  node_auto="$(printf '%s' "$nodes_json" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+nodes = data if isinstance(data, list) else data.get('nodes', data)
+names = [n.get('name') for n in nodes]
+if len(names) == 1:
+    print('AUTO', names[0])
+elif len(names) == 0:
+    print('NONE')
+else:
+    print('MANY', ','.join(str(x) for x in names))
+")"
+  case "$node_auto" in
+    AUTO*)
+      NODE_NAME="${node_auto#AUTO }"
+      echo "NODE_NAME not set - auto-detected the mesh's only node: '${NODE_NAME}'"
+      ;;
+    NONE)
+      echo "cold-loop.sh: NODE_NAME not set and GET /admin/nodes returned no nodes" >&2
+      exit 1
+      ;;
+    MANY*)
+      echo "cold-loop.sh: NODE_NAME not set and the mesh has multiple nodes (${node_auto#MANY }) - set NODE_NAME explicitly" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 : > "$LOG_FILE"

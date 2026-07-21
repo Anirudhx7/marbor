@@ -135,6 +135,20 @@ token from. Admin auth is the same session login the dashboard uses: an
 admin-role account's username and password (`admin`/`admin` in demo mode;
 otherwise whatever account you created via the dashboard's user setup).
 
+**Single-node setup - just set `MODEL` and go:**
+
+```bash
+MODEL="llama3.2:3b-q4_k_m" ./bench/preflight.sh
+```
+
+`ADMIN_USERNAME`/`ADMIN_PASSWORD` default to `admin`/`admin`, and `NODE_NAME`
+is auto-detected when the mesh has exactly one node. Only `MODEL` (the exact
+tag you're about to benchmark) can't be guessed - the script won't silently
+pick a model for you, since a wrong guess would produce misleading numbers.
+
+**Full form** (multi-node mesh, non-default admin account, or the optional
+VRAM-fit check):
+
 ```bash
 MESH_URL="http://localhost:11434" \
 ADMIN_URL="http://localhost:8080" \
@@ -151,9 +165,9 @@ NODE_VRAM_GB=24 \
 |---|---|---|
 | `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
 | `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
-| `ADMIN_USERNAME` | **yes** | an admin-role account's username |
-| `ADMIN_PASSWORD` | **yes** | that account's password |
-| `NODE_NAME` | **yes** | exact node name, from `GET /admin/nodes` |
+| `ADMIN_USERNAME` | no (defaults to `admin`) | an admin-role account's username |
+| `ADMIN_PASSWORD` | no (defaults to `admin`) | that account's password |
+| `NODE_NAME` | no (auto-detected if only one node exists) | exact node name, from `GET /admin/nodes` |
 | `MODEL` | **yes** | exact model tag you're about to benchmark |
 | `MODEL_SIZE_GB` | no | enables the automatic 80%-VRAM fit check |
 | `NODE_VRAM_GB` | no | enables the automatic 80%-VRAM fit check |
@@ -176,6 +190,18 @@ A clean run ends with:
 Evicts the model from VRAM, waits, fires one request, and repeats - so every
 sample is a genuine cold load, not just the first one in a batch.
 
+**Single-node setup - just set `MODEL` and `API_KEY`:**
+
+```bash
+MODEL="llama3.2:3b-q4_k_m" API_KEY="<a valid client API key>" ./bench/cold-loop.sh 10
+```
+
+Same defaults/auto-detection as `preflight.sh` above (`admin`/`admin`,
+auto-detected `NODE_NAME`). `MODEL` and `API_KEY` are the two things that
+can't be guessed for you.
+
+**Full form** (multi-node mesh or non-default admin account):
+
 ```bash
 MESH_URL="http://localhost:11434" \
 ADMIN_URL="http://localhost:8080" \
@@ -194,9 +220,9 @@ The trailing `10` is the sample count (n) - omit it to default to 10. Requires
 |---|---|---|
 | `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
 | `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
-| `ADMIN_USERNAME` | **yes** | an admin-role account's username, used to log in before each eviction |
-| `ADMIN_PASSWORD` | **yes** | that account's password |
-| `NODE_NAME` | **yes** | exact node name to evict from |
+| `ADMIN_USERNAME` | no (defaults to `admin`) | an admin-role account's username, used to log in before each eviction |
+| `ADMIN_PASSWORD` | no (defaults to `admin`) | that account's password |
+| `NODE_NAME` | no (auto-detected if only one node exists) | exact node name to evict from |
 | `MODEL` | **yes** | exact model tag |
 | `API_KEY` | **yes** | client API key used for the actual benchmark requests |
 
