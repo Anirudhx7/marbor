@@ -175,7 +175,6 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
                 value={deleteNode}
                 onChange={setSelectedDeleteNode}
                 options={model.nodes.map((n) => ({ value: n.name, label: n.name }))}
-                size="sm"
               />
               <button
                 onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
