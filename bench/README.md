@@ -10,6 +10,10 @@ It is the most user-visible latency number for interactive LLM use.
 a target URL and records TTFT for each.  You run it twice - once against a cold
 path, once against a warm path - then compare the numbers.
 
+**Want the fast path?** Skip straight to [Guided scripts](#guided-scripts---preflight-check--automated-cold-loop) below -
+`bench/preflight.sh` (checks your setup before you waste time) and
+`bench/cold-loop.sh` (real n≥10 cold samples, copy-paste ready).
+
 ## The two scenarios
 
 ### Scenario A - Cold (baseline)
@@ -111,6 +115,92 @@ Restart Ollama on node-a to evict VRAM and repeat Step 1 with `--n 10`.  The
 first request will be cold; subsequent ones will be warm (Ollama keeps the model
 loaded between requests by default).  Use only request 1 as the cold sample, or
 restart Ollama before each request if you want N independent cold samples.
+
+## Guided scripts - preflight check + automated cold-loop
+
+The manual steps above work fine by hand, but two scripts remove the tedious
+and error-prone parts: checking your setup is actually ready, and evicting the
+model before every single cold sample (a real n≥10 cold baseline, not just a
+cold first request).
+
+### `bench/preflight.sh` - run this first
+
+Fails loudly, with a clear reason, before you waste time on a broken setup.
+Checks: your admin token actually works, the target node exists and is
+healthy, the model is loaded (or at least pulled), and - if you provide the
+sizes - that the model safely fits under 80% of the node's VRAM.
+
+```bash
+MESH_URL="http://localhost:11434" \
+ADMIN_URL="http://localhost:8080" \
+ADMIN_TOKEN="<your admin_token from mesh config>" \
+NODE_NAME="<exact node name from GET /admin/nodes>" \
+MODEL="llama3.2:3b-q4_k_m" \
+MODEL_SIZE_GB=2.0 \
+NODE_VRAM_GB=24 \
+./bench/preflight.sh
+```
+
+| Env var | Required? | What it's for |
+|---|---|---|
+| `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
+| `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
+| `ADMIN_TOKEN` | **yes** | admin token from your mesh config |
+| `NODE_NAME` | **yes** | exact node name, from `GET /admin/nodes` |
+| `MODEL` | **yes** | exact model tag you're about to benchmark |
+| `MODEL_SIZE_GB` | no | enables the automatic 80%-VRAM fit check |
+| `NODE_VRAM_GB` | no | enables the automatic 80%-VRAM fit check |
+
+The model-pulled check goes through the mesh's own
+`GET /admin/nodes/{name}/models` API (via the node's Node Agent), so it works
+the same way regardless of which runtime that node is running - Ollama, vLLM,
+TGI, llama.cpp, or MLX. If the node has no Node Agent `models.list`
+capability enabled, that one check is skipped with a manual reminder instead
+of failing outright.
+
+A clean run ends with:
+
+```
+=== Preflight passed - safe to proceed with BENCH-RUNBOOK.md Step 2 ===
+```
+
+### `bench/cold-loop.sh` - real n≥10 cold samples
+
+Evicts the model from VRAM, waits, fires one request, and repeats - so every
+sample is a genuine cold load, not just the first one in a batch.
+
+```bash
+MESH_URL="http://localhost:11434" \
+ADMIN_URL="http://localhost:8080" \
+ADMIN_TOKEN="<your admin_token from mesh config>" \
+NODE_NAME="<exact node name from GET /admin/nodes>" \
+MODEL="llama3.2:3b-q4_k_m" \
+API_KEY="<a valid client API key>" \
+./bench/cold-loop.sh 10
+```
+
+The trailing `10` is the sample count (n) - omit it to default to 10. Requires
+`bench/ttft` already built (see "Build the benchmark tool" above).
+
+| Env var | Required? | What it's for |
+|---|---|---|
+| `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
+| `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
+| `ADMIN_TOKEN` | **yes** | admin token, used to evict the model each round |
+| `NODE_NAME` | **yes** | exact node name to evict from |
+| `MODEL` | **yes** | exact model tag |
+| `API_KEY` | **yes** | client API key used for the actual benchmark requests |
+
+Output ends with one summary line plus a raw log you can double-check:
+
+```
+=== Aggregating 10 cold samples from cold_samples.log ===
+n=10  p50=17325.0 ms  min=11466.0 ms  max=21902.4 ms
+```
+
+That `p50`/`min`/`max` line is what goes into the results table below as your
+"Cold" row. Raw per-sample values are saved to `cold_samples.log` in your
+current directory (overwritten on each run) if you need to inspect anything.
 
 ## Results table - fill in with your hardware
 
