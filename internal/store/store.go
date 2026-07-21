@@ -76,6 +76,13 @@ type Store interface {
 	// Runtime API keys (survive restart)
 	UpsertKey(k KeyRecord) error
 	RevokeKey(name string) error
+	// DeleteKey hard-deletes a key row, unlike RevokeKey (which only flips
+	// revoked=1 and keeps the row forever). Used for keys with no long-term
+	// meaning to retain - e.g. the in-dashboard hardware benchmark's
+	// ephemeral per-run key, which would otherwise leave a permanent
+	// "benchmark-<timestamp>" row cluttering the real API Keys page on
+	// every single run.
+	DeleteKey(name string) error
 	AllKeys() ([]KeyRecord, error)
 	// KeySpendSince sums real cloud-fallback cost_usd for keyName since the
 	// given time, for per-key cloud spend cap checks.
@@ -178,6 +185,13 @@ type Store interface {
 	SetModelConfig(cfg ModelConfig) error
 	DeleteModelConfig(model, node string) error
 	AllModelConfigs() ([]ModelConfig, error)
+
+	// InsertBenchmarkRun persists one completed in-dashboard hardware
+	// benchmark run (see internal/admin's benchmarkJob) for the history
+	// table. ListBenchmarkRuns returns the most recent limit runs, newest
+	// first.
+	InsertBenchmarkRun(run BenchmarkRun) error
+	ListBenchmarkRuns(limit int) ([]BenchmarkRun, error)
 
 	Close() error
 }
@@ -497,6 +511,25 @@ type ModelConfig struct {
 	TPM *int `json:"tpm,omitempty"`
 }
 
+// BenchmarkRun is one completed in-dashboard hardware benchmark run: N cold
+// samples (model evicted before each) and N warm samples (model resident
+// throughout) measured via the mesh's own /v1/chat/completions, same
+// methodology as bench/ttft.go and bench/cold-loop.sh.
+type BenchmarkRun struct {
+	ID        int64     `json:"id"`
+	Node      string    `json:"node"`
+	Model     string    `json:"model"`
+	N         int       `json:"n"`
+	ColdP50Ms float64   `json:"cold_p50_ms"`
+	ColdMinMs float64   `json:"cold_min_ms"`
+	ColdMaxMs float64   `json:"cold_max_ms"`
+	WarmP50Ms float64   `json:"warm_p50_ms"`
+	WarmMinMs float64   `json:"warm_min_ms"`
+	WarmMaxMs float64   `json:"warm_max_ms"`
+	SpeedupX  float64   `json:"speedup_x"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
@@ -528,6 +561,7 @@ func (NopStore) AppendPredictiveTransition(_, _ string, _ time.Time) error { ret
 func (NopStore) PredictiveHistory() ([]PredictiveTransition, error)        { return nil, nil }
 func (NopStore) UpsertKey(_ KeyRecord) error                               { return nil }
 func (NopStore) RevokeKey(_ string) error                                  { return nil }
+func (NopStore) DeleteKey(_ string) error                                  { return nil }
 func (NopStore) AllKeys() ([]KeyRecord, error)                             { return nil, nil }
 func (NopStore) KeySpendSince(_ string, _ time.Time) (float64, error)      { return 0, nil }
 func (NopStore) AppendAuditLog(_ AuditEntry) error                         { return nil }
@@ -588,4 +622,6 @@ func (NopStore) GetModelConfig(_, _ string) (ModelConfig, error)   { return Mode
 func (NopStore) SetModelConfig(_ ModelConfig) error                { return nil }
 func (NopStore) DeleteModelConfig(_, _ string) error               { return nil }
 func (NopStore) AllModelConfigs() ([]ModelConfig, error)           { return nil, nil }
+func (NopStore) InsertBenchmarkRun(_ BenchmarkRun) error           { return nil }
+func (NopStore) ListBenchmarkRuns(_ int) ([]BenchmarkRun, error)   { return nil, nil }
 func (NopStore) Close() error                                      { return nil }
