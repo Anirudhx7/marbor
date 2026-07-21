@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig } from '../types';
+import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun } from '../types';
 import type { SystemInfo } from './api';
 
 const GB = 1024;
@@ -840,6 +840,30 @@ export const mockHFModels = [
     lastModified: '2026-06-19T07:45:00Z',
     pipeline_tag: 'text-generation'
   }
+];
+
+export const mockBenchmarkRuns: BenchmarkRun[] = [
+  {
+    id: 3, node: 'gpu-node-01', model: 'deepseek-r1:8b', n: 10,
+    cold_p50_ms: 3840, cold_min_ms: 3510, cold_max_ms: 4220,
+    warm_p50_ms: 112, warm_min_ms: 98, warm_max_ms: 141,
+    speedup_x: 34.3,
+    created_at: '2026-07-18T14:22:00Z',
+  },
+  {
+    id: 2, node: 'gpu-node-03', model: 'qwen2.5-coder:14b', n: 10,
+    cold_p50_ms: 5210, cold_min_ms: 4890, cold_max_ms: 5640,
+    warm_p50_ms: 158, warm_min_ms: 130, warm_max_ms: 202,
+    speedup_x: 33.0,
+    created_at: '2026-07-16T09:05:00Z',
+  },
+  {
+    id: 1, node: 'gpu-node-01', model: 'llama3.3:8b', n: 10,
+    cold_p50_ms: 3120, cold_min_ms: 2900, cold_max_ms: 3480,
+    warm_p50_ms: 96, warm_min_ms: 84, warm_max_ms: 120,
+    speedup_x: 32.5,
+    created_at: '2026-07-14T11:47:00Z',
+  },
 ];
 
 export const mockHFRepoDetails: Record<string, any> = {

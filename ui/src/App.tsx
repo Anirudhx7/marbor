@@ -89,6 +89,7 @@ const Requests     = lazy(() => import('./pages/Requests').then(m => ({ default:
 const Warmup       = lazy(() => import('./pages/Warmup').then(m => ({ default: m.Warmup })));
 const Users        = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const SystemAudit  = lazy(() => import('./pages/SystemAudit').then(m => ({ default: m.SystemAudit })));
+const Benchmark    = lazy(() => import('./pages/Benchmark').then(m => ({ default: m.Benchmark })));
 
 // ---------------------------------------------------------------------------
 // RouterComponent declared at module scope so its identity is stable across
@@ -149,6 +150,8 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
                 <Route path="/model-advisor" element={<ModelAdvisor />} />
                 <Route path="/requests" element={<Requests />} />
                 <Route path="/warmup" element={<Warmup />} />
+                {/* Hidden - reached only via the Settings page card, no Sidebar entry */}
+                <Route path="/benchmark" element={<Benchmark />} />
                 {session.role === 'admin' && <Route path="/users" element={<Users />} />}
                 {session.role === 'admin' && <Route path="/system-audit" element={<SystemAudit />} />}
                 <Route path="*" element={<Navigate to="/" replace />} />
