@@ -6,7 +6,7 @@ import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
 import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
 import { fetchModels, fetchNodes, deleteNodeModel } from '../lib/api';
-import { startPull } from '../lib/pullProgress';
+import { startPull, onPullSuccess } from '../lib/pullProgress';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
@@ -323,6 +323,16 @@ export function Models() {
       clearInterval(interval);
     };
   }, [demoMode, location.pathname]);
+
+  // A pull finishing shouldn't wait on the next 5s poll tick to show up here -
+  // refetch the instant pullProgress.ts reports success, from anywhere in the
+  // app (a pull started on ModelAdvisor still lands on this page's catalog).
+  useEffect(() => {
+    return onPullSuccess(() => {
+      if (currentAppPath() !== '/models') return;
+      loadModels();
+    });
+  }, [demoMode]);
 
   const models = catalog?.models ?? [];
   const configModelEntry = configModel ? models.find((m) => m.name === configModel) ?? null : null;
