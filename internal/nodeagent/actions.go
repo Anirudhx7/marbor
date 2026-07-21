@@ -522,9 +522,10 @@ var unloadModelTimeout = 30 * time.Second
 // unloadCommands maps a locally-detected runtime name to how this agent
 // evicts one model from VRAM while leaving the runtime process (and any
 // other loaded models) running, mirroring pullCommands/listCommands/
-// deleteCommands. Only Ollama gets an entry - per
-// .local/specs/node-agent-capabilities.md's verify-before-build note, this is
-// deliberate, not an oversight:
+// deleteCommands. Takes runtimeURL (unused by the CLI-subprocess entries,
+// required by the HTTP one) for the same reason listCommands does - per
+// .local/specs/node-agent-capabilities.md's verify-before-build note, only
+// ollama and llamacpp get entries, deliberately, not an oversight:
 //   - vLLM's sleep-mode (/sleep, /wake_up) is real but process-scoped (it
 //     unloads *the* model in that process, not one of several) and gated
 //     behind a dev-only env flag not safe to assume enabled.
@@ -534,13 +535,19 @@ var unloadModelTimeout = 30 * time.Second
 //   - The official mlx_lm.server has no multi-model or unload endpoint at
 //     all; only third-party wrappers do.
 //   - llama.cpp's router mode has a genuine per-model POST /models/unload
-//     primitive, but using it requires knowing the runtime's own local HTTP
-//     address - no existing capability resolves that today (pull/list/delete
-//     use CLI subprocesses or an HF-cache directory scan, never an HTTP call
-//     to the runtime itself). Deferred deliberately rather than guessed at;
-//     tracked as a follow-up queue item, not silently dropped.
-var unloadCommands = map[string]func(ctx context.Context, model string) error{
-	"ollama": unloadViaOllama,
+//     primitive (P32, following up on P31's deferral). The runtime-address
+//     discovery P31 lacked already existed one layer up (RuntimeTarget's url,
+//     the same one listCommands' HTTP entries use) - it just wasn't threaded
+//     through unloadCommands yet. The remaining hazard: internal/runtime's
+//     "llamacpp" signature match (GET /v1/models responding non-empty) is
+//     true for both router mode and a plain single-model llama-server, which
+//     has no /models* endpoints at all - so unloadViaLlamaCppRouter confirms
+//     router mode is actually running (a side-effect-free GET {url}/models)
+//     before ever attempting the unload, rather than assuming every node
+//     identified as "llamacpp" supports it.
+var unloadCommands = map[string]func(ctx context.Context, runtimeURL, model string) error{
+	"ollama":   unloadViaOllama,
+	"llamacpp": unloadViaLlamaCppRouter,
 }
 
 // handleUnloadModel is the POST /v1/models/{name...} handler, capability
@@ -562,7 +569,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runtimeName, _ := s.runtimeTarget()
+	runtimeName, runtimeURL := s.runtimeTarget()
 	fn, ok := unloadCommands[runtimeName]
 	if !ok {
 		msg := fmt.Sprintf("unsupported: no unload primitive for runtime %q", runtimeName)
@@ -575,7 +582,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), unloadModelTimeout)
 	defer cancel()
-	if err := fn(ctx, model); err != nil {
+	if err := fn(ctx, runtimeURL, model); err != nil {
 		writeAction(w, http.StatusBadGateway, actionResponse{Error: err.Error()})
 		return
 	}
@@ -586,7 +593,98 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 // the keep_alive:0 HTTP trick, evicting the model from VRAM while leaving the
 // daemon and any other loaded models running. Same CLI-subprocess style as
 // pullViaOllama/deleteViaOllama, for the same reason: Ollama's own CLI
-// already understands its model-name/tag format.
-func unloadViaOllama(ctx context.Context, model string) error {
+// already understands its model-name/tag format. runtimeURL is unused here
+// (part of unloadCommands' shared signature) - Ollama's CLI needs no address.
+func unloadViaOllama(ctx context.Context, _, model string) error {
 	return runDownload(ctx, "", "ollama", "stop", model)
+}
+
+// llamaCppRouterModelList is GET {runtimeURL}/models' response shape in
+// llama.cpp router mode, confirmed against the official server README
+// (tools/server/README.md, ggml-org/llama.cpp): {"data":[{"id":...,
+// "status":{"value":"loaded"|"loading"|"unloaded",...}}]}. Only the fact
+// that Data decodes as a non-nil array matters here - this type exists to
+// confirm router mode is genuinely present, not to inspect any model's
+// status.
+type llamaCppRouterModelList struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// probeLlamaCppRouterMode issues a read-only GET {runtimeURL}/models - a
+// route that only exists when llama-server is running in router mode (a
+// plain single-model llama-server has no /models endpoint at all and
+// answers 404). Distinct from the OpenAI-compatible GET /v1/models every
+// llama-server build answers regardless of mode, which is what
+// internal/runtime.DetectRuntime already uses to identify "llamacpp" in the
+// first place - that signature alone cannot tell router mode from
+// single-model mode, which is exactly why this second, side-effect-free
+// probe exists before unloadViaLlamaCppRouter ever attempts a real unload.
+func probeLlamaCppRouterMode(ctx context.Context, runtimeURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, runtimeURL+"/models", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET /models returned status %d (not router mode)", resp.StatusCode)
+	}
+	var list llamaCppRouterModelList
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return fmt.Errorf("GET /models response is not a router model list: %w", err)
+	}
+	if list.Data == nil {
+		return fmt.Errorf("GET /models response missing \"data\" array (not router mode)")
+	}
+	return nil
+}
+
+// unloadViaLlamaCppRouter POSTs to llama.cpp router mode's own
+// POST /models/unload {"model":"<name>"} (confirmed against
+// tools/server/README.md) - a genuine per-model VRAM eviction that leaves
+// the router process and every other loaded model running. Router mode is
+// opt-in (llama-server enters it only when started without a model path,
+// e.g. via --models-dir/--models-preset) and internal/runtime's "llamacpp"
+// detection cannot distinguish it from a plain single-model instance, so
+// this always confirms router mode via probeLlamaCppRouterMode first and
+// refuses cleanly rather than guessing when it isn't there.
+func unloadViaLlamaCppRouter(ctx context.Context, runtimeURL, model string) error {
+	if err := probeLlamaCppRouterMode(ctx, runtimeURL); err != nil {
+		return fmt.Errorf("unsupported: llama.cpp router mode not detected on this node (%w) - /models/unload only exists when llama-server runs in router mode", err)
+	}
+
+	body, err := json.Marshal(struct {
+		Model string `json:"model"`
+	}{Model: model})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, runtimeURL+"/models/unload", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("llama.cpp router /models/unload returned status %d", resp.StatusCode)
+	}
+	var out struct {
+		Success bool `json:"success"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("llama.cpp router /models/unload: could not decode response: %w", err)
+	}
+	if !out.Success {
+		return fmt.Errorf("llama.cpp router /models/unload reported failure for model %q", model)
+	}
+	return nil
 }
