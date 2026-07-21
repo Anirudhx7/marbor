@@ -231,6 +231,22 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   PREWARM OFF
                 </span>
               )}
+              {node.warmupErrors && Object.keys(node.warmupErrors).length > 0 && (
+                <span
+                  title={Object.entries(node.warmupErrors).map(([model, err]) => `${model}: ${err}`).join('\n')}
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/30 whitespace-nowrap"
+                >
+                  WARMUP FAILED ({Object.keys(node.warmupErrors).length})
+                </span>
+              )}
+              {node.unloadErrors && Object.keys(node.unloadErrors).length > 0 && (
+                <span
+                  title={Object.entries(node.unloadErrors).map(([model, err]) => `${model}: ${err}`).join('\n')}
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/30 whitespace-nowrap"
+                >
+                  UNLOAD FAILED ({Object.keys(node.unloadErrors).length})
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <p className="text-sm text-muted-foreground">{node.gpuModel || 'Unknown GPU'}</p>

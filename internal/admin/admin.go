@@ -386,7 +386,12 @@ type nodeResp struct {
 	// warmed successfully or was never attempted has no entry. Lets the UI
 	// show *why* a keep-warm model is stuck instead of leaving it silently
 	// "not resident" forever (see NodeState.WarmupErrors in router.go).
-	WarmupErrors     map[string]string `json:"warmupErrors,omitempty"`
+	WarmupErrors map[string]string `json:"warmupErrors,omitempty"`
+	// UnloadErrors mirrors WarmupErrors for the scheduled-unload path - the
+	// last failed scheduled/agent unload per model (see NodeState.UnloadErrors
+	// in router.go), so a schedule that reports "ok" (dispatch succeeded) but
+	// whose actual unload failed is still diagnosable from the dashboard.
+	UnloadErrors     map[string]string `json:"unloadErrors,omitempty"`
 	ActiveConns      int32             `json:"activeConns"`
 	RequestsTotal    int64             `json:"requestsTotal"`
 	HealthHistory    []float64         `json:"healthHistory"`
@@ -932,6 +937,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			Uptime:            n.Uptime,
 			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
 			WarmupErrors:      safeStringMap(n.WarmupErrors),
+			UnloadErrors:      safeStringMap(n.UnloadErrors),
 			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
 			RequestsTotal:     atomic.LoadInt64(&n.RequestsTotal),
 			HealthHistory:     hist,
@@ -1013,6 +1019,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			Uptime:            n.Uptime,
 			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
 			WarmupErrors:      safeStringMap(n.WarmupErrors),
+			UnloadErrors:      safeStringMap(n.UnloadErrors),
 			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
 			HealthHistory:     hist,
 			PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),

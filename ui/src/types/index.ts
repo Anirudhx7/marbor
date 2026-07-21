@@ -71,6 +71,11 @@ export interface GPUNode {
   // keep-warm model is stuck instead of leaving it silently "not resident"
   // forever.
   warmupErrors?: Record<string, string>;
+  // Last failed scheduled/agent unload per model (model name -> error
+  // string) - mirrors warmupErrors for the unload side, so a schedule that
+  // dispatched successfully but whose actual unload failed is still
+  // diagnosable instead of only ever appearing in the mesh's own logs.
+  unloadErrors?: Record<string, string>;
   healthHistory: number[];
   // Real in-flight warmup VRAM reservation (never a separate estimate) from
   // the same accounting used for headroom checks. 0 = nothing pending.

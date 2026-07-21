@@ -158,6 +158,14 @@ type NodeState struct {
 	// In-memory only, cleared the moment a ping for that model succeeds;
 	// never persisted, same lifecycle as PrewarmDisabled.
 	WarmupErrors map[string]string
+	// UnloadErrors mirrors WarmupErrors for the scheduled-unload path (model
+	// -> error string): UnloadModels previously only logged a failed
+	// scheduled/agent unload to the mesh process's own stdout, so a schedule
+	// could report LastStatus "ok" (dispatch succeeded) while every model's
+	// actual unload silently failed with no dashboard-reachable signal.
+	// In-memory only, cleared the moment a later unload of that model
+	// succeeds; never persisted, same lifecycle as WarmupErrors.
+	UnloadErrors map[string]string
 	// agentProtocolWarned latches once a poll observes an agent reporting a
 	// protocol_version newer than this mesh binary's own
 	// nodeagent.ProtocolVersion - logged once per node (not every poll
