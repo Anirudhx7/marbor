@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun } from '../types';
 
 const BASE = '/admin';
 
@@ -1106,6 +1106,34 @@ export async function deleteNodeModel(name: string, model: string): Promise<void
     headers: authHeaders(),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to delete model'); }
+}
+
+// runBenchmark starts an in-dashboard hardware benchmark job (see
+// benchmarkProgress.ts for the SSE progress consumer). node+model must
+// already be known to the mesh; the mesh auto-provisions and later deletes
+// an ephemeral API key server-side, so no key input is required here.
+export async function runBenchmark(node: string, model: string, n: number): Promise<{ job_id: string }> {
+  const res = await apiFetch(`${BASE}/benchmark/run`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ node, model, n }),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to start benchmark'); }
+  return res.json();
+}
+
+export async function cancelBenchmarkJob(jobId: string): Promise<void> {
+  await apiFetch(`${BASE}/benchmark/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchBenchmarkRuns(): Promise<BenchmarkRun[]> {
+  const res = await apiFetch(`${BASE}/benchmark/runs`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch benchmark history');
+  const data = await res.json();
+  return data.runs || [];
 }
 
 export async function setPredictiveEngine(enabled: boolean): Promise<{ predictive_engine_enabled: boolean }> {

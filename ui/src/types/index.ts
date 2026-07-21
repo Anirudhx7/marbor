@@ -158,6 +158,25 @@ export interface LoadedModel {
   sizeVram: number;
 }
 
+// BenchmarkRun mirrors internal/store.BenchmarkRun - a persisted result from
+// the in-dashboard hardware benchmark (Settings -> Benchmark, hidden route
+// /benchmark). All *Ms fields are real measured milliseconds, never
+// estimated (R1).
+export interface BenchmarkRun {
+  id: number;
+  node: string;
+  model: string;
+  n: number;
+  cold_p50_ms: number;
+  cold_min_ms: number;
+  cold_max_ms: number;
+  warm_p50_ms: number;
+  warm_min_ms: number;
+  warm_max_ms: number;
+  speedup_x: number;
+  created_at: string;
+}
+
 export interface LiveRequest {
   id: string;
   apiKey: string;
