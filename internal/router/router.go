@@ -173,6 +173,13 @@ type NodeState struct {
 	// an agent got updated ahead of the mesh. Decoding itself never depends
 	// on this - see agent_poll.go.
 	agentProtocolWarned bool
+	// AgentFailures counts consecutive failed agent polls, mirroring
+	// Failures/healthFailureThreshold's hysteresis for the node's own
+	// inference-runtime health - a single dropped TCP connection or timeout
+	// polling the Node Agent must not immediately blank out its telemetry
+	// (fan/RAM/disk/GPU/runtime status) the way clearAgentTelemetry used to
+	// on the very first failure. Reset to 0 on the next successful poll.
+	AgentFailures int
 
 	mu sync.RWMutex
 }
