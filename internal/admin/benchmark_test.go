@@ -370,6 +370,131 @@ func TestHandleCancelBenchmark_StopsAnInFlightRunAndCleansUpKey(t *testing.T) {
 	assertKeyFullyDeleted(t, s, "gpu-0", "llama3:8b", getUsedKey())
 }
 
+// TestHandleCancelBenchmark_AbortsInFlightSamplePromptly regression-tests the
+// fix threading ctx into bench.MeasureChatTTFT: before that fix, the job
+// goroutine's ctx.Err() check only ran BETWEEN samples, so cancelling while a
+// sample's client.Do was blocked (e.g. a slow cold load) left that request -
+// and the ephemeral key's cleanup, which only runs after runBenchmarkJob
+// returns - waiting out the full benchmarkSampleTimeout (5 minutes) instead
+// of aborting immediately.
+//
+// job.requestCancel() flips Phase to "cancelled" synchronously (see
+// benchmark.go), before the underlying ctx.CancelFunc is even invoked - so
+// asserting Phase alone would pass regardless of whether the fix works. The
+// real signal is the ephemeral key's deletion, which is gated behind
+// runBenchmarkJob's deferred cleanup and therefore behind client.Do actually
+// returning. The mock proxy never answers on its own (unlike the sibling
+// test above, which manually releases it), so a prompt key deletion here can
+// only mean the outbound request was actually torn down by ctx cancellation.
+//
+// The handler's own wait is bounded by a generous backstop timer (not tied
+// to the behavior under test) purely so a regression can never hang this
+// suite - httptest.Server.Close() will not return until the handler
+// goroutine does, with no way to force it from outside.
+func TestHandleCancelBenchmark_AbortsInFlightSamplePromptly(t *testing.T) {
+	mockNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockNode.Close()
+
+	var usedKeyMu sync.Mutex
+	var usedKey string
+	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		usedKeyMu.Lock()
+		usedKey = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		usedKeyMu.Unlock()
+		select {
+		case <-r.Context().Done():
+		case <-time.After(20 * time.Second):
+		}
+	}))
+	defer mockProxy.Close()
+
+	s := newBenchTestServer(t, mockNode.URL, mockProxy.URL, "llama3:8b")
+
+	status, jobID := runBenchmarkRequest(t, s, `{"node":"gpu-0","model":"llama3:8b","n":5}`)
+	if status != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", status)
+	}
+
+	getUsedKey := func() string {
+		usedKeyMu.Lock()
+		defer usedKeyMu.Unlock()
+		return usedKey
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for getUsedKey() == "" && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if getUsedKey() == "" {
+		t.Fatalf("job never reached the mock proxy")
+	}
+
+	cancelReq := httptest.NewRequest(http.MethodDelete, "/admin/benchmark/"+jobID, nil)
+	cancelReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	cancelReq.SetPathValue("id", jobID)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, cancelReq)
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from cancel, got %d", w.Result().StatusCode)
+	}
+
+	final := waitForBenchJob(t, s, jobID)
+	if final.Phase != "cancelled" {
+		t.Fatalf("expected phase=cancelled, got %q", final.Phase)
+	}
+
+	// The real assertion: if ctx cancellation didn't abort client.Do, this
+	// key would still be live for up to 20s (the mock's backstop) - well
+	// past assertKeyFullyDeleted's 2s deadline - failing the test instead of
+	// masking the bug behind Phase alone.
+	assertKeyFullyDeleted(t, s, "gpu-0", "llama3:8b", getUsedKey())
+}
+
+// TestHandleRunBenchmark_RejectsConcurrentRunOnSameNode verifies the
+// same-node in-flight guard: a second POST /admin/benchmark/run for a node
+// that already has an active job must be rejected with 409, not allowed to
+// race the first job's evict/reload cycle and corrupt both runs' numbers.
+func TestHandleRunBenchmark_RejectsConcurrentRunOnSameNode(t *testing.T) {
+	mockNode := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockNode.Close()
+
+	block := make(chan struct{})
+	defer close(block)
+	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockProxy.Close()
+
+	s := newBenchTestServer(t, mockNode.URL, mockProxy.URL, "llama3:8b")
+
+	status1, jobID1 := runBenchmarkRequest(t, s, `{"node":"gpu-0","model":"llama3:8b","n":5}`)
+	if status1 != http.StatusAccepted {
+		t.Fatalf("first run: expected 202, got %d", status1)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		s.benchMu.Lock()
+		_, ok := s.benchJobs[jobID1]
+		s.benchMu.Unlock()
+		if ok {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	status2, _ := runBenchmarkRequest(t, s, `{"node":"gpu-0","model":"llama3:8b","n":5}`)
+	if status2 != http.StatusConflict {
+		t.Fatalf("second concurrent run on the same node: expected 409, got %d", status2)
+	}
+}
+
 func TestHandleListBenchmarkRuns_EmptyByDefault(t *testing.T) {
 	s := newBenchTestServer(t, "http://localhost:11434", "", "")
 
