@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Fixed
+- **Deleting a local model showed a garbled error and could silently double-fire.** `ollama rm`'s stderr spinner writes raw ANSI terminal escape codes (cursor hide/show, synchronized-update mode, cursor positioning) even when its output is captured rather than attached to a real terminal - these rode along uncleaned into any error surfaced through the Node Agent's shared subprocess-error path (`runDownload`, used by pull/delete/unload), rendering as garbled box characters in the Models page's delete confirm dialog. They're now stripped before the error ever leaves the agent. Separately, the delete confirm dialog could be dismissed (Cancel, X, or backdrop) while a delete was still in flight - a real delete of a large model over slow/network storage can take a minute or more with no other visual cue, so a user assuming it had stalled could close the dialog and reopen it, firing a second overlapping delete for the same model/node (the second one hitting a "not found" error once the first quietly succeeded). The dialog is now un-dismissible while a delete is in progress, and shows an explicit "this can take a minute" note instead of just a static "Deleting..." label.
+
 ## [0.17.3] - 2026-07-21
 
 ### Added

@@ -618,3 +618,19 @@ func TestHFRepoID(t *testing.T) {
 		}
 	}
 }
+
+// TestStripANSI guards against a real production report: ollama CLI's
+// stderr spinner output (cursor-hide, synchronized-update mode, cursor
+// positioning, erase-line, cursor-show) rode along uncleaned into a
+// "model not found" delete error, rendering as garbled box characters in
+// the admin UI's confirm dialog.
+func TestStripANSI(t *testing.T) {
+	in := "\x1b[?25l\x1b[?2026h\x1b[?25l\x1b[1G\x1b[K\x1b[?25h\x1b[?2026lError: model 'org/repo:BF16' not found"
+	want := "Error: model 'org/repo:BF16' not found"
+	if got := stripANSI(in); got != want {
+		t.Errorf("stripANSI(%q) = %q, want %q", in, got, want)
+	}
+	if got := stripANSI("plain error, no escapes"); got != "plain error, no escapes" {
+		t.Errorf("stripANSI should be a no-op on plain text, got %q", got)
+	}
+}
