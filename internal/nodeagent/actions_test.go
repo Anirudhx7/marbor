@@ -425,10 +425,12 @@ func TestDeleteViaHFCache_SymlinkRejected(t *testing.T) {
 
 // TestHandleUnloadModel_UnsupportedRuntimeReturnsClearError mirrors the
 // pull/list/delete handlers' equivalent - a runtime with no unload
-// primitive in unloadCommands (vLLM/TGI/llama.cpp/MLX today, per P31's
-// verify-before-build) must never silently report ok:true.
+// primitive in unloadCommands (vLLM/TGI/MLX today, per P31's
+// verify-before-build) must never silently report ok:true. llamacpp is
+// covered separately below (TestHandleUnloadModel_LlamaCpp*) since it is in
+// unloadCommands but must still refuse when router mode isn't confirmed.
 func TestHandleUnloadModel_UnsupportedRuntimeReturnsClearError(t *testing.T) {
-	for _, rt := range []string{"", "vllm", "tgi", "llamacpp", "mlx"} {
+	for _, rt := range []string{"", "vllm", "tgi", "mlx"} {
 		srv := newTestServerWithRuntime(t, rt)
 		res := doUnloadModel(t, srv, "org/repo")
 		if res.StatusCode != http.StatusUnprocessableEntity {
@@ -463,6 +465,104 @@ func TestHandleUnloadModel_OllamaMissingBinaryReturnsClearError(t *testing.T) {
 	}
 	if resp.OK {
 		t.Error("expected ok=false when the ollama binary is not on PATH")
+	}
+}
+
+// TestHandleUnloadModel_LlamaCppPlainServerReturnsClearError covers the
+// llamacpp-but-not-router-mode case: internal/runtime.DetectRuntime's
+// "llamacpp" signature (a non-empty GET /v1/models) matches a plain
+// single-model llama-server too, and a plain server has no /models router
+// endpoint at all (404 here, matching real llama-server behavior) - unload
+// must refuse with a clear reason, never silently report ok:true.
+func TestHandleUnloadModel_LlamaCppPlainServerReturnsClearError(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer fake.Close()
+
+	srv := newTestServerWithRuntimeURL(t, "llamacpp", fake.URL)
+	res := doUnloadModel(t, srv, "my-model.gguf")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false when router mode is not detected")
+	}
+	if !strings.Contains(resp.Error, "router mode not detected") {
+		t.Errorf("unexpected error message: %q", resp.Error)
+	}
+}
+
+// TestHandleUnloadModel_LlamaCppRouterModeSucceeds covers the genuine router
+// mode case: GET /models answers like the real router (README-confirmed
+// shape), so unload should confirm router mode and POST /models/unload.
+func TestHandleUnloadModel_LlamaCppRouterModeSucceeds(t *testing.T) {
+	var unloadBody map[string]string
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"my-model.gguf","status":{"value":"loaded"}}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/models/unload":
+			_ = json.NewDecoder(r.Body).Decode(&unloadBody)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"success":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	srv := newTestServerWithRuntimeURL(t, "llamacpp", fake.URL)
+	res := doUnloadModel(t, srv, "my-model.gguf")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.OK {
+		t.Errorf("expected ok=true, got error %q", resp.Error)
+	}
+	if unloadBody["model"] != "my-model.gguf" {
+		t.Errorf("expected /models/unload body model=my-model.gguf, got %v", unloadBody)
+	}
+}
+
+// TestHandleUnloadModel_LlamaCppRouterReportsFailure covers the router
+// answering both probes but reporting success:false (e.g. unknown model
+// name) - must surface as an error, never as ok:true.
+func TestHandleUnloadModel_LlamaCppRouterReportsFailure(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"other-model.gguf","status":{"value":"loaded"}}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/models/unload":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"success":false}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	srv := newTestServerWithRuntimeURL(t, "llamacpp", fake.URL)
+	res := doUnloadModel(t, srv, "not-loaded.gguf")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false when the router reports success:false")
 	}
 }
 
