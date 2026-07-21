@@ -33,12 +33,12 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
 
   return (
     <div className="bg-card border border-primary/30 rounded-xl p-6 shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <Zap className="w-5 h-5 text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">Result</h3>
-        <span className="text-xs text-muted-foreground font-mono">{result.node} · {result.model}</span>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <Zap className="w-5 h-5 text-primary shrink-0" />
+        <h3 className="text-sm font-semibold text-foreground shrink-0">Result</h3>
+        <span className="text-xs text-muted-foreground font-mono truncate min-w-0">{result.node} · {result.model}</span>
         <button onClick={copySummary}
-          className="ml-auto flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground border border-border rounded-md hover:bg-secondary transition-colors">
+          className="ml-auto flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground border border-border rounded-md hover:bg-secondary transition-colors shrink-0">
           {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
         </button>
       </div>
