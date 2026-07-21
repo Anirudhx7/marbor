@@ -723,10 +723,18 @@ export function Warmup() {
     let active = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load(active);
+    if (demoMode) return () => { active = false; };
+    // TriggerWarmup (the "Ping warmup" button, POST /warmup/ping) is
+    // fire-and-forget on the backend - it returns immediately while the
+    // actual per-model pings (and any resulting warmupErrors) run in the
+    // background. Without a poll here, a ping's result - or any other
+    // keep-warm state change - was only ever visible after a manual reload.
+    const interval = setInterval(() => load(active), 10000);
     return () => {
       active = false;
+      clearInterval(interval);
     };
-  }, [load, location.pathname]);
+  }, [load, demoMode, location.pathname]);
 
   useEffect(() => {
     if (currentAppPath() !== '/warmup' || !serverTime) return;
@@ -776,6 +784,11 @@ export function Warmup() {
     try {
       await triggerWarmupPing();
       setPingMessage({ text: 'Warmup triggered.', error: false });
+      // The ping itself runs async on the backend (TriggerWarmup returns
+      // immediately) - a short delay gives it time to actually reach each
+      // node and update warmupErrors before this page's next fetch, instead
+      // of waiting on the full 10s poll interval for feedback.
+      setTimeout(() => load(true), 3000);
     } catch (e: any) {
       setPingMessage({ text: e.message || 'Failed to trigger warmup', error: true });
     } finally {
