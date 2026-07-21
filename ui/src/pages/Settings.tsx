@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2, ChevronUp, ChevronDown, Gauge } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
@@ -120,6 +120,7 @@ const getTimezoneLabel = (tz: string): string => {
 export function SettingsPage() {
   const { demoMode, setDemoMode } = useDemoMode();
   const location = useLocation();
+  const navigate = useNavigate();
   const { currency, setCurrency, toDisplay, toUSD } = useCurrency();
   const roundDisplay = (n: number) => Math.round(n * 100) / 100;
   const [settings, setSettings] = useState<Settings>(defaultSettings);
@@ -508,6 +509,27 @@ export function SettingsPage() {
                 demoMode ? 'translate-x-6' : 'translate-x-1'
               }`}
             />
+          </button>
+        </div>
+      </div>
+
+      {/* Hardware Benchmark - hidden diagnostic page, no Sidebar entry */}
+      <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Gauge className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Hardware Benchmark</h3>
+              <p className="text-xs font-medium text-muted-foreground">Measure real cold-vs-warm TTFT on your own hardware, through this mesh</p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/benchmark')}
+            className="px-4 py-2 bg-secondary hover:bg-secondary/80 text-foreground text-sm font-medium rounded-lg transition-colors border border-border shrink-0"
+          >
+            Open
           </button>
         </div>
       </div>

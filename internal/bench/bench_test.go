@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -103,7 +104,7 @@ func TestDetectModel_authHeader(t *testing.T) {
 	}
 }
 
-// ── measureTTFT ──────────────────────────────────────────────────────────────
+// ── MeasureChatTTFT ──────────────────────────────────────────────────────────────
 
 // sseChunk builds one SSE data line from an OpenAI-compatible delta.
 func sseChunk(content string, done bool) string {
@@ -134,12 +135,12 @@ func TestMeasureTTFT_success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ms, err := measureTTFT(srv.Client(), srv.URL, "llama3:8b", "")
+	ms, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
 	if err != nil {
-		t.Fatalf("measureTTFT: %v", err)
+		t.Fatalf("MeasureChatTTFT: %v", err)
 	}
 	if ms < 0 {
-		t.Errorf("measureTTFT returned negative ms: %d", ms)
+		t.Errorf("MeasureChatTTFT returned negative ms: %d", ms)
 	}
 }
 
@@ -153,9 +154,9 @@ func TestMeasureTTFT_authHeader(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := measureTTFT(srv.Client(), srv.URL, "llama3:8b", "testkey")
+	_, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "testkey")
 	if err != nil {
-		t.Fatalf("measureTTFT: %v", err)
+		t.Fatalf("MeasureChatTTFT: %v", err)
 	}
 	if gotAuth != "Bearer testkey" {
 		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer testkey")
@@ -168,7 +169,7 @@ func TestMeasureTTFT_httpError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := measureTTFT(srv.Client(), srv.URL, "llama3:8b", "")
+	_, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
 	if err == nil {
 		t.Fatal("expected error for non-200, got nil")
 	}
@@ -182,7 +183,7 @@ func TestMeasureTTFT_emptyStream(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := measureTTFT(srv.Client(), srv.URL, "llama3:8b", "")
+	_, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
 	if err == nil {
 		t.Fatal("expected error for empty stream, got nil")
 	}

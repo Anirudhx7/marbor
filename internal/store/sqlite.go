@@ -324,6 +324,24 @@ func (s *sqliteStore) migrate() error {
 			config_json TEXT NOT NULL,
 			PRIMARY KEY (model, node)
 		)`,
+
+		// benchmark_runs is the history table for the in-dashboard hardware
+		// benchmark page (evict -> N cold samples -> N warm samples via the
+		// mesh's own /v1/chat/completions). No secrets here - R8 doesn't apply.
+		`CREATE TABLE IF NOT EXISTS benchmark_runs (
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			node         TEXT NOT NULL,
+			model        TEXT NOT NULL,
+			n            INTEGER NOT NULL,
+			cold_p50_ms  REAL NOT NULL,
+			cold_min_ms  REAL NOT NULL,
+			cold_max_ms  REAL NOT NULL,
+			warm_p50_ms  REAL NOT NULL,
+			warm_min_ms  REAL NOT NULL,
+			warm_max_ms  REAL NOT NULL,
+			speedup_x    REAL NOT NULL,
+			created_at   INTEGER NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -1060,6 +1078,18 @@ func (s *sqliteStore) RevokeKey(name string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("store: RevokeKey: %w", err)
+	}
+	return nil
+}
+
+// DeleteKey hard-deletes a key row. Unlike RevokeKey (soft, keeps the row
+// forever for audit purposes on a real operator-created key), this is for
+// keys with no long-term meaning to retain - see the Store interface's doc
+// comment on this method.
+func (s *sqliteStore) DeleteKey(name string) error {
+	_, err := s.db.Exec(`DELETE FROM runtime_keys WHERE name=?`, name)
+	if err != nil {
+		return fmt.Errorf("store: DeleteKey: %w", err)
 	}
 	return nil
 }
@@ -2120,6 +2150,57 @@ func (s *sqliteStore) AllModelConfigs() ([]ModelConfig, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: AllModelConfigs rows: %w", err)
+	}
+	return out, nil
+}
+
+func (s *sqliteStore) InsertBenchmarkRun(run BenchmarkRun) error {
+	_, err := s.db.Exec(
+		`INSERT INTO benchmark_runs
+			(node, model, n, cold_p50_ms, cold_min_ms, cold_max_ms, warm_p50_ms, warm_min_ms, warm_max_ms, speedup_x, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		run.Node, run.Model, run.N,
+		run.ColdP50Ms, run.ColdMinMs, run.ColdMaxMs,
+		run.WarmP50Ms, run.WarmMinMs, run.WarmMaxMs,
+		run.SpeedupX, run.CreatedAt.Unix(),
+	)
+	if err != nil {
+		return fmt.Errorf("store: InsertBenchmarkRun: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) ListBenchmarkRuns(limit int) ([]BenchmarkRun, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(
+		`SELECT id, node, model, n, cold_p50_ms, cold_min_ms, cold_max_ms, warm_p50_ms, warm_min_ms, warm_max_ms, speedup_x, created_at
+			FROM benchmark_runs ORDER BY created_at DESC LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: ListBenchmarkRuns: %w", err)
+	}
+	defer rows.Close()
+
+	var out []BenchmarkRun
+	for rows.Next() {
+		var run BenchmarkRun
+		var createdAt int64
+		if err := rows.Scan(
+			&run.ID, &run.Node, &run.Model, &run.N,
+			&run.ColdP50Ms, &run.ColdMinMs, &run.ColdMaxMs,
+			&run.WarmP50Ms, &run.WarmMinMs, &run.WarmMaxMs,
+			&run.SpeedupX, &createdAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: ListBenchmarkRuns scan: %w", err)
+		}
+		run.CreatedAt = time.Unix(createdAt, 0)
+		out = append(out, run)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: ListBenchmarkRuns rows: %w", err)
 	}
 	return out, nil
 }
