@@ -183,6 +183,8 @@ type Server struct {
 	warmHits       int64                     // atomic - total warm hit events
 	tokenEvents    []TokenEvent              // protected by mu
 	mgmtEndpoints  managementEndpointsSetter // nil until wired via SetProxyHandler
+	benchMu        sync.Mutex                // guards benchJobs
+	benchJobs      map[string]*benchmarkJob  // job id -> job state; ephemeral, never persisted (results land in benchmark_runs)
 }
 
 // managementEndpointsSetter is satisfied by *proxy.Handler. Defined locally
@@ -547,6 +549,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		logChan:        make(chan store.RequestRecord, 5000),
 		logDone:        make(chan struct{}),
 		pullJobs:       make(map[string]*pullJob),
+		benchJobs:      make(map[string]*benchmarkJob),
 	}
 	s.ensureAdminUser()
 	s.logWg.Add(1)
@@ -687,6 +690,10 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
 	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
 	reg("POST /admin/nodes/{name}/prewarm", s.cors(s.adminAuth(s.handleSetNodePrewarm)))
+	reg("POST /admin/benchmark/run", s.cors(s.adminAuth(s.handleRunBenchmark)))
+	reg("GET /admin/benchmark/{id}/progress", s.cors(s.adminAuth(s.handleBenchmarkProgress)))
+	reg("DELETE /admin/benchmark/{id}", s.cors(s.adminAuth(s.handleCancelBenchmark)))
+	reg("GET /admin/benchmark/runs", s.cors(s.adminAuth(s.handleListBenchmarkRuns)))
 	reg("GET /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleGetNodeAgent)))
 	reg("POST /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleEnableNodeAgent)))
 	reg("DELETE /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleDisableNodeAgent)))
