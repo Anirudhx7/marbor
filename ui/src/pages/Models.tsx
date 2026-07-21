@@ -228,28 +228,9 @@ export function Models() {
 
   const openPullModal = async () => {
     if (demoMode) {
-      setPullNodesList([
-        {
-          id: 'gpu-0',
-          name: 'gpu-0',
-          host: '10.0.0.11',
-          gpuModel: 'NVIDIA A100',
-          port: 11434,
-          vramTotalMB: 81920,
-          vramUsedMB: 40960,
-          vramSource: 'nvidia',
-          runtime: 'ollama',
-          powerDrawW: 250,
-          cpuPercent: 12,
-          temperature: 65,
-          health: 'healthy',
-          draining: false,
-          uptime: '2d 4h',
-          loadedModels: [],
-          healthHistory: []
-        }
-      ]);
-      setPullSelectedNode('gpu-0');
+      setPullNodesList(mockGPUNodes);
+      const healthyNode = mockGPUNodes.find((n) => n.health === 'healthy') || mockGPUNodes[0];
+      setPullSelectedNode(healthyNode?.name ?? '');
       setIsPullModalOpen(true);
       return;
     }
