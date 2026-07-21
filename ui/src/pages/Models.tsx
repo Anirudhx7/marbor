@@ -36,7 +36,6 @@ function SkeletonCard() {
 
 function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; onConfigure: () => void; onDeleted: (modelName: string, nodeName: string) => void }) {
   const isWarm = model.warm_count > 0;
-  const [pullInput, setPullInput] = useState('');
   // Stores the user's explicit dropdown pick; derived below into deleteNode
   // so a stale pick (a poll refresh reorders model.nodes or drops the
   // previously-selected node) always falls back to the current first node
@@ -49,19 +48,7 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
     ? selectedDeleteNode
     : (model.nodes[0]?.name ?? '');
 
-  // Pick the first healthy node for pull target, fall back to any node
-  const targetNode = model.nodes.find((n) => n.healthy) ?? model.nodes[0];
-
-  const handlePull = () => {
-    const trimmed = pullInput.trim();
-    if (!trimmed || !targetNode) return;
-    startPull(targetNode.name, trimmed, demoMode);
-    setPullInput('');
-  };
-
-  const pullDisabled = !pullInput.trim() || !targetNode;
-
-  // No pre-flight capability check here, same as Pull above - ModelNode
+  // No pre-flight capability check here - ModelNode
   // doesn't carry agentCapabilities (only GPUNode does), so this attempts the
   // delete and surfaces the backend's own 501 "not supported" error if the
   // target node's agent lacks models.delete, rather than threading capability
@@ -139,32 +126,6 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
             </span>
           ))}
         </div>
-
-        {/* Pull section */}
-        {targetNode && (
-          <div className="mt-3 pt-3 border-t border-border">
-            <p className="text-xs font-medium text-muted-foreground mb-2">
-              Pull to {targetNode.name}
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={pullInput}
-                onChange={(e) => setPullInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !pullDisabled && handlePull()}
-                placeholder="model:tag"
-                className="flex-1 px-2 py-1 text-xs bg-secondary border border-border rounded-md text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-              />
-              <button
-                onClick={handlePull}
-                disabled={pullDisabled}
-                className="px-3 py-1 text-xs font-medium bg-secondary border border-border rounded-md text-foreground hover:bg-primary/10 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                Pull
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Delete section */}
         {model.nodes.length > 0 && (
@@ -410,8 +371,8 @@ export function Models() {
           </div>
           <button
             onClick={openPullModal}
-            disabled={!isLive}
-            title={!isLive ? 'Backend disconnected' : undefined}
+            disabled={!demoMode && !isLive}
+            title={!demoMode && !isLive ? 'Backend disconnected' : undefined}
             className="flex items-center gap-2 px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-semibold rounded-lg transition-colors shadow-sm cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
