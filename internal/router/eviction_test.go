@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -174,6 +175,133 @@ func TestUnloadModelsScheduled(t *testing.T) {
 	defer mu.Unlock()
 	if !got["a"] || !got["b"] {
 		t.Errorf("expected both models unloaded, got %v", got)
+	}
+}
+
+// TestUnloadModelsScheduledDispatchesToAgentWhenCapable verifies the P33 fix:
+// a scheduled unload on a node whose agent reports "models.unload" dispatches
+// through the agent (POST /v1/models/{name}) instead of the direct Ollama
+// keep_alive:0 HTTP call, mirroring handleUnloadModel's manual-path behavior.
+func TestUnloadModelsScheduledDispatchesToAgentWhenCapable(t *testing.T) {
+	var mu sync.Mutex
+	var gotMethod, gotPath, gotAuth string
+	directHit := false
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotMethod, gotPath, gotAuth = r.Method, r.URL.Path, r.Header.Get("Authorization")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer agentSrv.Close()
+
+	nodeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		directHit = true
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer nodeSrv.Close()
+
+	var agentPort int
+	fmt.Sscanf(strings.TrimPrefix(agentSrv.URL, "http://127.0.0.1:"), "%d", &agentPort)
+
+	r := &Router{nodes: []*NodeState{{Name: "n1", URL: nodeSrv.URL, Healthy: true}}}
+	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token")
+	r.nodes[0].AgentCapabilities = []string{"models.unload"}
+
+	r.UnloadModels(context.Background(), "n1", []string{"org/repo"})
+	time.Sleep(150 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if gotMethod != http.MethodPost {
+		t.Errorf("expected agent request method POST, got %q", gotMethod)
+	}
+	if gotPath != "/v1/models/org/repo" {
+		t.Errorf("expected agent request path /v1/models/org/repo, got %q", gotPath)
+	}
+	if gotAuth != "Bearer agent-secret-token" {
+		t.Errorf("agent request Authorization = %q, want Bearer agent-secret-token", gotAuth)
+	}
+	if directHit {
+		t.Error("expected the direct Ollama node to never be contacted when the agent is capable")
+	}
+}
+
+// TestUnloadModelsScheduledAgentDownNodeSkipped verifies a scheduled unload
+// fails fast (never contacts the agent) when the node's poller-tracked
+// health is currently down, mirroring handleUnloadModel's agent-branch
+// fail-fast check.
+func TestUnloadModelsScheduledAgentDownNodeSkipped(t *testing.T) {
+	hit := false
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer agentSrv.Close()
+
+	var agentPort int
+	fmt.Sscanf(strings.TrimPrefix(agentSrv.URL, "http://127.0.0.1:"), "%d", &agentPort)
+
+	r := &Router{nodes: []*NodeState{{Name: "n1", URL: "http://localhost:11434", Healthy: false}}}
+	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token")
+	r.nodes[0].AgentCapabilities = []string{"models.unload"}
+
+	r.UnloadModels(context.Background(), "n1", []string{"some-model"})
+	time.Sleep(150 * time.Millisecond)
+
+	if hit {
+		t.Error("agent must not be contacted for a down node")
+	}
+}
+
+// TestUnloadModelsScheduledNoAgentCapabilityUsesDirectPath verifies that a
+// node with an agent enabled but WITHOUT "models.unload" in its reported
+// capabilities still falls back to the direct Ollama path unchanged -
+// reliability requirement: only "models.unload" specifically gates the
+// agent dispatch, not agent presence alone.
+func TestUnloadModelsScheduledNoAgentCapabilityUsesDirectPath(t *testing.T) {
+	var mu sync.Mutex
+	var body string
+	nodeSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		body = string(b)
+		mu.Unlock()
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer nodeSrv.Close()
+
+	r := &Router{nodes: []*NodeState{{Name: "n1", URL: nodeSrv.URL, Healthy: true}}}
+	r.SetNodeAgent("n1", true, 9999, "agent-secret-token")
+	r.nodes[0].AgentCapabilities = []string{"status", "models.pull"} // no "models.unload"
+
+	r.UnloadModels(context.Background(), "n1", []string{"llama3"})
+	time.Sleep(150 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.Contains(body, `"keep_alive":0`) || !strings.Contains(body, `"llama3"`) {
+		t.Errorf("expected direct keep_alive:0 unload, got body: %s", body)
+	}
+}
+
+// TestBuildAgentUnloadURL_EscapesReservedCharacters mirrors admin package's
+// equivalent test for its own copy of this URL builder.
+func TestBuildAgentUnloadURL_EscapesReservedCharacters(t *testing.T) {
+	cases := map[string]string{
+		"org/repo":     "http://localhost:9911/v1/models/org/repo",
+		"org/repo#tag": "http://localhost:9911/v1/models/org/repo%23tag",
+		"org/repo?x=1": "http://localhost:9911/v1/models/org/repo%3Fx=1",
+		"org/my repo":  "http://localhost:9911/v1/models/org/my%20repo",
+	}
+	for model, want := range cases {
+		got, err := buildAgentUnloadURL("http://localhost:11434", 9911, model)
+		if err != nil {
+			t.Fatalf("buildAgentUnloadURL(%q): %v", model, err)
+		}
+		if got != want {
+			t.Errorf("buildAgentUnloadURL(%q) = %q, want %q", model, got, want)
+		}
 	}
 }
 

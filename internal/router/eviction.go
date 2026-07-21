@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
@@ -264,6 +266,132 @@ func (r *Router) RecordManualUnload(nodeName, model string) {
 	r.recordUnloadSideEffects(nodeName, model, "manual")
 }
 
+// ShouldUseAgentForUnload reports whether nodeName's unload should dispatch
+// through its Node Agent (enabled + reports capability "models.unload")
+// instead of the direct Ollama keep_alive:0 HTTP call - the single decision
+// shared by the manual unload endpoint (admin.go handleUnloadModel) and the
+// scheduled unload path (UnloadModels below), per P33: a future change to
+// the decision has exactly one place to change instead of two. Reliability
+// requirement: a node with no agent configured/enabled, or one that hasn't
+// reported "models.unload", always gets false here, so the caller's
+// pre-existing direct-path fallback runs completely unchanged.
+func (r *Router) ShouldUseAgentForUnload(nodeName string) (NodeAgentConfig, bool) {
+	cfg, ok := r.NodeAgentSetting(nodeName)
+	if !ok || !cfg.Enabled {
+		return cfg, false
+	}
+	return cfg, r.nodeHasAgentCapability(r.FindNode(nodeName), "models.unload")
+}
+
+// shouldUseAgentForUnloadNode is ShouldUseAgentForUnload's node-already-resolved
+// variant. UnloadModels below has already looked up its target NodeState via
+// FindNode before this would otherwise run a second, redundant linear scan
+// over r.nodes for the exact same node - this avoids that.
+func (r *Router) shouldUseAgentForUnloadNode(n *NodeState, nodeName string) (NodeAgentConfig, bool) {
+	cfg, ok := r.NodeAgentSetting(nodeName)
+	if !ok || !cfg.Enabled {
+		return cfg, false
+	}
+	return cfg, r.nodeHasAgentCapability(n, "models.unload")
+}
+
+// nodeHasAgentCapability reports whether n's live-polled AgentCapabilities
+// (agent_poll.go) includes capability. Mirrors admin.go's free function of
+// the same purpose - kept as a separate small method since admin and router
+// are different packages (same reasoning as buildAgentActionURL/
+// buildAgentURL below).
+func (r *Router) nodeHasAgentCapability(n *NodeState, capability string) bool {
+	if n == nil {
+		return false
+	}
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	for _, c := range n.AgentCapabilities {
+		if c == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// unloadModelViaAgent dispatches a model unload to nodeURL's Node Agent
+// (POST /v1/models/{name...}, capability "models.unload"). Mirrors admin.go's
+// unloadModelViaAgent/buildAgentUnloadURL exactly (wire contract, response
+// decoding) - duplicated here rather than shared, since router cannot import
+// admin (the reverse dependency direction would be a cycle); only the
+// agent-vs-direct decision above is shared, per the reliability requirement.
+func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg NodeAgentConfig, model string) error {
+	actionURL, err := buildAgentUnloadURL(nodeURL, cfg.Port, model)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+
+	client := &http.Client{Timeout: nodeAgentUnloadTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("agent unload model failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("agent unload model: could not decode response (status %d)", resp.StatusCode)
+	}
+	if !out.OK {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// nodeAgentUnloadTimeout bounds how long the scheduled-unload path waits for
+// a node agent's POST /v1/models/{name} (unload) response. Matches admin.go's
+// nodeUnloadModelTimeout for the manual path.
+const nodeAgentUnloadTimeout = 30 * time.Second
+
+// buildAgentUnloadURL derives the agent's POST /v1/models/{name} URL from the
+// node's own URL (same host) and the configured agent port, via url.Parse per
+// R5 - never arithmetic port derivation. model is percent-escaped per
+// "/"-delimited segment so a name containing "/" (e.g. "org/repo") lands on
+// the agent side as multiple path segments, matching its "{name...}"
+// wildcard route. Mirrors admin.go's buildAgentUnloadURL.
+func buildAgentUnloadURL(nodeURL string, port int, model string) (string, error) {
+	u, err := url.Parse(nodeURL)
+	if err != nil {
+		return "", fmt.Errorf("parse node URL: %w", err)
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("node URL %q has no host", nodeURL)
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d/v1/models/%s", scheme, u.Hostname(), port, escapeModelPathSegments(model)), nil
+}
+
+// escapeModelPathSegments percent-escapes each "/"-delimited segment of a
+// model name independently, then rejoins with literal "/". Mirrors admin.go's
+// escapeModelPathSegments.
+func escapeModelPathSegments(model string) string {
+	parts := strings.Split(model, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
+}
+
 // FindNode returns the node with the given name, or nil.
 func (r *Router) FindNode(name string) *NodeState {
 	r.mu.RLock()
@@ -306,15 +434,26 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 
 // UnloadModels unloads several models from a node immediately (used by the
 // scheduled "unload"/drain-at-night action). Each unload runs in its own
-// goroutine so a slow node can't block the scheduler tick. Unknown nodes and
-// non-Ollama backends are skipped. Pinned models are skipped (not unloaded)
-// with a log line, same policy as the manual UnloadModel path.
+// goroutine so a slow node can't block the scheduler tick. Unknown nodes are
+// skipped. Pinned models are skipped (not unloaded) with a log line, same
+// policy as the manual UnloadModel path. Non-Ollama backends are still
+// skipped (unloadModel's own no-op guard) when this falls through to the
+// direct path below - only the agent branch makes them work for real.
+//
+// Dispatches through the node's Node Agent (capability "models.unload") when
+// ShouldUseAgentForUnload says so - same decision handleUnloadModel makes for
+// the manual path (P33) - so a vLLM/TGI/llama.cpp/MLX node's scheduled unload
+// works for real instead of silently no-op-ing via the direct
+// Ollama-only keep_alive:0 call below. A node with no agent
+// configured/enabled/capable falls through to that direct call completely
+// unchanged.
 func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) {
 	n := r.FindNode(nodeName)
 	if n == nil {
 		log.Printf("scheduled unload skipped: node %q not found", nodeName)
 		return
 	}
+	agentCfg, useAgent := r.shouldUseAgentForUnloadNode(n, nodeName)
 	for _, m := range models {
 		if m == "" {
 			continue
@@ -330,6 +469,28 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 					log.Printf("[router] panic in goroutine: %v", rec)
 				}
 			}()
+			if useAgent {
+				n.mu.RLock()
+				nodeURL, healthy := n.URL, n.Healthy
+				n.mu.RUnlock()
+				// Fail-fast on a down node, mirroring handleUnloadModel's
+				// agent-branch check: a dead node's URL may still answer with
+				// something else entirely on that port, which would otherwise
+				// surface as a confusing agent-dispatch error instead of the
+				// real reachability problem.
+				if !healthy {
+					log.Printf("scheduled unload of %q on %s skipped: node is currently unreachable (down)", m, nodeName)
+					return
+				}
+				actx, cancel := context.WithTimeout(ctx, nodeAgentUnloadTimeout)
+				defer cancel()
+				if err := r.unloadModelViaAgent(actx, nodeURL, agentCfg, m); err != nil {
+					log.Printf("scheduled unload of %q on %s failed (agent): %v", m, nodeName, err)
+					return
+				}
+				r.recordUnloadSideEffects(nodeName, m, "scheduled")
+				return
+			}
 			if err := r.unloadModel(ctx, n, m, "scheduled"); err != nil {
 				log.Printf("scheduled unload of %q on %s failed: %v", m, nodeName, err)
 			}

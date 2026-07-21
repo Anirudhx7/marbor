@@ -2009,8 +2009,10 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentCfg, agentOK := s.router.NodeAgentSetting(name)
-	useAgent := agentOK && agentCfg.Enabled && nodeHasAgentCapability(s.router.Nodes(), name, "models.unload")
+	// Decision shared with the scheduled unload path (router.Router.UnloadModels)
+	// via Router.ShouldUseAgentForUnload, per P33 - not duplicated a second
+	// time here.
+	agentCfg, useAgent := s.router.ShouldUseAgentForUnload(name)
 
 	if useAgent {
 		// Same fail-fast reasoning as handleNodePull/handleNodeDeleteModel: a
