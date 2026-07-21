@@ -9,18 +9,19 @@
 # auth is session-based (POST /admin/login with an admin-role account's
 # username/password, same as the dashboard login), not a static bearer token.
 #
-# Usage:
-#   MESH_URL=http://localhost:11434 ADMIN_URL=http://localhost:8080 \
-#   ADMIN_USERNAME=admin ADMIN_PASSWORD=<password> \
-#   NODE_NAME=gpu-node-01 MODEL=llama3.2:3b-q4_k_m \
-#   ./bench/preflight.sh
+# Usage (all env vars optional except MODEL - see below):
+#   MODEL=llama3.2:3b-q4_k_m ./bench/preflight.sh
+#
+# ADMIN_USERNAME/ADMIN_PASSWORD default to admin/admin (the demo-mode and
+# most-common first-admin-account default) - override if your account uses
+# something else. NODE_NAME is auto-detected when the mesh has exactly one
+# node; set it explicitly if you have more than one.
 set -uo pipefail
 
 : "${MESH_URL:=http://localhost:11434}"
 : "${ADMIN_URL:=http://localhost:8080}"
-: "${ADMIN_USERNAME:?ADMIN_USERNAME is required (an admin-role account's username)}"
-: "${ADMIN_PASSWORD:?ADMIN_PASSWORD is required (that account's password)}"
-: "${NODE_NAME:?NODE_NAME is required (exact name from GET /admin/nodes)}"
+: "${ADMIN_USERNAME:=admin}"
+: "${ADMIN_PASSWORD:=admin}"
 : "${MODEL:?MODEL is required (exact tag, e.g. llama3.2:3b-q4_k_m)}"
 
 fail() { echo "PREFLIGHT FAILED: $*" >&2; exit 1; }
@@ -52,6 +53,33 @@ nodes_json="$(cat /tmp/preflight_nodes.$$ 2>/dev/null)"
 rm -f /tmp/preflight_nodes.$$
 if [ "$nodes_resp" != "200" ]; then
   fail "GET ${ADMIN_URL}/admin/nodes returned HTTP ${nodes_resp} after a successful login - session cookie not being sent/accepted?"
+fi
+
+if [ -z "${NODE_NAME:-}" ]; then
+  node_auto="$(printf '%s' "$nodes_json" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+nodes = data if isinstance(data, list) else data.get('nodes', data)
+names = [n.get('name') for n in nodes]
+if len(names) == 1:
+    print('AUTO', names[0])
+elif len(names) == 0:
+    print('NONE')
+else:
+    print('MANY', ','.join(str(x) for x in names))
+")"
+  case "$node_auto" in
+    AUTO*)
+      NODE_NAME="${node_auto#AUTO }"
+      ok "NODE_NAME not set - auto-detected the mesh's only node: '${NODE_NAME}'"
+      ;;
+    NONE)
+      fail "NODE_NAME not set and GET /admin/nodes returned no nodes - add a node first (dashboard's GPU Nodes page or POST /admin/nodes)"
+      ;;
+    MANY*)
+      fail "NODE_NAME not set and the mesh has multiple nodes (${node_auto#MANY }) - set NODE_NAME to the one you want to benchmark"
+      ;;
+  esac
 fi
 
 echo "=== [2/5] Node reachable and healthy ==="
