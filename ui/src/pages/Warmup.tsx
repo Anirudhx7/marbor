@@ -48,7 +48,7 @@ function ModelPills({ allModels, selected, onChange }: {
 // EvictForHeadroom): the top model always wins a VRAM contest over ones below
 // it when a node can't fit all of them at once. Reorder controls only show up
 // once there's more than one model, since order is meaningless otherwise.
-function KeepWarmList({ models, onChange }: { models: string[]; onChange: (models: string[]) => void }) {
+function KeepWarmList({ models, onChange, warmupErrors }: { models: string[]; onChange: (models: string[]) => void; warmupErrors?: Record<string, string> }) {
   if (models.length === 0) return null;
 
   function move(index: number, dir: -1 | 1) {
@@ -61,13 +61,22 @@ function KeepWarmList({ models, onChange }: { models: string[]; onChange: (model
 
   return (
     <div className="space-y-1.5 mb-2.5">
-      {models.map((model, index) => (
+      {models.map((model, index) => {
+        const error = warmupErrors?.[model];
+        return (
         <div key={model} className="flex items-center justify-between gap-2 pl-1 pr-1.5 py-1.5 rounded-lg border border-border bg-secondary/30">
           <div className="flex items-center gap-2 min-w-0">
             <span className="flex items-center justify-center w-4 h-4 shrink-0 rounded bg-primary/10 text-primary text-[10px] font-mono font-medium">
               {index + 1}
             </span>
-            <span className="text-xs font-mono text-foreground truncate">{model}</span>
+            <div className="min-w-0">
+              <span className="text-xs font-mono text-foreground truncate block">{model}</span>
+              {error && (
+                <span title={error} className="text-[10px] text-destructive truncate block">
+                  Warmup failed: {error}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-0.5 shrink-0">
             {models.length > 1 && (
@@ -91,7 +100,8 @@ function KeepWarmList({ models, onChange }: { models: string[]; onChange: (model
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -211,7 +221,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
         </button>
         {showModels && (
           <div className="px-4 pb-3">
-            <KeepWarmList models={selectedModels} onChange={setSelectedModels} />
+            <KeepWarmList models={selectedModels} onChange={setSelectedModels} warmupErrors={node.warmupErrors} />
             {selectedModels.length > 1 && (
               <p className="text-[10px] text-muted-foreground/60 mb-2.5">Order sets priority - if this node can't fit them all, #1 always stays warm first.</p>
             )}
