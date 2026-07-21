@@ -65,6 +65,12 @@ export interface GPUNode {
   prewarmDisabled?: boolean;
   uptime: string;
   loadedModels: LoadedModel[];
+  // Last warmup-ping failure per model (model name -> error string) - only
+  // present for models that failed to warm; a model that warmed successfully
+  // or was never attempted has no key here. Lets the UI explain why a
+  // keep-warm model is stuck instead of leaving it silently "not resident"
+  // forever.
+  warmupErrors?: Record<string, string>;
   healthHistory: number[];
   // Real in-flight warmup VRAM reservation (never a separate estimate) from
   // the same accounting used for headroom checks. 0 = nothing pending.

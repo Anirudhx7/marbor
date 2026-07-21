@@ -151,6 +151,13 @@ type NodeState struct {
 	// distinct from AgentRuntime (just the runtime name, already above).
 	RuntimeVersion string
 	RuntimeStatus  string
+	// WarmupErrors holds the last warmup-ping failure per model (model ->
+	// error string), so a model that never reaches "resident" is diagnosable
+	// instead of silently stuck (previously the error was only visible as an
+	// unlabeled Prometheus counter bump - see pingWarmupModels in warmer.go).
+	// In-memory only, cleared the moment a ping for that model succeeds;
+	// never persisted, same lifecycle as PrewarmDisabled.
+	WarmupErrors map[string]string
 	// agentProtocolWarned latches once a poll observes an agent reporting a
 	// protocol_version newer than this mesh binary's own
 	// nodeagent.ProtocolVersion - logged once per node (not every poll

@@ -364,31 +364,37 @@ type RequestLog struct {
 }
 
 type nodeResp struct {
-	ID               string             `json:"id"`
-	Name             string             `json:"name"`
-	Host             string             `json:"host"`
-	Port             int                `json:"port"`
-	GPUModel         string             `json:"gpuModel"`
-	VRAMTotalMB      int64              `json:"vramTotalMB"`
-	VRAMUsedMB       int64              `json:"vramUsedMB"`
-	VRAMSource       string             `json:"vramSource"`
-	PowerDrawW       float64            `json:"powerDrawW"`
-	Temperature      *float64           `json:"temperature"`
-	Runtime          string             `json:"runtime"`
-	Health           string             `json:"health"`
-	Draining         bool               `json:"draining"`
-	DrainedReason    string             `json:"drainedReason,omitempty"`
-	PrewarmDisabled  bool               `json:"prewarmDisabled"`
-	Uptime           string             `json:"uptime"`
-	LoadedModels     []router.ModelInfo `json:"loadedModels"`
-	ActiveConns      int32              `json:"activeConns"`
-	RequestsTotal    int64              `json:"requestsTotal"`
-	HealthHistory    []float64          `json:"healthHistory"`
-	PendingPrewarmMB int64              `json:"pendingPrewarmMB"`
-	ColdStarts       int64              `json:"coldStarts"`
-	TokensTotal      int64              `json:"tokensTotal"`
-	AvgLatencyMs     float64            `json:"avgLatencyMs"`
-	WarmHitRatio     float64            `json:"warmHitRatio"`
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Host            string             `json:"host"`
+	Port            int                `json:"port"`
+	GPUModel        string             `json:"gpuModel"`
+	VRAMTotalMB     int64              `json:"vramTotalMB"`
+	VRAMUsedMB      int64              `json:"vramUsedMB"`
+	VRAMSource      string             `json:"vramSource"`
+	PowerDrawW      float64            `json:"powerDrawW"`
+	Temperature     *float64           `json:"temperature"`
+	Runtime         string             `json:"runtime"`
+	Health          string             `json:"health"`
+	Draining        bool               `json:"draining"`
+	DrainedReason   string             `json:"drainedReason,omitempty"`
+	PrewarmDisabled bool               `json:"prewarmDisabled"`
+	Uptime          string             `json:"uptime"`
+	LoadedModels    []router.ModelInfo `json:"loadedModels"`
+	// WarmupErrors is the last warmup-ping failure per model (model -> error
+	// string) - populated only for models that failed to warm; a model that
+	// warmed successfully or was never attempted has no entry. Lets the UI
+	// show *why* a keep-warm model is stuck instead of leaving it silently
+	// "not resident" forever (see NodeState.WarmupErrors in router.go).
+	WarmupErrors     map[string]string `json:"warmupErrors,omitempty"`
+	ActiveConns      int32             `json:"activeConns"`
+	RequestsTotal    int64             `json:"requestsTotal"`
+	HealthHistory    []float64         `json:"healthHistory"`
+	PendingPrewarmMB int64             `json:"pendingPrewarmMB"`
+	ColdStarts       int64             `json:"coldStarts"`
+	TokensTotal      int64             `json:"tokensTotal"`
+	AvgLatencyMs     float64           `json:"avgLatencyMs"`
+	WarmHitRatio     float64           `json:"warmHitRatio"`
 	// Node Agent-derived fields (internal/nodeagent). AgentPresent is false
 	// (and every other field below zero-value) whenever no agent is
 	// configured for this node, or the most recent agent poll failed - the
@@ -924,6 +930,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 			PrewarmDisabled:   n.PrewarmDisabled,
 			Uptime:            n.Uptime,
 			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
+			WarmupErrors:      safeStringMap(n.WarmupErrors),
 			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
 			RequestsTotal:     atomic.LoadInt64(&n.RequestsTotal),
 			HealthHistory:     hist,
@@ -1004,6 +1011,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			PrewarmDisabled:   n.PrewarmDisabled,
 			Uptime:            n.Uptime,
 			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
+			WarmupErrors:      safeStringMap(n.WarmupErrors),
 			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
 			HealthHistory:     hist,
 			PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
@@ -5629,6 +5637,20 @@ func safeModelInfoSlice(slice []router.ModelInfo) []router.ModelInfo {
 	}
 	out := make([]router.ModelInfo, len(slice))
 	copy(out, slice)
+	return out
+}
+
+// safeStringMap returns a copy of m safe to serialize outside the caller's
+// lock (m is read under NodeState.RLock, but json.Marshal can't hold that
+// lock across the whole response encode).
+func safeStringMap(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
 	return out
 }
 
