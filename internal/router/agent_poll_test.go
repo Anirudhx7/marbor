@@ -597,10 +597,14 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 		t.Fatalf("received %d webhook(s) after first-ever successful poll, want 0 (not a recovery)", gotFirst)
 	}
 
-	// Agent goes down.
+	// Agent goes down. agent_down only fires once AgentFailures crosses
+	// r.healthFailureThreshold (default 3) - a single dropped poll must not
+	// blank telemetry or fire the webhook (see agentUnreachable's hysteresis).
 	agentMu.Lock()
 	agentUp = false
 	agentMu.Unlock()
+	r.pollNode(r.nodes[0])
+	r.pollNode(r.nodes[0])
 	r.pollNode(r.nodes[0])
 	waitForCount(1)
 

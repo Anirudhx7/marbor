@@ -78,6 +78,7 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 	}
 
 	n.mu.Lock()
+	n.AgentFailures = 0
 	n.AgentPresent = true
 	n.AgentNodeID = t.Agent.NodeID
 	n.AgentVersion = t.Agent.Version
@@ -201,14 +202,24 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 	r.agentReachable(n.Name, nodeURL)
 }
 
-// agentUnreachable clears a node's agent-derived telemetry and, if this is a
-// genuine down transition (the agent was previously confirmed reachable),
-// fires an "agent_down" webhook - the same reuse of the existing node_up/
-// node_down webhook mechanism (fireWebhook, router.go) as the transitions
-// pollNode/markFailure already fire for the node's own inference runtime
-// health, so an operator finds out even if they aren't staring at the GPU
-// Nodes dashboard when a Node Agent stops responding.
+// agentUnreachable records a failed agent poll and, once AgentFailures
+// crosses r.healthFailureThreshold (the same consecutive-failure hysteresis
+// pollNode/markFailure use for the node's own inference-runtime health),
+// clears the node's agent-derived telemetry and, if this is a genuine down
+// transition (the agent was previously confirmed reachable), fires an
+// "agent_down" webhook - the same reuse of the existing node_up/node_down
+// webhook mechanism (fireWebhook, router.go). A single dropped poll (one TCP
+// blip, one timeout) below that threshold intentionally leaves the last-known
+// telemetry in place rather than blanking the dashboard for one cycle.
 func (r *Router) agentUnreachable(n *NodeState, nodeURL string) {
+	n.mu.Lock()
+	n.AgentFailures++
+	crossedThreshold := n.AgentFailures >= r.healthFailureThreshold
+	n.mu.Unlock()
+	if !crossedThreshold {
+		return
+	}
+
 	clearAgentTelemetry(n)
 	r.mu.Lock()
 	nodeName := n.Name
@@ -223,10 +234,11 @@ func (r *Router) agentUnreachable(n *NodeState, nodeURL string) {
 	}
 }
 
-// agentReachable records a successful agent poll and, if this is a recovery
-// (the agent was previously down, not merely never-before-seen), fires an
-// "agent_up" webhook. Mirrors pollNode's node_up gate: a node's very first
-// successful poll is never treated as a "recovery."
+// agentReachable resets the consecutive-failure counter, records a
+// successful agent poll and, if this is a recovery (the agent was previously
+// down, not merely never-before-seen), fires an "agent_up" webhook. Mirrors
+// pollNode's node_up gate: a node's very first successful poll is never
+// treated as a "recovery."
 func (r *Router) agentReachable(nodeName, nodeURL string) {
 	r.mu.Lock()
 	exists := r.nodeExistsLocked(nodeName)
@@ -257,6 +269,7 @@ func clearAgentTelemetry(n *NodeState) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	wasAgentSourced := n.VRAMSource == "agent"
+	n.AgentFailures = 0
 	n.AgentPresent = false
 	n.AgentNodeID = ""
 	n.AgentVersion = ""
@@ -271,7 +284,6 @@ func clearAgentTelemetry(n *NodeState) {
 	n.AgentRuntime = ""
 	n.RuntimeVersion = ""
 	n.RuntimeStatus = ""
-	n.agentProtocolWarned = false
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0
