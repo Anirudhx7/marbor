@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Package, Download, Settings2 } from 'lucide-react';
+import { Package, Download, Settings2, Trash2 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
 import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
-import { fetchModels, fetchNodes } from '../lib/api';
+import { fetchModels, fetchNodes, deleteNodeModel } from '../lib/api';
 import { startPull } from '../lib/pullProgress';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
@@ -34,9 +34,20 @@ function SkeletonCard() {
   );
 }
 
-function ModelCard({ model, demoMode, onConfigure }: { model: ModelEntry; demoMode: boolean; onConfigure: () => void }) {
+function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; onConfigure: () => void; onDeleted: (modelName: string, nodeName: string) => void }) {
   const isWarm = model.warm_count > 0;
   const [pullInput, setPullInput] = useState('');
+  // Stores the user's explicit dropdown pick; derived below into deleteNode
+  // so a stale pick (a poll refresh reorders model.nodes or drops the
+  // previously-selected node) always falls back to the current first node
+  // instead of silently pointing at a node that's no longer in the list.
+  const [selectedDeleteNode, setSelectedDeleteNode] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteNode = model.nodes.some((n) => n.name === selectedDeleteNode)
+    ? selectedDeleteNode
+    : (model.nodes[0]?.name ?? '');
 
   // Pick the first healthy node for pull target, fall back to any node
   const targetNode = model.nodes.find((n) => n.healthy) ?? model.nodes[0];
@@ -49,6 +60,32 @@ function ModelCard({ model, demoMode, onConfigure }: { model: ModelEntry; demoMo
   };
 
   const pullDisabled = !pullInput.trim() || !targetNode;
+
+  // No pre-flight capability check here, same as Pull above - ModelNode
+  // doesn't carry agentCapabilities (only GPUNode does), so this attempts the
+  // delete and surfaces the backend's own 501 "not supported" error if the
+  // target node's agent lacks models.delete, rather than threading capability
+  // info through the /admin/models aggregation just for a pre-check.
+  const handleDeleteModel = async () => {
+    if (!deleteNode) return;
+    if (demoMode) {
+      setDeleteError(null);
+      setDeleteConfirmOpen(false);
+      onDeleted(model.name, deleteNode);
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      await deleteNodeModel(deleteNode, model.name);
+      setDeleteError(null);
+      setDeleteConfirmOpen(false);
+      onDeleted(model.name, deleteNode);
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : `Failed to delete ${model.name} from ${deleteNode}`);
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   return (
     <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors ${
@@ -128,7 +165,71 @@ function ModelCard({ model, demoMode, onConfigure }: { model: ModelEntry; demoMo
             </div>
           </div>
         )}
+
+        {/* Delete section */}
+        {model.nodes.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Delete from node</p>
+            <div className="flex gap-2">
+              {model.nodes.length > 1 ? (
+                <CustomSelect
+                  value={deleteNode}
+                  onChange={setSelectedDeleteNode}
+                  options={model.nodes.map((n) => ({ value: n.name, label: n.name }))}
+                />
+              ) : (
+                <span className="flex-1 min-w-0 px-2 py-1 text-xs bg-secondary border border-border rounded-md text-foreground truncate">
+                  {model.nodes[0].name}
+                </span>
+              )}
+              <button
+                onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
+                disabled={!deleteNode}
+                title={`Delete ${model.name} from ${deleteNode}`}
+                className="px-3 py-1 text-xs font-medium bg-secondary border border-border rounded-md text-destructive hover:bg-destructive/10 hover:border-destructive/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        title="Delete Local Model"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Delete <span className="text-foreground font-semibold break-all">{model.name}</span> from{' '}
+            <span className="text-foreground font-semibold">{deleteNode}</span>'s local storage?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This removes the downloaded model files from disk - not just from VRAM. Re-pulling it later will re-download the full model.
+          </p>
+          {deleteError && (
+            <p className="text-sm text-destructive">{deleteError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setDeleteConfirmOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteModel}
+              disabled={deleteBusy}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {deleteBusy ? 'Deleting...' : 'Delete Model'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -217,6 +318,24 @@ export function Models() {
     startPull(pullSelectedNode, trimmedModel, demoMode);
     setPullModelName('');
     setIsPullModalOpen(false);
+  };
+
+  // In demo mode there's no backend to re-poll (see the 5s interval below,
+  // which only runs when !demoMode), so reflect the deletion directly in the
+  // static catalog - mirrors GPUNodes.tsx's handleDeleteModel demo branch.
+  // In live mode, just let the next poll (or an immediate reload) pick up
+  // the real post-delete state rather than guessing at warm_count/total_nodes.
+  const handleModelDeleted = (modelName: string, nodeName: string) => {
+    if (demoMode) {
+      setCatalog((prev) => prev ? {
+        ...prev,
+        models: prev.models
+          .map((m) => m.name === modelName ? { ...m, nodes: m.nodes.filter((n) => n.name !== nodeName) } : m)
+          .filter((m) => m.nodes.length > 0),
+      } : prev);
+      return;
+    }
+    loadModels();
   };
 
   const loadModels = async (active: boolean = true) => {
@@ -332,7 +451,7 @@ export function Models() {
       ) : filteredModels.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredModels.map((model) => (
-            <ModelCard key={model.name} model={model} demoMode={demoMode} onConfigure={() => setConfigModel(model.name)} />
+            <ModelCard key={model.name} model={model} demoMode={demoMode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
           ))}
         </div>
       ) : (
