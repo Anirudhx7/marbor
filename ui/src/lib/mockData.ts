@@ -140,6 +140,13 @@ export const mockGPUNodes: GPUNode[] = [
     agentArchitecture: 'amd64',
     agentGpuVendor: 'nvidia',
     agentRuntime: 'tgi',
+    // Demo parity for the GPU Nodes "WARMUP FAILED"/"UNLOAD FAILED" badges
+    // (see NodeCard in GPUNodes.tsx) - a model repeatedly failing its
+    // keep-warm ping, and a separate scheduled unload that failed against
+    // this node, both diagnosable from the dashboard instead of only ever
+    // appearing in the mesh's own logs.
+    warmupErrors: { 'mistralai/Mistral-Small-24B-Instruct-2501': 'node gpu-node-03 unhealthy' },
+    unloadErrors: { 'codellama:13b': 'agent unreachable: dial tcp: connect: connection refused' },
   },
   {
     id: 'node-4',

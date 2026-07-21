@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
@@ -446,14 +447,24 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 // works for real instead of silently no-op-ing via the direct
 // Ollama-only keep_alive:0 call below. A node with no agent
 // configured/enabled/capable falls through to that direct call completely
-// unchanged.
-func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) {
+// unchanged. Waits for every model's unload to finish and returns a non-nil
+// error listing any that failed (also recorded into NodeState.UnloadErrors)
+// so the caller's schedule status reflects the real outcome.
+func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []string) error {
 	n := r.FindNode(nodeName)
 	if n == nil {
 		log.Printf("scheduled unload skipped: node %q not found", nodeName)
-		return
+		return fmt.Errorf("node %q not found", nodeName)
 	}
 	agentCfg, useAgent := r.shouldUseAgentForUnloadNode(n, nodeName)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failures []string
+	addFailure := func(m, msg string) {
+		mu.Lock()
+		failures = append(failures, fmt.Sprintf("%s: %s", m, msg))
+		mu.Unlock()
+	}
 	for _, m := range models {
 		if m == "" {
 			continue
@@ -463,7 +474,9 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 			continue
 		}
 		m := m
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			defer func() {
 				if rec := recover(); rec != nil {
 					log.Printf("[router] panic in goroutine: %v", rec)
@@ -480,22 +493,54 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 				// real reachability problem.
 				if !healthy {
 					log.Printf("scheduled unload of %q on %s skipped: node is currently unreachable (down)", m, nodeName)
+					addFailure(m, "node is currently unreachable (down)")
 					return
 				}
 				actx, cancel := context.WithTimeout(ctx, nodeAgentUnloadTimeout)
 				defer cancel()
 				if err := r.unloadModelViaAgent(actx, nodeURL, agentCfg, m); err != nil {
 					log.Printf("scheduled unload of %q on %s failed (agent): %v", m, nodeName, err)
+					recordUnloadError(n, m, err)
+					addFailure(m, err.Error())
 					return
 				}
+				clearUnloadError(n, m)
 				r.recordUnloadSideEffects(nodeName, m, "scheduled")
 				return
 			}
 			if err := r.unloadModel(ctx, n, m, "scheduled"); err != nil {
 				log.Printf("scheduled unload of %q on %s failed: %v", m, nodeName, err)
+				recordUnloadError(n, m, err)
+				addFailure(m, err.Error())
+				return
 			}
+			clearUnloadError(n, m)
 		}()
 	}
+	wg.Wait()
+	if len(failures) > 0 {
+		return fmt.Errorf("%d model(s) failed to unload: %s", len(failures), strings.Join(failures, "; "))
+	}
+	return nil
+}
+
+// recordUnloadError and clearUnloadError maintain NodeState.UnloadErrors -
+// the scheduled-unload analogue of warmer.go's WarmupErrors bookkeeping, so a
+// failed scheduled/agent unload is diagnosable from the dashboard instead of
+// only ever appearing in the mesh process's own log output.
+func recordUnloadError(n *NodeState, model string, err error) {
+	n.Lock()
+	if n.UnloadErrors == nil {
+		n.UnloadErrors = map[string]string{}
+	}
+	n.UnloadErrors[model] = err.Error()
+	n.Unlock()
+}
+
+func clearUnloadError(n *NodeState, model string) {
+	n.Lock()
+	delete(n.UnloadErrors, model)
+	n.Unlock()
 }
 
 // EvictForHeadroom unloads the coldest non-pinned models on nodeName until at

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
@@ -88,16 +90,19 @@ func (r *Router) runSchedules(ctx context.Context, now time.Time) {
 func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	// found tracks whether the target node actually exists so a schedule
 	// pointed at a stale/renamed/removed node doesn't log a misleading
-	// "fired" line every tick while silently doing nothing. warmup/unload
-	// dispatch to goroutines and log their own "node not found" diagnostic
-	// (see WarmModels/UnloadModels), so only drain/undrain - whose result is
-	// available synchronously - gate the summary log here.
+	// "fired" line every tick while silently doing nothing. asyncErr carries
+	// the aggregate per-model outcome for warmup/unload, which WarmModels/
+	// UnloadModels now wait for before returning - recordScheduleRun must
+	// reflect what actually happened to each model, not just that dispatch
+	// started, or an operator sees "last_status: ok" on a schedule whose
+	// models all failed to warm/unload.
 	found := true
+	var asyncErr error
 	switch s.Action {
 	case "warmup":
-		r.WarmModels(ctx, s.Node, s.Models)
+		asyncErr = r.WarmModels(ctx, s.Node, s.Models)
 	case "unload":
-		r.UnloadModels(ctx, s.Node, s.Models)
+		asyncErr = r.UnloadModels(ctx, s.Node, s.Models)
 	case "drain":
 		found = r.DrainNode(s.Node, "scheduled")
 	case "undrain":
@@ -110,15 +115,21 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 		r.recordScheduleRun(s.ID, "error", errMsg)
 		return
 	}
+	if asyncErr != nil {
+		log.Printf("schedule %q fired: action=%s node=%s models=%v - %v", s.ID, s.Action, s.Node, s.Models, asyncErr)
+		r.recordScheduleRun(s.ID, "error", asyncErr.Error())
+		return
+	}
 	log.Printf("schedule %q fired: action=%s node=%s models=%v", s.ID, s.Action, s.Node, s.Models)
 	r.recordScheduleRun(s.ID, "ok", "")
 }
 
 // recordScheduleRun stamps the outcome of a schedule dispatch onto the
 // in-memory schedule so GET /admin/schedules can show "last ran" without a
-// separate log/history store. status reflects whether the schedule found and
-// dispatched to its target node - not the deeper async warmup/unload ping
-// result, which already has its own metrics.WarmupPing signal.
+// separate log/history store. For warmup/unload, status reflects the actual
+// per-model outcome (WarmModels/UnloadModels wait for every model's dispatch
+// before returning) - not just that the node was found, so a schedule whose
+// models fail to warm/unload shows "error" here, not a false "ok".
 func (r *Router) recordScheduleRun(id, status, errMsg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -134,8 +145,12 @@ func (r *Router) recordScheduleRun(id, status, errMsg string) {
 
 // WarmModels preloads the given models on a single node immediately via a real
 // /api/generate keep_alive (used by scheduled warmup). Non-Ollama nodes and
-// unknown node names are skipped.
-func (r *Router) WarmModels(ctx context.Context, nodeName string, models []string) {
+// unknown node names are skipped. Waits for every model's ping to finish and
+// returns a non-nil error listing any that failed (also recorded into
+// NodeState.WarmupErrors, same as the periodic keep-warm pinger in warmer.go)
+// so the caller's schedule status reflects the real outcome, not just that
+// dispatch started.
+func (r *Router) WarmModels(ctx context.Context, nodeName string, models []string) error {
 	r.mu.RLock()
 	cfg := r.warmupCfg
 	var target *NodeState
@@ -148,23 +163,28 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 	r.mu.RUnlock()
 	if target == nil {
 		log.Printf("scheduled warmup skipped: node %q not found", nodeName)
-		return
+		return fmt.Errorf("node %q not found", nodeName)
 	}
 	if rt := target.GetRuntime(); rt != "ollama" && rt != "" {
 		log.Printf("scheduled warmup skipped: node %q runtime %q does not support keep_alive warmup", nodeName, rt)
-		return
+		return fmt.Errorf("node %q runtime %q does not support keep_alive warmup", nodeName, rt)
 	}
 	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
 	// A scheduled warmup is an explicit "be warm again" request - it must
 	// override any suppression a prior manual/scheduled unload left behind,
 	// else the model would stay cold forever despite this schedule firing.
 	r.clearWarmupSuppress(target.Name, models...)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failures []string
 	for _, m := range models {
 		if m == "" {
 			continue
 		}
 		m := m
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("[router] panic in goroutine: %v", r)
@@ -172,12 +192,31 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 			}()
 			r.ensureHeadroom(ctx, target, m)
 			status := "ok"
-			if err := r.pingNode(ctx, target, m, keepAlive); err != nil {
+			err := r.pingNode(ctx, target, m, keepAlive)
+			if err != nil {
 				status = "error"
+				mu.Lock()
+				failures = append(failures, fmt.Sprintf("%s: %v", m, err))
+				mu.Unlock()
 			}
+			target.Lock()
+			if err != nil {
+				if target.WarmupErrors == nil {
+					target.WarmupErrors = map[string]string{}
+				}
+				target.WarmupErrors[m] = err.Error()
+			} else {
+				delete(target.WarmupErrors, m)
+			}
+			target.Unlock()
 			metrics.WarmupPing(m, target.Name, status)
 		}()
 	}
+	wg.Wait()
+	if len(failures) > 0 {
+		return fmt.Errorf("%d model(s) failed to warm: %s", len(failures), strings.Join(failures, "; "))
+	}
+	return nil
 }
 
 func containsInt(xs []int, v int) bool {
