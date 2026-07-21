@@ -1,3 +1,15 @@
+// Multi-runtime/multi-GPU coverage (Architecture Law 5): this file's
+// node/model validation, eviction, and TTFT measurement are all
+// runtime-agnostic by construction, not by explicit per-runtime branching -
+// node/model discovery goes through the existing Node Agent
+// models.list/loadedModels endpoints, eviction reuses the same
+// UnloadModel/unloadModelViaAgent path handleUnloadModel already uses for
+// every runtime, and bench.MeasureChatTTFT talks to the OpenAI-compatible
+// /v1/chat/completions surface every runtime (Ollama, vLLM, TGI, llama.cpp,
+// MLX) exposes through the mesh proxy. None of it is GPU-vendor-specific
+// either - VRAM eviction and TTFT timing don't touch vendor-specific
+// telemetry. Covered: all 5 runtimes x all 4 GPU vendors. Deferred: nothing
+// - there is no runtime/vendor-specific branch to add here.
 package admin
 
 import (
@@ -208,7 +220,41 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 
 	s.sweepOldBenchmarkJobs()
 
-	keyName := fmt.Sprintf("benchmark-%s-%s-%d", body.Node, body.Model, time.Now().UnixNano())
+	// ctx/cancel and the job struct are cheap to build (no I/O) - creating
+	// them before the conflict check, then inserting into s.benchJobs while
+	// still holding benchMu, closes the TOCTOU window a separate
+	// check-then-insert would leave open: two concurrent POSTs for the same
+	// node would otherwise both pass the check before either's insert lands,
+	// each evicting/reloading the model out from under the other and
+	// corrupting both runs' cold/warm numbers.
+	ctx, cancel := context.WithCancel(context.Background())
+	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	job := &benchmarkJob{
+		Node:      body.Node,
+		Model:     body.Model,
+		N:         body.N,
+		Phase:     "evicting",
+		StartedAt: time.Now(),
+		cancel:    cancel,
+	}
+
+	s.benchMu.Lock()
+	for _, existing := range s.benchJobs {
+		snap := existing.snapshot()
+		switch snap.Phase {
+		case "evicting", "cold", "warm":
+			if snap.Node == body.Node {
+				s.benchMu.Unlock()
+				cancel()
+				writeJSONError(w, http.StatusConflict, fmt.Sprintf("a benchmark is already running on node %q", body.Node))
+				return
+			}
+		}
+	}
+	s.benchJobs[jobID] = job
+	s.benchMu.Unlock()
+
+	keyName := fmt.Sprintf("benchmark-%s-%s-%s", body.Node, body.Model, jobID)
 	k := config.KeyConfig{
 		Name:      keyName,
 		Key:       generateAPIKey(keyName),
@@ -225,22 +271,9 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		Revoked:   false,
 		ExpiresAt: k.ExpiresAt,
 	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	job := &benchmarkJob{
-		Node:      body.Node,
-		Model:     body.Model,
-		N:         body.N,
-		Phase:     "evicting",
-		StartedAt: time.Now(),
-		cancel:    cancel,
-		keyName:   keyName,
-	}
-
-	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	s.benchMu.Lock()
-	s.benchJobs[jobID] = job
-	s.benchMu.Unlock()
+	job.mu.Lock()
+	job.keyName = keyName
+	job.mu.Unlock()
 
 	go s.runBenchmarkJob(ctx, job, k.Key)
 
@@ -361,7 +394,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 			}
 			time.Sleep(2 * time.Second)
 		}
-		ms, err := bench.MeasureChatTTFT(client, target, job.Model, apiKey)
+		ms, err := bench.MeasureChatTTFT(ctx, client, target, job.Model, apiKey)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -377,7 +410,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		if ctx.Err() != nil {
 			return
 		}
-		ms, err := bench.MeasureChatTTFT(client, target, job.Model, apiKey)
+		ms, err := bench.MeasureChatTTFT(ctx, client, target, job.Model, apiKey)
 		if err != nil {
 			if ctx.Err() != nil {
 				return

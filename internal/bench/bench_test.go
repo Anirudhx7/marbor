@@ -1,6 +1,7 @@
 package bench
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -134,7 +135,7 @@ func TestMeasureTTFT_success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ms, err := MeasureChatTTFT(srv.Client(), srv.URL, "llama3:8b", "")
+	ms, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
 	if err != nil {
 		t.Fatalf("MeasureChatTTFT: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestMeasureTTFT_authHeader(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := MeasureChatTTFT(srv.Client(), srv.URL, "llama3:8b", "testkey")
+	_, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "testkey")
 	if err != nil {
 		t.Fatalf("MeasureChatTTFT: %v", err)
 	}
@@ -168,7 +169,7 @@ func TestMeasureTTFT_httpError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := MeasureChatTTFT(srv.Client(), srv.URL, "llama3:8b", "")
+	_, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
 	if err == nil {
 		t.Fatal("expected error for non-200, got nil")
 	}
@@ -182,7 +183,7 @@ func TestMeasureTTFT_emptyStream(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := MeasureChatTTFT(srv.Client(), srv.URL, "llama3:8b", "")
+	_, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
 	if err == nil {
 		t.Fatal("expected error for empty stream, got nil")
 	}
