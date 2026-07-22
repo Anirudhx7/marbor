@@ -594,13 +594,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if h.audit != nil {
+		// audit_log.status is a real HTTP status code (or "aborted"), not the
+		// cold/warm/error label above - the frontend's StatusBadge and the
+		// server's own CAST(status AS INTEGER) success/client_error/
+		// server_error filter both assume a numeric code.
+		auditStatus := rec.Status()
+		if aborted {
+			auditStatus = "aborted"
+		}
 		h.audit.Log(audit.Entry{
 			Time:      time.Now(),
 			RequestID: requestID,
 			KeyName:   keyName,
 			Model:     requestedModelName,
 			Node:      node.Name,
-			Status:    status,
+			Status:    auditStatus,
 			LatencyMs: latencyMs,
 			Cloud:     false,
 		})
@@ -988,13 +996,16 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		}
 	}
 	if h.audit != nil {
+		// See the matching comment in the local path above: audit_log.status
+		// must be a real HTTP status code (or "aborted"), and metricStatus
+		// (computed above for Prometheus) already is.
 		h.audit.Log(audit.Entry{
 			Time:       time.Now(),
 			RequestID:  requestID,
 			KeyName:    keyName,
 			Model:      modelName,
 			Node:       nodeName,
-			Status:     status,
+			Status:     metricStatus,
 			LatencyMs:  int(time.Since(start).Milliseconds()),
 			Cloud:      true,
 			CloudModel: cloudModel,

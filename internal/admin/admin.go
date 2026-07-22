@@ -3981,19 +3981,12 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		log.Printf("async logger: queue full, dropped request log %s", id)
 	}
 
-	// Cloud nodes are stored as "cloud:<name>" (e.g. "cloud:openai") - see
-	// the same check in handleLiveRequests.
-	isCloud := strings.HasPrefix(node, "cloud:")
-	s.auditLog.Log(audit.Entry{
-		Time:      now,
-		RequestID: id,
-		KeyName:   apiKey,
-		Model:     model,
-		Node:      node,
-		Status:    status,
-		LatencyMs: latencyMs,
-		Cloud:     isCloud,
-	})
+	// audit_log is NOT written here. proxy.go already calls h.audit.Log
+	// directly (once for the local path, once for the cloud path) right after
+	// calling LogRequest, using the request's real trace ID and richer data
+	// (correct Cloud bool without prefix-guessing, plus CloudModel) - a second
+	// write here duplicated every request in the audit_log table under a
+	// different, separately-generated ID.
 }
 
 // TrackLocalRequestModel tracks a local request with model-level granularity.
