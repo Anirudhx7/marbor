@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
+import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown, Trash2, AlertTriangle } from 'lucide-react';
 import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, restoreActivePulls, isPullActive, PullProgressState } from '../lib/pullProgress';
 import { deleteNodeModel } from '../lib/api';
 
@@ -21,6 +21,29 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+// verifyModelLoads (admin.go) surfaces the runtime's real error verbatim as
+// "HTTP <code>: <raw response body>" - usually JSON like
+// {"error":{"message":"..."}}. Pulling the human-readable message out of
+// that wrapper (when it parses) is presentation only - the raw text is still
+// shown as a fallback, never silently dropped, so this can't hide a real
+// error the JSON shape doesn't match.
+function parseLoadError(raw: string): { status: string | null; message: string } {
+  const match = raw.match(/^HTTP (\d+):\s*([\s\S]*)$/);
+  if (!match) return { status: null, message: raw };
+  const [, status, body] = match;
+  const trimmedBody = body.trim();
+  try {
+    const parsed = JSON.parse(trimmedBody);
+    const message = parsed?.error?.message ?? parsed?.message;
+    if (typeof message === 'string' && message.trim()) {
+      return { status, message };
+    }
+  } catch {
+    // Not JSON (or not the expected shape) - fall through to the raw body.
+  }
+  return { status, message: trimmedBody || raw };
 }
 
 // One card per tracked pull. Node name is always shown up front - with
@@ -164,25 +187,31 @@ function PullJobCard({ job }: { job: PullProgressState }) {
             </p>
           )}
 
-          {job.status === 'load_failed' && (
-            <div>
-              <p className="text-xs text-destructive font-medium mb-1">
-                Downloaded, but this model failed to load.
-              </p>
-              <p className="text-[11px] text-muted-foreground font-mono leading-normal break-words">
-                {job.error || 'Unknown load error.'}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-1.5 leading-normal">
-                This usually means the model's architecture isn't supported by this node's
-                installed runtime version. Try a different model or quantization.
-              </p>
-              {deleted ? (
-                <p className="text-[11px] text-success mt-1.5">Deleted from {job.node}.</p>
-              ) : deleteError ? (
-                <p className="text-[11px] text-destructive mt-1.5">{deleteError}</p>
-              ) : null}
-            </div>
-          )}
+          {job.status === 'load_failed' && (() => {
+            const { status, message } = parseLoadError(job.error || '');
+            return (
+              <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-2.5">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
+                  <span className="text-xs font-semibold text-destructive">
+                    Downloaded, but failed to load{status ? ` · HTTP ${status}` : ''}
+                  </span>
+                </div>
+                <p className="text-[11px] text-foreground/80 font-mono leading-normal break-words">
+                  {message || 'Unknown load error.'}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-2 leading-normal">
+                  This usually means the model's architecture isn't supported by this node's
+                  installed runtime version. Try a different model or quantization.
+                </p>
+                {deleted ? (
+                  <p className="text-[11px] text-success mt-1.5">Deleted from {job.node}.</p>
+                ) : deleteError ? (
+                  <p className="text-[11px] text-destructive mt-1.5">{deleteError}</p>
+                ) : null}
+              </div>
+            );
+          })()}
 
           {confirmingCancel ? (
             <div className="mt-3 flex items-center gap-2">
