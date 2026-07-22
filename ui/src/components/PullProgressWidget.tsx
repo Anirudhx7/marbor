@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
-import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, restoreActivePulls, PullProgressState } from '../lib/pullProgress';
+import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
+import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, restoreActivePulls, isPullActive, PullProgressState } from '../lib/pullProgress';
+import { deleteNodeModel } from '../lib/api';
 
 function formatBytes(n: number): string {
   if (n <= 0) return '0 B';
@@ -29,18 +30,21 @@ function PullJobCard({ job }: { job: PullProgressState }) {
   const [expanded, setExpanded] = useState(true);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleted, setDeleted] = useState(false);
 
   useEffect(() => {
-    if (job.status !== 'downloading') return;
+    if (!isPullActive(job.status)) return;
     const id = setInterval(() => setElapsedMs(Date.now() - job.startedAtMs), 500);
     return () => clearInterval(id);
   }, [job.startedAtMs, job.status]);
 
-  // A finished job (success/failed/cancelled) should drop the cancel-confirm
-  // dialog if it was open - e.g. the pull completed naturally right as the
-  // admin clicked Cancel.
+  // A finished job (success/failed/load_failed/cancelled) should drop the
+  // cancel-confirm dialog if it was open - e.g. the pull completed naturally
+  // right as the admin clicked Cancel.
   useEffect(() => {
-    if (job.status !== 'downloading') setConfirmingCancel(false);
+    if (!isPullActive(job.status)) setConfirmingCancel(false);
   }, [job.status]);
 
   const hasBytes = job.bytesTotal > 0;
@@ -48,21 +52,33 @@ function PullJobCard({ job }: { job: PullProgressState }) {
   const eta = hasBytes && job.speedBps > 0 ? (job.bytesTotal - job.bytesCompleted) / job.speedBps : null;
 
   const handleClose = () => {
-    if (job.status === 'downloading') {
+    if (isPullActive(job.status)) {
       setConfirmingCancel(true);
       return;
     }
     closeJob(job.key);
   };
 
-  const icon =
-    job.status === 'downloading' ? (
-      <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
-    ) : job.status === 'success' ? (
-      <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
-    ) : (
-      <XCircle className="w-4 h-4 text-destructive shrink-0" />
-    );
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteNodeModel(job.node, job.model);
+      setDeleted(true);
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete model');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const icon = isPullActive(job.status) ? (
+    <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+  ) : job.status === 'success' ? (
+    <CheckCircle2 className="w-4 h-4 text-success shrink-0" />
+  ) : (
+    <XCircle className="w-4 h-4 text-destructive shrink-0" />
+  );
 
   return (
     <div className="w-auto min-w-80 max-w-[min(28rem,calc(100vw-2rem))] bg-card border border-border shadow-lg rounded-xl overflow-hidden">
@@ -77,6 +93,9 @@ function PullJobCard({ job }: { job: PullProgressState }) {
         </span>
         {pct !== null && job.status === 'downloading' && (
           <span className="text-xs text-muted-foreground shrink-0">{pct.toFixed(0)}%</span>
+        )}
+        {job.status === 'verifying' && (
+          <span className="text-xs text-muted-foreground shrink-0">verifying…</span>
         )}
         {expanded ? (
           <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
@@ -124,6 +143,17 @@ function PullJobCard({ job }: { job: PullProgressState }) {
             </>
           )}
 
+          {job.status === 'verifying' && (
+            <>
+              <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden mb-2">
+                <div className="h-full w-1/3 bg-primary rounded-full animate-pulse" />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Verifying it actually loads… {formatDuration(elapsedMs / 1000)} elapsed
+              </p>
+            </>
+          )}
+
           {job.status === 'success' && (
             <p className="text-xs text-success font-medium">Pull complete.</p>
           )}
@@ -132,6 +162,26 @@ function PullJobCard({ job }: { job: PullProgressState }) {
             <p className="text-xs text-destructive font-medium">
               {job.status === 'cancelled' ? 'Cancelled.' : job.error || 'Pull failed.'}
             </p>
+          )}
+
+          {job.status === 'load_failed' && (
+            <div>
+              <p className="text-xs text-destructive font-medium mb-1">
+                Downloaded, but this model failed to load.
+              </p>
+              <p className="text-[11px] text-muted-foreground font-mono leading-normal break-words">
+                {job.error || 'Unknown load error.'}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1.5 leading-normal">
+                This usually means the model's architecture isn't supported by this node's
+                installed runtime version. Try a different model or quantization.
+              </p>
+              {deleted ? (
+                <p className="text-[11px] text-success mt-1.5">Deleted from {job.node}.</p>
+              ) : deleteError ? (
+                <p className="text-[11px] text-destructive mt-1.5">{deleteError}</p>
+              ) : null}
+            </div>
           )}
 
           {confirmingCancel ? (
@@ -163,11 +213,21 @@ function PullJobCard({ job }: { job: PullProgressState }) {
                   <Download className="w-3 h-3" /> Retry
                 </button>
               )}
+              {job.status === 'load_failed' && !deleted && (
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 text-destructive rounded-lg cursor-pointer"
+                >
+                  {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                  Delete model
+                </button>
+              )}
               <button
                 onClick={handleClose}
                 className="flex items-center gap-1 px-2.5 py-1 text-xs bg-secondary hover:bg-secondary/80 text-foreground rounded-lg cursor-pointer"
               >
-                <X className="w-3 h-3" /> {job.status === 'downloading' ? 'Cancel' : 'Close'}
+                <X className="w-3 h-3" /> {isPullActive(job.status) ? 'Cancel' : 'Close'}
               </button>
             </div>
           )}

@@ -14,7 +14,7 @@ import {
   HFRepoDetails,
   ModelVariantFit,
 } from '../lib/api';
-import { startPull, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
+import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse } from '../lib/mockData';
 import { CustomDatePicker } from '../components/DateTimePicker';
@@ -63,6 +63,10 @@ function ModelDetailPanel({
   const [ctxLen, setCtxLen] = useState(8192);
   const [error, setError] = useState<string | null>(null);
   const [configTag, setConfigTag] = useState<string | null>(null);
+  // Defaults to checked: every model here comes from a live Hugging Face
+  // search (searchHFModels), never Ollama's own curated library - none of it
+  // is vetted for compatibility with this node's installed runtime.
+  const [verifyLoad, setVerifyLoad] = useState(true);
   const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
 
   useEffect(() => {
@@ -125,7 +129,7 @@ function ModelDetailPanel({
 
   const handlePull = (variant: ModelVariantFit) => {
     if (!nodeName) return;
-    startPull(nodeName, variant.tag, demoMode);
+    startPull(nodeName, variant.tag, demoMode, verifyLoad);
   };
 
   // The pull-progress widget owns the download UI; this only needs to know
@@ -208,6 +212,20 @@ function ModelDetailPanel({
           </p>
         </div>
 
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={verifyLoad}
+            onChange={(e) => setVerifyLoad(e.target.checked)}
+            className="mt-0.5 accent-primary cursor-pointer"
+          />
+          <span className="text-[10px] text-muted-foreground leading-normal">
+            Verify each pull actually loads before reporting success. This is a community model,
+            not Ollama's own curated library - some architectures download fine but fail to load;
+            this catches that at pull time instead of the first time something tries to use it.
+          </span>
+        </label>
+
         {/* Variants */}
         {loading ? (
           <div className="flex items-center justify-center py-10 gap-2 text-xs text-muted-foreground">
@@ -225,7 +243,7 @@ function ModelDetailPanel({
             <div className="space-y-1.5">
               {details.variants.map((v) => {
                 const isPulled = v.downloaded;
-                const isPulling = pullJobs.some(j => j.node === nodeName && j.model === v.tag && j.status === 'downloading');
+                const isPulling = pullJobs.some(j => j.node === nodeName && j.model === v.tag && isPullActive(j.status));
                 const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
                 const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
                 return (
