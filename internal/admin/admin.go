@@ -4320,6 +4320,12 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Nodes      []nodeInfo `json:"nodes"`
 		WarmCount  int        `json:"warm_count"`
 		TotalNodes int        `json:"total_nodes"`
+		// Family is Ollama's own architecture classification (e.g. "llama",
+		// "bert") when known - omitted (R1) for models only ever seen via
+		// /api/ps (no family field there) or via a non-Ollama agent's
+		// HF-cache scan (no family metadata available - Architecture Law 5's
+		// stated deferral, not a silent gap).
+		Family string `json:"family,omitempty"`
 	}
 
 	nodes := s.router.Nodes()
@@ -4386,11 +4392,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	for _, res := range results {
 		for _, tm := range res.tags {
-			if res.snap.warmSet[tm.Name] {
-				continue // already added with warm count above
-			}
 			if modelMap[tm.Name] == nil {
 				modelMap[tm.Name] = &modelEntry{Name: tm.Name}
+			}
+			// /api/ps (the warm-models loop above) has no family field, so a
+			// model already added while warm still gets enriched here once
+			// /api/tags is fetched, rather than only new cold entries.
+			if modelMap[tm.Name].Family == "" {
+				modelMap[tm.Name].Family = tm.Details.Family
+			}
+			if res.snap.warmSet[tm.Name] {
+				continue // node/warm-count already recorded above
 			}
 			modelMap[tm.Name].Nodes = append(modelMap[tm.Name].Nodes, nodeInfo{
 				Name:    res.snap.name,
@@ -4422,24 +4434,28 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, am := range models {
+			entry := modelMap[am.Name]
+			if entry == nil {
+				entry = &modelEntry{Name: am.Name}
+				modelMap[am.Name] = entry
+			}
+			if entry.Family == "" {
+				entry.Family = am.Family
+			}
 			if snap.warmSet[am.Name] {
 				continue // already added as a warm model above
 			}
-			if entry := modelMap[am.Name]; entry != nil {
-				alreadyOnNode := false
-				for _, ni := range entry.Nodes {
-					if ni.Name == snap.name {
-						alreadyOnNode = true
-						break
-					}
+			alreadyOnNode := false
+			for _, ni := range entry.Nodes {
+				if ni.Name == snap.name {
+					alreadyOnNode = true
+					break
 				}
-				if alreadyOnNode {
-					continue // already added via FetchModelTags for this node
-				}
-			} else {
-				modelMap[am.Name] = &modelEntry{Name: am.Name}
 			}
-			modelMap[am.Name].Nodes = append(modelMap[am.Name].Nodes, nodeInfo{
+			if alreadyOnNode {
+				continue // already added via FetchModelTags for this node
+			}
+			entry.Nodes = append(entry.Nodes, nodeInfo{
 				Name:    snap.name,
 				Healthy: snap.healthy,
 			})
@@ -4954,6 +4970,10 @@ type nodeModelEntry struct {
 	Name      string `json:"name"`
 	SizeBytes int64  `json:"sizeBytes,omitempty"`
 	Source    string `json:"source"`
+	// Family is Ollama's own architecture classification (e.g. "llama",
+	// "bert") when the agent's source could report it (ollama-tags only;
+	// hf-cache scans have no such metadata) - see nodeagent.modelEntry.
+	Family string `json:"family,omitempty"`
 }
 
 // handleNodeModels lists models already downloaded (not just currently
@@ -5039,6 +5059,7 @@ func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCf
 			Name      string `json:"name"`
 			SizeBytes int64  `json:"size_bytes"`
 			Source    string `json:"source"`
+			Family    string `json:"family"`
 		} `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
@@ -5046,7 +5067,7 @@ func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCf
 	}
 	models := make([]nodeModelEntry, 0, len(out.Models))
 	for _, m := range out.Models {
-		models = append(models, nodeModelEntry{Name: m.Name, SizeBytes: m.SizeBytes, Source: m.Source})
+		models = append(models, nodeModelEntry{Name: m.Name, SizeBytes: m.SizeBytes, Source: m.Source, Family: m.Family})
 	}
 	return models, nil
 }

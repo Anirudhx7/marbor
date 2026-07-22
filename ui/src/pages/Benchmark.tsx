@@ -20,6 +20,20 @@ function fmtMs(ms: number): string {
   return `${ms.toLocaleString(undefined, { maximumFractionDigits: 0 })} ms`;
 }
 
+// Ollama's own architecture classification (details.family from /api/tags)
+// for known embedding/encoder-only families - these have no chat-completion
+// endpoint, so this benchmark (always a /v1/chat/completions TTFT measurement
+// - see internal/admin/benchmark.go) can never succeed against them. Family
+// is only ever populated from Ollama sources today (Architecture Law 5:
+// vLLM/TGI/llama.cpp/MLX have no equivalent metadata via their HF-cache scan)
+// - a model with no known family is left in the picker rather than guessed
+// at (R1), so this filter is best-effort, not exhaustive.
+const EMBEDDING_FAMILIES = new Set(['bert', 'nomic-bert', 'clip']);
+
+function isChatCapable(family: string | undefined): boolean {
+  return !family || !EMBEDDING_FAMILIES.has(family);
+}
+
 function ResultCard({ result }: { result: BenchmarkRun }) {
   const [copied, setCopied] = useState(false);
 
@@ -133,7 +147,7 @@ export function Benchmark() {
       setModels((node?.loadedModels || []).map(m => m.name));
     } else if (node?.agentCapabilities?.includes('models.list')) {
       getNodeModels(selectedNode)
-        .then(list => setModels(list.map(m => m.name)))
+        .then(list => setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name)))
         .catch(() => {
           setModels((node.loadedModels || []).map(m => m.name));
           setModelsError('Node Agent model list unavailable - showing currently-loaded models only.');
@@ -142,7 +156,7 @@ export function Benchmark() {
       fetchModels()
         .then(catalog => {
           const names = catalog.models
-            .filter(m => m.nodes.some(n => n.name === selectedNode))
+            .filter(m => m.nodes.some(n => n.name === selectedNode) && isChatCapable(m.family))
             .map(m => m.name);
           setModels(names);
         })
@@ -215,7 +229,7 @@ export function Benchmark() {
                   disabled={running || models.length === 0}
                 />
                 {models.length === 0 && selectedNode && (
-                  <p className="text-[10px] text-destructive mt-1">No models found on this node - pull one first.</p>
+                  <p className="text-[10px] text-destructive mt-1">No chat-capable models found on this node - pull one first (embedding models are excluded, since this benchmark measures chat TTFT).</p>
                 )}
               </div>
               <div>
