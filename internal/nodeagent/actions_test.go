@@ -176,6 +176,49 @@ func TestHandleListModels_OllamaReturnsRealTags(t *testing.T) {
 	}
 }
 
+// TestHandleListModels_OllamaCapturesFamily guards against the "does not
+// support chat" benchmark failure caused by embedding-only models (e.g.
+// mxbai-embed, family "bert") being indistinguishable from chat models in
+// the models.list response - a caller (the mesh's Benchmark page) needs
+// Family to filter them out. A chat model with no family reported must stay
+// empty rather than a fabricated guess (R1).
+func TestHandleListModels_OllamaCapturesFamily(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/tags":
+			_, _ = w.Write([]byte(`{"models":[
+				{"name":"hf.co/mixedbread-ai/mxbai-embed-large-v1:F16","size":769089536,"details":{"family":"bert"}},
+				{"name":"gemma4:latest","size":2223334444,"details":{"family":"gemma3"}}
+			]}`))
+		case "/api/ps":
+			_, _ = w.Write([]byte(`{"models":[]}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer ts.Close()
+
+	srv := newTestServerWithRuntimeURL(t, "ollama", ts.URL)
+	res := doListModels(t, srv)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var resp listModelsResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(resp.Models))
+	}
+	if resp.Models[0].Family != "bert" {
+		t.Errorf("mxbai-embed Family = %q, want %q", resp.Models[0].Family, "bert")
+	}
+	if resp.Models[1].Family != "gemma3" {
+		t.Errorf("gemma4 Family = %q, want %q", resp.Models[1].Family, "gemma3")
+	}
+}
+
 // TestHandleListModels_UnsupportedRuntimeReturnsClearError mirrors the pull
 // handler's equivalent - no detected runtime must never silently report an
 // empty-but-successful list.
