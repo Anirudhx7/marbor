@@ -398,6 +398,7 @@ export const mockModelCatalog: ModelCatalog = {
     {
       name: 'llama3.3:8b',
       size_vram: Math.round(16.2 * 1024 * 1024 * 1024),
+      size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
       warm_count: 2,
       total_nodes: 3,
       nodes: [
@@ -408,6 +409,7 @@ export const mockModelCatalog: ModelCatalog = {
     {
       name: 'mistral:7b',
       size_vram: Math.round(14.8 * 1024 * 1024 * 1024),
+      size_disk: Math.round(4.1 * 1024 * 1024 * 1024),
       warm_count: 2,
       total_nodes: 3,
       nodes: [
@@ -418,6 +420,7 @@ export const mockModelCatalog: ModelCatalog = {
     {
       name: 'llama3.3:70b',
       size_vram: Math.round(40.2 * 1024 * 1024 * 1024),
+      size_disk: Math.round(42.5 * 1024 * 1024 * 1024),
       warm_count: 1,
       total_nodes: 3,
       nodes: [
@@ -427,6 +430,7 @@ export const mockModelCatalog: ModelCatalog = {
     {
       name: 'qwen2.5-coder:14b',
       size_vram: Math.round(26.5 * 1024 * 1024 * 1024),
+      size_disk: Math.round(9.0 * 1024 * 1024 * 1024),
       warm_count: 1,
       total_nodes: 3,
       nodes: [
@@ -436,6 +440,7 @@ export const mockModelCatalog: ModelCatalog = {
     {
       name: 'gemma2:9b',
       size_vram: Math.round(14.1 * 1024 * 1024 * 1024),
+      size_disk: Math.round(5.4 * 1024 * 1024 * 1024),
       warm_count: 1,
       total_nodes: 3,
       nodes: [
@@ -445,6 +450,7 @@ export const mockModelCatalog: ModelCatalog = {
     {
       name: 'phi3:medium',
       size_vram: Math.round(4.2 * 1024 * 1024 * 1024),
+      size_disk: Math.round(7.9 * 1024 * 1024 * 1024),
       warm_count: 0,
       total_nodes: 3,
       nodes: [

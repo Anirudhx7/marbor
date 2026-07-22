@@ -90,6 +90,7 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               {formatVRAM(model.size_vram)} VRAM
+              {model.size_disk ? ` · ${formatVRAM(model.size_disk)} on disk` : ''}
             </p>
           </div>
         </div>
