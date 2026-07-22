@@ -408,8 +408,7 @@ export function Metrics() {
                         align="right"
                         layout="vertical"
                         iconType="circle"
-                        wrapperStyle={{ fontSize: '11px' }}
-                        className="text-muted-foreground"
+                        wrapperStyle={{ fontSize: '11px', color: 'hsl(var(--muted-foreground))' }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
