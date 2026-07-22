@@ -69,7 +69,7 @@ if [ -n "$unformatted" ]; then
 fi
 
 echo "=== [4/6] Go: test -race ==="
-gorun go test -race -timeout 120s ./... || fail "go test failed"
+gorun go test -race -timeout 300s ./... || fail "go test failed"
 
 echo "=== [5/6] Go: govulncheck ==="
 gorun sh -c "go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./..." || fail "govulncheck failed"

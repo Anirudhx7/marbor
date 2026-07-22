@@ -196,12 +196,20 @@ function PullJobCard({ job }: { job: PullProgressState }) {
               </div>
               <p className="text-xs text-muted-foreground">
                 Verifying it actually loads… {formatDuration(elapsedMs / 1000)} elapsed
+                {hasBytes && ` · ${formatBytes(job.bytesTotal)} downloaded`}
               </p>
             </>
           )}
 
           {job.status === 'success' && (
-            <p className="text-xs text-success font-medium">Pull complete.</p>
+            <>
+              <p className="text-xs text-success font-medium">Pull complete.</p>
+              {hasBytes && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatBytes(job.bytesTotal)} downloaded
+                </p>
+              )}
+            </>
           )}
 
           {(job.status === 'failed' || job.status === 'cancelled') && (
