@@ -192,8 +192,16 @@ type TagsCache struct {
 
 // TagModel represents one model entry from /api/tags.
 type TagModel struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"` // bytes on disk
+	Name    string `json:"name"`
+	Size    int64  `json:"size"` // bytes on disk
+	Details struct {
+		// Family is Ollama's own architecture classification (e.g. "llama",
+		// "gemma3", "bert", "nomic-bert") - used downstream to distinguish
+		// chat-capable models from embedding/encoder-only ones (which have no
+		// chat-completion endpoint) without fabricating that distinction (R1:
+		// this is Ollama's own reported field, not a guess).
+		Family string `json:"family"`
+	} `json:"details"`
 }
 
 // tagsInflightEntry represents an in-progress /api/tags fetch.

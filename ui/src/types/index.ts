@@ -138,6 +138,7 @@ export interface LocalModel {
   name: string;
   sizeBytes?: number;
   source: string;
+  family?: string;
 }
 
 // AgentGPUDevice mirrors internal/nodeagent.GPUInfo - one physical GPU
@@ -332,6 +333,7 @@ export interface ModelEntry {
   nodes: ModelNode[];
   warm_count: number;
   total_nodes: number;
+  family?: string;
 }
 
 export interface ModelCatalog {

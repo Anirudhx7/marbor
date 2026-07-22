@@ -231,6 +231,12 @@ type modelEntry struct {
 	// itself enumerate over HTTP" - the two have different freshness/
 	// completeness guarantees.
 	Source string `json:"source"`
+	// Family is Ollama's own architecture classification (e.g. "llama",
+	// "bert"), letting a caller distinguish chat-capable models from
+	// embedding/encoder-only ones. Omitted (never guessed - R1) for sources
+	// that can't report it - today only listViaOllamaTags populates this;
+	// listViaHFCache's directory scan has no such metadata available.
+	Family string `json:"family,omitempty"`
 }
 
 type listModelsResponse struct {
@@ -305,8 +311,11 @@ func listViaOllamaTags(ctx context.Context, runtimeURL string) ([]modelEntry, er
 	}
 	var tags struct {
 		Models []struct {
-			Name string `json:"name"`
-			Size int64  `json:"size"`
+			Name    string `json:"name"`
+			Size    int64  `json:"size"`
+			Details struct {
+				Family string `json:"family"`
+			} `json:"details"`
 		} `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
@@ -314,7 +323,7 @@ func listViaOllamaTags(ctx context.Context, runtimeURL string) ([]modelEntry, er
 	}
 	models := make([]modelEntry, 0, len(tags.Models))
 	for _, m := range tags.Models {
-		models = append(models, modelEntry{Name: m.Name, SizeBytes: m.Size, Source: "ollama-tags"})
+		models = append(models, modelEntry{Name: m.Name, SizeBytes: m.Size, Source: "ollama-tags", Family: m.Details.Family})
 	}
 	return models, nil
 }
