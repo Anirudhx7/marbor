@@ -45,8 +45,11 @@ jobs:
 
       - name: Run Go Tests (race detector)
         # -race catches concurrent map/mutex bugs (shared state in auth, router, admin).
-        # Timeout guards against hangs in integration tests.
-        run: go test -race -timeout 120s ./...
+        # Timeout guards against hangs in integration tests. internal/admin alone already
+        # runs ~120s under -race (many NewServer-per-test integration tests), so 120s left
+        # no real margin - bumped to 300s to absorb normal CI runner variance without
+        # weakening the hang-detection this timeout exists for.
+        run: go test -race -timeout 300s ./...
 
   ui-build:
     runs-on: ubuntu-latest

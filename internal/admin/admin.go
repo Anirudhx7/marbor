@@ -4316,8 +4316,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Healthy bool   `json:"healthy"`
 	}
 	type modelEntry struct {
-		Name       string     `json:"name"`
-		SizeVRAM   int64      `json:"size_vram"`
+		Name     string `json:"name"`
+		SizeVRAM int64  `json:"size_vram"`
+		// SizeDisk is the model's on-disk size in bytes, as reported by
+		// /api/tags (Ollama) or the Node Agent's models.list capability
+		// (vLLM/TGI/llama.cpp/MLX). Zero/omitted when neither source has
+		// reported it yet for this model (R1: never estimated).
+		SizeDisk   int64      `json:"size_disk,omitempty"`
 		Nodes      []nodeInfo `json:"nodes"`
 		WarmCount  int        `json:"warm_count"`
 		TotalNodes int        `json:"total_nodes"`
@@ -4402,6 +4407,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			if modelMap[tm.Name].Family == "" {
 				modelMap[tm.Name].Family = tm.Details.Family
 			}
+			// Same enrichment for on-disk size - /api/ps has no disk-size
+			// field either, only /api/tags reports it.
+			if modelMap[tm.Name].SizeDisk == 0 {
+				modelMap[tm.Name].SizeDisk = tm.Size
+			}
 			if res.snap.warmSet[tm.Name] {
 				continue // node/warm-count already recorded above
 			}
@@ -4442,6 +4452,9 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			}
 			if entry.Family == "" {
 				entry.Family = am.Family
+			}
+			if entry.SizeDisk == 0 {
+				entry.SizeDisk = am.SizeBytes
 			}
 			if snap.warmSet[am.Name] {
 				continue // already added as a warm model above

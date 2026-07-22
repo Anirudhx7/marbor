@@ -330,6 +330,10 @@ export interface ModelNode {
 export interface ModelEntry {
   name: string;
   size_vram: number;
+  // size_disk is the model's on-disk size in bytes (from Ollama /api/tags or
+  // the Node Agent's models.list capability). Absent when neither source has
+  // reported it yet for this model.
+  size_disk?: number;
   nodes: ModelNode[];
   warm_count: number;
   total_nodes: number;
