@@ -213,6 +213,11 @@ export function Models() {
   const [pullNodesList, setPullNodesList] = useState<GPUNode[]>([]);
   const [pullSelectedNode, setPullSelectedNode] = useState('');
   const [pullModelName, setPullModelName] = useState('');
+  // Defaults to checked: a manually-typed model tag is arbitrary/untrusted
+  // input (unlike a curated catalog pick) - most likely to be exactly the
+  // kind of community GGUF whose architecture downloads fine but can't
+  // actually be loaded by this node's installed runtime.
+  const [pullVerifyLoad, setPullVerifyLoad] = useState(true);
   const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
   const [configModel, setConfigModel] = useState<string | null>(null);
 
@@ -263,7 +268,7 @@ export function Models() {
   const handleGeneralPull = () => {
     const trimmedModel = pullModelName.trim();
     if (!trimmedModel || !pullSelectedNode) return;
-    startPull(pullSelectedNode, trimmedModel, demoMode);
+    startPull(pullSelectedNode, trimmedModel, demoMode, pullVerifyLoad);
     setPullModelName('');
     setIsPullModalOpen(false);
   };
@@ -467,6 +472,20 @@ export function Models() {
               className="w-full px-3 py-2 text-sm bg-secondary border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
             />
           </div>
+
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={pullVerifyLoad}
+              onChange={(e) => setPullVerifyLoad(e.target.checked)}
+              className="mt-0.5 accent-primary cursor-pointer"
+            />
+            <span className="text-xs text-muted-foreground leading-normal">
+              Verify it loads before reporting success. Recommended for community/Hugging Face
+              models - some architectures download fine but fail to load; this catches that at
+              pull time instead of the first time something tries to use the model.
+            </span>
+          </label>
 
           <div className="flex items-center justify-end gap-3 pt-2">
             <button

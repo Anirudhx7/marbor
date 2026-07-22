@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +55,7 @@ func waitForJob(t *testing.T, s *Server, node, model string) pullJobSnapshot {
 		s.pullsMu.Unlock()
 		if ok {
 			snap := job.snapshot()
-			if snap.Status != "downloading" {
+			if !pullJobActive(snap.Status) {
 				return snap
 			}
 		}
@@ -639,5 +641,134 @@ func TestHandleCancelPull_AlreadyFinishedIsANoOp(t *testing.T) {
 	s.pullsMu.Unlock()
 	if job.snapshot().Status != "success" {
 		t.Errorf("cancel on a finished job must not overwrite its real outcome, got %q", job.snapshot().Status)
+	}
+}
+
+// newVerifyLoadTestServer builds a Server with one node (mockOllamaURL,
+// standing in for the node's own Ollama API - handles /api/pull) and a proxy
+// port pointed at mockProxyURL (standing in for the mesh's own
+// /v1/chat/completions - what verifyModelLoads actually probes, via
+// bench.MeasureChatTTFT), mirroring newBenchTestServer's setup in
+// benchmark_test.go since this is the same underlying probe.
+func newVerifyLoadTestServer(t *testing.T, mockOllamaURL, mockProxyURL string) *Server {
+	t.Helper()
+	cfg := config.Config{Auth: config.AuthConfig{Enabled: config.BoolPtr(true)}}
+	u, err := url.Parse(mockProxyURL)
+	if err != nil {
+		t.Fatalf("parse mock proxy url: %v", err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatalf("mock proxy url has no numeric port: %v", err)
+	}
+	cfg.Proxy.Port = port
+	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllamaURL},
+	}, nil)
+	return NewServer(r, nil, cfg)
+}
+
+// TestHandleNodePull_VerifyLoadSucceeds verifies that an opt-in
+// ("verify_load":true) pull runs a real load-verification probe after the
+// download succeeds, and only then reports "success" - guarding the design
+// intent that a bare download success is never conflated with "this model
+// actually works here."
+func TestHandleNodePull_VerifyLoadSucceeds(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer mockProxy.Close()
+
+	s := newVerifyLoadTestServer(t, mockOllama.URL, mockProxy.URL)
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b","verify_load":true}`))
+
+	final := waitForJob(t, s, "gpu-0", "llama3:8b")
+	if final.Status != "success" {
+		t.Fatalf("expected verified pull to finish success, got %q (err=%q)", final.Status, final.Error)
+	}
+}
+
+// TestHandleNodePull_VerifyLoadCatchesUnloadableModel is the regression test
+// for the actual bug this feature closes: a model (e.g. a community
+// Hugging Face GGUF whose declared architecture this node's Ollama can't
+// load) downloads fine but fails the load-verification probe. The job must
+// report a distinct "load_failed" status - not "success" - with Ollama's
+// real error surfaced, so a user finds out at pull time instead of the next
+// time something tries to actually use the model.
+func TestHandleNodePull_VerifyLoadCatchesUnloadableModel(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":{"message":"unable to load model: /usr/share/ollama/.ollama/models/blobs/sha256-abc123"}}`))
+	}))
+	defer mockProxy.Close()
+
+	s := newVerifyLoadTestServer(t, mockOllama.URL, mockProxy.URL)
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/yuxinlu1/broken-model:BF16","verify_load":true}`))
+
+	final := waitForJob(t, s, "gpu-0", "hf.co/yuxinlu1/broken-model:BF16")
+	if final.Status != "load_failed" {
+		t.Fatalf("expected load_failed for an unloadable model, got %q", final.Status)
+	}
+	if !strings.Contains(final.Error, "unable to load model") {
+		t.Errorf("expected the real Ollama error surfaced in Error, got %q", final.Error)
+	}
+}
+
+// TestHandleNodePull_NoVerifyLoadSkipsProbe verifies the default
+// (verify_load omitted/false) behavior is completely unchanged: no probe
+// runs, and a download success is reported as "success" immediately, exactly
+// as it always has been. A mock proxy that would fail any request it
+// received guards against verifyModelLoads running when it shouldn't.
+func TestHandleNodePull_NoVerifyLoadSkipsProbe(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	probeCalled := false
+	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		probeCalled = true
+		http.Error(w, "should never be called", http.StatusInternalServerError)
+	}))
+	defer mockProxy.Close()
+
+	s := newVerifyLoadTestServer(t, mockOllama.URL, mockProxy.URL)
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3:8b"}`))
+
+	final := waitForJob(t, s, "gpu-0", "llama3:8b")
+	if final.Status != "success" {
+		t.Fatalf("expected success, got %q (err=%q)", final.Status, final.Error)
+	}
+	if probeCalled {
+		t.Error("verifyModelLoads must not run when verify_load was not requested")
 	}
 }

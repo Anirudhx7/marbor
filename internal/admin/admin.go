@@ -30,6 +30,7 @@ import (
 
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
+	"github.com/ollama-mesh/ollama-mesh/internal/bench"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
@@ -4514,6 +4515,20 @@ var nodePullTimeout = 2 * time.Hour
 // process with many pulls over time.
 const pullJobMaxAge = 10 * time.Minute
 
+// pullVerifyTimeout bounds the single load-verification chat-completion
+// request (opt-in "verify it loads" pulls only) - generous like
+// benchmarkSampleTimeout, since a large model's cold load through the proxy
+// can genuinely take a while. Bounded by the outer pullCtx (nodePullTimeout)
+// regardless.
+var pullVerifyTimeout = 5 * time.Minute
+
+// pullVerifyKeyTTL is defense-in-depth only, mirroring benchmarkKeyTTL's
+// reasoning: the ephemeral key is always explicitly revoked/deleted when
+// verifyModelLoads returns, on every exit path: this TTL just bounds how
+// long an orphaned key could authenticate if that cleanup were ever skipped
+// by a crash mid-probe.
+const pullVerifyKeyTTL = 15 * time.Minute
+
 // pullJob tracks one in-flight or recently-finished model pull for the
 // progress UI (GET .../pull/progress). Real numbers only, never fabricated
 // (R1): BytesTotal/BytesCompleted are populated only for the direct-to-
@@ -4527,7 +4542,7 @@ type pullJob struct {
 	Node           string    `json:"node"`
 	Model          string    `json:"model"`
 	Method         string    `json:"method"` // "direct" | "agent"
-	Status         string    `json:"status"` // "downloading" | "success" | "failed" | "cancelled"
+	Status         string    `json:"status"` // "downloading" | "verifying" | "success" | "failed" | "load_failed" | "cancelled"
 	StartedAt      time.Time `json:"started_at"`
 	FinishedAt     time.Time `json:"finished_at,omitempty"`
 	BytesTotal     int64     `json:"bytes_total,omitempty"`
@@ -4543,6 +4558,12 @@ type pullJob struct {
 	// UI actually kills the download subprocess on the node, not just the
 	// mesh's view of it.
 	cancel context.CancelFunc
+	// verifyLoad records whether the client opted into a post-download load
+	// verification (a real chat-completion probe, not a guess - see
+	// verifyModelLoads) before reporting "success". Set once at job creation,
+	// never appears in the JSON payload - the UI already knows what it asked
+	// for; this just controls completePull's behavior.
+	verifyLoad bool
 }
 
 // pullJobSnapshot is pullJob's data with no mutex/cancel func - the type
@@ -4578,6 +4599,14 @@ func (j *pullJob) setProgress(total, completed int64) {
 	j.BytesTotal, j.BytesCompleted = total, completed
 }
 
+// pullJobActive reports whether status is a non-terminal, in-progress state:
+// "downloading" (fetching bytes) or "verifying" (opt-in load-verification
+// probe, only reached after a successful download). Every other status
+// (success/failed/load_failed/cancelled) is terminal.
+func pullJobActive(status string) bool {
+	return status == "downloading" || status == "verifying"
+}
+
 // finish sets a terminal status, unless one is already set - a cancel
 // requested from the admin UI races the pull goroutine's own eventual
 // failure/success report (the cancelled context surfaces as a request
@@ -4587,7 +4616,7 @@ func (j *pullJob) setProgress(total, completed int64) {
 func (j *pullJob) finish(status, errMsg string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if j.Status != "downloading" {
+	if !pullJobActive(j.Status) {
 		return
 	}
 	j.Status = status
@@ -4595,12 +4624,29 @@ func (j *pullJob) finish(status, errMsg string) {
 	j.FinishedAt = time.Now()
 }
 
-// requestCancel marks j cancelled (if still downloading) and invokes its
+// setVerifying transitions j from "downloading" to "verifying" - the
+// download succeeded and completePull is about to run a load-verification
+// probe before reporting a final outcome. Returns false if the job is
+// already terminal (e.g. cancelled mid-download), telling the caller not to
+// start the probe at all.
+func (j *pullJob) setVerifying() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.Status != "downloading" {
+		return false
+	}
+	j.Status = "verifying"
+	return true
+}
+
+// requestCancel marks j cancelled (if still in progress) and invokes its
 // context cancel func. Returns false if the job was already terminal - the
 // caller uses this to tell "cancelled" from "too late, already finished".
+// Cancelling during "verifying" aborts the in-flight load-verification probe
+// the same way it aborts an in-flight download - both share pullCtx.
 func (j *pullJob) requestCancel() bool {
 	j.mu.Lock()
-	if j.Status != "downloading" {
+	if !pullJobActive(j.Status) {
 		j.mu.Unlock()
 		return false
 	}
@@ -4624,18 +4670,22 @@ func (s *Server) sweepOldPullJobs() {
 	defer s.pullsMu.Unlock()
 	for key, j := range s.pullJobs {
 		snap := j.snapshot()
-		if snap.Status != "downloading" && time.Since(snap.FinishedAt) > pullJobMaxAge {
+		// pullJobActive, not "!= downloading": a job mid-verification has no
+		// FinishedAt yet either, and would otherwise read as ancient
+		// (time.Since(zero value)) and get swept mid-probe.
+		if !pullJobActive(snap.Status) && time.Since(snap.FinishedAt) > pullJobMaxAge {
 			delete(s.pullJobs, key)
 		}
 	}
 }
 
-// handleListActivePulls returns every currently-downloading pull job across
+// handleListActivePulls returns every currently in-progress pull job (still
+// downloading or running its post-download load-verification probe) across
 // all nodes. It exists so the UI can restore its progress widget after a
 // browser refresh wipes the client-side tracking state (pullProgress.ts's
 // job map is module-level, in-memory JS - gone on reload) - the client has
 // no other way to learn which (node, model) keys have a job in flight to
-// resubscribe to. Only "downloading" jobs are returned: a finished job's
+// resubscribe to. Only in-progress jobs are returned: a finished job's
 // terminal state is only useful to a client that was already watching it
 // live, not one restoring cold after a reload.
 func (s *Server) handleListActivePulls(w http.ResponseWriter, r *http.Request) {
@@ -4643,7 +4693,7 @@ func (s *Server) handleListActivePulls(w http.ResponseWriter, r *http.Request) {
 	snaps := make([]pullJobSnapshot, 0, len(s.pullJobs))
 	for _, j := range s.pullJobs {
 		snap := j.snapshot()
-		if snap.Status == "downloading" {
+		if pullJobActive(snap.Status) {
 			snaps = append(snaps, snap)
 		}
 	}
@@ -4670,6 +4720,13 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		Model string `json:"model"`
+		// VerifyLoad opts into a post-download load-verification probe (see
+		// completePull/verifyModelLoads) before the job reports "success" -
+		// catches a model whose GGUF architecture downloads fine but can't
+		// actually be loaded by this node's installed runtime version, which
+		// otherwise surfaces later as a cryptic failure the first time
+		// something tries to actually use the model.
+		VerifyLoad bool `json:"verify_load"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -4702,7 +4759,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// clicks from racing the same multi-GB download.
 	pullKey := nodeName + "|" + body.Model
 	s.pullsMu.Lock()
-	if existing, ok := s.pullJobs[pullKey]; ok && existing.snapshot().Status == "downloading" {
+	if existing, ok := s.pullJobs[pullKey]; ok && pullJobActive(existing.snapshot().Status) {
 		s.pullsMu.Unlock()
 		writeJSONError(w, http.StatusConflict, fmt.Sprintf("pull already in progress for %q on node %q", body.Model, nodeName))
 		return
@@ -4721,9 +4778,27 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// instant this job becomes visible can never observe a nil job.cancel -
 	// requestCancel() would silently no-op the real download in that window.
 	pullCtx, cancel := context.WithTimeout(context.Background(), nodePullTimeout)
-	job := &pullJob{Node: nodeName, Model: body.Model, Method: method, Status: "downloading", StartedAt: time.Now(), cancel: cancel}
+	job := &pullJob{Node: nodeName, Model: body.Model, Method: method, Status: "downloading", StartedAt: time.Now(), cancel: cancel, verifyLoad: body.VerifyLoad}
 	s.pullJobs[pullKey] = job
 	s.pullsMu.Unlock()
+
+	// logPullOutcome records the pull as a system-audit event regardless of
+	// which terminal state it lands in - "load_failed" (downloaded fine, but
+	// the model can't actually be loaded here) is exactly as worth an
+	// operator's attention as "failed" (the download itself never
+	// succeeded), just for a different reason.
+	logPullOutcome := func() {
+		switch job.snapshot().Status {
+		case "success":
+			suffix := ""
+			if useAgent {
+				suffix = " (via agent)"
+			}
+			s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s%s", body.Model, suffix))
+		case "load_failed":
+			s.logSystemChange(r, "pull_model_load_failed", nodeName, fmt.Sprintf("Model: %s - %s", body.Model, job.snapshot().Error))
+		}
+	}
 
 	if useAgent {
 		go func() {
@@ -4733,16 +4808,14 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 				job.finish("failed", err.Error())
 				return
 			}
-			job.finish("success", "")
-			s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s (via agent)", body.Model))
+			s.completePull(pullCtx, job)
+			logPullOutcome()
 		}()
 	} else {
 		go func() {
 			defer cancel()
 			s.runDirectPull(pullCtx, job, nodeURL, body.Model)
-			if job.snapshot().Status == "success" {
-				s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s", body.Model))
-			}
+			logPullOutcome()
 		}()
 	}
 
@@ -4842,7 +4915,90 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 		job.finish("failed", lastErr)
 		return
 	}
+	s.completePull(ctx, job)
+}
+
+// completePull finishes a job whose download already succeeded: runs the
+// opt-in load-verification probe first when the client requested one, then
+// finishes with the real outcome - "success" (verified, or unverified if the
+// client didn't opt in) or "load_failed" (downloaded fine, but didn't
+// survive an actual load attempt - most often an unsupported GGUF
+// architecture on this node's installed runtime version, the exact class of
+// failure a bare pull success can't catch). ctx is pullCtx, so cancelling
+// the pull (or its 2h timeout firing) also aborts an in-progress probe.
+func (s *Server) completePull(ctx context.Context, job *pullJob) {
+	if !job.verifyLoad {
+		job.finish("success", "")
+		return
+	}
+	if !job.setVerifying() {
+		return // already terminal (e.g. cancelled mid-download)
+	}
+	if err := s.verifyModelLoads(ctx, job.Node, job.Model); err != nil {
+		job.finish("load_failed", err.Error())
+		return
+	}
 	job.finish("success", "")
+	// The probe's job is to prove loadability, not to warm the model up -
+	// leaving it resident would be a surprise side effect of a compatibility
+	// check, and could evict whatever the operator actually wanted warm.
+	// Best-effort: a failure here doesn't change the pull's own outcome.
+	s.bestEffortUnloadAfterVerify(job.Node, job.Model)
+}
+
+// verifyModelLoads sends one minimal chat-completion request through the
+// mesh's own proxy (bench.MeasureChatTTFT - the same probe the Hardware
+// Benchmark page uses) to confirm the model actually loads and answers, not
+// just that its blob downloaded successfully. Reuses handleRunBenchmark's
+// exact ephemeral-scoped-key pattern so this probe exercises the real
+// client-auth path too, rather than needing an admin-bypass.
+func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) error {
+	keyName := fmt.Sprintf("pull-verify-%s-%s-%d", nodeName, model, time.Now().UnixNano())
+	k := config.KeyConfig{
+		Name:      keyName,
+		Key:       generateAPIKey(keyName),
+		Models:    []string{model},
+		ExpiresAt: time.Now().Add(pullVerifyKeyTTL).Format(time.RFC3339),
+	}
+	if s.auth != nil {
+		s.auth.AddKey(k)
+	}
+	_ = s.st.UpsertKey(store.KeyRecord{Name: k.Name, Key: k.Key, Models: k.Models, Revoked: false, ExpiresAt: k.ExpiresAt})
+	defer func() {
+		if s.auth != nil {
+			s.auth.RevokeKey(k.Name)
+		}
+		_ = s.st.DeleteKey(k.Name)
+	}()
+
+	target := fmt.Sprintf("http://localhost:%d", s.cfg.Proxy.Port)
+	client := &http.Client{Timeout: pullVerifyTimeout}
+	_, err := bench.MeasureChatTTFT(ctx, client, target, model, k.Key)
+	return err
+}
+
+// bestEffortUnloadAfterVerify evicts a just-verified model right after a
+// successful load-verification probe (see completePull). Mirrors
+// handleUnloadModel's own agent-vs-direct dispatch decision
+// (ShouldUseAgentForUnload) rather than duplicating a second copy of that
+// logic. A pinned model is left alone (pinning means "never evict without an
+// explicit unpin first," which a background verification step must respect
+// same as a manual unload would) and isn't logged as a failure.
+func (s *Server) bestEffortUnloadAfterVerify(nodeName, model string) {
+	ctx, cancel := context.WithTimeout(context.Background(), nodeUnloadModelTimeout)
+	defer cancel()
+
+	agentCfg, useAgent := s.router.ShouldUseAgentForUnload(nodeName)
+	var err error
+	if useAgent {
+		nodeURL := s.router.NodeURLs()[nodeName]
+		err = s.unloadModelViaAgent(ctx, nodeURL, agentCfg, model)
+	} else {
+		_, err = s.router.UnloadModel(ctx, nodeName, model)
+	}
+	if err != nil && !errors.Is(err, router.ErrModelPinned) {
+		log.Printf("bestEffortUnloadAfterVerify: failed to unload %q on node %q after load-verification: %v", model, nodeName, err)
+	}
 }
 
 // handlePullProgress streams a pull job's state as Server-Sent Events until
@@ -4892,7 +5048,7 @@ func (s *Server) handlePullProgress(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 
-		if snap.Status != "downloading" {
+		if !pullJobActive(snap.Status) {
 			return
 		}
 
