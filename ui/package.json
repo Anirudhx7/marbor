@@ -9,6 +9,11 @@
     "lint": "eslint .",
     "preview": "vite preview"
   },
+  "overrides": {
+    "typescript-eslint": {
+      "typescript": "$typescript"
+    }
+  },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
     "framer-motion": "^12.35.0",
