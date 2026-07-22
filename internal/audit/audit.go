@@ -4,6 +4,7 @@ package audit
 
 import (
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
@@ -23,20 +24,35 @@ type Entry struct {
 }
 
 // Logger writes audit entries to the store. Disabled (no-op) when enabled=false.
+// enabled is an atomic.Bool, not a plain bool, because SetEnabled lets the
+// admin Settings page flip audit logging on/off on a live process - the
+// proxy's request-handling goroutines read it concurrently with that write.
 type Logger struct {
 	st      store.Store
-	enabled bool
+	enabled atomic.Bool
 }
 
 // New returns a Logger backed by st. When enabled is false every Log call is
 // a no-op, but Query still reads existing entries from the store.
 func New(st store.Store, enabled bool) *Logger {
-	return &Logger{st: st, enabled: enabled}
+	l := &Logger{st: st}
+	l.enabled.Store(enabled)
+	return l
+}
+
+// SetEnabled flips audit logging on/off on a running Logger, so toggling the
+// Settings page's audit_enabled control takes effect immediately instead of
+// requiring a mesh restart.
+func (l *Logger) SetEnabled(enabled bool) {
+	if l == nil {
+		return
+	}
+	l.enabled.Store(enabled)
 }
 
 // Log writes one audit entry. No-ops if the logger is disabled.
 func (l *Logger) Log(e Entry) {
-	if l == nil || !l.enabled {
+	if l == nil || !l.enabled.Load() {
 		return
 	}
 	_ = l.st.AppendAuditLog(store.AuditEntry{

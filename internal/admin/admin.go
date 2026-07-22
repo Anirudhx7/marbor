@@ -1166,6 +1166,12 @@ func (s *Server) handleLiveRequests(w http.ResponseWriter, r *http.Request) {
 	reqs := make([]RequestLog, len(s.requests))
 	copy(reqs, s.requests)
 	s.mu.RUnlock()
+	// s.requests is append-ordered (oldest first); the dashboard widget takes
+	// the first N of whatever this returns, so newest-first here is what
+	// makes "latest N requests, updating as new ones arrive" true.
+	for i, j := 0, len(reqs)-1; i < j; i, j = i+1, j-1 {
+		reqs[i], reqs[j] = reqs[j], reqs[i]
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(reqs)
 }
@@ -3755,6 +3761,9 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if s.mgmtEndpoints != nil {
 		s.mgmtEndpoints.SetAllowManagementEndpoints(incoming.Routing.AllowManagementEndpoints)
 		s.mgmtEndpoints.SetTrustProxyHeaders(incoming.Proxy.TrustProxyHeaders)
+	}
+	if s.auditLog != nil {
+		s.auditLog.SetEnabled(incoming.Audit.Enabled)
 	}
 	s.router.SetTimezone(incoming.Timezone)
 	s.router.SetLiteLLM(incoming.LiteLLM)
