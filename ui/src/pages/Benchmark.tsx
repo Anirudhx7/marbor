@@ -8,7 +8,7 @@
 // surface, so it deliberately has no nav-bar presence.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Gauge, Zap, Server, X, History, Copy, Check } from 'lucide-react';
-import { fetchNodes, getNodeModels, fetchBenchmarkRuns } from '../lib/api';
+import { fetchNodes, fetchModels, getNodeModels, fetchBenchmarkRuns } from '../lib/api';
 import { subscribe, getSnapshot, start, cancel, reset } from '../lib/benchmarkProgress';
 import { mockGPUNodes, mockBenchmarkRuns } from '../lib/mockData';
 import type { GPUNode, BenchmarkRun } from '../types';
@@ -123,9 +123,12 @@ export function Benchmark() {
     if (!selectedNode) { setModels([]); return; }
     setModelsError(null);
     const node = nodes.find(n => n.name === selectedNode);
-    // Prefer the Node Agent's models.list (runtime-agnostic, on-disk models),
-    // falling back to the router's live loadedModels view when no agent
-    // capability is present - same fallback order bench/preflight.sh uses.
+    // Prefer the Node Agent's models.list (runtime-agnostic, on-disk models).
+    // Without that capability, fall back to the same /admin/models
+    // aggregation the Model Catalog page uses (queries the node's /api/tags
+    // directly, so it sees all on-disk models, not just currently-warm ones)
+    // rather than just the router's live loadedModels view, which is empty
+    // whenever nothing happens to be loaded in VRAM right now.
     if (demoMode) {
       setModels((node?.loadedModels || []).map(m => m.name));
     } else if (node?.agentCapabilities?.includes('models.list')) {
@@ -136,7 +139,14 @@ export function Benchmark() {
           setModelsError('Node Agent model list unavailable - showing currently-loaded models only.');
         });
     } else {
-      setModels((node?.loadedModels || []).map(m => m.name));
+      fetchModels()
+        .then(catalog => {
+          const names = catalog.models
+            .filter(m => m.nodes.some(n => n.name === selectedNode))
+            .map(m => m.name);
+          setModels(names);
+        })
+        .catch(() => setModels((node?.loadedModels || []).map(m => m.name)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode, nodes]);
