@@ -46,6 +46,29 @@ function parseLoadError(raw: string): { status: string | null; message: string }
   return { status, message: trimmedBody || raw };
 }
 
+// classifyLoadFailure interprets the real error text into a specific,
+// accurate explanation - never a blanket guess. Different causes need
+// genuinely different guidance (an embedding model needs a different model
+// entirely; a VRAM shortage needs freeing space, not a different model), and
+// always attributing failure to "architecture isn't supported" would be
+// false for those cases (R1: never present an unverified guess as fact).
+// Falls back to an honest "cause not identified" message rather than
+// defaulting to architecture when the error text doesn't match a
+// recognized pattern.
+function classifyLoadFailure(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes('does not support chat')) {
+    return "This model doesn't support chat/text-generation requests - it's likely an embedding-only model. Pick a text-generation model instead.";
+  }
+  if (/\bout of memory\b|insufficient (system )?memory|requires more (system )?memory|\boom\b/.test(lower)) {
+    return 'This node likely ran out of free VRAM/memory to load this model. Free up VRAM (unload another model) or try a smaller quantization.';
+  }
+  if (lower.includes('unable to load model') || lower.includes('failed to load')) {
+    return "Ollama couldn't load this model but didn't report a specific reason. Common causes: an unsupported architecture, a corrupted download, or insufficient VRAM - check this node's Ollama logs for the exact cause.";
+  }
+  return "The exact cause isn't automatically identified from this error - check this node's Ollama logs for more detail.";
+}
+
 // One card per tracked pull. Node name is always shown up front - with
 // multiple GPU nodes (or multiple models pulling on the same node) in the
 // stack at once, the node is the thing that tells them apart.
@@ -201,8 +224,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
                   {message || 'Unknown load error.'}
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-2 leading-normal">
-                  This usually means the model's architecture isn't supported by this node's
-                  installed runtime version. Try a different model or quantization.
+                  {classifyLoadFailure(message)}
                 </p>
                 {deleted ? (
                   <p className="text-[11px] text-success mt-1.5">Deleted from {job.node}.</p>
