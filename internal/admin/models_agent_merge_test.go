@@ -23,6 +23,7 @@ type modelsListResponse struct {
 	Models []struct {
 		Name      string `json:"name"`
 		WarmCount int    `json:"warm_count"`
+		Family    string `json:"family"`
 		Nodes     []struct {
 			Name    string `json:"name"`
 			Healthy bool   `json:"healthy"`
@@ -138,5 +139,53 @@ func TestHandleModels_MergesAgentIdleModels(t *testing.T) {
 	}
 	if wc, ok := byName["phi3:mini"]; !ok || wc != 0 {
 		t.Errorf("expected phi3:mini idle (warm_count=0) from agent merge, got %v (present=%v)", wc, ok)
+	}
+}
+
+// TestHandleModels_ReportsFamilyFromTags guards against the Hardware
+// Benchmark page silently regaining the ability to offer embedding-only
+// models: /admin/models must surface Ollama's details.family (from
+// /api/tags) on the catalog entry so a caller can filter chat-incapable
+// models out, even for a model that's cold (not currently warm).
+func TestHandleModels_ReportsFamilyFromTags(t *testing.T) {
+	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tags" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"models":[
+			{"name":"hf.co/mixedbread-ai/mxbai-embed-large-v1:F16","size":769089536,"details":{"family":"bert"}}
+		]}`))
+	}))
+	defer ollama.Close()
+
+	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "gpu-0", URL: ollama.URL},
+	}, nil)
+	for _, n := range r.Nodes() {
+		if n.Name == "gpu-0" {
+			n.Lock()
+			n.Healthy = true
+			n.Unlock()
+		}
+	}
+	s := NewServer(r, nil, config.Config{})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newAdminModelsRequest(t, s))
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Result().StatusCode)
+	}
+	var resp modelsListResponse
+	if err := json.NewDecoder(w.Result().Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.TotalModels != 1 {
+		t.Fatalf("expected 1 model, got %d: %+v", resp.TotalModels, resp.Models)
+	}
+	if resp.Models[0].Family != "bert" {
+		t.Errorf("expected family %q for mxbai-embed, got %q", "bert", resp.Models[0].Family)
 	}
 }
