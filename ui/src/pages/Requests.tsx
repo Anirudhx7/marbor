@@ -165,6 +165,10 @@ export function Requests() {
       cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
       since: sinceInput ? new Date(sinceInput).toISOString() : sinceIso(sincePreset),
       until: untilInput ? new Date(untilInput).toISOString() : undefined,
+      // No pagination UI on this page yet, so request the server's max page
+      // size (admin.go caps at 1000) rather than silently truncating to the
+      // client default of 50 - "all requests" means all within that cap.
+      limit: 1000,
     }),
     [modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput]
   );

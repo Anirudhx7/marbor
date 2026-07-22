@@ -152,7 +152,11 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Docker.Socket = store.GetStringSetting(st, "docker_socket", cfg.Docker.Socket)
 	cfg.Docker.PollIntervalMs = store.GetIntSetting(st, "docker_poll_interval_ms", cfg.Docker.PollIntervalMs)
 
-	cfg.Audit.Enabled = store.GetBoolSetting(st, "audit_enabled", cfg.Audit.Enabled)
+	// Defaults to true (fallback applies only on first boot, before this key
+	// is ever written) - per-request audit logging is the data source for the
+	// Request Log page, so a fresh install must be able to show requests
+	// without the operator first discovering and flipping a settings toggle.
+	cfg.Audit.Enabled = store.GetBoolSetting(st, "audit_enabled", true)
 	// 30-day fallback applies only if this key was never set (first boot) -
 	// GetIntSetting returns a stored "0" as 0 (indefinite), not the fallback.
 	cfg.Audit.RetentionDays = store.GetIntSetting(st, "audit_retention_days", 30)
