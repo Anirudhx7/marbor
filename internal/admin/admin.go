@@ -892,26 +892,82 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// nodeStateToResp builds the fields common to handleNodes and handleNode from
+// a single NodeState. Caller must hold n's RLock. Per-endpoint stats (request
+// counts, latency, warm-hit ratio) are computed by the caller, not here, since
+// handleNode has never included them (preserved to avoid changing its wire shape).
+func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
+	host := ""
+	port := 0
+	if u, err := url.Parse(n.URL); err == nil {
+		host = u.Hostname()
+		port, _ = strconv.Atoi(u.Port())
+	}
+	health := "healthy"
+	if !n.Healthy {
+		health = "down"
+	} else if n.Failures > 0 {
+		health = "degraded"
+	}
+	// Empty history stays empty ([] in JSON) - the UI renders a "no data" state.
+	hist := make([]float64, len(n.HealthHistory))
+	copy(hist, n.HealthHistory)
+
+	return nodeResp{
+		ID:                id,
+		Name:              n.Name,
+		Host:              host,
+		Port:              port,
+		GPUModel:          n.GPUModel,
+		VRAMTotalMB:       n.VRAMTotalMB,
+		VRAMUsedMB:        n.VRAMUsedMB,
+		VRAMSource:        n.VRAMSource,
+		PowerDrawW:        n.PowerDrawW,
+		Temperature:       n.Temperature,
+		Runtime:           n.Runtime,
+		Health:            health,
+		Draining:          n.Draining,
+		DrainedReason:     n.DrainedReason,
+		PrewarmDisabled:   n.PrewarmDisabled,
+		Uptime:            n.Uptime,
+		LoadedModels:      safeModelInfoSlice(n.LoadedModels),
+		WarmupErrors:      safeStringMap(n.WarmupErrors),
+		UnloadErrors:      safeStringMap(n.UnloadErrors),
+		ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
+		HealthHistory:     hist,
+		PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+		AgentPresent:      n.AgentPresent,
+		AgentVersion:      n.AgentVersion,
+		FanPercent:        n.FanPercent,
+		CPUPercent:        n.CPUPercent,
+		RAMUsedMB:         n.RAMUsedMB,
+		DiskFreeGB:        n.DiskFreeGB,
+		AgentCapabilities: n.AgentCapabilities,
+		AgentPlatform:     n.AgentPlatform,
+		AgentArchitecture: n.AgentArchitecture,
+		AgentGPUVendor:    n.AgentGPUVendor,
+		AgentRuntime:      n.AgentRuntime,
+		AgentNodeID:       n.AgentNodeID,
+		AgentGPUCount:     n.AgentGPUCount,
+		AgentGPUs:         toAgentGPUDevices(n.AgentGPUs),
+		DriverVersion:     n.DriverVersion,
+		CUDAVersion:       n.CUDAVersion,
+		RAMTotalMB:        n.RAMTotalMB,
+		DiskTotalGB:       n.DiskTotalGB,
+		Hostname:          n.Hostname,
+		UptimeSeconds:     n.UptimeSeconds,
+		BootTime:          n.BootTime,
+		RuntimeVersion:    n.RuntimeVersion,
+		RuntimeStatus:     n.RuntimeStatus,
+	}
+}
+
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
 	out := make([]nodeResp, len(nodes))
 	for i, n := range nodes {
 		n.RLock()
-		host := ""
-		port := 0
-		if u, err := url.Parse(n.URL); err == nil {
-			host = u.Hostname()
-			port, _ = strconv.Atoi(u.Port())
-		}
-		health := "healthy"
-		if !n.Healthy {
-			health = "down"
-		} else if n.Failures > 0 {
-			health = "degraded"
-		}
-		// Empty history stays empty ([] in JSON) - the UI renders a "no data" state.
-		hist := make([]float64, len(n.HealthHistory))
-		copy(hist, n.HealthHistory)
+		resp := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i))
 
 		avgLatencyNode := 0.0
 		latCount := atomic.LoadInt64(&n.LatencyCount)
@@ -925,59 +981,13 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		if totalHitsNode > 0 {
 			warmHitRatioNode = float64(warmNode) / float64(totalHitsNode)
 		}
+		resp.RequestsTotal = atomic.LoadInt64(&n.RequestsTotal)
+		resp.ColdStarts = coldNode
+		resp.TokensTotal = atomic.LoadInt64(&n.TokensTotal)
+		resp.AvgLatencyMs = avgLatencyNode
+		resp.WarmHitRatio = warmHitRatioNode
 
-		out[i] = nodeResp{
-			ID:                fmt.Sprintf("gpu-%d", i),
-			Name:              n.Name,
-			Host:              host,
-			Port:              port,
-			GPUModel:          n.GPUModel,
-			VRAMTotalMB:       n.VRAMTotalMB,
-			VRAMUsedMB:        n.VRAMUsedMB,
-			VRAMSource:        n.VRAMSource,
-			PowerDrawW:        n.PowerDrawW,
-			Temperature:       n.Temperature,
-			Runtime:           n.Runtime,
-			Health:            health,
-			Draining:          n.Draining,
-			DrainedReason:     n.DrainedReason,
-			PrewarmDisabled:   n.PrewarmDisabled,
-			Uptime:            n.Uptime,
-			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
-			WarmupErrors:      safeStringMap(n.WarmupErrors),
-			UnloadErrors:      safeStringMap(n.UnloadErrors),
-			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
-			RequestsTotal:     atomic.LoadInt64(&n.RequestsTotal),
-			HealthHistory:     hist,
-			PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
-			ColdStarts:        coldNode,
-			TokensTotal:       atomic.LoadInt64(&n.TokensTotal),
-			AvgLatencyMs:      avgLatencyNode,
-			WarmHitRatio:      warmHitRatioNode,
-			AgentPresent:      n.AgentPresent,
-			AgentVersion:      n.AgentVersion,
-			FanPercent:        n.FanPercent,
-			CPUPercent:        n.CPUPercent,
-			RAMUsedMB:         n.RAMUsedMB,
-			DiskFreeGB:        n.DiskFreeGB,
-			AgentCapabilities: n.AgentCapabilities,
-			AgentPlatform:     n.AgentPlatform,
-			AgentArchitecture: n.AgentArchitecture,
-			AgentGPUVendor:    n.AgentGPUVendor,
-			AgentRuntime:      n.AgentRuntime,
-			AgentNodeID:       n.AgentNodeID,
-			AgentGPUCount:     n.AgentGPUCount,
-			AgentGPUs:         toAgentGPUDevices(n.AgentGPUs),
-			DriverVersion:     n.DriverVersion,
-			CUDAVersion:       n.CUDAVersion,
-			RAMTotalMB:        n.RAMTotalMB,
-			DiskTotalGB:       n.DiskTotalGB,
-			Hostname:          n.Hostname,
-			UptimeSeconds:     n.UptimeSeconds,
-			BootTime:          n.BootTime,
-			RuntimeVersion:    n.RuntimeVersion,
-			RuntimeStatus:     n.RuntimeStatus,
-		}
+		out[i] = resp
 		n.RUnlock()
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -994,67 +1004,7 @@ func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		n.RLock()
-		host := ""
-		port := 0
-		if u, err := url.Parse(n.URL); err == nil {
-			host = u.Hostname()
-			port, _ = strconv.Atoi(u.Port())
-		}
-		health := "healthy"
-		if !n.Healthy {
-			health = "down"
-		} else if n.Failures > 0 {
-			health = "degraded"
-		}
-		hist := make([]float64, len(n.HealthHistory))
-		copy(hist, n.HealthHistory)
-		out := nodeResp{
-			ID:                fmt.Sprintf("gpu-%d", i),
-			Name:              n.Name,
-			Host:              host,
-			Port:              port,
-			GPUModel:          n.GPUModel,
-			VRAMTotalMB:       n.VRAMTotalMB,
-			VRAMUsedMB:        n.VRAMUsedMB,
-			VRAMSource:        n.VRAMSource,
-			PowerDrawW:        n.PowerDrawW,
-			Temperature:       n.Temperature,
-			Runtime:           n.Runtime,
-			Health:            health,
-			Draining:          n.Draining,
-			DrainedReason:     n.DrainedReason,
-			PrewarmDisabled:   n.PrewarmDisabled,
-			Uptime:            n.Uptime,
-			LoadedModels:      safeModelInfoSlice(n.LoadedModels),
-			WarmupErrors:      safeStringMap(n.WarmupErrors),
-			UnloadErrors:      safeStringMap(n.UnloadErrors),
-			ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
-			HealthHistory:     hist,
-			PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
-			AgentPresent:      n.AgentPresent,
-			AgentVersion:      n.AgentVersion,
-			FanPercent:        n.FanPercent,
-			CPUPercent:        n.CPUPercent,
-			RAMUsedMB:         n.RAMUsedMB,
-			DiskFreeGB:        n.DiskFreeGB,
-			AgentCapabilities: n.AgentCapabilities,
-			AgentPlatform:     n.AgentPlatform,
-			AgentArchitecture: n.AgentArchitecture,
-			AgentGPUVendor:    n.AgentGPUVendor,
-			AgentRuntime:      n.AgentRuntime,
-			AgentNodeID:       n.AgentNodeID,
-			AgentGPUCount:     n.AgentGPUCount,
-			AgentGPUs:         toAgentGPUDevices(n.AgentGPUs),
-			DriverVersion:     n.DriverVersion,
-			CUDAVersion:       n.CUDAVersion,
-			RAMTotalMB:        n.RAMTotalMB,
-			DiskTotalGB:       n.DiskTotalGB,
-			Hostname:          n.Hostname,
-			UptimeSeconds:     n.UptimeSeconds,
-			BootTime:          n.BootTime,
-			RuntimeVersion:    n.RuntimeVersion,
-			RuntimeStatus:     n.RuntimeStatus,
-		}
+		out := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i))
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(out)
