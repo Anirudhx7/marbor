@@ -7,17 +7,7 @@ import { RequestEntry } from '../types';
 import { fetchAuditLog, fetchNodes, fetchKeys } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { filterMockRequests, mockGPUNodes, mockAPIKeys } from '../lib/mockData';
-
-function formatRelative(isoString: string): string {
-  const diffMs = Date.now() - new Date(isoString).getTime();
-  const diffSecs = Math.floor(diffMs / 1000);
-  if (diffSecs < 60) return `${diffSecs}s ago`;
-  const diffMins = Math.floor(diffSecs / 60);
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${Math.floor(diffHours / 24)}d ago`;
-}
+import { formatRelativeTime } from '../lib/time';
 
 function StatusBadge({ status }: { status: number }) {
   let cls = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded ';
@@ -411,7 +401,7 @@ export function Requests() {
                       className="border-b border-border last:border-0 hover:bg-secondary/50 transition-colors"
                     >
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {formatRelative(entry.time)}
+                        {formatRelativeTime(entry.time)}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -499,7 +489,7 @@ export function Requests() {
               <div className="grid grid-cols-2 gap-x-3 gap-y-2">
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Time</div>
-                  <div className="text-sm text-foreground">{formatRelative(entry.time)}</div>
+                  <div className="text-sm text-foreground">{formatRelativeTime(entry.time)}</div>
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
