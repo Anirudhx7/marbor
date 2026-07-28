@@ -10,13 +10,16 @@ import {
   fetchModelCatalog,
   searchHFModels,
   getHFRepoDetails,
+  fetchFavorites,
+  addFavorite,
+  removeFavorite,
   HFModel,
   HFRepoDetails,
   ModelVariantFit,
 } from '../lib/api';
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse } from '../lib/mockData';
+import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites } from '../lib/mockData';
 import { CustomDatePicker } from '../components/DateTimePicker';
 
 // LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
@@ -334,10 +337,16 @@ function ModelCard({
   model,
   selected,
   onSelect,
+  selectLabel = 'View Quantizations & Pull',
+  isFavorite,
+  onToggleFavorite,
 }: {
   model: HFModel;
   selected: boolean;
   onSelect: () => void;
+  selectLabel?: string;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
 }) {
   const formattedDownloads = new Intl.NumberFormat().format(model.downloads);
   const formattedLikes = new Intl.NumberFormat().format(model.likes);
@@ -351,9 +360,19 @@ function ModelCard({
           </h3>
           <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
         </div>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary text-[11px] font-medium text-foreground shrink-0 ml-2">
-          <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary text-[11px] font-medium text-foreground">
+            <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+          </span>
+          <button
+            onClick={onToggleFavorite}
+            title={isFavorite ? 'Remove from favourites' : 'Add to favourites'}
+            aria-label={isFavorite ? 'Remove from favourites' : 'Add to favourites'}
+            className="p-1 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+          >
+            <Star className={`w-4 h-4 ${isFavorite ? 'text-primary fill-primary' : 'text-muted-foreground'}`} />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mb-3">
@@ -371,7 +390,7 @@ function ModelCard({
         onClick={onSelect}
         className={`mt-auto w-full py-2 text-foreground text-xs font-medium rounded-lg transition-colors cursor-pointer ${selected ? 'bg-primary/10 text-primary hover:bg-primary/20' : 'bg-secondary hover:bg-secondary/80'}`}
       >
-        {selected ? 'Hide Details' : 'View Quantizations & Pull'}
+        {selected ? 'Hide Details' : selectLabel}
       </button>
     </div>
   );
@@ -398,6 +417,10 @@ export function ModelAdvisor() {
   const [minDownloads, setMinDownloads] = useState('');
   const [minLikes, setMinLikes] = useState('');
   const [createdAfter, setCreatedAfter] = useState('');
+
+  const [tab, setTab] = useState<'browse' | 'favourites'>('browse');
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [favoriteDetails, setFavoriteDetails] = useState<Record<string, HFModel>>({});
 
   const activeNode = useMemo(
     () => (!selectedNode || nodes.length === 0) ? null : nodes.find(n => n.name === selectedNode) || null,
@@ -511,6 +534,40 @@ export function ModelAdvisor() {
   // Close panel when search results change
   useEffect(() => { setSelectedModelId(null); }, [models]);
 
+  useEffect(() => {
+    if (demoMode) {
+      setFavoriteIds(new Set(mockFavorites));
+      return;
+    }
+    fetchFavorites().then(ids => setFavoriteIds(new Set(ids))).catch(() => {});
+  }, [demoMode]);
+
+  // favoriteIdsRef always mirrors the latest favoriteIds synchronously, so two
+  // rapid clicks (before React re-renders and hands toggleFavorite a fresh
+  // closure) see each other's effect instead of both reading the same stale
+  // "wasFavorite" and firing the same API call twice.
+  const favoriteIdsRef = useRef(favoriteIds);
+  useEffect(() => { favoriteIdsRef.current = favoriteIds; }, [favoriteIds]);
+
+  const toggleFavorite = useCallback((modelId: string) => {
+    const wasFavorite = favoriteIdsRef.current.has(modelId);
+    const next = new Set(favoriteIdsRef.current);
+    if (wasFavorite) next.delete(modelId); else next.add(modelId);
+    favoriteIdsRef.current = next;
+    setFavoriteIds(next);
+    if (demoMode) return;
+    const revert = () => setFavoriteIds(prev => {
+      const reverted = new Set(prev);
+      if (wasFavorite) reverted.add(modelId); else reverted.delete(modelId);
+      favoriteIdsRef.current = reverted;
+      return reverted;
+    });
+    (wasFavorite ? removeFavorite(modelId) : addFavorite(modelId)).catch(err => {
+      console.error(`Failed to ${wasFavorite ? 'remove' : 'add'} favourite:`, err);
+      revert();
+    });
+  }, [demoMode]);
+
   const uniqueModels = useMemo(() => {
     const seen = new Set<string>();
     return models.filter(m => {
@@ -524,6 +581,43 @@ export function ModelAdvisor() {
     () => uniqueModels.find(m => m.id === selectedModelId) ?? null,
     [uniqueModels, selectedModelId]
   );
+
+  // Favourites tab shows the starred models as cards without requiring a
+  // node/search context - fetch repo details for any starred id not already
+  // present in the current search results or the cache, so the list still
+  // renders something useful even for models the user isn't currently
+  // browsing. failedFavoriteIdsRef tracks ids whose fetch already failed
+  // (e.g. the repo was deleted/renamed on Hugging Face) so this effect gives
+  // up on them instead of retrying every time favoriteIds/uniqueModels change.
+  const failedFavoriteIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (tab !== 'favourites' || demoMode) return;
+    const missing = [...favoriteIds].filter(id =>
+      !favoriteDetails[id] && !uniqueModels.some(m => m.id === id) && !failedFavoriteIdsRef.current.has(id)
+    );
+    if (missing.length === 0) return;
+    missing.forEach(id => {
+      getHFRepoDetails(id).then(details => {
+        setFavoriteDetails(prev => ({
+          ...prev,
+          [id]: {
+            id: details.id,
+            downloads: details.downloads,
+            likes: details.likes,
+            tags: details.tags,
+            lastModified: details.last_modified,
+            pipeline_tag: '',
+          },
+        }));
+      }).catch(() => { failedFavoriteIdsRef.current.add(id); });
+    });
+  }, [tab, demoMode, favoriteIds, favoriteDetails, uniqueModels]);
+
+  const favoriteModels = useMemo(() => {
+    return [...favoriteIds]
+      .map(id => (demoMode ? mockHFModels.find(m => m.id === id) : (uniqueModels.find(m => m.id === id) ?? favoriteDetails[id])))
+      .filter((m): m is HFModel => !!m);
+  }, [favoriteIds, demoMode, uniqueModels, favoriteDetails]);
 
   // Build grid items: cards + panel inserted after end of the clicked card's row
   type GridItem = { kind: 'card'; model: HFModel } | { kind: 'panel'; model: HFModel };
@@ -577,6 +671,45 @@ export function ModelAdvisor() {
         </div>
       )}
 
+      <div className="flex flex-wrap gap-2">
+        {(['browse', 'favourites'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+              tab === t
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t === 'browse' ? 'Browse' : `Favourites (${favoriteIds.size})`}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'favourites' ? (
+        favoriteModels.length === 0 ? (
+          <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
+            <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+            <p className="text-muted-foreground font-medium">No favourites yet. Star a model in Browse to save it here.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+            {favoriteModels.map((m) => (
+              <ModelCard
+                key={m.id}
+                model={m}
+                selected={false}
+                onSelect={() => { setTab('browse'); setSearch(m.id); }}
+                selectLabel="Open in Browse to Pull"
+                isFavorite={true}
+                onToggleFavorite={() => toggleFavorite(m.id)}
+              />
+            ))}
+          </div>
+        )
+      ) : (
+      <>
       {sysInfo && (
         <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs shadow-sm">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
@@ -783,6 +916,8 @@ export function ModelAdvisor() {
                     onSelect={() => setSelectedModelId(
                       item.model.id === selectedModelId ? null : item.model.id
                     )}
+                    isFavorite={favoriteIds.has(item.model.id)}
+                    onToggleFavorite={() => toggleFavorite(item.model.id)}
                   />
                 ) : (
                   <ModelDetailPanel
@@ -811,6 +946,8 @@ export function ModelAdvisor() {
             Connect your first node in the <strong>GPU Nodes</strong> page.
           </p>
         </div>
+      )}
+      </>
       )}
     </div>
   );

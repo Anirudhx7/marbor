@@ -985,6 +985,31 @@ export async function getHFRepoDetails(repoId: string, nodeName?: string, ctxLen
   return res.json();
 }
 
+export async function fetchFavorites(): Promise<string[]> {
+  const res = await apiFetch(`${BASE}/favorites`, { headers: authHeaders() });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to fetch favourites'); }
+  const data = await res.json();
+  return data.model_ids || [];
+}
+
+export async function addFavorite(modelId: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/favorites`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_id: modelId }),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to add favourite'); }
+}
+
+export async function removeFavorite(modelId: string): Promise<void> {
+  const encodedModelId = modelId.split('/').map(encodeURIComponent).join('/');
+  const res = await apiFetch(`${BASE}/favorites/${encodedModelId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to remove favourite'); }
+}
+
 export async function fetchSystemAudit(limit: number = 100): Promise<SystemAuditEntry[]> {
   if (DEMO) {
     const now = Date.now();

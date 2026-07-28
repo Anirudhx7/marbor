@@ -149,6 +149,11 @@ type Store interface {
 	// highest priority first (order[0] gets the highest int).
 	SetCloudProviderPriorities(order []string) error
 
+	// Favorites (per-user starred models on the Model Advisor page)
+	AddFavorite(userID int64, modelID string) error
+	RemoveFavorite(userID int64, modelID string) error
+	ListFavorites(userID int64) ([]string, error)
+
 	// Warmup configuration
 	GetWarmupConfig() (WarmupConfigRecord, error)
 	SetWarmupConfig(enabled bool, keepAlive string) error
@@ -605,6 +610,9 @@ func (NopStore) UpsertCloudProvider(_ CloudProviderRecord) error   { return nil 
 func (NopStore) DeleteCloudProvider(_ string) error                { return nil }
 func (NopStore) AllCloudProviders() ([]CloudProviderRecord, error) { return nil, nil }
 func (NopStore) SetCloudProviderPriorities(_ []string) error       { return nil }
+func (NopStore) AddFavorite(_ int64, _ string) error               { return nil }
+func (NopStore) RemoveFavorite(_ int64, _ string) error            { return nil }
+func (NopStore) ListFavorites(_ int64) ([]string, error)           { return nil, nil }
 func (NopStore) GetWarmupConfig() (WarmupConfigRecord, error) {
 	return WarmupConfigRecord{}, ErrNotFound
 }

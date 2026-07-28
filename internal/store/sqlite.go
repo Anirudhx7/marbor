@@ -249,6 +249,13 @@ func (s *sqliteStore) migrate() error {
 			expires_at           INTEGER NOT NULL
 		)`,
 
+		`CREATE TABLE IF NOT EXISTS favorites (
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			model_id   TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			PRIMARY KEY (user_id, model_id)
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS settings (
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -1856,6 +1863,45 @@ func (s *sqliteStore) AllCloudProviders() ([]CloudProviderRecord, error) {
 		return nil, fmt.Errorf("store: AllCloudProviders rows: %w", err)
 	}
 	return providers, nil
+}
+
+// --- Favorites ---
+
+func (s *sqliteStore) AddFavorite(userID int64, modelID string) error {
+	_, err := s.db.Exec(`INSERT OR IGNORE INTO favorites (user_id, model_id) VALUES (?, ?)`, userID, modelID)
+	if err != nil {
+		return fmt.Errorf("store: AddFavorite: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) RemoveFavorite(userID int64, modelID string) error {
+	_, err := s.db.Exec(`DELETE FROM favorites WHERE user_id=? AND model_id=?`, userID, modelID)
+	if err != nil {
+		return fmt.Errorf("store: RemoveFavorite: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) ListFavorites(userID int64) ([]string, error) {
+	rows, err := s.db.Query(`SELECT model_id FROM favorites WHERE user_id=? ORDER BY created_at DESC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("store: ListFavorites: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var modelID string
+		if err := rows.Scan(&modelID); err != nil {
+			return nil, fmt.Errorf("store: ListFavorites scan: %w", err)
+		}
+		ids = append(ids, modelID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: ListFavorites rows: %w", err)
+	}
+	return ids, nil
 }
 
 // SetCloudProviderPriorities renumbers providers to match the given order,
