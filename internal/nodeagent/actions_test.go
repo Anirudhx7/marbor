@@ -609,6 +609,120 @@ func TestHandleUnloadModel_LlamaCppRouterReportsFailure(t *testing.T) {
 	}
 }
 
+// TestHandleUnloadModel_LlamaCppRouterResolvesRepoIDToRouterID covers P34:
+// mesh callers send the "org/repo" Hugging Face identifier (hfRepoID/
+// hfCacheRepoID's format, used everywhere else HF-cache-sourced models are
+// named), but the router's own "id" is a bare filename stem with no
+// substring relationship to "org/repo" - confirmed 2026-07-28 against a real
+// router-mode instance. Unload must resolve org/repo to the router id via
+// each entry's status.args "--model" path before POSTing, rather than
+// sending "org/repo" straight through (which 400s "model is not found").
+func TestHandleUnloadModel_LlamaCppRouterResolvesRepoIDToRouterID(t *testing.T) {
+	var unloadBody map[string]string
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"Qwen2.5-0.5B-Instruct-Q4_K_M","status":{"value":"unloaded","args":["/app/llama-server","--model","/hub/models--bartowski--Qwen2.5-0.5B-Instruct-GGUF/snapshots/abc/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"]}}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/models/unload":
+			_ = json.NewDecoder(r.Body).Decode(&unloadBody)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"success":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	srv := newTestServerWithRuntimeURL(t, "llamacpp", fake.URL)
+	res := doUnloadModel(t, srv, "bartowski/Qwen2.5-0.5B-Instruct-GGUF")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.OK {
+		t.Errorf("expected ok=true, got error %q", resp.Error)
+	}
+	if unloadBody["model"] != "Qwen2.5-0.5B-Instruct-Q4_K_M" {
+		t.Errorf("expected resolved router id sent to /models/unload, got %v", unloadBody)
+	}
+}
+
+// TestHandleUnloadModel_LlamaCppRouterAmbiguousRepoIsClearError covers a repo
+// with multiple quant files (the common case for GGUF repos) - "org/repo"
+// alone cannot disambiguate which quant to unload, so this must refuse with
+// a clear, candidate-listing error rather than guessing one (R1).
+func TestHandleUnloadModel_LlamaCppRouterAmbiguousRepoIsClearError(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":"Qwen2.5-0.5B-Instruct-Q4_K_M","status":{"value":"unloaded","args":["/app/llama-server","--model","/hub/models--bartowski--Qwen2.5-0.5B-Instruct-GGUF/snapshots/abc/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf"]}},
+				{"id":"Qwen2.5-0.5B-Instruct-Q5_K_M","status":{"value":"unloaded","args":["/app/llama-server","--model","/hub/models--bartowski--Qwen2.5-0.5B-Instruct-GGUF/snapshots/abc/Qwen2.5-0.5B-Instruct-Q5_K_M.gguf"]}}
+			]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/models/unload":
+			t.Fatal("must not POST /models/unload when the repo name is ambiguous")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	srv := newTestServerWithRuntimeURL(t, "llamacpp", fake.URL)
+	res := doUnloadModel(t, srv, "bartowski/Qwen2.5-0.5B-Instruct-GGUF")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false for an ambiguous repo name")
+	}
+	if !strings.Contains(resp.Error, "ambiguous") || !strings.Contains(resp.Error, "Qwen2.5-0.5B-Instruct-Q4_K_M") || !strings.Contains(resp.Error, "Qwen2.5-0.5B-Instruct-Q5_K_M") {
+		t.Errorf("expected error listing both candidate ids, got %q", resp.Error)
+	}
+}
+
+// TestHandleUnloadModel_LlamaCppRouterUnknownRepoIsClearError covers a repo
+// with no loaded router preset matching it at all - must be a clear
+// not-found error, never a false success.
+func TestHandleUnloadModel_LlamaCppRouterUnknownRepoIsClearError(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"other-model","status":{"value":"unloaded","args":["/app/llama-server","--model","/hub/models--other--repo/snapshots/abc/other-model.gguf"]}}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/models/unload":
+			t.Fatal("must not POST /models/unload when no preset matches the repo")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	srv := newTestServerWithRuntimeURL(t, "llamacpp", fake.URL)
+	res := doUnloadModel(t, srv, "bartowski/Qwen2.5-0.5B-Instruct-GGUF")
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", res.StatusCode)
+	}
+	var resp actionResponse
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.OK {
+		t.Error("expected ok=false when no router preset matches the repo")
+	}
+	if !strings.Contains(resp.Error, "not found") {
+		t.Errorf("unexpected error message: %q", resp.Error)
+	}
+}
+
 func TestHandleUnloadModel_RequiresBearerToken(t *testing.T) {
 	srv := newTestServerWithRuntime(t, "ollama")
 	req := httptest.NewRequest(http.MethodPost, "/v1/models/llama3:8b", nil)
