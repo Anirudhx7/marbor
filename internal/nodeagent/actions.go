@@ -624,19 +624,26 @@ func unloadViaOllama(ctx context.Context, _, model string) error {
 }
 
 // llamaCppRouterModelList is GET {runtimeURL}/models' response shape in
-// llama.cpp router mode, confirmed against the official server README
-// (tools/server/README.md, ggml-org/llama.cpp): {"data":[{"id":...,
-// "status":{"value":"loaded"|"loading"|"unloaded",...}}]}. Only the fact
-// that Data decodes as a non-nil array matters here - this type exists to
-// confirm router mode is genuinely present, not to inspect any model's
-// status.
+// llama.cpp router mode, confirmed against a real router-mode instance
+// (ghcr.io/ggml-org/llama.cpp:server, 2026-07-28, HF-cache-backed
+// --models-dir): {"data":[{"id":...,"status":{"value":"loaded"|"loading"|
+// "unloaded","args":["/app/llama-server",...,"--model","<full path>"]}}]}.
+// Args is what resolveLlamaCppRouterModelID matches against - the router's
+// own "id" is a bare filename stem (e.g. "Qwen2.5-0.5B-Instruct-Q4_K_M"),
+// never the Hugging Face "org/repo" every other mesh code path (hfRepoID,
+// hfCacheRepoID) uses to name an HF-cache-sourced model, so an org/repo
+// unload request can never exact-match "id" directly - see
+// resolveLlamaCppRouterModelID's doc comment for the resulting fix.
 type llamaCppRouterModelList struct {
 	Data []struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		Status struct {
+			Args []string `json:"args"`
+		} `json:"status"`
 	} `json:"data"`
 }
 
-// probeLlamaCppRouterMode issues a read-only GET {runtimeURL}/models - a
+// fetchLlamaCppRouterModels issues a read-only GET {runtimeURL}/models - a
 // route that only exists when llama-server is running in router mode (a
 // plain single-model llama-server has no /models endpoint at all and
 // answers 404). Distinct from the OpenAI-compatible GET /v1/models every
@@ -644,28 +651,90 @@ type llamaCppRouterModelList struct {
 // internal/runtime.DetectRuntime already uses to identify "llamacpp" in the
 // first place - that signature alone cannot tell router mode from
 // single-model mode, which is exactly why this second, side-effect-free
-// probe exists before unloadViaLlamaCppRouter ever attempts a real unload.
-func probeLlamaCppRouterMode(ctx context.Context, runtimeURL string) error {
+// call exists before unloadViaLlamaCppRouter ever attempts a real unload.
+// Serves double duty as the router-mode probe (a non-router server 404s or
+// returns no "data" array) and as the source list resolveLlamaCppRouterModelID
+// matches model names against, avoiding a second GET for the same data.
+func fetchLlamaCppRouterModels(ctx context.Context, runtimeURL string) (*llamaCppRouterModelList, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, runtimeURL+"/models", nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET /models returned status %d (not router mode)", resp.StatusCode)
+		return nil, fmt.Errorf("GET /models returned status %d (not router mode)", resp.StatusCode)
 	}
 	var list llamaCppRouterModelList
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return fmt.Errorf("GET /models response is not a router model list: %w", err)
+		return nil, fmt.Errorf("GET /models response is not a router model list: %w", err)
 	}
 	if list.Data == nil {
-		return fmt.Errorf("GET /models response missing \"data\" array (not router mode)")
+		return nil, fmt.Errorf("GET /models response missing \"data\" array (not router mode)")
 	}
-	return nil
+	return &list, nil
+}
+
+// resolveLlamaCppRouterModelID maps model (as sent by mesh callers - either
+// an already-exact router id, or the "org/repo" Hugging Face identifier
+// hfRepoID/hfCacheRepoID use for every other HF-cache-sourced model name in
+// this codebase) to the exact router "id" POST /models/unload requires.
+//
+// Confirmed 2026-07-28 against a real router-mode instance: the router's
+// "id" is a bare filename stem ("Qwen2.5-0.5B-Instruct-Q4_K_M"), which has
+// no substring relationship to "org/repo" at all - the P34 queue item's
+// original assumption that "id" looked like "org/repo:QUANT" was verified
+// INVALID. The only place "org/repo" survives is inside each entry's
+// status.args, in the "--model" flag's value - the on-disk HF cache path
+// (".../models--org--repo/snapshots/<hash>/<file>.gguf") pullViaHFHub
+// downloads into and listViaHFCache/deleteViaHFCache already key off of via
+// the same "models--org--repo" directory-name convention.
+//
+// A repo with multiple quant files (the common case for GGUF repos - this
+// exact test fixture has two) has multiple router ids whose --model path
+// all fall under the same "models--org--repo" directory. That makes
+// "org/repo" alone genuinely ambiguous among which quant to unload - this
+// deliberately refuses to guess (matching R1's "honest error over a false
+// success" and the queue's "single match = use it, zero or multiple = clear
+// error, never guess" design constraint) and instead reports the candidate
+// ids so the caller can retry with one.
+func resolveLlamaCppRouterModelID(list *llamaCppRouterModelList, model string) (string, error) {
+	for _, entry := range list.Data {
+		if entry.ID == model {
+			return entry.ID, nil
+		}
+	}
+
+	if !strings.Contains(model, "/") {
+		return "", fmt.Errorf("model %q not found (no loaded router id matches)", model)
+	}
+	dirName := "models--" + strings.ReplaceAll(hfRepoID(model), "/", "--")
+	needle := "/" + dirName + "/"
+
+	var matches []string
+	for _, entry := range list.Data {
+		for i, arg := range entry.Status.Args {
+			if arg != "--model" || i+1 >= len(entry.Status.Args) {
+				continue
+			}
+			if strings.Contains(entry.Status.Args[i+1], needle) {
+				matches = append(matches, entry.ID)
+			}
+			break
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("model %q not found (no loaded router preset's path matches this repo)", model)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("model %q is ambiguous - %d router presets match this repo (%s); retry the unload with one of these exact ids instead of the repo name", model, len(matches), strings.Join(matches, ", "))
+	}
 }
 
 // unloadViaLlamaCppRouter POSTs to llama.cpp router mode's own
@@ -675,16 +744,25 @@ func probeLlamaCppRouterMode(ctx context.Context, runtimeURL string) error {
 // opt-in (llama-server enters it only when started without a model path,
 // e.g. via --models-dir/--models-preset) and internal/runtime's "llamacpp"
 // detection cannot distinguish it from a plain single-model instance, so
-// this always confirms router mode via probeLlamaCppRouterMode first and
-// refuses cleanly rather than guessing when it isn't there.
+// this always confirms router mode via fetchLlamaCppRouterModels first and
+// refuses cleanly rather than guessing when it isn't there. model is then
+// resolved from mesh's own naming (org/repo, or an already-exact id) to the
+// router's own id via resolveLlamaCppRouterModelID before the real POST -
+// see that function's doc comment for why "org/repo" alone cannot be sent
+// to the router directly (P34).
 func unloadViaLlamaCppRouter(ctx context.Context, runtimeURL, model string) error {
-	if err := probeLlamaCppRouterMode(ctx, runtimeURL); err != nil {
+	list, err := fetchLlamaCppRouterModels(ctx, runtimeURL)
+	if err != nil {
 		return fmt.Errorf("unsupported: llama.cpp router mode not detected on this node (%w) - /models/unload only exists when llama-server runs in router mode", err)
+	}
+	resolvedID, err := resolveLlamaCppRouterModelID(list, model)
+	if err != nil {
+		return err
 	}
 
 	body, err := json.Marshal(struct {
 		Model string `json:"model"`
-	}{Model: model})
+	}{Model: resolvedID})
 	if err != nil {
 		return err
 	}
