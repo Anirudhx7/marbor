@@ -13,6 +13,7 @@ import { mockGPUNodes } from '../lib/mockData';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent } from '../lib/api';
 import type { NodeAgentStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
+import { formatDurationLong } from '../lib/time';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -30,17 +31,6 @@ function formatBytes(bytes: number): string {
 // these get the same "live reading" badge color; only "declared"/"inferred"/
 // "unknown" are visually distinct.
 const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent']);
-
-// formatUptime renders a node agent's reported uptime_seconds as a compact
-// "Xd Yh" / "Xh Ym" string for the manage-agent modal.
-function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
 
 function FitBadge({ fit }: { fit: FitStatus }) {
   const styles: Record<FitStatus, string> = {
@@ -1585,7 +1575,7 @@ export function GPUNodes() {
                   )}
                   <p><span className="font-medium text-foreground">Capabilities:</span> {agentNode.agentCapabilities?.length ? agentNode.agentCapabilities.join(', ') : '--'}</p>
                   {agentNode.hostname && (
-                    <p><span className="font-medium text-foreground">Host:</span> {agentNode.hostname}{agentNode.uptimeSeconds ? ` (up ${formatUptime(agentNode.uptimeSeconds)})` : ''}</p>
+                    <p><span className="font-medium text-foreground">Host:</span> {agentNode.hostname}{agentNode.uptimeSeconds ? ` (up ${formatDurationLong(agentNode.uptimeSeconds)})` : ''}</p>
                   )}
                   {(agentNode.ramTotalMB || agentNode.diskTotalGB) && (
                     <p>

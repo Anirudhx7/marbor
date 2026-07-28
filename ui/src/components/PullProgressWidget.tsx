@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown, Trash2, AlertTriangle } from 'lucide-react';
 import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, restoreActivePulls, isPullActive, PullProgressState } from '../lib/pullProgress';
 import { deleteNodeModel } from '../lib/api';
+import { formatDurationShort } from '../lib/time';
 
 function formatBytes(n: number): string {
   if (n <= 0) return '0 B';
@@ -14,13 +15,6 @@ function formatBytes(n: number): string {
 function formatSpeed(bps: number): string {
   const mbps = bps / (1024 * 1024);
   return `${mbps.toFixed(1)} MB/s`;
-}
-
-function formatDuration(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return '';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 // verifyModelLoads (admin.go) surfaces the runtime's real error verbatim as
@@ -172,7 +166,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
                     <span>{formatBytes(job.bytesCompleted)} / {formatBytes(job.bytesTotal)}</span>
                     <span>
                       {job.speedBps > 0 ? formatSpeed(job.speedBps) : '-'}
-                      {eta !== null && ` · ${formatDuration(eta)} left`}
+                      {eta !== null && ` · ${formatDurationShort(eta)} left`}
                     </span>
                   </div>
                 </>
@@ -182,7 +176,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
                     <div className="h-full w-1/3 bg-primary rounded-full animate-pulse" />
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Downloading… {formatDuration(elapsedMs / 1000)} elapsed
+                    Downloading… {formatDurationShort(elapsedMs / 1000)} elapsed
                   </p>
                 </>
               )}
@@ -195,7 +189,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
                 <div className="h-full w-1/3 bg-primary rounded-full animate-pulse" />
               </div>
               <p className="text-xs text-muted-foreground">
-                Verifying it actually loads… {formatDuration(elapsedMs / 1000)} elapsed
+                Verifying it actually loads… {formatDurationShort(elapsedMs / 1000)} elapsed
                 {hasBytes && ` · ${formatBytes(job.bytesTotal)} downloaded`}
               </p>
             </>
