@@ -765,6 +765,11 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
   ],
 };
 
+export const mockFavorites = [
+  'bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF',
+  'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
+];
+
 export const mockHFModels = [
   {
     id: 'bartowski/Llama-3.2-3B-Instruct-GGUF',

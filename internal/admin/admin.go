@@ -43,6 +43,7 @@ var webFS embed.FS
 type ctxKey string
 
 const ctxKeyUsername ctxKey = "username"
+const ctxKeyUserID ctxKey = "user_id"
 
 // sessionCookieName is the httpOnly cookie holding the admin session token.
 // The token itself never reaches client-side JS or localStorage (Priority 2,
@@ -705,6 +706,12 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/models/catalog", s.cors(s.adminAuth(s.handleModelCatalog)))
 	reg("GET /admin/models/search", s.cors(s.adminAuth(s.handleModelSearch)))
 	reg("GET /admin/models/repo", s.cors(s.adminAuth(s.handleModelRepo)))
+	reg("GET /admin/favorites", s.cors(s.adminAuth(s.handleFavorites)))
+	reg("POST /admin/favorites", s.cors(s.adminAuth(s.handleAddFavorite)))
+	// "{modelId...}" (not "{modelId}") deliberately - HF model ids routinely
+	// contain "/" (e.g. "org/repo"), same reasoning as
+	// DELETE /admin/nodes/{name}/models/{model...} above.
+	reg("DELETE /admin/favorites/{modelId...}", s.cors(s.adminAuth(s.handleRemoveFavorite)))
 
 	reg("GET /admin/model-config", s.cors(s.adminAuth(s.handleGetModelConfig)))
 	reg("PUT /admin/model-config", s.cors(s.adminAuth(s.handleSetModelConfig)))
@@ -888,6 +895,7 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
+		r = r.WithContext(context.WithValue(r.Context(), ctxKeyUserID, session.UserID))
 		next(w, r)
 	}
 }
@@ -1840,6 +1848,69 @@ func (s *Server) handleDeleteCloudProvider(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	s.logSystemChange(r, "delete_cloud_provider", name, "")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleFavorites returns the calling user's starred model ids.
+// GET /admin/favorites.
+func (s *Server) handleFavorites(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(ctxKeyUserID).(int64)
+	if !ok || userID <= 0 {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	ids, err := s.st.ListFavorites(userID)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		ModelIDs []string `json:"model_ids"`
+	}{ModelIDs: ids})
+}
+
+// handleAddFavorite stars a model for the calling user.
+// POST /admin/favorites.
+func (s *Server) handleAddFavorite(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(ctxKeyUserID).(int64)
+	if !ok || userID <= 0 {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var body struct {
+		ModelID string `json:"model_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ModelID == "" {
+		writeJSONError(w, http.StatusBadRequest, "model_id is required")
+		return
+	}
+	if err := s.st.AddFavorite(userID, body.ModelID); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	s.logSystemChange(r, "add_favorite", body.ModelID, "")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRemoveFavorite unstars a model for the calling user.
+// DELETE /admin/favorites/{modelId...}.
+func (s *Server) handleRemoveFavorite(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(ctxKeyUserID).(int64)
+	if !ok || userID <= 0 {
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	modelID := r.PathValue("modelId")
+	if modelID == "" {
+		writeJSONError(w, http.StatusBadRequest, "modelId is required")
+		return
+	}
+	if err := s.st.RemoveFavorite(userID, modelID); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	s.logSystemChange(r, "remove_favorite", modelID, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
