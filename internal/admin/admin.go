@@ -5486,14 +5486,16 @@ type nodeHealthCheckResult struct {
 	LatencyMs int64  `json:"latencyMs"`
 }
 
-// handleNodeHealthCheck triggers an on-demand active liveness probe via a
-// node's Node Agent (GET /v1/runtime/health, capability
-// "runtime.health_check") - distinct from the passive, poll-cycle-cached
-// health already carried on NodeState (populated from telemetry, up to one
-// poll interval stale). No direct-HTTP fallback exists for this today (same
-// reasoning as handleNodeModels/handleNodeDeleteModel) - a node without an
-// agent, or an agent build predating this capability, returns a clear 501
-// rather than silently reporting a fabricated result.
+// handleNodeHealthCheck triggers an on-demand active liveness probe for a
+// node - distinct from the passive, poll-cycle-cached health already
+// carried on NodeState (populated from telemetry, up to one poll interval
+// stale). Prefers the node's Node Agent (GET /v1/runtime/health,
+// capability "runtime.health_check") when available; falls back to
+// router.ProbeNodeOnDemand (the same RuntimeProbe the periodic poller
+// uses, read-only) for a node with no agent or an agent build predating
+// this capability, so "check now" works on every node, not just
+// agent-equipped ones. Both paths report a real measurement or a real
+// error - never a fabricated result (R1).
 func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 	nodeName := r.PathValue("name")
 
@@ -5514,14 +5516,21 @@ func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), nodeHealthCheckTimeout)
+	defer cancel()
+
 	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
 	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "runtime.health_check") {
-		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for an on-demand health check", nodeName))
+		ok, errMsg, latencyMs, found := s.router.ProbeNodeOnDemand(ctx, nodeName)
+		if !found {
+			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(nodeHealthCheckResult{OK: ok, Error: errMsg, LatencyMs: latencyMs})
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), nodeHealthCheckTimeout)
-	defer cancel()
 	result, err := s.healthCheckViaAgent(ctx, nodeURL, agentCfg)
 	if err != nil {
 		writeJSONError(w, http.StatusBadGateway, err.Error())

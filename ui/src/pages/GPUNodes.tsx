@@ -1565,6 +1565,25 @@ export function GPUNodes() {
             <p className="text-sm text-destructive">{agentError}</p>
           )}
 
+          <div className="space-y-2">
+            <button
+              onClick={handleCheckNodeHealth}
+              disabled={healthCheckBusy}
+              title="Run a live health check against this node's inference runtime right now, instead of waiting for the next automatic poll - works whether or not a Node Agent is installed"
+              className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {healthCheckBusy ? 'Checking...' : 'Health Check'}
+            </button>
+            {healthCheckResult && (
+              <p className={`text-xs ${healthCheckResult.ok ? 'text-success' : 'text-destructive'}`}>
+                <span className="font-medium">Health check result:</span>{' '}
+                {healthCheckResult.ok
+                  ? `up${healthCheckResult.latencyMs != null ? ` (${healthCheckResult.latencyMs}ms)` : ''}`
+                  : `down${healthCheckResult.error ? ` - ${healthCheckResult.error}` : ''}`}
+              </p>
+            )}
+          </div>
+
           {agentStatus && !agentStatus.enabled && (
             <div className="space-y-3">
               <div>
@@ -1644,16 +1663,6 @@ export function GPUNodes() {
                 </div>
               )}
               <div className="flex flex-wrap gap-3">
-                {agentNode?.agentCapabilities?.includes('runtime.health_check') && (
-                  <button
-                    onClick={handleCheckNodeHealth}
-                    disabled={healthCheckBusy}
-                    title="Run a live health check against this node's inference runtime right now, instead of waiting for the next automatic poll"
-                    className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-                  >
-                    {healthCheckBusy ? 'Checking...' : 'Health Check'}
-                  </button>
-                )}
                 <button
                   onClick={handleRegenerateAgentToken}
                   disabled={agentBusy}
@@ -1669,14 +1678,6 @@ export function GPUNodes() {
                   Disable Agent
                 </button>
               </div>
-              {healthCheckResult && (
-                <p className={`text-xs ${healthCheckResult.ok ? 'text-success' : 'text-destructive'}`}>
-                  <span className="font-medium">Health check result:</span>{' '}
-                  {healthCheckResult.ok
-                    ? `up${healthCheckResult.latencyMs != null ? ` (${healthCheckResult.latencyMs}ms)` : ''}`
-                    : `down${healthCheckResult.error ? ` - ${healthCheckResult.error}` : ''}`}
-                </p>
-              )}
             </div>
           )}
 

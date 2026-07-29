@@ -306,6 +306,49 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 }
 
+// ProbeNodeOnDemand runs a synchronous, read-only liveness probe for the
+// named node right now, using the same RuntimeProbe pollNode uses on its
+// periodic cycle. Unlike pollNode, it never mutates NodeState (Healthy,
+// LastPollAt, Failures, ConsecutiveSuccesses are left exactly as the
+// periodic poller last set them, and no webhook/SQLite write happens
+// here): an admin-triggered one-off "check now" click must not reset the
+// poller's own failure-count/hysteresis state outside its normal cadence.
+// The periodic poller reconciles real state on its own schedule regardless
+// (State Hierarchy - this is a diagnostic read, not a new authoritative
+// state write). found is false only if name doesn't match any current
+// node; a found node with a not-yet-detected runtime (autoDetect pending,
+// probe nil) reports a real error rather than a fabricated result (R1).
+func (r *Router) ProbeNodeOnDemand(ctx context.Context, name string) (ok bool, errMsg string, latencyMs int64, found bool) {
+	r.mu.RLock()
+	var n *NodeState
+	for _, node := range r.nodes {
+		if node.Name == name {
+			n = node
+			break
+		}
+	}
+	r.mu.RUnlock()
+	if n == nil {
+		return false, "", 0, false
+	}
+
+	n.RLock()
+	nodeURL := n.URL
+	probe := n.probe
+	n.RUnlock()
+	if probe == nil {
+		return false, "node runtime not yet detected - still auto-detecting", 0, true
+	}
+
+	start := time.Now()
+	_, err := probe.Probe(ctx, nodeURL)
+	latencyMs = time.Since(start).Milliseconds()
+	if err != nil {
+		return false, err.Error(), latencyMs, true
+	}
+	return true, "", latencyMs, true
+}
+
 // localAddrCacheTTL bounds how long localInterfaceAddrs() reuses a previous
 // net.InterfaceAddrs() result. isLocalNode is invoked on the health-poll hot
 // path (once per node every PollIntervalMs, default 2s), so a fresh syscall
