@@ -5217,7 +5217,7 @@ func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
 // capability "models.list") and translates its snake_case wire response
 // into this API's camelCase nodeModelEntry shape.
 func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) ([]nodeModelEntry, error) {
-	actionURL, err := buildAgentActionURL(nodeURL, agentCfg.Port)
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models")
 	if err != nil {
 		return nil, err
 	}
@@ -5293,7 +5293,7 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 // subprocess's own environment for its lifetime (see
 // .local/specs/node-agent.md section 16).
 func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
-	actionURL, err := buildAgentActionURL(nodeURL, agentCfg.Port)
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models")
 	if err != nil {
 		return err
 	}
@@ -5336,12 +5336,12 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 	return nil
 }
 
-// buildAgentActionURL derives the agent's POST /v1/models URL from the
-// node's own URL (same host) and the configured agent port, via url.Parse
-// per R5 - never arithmetic port derivation. Mirrors agent_poll.go's
-// buildAgentURL in internal/router (kept as a separate small function since
-// admin and router are different packages).
-func buildAgentActionURL(nodeURL string, port int) (string, error) {
+// buildAgentURL derives an agent URL from the node's own URL (same host),
+// the configured agent port, and a literal path, via url.Parse per R5 -
+// never arithmetic port derivation. Mirrors agent_poll.go's buildAgentURL in
+// internal/router (kept as a separate small function since admin and router
+// are different packages).
+func buildAgentURL(nodeURL string, port int, path string) (string, error) {
 	u, err := url.Parse(nodeURL)
 	if err != nil {
 		return "", fmt.Errorf("parse node URL: %w", err)
@@ -5353,7 +5353,7 @@ func buildAgentActionURL(nodeURL string, port int) (string, error) {
 	if scheme == "" {
 		scheme = "http"
 	}
-	return fmt.Sprintf("%s://%s:%d/v1/models", scheme, u.Hostname(), port), nil
+	return fmt.Sprintf("%s://%s:%d%s", scheme, u.Hostname(), port, path), nil
 }
 
 // nodeDeleteModelTimeout bounds how long the admin API waits for a node
@@ -5418,7 +5418,7 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 // deleteModelViaAgent dispatches a model delete to nodeURL's Node Agent
 // (DELETE /v1/models/{name}, capability "models.delete").
 func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
-	actionURL, err := buildAgentDeleteURL(nodeURL, agentCfg.Port, model)
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models/"+escapeModelPathSegments(model))
 	if err != nil {
 		return err
 	}
@@ -5451,29 +5451,6 @@ func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentC
 		return errors.New(msg)
 	}
 	return nil
-}
-
-// buildAgentDeleteURL derives the agent's DELETE /v1/models/{name} URL from
-// the node's own URL (same host) and the configured agent port, via
-// url.Parse per R5 - never arithmetic port derivation. model is appended
-// verbatim (not URL-escaped) so a name containing "/" (e.g. "org/repo")
-// lands on the agent side as multiple path segments, matching what its own
-// "{name...}" wildcard route expects - the same convention buildAgentActionURL
-// (POST /v1/models, request body instead of path) doesn't need but this
-// path-addressed route does.
-func buildAgentDeleteURL(nodeURL string, port int, model string) (string, error) {
-	u, err := url.Parse(nodeURL)
-	if err != nil {
-		return "", fmt.Errorf("parse node URL: %w", err)
-	}
-	if u.Hostname() == "" {
-		return "", fmt.Errorf("node URL %q has no host", nodeURL)
-	}
-	scheme := u.Scheme
-	if scheme == "" {
-		scheme = "http"
-	}
-	return fmt.Sprintf("%s://%s:%d/v1/models/%s", scheme, u.Hostname(), port, escapeModelPathSegments(model)), nil
 }
 
 // escapeModelPathSegments percent-escapes each "/"-delimited segment of a
@@ -5564,7 +5541,7 @@ func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 // genuine transport/dispatch failures (can't reach the agent itself, bad
 // response shape).
 func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) (nodeHealthCheckResult, error) {
-	actionURL, err := buildAgentHealthCheckURL(nodeURL, agentCfg.Port)
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/health")
 	if err != nil {
 		return nodeHealthCheckResult{}, err
 	}
@@ -5603,24 +5580,6 @@ func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentC
 		return nodeHealthCheckResult{}, fmt.Errorf("agent health check: could not decode response (status %d)", resp.StatusCode)
 	}
 	return nodeHealthCheckResult{OK: out.OK, Error: out.Error, LatencyMs: out.LatencyMs}, nil
-}
-
-// buildAgentHealthCheckURL derives the agent's GET /v1/runtime/health URL
-// from the node's own URL (same host) and the configured agent port, via
-// url.Parse per R5 - never arithmetic port derivation.
-func buildAgentHealthCheckURL(nodeURL string, port int) (string, error) {
-	u, err := url.Parse(nodeURL)
-	if err != nil {
-		return "", fmt.Errorf("parse node URL: %w", err)
-	}
-	if u.Hostname() == "" {
-		return "", fmt.Errorf("node URL %q has no host", nodeURL)
-	}
-	scheme := u.Scheme
-	if scheme == "" {
-		scheme = "http"
-	}
-	return fmt.Sprintf("%s://%s:%d/v1/runtime/health", scheme, u.Hostname(), port), nil
 }
 
 // nodeUnloadModelTimeout bounds how long the admin API waits for a node
