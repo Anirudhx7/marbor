@@ -142,7 +142,7 @@ func TestHandleNodeDeleteModel_DownNodeFailsFast(t *testing.T) {
 // request to a different (shorter) model name than the caller intended.
 // "/" must still pass through as a real path separator (unescaped),
 // matching the agent's own "{name...}" wildcard route.
-func TestBuildAgentDeleteURL_EscapesReservedCharacters(t *testing.T) {
+func TestBuildAgentURL_EscapesReservedModelPathCharacters(t *testing.T) {
 	cases := map[string]string{
 		"org/repo":     "http://localhost:9911/v1/models/org/repo",
 		"org/repo#tag": "http://localhost:9911/v1/models/org/repo%23tag",
@@ -150,12 +150,12 @@ func TestBuildAgentDeleteURL_EscapesReservedCharacters(t *testing.T) {
 		"org/my repo":  "http://localhost:9911/v1/models/org/my%20repo",
 	}
 	for model, want := range cases {
-		got, err := buildAgentDeleteURL("http://localhost:11434", 9911, model)
+		got, err := buildAgentURL("http://localhost:11434", 9911, "/v1/models/"+escapeModelPathSegments(model))
 		if err != nil {
-			t.Fatalf("buildAgentDeleteURL(%q): %v", model, err)
+			t.Fatalf("buildAgentURL(%q): %v", model, err)
 		}
 		if got != want {
-			t.Errorf("buildAgentDeleteURL(%q) = %q, want %q", model, got, want)
+			t.Errorf("buildAgentURL(%q) = %q, want %q", model, got, want)
 		}
 	}
 }
