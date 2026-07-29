@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
@@ -10,8 +10,8 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent } from '../lib/api';
-import type { NodeAgentStatus } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth } from '../lib/api';
+import type { NodeAgentStatus, NodeHealthCheckResult } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
 
@@ -494,12 +494,22 @@ export function GPUNodes() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentCopiedWhich, setAgentCopiedWhich] = useState<'unix' | 'windows' | null>(null);
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
+  const [healthCheckBusy, setHealthCheckBusy] = useState(false);
+  const [healthCheckResult, setHealthCheckResult] = useState<NodeHealthCheckResult | null>(null);
+  // Tracks the modal's current node synchronously (unlike agentNode state,
+  // which only updates after a render) so an in-flight health check can tell,
+  // the instant its response lands, whether the modal has since moved to a
+  // different node and the result should be discarded rather than misapplied.
+  const agentNodeRef = useRef<GPUNode | null>(null);
+  useEffect(() => { agentNodeRef.current = agentNode; }, [agentNode]);
 
   const openAgentModal = async (node: GPUNode) => {
     setAgentNode(node);
     setAgentError(null);
     setAgentInstallCommand(null);
     setAgentCopiedWhich(null);
+    setHealthCheckBusy(false);
+    setHealthCheckResult(null);
     if (demoMode) {
       setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
       setAgentPort('11435');
@@ -520,6 +530,8 @@ export function GPUNodes() {
     setAgentStatus(null);
     setAgentInstallCommand(null);
     setAgentError(null);
+    setHealthCheckBusy(false);
+    setHealthCheckResult(null);
   };
 
   const handleEnableAgent = async () => {
@@ -590,6 +602,31 @@ export function GPUNodes() {
       setAgentError(e?.message || 'Failed to regenerate node agent token');
     } finally {
       setAgentBusy(false);
+    }
+  };
+
+  const handleCheckNodeHealth = async () => {
+    if (!agentNode) return;
+    const targetNodeName = agentNode.name;
+    setHealthCheckBusy(true);
+    setHealthCheckResult(null);
+    if (demoMode) {
+      setHealthCheckResult({ ok: true, latencyMs: 42 });
+      setHealthCheckBusy(false);
+      return;
+    }
+    try {
+      const result = await checkNodeHealth(targetNodeName);
+      // The modal may have been closed/switched to a different node while this
+      // request was in flight - only apply the result if it's still relevant,
+      // so a slow response for node A never gets mislabeled onto node B.
+      if (agentNodeRef.current?.name !== targetNodeName) return;
+      setHealthCheckResult(result);
+    } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
+      setHealthCheckResult({ ok: false, error: e?.message || 'Failed to run health check' });
+    } finally {
+      if (agentNodeRef.current?.name === targetNodeName) setHealthCheckBusy(false);
     }
   };
 
@@ -1576,6 +1613,14 @@ export function GPUNodes() {
                     </p>
                   )}
                   <p><span className="font-medium text-foreground">Capabilities:</span> {agentNode.agentCapabilities?.length ? agentNode.agentCapabilities.join(', ') : '--'}</p>
+                  {healthCheckResult && (
+                    <p className={healthCheckResult.ok ? 'text-success' : 'text-destructive'}>
+                      <span className="font-medium text-foreground">Health check:</span>{' '}
+                      {healthCheckResult.ok
+                        ? `up${healthCheckResult.latencyMs != null ? ` (${healthCheckResult.latencyMs}ms)` : ''}`
+                        : `down${healthCheckResult.error ? ` - ${healthCheckResult.error}` : ''}`}
+                    </p>
+                  )}
                   {agentNode.hostname && (
                     <p><span className="font-medium text-foreground">Host:</span> {agentNode.hostname}{agentNode.uptimeSeconds ? ` (up ${formatDurationLong(agentNode.uptimeSeconds)})` : ''}</p>
                   )}
@@ -1607,6 +1652,15 @@ export function GPUNodes() {
                 </div>
               )}
               <div className="flex flex-wrap gap-3">
+                {agentNode?.agentCapabilities?.includes('runtime.health_check') && (
+                  <button
+                    onClick={handleCheckNodeHealth}
+                    disabled={healthCheckBusy}
+                    className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  >
+                    {healthCheckBusy ? 'Checking...' : 'Check now'}
+                  </button>
+                )}
                 <button
                   onClick={handleRegenerateAgentToken}
                   disabled={agentBusy}

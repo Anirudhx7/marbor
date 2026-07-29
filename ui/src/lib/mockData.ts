@@ -43,7 +43,7 @@ export const mockGPUNodes: GPUNode[] = [
     fanPercent: 62,
     ramUsedMB: Math.round(41.5 * GB),
     diskFreeGB: 812.4,
-    agentCapabilities: ['status', 'models.pull', 'models.list', 'models.delete', 'models.unload'],
+    agentCapabilities: ['status', 'models.pull', 'models.list', 'models.delete', 'models.unload', 'runtime.health_check'],
     localModels: [
       { name: 'llama3.2:latest', sizeBytes: Math.round(2.2 * GiB), source: 'ollama-tags' },
       { name: 'qwen2.5:14b', sizeBytes: Math.round(4.8 * GiB), source: 'ollama-tags' },

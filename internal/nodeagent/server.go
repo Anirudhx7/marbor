@@ -50,6 +50,11 @@ func (s *Server) Handler() http.Handler {
 	// handleUnloadModel's doc comment for why a literal "/unload" suffix
 	// isn't used (not expressible after a multi-segment wildcard).
 	mux.HandleFunc("POST /v1/models/{name...}", requireToken(s.Token, s.handleUnloadModel))
+	// The "runtime" resource, capability "runtime.health_check" - an
+	// on-demand active liveness probe, distinct from GET /v1/status's
+	// Health.RuntimeReachable field (which only reflects the last poll
+	// cycle's passive reading). GET because this never mutates state.
+	mux.HandleFunc("GET /v1/runtime/health", requireToken(s.Token, s.handleHealthCheck))
 	return mux
 }
 

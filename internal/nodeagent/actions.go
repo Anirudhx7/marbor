@@ -790,3 +790,119 @@ func unloadViaLlamaCppRouter(ctx context.Context, runtimeURL, model string) erro
 	}
 	return nil
 }
+
+// healthCheckTimeout bounds how long the agent waits for an on-demand
+// liveness probe. Short, like listModelsTimeout/deleteModelTimeout - an
+// operator hitting "check now" wants a fast, fresh answer, not something
+// that can hang for as long as a model transfer.
+var healthCheckTimeout = 10 * time.Second
+
+// healthCheckResult is GET /v1/runtime/health's response body, capability
+// "runtime.health_check". LatencyMs is a real time.Since measurement around
+// the probe call, never estimated (R1). No omitempty - a genuinely fast
+// (0ms) probe is a real measurement, not an absent one, and omitempty on an
+// int64 would silently drop it, indistinguishable from "not reported."
+// LatencyMs is meaningless when OK is false (the probe never completed) and
+// left at its zero value in that case - callers must check OK first.
+type healthCheckResult struct {
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	LatencyMs int64  `json:"latency_ms"`
+}
+
+// healthCheckCommands maps a locally-detected runtime name to this agent's
+// on-demand liveness probe, mirroring pullCommands/listCommands/
+// deleteCommands/unloadCommands. Unlike unloadCommands, every runtime has a
+// genuine liveness signal - none of the "no primitive exists" gaps documented
+// above unloadCommands apply here:
+//   - vLLM/TGI/llama.cpp all expose a real GET /health (llama.cpp's answers
+//     in both plain and router mode, unlike its router-only GET /models).
+//   - Ollama has no separate /health route, but GET /api/tags (already used
+//     by listViaOllamaTags) is itself a genuine liveness signal - a lighter
+//     call than GET /api/ps, and it errors the same way on an unreachable
+//     daemon.
+//   - mlx_lm.server's official server exposes no /health route at all; a
+//     successful GET /v1/models response IS the reachability signal, the
+//     same reasoning internal/runtime's mlx probe already documents.
+var healthCheckCommands = map[string]func(ctx context.Context, runtimeURL string) error{
+	"ollama":   healthCheckViaOllamaTags,
+	"vllm":     healthCheckViaHTTPGet("/health"),
+	"tgi":      healthCheckViaHTTPGet("/health"),
+	"llamacpp": healthCheckViaHTTPGet("/health"),
+	"mlx":      healthCheckViaHTTPGet("/v1/models"),
+}
+
+// handleHealthCheck is the GET /v1/runtime/health handler, capability
+// "runtime.health_check", gated by the same per-node bearer token as every
+// other route. Always returns 200 with a real ok/error/latency_ms result -
+// even a failed probe is a successful health check (the answer is "down"),
+// so unlike the mutating actions this never uses the 4xx/5xx status to carry
+// the failure; the body's ok field does that, matching the Group 2 wire
+// doc's { "ok": true } / { "ok": false, "error": "..." } shape.
+func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+	name, url := s.runtimeTarget()
+	fn, ok := healthCheckCommands[name]
+	if !ok {
+		msg := fmt.Sprintf("unsupported: no health-check primitive for runtime %q", name)
+		if name == "" {
+			msg = "unsupported: no inference runtime detected on this node"
+		}
+		writeAction(w, http.StatusUnprocessableEntity, actionResponse{Error: msg})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
+	defer cancel()
+
+	start := time.Now()
+	err := fn(ctx, url)
+	latency := time.Since(start)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		_ = json.NewEncoder(w).Encode(healthCheckResult{OK: false, Error: err.Error()})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(healthCheckResult{OK: true, LatencyMs: latency.Milliseconds()})
+}
+
+// healthCheckViaOllamaTags probes Ollama's own GET /api/tags - the same
+// primitive listViaOllamaTags uses to enumerate models, and a genuine
+// liveness signal: it only succeeds if the daemon is up and answering.
+func healthCheckViaOllamaTags(ctx context.Context, runtimeURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, runtimeURL+"/api/tags", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ollama /api/tags returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// healthCheckViaHTTPGet returns a healthCheckCommands entry that probes a
+// fixed path on runtimeURL and treats any 200 response as healthy - shared by
+// every runtime whose liveness signal is simply "this endpoint answers"
+// (vLLM/TGI/llama.cpp's real /health, mlx's /v1/models standing in for one).
+func healthCheckViaHTTPGet(path string) func(ctx context.Context, runtimeURL string) error {
+	return func(ctx context.Context, runtimeURL string) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, runtimeURL+path, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := (&http.Client{}).Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("%s returned status %d", path, resp.StatusCode)
+		}
+		return nil
+	}
+}
