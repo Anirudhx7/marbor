@@ -577,11 +577,6 @@ export function ModelAdvisor() {
     });
   }, [models]);
 
-  const selectedModel = useMemo(
-    () => uniqueModels.find(m => m.id === selectedModelId) ?? null,
-    [uniqueModels, selectedModelId]
-  );
-
   // Favourites tab shows the starred models as cards without requiring a
   // node/search context - fetch repo details for any starred id not already
   // present in the current search results or the cache, so the list still
@@ -619,28 +614,32 @@ export function ModelAdvisor() {
       .filter((m): m is HFModel => !!m);
   }, [favoriteIds, demoMode, uniqueModels, favoriteDetails]);
 
-  // Build grid items: cards + panel inserted after end of the clicked card's row
+  // Build grid items: cards + panel inserted after end of the clicked card's row.
+  // Parameterized on the source list so Browse (uniqueModels) and Favourites
+  // (favoriteModels) share identical inline-detail-panel behavior.
   type GridItem = { kind: 'card'; model: HFModel } | { kind: 'panel'; model: HFModel };
-  const gridItems = useMemo((): GridItem[] => {
-    if (!selectedModelId || !selectedModel) {
-      return uniqueModels.map(m => ({ kind: 'card' as const, model: m }));
-    }
-    const idx = uniqueModels.findIndex(m => m.id === selectedModelId);
-    if (idx < 0) return uniqueModels.map(m => ({ kind: 'card' as const, model: m }));
+  const buildGridItems = useCallback((list: HFModel[]): GridItem[] => {
+    if (!selectedModelId) return list.map(m => ({ kind: 'card' as const, model: m }));
+    const idx = list.findIndex(m => m.id === selectedModelId);
+    if (idx < 0) return list.map(m => ({ kind: 'card' as const, model: m }));
 
     // Insert panel after the last card in the row containing the selected card
+    const selected = list[idx];
     const rowEnd = Math.ceil((idx + 1) / columnCount) * columnCount - 1;
-    const insertAfter = Math.min(rowEnd, uniqueModels.length - 1);
+    const insertAfter = Math.min(rowEnd, list.length - 1);
 
     const items: GridItem[] = [];
-    uniqueModels.forEach((m, i) => {
+    list.forEach((m, i) => {
       items.push({ kind: 'card', model: m });
       if (i === insertAfter) {
-        items.push({ kind: 'panel', model: selectedModel });
+        items.push({ kind: 'panel', model: selected });
       }
     });
     return items;
-  }, [uniqueModels, selectedModelId, selectedModel, columnCount]);
+  }, [selectedModelId, columnCount]);
+
+  const gridItems = useMemo(() => buildGridItems(uniqueModels), [buildGridItems, uniqueModels]);
+  const favoriteGridItems = useMemo(() => buildGridItems(favoriteModels), [buildGridItems, favoriteModels]);
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -695,17 +694,31 @@ export function ModelAdvisor() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
-            {favoriteModels.map((m) => (
-              <ModelCard
-                key={m.id}
-                model={m}
-                selected={false}
-                onSelect={() => { setTab('browse'); setSearch(m.id); }}
-                selectLabel="Open in Browse to Pull"
-                isFavorite={true}
-                onToggleFavorite={() => toggleFavorite(m.id)}
-              />
-            ))}
+            {favoriteGridItems.map((item) =>
+              item.kind === 'card' ? (
+                <ModelCard
+                  key={item.model.id}
+                  model={item.model}
+                  selected={item.model.id === selectedModelId}
+                  onSelect={() => setSelectedModelId(
+                    item.model.id === selectedModelId ? null : item.model.id
+                  )}
+                  isFavorite={favoriteIds.has(item.model.id)}
+                  onToggleFavorite={() => toggleFavorite(item.model.id)}
+                />
+              ) : (
+                <ModelDetailPanel
+                  key="__panel__"
+                  model={item.model}
+                  nodeName={selectedNode}
+                  nodeRuntime={browseRuntime}
+                  actualRuntime={activeNode?.runtime ?? null}
+                  isLive={isLive}
+                  demoMode={demoMode}
+                  onClose={() => setSelectedModelId(null)}
+                />
+              )
+            )}
           </div>
         )
       ) : (
