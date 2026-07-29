@@ -60,6 +60,10 @@ export interface GPUNode {
   // Why draining was set (e.g. "manual", "thermal", "scheduled") - persisted
   // alongside draining, empty when not draining.
   drainedReason?: string;
+  // Live count of in-flight requests on this node. Drain does not kill
+  // in-flight requests, only stops routing new ones - this is what lets an
+  // operator see when a draining node has actually finished flushing.
+  activeConns: number;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;
