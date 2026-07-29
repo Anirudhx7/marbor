@@ -211,7 +211,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
                 >
                   DRAINING{node.drainedReason ? ` (${node.drainedReason})` : ''}
-                  {' — '}{node.activeConns > 0 ? `${node.activeConns} in-flight` : 'drained'}
+                  {' - '}{node.activeConns > 0 ? `${node.activeConns} in-flight` : 'drained'}
                 </span>
               )}
               {node.prewarmDisabled && (
