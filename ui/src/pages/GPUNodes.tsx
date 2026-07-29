@@ -1613,14 +1613,6 @@ export function GPUNodes() {
                     </p>
                   )}
                   <p><span className="font-medium text-foreground">Capabilities:</span> {agentNode.agentCapabilities?.length ? agentNode.agentCapabilities.join(', ') : '--'}</p>
-                  {healthCheckResult && (
-                    <p className={healthCheckResult.ok ? 'text-success' : 'text-destructive'}>
-                      <span className="font-medium text-foreground">Health check:</span>{' '}
-                      {healthCheckResult.ok
-                        ? `up${healthCheckResult.latencyMs != null ? ` (${healthCheckResult.latencyMs}ms)` : ''}`
-                        : `down${healthCheckResult.error ? ` - ${healthCheckResult.error}` : ''}`}
-                    </p>
-                  )}
                   {agentNode.hostname && (
                     <p><span className="font-medium text-foreground">Host:</span> {agentNode.hostname}{agentNode.uptimeSeconds ? ` (up ${formatDurationLong(agentNode.uptimeSeconds)})` : ''}</p>
                   )}
@@ -1656,9 +1648,10 @@ export function GPUNodes() {
                   <button
                     onClick={handleCheckNodeHealth}
                     disabled={healthCheckBusy}
+                    title="Run a live health check against this node's inference runtime right now, instead of waiting for the next automatic poll"
                     className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
                   >
-                    {healthCheckBusy ? 'Checking...' : 'Check now'}
+                    {healthCheckBusy ? 'Checking...' : 'Health Check'}
                   </button>
                 )}
                 <button
@@ -1676,6 +1669,14 @@ export function GPUNodes() {
                   Disable Agent
                 </button>
               </div>
+              {healthCheckResult && (
+                <p className={`text-xs ${healthCheckResult.ok ? 'text-success' : 'text-destructive'}`}>
+                  <span className="font-medium">Health check result:</span>{' '}
+                  {healthCheckResult.ok
+                    ? `up${healthCheckResult.latencyMs != null ? ` (${healthCheckResult.latencyMs}ms)` : ''}`
+                    : `down${healthCheckResult.error ? ` - ${healthCheckResult.error}` : ''}`}
+                </p>
+              )}
             </div>
           )}
 
