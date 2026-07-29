@@ -1133,6 +1133,27 @@ export async function deleteNodeModel(name: string, model: string): Promise<void
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to delete model'); }
 }
 
+export interface NodeHealthCheckResult {
+  ok: boolean;
+  error?: string;
+  latencyMs?: number;
+}
+
+// checkNodeHealth triggers an on-demand active liveness probe against a
+// node's real runtime right now, via the node's Node Agent
+// ("runtime.health_check" capability) - distinct from the node's passive,
+// poll-cycle-cached health already shown elsewhere in the dashboard.
+// Callers must check node.agentCapabilities?.includes('runtime.health_check')
+// before calling - a node without the capability returns a 501, surfaced
+// here as a thrown error. A probe that completes but finds the runtime down
+// is NOT a thrown error - it resolves normally with { ok: false, error }, the
+// real answer to "is it up right now."
+export async function checkNodeHealth(name: string): Promise<NodeHealthCheckResult> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/health-check`, { headers: authHeaders() });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to run health check'); }
+  return res.json();
+}
+
 // runBenchmark starts an in-dashboard hardware benchmark job (see
 // benchmarkProgress.ts for the SSE progress consumer). node+model must
 // already be known to the mesh; the mesh auto-provisions and later deletes

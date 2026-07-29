@@ -686,6 +686,7 @@ func (s *Server) Handler() http.Handler {
 	// contain "/" (e.g. "org/repo"), same reasoning as the agent's own
 	// DELETE /v1/models/{name...} route (server.go).
 	reg("DELETE /admin/nodes/{name}/models/{model...}", s.cors(s.adminAuth(s.handleNodeDeleteModel)))
+	reg("GET /admin/nodes/{name}/health-check", s.cors(s.adminAuth(s.handleNodeHealthCheck)))
 	reg("GET /admin/nodes/{name}/pull/progress", s.cors(s.adminAuth(s.handlePullProgress)))
 	reg("GET /admin/pulls", s.cors(s.adminAuth(s.handleListActivePulls)))
 	reg("DELETE /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleCancelPull)))
@@ -5488,6 +5489,138 @@ func escapeModelPathSegments(model string) string {
 		parts[i] = url.PathEscape(p)
 	}
 	return strings.Join(parts, "/")
+}
+
+// nodeHealthCheckTimeout bounds how long the admin API waits for an
+// on-demand liveness probe. Short, like nodeModelsListTimeout - an operator
+// hitting "check now" wants a fast answer, not something that can hang as
+// long as a model transfer.
+var nodeHealthCheckTimeout = 15 * time.Second
+
+// nodeHealthCheckResult is this admin API's JSON response for an on-demand
+// health check - relayed verbatim from the agent's own healthCheckResult
+// shape (camelCase field names aside), never re-derived or fabricated (R1).
+// LatencyMs has no omitempty - a genuinely fast (0ms) probe is a real
+// measurement, not an absent one (see healthCheckResult's doc comment,
+// internal/nodeagent/actions.go, for the same reasoning on the agent side).
+type nodeHealthCheckResult struct {
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	LatencyMs int64  `json:"latencyMs"`
+}
+
+// handleNodeHealthCheck triggers an on-demand active liveness probe via a
+// node's Node Agent (GET /v1/runtime/health, capability
+// "runtime.health_check") - distinct from the passive, poll-cycle-cached
+// health already carried on NodeState (populated from telemetry, up to one
+// poll interval stale). No direct-HTTP fallback exists for this today (same
+// reasoning as handleNodeModels/handleNodeDeleteModel) - a node without an
+// agent, or an agent build predating this capability, returns a clear 501
+// rather than silently reporting a fabricated result.
+func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
+	nodeName := r.PathValue("name")
+
+	urls := s.router.NodeURLs()
+	nodeURL, ok := urls[nodeName]
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+		return
+	}
+
+	// Same fail-fast reasoning as handleNodeModels/handleNodePull: a down
+	// node's URL may still answer with something (another service on that
+	// port), producing a confusing "agent health check failed: ..." error
+	// that looks capability-specific when the real problem is just
+	// reachability.
+	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before running a health check", nodeName))
+		return
+	}
+
+	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "runtime.health_check") {
+		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for an on-demand health check", nodeName))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), nodeHealthCheckTimeout)
+	defer cancel()
+	result, err := s.healthCheckViaAgent(ctx, nodeURL, agentCfg)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// healthCheckViaAgent queries nodeURL's Node Agent (GET /v1/runtime/health,
+// capability "runtime.health_check") and relays its real ok/error/latency_ms
+// result. Unlike pullModelViaAgent/deleteModelViaAgent, a probe that comes
+// back ok:false is not a transport error - it's the health check doing its
+// job and reporting the runtime is actually down - so that path returns a
+// populated nodeHealthCheckResult, not an error; err is reserved for
+// genuine transport/dispatch failures (can't reach the agent itself, bad
+// response shape).
+func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) (nodeHealthCheckResult, error) {
+	actionURL, err := buildAgentHealthCheckURL(nodeURL, agentCfg.Port)
+	if err != nil {
+		return nodeHealthCheckResult{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, actionURL, nil)
+	if err != nil {
+		return nodeHealthCheckResult{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodeHealthCheckTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nodeHealthCheckResult{}, fmt.Errorf("agent health check failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var out struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return nodeHealthCheckResult{}, errors.New(msg)
+	}
+
+	var out struct {
+		OK        bool   `json:"ok"`
+		Error     string `json:"error"`
+		LatencyMs int64  `json:"latency_ms"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nodeHealthCheckResult{}, fmt.Errorf("agent health check: could not decode response (status %d)", resp.StatusCode)
+	}
+	return nodeHealthCheckResult{OK: out.OK, Error: out.Error, LatencyMs: out.LatencyMs}, nil
+}
+
+// buildAgentHealthCheckURL derives the agent's GET /v1/runtime/health URL
+// from the node's own URL (same host) and the configured agent port, via
+// url.Parse per R5 - never arithmetic port derivation.
+func buildAgentHealthCheckURL(nodeURL string, port int) (string, error) {
+	u, err := url.Parse(nodeURL)
+	if err != nil {
+		return "", fmt.Errorf("parse node URL: %w", err)
+	}
+	if u.Hostname() == "" {
+		return "", fmt.Errorf("node URL %q has no host", nodeURL)
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d/v1/runtime/health", scheme, u.Hostname(), port), nil
 }
 
 // nodeUnloadModelTimeout bounds how long the admin API waits for a node
