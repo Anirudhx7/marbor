@@ -277,15 +277,20 @@ type catalogNodeEntry struct {
 }
 
 // classifyFit returns the fit color for an estimated VRAM requirement (in bytes)
-// against the free VRAM (in bytes). It mirrors handleModelFit's thresholds.
-func classifyFit(vramEstBytes, vramFreeBytes int64, vramSource string) string {
+// against the node's total VRAM capacity (in bytes), not its currently-free
+// VRAM. Free VRAM is a transient snapshot of whatever else happens to be warm
+// on the node right now - classifying against it produces false "red"
+// verdicts for models that would fit once other models evict/idle-timeout.
+// The advisor answers "will this model ever fit on this hardware", not
+// "does it fit this instant" (that's routing's free_vram_headroom factor).
+func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) string {
 	if vramSource == "unknown" || vramSource == "inferred" {
 		return "unknown"
 	}
 	switch {
-	case vramEstBytes <= int64(float64(vramFreeBytes)*0.85):
+	case vramEstBytes <= int64(float64(vramCapacityBytes)*0.85):
 		return "green"
-	case vramEstBytes <= vramFreeBytes:
+	case vramEstBytes <= vramCapacityBytes:
 		return "yellow"
 	default:
 		return "red"
@@ -354,7 +359,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 				estBytes := v.VRAMEstMB * 1024 * 1024
 				variants = append(variants, catalogVariantFit{
 					ModelVariant: v,
-					Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
+					Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
 				})
 			}
 			models = append(models, catalogModelFit{
@@ -623,6 +628,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	// 1. Gather downloaded status map for the selected node
 	downloaded := make(map[string]bool)
 	vramFreeBytes := int64(0)
+	vramTotalBytes := int64(0)
 	vramSource := "unknown"
 
 	nodes := s.router.Nodes()
@@ -650,7 +656,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		targetNode.RUnlock()
 
 		if vramTotalMB > 0 {
-			vramTotalBytes := vramTotalMB * 1024 * 1024
+			vramTotalBytes = vramTotalMB * 1024 * 1024
 			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
 			vramFreeBytes = vramTotalBytes - vramUsedBytes
 			if vramFreeBytes < 0 {
@@ -713,7 +719,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				Quantization: quant,
 				VRAMEstMB:    vramEstMB,
 				SizeMB:       sizeMB,
-				Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
+				Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
 				Downloaded:   isDl,
 			})
 		}
@@ -738,7 +744,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				Quantization: detectSafetensorsQuant(repo.Tags),
 				VRAMEstMB:    vramEstMB,
 				SizeMB:       sizeMB,
-				Fit:          classifyFit(estBytes, vramFreeBytes, vramSource),
+				Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
 				Downloaded:   isDl,
 			})
 		}

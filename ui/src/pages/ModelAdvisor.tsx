@@ -47,6 +47,7 @@ function ModelDetailPanel({
   nodeName,
   nodeRuntime,
   actualRuntime,
+  nodeVRAMTotalBytes,
   isLive,
   demoMode,
   onClose,
@@ -55,6 +56,7 @@ function ModelDetailPanel({
   nodeName: string | null;
   nodeRuntime: string | null;
   actualRuntime: string | null;
+  nodeVRAMTotalBytes: number;
   isLive: boolean;
   demoMode: boolean;
   onClose: () => void;
@@ -132,6 +134,14 @@ function ModelDetailPanel({
 
   const handlePull = (variant: ModelVariantFit) => {
     if (!nodeName) return;
+    if (variant.fit === 'red') {
+      const needGB = (variant.vram_est_mb / 1024).toFixed(1);
+      const haveGB = nodeVRAMTotalBytes > 0 ? (nodeVRAMTotalBytes / (1024 * 1024 * 1024)).toFixed(1) : 'unknown';
+      const ok = window.confirm(
+        `This variant needs ~${needGB} GB VRAM, but node "${nodeName}" has ${haveGB} GB total. Pull anyway?`
+      );
+      if (!ok) return;
+    }
     startPull(nodeName, variant.tag, demoMode, verifyLoad);
   };
 
@@ -279,9 +289,9 @@ function ModelDetailPanel({
                       ) : (!actualRuntime || actualRuntime === 'ollama') ? (
                         <button
                           onClick={() => handlePull(v)}
-                          disabled={(!demoMode && !isLive) || !nodeName || isPulling || v.fit === 'red'}
+                          disabled={(!demoMode && !isLive) || !nodeName || isPulling}
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
-                          title={v.fit === 'red' ? 'Requires more VRAM than available' : ''}
+                          title={v.fit === 'red' ? 'May exceed this node\'s total VRAM - you will be asked to confirm' : ''}
                         >
                           {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                           Pull
@@ -713,6 +723,7 @@ export function ModelAdvisor() {
                   nodeName={selectedNode}
                   nodeRuntime={browseRuntime}
                   actualRuntime={activeNode?.runtime ?? null}
+                  nodeVRAMTotalBytes={activeNode?.vram_total_bytes ?? 0}
                   isLive={isLive}
                   demoMode={demoMode}
                   onClose={() => setSelectedModelId(null)}
@@ -939,6 +950,7 @@ export function ModelAdvisor() {
                     nodeName={selectedNode}
                     nodeRuntime={browseRuntime}
                     actualRuntime={activeNode?.runtime ?? null}
+                    nodeVRAMTotalBytes={activeNode?.vram_total_bytes ?? 0}
                     isLive={isLive}
                     demoMode={demoMode}
                     onClose={() => setSelectedModelId(null)}
