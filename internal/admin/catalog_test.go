@@ -96,6 +96,16 @@ func TestHandleModelCatalog_HappyPath(t *testing.T) {
 	if got := fitByName["llama3.1:70b"]; got != "red" {
 		t.Errorf("llama3.1:70b fit = %q, want red (needs 40GB)", got)
 	}
+	// Regression for P47: node has 8GB total, only ~4GB currently free (4GB
+	// loaded by llama3:8b). llama3.1:8b needs ~4.7GB - more than the transient
+	// free VRAM, but well within the node's 8GB total capacity. Classifying
+	// against free VRAM would wrongly report "red" here.
+	if got := fitByName["llama3.1:8b"]; got != "green" {
+		t.Errorf("llama3.1:8b fit = %q, want green (fits within 8GB total capacity, even though only ~4GB is free right now)", got)
+	}
+	if node.VRAMTotalBytes != 8*1024*1024*1024 {
+		t.Errorf("vram_total_bytes = %d, want 8GB", node.VRAMTotalBytes)
+	}
 }
 
 func TestHandleModelCatalog_Downloaded(t *testing.T) {

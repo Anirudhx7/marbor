@@ -5955,12 +5955,15 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		models := make([]modelFitEntry, 0, len(tagModels))
 		for _, tm := range tagModels {
 			estimate := int64(float64(tm.Size) * 1.15)
+			// Classify against total VRAM capacity, not currently-free VRAM -
+			// free VRAM is a transient snapshot of whatever else is warm on
+			// the node right now (see classifyFit in catalog.go).
 			fit := "unknown"
 			if vramSource != "unknown" && vramSource != "inferred" {
 				switch {
-				case estimate <= int64(float64(vramFreeBytes)*0.85):
+				case estimate <= int64(float64(vramTotalBytes)*0.85):
 					fit = "green"
-				case estimate <= vramFreeBytes:
+				case estimate <= vramTotalBytes:
 					fit = "yellow"
 				default:
 					fit = "red"
