@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2, ChevronUp, ChevronDown, Gauge, HardDrive, Download } from 'lucide-react';
 import { Badge } from '../components/Badge';
@@ -177,17 +177,23 @@ export function SettingsPage() {
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreInitiated, setRestoreInitiated] = useState(false);
 
+  // Guards against the mount-time fetch and a later upload's own refetch
+  // resolving out of order - only the result of the most recently issued
+  // fetchBackupList() call is ever applied to state.
+  const backupListRequestId = useRef(0);
+
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
     let active = true;
+    const requestId = ++backupListRequestId.current;
     setBackupListLoading(true);
     fetchBackupList()
       .then(list => {
-        if (!active) return;
+        if (!active || requestId !== backupListRequestId.current) return;
         setBackupList(list);
         setSelectedBackupName(prev => (prev && list.some(b => b.name === prev)) ? prev : (list[0]?.name || ''));
       })
-      .catch(() => { if (active) setBackupList([]); })
+      .catch(() => { if (active && requestId === backupListRequestId.current) setBackupList([]); })
       .finally(() => { if (active) setBackupListLoading(false); });
     return () => { active = false; };
   }, [demoMode, location.pathname]);
@@ -203,11 +209,14 @@ export function SettingsPage() {
     if (!file) return;
     setUploadingBackup(true);
     setUploadError(null);
+    const requestId = ++backupListRequestId.current;
     try {
       const filename = await uploadBackup(file);
       const list = await fetchBackupList();
-      setBackupList(list);
-      setSelectedBackupName(list.some(b => b.name === filename) ? filename : (list[0]?.name || ''));
+      if (requestId === backupListRequestId.current) {
+        setBackupList(list);
+        setSelectedBackupName(list.some(b => b.name === filename) ? filename : (list[0]?.name || ''));
+      }
     } catch (err: any) {
       setUploadError(err.message || 'Upload failed');
     } finally {
@@ -1728,6 +1737,7 @@ export function SettingsPage() {
                     <input
                       type="file"
                       accept=".db"
+                      aria-label="Attach a local .db file as a backup"
                       className="hidden"
                       disabled={uploadingBackup}
                       onChange={handleBackupFileChosen}
