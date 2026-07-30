@@ -90,6 +90,7 @@ type Config struct {
 	Webhook          WebhookConfig     `yaml:"webhook" json:"webhook"`
 	Savings          SavingsConfig     `yaml:"savings" json:"savings"`
 	Warmup           WarmupConfig      `yaml:"warmup" json:"warmup"`
+	Backup           BackupConfig      `yaml:"backup" json:"backup"`
 	HuggingFace      HuggingFaceConfig `yaml:"huggingface" json:"huggingface"`
 	CloudBudget      CloudBudgetConfig `yaml:"cloud_budget" json:"cloud_budget"`
 	HideDemoBanner   bool              `yaml:"hide_demo_banner" json:"hide_demo_banner"`
@@ -119,6 +120,31 @@ type CloudBudgetConfig struct {
 
 type HuggingFaceConfig struct {
 	Token string `yaml:"token" json:"token"`
+}
+
+// BackupConfig controls the scheduled mesh.db backup job (P49). TargetDir is
+// seeded from the MESH_BACKUP_DIR env var (or a "backups" dir next to the
+// database) before an operator ever opens Settings, so an out-of-the-box
+// Docker deployment backs up correctly with zero configuration - see
+// docker-compose.yml's separate "mesh-backups" volume, kept distinct from the
+// "mesh-data" volume so wiping one doesn't take out the other.
+type BackupConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// IntervalHours is how often a scheduled backup runs. Defaults to 24 (see
+	// Validate()).
+	IntervalHours int `yaml:"interval_hours" json:"interval_hours"`
+	// RetentionCount is how many scheduled backup files to keep in TargetDir;
+	// older files beyond this count are deleted after each successful run.
+	// Defaults to 7.
+	RetentionCount int `yaml:"retention_count" json:"retention_count"`
+	// TargetDir is the directory scheduled backups are written to.
+	TargetDir string `yaml:"target_dir" json:"target_dir"`
+	// LastBackupAt/LastBackupError are read-only status populated by the admin
+	// server at GET time (never accepted on PUT, never persisted under these
+	// field names) - R1: the UI shows the real last-run outcome, never a
+	// fabricated "backed up" status.
+	LastBackupAt    string `yaml:"-" json:"last_backup_at,omitempty"`
+	LastBackupError string `yaml:"-" json:"last_backup_error,omitempty"`
 }
 
 // SavingsConfig controls how locally-served tokens are valued in the
@@ -537,6 +563,19 @@ func (c *Config) Validate() error {
 	}
 	if c.Warmup.KeepAlive == "" {
 		c.Warmup.KeepAlive = "10m"
+	}
+
+	if c.Backup.IntervalHours == 0 {
+		c.Backup.IntervalHours = 24
+	}
+	if c.Backup.IntervalHours < 0 {
+		return fmt.Errorf("backup.interval_hours must be >= 0")
+	}
+	if c.Backup.RetentionCount == 0 {
+		c.Backup.RetentionCount = 7
+	}
+	if c.Backup.RetentionCount < 0 {
+		return fmt.Errorf("backup.retention_count must be >= 0")
 	}
 
 	if c.Savings.ReferenceCostPer1K <= 0 {

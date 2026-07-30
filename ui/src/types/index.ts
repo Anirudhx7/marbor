@@ -306,6 +306,15 @@ export interface Settings {
 
   // Model name -> max context window in tokens, for admission-time checks.
   contextWindows: Record<string, number>;
+
+  // Scheduled mesh.db backup (P49). LastBackupAt/LastBackupError are
+  // read-only status from the server, never sent back on save.
+  backupEnabled: boolean;
+  backupIntervalHours: number;
+  backupRetentionCount: number;
+  backupTargetDir: string;
+  backupLastAt?: string;
+  backupLastError?: string;
 }
 
 export interface SystemAuditEntry {

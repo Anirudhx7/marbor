@@ -18,8 +18,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -187,6 +190,9 @@ type Server struct {
 	mgmtEndpoints  managementEndpointsSetter // nil until wired via SetProxyHandler
 	benchMu        sync.Mutex                // guards benchJobs
 	benchJobs      map[string]*benchmarkJob  // job id -> job state; ephemeral, never persisted (results land in benchmark_runs)
+	backupMu       sync.Mutex                // guards lastBackupAt/lastBackupErr
+	lastBackupAt   time.Time                 // zero = never (or not yet loaded from store)
+	lastBackupErr  string                    // empty = last attempt (if any) succeeded
 }
 
 // managementEndpointsSetter is satisfied by *proxy.Handler. Defined locally
@@ -317,6 +323,21 @@ func (s *Server) LoadFromStore() error {
 	} else {
 		log.Printf("store: could not load hourly analytics buckets: %v", err)
 	}
+
+	// Restore the last scheduled-backup outcome so a restart doesn't lose
+	// track of it (and doesn't immediately re-run a backup that already
+	// happened before the restart - see StartBackupScheduler).
+	s.backupMu.Lock()
+	if v, err := s.st.GetSetting("backup_last_at"); err == nil && v != "" {
+		if t, perr := time.Parse(time.RFC3339, v); perr == nil {
+			s.lastBackupAt = t
+		}
+	}
+	if v, err := s.st.GetSetting("backup_last_error"); err == nil {
+		s.lastBackupErr = v
+	}
+	s.backupMu.Unlock()
+
 	return nil
 }
 
@@ -626,6 +647,142 @@ func (s *Server) StartPeriodicCleanup(ctx context.Context) {
 	}()
 }
 
+// backupCheckInterval is how often StartBackupScheduler wakes up to check
+// whether a scheduled backup is due. It is intentionally much shorter than
+// the configurable IntervalHours (which can be changed live via Settings
+// without a restart) - each wake checks elapsed time since the last
+// successful backup against the *current* cfg.Backup.IntervalHours, rather
+// than fixing the ticker period at whatever interval was configured at boot.
+const backupCheckInterval = 15 * time.Minute
+
+// StartBackupScheduler launches a background goroutine that runs a scheduled
+// mesh.db backup (VACUUM INTO cfg.Backup.TargetDir) whenever it is enabled
+// and due, then prunes old backup files beyond cfg.Backup.RetentionCount.
+// Call once after construction; ctx cancellation stops the ticker.
+func (s *Server) StartBackupScheduler(ctx context.Context) {
+	check := func() {
+		s.mu.RLock()
+		cfg := s.cfg.Backup
+		s.mu.RUnlock()
+		if !cfg.Enabled {
+			return
+		}
+		intervalHours := cfg.IntervalHours
+		if intervalHours <= 0 {
+			intervalHours = 24
+		}
+		s.backupMu.Lock()
+		due := time.Since(s.lastBackupAt) >= time.Duration(intervalHours)*time.Hour
+		s.backupMu.Unlock()
+		if !due {
+			return
+		}
+		if err := s.runScheduledBackup(cfg); err != nil {
+			log.Printf("admin: scheduled backup failed: %v", err)
+		}
+	}
+	go func() {
+		check() // in case a backup came due while the mesh was stopped
+		ticker := time.NewTicker(backupCheckInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				check()
+			}
+		}
+	}()
+}
+
+// runScheduledBackup performs one scheduled backup run: VACUUM INTO a
+// timestamped file under cfg.TargetDir, record the outcome (surfaced by
+// handleSettings), then prune old backups beyond cfg.RetentionCount.
+func (s *Server) runScheduledBackup(cfg config.BackupConfig) error {
+	if cfg.TargetDir == "" {
+		err := fmt.Errorf("no backup target directory configured")
+		s.recordBackupResult(err)
+		return err
+	}
+	if err := os.MkdirAll(cfg.TargetDir, 0o755); err != nil {
+		err = fmt.Errorf("create backup target directory %s: %w", cfg.TargetDir, err)
+		s.recordBackupResult(err)
+		return err
+	}
+	path := filepath.Join(cfg.TargetDir, backupFilename(time.Now()))
+	if err := s.st.BackupTo(path); err != nil {
+		s.recordBackupResult(err)
+		return err
+	}
+	s.recordBackupResult(nil)
+	s.pruneOldBackups(cfg.TargetDir, cfg.RetentionCount)
+	return nil
+}
+
+// backupFilename returns the mesh-backup-<UTC timestamp>.db name used by both
+// the manual download endpoint and the scheduled job, so pruneOldBackups can
+// recognize either kind of file left in TargetDir.
+func backupFilename(t time.Time) string {
+	return fmt.Sprintf("mesh-backup-%s.db", t.UTC().Format("20060102-150405"))
+}
+
+// recordBackupResult updates the in-memory last-backup status and persists it
+// so it survives a restart. A successful run (err == nil) advances
+// lastBackupAt and clears the error; a failed run leaves lastBackupAt
+// unchanged (so the next scheduler tick retries) but records the error for
+// the Settings page (R1: real state, never a fabricated "backed up" status).
+func (s *Server) recordBackupResult(err error) {
+	s.backupMu.Lock()
+	if err == nil {
+		s.lastBackupAt = time.Now()
+		s.lastBackupErr = ""
+	} else {
+		s.lastBackupErr = err.Error()
+	}
+	at, errStr := s.lastBackupAt, s.lastBackupErr
+	s.backupMu.Unlock()
+
+	if !at.IsZero() {
+		if perr := s.st.SetSetting("backup_last_at", at.UTC().Format(time.RFC3339)); perr != nil {
+			log.Printf("admin: failed to persist backup_last_at setting: %v", perr)
+		}
+	}
+	if perr := s.st.SetSetting("backup_last_error", errStr); perr != nil {
+		log.Printf("admin: failed to persist backup_last_error setting: %v", perr)
+	}
+}
+
+// pruneOldBackups deletes the oldest mesh-backup-*.db files in dir beyond
+// retentionCount. Filenames are UTC-timestamp-named (backupFilename), so a
+// lexical sort is also a chronological sort. retentionCount <= 0 disables
+// pruning entirely (keep every backup ever made).
+func (s *Server) pruneOldBackups(dir string, retentionCount int) {
+	if retentionCount <= 0 {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		log.Printf("admin: could not list backup directory %s for pruning: %v", dir, err)
+		return
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "mesh-backup-") && strings.HasSuffix(e.Name(), ".db") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	if len(names) <= retentionCount {
+		return
+	}
+	for _, name := range names[:len(names)-retentionCount] {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			log.Printf("admin: failed to prune old backup %s: %v", name, err)
+		}
+	}
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -666,6 +823,7 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/settings", s.cors(s.adminAuth(s.handleSettings)))
 	reg("PUT /admin/settings", s.cors(s.adminAuth(s.handleUpdateSettings)))
+	reg("POST /admin/backup", s.cors(s.adminAuth(s.handleBackupNow)))
 
 	reg("GET /admin/requests", s.cors(s.adminAuth(s.handleRequests)))
 	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
@@ -3727,6 +3885,17 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cfg.HideBudgetBanner = false
 	}
 
+	// Backup.LastBackupAt/LastBackupError are read-only status, never stored
+	// on cfg itself - overlay the live in-memory state (seeded from the
+	// backup_last_at/backup_last_error settings on LoadFromStore, updated by
+	// every backup attempt via recordBackupResult).
+	s.backupMu.Lock()
+	if !s.lastBackupAt.IsZero() {
+		cfg.Backup.LastBackupAt = s.lastBackupAt.UTC().Format(time.RFC3339)
+	}
+	cfg.Backup.LastBackupError = s.lastBackupErr
+	s.backupMu.Unlock()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfg)
 }
@@ -3855,6 +4024,14 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"warmup_enabled":     strconv.FormatBool(incoming.Warmup.Enabled),
 		"warmup_interval_ms": strconv.Itoa(incoming.Warmup.IntervalMs),
 		"warmup_keep_alive":  incoming.Warmup.KeepAlive,
+
+		// Scheduled backup (P49). LastBackupAt/LastBackupError are
+		// deliberately excluded here - they're read-only status written only
+		// by recordBackupResult, never accepted from a client PUT.
+		"backup_enabled":         strconv.FormatBool(incoming.Backup.Enabled),
+		"backup_interval_hours":  strconv.Itoa(incoming.Backup.IntervalHours),
+		"backup_retention_count": strconv.Itoa(incoming.Backup.RetentionCount),
+		"backup_target_dir":      incoming.Backup.TargetDir,
 	}
 	for key, val := range scalarSettings {
 		if err := s.st.SetSetting(key, val); err != nil {
@@ -5784,6 +5961,36 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
+}
+
+// handleBackupNow performs an on-demand backup (VACUUM INTO a temp file) and
+// streams it back as a download - the manual counterpart to the scheduled
+// job in StartBackupScheduler. Mirrors handleAnalyticsExport's
+// Content-Disposition streaming pattern.
+func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
+	tmp, err := os.CreateTemp("", "mesh-backup-download-*.db")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to create temp file for backup")
+		return
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	// VACUUM INTO refuses to write to a path that already exists.
+	if err := os.Remove(tmpPath); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to prepare temp file for backup")
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	if err := s.st.BackupTo(tmpPath); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("backup failed: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, backupFilename(time.Now())))
+	http.ServeFile(w, r, tmpPath)
+	s.logSystemChange(r, "manual_backup", "global", "Downloaded an on-demand mesh.db backup")
 }
 
 // handleAnalyticsExport serves analytics data as CSV or JSON.

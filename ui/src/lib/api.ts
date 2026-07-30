@@ -757,6 +757,28 @@ export function analyticsExportUrl(type: 'hourly' | 'models'): string {
   return `${BASE}/analytics/export?format=csv&type=${type}`;
 }
 
+// triggerBackupNow requests an on-demand mesh.db backup (POST, unlike the GET
+// analyticsExportUrl above - server-side handleBackupNow needs a verb that
+// isn't cacheable/prefetchable) and pushes the streamed file into the
+// browser's normal download flow via a throwaway object URL + <a download>.
+export async function triggerBackupNow(): Promise<void> {
+  if (DEMO) throw new Error('Backup download is not available in demo mode.');
+  const res = await apiFetch(`${BASE}/backup`, { method: 'POST', headers: authHeaders() });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Backup failed'); }
+  const blob = await res.blob();
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match ? match[1] : 'mesh-backup.db';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // normalizePullTag catches the most common way a pull request is malformed
 // before it ever reaches the mesh: pasting a bare Hugging Face repo id
 // (e.g. "unsloth/gemma-4-26B-A4B-it-GGUF", copied straight off a HF model
