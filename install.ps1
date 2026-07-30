@@ -4,7 +4,15 @@
 # Control plane:
 #   irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex
 #
-# Node Agent (run from an elevated/Administrator PowerShell):
+# Node Agent (run from an elevated/Administrator PowerShell), default path -
+# the mesh admin UI's "Node Agent" panel gives you this exact command with a
+# short-lived, single-use enrollment code (the binary exchanges it for the
+# real token by calling back to MESH, so the real permanent bearer token
+# never appears in this command / your PowerShell history - P50):
+#   $env:ROLE="agent"; $env:MESH="<mesh admin base URL>"; $env:ENROLL="<code from the mesh admin UI>"
+#   irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex
+#
+# Legacy/manual path - the real permanent token directly, no exchange, no MESH needed:
 #   $env:ROLE="agent"; $env:TOKEN="<token from the mesh admin UI>"
 #   irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex
 #
@@ -12,9 +20,7 @@
 # the binary's own "ollama-mesh agent service install" subcommand
 # (internal/nodeagent/service) - this script's job for that role is just
 # "download the right binary, then hand off to it," the same split
-# install.sh uses for Linux/macOS. There's no MESH=<url> to set: the agent
-# is pulled by the mesh on its existing poll cycle, it never needs to know
-# the mesh's own address (see .local/specs/node-agent.md section 3).
+# install.sh uses for Linux/macOS.
 #
 # This script does not yet port install.sh's network-discovery wizard for
 # the control-plane role on Windows - that's a separate, larger piece of
@@ -27,6 +33,8 @@ $Repo = "Anirudhx7/ollama-mesh"
 $BinName = "ollama-mesh.exe"
 $Role = if ($env:ROLE) { $env:ROLE } else { "mesh" }
 $Token = $env:TOKEN
+$Enroll = $env:ENROLL
+$Mesh = $env:MESH
 $Port = if ($env:PORT) { [int]$env:PORT } else { 9200 }
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:ProgramFiles "ollama-mesh" }
 
@@ -66,9 +74,13 @@ $NewVersion = ($VersionOutput -split '\s+')[-1]
 Write-Host "Installed ollama-mesh $NewVersion to $BinPath"
 
 if ($Role -eq "agent") {
-    if (-not $Token) {
-        Write-Error "ROLE=agent requires TOKEN=<token>."
+    if (-not $Token -and -not $Enroll) {
+        Write-Error "ROLE=agent requires TOKEN=<token> or ENROLL=<code> MESH=<url>."
         Write-Error "Generate one from the mesh admin UI: GPU Nodes -> (a node) -> Node Agent -> Enable Agent."
+        exit 1
+    }
+    if ($Enroll -and -not $Token -and -not $Mesh) {
+        Write-Error "ENROLL=<code> requires MESH=<url> (the mesh admin dashboard's address)."
         exit 1
     }
 
@@ -80,7 +92,11 @@ if ($Role -eq "agent") {
 
     Write-Host ""
     Write-Host "Installing ollama-mesh Node Agent as a Windows service (port $Port)..."
-    & $BinPath agent service install --port=$Port --token=$Token
+    if ($Token) {
+        & $BinPath agent service install --port=$Port --token=$Token
+    } else {
+        & $BinPath agent service install --port=$Port --enroll=$Enroll --mesh=$Mesh
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Node Agent service install failed (exit code $LASTEXITCODE)."
         exit 1

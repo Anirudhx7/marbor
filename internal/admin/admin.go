@@ -194,7 +194,25 @@ type Server struct {
 	lastBackupAt   time.Time                 // zero = never (or not yet loaded from store)
 	lastBackupErr  string                    // empty = last attempt (if any) succeeded
 	restoreCh      chan<- string             // nil until SetRestoreChannel is called (main.go only, in a real run)
+	enrollMu       sync.Mutex                // guards enrollCodes
+	enrollCodes    map[string]enrollmentCode // one-time code -> record; ephemeral, never persisted (P50)
 }
+
+// enrollmentCode is a short-lived, single-use credential exchanged by a Node
+// Agent (via POST /admin/agent/enroll) for its real, permanent bearer token,
+// so the permanent token never has to travel through a copy-pasted install
+// command, shell history, or CLI argv (P50). node is carried for audit
+// logging only - the code itself is what the map is keyed by.
+type enrollmentCode struct {
+	node      string
+	token     string
+	expiresAt time.Time
+}
+
+// enrollmentCodeTTL bounds how long an unused enrollment code stays valid.
+// Short enough to limit the exposure window of a code appearing in a pasted
+// command, long enough for an operator to actually run the install.
+const enrollmentCodeTTL = 20 * time.Minute
 
 // SetRestoreChannel wires the channel handleRestoreBackup sends a validated
 // backup file's full path down after a one-click restore request. main.go
@@ -583,6 +601,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		logDone:        make(chan struct{}),
 		pullJobs:       make(map[string]*pullJob),
 		benchJobs:      make(map[string]*benchmarkJob),
+		enrollCodes:    make(map[string]enrollmentCode),
 	}
 	s.ensureAdminUser()
 	s.logWg.Add(1)
@@ -872,6 +891,12 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleEnableNodeAgent)))
 	reg("DELETE /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleDisableNodeAgent)))
 	reg("POST /admin/nodes/{name}/agent/regenerate", s.cors(s.adminAuth(s.handleRegenerateNodeAgentToken)))
+	// Deliberately no s.adminAuth: the caller is the Node Agent process
+	// itself during install (agent service install --enroll=<code>), not an
+	// authenticated admin browser session. Safety rests entirely on the code
+	// being a random 128-bit single-use value with a short TTL (see
+	// handleEnrollNodeAgent) - the same trust model as a password-reset link.
+	reg("POST /admin/agent/enroll", s.cors(s.handleEnrollNodeAgent))
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/system-audit", s.cors(s.adminAuth(s.handleSystemAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
@@ -1659,16 +1684,36 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // nodes, since a POSIX sh script can't run there. Safe to re-run for an
 // upgrade or to rotate the token - install.sh/service install are both
 // idempotent.
-func nodeAgentInstallCommand(port int, token string) (unix string, windows string) {
+//
+// The command carries a short-lived, single-use enrollment code, never the
+// real permanent token (P50) - a copy-pasted command otherwise leaves the
+// real bearer token in shell history/SSH logs/chat forever. meshBaseURL
+// tells the agent where to exchange the code for the real token via
+// POST /admin/agent/enroll.
+func nodeAgentInstallCommand(meshBaseURL string, port int, enrollCode string) (unix string, windows string) {
 	unix = fmt.Sprintf(
-		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent TOKEN=%s PORT=%d sh",
-		token, port,
+		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=%s ENROLL=%s PORT=%d sh",
+		meshBaseURL, enrollCode, port,
 	)
 	windows = fmt.Sprintf(
-		`$env:ROLE="agent"; $env:TOKEN="%s"; $env:PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
-		token, port,
+		`$env:ROLE="agent"; $env:MESH="%s"; $env:ENROLL="%s"; $env:PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+		meshBaseURL, enrollCode, port,
 	)
 	return unix, windows
+}
+
+// requestBaseURL derives the mesh's own address as reachable from wherever r
+// came from - the same host:port the operator's browser just used to load
+// the admin dashboard, which is the best available guess for what a GPU
+// node on the same network can reach back to. The mesh has no separate
+// "public URL" setting; this is the first feature that needs the mesh to
+// know its own address (P50's enrollment exchange).
+func requestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
 }
 
 // generateNodeAgentToken returns a 32-random-byte, base64url-encoded opaque
@@ -1676,6 +1721,20 @@ func nodeAgentInstallCommand(port int, token string) (unix string, windows strin
 // from the client-facing API-key mechanism, not a reuse of it).
 func generateNodeAgentToken() (string, error) {
 	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// generateEnrollmentCode returns a short, URL-safe, single-use code used to
+// exchange for the real Node Agent token via POST /admin/agent/enroll (P50).
+// Deliberately shorter than generateNodeAgentToken: its value as a secret is
+// bounded by enrollmentCodeTTL and single-use consumption, not by matching a
+// permanent bearer token's entropy - 128 bits is unguessable within a
+// 20-minute single-use window regardless.
+func generateEnrollmentCode() (string, error) {
+	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
@@ -1745,7 +1804,12 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.router.SetNodeAgent(name, true, body.Port, token)
 	s.logSystemChange(r, "enable_node_agent", name, fmt.Sprintf("Port: %d", body.Port))
-	unixCmd, windowsCmd := nodeAgentInstallCommand(body.Port, token)
+	code, err := s.newEnrollmentCode(name, token)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
+		return
+	}
+	unixCmd, windowsCmd := nodeAgentInstallCommand(requestBaseURL(r), body.Port, code)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"node":                    name,
@@ -1804,7 +1868,12 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 	}
 	s.router.SetNodeAgent(name, true, rec.Port, token)
 	s.logSystemChange(r, "regenerate_node_agent_token", name, "")
-	unixCmd, windowsCmd := nodeAgentInstallCommand(rec.Port, token)
+	code, err := s.newEnrollmentCode(name, token)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
+		return
+	}
+	unixCmd, windowsCmd := nodeAgentInstallCommand(requestBaseURL(r), rec.Port, code)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"node":                    name,
@@ -1813,6 +1882,54 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 		"install_command":         unixCmd,
 		"install_command_windows": windowsCmd,
 	})
+}
+
+// newEnrollmentCode generates a fresh one-time enrollment code for node,
+// wraps the already-generated real token, and stores it in-memory with an
+// enrollmentCodeTTL expiry (P50). The map holds only ephemeral state and is
+// never persisted - losing an in-flight code on a mesh restart just means
+// the operator re-generates it from the admin UI.
+func (s *Server) newEnrollmentCode(node, token string) (string, error) {
+	code, err := generateEnrollmentCode()
+	if err != nil {
+		return "", err
+	}
+	s.enrollMu.Lock()
+	s.enrollCodes[code] = enrollmentCode{node: node, token: token, expiresAt: time.Now().Add(enrollmentCodeTTL)}
+	s.enrollMu.Unlock()
+	return code, nil
+}
+
+// handleEnrollNodeAgent exchanges a short-lived, single-use enrollment code
+// for the node's real, permanent Node Agent bearer token (P50). Called by
+// the Node Agent itself during "agent service install --enroll=<code>",
+// never by an authenticated admin browser session - see the route
+// registration comment for why this deliberately skips s.adminAuth. The
+// code is deleted from the map unconditionally on lookup, before any
+// validation, so a code can never be redeemed twice even under a concurrent
+// replay: the second racer's lookup simply misses.
+// POST /admin/agent/enroll  body: {"code": "<enrollment code>"}
+func (s *Server) handleEnrollNodeAgent(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Code == "" {
+		writeJSONError(w, http.StatusBadRequest, "code is required")
+		return
+	}
+	s.enrollMu.Lock()
+	rec, found := s.enrollCodes[body.Code]
+	if found {
+		delete(s.enrollCodes, body.Code)
+	}
+	s.enrollMu.Unlock()
+	if !found || time.Now().After(rec.expiresAt) {
+		writeJSONError(w, http.StatusUnauthorized, "invalid or expired enrollment code")
+		return
+	}
+	s.logSystemChange(r, "enroll_node_agent", rec.node, "")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"token": rec.token})
 }
 
 // syncCloudProvidersToRouter reloads every persisted cloud provider from the
