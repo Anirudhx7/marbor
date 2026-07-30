@@ -34,7 +34,7 @@ succeeds.
 ## Restoring a backup
 
 The Settings > Backup & Restore card lists every scheduled backup file already sitting in the
-target directory - pick one and click **Restore**. Behind that click:
+target directory in a dropdown - pick one and click **Restore** next to it. Behind that click:
 
 1. The mesh validates the file (`PRAGMA quick_check`) before touching anything - a corrupt or
    unrelated file is rejected here, before the live database is ever at risk.
@@ -58,6 +58,19 @@ If you're running the binary directly with nothing supervising it (no systemd un
 Kubernetes), a one-click restore will stop the mesh and it will stay stopped until you start it
 again by hand. Either run it under one of the supervised setups above, or use the fully manual
 procedure below instead, where you control every step yourself.
+
+### Restoring from a file that isn't already on the server
+
+Next to the dropdown is a **+** button - it opens your browser's normal file picker (works the
+same in Chrome, Firefox, Safari, and Edge, on Linux, Windows, and macOS) so you can attach any
+`.db` file from your own machine, not just files the scheduler already produced on the server.
+Pick a file and it uploads to the mesh, which validates it's a genuine SQLite database
+(`PRAGMA quick_check` - the identical check every other backup path already goes through) and
+saves it into the same target directory as scheduled/manual backups, under the standard
+`mesh-backup-<timestamp>.db` name. It then appears in the dropdown like any other backup and can
+be restored the same way. A spinner replaces the **+** icon while the upload is in flight; an
+invalid file (wrong format, corrupt, not a mesh.db backup at all) is rejected with an error and
+never touches the target directory.
 
 ### Fully manual alternative
 

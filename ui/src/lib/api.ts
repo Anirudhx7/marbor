@@ -814,6 +814,27 @@ export async function restoreBackup(filename: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Restore failed'); }
 }
 
+// uploadBackup sends an arbitrary local .db file (picked via a plain
+// <input type="file"> - works the same in Chrome/Firefox/Safari/Edge on
+// Linux, Windows, and macOS, no OS-specific code needed) to the server,
+// which validates it's a genuine SQLite database and saves it into the same
+// target directory scheduled/manual backups use, under a fresh
+// mesh-backup-<timestamp>.db name. On success it returns that name so the
+// caller can select it in the restore picker without a second list fetch.
+export async function uploadBackup(file: File): Promise<string> {
+  if (DEMO) throw new Error('Uploading a backup is not available in demo mode.');
+  const form = new FormData();
+  form.append('file', file);
+  const res = await apiFetch(`${BASE}/backup/upload`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: form,
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Upload failed'); }
+  const data = await res.json();
+  return data.filename;
+}
+
 // normalizePullTag catches the most common way a pull request is malformed
 // before it ever reaches the mesh: pasting a bare Hugging Face repo id
 // (e.g. "unsloth/gemma-4-26B-A4B-it-GGUF", copied straight off a HF model
