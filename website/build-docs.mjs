@@ -157,6 +157,7 @@ const DOC_GROUPS = [
     { slug: "LIMITATIONS", label: "Known limitations" },
     { slug: "SAVINGS-MATH", label: "Savings math" },
     { slug: "USE-CASES", label: "Use cases" },
+    { slug: "backup", label: "Backup & Restore" },
   ]},
   { title: "Deployment", items: [
     { slug: "PRODUCTION", label: "Production" },

@@ -6,17 +6,17 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>LibreChat · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: LibreChat." />
-<link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+<title>Backup &amp; Restore · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: Backup &amp; Restore." />
+<link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="LibreChat · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: LibreChat." />
+<meta property="og:title" content="Backup &amp; Restore · ollama-mesh docs" />
+<meta property="og:description" content="ollama-mesh documentation: Backup &amp; Restore." />
 <meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="ollama-mesh admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="LibreChat · ollama-mesh docs" />
+<meta name="twitter:title" content="Backup &amp; Restore · ollama-mesh docs" />
 <meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
@@ -283,13 +283,13 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
-        <a class="link" href="../../index.html#features">Features</a>
-        <a class="link" href="../../index.html#how">How it works</a>
-        <a class="link" href="../../index.html#compare">Compare</a>
-        <a class="link active" href="../../docs/index.html">Docs</a>
+        <a class="link" href="../index.html#features">Features</a>
+        <a class="link" href="../index.html#how">How it works</a>
+        <a class="link" href="../index.html#compare">Compare</a>
+        <a class="link active" href="../docs/index.html">Docs</a>
         <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
         <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
@@ -306,105 +306,81 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
-    <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
+    <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
     <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link" href="../../docs/backup.html">Backup & Restore</a>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link active" href="../docs/backup.html">Backup & Restore</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
-      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link active" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../../docs/integrations/open-webui.html">Open WebUI</a>
+      <a class="doc-nav-link" href="../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../docs/integrations/open-webui.html">Open WebUI</a>
     </div>
   </aside>
 
   <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">LibreChat</span></div>
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Backup &amp; Restore</span></div>
     <article class="doc-content">
-      <h1 id="librechat">LibreChat<a class="anchor" href="#librechat" aria-label="Link to section">#</a></h1>
-<p><a href="https://librechat.ai" target="_blank" rel="noopener">LibreChat</a> supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging - with no changes to how LibreChat works.</p>
+      <h1 id="backup-restore">Backup &amp; Restore<a class="anchor" href="#backup-restore" aria-label="Link to section">#</a></h1>
+<p>ollama-mesh is DB-first: <code>mesh.db</code> (SQLite) holds nodes, API keys, routing rules, warm-state history, encrypted secrets, and every setting. Losing it means reconfiguring the mesh from scratch. This page covers taking backups and restoring one, both built into the dashboard's Settings &gt; Backup &amp; Restore card.</p>
 <hr/>
-<h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to section">#</a></h2>
-<ul><li>LibreChat running (Docker or bare-metal)</li><li>ollama-mesh running and reachable from the LibreChat host</li><li>An API key from the ollama-mesh admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
+<h2 id="taking-backups">Taking backups<a class="anchor" href="#taking-backups" aria-label="Link to section">#</a></h2>
+<ul><li><strong>Download Backup Now</strong> - takes an on-demand, point-in-time-consistent copy of <code>mesh.db</code> (via</li></ul>
+<p>  SQLite's <code>VACUUM INTO</code>, safe to run while the mesh keeps serving requests) and downloads it   straight to your browser as <code>mesh-backup-&lt;UTC timestamp&gt;.db</code>.</p>
+<ul><li><strong>Scheduled Backup</strong> - enable it, then set:</li><li><strong>Interval (hours)</strong> - how often a backup runs.</li><li><strong>Retention (backups kept)</strong> - how many scheduled backup files to keep; older ones are</li></ul>
+<p>    deleted automatically after each successful run. Manually-downloaded backups (via the button     above) are never touched by retention pruning - only the scheduler's own files count.</p>
+<ul><li><strong>Target Directory</strong> - where scheduled backups are written on the machine running the mesh</li></ul>
+<p>    process. In Docker, this defaults to <code>/backups</code>, a <em>separate</em> named volume from the one     holding <code>mesh.db</code> (see <code>docker-compose.yml</code>) - so deleting the container, or even     <code>docker volume rm</code>-ing the data volume, doesn't take the backups down with it. On bare metal /     systemd, it defaults to a <code>backups/</code> directory next to <code>mesh.db</code> unless you set <code>MESH_BACKUP_DIR</code>     or change it in Settings.</p>
+<p>The last scheduled-run outcome (timestamp of the last success, or the last error) is shown on the same Settings card - a failed scheduled backup (bad path, full disk, permissions) is never silently swallowed; it's retried on the next check and the error stays visible until a run succeeds.</p>
 <hr/>
-<h2 id="librechatyaml-configuration">librechat.yaml configuration<a class="anchor" href="#librechatyaml-configuration" aria-label="Link to section">#</a></h2>
-<p>LibreChat reads endpoint config from <code>librechat.yaml</code>. Add an Ollama custom endpoint:</p>
-<pre class="code" data-lang="yaml"><code>endpoints:
-  custom:
-    - name: "Ollama Mesh"
-      apiKey: "sk-your-api-key"
-      baseURL: "http://&lt;mesh-host&gt;:11434/v1"
-      models:
-        default: ["llama3.2", "mistral-nemo", "deepseek-coder-v2"]
-        fetch: true
-      titleConvo: true
-      titleModel: "llama3.2"
-      summarize: false
-      forcePrompt: false
-      dropParams:
-        - "stop"
-      headers:
-        Authorization: "Bearer sk-your-api-key"</code></pre>
-<p>Replace:</p>
-<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP of the ollama-mesh instance</li><li><code>sk-your-api-key</code> with a key from the admin dashboard</li><li>The model list with models available on your cluster</li></ul>
-<p>The <code>baseURL</code> uses <code>/v1</code> (OpenAI-compatible path). ollama-mesh translates these to Ollama-native requests internally.</p>
-<hr/>
-<h2 id="docker-compose-setup">Docker Compose setup<a class="anchor" href="#docker-compose-setup" aria-label="Link to section">#</a></h2>
-<p>If LibreChat and ollama-mesh are on the same Docker host, use the service name as the host:</p>
-<pre class="code" data-lang="yaml"><code># In docker-compose.override.yml
-services:
-  api:
-    environment:
-      - ENDPOINTS=custom
-    volumes:
-      - ./librechat.yaml:/app/librechat.yaml</code></pre>
-<p><code>librechat.yaml</code> with Docker networking:</p>
-<pre class="code" data-lang="yaml"><code>endpoints:
-  custom:
-    - name: "Ollama Mesh"
-      apiKey: "sk-your-api-key"
-      baseURL: "http://ollama-mesh:11434/v1"
-      models:
-        default: ["llama3.2"]
-        fetch: true
-      headers:
-        Authorization: "Bearer sk-your-api-key"</code></pre>
-<p>Add ollama-mesh to the same Docker network:</p>
-<pre class="code" data-lang="yaml"><code># In ollama-mesh docker-compose section
-services:
-  mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
-    ports:
-      - "11434:11434"
-      - "8080:8080"
-    networks:
-      - librechat_default</code></pre>
-<hr/>
-<h2 id="model-discovery">Model discovery<a class="anchor" href="#model-discovery" aria-label="Link to section">#</a></h2>
-<p>With <code>fetch: true</code>, LibreChat calls <code>GET /v1/models</code> on startup to populate the model list. ollama-mesh implements this endpoint - it returns all models currently loaded across healthy nodes.</p>
-<p>If <code>fetch: true</code> returns no models (nodes not yet ready), fall back to a static <code>default</code> list.</p>
-<hr/>
-<h2 id="verification">Verification<a class="anchor" href="#verification" aria-label="Link to section">#</a></h2>
-<ol><li>Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.</li><li>Send a test message.</li><li>Check the ollama-mesh request log at <code>http://&lt;mesh-host&gt;:8080</code> - the request should appear with model, node, and latency.</li></ol>
-<p>If you see a 401, the <code>Authorization</code> header in <code>librechat.yaml</code> is missing or the key has been revoked. Regenerate from the admin dashboard.</p>
-<hr/>
-<h2 id="per-user-keys">Per-user keys<a class="anchor" href="#per-user-keys" aria-label="Link to section">#</a></h2>
-<p>For teams, create one API key per user (or one per LibreChat role) in the admin dashboard. This separates usage stats and lets you apply rate limits or model restrictions per key without affecting the shared LibreChat config.</p>
+<h2 id="restoring-a-backup">Restoring a backup<a class="anchor" href="#restoring-a-backup" aria-label="Link to section">#</a></h2>
+<p>The Settings &gt; Backup &amp; Restore card lists every scheduled backup file already sitting in the target directory - pick one and click <strong>Restore</strong>. Behind that click:</p>
+<ol><li>The mesh validates the file (<code>PRAGMA quick_check</code>) before touching anything - a corrupt or</li></ol>
+<p>   unrelated file is rejected here, before the live database is ever at risk.</p>
+<ol><li>It gracefully drains in-flight requests (the same shutdown path a <code>SIGTERM</code> uses).</li><li>It stages the full copy alongside the live <code>mesh.db</code> first, and only swaps it in via an atomic</li></ol>
+<p>   rename once the copy is proven complete - a failure mid-copy leaves the <em>live</em> database    untouched, never truncated or half-written.</p>
+<ol><li>It exits the process on purpose, with a non-zero status.</li></ol>
+<p><strong>That last step is why this requires your deployment to actually restart the process on exit</strong> - the mesh does not restart itself; it relies on whatever already supervises it:</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Deployment</th><th>Requirement</th><th>Status in this repo</th></tr></thead>
+<tbody><tr><td>Docker / Docker Compose</td><td>a <code>restart</code> policy</td><td><code>docker-compose.yml</code> ships with <code>restart: unless-stopped</code></td></tr>
+<tr><td>systemd</td><td><code>Restart=on-failure</code> (or <code>always</code>)</td><td>already in the example unit in <a href="PRODUCTION.html"><code>PRODUCTION.md</code></a></td></tr>
+<tr><td>Kubernetes</td><td>default <code>restartPolicy</code></td><td><code>Always</code> by default for a Deployment - nothing extra needed</td></tr>
+<tr><td>A bare <code>./ollama-mesh</code> with no supervisor</td><td>none available</td><td><strong>will not come back on its own</strong> - see below</td></tr></tbody>
+</table></div>
+<p>If you're running the binary directly with nothing supervising it (no systemd unit, no Docker, no Kubernetes), a one-click restore will stop the mesh and it will stay stopped until you start it again by hand. Either run it under one of the supervised setups above, or use the fully manual procedure below instead, where you control every step yourself.</p>
+<h3 id="fully-manual-alternative">Fully manual alternative<a class="anchor" href="#fully-manual-alternative" aria-label="Link to section">#</a></h3>
+<p>Restore doesn't have to go through the dashboard. Stopping the mesh, swapping the file, and starting it again works identically and isn't restricted to files in the scheduled backup directory - <strong>any</strong> <code>.db</code> file that was itself produced by a backup of this mesh (scheduled, manual download, or a straight file copy taken while the process was stopped) can be restored from, regardless of where it currently lives.</p>
+<p><strong>Bare metal / systemd:</strong></p>
+<pre class="code" data-lang="bash"><code>sudo systemctl stop ollama-mesh
+sudo cp /path/to/mesh-backup-20260730-140000.db /opt/ollama-mesh/mesh.db
+sudo systemctl start ollama-mesh</code></pre>
+<p>Replace <code>/opt/ollama-mesh/mesh.db</code> with whatever path you actually run with (<code>--db</code> flag or <code>MESH_DB_PATH</code>) - not necessarily this exact path.</p>
+<p><strong>Docker / Docker Compose:</strong></p>
+<pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
+docker cp ./mesh-backup-20260730-140000.db ollama-mesh:/data/mesh.db
+docker compose start ollama-mesh</code></pre>
+<p>If the file is already inside the container (e.g. a scheduled backup under <code>/backups</code>), copy it inside instead of using <code>docker cp</code>:</p>
+<pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
+docker compose run --rm --entrypoint sh ollama-mesh -c "cp /backups/mesh-backup-20260730-140000.db /data/mesh.db"
+docker compose start ollama-mesh</code></pre>
+<p>Either way, the container must be <strong>stopped</strong> first, since SQLite's WAL sidecar files (<code>mesh.db-wal</code>, <code>mesh.db-shm</code>) would otherwise still be attached to the old database.</p>
+<p><strong>Kubernetes:</strong> scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a temporary debug pod with the same PVC mounted, or <code>kubectl cp</code> into that pod), then scale back to 1.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/librechat.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/backup.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#prerequisites">Prerequisites</a></li><li class="lvl-2"><a href="#librechatyaml-configuration">librechat.yaml configuration</a></li><li class="lvl-2"><a href="#docker-compose-setup">Docker Compose setup</a></li><li class="lvl-2"><a href="#model-discovery">Model discovery</a></li><li class="lvl-2"><a href="#verification">Verification</a></li><li class="lvl-2"><a href="#per-user-keys">Per-user keys</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#taking-backups">Taking backups</a></li><li class="lvl-2"><a href="#restoring-a-backup">Restoring a backup</a></li><li class="lvl-3"><a href="#fully-manual-alternative">Fully manual alternative</a></li></ul>
   </aside>
 </div>
 

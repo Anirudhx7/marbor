@@ -317,6 +317,15 @@ export interface Settings {
   backupLastError?: string;
 }
 
+// BackupFileInfo is one entry returned by GET /admin/backup/list - a
+// scheduled backup file already sitting in the configured target directory,
+// available to pick from for one-click restore.
+export interface BackupFileInfo {
+  name: string;
+  size_bytes: number;
+  modified_at: string;
+}
+
 export interface SystemAuditEntry {
   time: string;
   username: string;

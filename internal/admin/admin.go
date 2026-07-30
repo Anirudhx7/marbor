@@ -193,7 +193,17 @@ type Server struct {
 	backupMu       sync.Mutex                // guards lastBackupAt/lastBackupErr
 	lastBackupAt   time.Time                 // zero = never (or not yet loaded from store)
 	lastBackupErr  string                    // empty = last attempt (if any) succeeded
+	restoreCh      chan<- string             // nil until SetRestoreChannel is called (main.go only, in a real run)
 }
+
+// SetRestoreChannel wires the channel handleRestoreBackup sends a validated
+// backup file's full path down after a one-click restore request. main.go
+// owns process-lifecycle decisions (graceful shutdown, file swap, exit code
+// for the supervisor to restart on), so the HTTP handler here only validates
+// the request and hands off - it never performs the swap or exits itself.
+// Left nil in tests/demo/other run modes that never wire this: the handler
+// returns 501 rather than silently accepting a restore it can't act on.
+func (s *Server) SetRestoreChannel(ch chan<- string) { s.restoreCh = ch }
 
 // managementEndpointsSetter is satisfied by *proxy.Handler. Defined locally
 // (rather than importing internal/proxy) because proxy already imports
@@ -824,6 +834,8 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/settings", s.cors(s.adminAuth(s.handleSettings)))
 	reg("PUT /admin/settings", s.cors(s.adminAuth(s.handleUpdateSettings)))
 	reg("POST /admin/backup", s.cors(s.adminAuth(s.handleBackupNow)))
+	reg("GET /admin/backup/list", s.cors(s.adminAuth(s.handleListBackups)))
+	reg("POST /admin/backup/restore", s.cors(s.adminAuth(s.handleRestoreBackup)))
 
 	reg("GET /admin/requests", s.cors(s.adminAuth(s.handleRequests)))
 	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
@@ -5961,6 +5973,111 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(entries)
+}
+
+// backupFilenameRE matches exactly the mesh-backup-<UTC timestamp>.db shape
+// produced by backupFilename - used both to list scheduled backups and to
+// validate a client-supplied filename before restore ever touches disk.
+var backupFilenameRE = regexp.MustCompile(`^mesh-backup-\d{8}-\d{6}\.db$`)
+
+// backupFileInfo is one entry in GET /admin/backup/list's response.
+type backupFileInfo struct {
+	Name       string    `json:"name"`
+	SizeBytes  int64     `json:"size_bytes"`
+	ModifiedAt time.Time `json:"modified_at"`
+}
+
+// handleListBackups lists scheduled backup files already sitting in
+// cfg.Backup.TargetDir, newest first, so the Settings restore picker doesn't
+// require the operator to know the naming scheme or type a path by hand.
+func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	targetDir := s.cfg.Backup.TargetDir
+	s.mu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if targetDir == "" {
+		json.NewEncoder(w).Encode(map[string]any{"backups": []backupFileInfo{}})
+		return
+	}
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No backup has ever run yet - a normal, not-yet-configured
+			// state, not an error.
+			json.NewEncoder(w).Encode(map[string]any{"backups": []backupFileInfo{}})
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("could not list backups: %v", err))
+		return
+	}
+	var files []backupFileInfo
+	for _, e := range entries {
+		if e.IsDir() || !backupFilenameRE.MatchString(e.Name()) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, backupFileInfo{Name: e.Name(), SizeBytes: info.Size(), ModifiedAt: info.ModTime().UTC()})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Name > files[j].Name }) // timestamp-named, so lexical desc = newest first
+	json.NewEncoder(w).Encode(map[string]any{"backups": files})
+}
+
+// handleRestoreBackup validates a one-click restore request and, if valid,
+// hands the full path off to main.go via restoreCh - it never touches the
+// live database or exits the process itself (see SetRestoreChannel).
+func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
+	if s.restoreCh == nil {
+		writeJSONError(w, http.StatusNotImplemented, "restore is not available in this run mode")
+		return
+	}
+	var req struct {
+		Filename string `json:"filename"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	// filepath.Base + the strict backupFilenameRE together rule out path
+	// traversal (../, absolute paths, subdirectories): only a bare
+	// mesh-backup-<timestamp>.db name already sitting directly in TargetDir
+	// is ever accepted - never an arbitrary path the client supplies.
+	name := filepath.Base(req.Filename)
+	if name != req.Filename || !backupFilenameRE.MatchString(name) {
+		writeJSONError(w, http.StatusBadRequest, "invalid backup filename")
+		return
+	}
+	s.mu.RLock()
+	targetDir := s.cfg.Backup.TargetDir
+	s.mu.RUnlock()
+	if targetDir == "" {
+		writeJSONError(w, http.StatusBadRequest, "no backup target directory configured")
+		return
+	}
+	fullPath := filepath.Join(targetDir, name)
+	if _, err := os.Stat(fullPath); err != nil {
+		writeJSONError(w, http.StatusNotFound, "backup file not found")
+		return
+	}
+	if err := store.ValidateBackupFile(fullPath); err != nil {
+		writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("backup file failed validation: %v", err))
+		return
+	}
+
+	select {
+	case s.restoreCh <- fullPath:
+	default:
+		writeJSONError(w, http.StatusConflict, "a restore is already in progress")
+		return
+	}
+
+	s.logSystemChange(r, "restore_backup", "global", fmt.Sprintf("Restore requested from %s - mesh restarting", name))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]any{"restarting": true, "file": name})
 }
 
 // handleBackupNow performs an on-demand backup (VACUUM INTO a temp file) and

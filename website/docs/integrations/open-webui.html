@@ -311,7 +311,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a>
+      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link" href="../../docs/backup.html">Backup & Restore</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
@@ -327,47 +327,41 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">Open WebUI</span></div>
     <article class="doc-content">
       <h1 id="open-webui">Open WebUI<a class="anchor" href="#open-webui" aria-label="Link to section">#</a></h1>
-<p>Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same Ollama API calls it always has; the mesh handles which node actually runs the model.</p>
+<p>Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; the mesh handles which node actually runs the model.</p>
+<blockquote><strong>Open WebUI versions</strong>  Menu names and connection screens change frequently between Open WebUI releases. This guide has been tested against Open WebUI 0.10.x. If your interface looks different, look for <strong>Admin Panel &gt; Settings &gt; Connections</strong>, or configure the provider using the Docker environment variables shown below - those values don't change between UI versions.</blockquote>
 <hr/>
-<h2 id="connection-options">Connection options<a class="anchor" href="#connection-options" aria-label="Link to section">#</a></h2>
-<p>ollama-mesh exposes two protocols on the same port:</p>
+<h2 id="recommended-openai-compatible-connection">Recommended: OpenAI-compatible connection<a class="anchor" href="#recommended-openai-compatible-connection" aria-label="Link to section">#</a></h2>
+<p>If authentication is enabled on the mesh (the default), use the <strong>OpenAI-compatible</strong> connection type. It has an explicit API key field and works consistently across current Open WebUI releases. The Ollama-native connection type does not consistently expose an API key field across Open WebUI versions - use it only if authentication is disabled on the mesh, or your Open WebUI version supports authenticated Ollama connections.</p>
 <div class="table-scroll"><table>
-<thead><tr><th>Protocol</th><th>URL</th><th>When to use</th></tr></thead>
-<tbody><tr><td>Ollama-native</td><td><code>http://&lt;mesh-host&gt;:11434</code></td><td>Recommended. Full Ollama inference passthrough including <code>/api/chat</code> and <code>/api/generate</code>. Management endpoints like <code>/api/pull</code>, <code>/api/push</code>, and <code>/api/delete</code> are blocked by default (enable via Advanced Routing settings for single-tenant setups).</td></tr>
-<tr><td>OpenAI-compatible</td><td><code>http://&lt;mesh-host&gt;:11434/v1</code></td><td>Use when connecting through Open WebUI's OpenAI connection type.</td></tr></tbody>
+<thead><tr><th>Connection</th><th>Recommended when</th></tr></thead>
+<tbody><tr><td>OpenAI-compatible</td><td>Authentication enabled, API keys required, production deployments</td></tr>
+<tr><td>Ollama-native</td><td>Simple LAN deployments, authentication disabled, maximum Ollama API compatibility</td></tr></tbody>
 </table></div>
-<p>Both paths require your <code>sk-mesh-...</code> API key sent as a <code>Bearer</code> token.</p>
+<p>Both protocols are served on the same port and both require your <code>sk-mesh-...</code> API key as a <code>Bearer</code> token when auth is enabled:</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Protocol</th><th>URL</th></tr></thead>
+<tbody><tr><td>OpenAI-compatible</td><td><code>http://&lt;mesh-host&gt;:11434/v1</code></td></tr>
+<tr><td>Ollama-native</td><td><code>http://&lt;mesh-host&gt;:11434</code></td></tr></tbody>
+</table></div>
 <hr/>
-<h2 id="option-a---ollama-connection-type-recommended">Option A - Ollama connection type (recommended)<a class="anchor" href="#option-a---ollama-connection-type-recommended" aria-label="Link to section">#</a></h2>
-<p>This is the best fit because Open WebUI treats the mesh exactly like a single Ollama instance and can enumerate models automatically.</p>
-<ol><li>Open Open WebUI and go to <strong>Admin Settings</strong> (gear icon, top-right).</li><li>Navigate to <strong>Connections &gt; Ollama</strong>.</li><li>In the URL field, enter:</li></ol>
-<p>   ``<code>    http://&lt;mesh-host&gt;:11434    </code>`<code>    Replace </code>&lt;mesh-host&gt;<code> with the IP or hostname of the machine running ollama-mesh. If Open WebUI is running in Docker on the same host, use </code>host.docker.internal<code> instead of </code>localhost`.</p>
-<ol><li>Open WebUI will probe <code>/api/tags</code> and <code>/v1/models</code> to enumerate models. The mesh aggregates model lists from all healthy nodes, so every model available across your fleet appears in one dropdown.</li><li><strong>API key</strong>: Open WebUI's Ollama connection type does not send an <code>Authorization</code> header by default. If API-key auth is enabled (<strong>Settings &gt; Proxy Configuration &gt; Authentication Mode</strong> in the mesh dashboard), you have two options:</li><li>Switch the mesh to "No Authentication" and rely on network-level access control (only recommended on a trusted LAN).</li><li>Use the OpenAI connection type (Option B below), which has an explicit API key field.</li></ol>
+<h2 id="before-configuring-open-webui-verify-connectivity">Before configuring Open WebUI: verify connectivity<a class="anchor" href="#before-configuring-open-webui-verify-connectivity" aria-label="Link to section">#</a></h2>
+<p>Do this first. If it fails, fix connectivity before touching the Open WebUI UI - a broken connection looks identical to a misconfigured one from inside Open WebUI's settings screen.</p>
+<pre class="code" data-lang="bash"><code>curl http://&lt;mesh-host&gt;:11434/v1/models \
+  -H "Authorization: Bearer sk-mesh-..."</code></pre>
+<p>This is the same request Open WebUI makes to verify an OpenAI-compatible provider (<code>GET /v1/models</code>). If it returns JSON listing your models, Open WebUI will be able to discover them too. If it fails, see <a href="#troubleshooting">Troubleshooting</a> below.</p>
 <hr/>
-<h2 id="option-b---openai-compatible-connection-type">Option B - OpenAI-compatible connection type<a class="anchor" href="#option-b---openai-compatible-connection-type" aria-label="Link to section">#</a></h2>
-<p>Use this when you want to supply the mesh API key through the UI, or when you are already using Open WebUI's OpenAI connection slot.</p>
-<ol><li>Go to <strong>Admin Settings &gt; Connections &gt; OpenAI</strong> (in Open WebUI v0.5+, labeled under <strong>Connections</strong>).</li><li>Click <strong>Add Connection</strong> (the <code>+</code> button).</li><li>Fill in the fields:</li></ol>
-<p>   | Field | Value |    |-------|-------|    | <strong>URL</strong> | <code>http://&lt;mesh-host&gt;:11434/v1</code> |    | <strong>API Key</strong> | Your <code>sk-mesh-...</code> key from the mesh dashboard's <strong>API Keys</strong> page |</p>
-<ol><li>Click <strong>Save</strong>. Open WebUI calls <code>GET /v1/models</code> - the mesh returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.</li></ol>
-<blockquote>The exact label for the OpenAI connection section has shifted between Open WebUI versions. Look for <strong>Connections</strong> under Admin Settings; the OpenAI slot is the one that has a separate <strong>URL</strong> and <strong>API Key</strong> field pair.</blockquote>
+<h2 id="networking-pitfalls">Networking pitfalls<a class="anchor" href="#networking-pitfalls" aria-label="Link to section">#</a></h2>
+<p><strong>localhost vs LAN IP</strong> - <code>localhost</code> means the same machine only. If Open WebUI and ollama-mesh run on different machines, use the LAN IP or hostname of the machine running ollama-mesh.</p>
+<pre class="code"><code>Same machine:      http://localhost:11434
+Different machine:  http://192.168.1.7:11434</code></pre>
+<p><strong>Docker networking</strong> - if Open WebUI runs inside a Docker container, <code>localhost</code> refers to the container itself, not the Docker host. Use <code>host.docker.internal</code> (Docker Desktop) or the Docker host's LAN IP instead. If both ollama-mesh and Open WebUI run as containers in the same Compose file, use the mesh's service name (see the Compose example below).</p>
+<p><strong>HTTP vs HTTPS</strong> - unless you've configured a reverse proxy (Nginx, Traefik, Caddy) in front of it, ollama-mesh serves plain HTTP. Don't use <code>https://</code> unless you've explicitly set up TLS.</p>
 <hr/>
-<h2 id="docker-env-vars">Docker env vars<a class="anchor" href="#docker-env-vars" aria-label="Link to section">#</a></h2>
-<p>If you run Open WebUI via Docker and want to pre-configure the connection without touching the UI:</p>
-<p><strong>Ollama-native (no auth):</strong></p>
-<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
-  -e OLLAMA_BASE_URL="http://&lt;mesh-host&gt;:11434" \
-  -v open-webui:/app/backend/data \
-  --name open-webui \
-  ghcr.io/open-webui/open-webui:main</code></pre>
-<p><strong>OpenAI-compatible (with API key):</strong></p>
-<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
-  -e OPENAI_API_BASE_URL="http://&lt;mesh-host&gt;:11434/v1" \
-  -e OPENAI_API_KEY="sk-mesh-abc123" \
-  -v open-webui:/app/backend/data \
-  --name open-webui \
-  ghcr.io/open-webui/open-webui:main</code></pre>
-<blockquote><code>OLLAMA_BASE_URL</code> and <code>OPENAI_API_BASE_URL</code> are <code>ConfigVar</code> variables in Open WebUI - their values are persisted to the internal database on first launch. If you change them after the first run, set <code>ENABLE_PERSISTENT_CONFIG=False</code> to force Open WebUI to always read from the environment.</blockquote>
-<p><strong>Docker Compose example (both running as services):</strong></p>
+<h2 id="open-webui-desktop-vs-server">Open WebUI Desktop vs Server<a class="anchor" href="#open-webui-desktop-vs-server" aria-label="Link to section">#</a></h2>
+<p>The Open WebUI <strong>Desktop</strong> app uses a built-in local runtime (llama.cpp) by default, and some Desktop releases don't expose the same provider configuration screen as the server edition. To point Open WebUI at ollama-mesh, use the Open WebUI <strong>server</strong> (Docker or standalone) rather than the Desktop app.</p>
+<hr/>
+<h2 id="quick-start-docker-compose">Quick start: Docker Compose<a class="anchor" href="#quick-start-docker-compose" aria-label="Link to section">#</a></h2>
+<p>The most common deployment - both services in one Compose file:</p>
 <pre class="code" data-lang="yaml"><code>services:
   ollama-mesh:
     image: ghcr.io/anirudhx7/ollama-mesh:latest
@@ -392,23 +386,45 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 volumes:
   open-webui:
   mesh-data:</code></pre>
+<h2 id="quick-start-docker-run">Quick start: docker run<a class="anchor" href="#quick-start-docker-run" aria-label="Link to section">#</a></h2>
+<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
+  -e OPENAI_API_BASE_URL="http://&lt;mesh-host&gt;:11434/v1" \
+  -e OPENAI_API_KEY="sk-mesh-abc123" \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  ghcr.io/open-webui/open-webui:main</code></pre>
+<p>Ollama-native, no-auth variant:</p>
+<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
+  -e OLLAMA_BASE_URL="http://&lt;mesh-host&gt;:11434" \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  ghcr.io/open-webui/open-webui:main</code></pre>
+<blockquote><code>OLLAMA_BASE_URL</code> and <code>OPENAI_API_BASE_URL</code> are <code>ConfigVar</code> variables in Open WebUI - their values are persisted to the internal database on first launch. If you change them after the first run, set <code>ENABLE_PERSISTENT_CONFIG=False</code> to force Open WebUI to always read from the environment.</blockquote>
+<h2 id="manual-configuration-existing-open-webui-installation">Manual configuration (existing Open WebUI installation)<a class="anchor" href="#manual-configuration-existing-open-webui-installation" aria-label="Link to section">#</a></h2>
+<p>Menu locations shift between releases, so configure by value rather than by following exact click paths:</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Field</th><th>Value</th></tr></thead>
+<tbody><tr><td><strong>Base URL</strong></td><td><code>http://&lt;mesh-host&gt;:11434/v1</code></td></tr>
+<tr><td><strong>API Key</strong></td><td>Your <code>sk-mesh-...</code> key from the mesh dashboard's <strong>API Keys</strong> page</td></tr></tbody>
+</table></div>
+<ol><li>Open Open WebUI and go to <strong>Admin Panel &gt; Settings &gt; Connections</strong>.</li><li>Under the OpenAI-compatible connections section, click <strong>Add Connection</strong> (the <code>+</code> button).</li><li>Enter the <strong>Base URL</strong> and <strong>API Key</strong> from the table above and save.</li><li>Open WebUI calls <code>GET /v1/models</code> - the mesh returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.</li></ol>
+<p>To use the Ollama-native connection type instead (only when mesh auth is disabled), go to <strong>Connections &gt; Ollama</strong> and enter <code>http://&lt;mesh-host&gt;:11434</code> as the URL - no API key field is available in most current Open WebUI releases for this connection type.</p>
 <hr/>
 <h2 id="verifying-the-connection">Verifying the connection<a class="anchor" href="#verifying-the-connection" aria-label="Link to section">#</a></h2>
-<p>After saving the connection, confirm models appear in the Open WebUI model selector. You can also check the mesh side:</p>
-<pre class="code" data-lang="bash"><code># Should return JSON with all models loaded across your nodes
-curl http://&lt;mesh-host&gt;:11434/v1/models \
-  -H "Authorization: Bearer sk-mesh-abc123"</code></pre>
-<p>The mesh admin dashboard at <code>http://&lt;mesh-host&gt;:8080</code> shows each request logged with the routing decision (which node, model, latency) so you can confirm Open WebUI traffic is flowing through.</p>
+<p>After saving the connection, confirm models appear in the Open WebUI model selector. The mesh admin dashboard at <code>http://&lt;mesh-host&gt;:8080</code> shows each request logged with the routing decision (which node, model, latency) so you can confirm Open WebUI traffic is flowing through.</p>
 <hr/>
 <h2 id="troubleshooting">Troubleshooting<a class="anchor" href="#troubleshooting" aria-label="Link to section">#</a></h2>
+<p><strong>Connection refused</strong></p>
+<p>Test connectivity from the same machine running Open WebUI:</p>
+<pre class="code" data-lang="bash"><code>curl http://&lt;mesh-host&gt;:11434/v1/models</code></pre>
+<p>If this fails, in order, check:</p>
+<ul><li>the mesh process is running</li><li>port 11434 is listening</li><li>you're using the correct IP address (see <a href="#networking-pitfalls">Networking pitfalls</a> above)</li><li>firewall rules aren't blocking the port</li><li>Docker networking - <code>localhost</code> inside a container isn't the host</li></ul>
 <p><strong>Models not appearing in the dropdown</strong></p>
-<ul><li>Confirm at least one Ollama node is reachable and has models loaded (<code>ollama list</code> on the node).</li><li>Check the mesh admin dashboard to verify nodes show as healthy.</li><li>For the Ollama connection type, Open WebUI calls <code>/api/tags</code>. For the OpenAI connection type it calls <code>/v1/models</code>. Both are served by the mesh.</li><li>If you added the connection via Docker env var and models still don't appear, see the <code>ConfigVar</code> note above - the persisted value may be overriding your env var.</li></ul>
+<ul><li>Confirm at least one node is reachable and has models loaded.</li><li>Check the mesh admin dashboard to verify nodes show as healthy.</li><li>The OpenAI connection type calls <code>/v1/models</code>; the Ollama connection type calls <code>/api/tags</code>. Both are served by the mesh.</li><li>If you configured the connection via Docker env var and models still don't appear, see the <code>ConfigVar</code> note above - a persisted value from a previous run may be overriding your env var.</li></ul>
 <p><strong>401 Unauthorized</strong></p>
 <p>Your API key is missing or wrong. Verify the key matches one of the keys shown on the mesh dashboard's <strong>API Keys</strong> page. The mesh requires the exact key string as a <code>Bearer</code> token - no substring matching.</p>
 <p><strong>403 Forbidden on a specific model</strong></p>
 <p>The key you are using has a model allow-list set (edit it from the <strong>API Keys</strong> page) that does not include the requested model. Either add the model to the key's allow-list or use a key with no allow-list ("All models" - allow all).</p>
-<p><strong>Connection refused / timeout</strong></p>
-<ul><li>If Open WebUI is in Docker and the mesh is on the host, use <code>http://host.docker.internal:11434</code> not <code>http://localhost:11434</code>.</li><li>Confirm the mesh is running: <code>curl http://&lt;mesh-host&gt;:11434/api/tags</code> from the Open WebUI host (no auth needed for this endpoint if authentication is disabled, or add the header if enabled).</li></ul>
 <p><strong>Slow model list on startup</strong></p>
 <p>If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's upstream timeout in <strong>Settings &gt; Advanced Routing &gt; Upstream Timeout</strong>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
 
@@ -420,7 +436,7 @@ curl http://&lt;mesh-host&gt;:11434/v1/models \
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#connection-options">Connection options</a></li><li class="lvl-2"><a href="#option-a---ollama-connection-type-recommended">Option A - Ollama connection type (recommended)</a></li><li class="lvl-2"><a href="#option-b---openai-compatible-connection-type">Option B - OpenAI-compatible connection type</a></li><li class="lvl-2"><a href="#docker-env-vars">Docker env vars</a></li><li class="lvl-2"><a href="#verifying-the-connection">Verifying the connection</a></li><li class="lvl-2"><a href="#troubleshooting">Troubleshooting</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#recommended-openai-compatible-connection">Recommended: OpenAI-compatible connection</a></li><li class="lvl-2"><a href="#before-configuring-open-webui-verify-connectivity">Before configuring Open WebUI: verify connectivity</a></li><li class="lvl-2"><a href="#networking-pitfalls">Networking pitfalls</a></li><li class="lvl-2"><a href="#open-webui-desktop-vs-server">Open WebUI Desktop vs Server</a></li><li class="lvl-2"><a href="#quick-start-docker-compose">Quick start: Docker Compose</a></li><li class="lvl-2"><a href="#quick-start-docker-run">Quick start: docker run</a></li><li class="lvl-2"><a href="#manual-configuration-existing-open-webui-installation">Manual configuration (existing Open WebUI installation)</a></li><li class="lvl-2"><a href="#verifying-the-connection">Verifying the connection</a></li><li class="lvl-2"><a href="#troubleshooting">Troubleshooting</a></li></ul>
   </aside>
 </div>
 
