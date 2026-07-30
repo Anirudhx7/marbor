@@ -3,6 +3,7 @@ import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowD
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
 import { ModelConfigModal } from '../components/ModelConfigModal';
+import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
 import {
   fetchSystemInfo,
@@ -72,6 +73,7 @@ function ModelDetailPanel({
   // search (searchHFModels), never Ollama's own curated library - none of it
   // is vetted for compatibility with this node's installed runtime.
   const [verifyLoad, setVerifyLoad] = useState(true);
+  const [vramConfirmVariant, setVramConfirmVariant] = useState<ModelVariantFit | null>(null);
   const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
 
   useEffect(() => {
@@ -158,12 +160,8 @@ function ModelDetailPanel({
     // race, not the primary gate.
     if (variant.disk_fit === 'insufficient') return;
     if (variant.fit === 'red') {
-      const needGB = (variant.vram_est_mb / 1024).toFixed(1);
-      const haveGB = nodeVRAMTotalBytes > 0 ? (nodeVRAMTotalBytes / (1024 * 1024 * 1024)).toFixed(1) : 'unknown';
-      const ok = window.confirm(
-        `This variant needs ~${needGB} GB VRAM, but node "${nodeName}" has ${haveGB} GB total. Pull anyway?`
-      );
-      if (!ok) return;
+      setVramConfirmVariant(variant);
+      return;
     }
     startPull(nodeName, variant.tag, demoMode, verifyLoad);
   };
@@ -374,6 +372,43 @@ function ModelDetailPanel({
         presetNumCtx={ctxLen}
         onClose={() => setConfigTag(null)}
       />
+
+      <Modal
+        isOpen={vramConfirmVariant !== null}
+        onClose={() => setVramConfirmVariant(null)}
+        title="VRAM May Be Insufficient"
+        maxWidth="sm"
+      >
+        {vramConfirmVariant && (
+          <div className="space-y-4">
+            <p className="text-sm text-foreground leading-relaxed">
+              This variant needs ~{(vramConfirmVariant.vram_est_mb / 1024).toFixed(1)} GB VRAM,
+              but node <strong>"{nodeName}"</strong> has{' '}
+              {nodeVRAMTotalBytes > 0 ? `${(nodeVRAMTotalBytes / (1024 * 1024 * 1024)).toFixed(1)} GB` : 'an unknown amount of'}{' '}
+              total. The pull may fail to load once downloaded.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setVramConfirmVariant(null)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (nodeName && vramConfirmVariant) {
+                    startPull(nodeName, vramConfirmVariant.tag, demoMode, verifyLoad);
+                  }
+                  setVramConfirmVariant(null);
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors cursor-pointer"
+              >
+                Pull Anyway
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
