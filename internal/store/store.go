@@ -198,6 +198,12 @@ type Store interface {
 	InsertBenchmarkRun(run BenchmarkRun) error
 	ListBenchmarkRuns(limit int) ([]BenchmarkRun, error)
 
+	// BackupTo writes a consistent point-in-time copy of the live database to
+	// path via SQLite's VACUUM INTO, safe to run alongside concurrent readers
+	// and writers. path must not already exist (VACUUM INTO refuses to
+	// overwrite a file) - callers pass a fresh path per call.
+	BackupTo(path string) error
+
 	Close() error
 }
 
@@ -632,4 +638,7 @@ func (NopStore) DeleteModelConfig(_, _ string) error               { return nil 
 func (NopStore) AllModelConfigs() ([]ModelConfig, error)           { return nil, nil }
 func (NopStore) InsertBenchmarkRun(_ BenchmarkRun) error           { return nil }
 func (NopStore) ListBenchmarkRuns(_ int) ([]BenchmarkRun, error)   { return nil, nil }
-func (NopStore) Close() error                                      { return nil }
+func (NopStore) BackupTo(_ string) error {
+	return errors.New("store: persistence disabled (db_path=\"-\"), there is no database to back up")
+}
+func (NopStore) Close() error { return nil }

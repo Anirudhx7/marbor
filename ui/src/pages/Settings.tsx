@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2, ChevronUp, ChevronDown, Gauge } from 'lucide-react';
+import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2, ChevronUp, ChevronDown, Gauge, HardDrive, Download } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
 import { defaultSettings, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword } from '../lib/api';
+import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow } from '../lib/api';
 import type { Settings, CloudProvider, CloudProviderInput } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
@@ -152,6 +152,22 @@ export function SettingsPage() {
   const [credError, setCredError] = useState<string | null>(null);
   const [credSaved, setCredSaved] = useState(false);
 
+  // Backup & Restore
+  const [backupDownloading, setBackupDownloading] = useState(false);
+  const [backupDownloadError, setBackupDownloadError] = useState<string | null>(null);
+
+  const handleBackupNow = async () => {
+    setBackupDownloading(true);
+    setBackupDownloadError(null);
+    try {
+      await triggerBackupNow();
+    } catch (err: any) {
+      setBackupDownloadError(err.message || 'Backup failed');
+    } finally {
+      setBackupDownloading(false);
+    }
+  };
+
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
     let active = true;
@@ -217,6 +233,13 @@ export function SettingsPage() {
           warmupKeepAlive: settingsData.warmup?.keep_alive || '10m',
 
           contextWindows: settingsData.context_windows || {},
+
+          backupEnabled: settingsData.backup?.enabled || false,
+          backupIntervalHours: settingsData.backup?.interval_hours ?? 24,
+          backupRetentionCount: settingsData.backup?.retention_count ?? 7,
+          backupTargetDir: settingsData.backup?.target_dir || '',
+          backupLastAt: settingsData.backup?.last_backup_at || undefined,
+          backupLastError: settingsData.backup?.last_backup_error || '',
         });
         setCloudProviders(demoMode ? mockCloudProviders : (providersData || []));
         setError(null);
@@ -280,6 +303,12 @@ export function SettingsPage() {
         savings: { reference_cost_per_1k: settings.savingsReferenceCostPer1k },
         warmup: { enabled: settings.warmupEnabled, interval_ms: settings.warmupIntervalMs, keep_alive: settings.warmupKeepAlive },
         context_windows: settings.contextWindows,
+        backup: {
+          enabled: settings.backupEnabled,
+          interval_hours: settings.backupIntervalHours,
+          retention_count: settings.backupRetentionCount,
+          target_dir: settings.backupTargetDir,
+        },
       };
 
       await updateSettings(payload);
@@ -1478,6 +1507,97 @@ export function SettingsPage() {
                   Applies to the admin action trail (System Audit page), separate from request logs above. Defaults to 0 - keep forever - since this log is low-volume and security-sensitive.
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Backup & Restore */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-emerald-500/10 rounded-lg">
+              <HardDrive className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Backup & Restore</h3>
+              <p className="text-xs font-medium text-muted-foreground">Restoring is a manual procedure - see docs/backup.md</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <div>
+                <button
+                  onClick={handleBackupNow}
+                  disabled={backupDownloading}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  {backupDownloading ? 'Preparing download...' : 'Download Backup Now'}
+                </button>
+                {backupDownloadError && (
+                  <p className="text-[10px] text-red-500 mt-1.5">{backupDownloadError}</p>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1.5">
+                  Downloads a consistent point-in-time copy of mesh.db to your browser, taken while the mesh keeps running.
+                </p>
+              </div>
+              {settings.backupLastAt && (
+                <p className="text-xs text-muted-foreground">
+                  Last scheduled backup: {new Date(settings.backupLastAt).toLocaleString()}
+                </p>
+              )}
+              {settings.backupLastError && (
+                <p className="text-xs text-red-500">Last scheduled backup failed: {settings.backupLastError}</p>
+              )}
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Scheduled Backup</p>
+                  <p className="text-xs text-muted-foreground">Automatic VACUUM INTO backups on a recurring interval</p>
+                </div>
+                <Toggle on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
+              </div>
+              {settings.backupEnabled && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Interval (hours)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={settings.backupIntervalHours}
+                      onChange={(e) => setSettings({ ...settings, backupIntervalHours: Math.max(1, parseInt(e.target.value, 10) || 24) })}
+                      className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Retention (backups kept)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={settings.backupRetentionCount}
+                      onChange={(e) => setSettings({ ...settings, backupRetentionCount: Math.max(1, parseInt(e.target.value, 10) || 7) })}
+                      className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                </div>
+              )}
+              {settings.backupEnabled && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Target Directory</label>
+                  <input
+                    type="text"
+                    value={settings.backupTargetDir}
+                    onChange={(e) => setSettings({ ...settings, backupTargetDir: e.target.value })}
+                    placeholder="/backups"
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    In Docker, defaults to a separate volume from mesh.db's own data volume, so deleting one doesn't take out the other.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

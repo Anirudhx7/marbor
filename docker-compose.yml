@@ -7,8 +7,15 @@ services:
       - "8080:8080"
     volumes:
       - mesh-data:/data
+      - mesh-backups:/backups
     environment:
       - MESH_DB_PATH=/data/mesh.db
+      # Scheduled backups (P49, configurable from the Settings dashboard) go
+      # to a SEPARATE named volume from mesh-data on purpose: a `docker
+      # volume rm mesh-data` (or `docker-compose down -v`) then still leaves
+      # every backup intact, and vice versa - one accidental wipe can't take
+      # out both the live database and its backups at once.
+      - MESH_BACKUP_DIR=/backups
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s
@@ -18,3 +25,4 @@ services:
 
 volumes:
   mesh-data:
+  mesh-backups:

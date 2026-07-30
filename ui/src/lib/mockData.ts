@@ -385,6 +385,13 @@ export const defaultSettings: Settings = {
   warmupKeepAlive: '10m',
 
   contextWindows: {},
+
+  backupEnabled: true,
+  backupIntervalHours: 24,
+  backupRetentionCount: 7,
+  backupTargetDir: '/backups',
+  backupLastAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+  backupLastError: '',
 };
 
 export const mockSavings: Savings = {

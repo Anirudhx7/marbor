@@ -985,3 +985,50 @@ func TestOpenUpgradesPreReasonNodeDrainSchema(t *testing.T) {
 		t.Errorf("new-node = %+v, want draining=true reason=maintenance", states["new-node"])
 	}
 }
+
+// TestBackupTo verifies BackupTo produces a valid, independently-openable
+// SQLite database containing the same data as the live store, and that it
+// refuses to overwrite an existing path (VACUUM INTO's own behavior).
+func TestBackupTo(t *testing.T) {
+	dir := t.TempDir()
+	s := openTestDBAt(t, filepath.Join(dir, "live.db"))
+	defer s.Close()
+
+	if err := s.UpsertNode(store.NodeRecord{Name: "node-a", URL: "http://localhost:11434", Runtime: "ollama"}); err != nil {
+		t.Fatalf("UpsertNode: %v", err)
+	}
+	if err := s.SetSetting("timezone", "UTC"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+
+	backupPath := filepath.Join(dir, "backup.db")
+	if err := s.BackupTo(backupPath); err != nil {
+		t.Fatalf("BackupTo: %v", err)
+	}
+
+	// The backup must be a fully independent, openable database with the
+	// same data - not a reference to the live file.
+	restored, err := store.Open(backupPath)
+	if err != nil {
+		t.Fatalf("Open(backup): %v", err)
+	}
+	defer restored.Close()
+
+	nodes, err := restored.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes on restored backup: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].Name != "node-a" {
+		t.Fatalf("restored backup nodes = %+v, want [node-a]", nodes)
+	}
+	tz, err := restored.GetSetting("timezone")
+	if err != nil || tz != "UTC" {
+		t.Fatalf("restored backup timezone = %q, err=%v, want UTC", tz, err)
+	}
+
+	// VACUUM INTO refuses to write over an existing file - BackupTo must
+	// surface that as an error, not silently succeed or corrupt the target.
+	if err := s.BackupTo(backupPath); err == nil {
+		t.Error("BackupTo to an already-existing path should return an error, got nil")
+	}
+}

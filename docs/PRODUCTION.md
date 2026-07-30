@@ -63,7 +63,7 @@ First boot creates `/opt/ollama-mesh/mesh.db` blank-slate. Log in at `http://<ho
 
 ## Docker Compose
 
-The repo ships a working `docker-compose.yml`. It mounts a single named volume for `mesh.db` - that's the only state that needs to survive a restart:
+The repo ships a working `docker-compose.yml`. It mounts **two** named volumes:
 
 ```yaml
 # docker-compose.yml (reference - already in repo)
@@ -75,15 +75,21 @@ services:
       - "8080:8080"
       - "9090:9090"
     volumes:
-      - mesh-data:/root                            # persists mesh.db across restarts
-      - /var/run/docker.sock:/var/run/docker.sock  # only if Docker auto-discovery is enabled
+      - mesh-data:/data       # persists mesh.db across restarts
+      - mesh-backups:/backups # scheduled backups (Settings > Backup & Restore)
+    environment:
+      - MESH_DB_PATH=/data/mesh.db
+      - MESH_BACKUP_DIR=/backups
     restart: unless-stopped
 
 volumes:
   mesh-data:
+  mesh-backups:
 ```
 
 The `mesh-data` volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate `mesh.db` inside the volume - configure it via the dashboard at `http://localhost:8080` (`admin`/`admin`, forced password change on first login).
+
+`mesh-backups` is a **separate** volume from `mesh-data`, on purpose: enable scheduled backups from the dashboard's Settings > Backup & Restore card (interval + retention count are configurable there), and a `docker volume rm mesh-data` or `docker-compose down -v` that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point `mesh-backups` at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as `mesh-data`. A manual "Download Backup Now" button on the same Settings card streams an on-demand copy straight to your browser at any time. See [`backup.md`](backup.md) for how to actually restore from one of these files - restore is a manual procedure and is **not** limited to files under `/backups`; any `.db` file you point it at works, on Docker or bare metal alike.
 
 ---
 

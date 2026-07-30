@@ -79,6 +79,18 @@ func Open(path string) (Store, error) {
 	return s, nil
 }
 
+// BackupTo writes a consistent snapshot of the live database to path using
+// SQLite's VACUUM INTO. This runs against the same live *sql.DB handle Open
+// configured with WAL + busy_timeout, so it is safe alongside concurrent
+// readers and writers - no separate lock or file copy is needed. path must
+// not already exist; VACUUM INTO errors if it does.
+func (s *sqliteStore) BackupTo(path string) error {
+	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+		return fmt.Errorf("store: backup to %s: %w", path, err)
+	}
+	return nil
+}
+
 func (s *sqliteStore) migrate() error {
 	// Settings table must exist before the version gate can read it, even on
 	// a from-scratch DB. Idempotent - the full CREATE also appears later in

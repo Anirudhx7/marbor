@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -180,6 +181,11 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 
 	cfg.HuggingFace.Token = store.GetStringSetting(st, "huggingface_token", cfg.HuggingFace.Token)
 
+	cfg.Backup.Enabled = store.GetBoolSetting(st, "backup_enabled", cfg.Backup.Enabled)
+	cfg.Backup.IntervalHours = store.GetIntSetting(st, "backup_interval_hours", cfg.Backup.IntervalHours)
+	cfg.Backup.RetentionCount = store.GetIntSetting(st, "backup_retention_count", cfg.Backup.RetentionCount)
+	cfg.Backup.TargetDir = store.GetStringSetting(st, "backup_target_dir", cfg.Backup.TargetDir)
+
 	store.GetJSONSetting(st, "context_windows", &cfg.ContextWindows)
 }
 
@@ -223,6 +229,18 @@ func main() {
 		dbPath = "mesh.db"
 	}
 
+	// MESH_BACKUP_DIR seeds the default scheduled-backup target directory
+	// (config.BackupConfig.TargetDir), same env-var pattern as MESH_DB_PATH
+	// above. docker-compose.yml sets this to /backups - a distinct named
+	// volume from mesh-data's /data mount - so a scheduled backup survives a
+	// docker volume rm/down -v on the data volume, and vice versa. The
+	// bare-metal fallback keeps backups next to the database when no data
+	// volume separation is possible anyway.
+	backupDir := os.Getenv("MESH_BACKUP_DIR")
+	if backupDir == "" && dbPath != "-" {
+		backupDir = filepath.Join(filepath.Dir(dbPath), "backups")
+	}
+
 	if len(seedNodes) > 0 {
 		if err := seedNodesToStore(dbPath, seedNodes); err != nil {
 			log.Fatalf("seed nodes: %v", err)
@@ -231,6 +249,7 @@ func main() {
 	}
 
 	cfg := &config.Config{}
+	cfg.Backup.TargetDir = backupDir
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid default config: %v", err)
 	}
@@ -521,6 +540,7 @@ func main() {
 	}
 	adminSrv.StartCounterFlush(ctx)
 	adminSrv.StartPeriodicCleanup(ctx)
+	adminSrv.StartBackupScheduler(ctx)
 
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	proxyHandler.SetAuth(authMw)
