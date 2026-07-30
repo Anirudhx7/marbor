@@ -1608,8 +1608,8 @@ export function SettingsPage() {
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="space-y-4">
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
                 <button
                   onClick={handleBackupNow}
@@ -1625,66 +1625,64 @@ export function SettingsPage() {
                 <p className="text-[10px] text-muted-foreground mt-1.5">
                   Downloads a consistent point-in-time copy of mesh.db to your browser, taken while the mesh keeps running.
                 </p>
+                {settings.backupLastAt && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Last scheduled backup: {new Date(settings.backupLastAt).toLocaleString()}
+                  </p>
+                )}
+                {settings.backupLastError && (
+                  <p className="text-xs text-red-500 mt-1.5">Last scheduled backup failed: {settings.backupLastError}</p>
+                )}
               </div>
-              {settings.backupLastAt && (
-                <p className="text-xs text-muted-foreground">
-                  Last scheduled backup: {new Date(settings.backupLastAt).toLocaleString()}
-                </p>
-              )}
-              {settings.backupLastError && (
-                <p className="text-xs text-red-500">Last scheduled backup failed: {settings.backupLastError}</p>
-              )}
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div className="flex items-center justify-between gap-4 p-3 rounded-lg border border-border bg-secondary/30 sm:w-80 sm:shrink-0">
                 <div>
                   <p className="text-sm font-medium text-foreground">Scheduled Backup</p>
                   <p className="text-xs text-muted-foreground">Automatic VACUUM INTO backups on a recurring interval</p>
                 </div>
                 <Toggle on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
               </div>
-              {settings.backupEnabled && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Interval (hours)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={settings.backupIntervalHours}
-                      onChange={(e) => setSettings({ ...settings, backupIntervalHours: Math.max(1, parseInt(e.target.value, 10) || 24) })}
-                      className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Retention (backups kept)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={settings.backupRetentionCount}
-                      onChange={(e) => setSettings({ ...settings, backupRetentionCount: Math.max(1, parseInt(e.target.value, 10) || 7) })}
-                      className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-                    />
-                  </div>
-                </div>
-              )}
-              {settings.backupEnabled && (
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Target Directory</label>
-                  <input
-                    type="text"
-                    value={settings.backupTargetDir}
-                    onChange={(e) => setSettings({ ...settings, backupTargetDir: e.target.value })}
-                    placeholder="/backups"
-                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    In Docker, defaults to a separate volume from mesh.db's own data volume, so deleting one doesn't take out the other.
-                  </p>
-                </div>
-              )}
             </div>
+            {settings.backupEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Interval (hours)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={settings.backupIntervalHours}
+                    onChange={(e) => setSettings({ ...settings, backupIntervalHours: Math.max(1, parseInt(e.target.value, 10) || 24) })}
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Retention (backups kept)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={settings.backupRetentionCount}
+                    onChange={(e) => setSettings({ ...settings, backupRetentionCount: Math.max(1, parseInt(e.target.value, 10) || 7) })}
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                  />
+                </div>
+              </div>
+            )}
+            {settings.backupEnabled && (
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Target Directory</label>
+                <input
+                  type="text"
+                  value={settings.backupTargetDir}
+                  onChange={(e) => setSettings({ ...settings, backupTargetDir: e.target.value })}
+                  placeholder="/backups"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  In Docker, defaults to a separate volume from mesh.db's own data volume, so deleting one doesn't take out the other.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="mt-5 pt-5 border-t border-border">
@@ -1715,15 +1713,12 @@ export function SettingsPage() {
                       No backups found yet in the target directory.
                     </p>
                   ) : (
-                    <select
+                    <CustomSelect
+                      className="flex-1"
                       value={selectedBackupName}
-                      onChange={(e) => setSelectedBackupName(e.target.value)}
-                      className="flex-1 min-w-0 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-                    >
-                      {backupList.map((b) => (
-                        <option key={b.name} value={b.name}>{b.name}</option>
-                      ))}
-                    </select>
+                      onChange={setSelectedBackupName}
+                      options={backupList.map((b) => ({ value: b.name, label: b.name }))}
+                    />
                   )}
                   <label
                     title="Attach a .db file from your computer as a backup"
