@@ -939,6 +939,7 @@ export interface ModelVariantFit {
   vram_est_mb: number;
   size_mb: number;
   fit: 'green' | 'yellow' | 'red' | 'unknown';
+  disk_fit: 'ok' | 'insufficient' | 'unknown';
   downloaded: boolean;
 }
 
@@ -949,6 +950,9 @@ export interface HFRepoDetails {
   tags: string[];
   last_modified: string;
   variants: ModelVariantFit[];
+  disk_free_gb: number;
+  disk_total_gb: number;
+  disk_known: boolean;
 }
 
 export interface HFSearchFilters {

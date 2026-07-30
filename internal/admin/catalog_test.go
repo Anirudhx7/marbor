@@ -186,6 +186,56 @@ func TestClassifyFit(t *testing.T) {
 	}
 }
 
+func TestClassifyDiskFit(t *testing.T) {
+	cases := []struct {
+		name         string
+		sizeMB       int64
+		diskFreeGB   float64
+		diskTotalGB  float64
+		agentPresent bool
+		want         string
+	}{
+		{"comfortable", 4700, 100, 500, true, "ok"},
+		{"exact fit", 1000, 1000 * 1024 * 1024 / 1e9, 500, true, "ok"}, // ~1GB needed, ~1GB free
+		{"too-large", 40000, 10, 500, true, "insufficient"},
+		{"no agent", 4700, 100, 500, false, "unknown"},
+		{"agent present but never reported disk telemetry (no build/no syscall yet)", 4700, 0, 0, true, "unknown"},
+		// Regression: a genuinely-full disk (real Statfs reading, DiskFreeGB=0
+		// legitimately) must hard-block, not skip as "unknown" - DiskTotalGB>0
+		// is what proves this is real telemetry, not an unreported field.
+		{"disk genuinely full", 4700, 0, 500, true, "insufficient"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := classifyDiskFit(c.sizeMB, c.diskFreeGB, c.diskTotalGB, c.agentPresent); got != c.want {
+				t.Errorf("classifyDiskFit(%d, %.4f, %.4f, %v) = %q, want %q", c.sizeMB, c.diskFreeGB, c.diskTotalGB, c.agentPresent, got, c.want)
+			}
+		})
+	}
+}
+
+func TestFindCatalogVariantSizeMB(t *testing.T) {
+	// llama3.2:1b has exactly one variant, tag == model name, SizeMB 1300.
+	if size, ok := findCatalogVariantSizeMB("llama3.2:1b"); !ok || size != 1300 {
+		t.Errorf("findCatalogVariantSizeMB(llama3.2:1b) = (%d, %v), want (1300, true)", size, ok)
+	}
+	// Exact variant tag match (not the bare model name).
+	if size, ok := findCatalogVariantSizeMB("llama3.1:8b-instruct-q8_0"); !ok || size != 8500 {
+		t.Errorf("findCatalogVariantSizeMB(llama3.1:8b-instruct-q8_0) = (%d, %v), want (8500, true)", size, ok)
+	}
+	// Bare catalog name with multiple variants resolves to the recommended one.
+	if size, ok := findCatalogVariantSizeMB("llama3.1:8b"); !ok || size != 4700 {
+		t.Errorf("findCatalogVariantSizeMB(llama3.1:8b) = (%d, %v), want (4700, true) [recommended variant]", size, ok)
+	}
+	// Not in the static catalog at all (HF tag, or an uncurated Ollama registry name).
+	if _, ok := findCatalogVariantSizeMB("hf.co/someorg/somerepo:Q4_K_M"); ok {
+		t.Error("findCatalogVariantSizeMB(hf.co/...) = ok=true, want false (unresolvable, must not guess)")
+	}
+	if _, ok := findCatalogVariantSizeMB("some-uncurated-model:latest"); ok {
+		t.Error("findCatalogVariantSizeMB(uncurated model) = ok=true, want false")
+	}
+}
+
 func TestGgufOnlyRuntime(t *testing.T) {
 	cases := []struct {
 		runtime string

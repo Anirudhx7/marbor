@@ -183,6 +183,131 @@ func TestHandleNodePull_SlotFreedAfterCompletion(t *testing.T) {
 	}
 }
 
+// TestHandleNodePull_DiskHardBlock is P48's regression: a pull of a curated
+// catalog model whose known download size exceeds the node's agent-reported
+// free disk must be hard-blocked with 507, before ever reaching the mock
+// Ollama server (no confirm-anyway override, unlike VRAM's P47 behavior).
+func TestHandleNodePull_DiskHardBlock(t *testing.T) {
+	reached := false
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+	nodes := s.router.Nodes()
+	nodes[0].Lock()
+	nodes[0].AgentPresent = true
+	nodes[0].DiskFreeGB = 10  // 10GB free
+	nodes[0].DiskTotalGB = 20 // real telemetry present
+	nodes[0].Unlock()
+
+	// llama3.1:70b's Q4_K_M variant needs ~40000MB (~40GB) - well over 10GB free.
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3.1:70b"}`))
+
+	if w.Result().StatusCode != http.StatusInsufficientStorage {
+		t.Fatalf("expected 507, got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+	if reached {
+		t.Error("mock Ollama server was reached - pull should have been blocked before dispatch")
+	}
+}
+
+// TestHandleNodePull_DiskHardBlock_GenuinelyFullDisk is a regression for a
+// code-review catch: a node whose agent legitimately reports 0 GB free (the
+// disk really is completely full - a real syscall.Statfs reading, not a
+// missing-telemetry placeholder) must still hard-block, not be treated as
+// "unknown disk state" and let the pull through. DiskTotalGB > 0 alongside
+// DiskFreeGB == 0 is what proves this is real telemetry.
+func TestHandleNodePull_DiskHardBlock_GenuinelyFullDisk(t *testing.T) {
+	reached := false
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+	nodes := s.router.Nodes()
+	nodes[0].Lock()
+	nodes[0].AgentPresent = true
+	nodes[0].DiskFreeGB = 0    // genuinely full - a real reading, not "unreported"
+	nodes[0].DiskTotalGB = 500 // proves real telemetry (would be 0 if the agent had never reported disk stats)
+	nodes[0].Unlock()
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3.2:1b"}`))
+
+	if w.Result().StatusCode != http.StatusInsufficientStorage {
+		t.Fatalf("expected 507 for a genuinely full disk, got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+	if reached {
+		t.Error("mock Ollama server was reached - a genuinely full disk must block before dispatch")
+	}
+}
+
+// TestHandleNodePull_DiskCheckSkippedWhenUnknown verifies the check never
+// blocks (or fabricates a pass) when disk telemetry is unavailable - no
+// agent, or an agent that hasn't reported disk stats (e.g. non-Linux host).
+func TestHandleNodePull_DiskCheckSkippedWhenUnknown(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+	// AgentPresent left false (default) - disk state is unknown.
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"llama3.1:70b"}`))
+
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202 (check skipped, unknown disk state), got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+	waitForJob(t, s, "gpu-0", "llama3.1:70b")
+}
+
+// TestHandleNodePull_DiskCheckSkippedForUnresolvableModel verifies a model
+// tag not in the static catalog (e.g. an HF tag, or an uncurated Ollama
+// registry name) skips the disk check entirely rather than guessing a size -
+// a known v1 scope limit (see EXECUTION-QUEUE.md P48), not a silent gap.
+func TestHandleNodePull_DiskCheckSkippedForUnresolvableModel(t *testing.T) {
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+	nodes := s.router.Nodes()
+	nodes[0].Lock()
+	nodes[0].AgentPresent = true
+	nodes[0].DiskFreeGB = 1 // 1GB free - would fail the check if it ran
+	nodes[0].DiskTotalGB = 20
+	nodes[0].Unlock()
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/someorg/somerepo:Q4_K_M"}`))
+
+	if w.Result().StatusCode != http.StatusAccepted {
+		t.Fatalf("expected 202 (unresolvable model tag, check skipped), got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+	waitForJob(t, s, "gpu-0", "hf.co/someorg/somerepo:Q4_K_M")
+}
+
 func TestHandleSetNodePrewarm_TogglesFlag(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},

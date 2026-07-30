@@ -725,6 +725,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       vram_total_bytes: 24 * 1024 * 1024 * 1024,
       vram_used_bytes: 14 * 1024 * 1024 * 1024,
       vram_source: 'nvidia-smi',
+      disk_free_gb: 420,
+      disk_total_gb: 2000,
+      disk_known: true,
       models: [],
     },
     {
@@ -735,6 +738,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       vram_total_bytes: 80 * 1024 * 1024 * 1024,
       vram_used_bytes: 40 * 1024 * 1024 * 1024,
       vram_source: 'declared',
+      disk_free_gb: 1200,
+      disk_total_gb: 4000,
+      disk_known: true,
       models: [],
     },
     {
@@ -745,6 +751,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       vram_total_bytes: 24 * 1024 * 1024 * 1024,
       vram_used_bytes: 6 * 1024 * 1024 * 1024,
       vram_source: 'declared',
+      disk_free_gb: 15,
+      disk_total_gb: 2000,
+      disk_known: true,
       models: [],
     },
     {
@@ -755,6 +764,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       vram_total_bytes: 24 * 1024 * 1024 * 1024,
       vram_used_bytes: 4 * 1024 * 1024 * 1024,
       vram_source: 'declared',
+      disk_free_gb: 0,
+      disk_total_gb: 0,
+      disk_known: false,
       models: [],
     },
     {
@@ -765,6 +777,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       vram_total_bytes: 128 * 1024 * 1024 * 1024,
       vram_used_bytes: 23 * 1024 * 1024 * 1024,
       vram_source: 'declared',
+      disk_free_gb: 900,
+      disk_total_gb: 2000,
+      disk_known: true,
       models: [],
     },
   ],
@@ -912,6 +927,11 @@ export const mockHFRepoDetails: Record<string, any> = {
     likes: 1845,
     tags: ['text-generation', 'gguf', 'deepseek', 'reasoning'],
     last_modified: '2026-06-18T09:15:00Z',
+    // Deliberately small for demo parity: demonstrates the P48 hard-block
+    // "No Disk Space" state on the Q8_0 variant (~8.3GB needed, 6GB free).
+    disk_free_gb: 6,
+    disk_total_gb: 500,
+    disk_known: true,
     variants: [
       { tag: 'hf.co/bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 6200, size_mb: 4900, recommended: true, fit: 'green', downloaded: false },
       { tag: 'hf.co/bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 9500, size_mb: 8500, recommended: false, fit: 'yellow', downloaded: false }
