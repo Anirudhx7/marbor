@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
 	"encoding/csv"
@@ -739,8 +740,30 @@ func (s *Server) runScheduledBackup(cfg config.BackupConfig) error {
 		s.recordBackupResult(err)
 		return err
 	}
-	path := filepath.Join(cfg.TargetDir, backupFilename(time.Now()))
-	if err := s.st.BackupTo(path); err != nil {
+	// Staged under a .tmp suffix first (doesn't match backupFilenameRE, so
+	// pruneOldBackups/findDuplicateBackup/handleListBackups all ignore it)
+	// so a backup identical to one already on disk - e.g. mesh.db hasn't
+	// changed since the last scheduled run - can be discarded instead of
+	// cluttering the restore list with a byte-for-byte duplicate.
+	tmpPath := filepath.Join(cfg.TargetDir, backupFilename(time.Now())+".tmp")
+	if err := s.st.BackupTo(tmpPath); err != nil {
+		s.recordBackupResult(err)
+		return err
+	}
+	hash, err := hashBackupFile(tmpPath)
+	if err != nil {
+		os.Remove(tmpPath)
+		s.recordBackupResult(err)
+		return err
+	}
+	if dup, err := findDuplicateBackup(cfg.TargetDir, hash); err == nil && dup != "" {
+		os.Remove(tmpPath)
+		s.recordBackupResult(nil) // still a successful run - don't retry every tick
+		return nil
+	}
+	finalPath := strings.TrimSuffix(tmpPath, ".tmp")
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		os.Remove(tmpPath)
 		s.recordBackupResult(err)
 		return err
 	}
@@ -810,6 +833,50 @@ func (s *Server) pruneOldBackups(dir string, retentionCount int) {
 			log.Printf("admin: failed to prune old backup %s: %v", name, err)
 		}
 	}
+}
+
+// hashBackupFile returns the SHA-256 hex digest of the file at path, used to
+// detect a backup that is byte-for-byte identical to one already on disk.
+func hashBackupFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// findDuplicateBackup hashes every existing mesh-backup-*.db file in dir and
+// returns the name of one whose content matches hash, or "" if none match.
+// Used by both the scheduled backup job and the upload endpoint so a
+// byte-for-byte duplicate (mesh.db unchanged since the last backup, or an
+// operator re-uploading a file they already downloaded) never gets added to
+// the restorable pool a second time.
+func findDuplicateBackup(dir, hash string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !backupFilenameRE.MatchString(e.Name()) {
+			continue
+		}
+		existingHash, err := hashBackupFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue // unreadable/corrupt existing file - not this upload's problem
+		}
+		if existingHash == hash {
+			return e.Name(), nil
+		}
+	}
+	return "", nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -6294,6 +6361,25 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
 		writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("not a valid mesh.db backup: %v", err))
+		return
+	}
+
+	// If this upload is byte-for-byte identical to a backup already in the
+	// pool (e.g. the operator re-uploading a file they just downloaded),
+	// reuse the existing entry instead of adding a duplicate - report it as
+	// a normal success so the caller selects the existing file, exactly as
+	// it would a freshly uploaded one.
+	hash, err := hashBackupFile(tmpPath)
+	if err != nil {
+		os.Remove(tmpPath)
+		writeJSONError(w, http.StatusInternalServerError, "failed to check uploaded backup for duplicates")
+		return
+	}
+	if dup, err := findDuplicateBackup(targetDir, hash); err == nil && dup != "" {
+		os.Remove(tmpPath)
+		s.logSystemChange(r, "upload_backup", "global", fmt.Sprintf("Uploaded backup matched existing %s - reused it instead of adding a duplicate", dup))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"filename": dup, "duplicate": true})
 		return
 	}
 

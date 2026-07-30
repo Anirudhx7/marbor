@@ -821,7 +821,10 @@ export async function restoreBackup(filename: string): Promise<void> {
 // target directory scheduled/manual backups use, under a fresh
 // mesh-backup-<timestamp>.db name. On success it returns that name so the
 // caller can select it in the restore picker without a second list fetch.
-export async function uploadBackup(file: File): Promise<string> {
+// If the upload is byte-for-byte identical to a backup already in the pool,
+// the server reuses that existing file instead of adding a duplicate -
+// `duplicate` tells the caller which happened so it can message it clearly.
+export async function uploadBackup(file: File): Promise<{ filename: string; duplicate: boolean }> {
   if (DEMO) throw new Error('Uploading a backup is not available in demo mode.');
   const form = new FormData();
   form.append('file', file);
@@ -832,7 +835,7 @@ export async function uploadBackup(file: File): Promise<string> {
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Upload failed'); }
   const data = await res.json();
-  return data.filename;
+  return { filename: data.filename, duplicate: !!data.duplicate };
 }
 
 // normalizePullTag catches the most common way a pull request is malformed
