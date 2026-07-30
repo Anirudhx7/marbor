@@ -91,6 +91,31 @@ func (s *sqliteStore) BackupTo(path string) error {
 	return nil
 }
 
+// ValidateBackupFile opens path as its own independent SQLite connection and
+// runs PRAGMA quick_check, verifying it is a genuine, non-corrupt database
+// before a restore is ever allowed to act on it. This is intentionally a
+// package-level function, not a Store method: it validates an arbitrary
+// candidate FILE (a backup sitting on disk), not the live store the caller
+// already has open. Callers (admin.go's restore handler) must call this
+// before touching the live mesh.db - a bad file has to fail loudly here,
+// before any swap happens, never discovered only after the live database is
+// already gone.
+func ValidateBackupFile(path string) error {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	defer db.Close()
+	var result string
+	if err := db.QueryRow(`PRAGMA quick_check`).Scan(&result); err != nil {
+		return fmt.Errorf("quick_check on %s: %w", path, err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("quick_check on %s reported: %s", path, result)
+	}
+	return nil
+}
+
 func (s *sqliteStore) migrate() error {
 	// Settings table must exist before the version gate can read it, even on
 	// a from-scratch DB. Idempotent - the full CREATE also appears later in

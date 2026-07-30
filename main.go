@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -542,6 +543,16 @@ func main() {
 	adminSrv.StartPeriodicCleanup(ctx)
 	adminSrv.StartBackupScheduler(ctx)
 
+	// One-click restore (P49 follow-up): admin.go validates a restore
+	// request and, if valid, sends the full path of the chosen backup file
+	// down this channel - the actual database swap and process exit only
+	// ever happen here in main(), which already owns graceful shutdown and
+	// knows dbPath. Buffered 1 so a restore request never blocks on the main
+	// select loop; a second concurrent request while one is pending is
+	// rejected by admin.go's non-blocking send (see handleRestoreBackup).
+	restoreCh := make(chan string, 1)
+	adminSrv.SetRestoreChannel(restoreCh)
+
 	proxyHandler := proxy.NewHandler(r, adminSrv, auditLog)
 	proxyHandler.SetAuth(authMw)
 	proxyHandler.SetAllowManagementEndpoints(cfg.Routing.AllowManagementEndpoints)
@@ -610,6 +621,7 @@ func main() {
 	reloadCh := make(chan os.Signal, 1)
 	setupReloadSignal(reloadCh)
 
+	var pendingRestorePath string
 	for {
 		select {
 		case <-reloadCh:
@@ -621,11 +633,16 @@ func main() {
 			log.Printf("reloaded from store (auth keys: %d, nodes: +%d/-%d, cloud providers: %d)",
 				authKeys, added, removed, cloudProviders)
 			continue
+		case pendingRestorePath = <-restoreCh:
 		case <-sig:
 		}
 		break
 	}
-	log.Println("Shutting down gracefully...")
+	if pendingRestorePath != "" {
+		log.Printf("Restore requested: shutting down to swap mesh.db for %s", pendingRestorePath)
+	} else {
+		log.Println("Shutting down gracefully...")
+	}
 
 	// Derived from proxySrv's own WriteTimeout (not a bare literal) so a
 	// SIGINT/SIGTERM during an active long-running stream isn't cut off
@@ -657,5 +674,72 @@ func main() {
 	// Tier 3: flush the full warm-state residency snapshot on graceful shutdown so
 	// the router restores its warm set on the next start.
 	r.FlushWarmState()
+
+	if pendingRestorePath != "" {
+		// os.Exit inside performRestore skips every defer below main() -
+		// st.Close() (deferred near store.Open above) never fires on this
+		// path, so close what still needs closing explicitly before calling it.
+		auditLog.Close()
+		performRestore(dbPath, pendingRestorePath, st)
+		// performRestore always calls os.Exit itself; never returns.
+	}
+
 	log.Println("Shutdown complete")
+}
+
+// performRestore swaps dbPath for the contents of backupPath (already
+// validated by admin.go's handleRestoreBackup before this was ever reached)
+// and exits the process non-zero so the deployment's process supervisor
+// (systemd Restart=on-failure, Docker restart:unless-stopped, Kubernetes'
+// default restartPolicy) brings the mesh back up with the restored database.
+// Always calls os.Exit - a bare-metal run with no supervisor configured will
+// simply stay down until started manually; docs/backup.md documents that
+// caveat explicitly rather than leaving it a silent surprise.
+func performRestore(dbPath, backupPath string, st store.Store) {
+	if err := st.Close(); err != nil {
+		log.Printf("WARNING: error closing store before restore: %v", err)
+	}
+
+	// Stage the full copy in a temp file alongside dbPath first, so a
+	// mid-copy failure never leaves the live mesh.db truncated or corrupt -
+	// the live file is only ever touched by the final atomic rename below,
+	// once the replacement is proven complete.
+	tmpPath := dbPath + ".restoring"
+	src, err := os.Open(backupPath)
+	if err != nil {
+		log.Printf("ERROR: restore aborted - could not open backup file %s: %v", backupPath, err)
+		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		os.Exit(1)
+	}
+	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		src.Close()
+		log.Printf("ERROR: restore aborted - could not create %s: %v", tmpPath, err)
+		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		os.Exit(1)
+	}
+	_, copyErr := io.Copy(dst, src)
+	src.Close()
+	closeErr := dst.Close()
+	if copyErr != nil || closeErr != nil {
+		os.Remove(tmpPath)
+		log.Printf("ERROR: restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
+		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		os.Exit(1)
+	}
+
+	// WAL/SHM sidecars belong to the OLD database contents - remove them so
+	// the restored file isn't reconciled against stale write-ahead data on
+	// next boot.
+	os.Remove(dbPath + "-wal")
+	os.Remove(dbPath + "-shm")
+	if err := os.Rename(tmpPath, dbPath); err != nil {
+		log.Printf("ERROR: restore failed at the final swap: %v", err)
+		log.Printf("ERROR: the validated replacement is staged at %s - move it to %s manually, then restart", tmpPath, dbPath)
+		os.Exit(1)
+	}
+
+	log.Printf("Restore complete: %s -> %s", backupPath, dbPath)
+	log.Println("Exiting so the process supervisor restarts the mesh with the restored database")
+	os.Exit(1)
 }

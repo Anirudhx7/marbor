@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo } from '../types';
 
 const BASE = '/admin';
 
@@ -777,6 +777,41 @@ export async function triggerBackupNow(): Promise<void> {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+// fetchBackupList lists scheduled backup files already sitting in the
+// configured target directory, so the restore picker doesn't require the
+// operator to know the naming scheme or type a path by hand.
+export async function fetchBackupList(): Promise<BackupFileInfo[]> {
+  if (DEMO) {
+    const now = Date.now();
+    return demoDelay([
+      { name: 'mesh-backup-20260730-030000.db', size_bytes: 4_812_288, modified_at: new Date(now - 9 * 60 * 60 * 1000).toISOString() },
+      { name: 'mesh-backup-20260729-030000.db', size_bytes: 4_795_904, modified_at: new Date(now - 33 * 60 * 60 * 1000).toISOString() },
+      { name: 'mesh-backup-20260728-030000.db', size_bytes: 4_780_032, modified_at: new Date(now - 57 * 60 * 60 * 1000).toISOString() },
+    ]);
+  }
+  const res = await apiFetch(`${BASE}/backup/list`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to list backups');
+  const data = await res.json();
+  return data.backups ?? [];
+}
+
+// restoreBackup triggers a one-click restore from an already-existing
+// scheduled backup file: the mesh validates it, swaps mesh.db for it, and
+// exits so the process supervisor (systemd/Docker/Kubernetes) restarts it
+// with the restored database - see docs/backup.md for the supervisor
+// requirement. The connection may drop before a response arrives since the
+// mesh shuts down shortly after responding; callers should treat a network
+// error here as "restore likely proceeding" rather than a hard failure.
+export async function restoreBackup(filename: string): Promise<void> {
+  if (DEMO) throw new Error('Restore is not available in demo mode.');
+  const res = await apiFetch(`${BASE}/backup/restore`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename }),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Restore failed'); }
 }
 
 // normalizePullTag catches the most common way a pull request is malformed

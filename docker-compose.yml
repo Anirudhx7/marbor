@@ -16,6 +16,11 @@ services:
       # every backup intact, and vice versa - one accidental wipe can't take
       # out both the live database and its backups at once.
       - MESH_BACKUP_DIR=/backups
+    # Required for one-click restore (Settings > Backup & Restore): a restore
+    # exits the process on purpose, relying on this restart policy to bring
+    # it back up with the swapped-in database. Also just good practice for
+    # any other unexpected exit.
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s

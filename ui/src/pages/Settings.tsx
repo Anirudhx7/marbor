@@ -5,8 +5,8 @@ import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
 import { defaultSettings, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow } from '../lib/api';
-import type { Settings, CloudProvider, CloudProviderInput } from '../types';
+import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup } from '../lib/api';
+import type { Settings, CloudProvider, CloudProviderInput, BackupFileInfo } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
 import { CustomSelect } from '../components/Select';
@@ -166,6 +166,45 @@ export function SettingsPage() {
     } finally {
       setBackupDownloading(false);
     }
+  };
+
+  // Restore-from-backup picker
+  const [backupList, setBackupList] = useState<BackupFileInfo[]>([]);
+  const [backupListLoading, setBackupListLoading] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<BackupFileInfo | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreInitiated, setRestoreInitiated] = useState(false);
+
+  useEffect(() => {
+    if (currentAppPath() !== '/settings') return;
+    let active = true;
+    setBackupListLoading(true);
+    fetchBackupList()
+      .then(list => { if (active) setBackupList(list); })
+      .catch(() => { if (active) setBackupList([]); })
+      .finally(() => { if (active) setBackupListLoading(false); });
+    return () => { active = false; };
+  }, [demoMode, location.pathname]);
+
+  const handleRestoreConfirm = async () => {
+    if (!restoreTarget) return;
+    setRestoring(true);
+    setRestoreError(null);
+    try {
+      await restoreBackup(restoreTarget.name);
+      setRestoreInitiated(true);
+      setRestoreTarget(null);
+    } catch (err: any) {
+      setRestoreError(err.message || 'Restore failed');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const formatBackupSize = (bytes: number): string => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   useEffect(() => {
@@ -1519,7 +1558,17 @@ export function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">Backup & Restore</h3>
-              <p className="text-xs font-medium text-muted-foreground">Restoring is a manual procedure - see docs/backup.md</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Full docs:{' '}
+                <a
+                  href="https://anirudh.social/ollama-mesh/docs/backup.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  docs/backup.md
+                </a>
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1600,11 +1649,86 @@ export function SettingsPage() {
               )}
             </div>
           </div>
+
+          <div className="mt-5 pt-5 border-t border-border">
+            <p className="text-sm font-medium text-foreground mb-1">Restore from a backup</p>
+            <p className="text-[10px] text-muted-foreground mb-3">
+              Swaps mesh.db for the selected file and restarts the mesh. Requires the deployment to auto-restart
+              on exit (systemd, Docker's <code>restart</code> policy, or Kubernetes) - otherwise start it manually
+              afterward. This cannot be undone.
+            </p>
+            {restoreInitiated && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-3">
+                Restore initiated - the mesh is restarting now. This page will reconnect once it's back up.
+              </p>
+            )}
+            {restoreError && (
+              <p className="text-xs text-red-500 mb-3">{restoreError}</p>
+            )}
+            {backupListLoading ? (
+              <p className="text-xs text-muted-foreground">Loading backups...</p>
+            ) : backupList.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No scheduled backups found yet in the target directory.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {backupList.map((b) => (
+                  <div key={b.name} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
+                    <div className="min-w-0">
+                      <p className="text-sm text-foreground truncate">{b.name}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(b.modified_at).toLocaleString()} - {formatBackupSize(b.size_bytes)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setRestoreTarget(b)}
+                      className="shrink-0 px-3 py-1.5 bg-red-600 hover:bg-red-600/90 text-white text-xs font-medium rounded-lg transition-colors"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
           </div>
         </section>
       </div>
     </div>
+
+    <Modal
+      isOpen={restoreTarget !== null}
+      onClose={() => { if (!restoring) setRestoreTarget(null); }}
+      title="Restore from Backup"
+      maxWidth="sm"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          This will stop the mesh, replace the live database with <span className="font-medium text-foreground">{restoreTarget?.name}</span>,
+          and restart. Everything written since that backup was taken - new nodes, keys, settings, routing history - will be lost.
+        </p>
+        <p className="text-sm text-destructive font-medium">This cannot be undone.</p>
+        {restoreError && (
+          <p className="text-sm text-destructive">{restoreError}</p>
+        )}
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <button
+            onClick={() => setRestoreTarget(null)}
+            disabled={restoring}
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleRestoreConfirm}
+            disabled={restoring}
+            className="px-4 py-2 bg-red-600 hover:bg-red-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+          >
+            {restoring ? 'Restoring...' : 'Restore & Restart'}
+          </button>
+        </div>
+      </div>
+    </Modal>
 
     <Modal
       isOpen={reloadConfirmOpen}
