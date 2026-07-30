@@ -1609,38 +1609,36 @@ export function SettingsPage() {
             </div>
           </div>
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div>
-                <button
-                  onClick={handleBackupNow}
-                  disabled={backupDownloading}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  {backupDownloading ? 'Preparing download...' : 'Download Backup Now'}
-                </button>
-                {backupDownloadError && (
-                  <p className="text-[10px] text-red-500 mt-1.5">{backupDownloadError}</p>
-                )}
-                <p className="text-[10px] text-muted-foreground mt-1.5">
-                  Downloads a consistent point-in-time copy of mesh.db to your browser, taken while the mesh keeps running.
+            <div>
+              <button
+                onClick={handleBackupNow}
+                disabled={backupDownloading}
+                className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                {backupDownloading ? 'Preparing download...' : 'Download Backup Now'}
+              </button>
+              {backupDownloadError && (
+                <p className="text-[10px] text-red-500 mt-1.5">{backupDownloadError}</p>
+              )}
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                Downloads a consistent point-in-time copy of mesh.db to your browser, taken while the mesh keeps running.
+              </p>
+              {settings.backupLastAt && (
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Last scheduled backup: {new Date(settings.backupLastAt).toLocaleString()}
                 </p>
-                {settings.backupLastAt && (
-                  <p className="text-xs text-muted-foreground mt-1.5">
-                    Last scheduled backup: {new Date(settings.backupLastAt).toLocaleString()}
-                  </p>
-                )}
-                {settings.backupLastError && (
-                  <p className="text-xs text-red-500 mt-1.5">Last scheduled backup failed: {settings.backupLastError}</p>
-                )}
+              )}
+              {settings.backupLastError && (
+                <p className="text-xs text-red-500 mt-1.5">Last scheduled backup failed: {settings.backupLastError}</p>
+              )}
+            </div>
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
+              <div>
+                <p className="text-sm font-medium text-foreground">Scheduled Backup</p>
+                <p className="text-xs text-muted-foreground">Automatic VACUUM INTO backups on a recurring interval</p>
               </div>
-              <div className="flex items-center justify-between gap-4 p-3 rounded-lg border border-border bg-secondary/30 sm:w-80 sm:shrink-0">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Scheduled Backup</p>
-                  <p className="text-xs text-muted-foreground">Automatic VACUUM INTO backups on a recurring interval</p>
-                </div>
-                <Toggle on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
-              </div>
+              <Toggle on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
             </div>
             {settings.backupEnabled && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
