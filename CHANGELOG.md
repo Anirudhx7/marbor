@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Re-uploading a backup file you'd already downloaded (or a scheduled backup firing when mesh.db hadn't changed since the last run) silently added a byte-for-byte duplicate to the restore list**, under a new timestamp with no indication it was identical to one already there. Both entry points into the backup pool - `POST /admin/backup/upload` and the scheduled backup job - now hash the file (SHA-256) and check it against every existing backup in the target directory before saving; an upload that matches an existing file reuses that file instead of adding a copy, and Settings shows a clear notice ("This is the same backup as `mesh-backup-<timestamp>.db`, already in the list") instead of silently selecting it. A scheduled run that would produce an identical file is skipped (still recorded as a successful run, so the scheduler doesn't retry every tick) rather than cluttering the list.
+
 ## [0.18.0] - 2026-07-30
 
 ### Changed

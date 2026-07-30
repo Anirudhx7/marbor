@@ -202,6 +202,7 @@ export function SettingsPage() {
 
   const [uploadingBackup, setUploadingBackup] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
 
   const handleBackupFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -209,13 +210,17 @@ export function SettingsPage() {
     if (!file) return;
     setUploadingBackup(true);
     setUploadError(null);
+    setUploadNotice(null);
     const requestId = ++backupListRequestId.current;
     try {
-      const filename = await uploadBackup(file);
+      const { filename, duplicate } = await uploadBackup(file);
       const list = await fetchBackupList();
       if (requestId === backupListRequestId.current) {
         setBackupList(list);
         setSelectedBackupName(list.some(b => b.name === filename) ? filename : (list[0]?.name || ''));
+        if (duplicate) {
+          setUploadNotice(`This is the same backup as ${filename}, already in the list - selected it instead of adding a duplicate.`);
+        }
       }
     } catch (err: any) {
       setUploadError(err.message || 'Upload failed');
@@ -1700,6 +1705,9 @@ export function SettingsPage() {
             )}
             {uploadError && (
               <p className="text-xs text-red-500 mb-3">{uploadError}</p>
+            )}
+            {uploadNotice && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{uploadNotice}</p>
             )}
             {backupListLoading ? (
               <p className="text-xs text-muted-foreground">Loading backups...</p>

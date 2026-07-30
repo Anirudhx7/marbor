@@ -96,6 +96,38 @@ func TestRunScheduledBackup_WritesFileAndRecordsResult(t *testing.T) {
 	}
 }
 
+// TestRunScheduledBackup_SkipsDuplicateOfUnchangedDB verifies a second
+// scheduled run against an unchanged store doesn't add a byte-for-byte
+// duplicate file, while still recording the run as a success (so the
+// scheduler doesn't retry every tick).
+func TestRunScheduledBackup_SkipsDuplicateOfUnchangedDB(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	targetDir := t.TempDir()
+	cfg := config.BackupConfig{TargetDir: targetDir, RetentionCount: 7}
+
+	if err := s.runScheduledBackup(cfg); err != nil {
+		t.Fatalf("first runScheduledBackup: %v", err)
+	}
+	if err := s.runScheduledBackup(cfg); err != nil {
+		t.Fatalf("second runScheduledBackup: %v", err)
+	}
+
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("target dir has %d files after two unchanged runs, want 1: %v", len(entries), entries)
+	}
+
+	s.backupMu.Lock()
+	errStr := s.lastBackupErr
+	s.backupMu.Unlock()
+	if errStr != "" {
+		t.Errorf("lastBackupErr = %q, want empty after skipped-duplicate run", errStr)
+	}
+}
+
 // TestRunScheduledBackup_NoTargetDirRecordsError verifies a missing
 // TargetDir is a visible, honest failure (R1) - never a silent no-op or a
 // fabricated success.
@@ -400,6 +432,56 @@ func TestHandleUploadBackup_ValidFileIsSavedAndListed(t *testing.T) {
 	}
 	if len(entries) != 1 {
 		t.Errorf("target dir has %d entries, want exactly 1 (the saved backup): %v", len(entries), entries)
+	}
+}
+
+// TestHandleUploadBackup_DuplicateReusesExistingFile verifies uploading a
+// file byte-for-byte identical to a backup already in the pool (e.g. an
+// operator re-uploading a file they just downloaded) reuses the existing
+// entry instead of adding a second copy with a different timestamp.
+func TestHandleUploadBackup_DuplicateReusesExistingFile(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	dir := t.TempDir()
+	setBackupTargetDir(s, dir)
+	content := validSQLiteBytes(t)
+
+	first := httptest.NewRecorder()
+	s.handleUploadBackup(first, newUploadRequest(t, "seed.db", content))
+	if first.Code != http.StatusOK {
+		t.Fatalf("first upload status = %d, want 200; body: %s", first.Code, first.Body.String())
+	}
+	var firstResp struct {
+		Filename string `json:"filename"`
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &firstResp); err != nil {
+		t.Fatalf("unmarshal first response: %v", err)
+	}
+
+	second := httptest.NewRecorder()
+	s.handleUploadBackup(second, newUploadRequest(t, "seed.db", content))
+	if second.Code != http.StatusOK {
+		t.Fatalf("second upload status = %d, want 200; body: %s", second.Code, second.Body.String())
+	}
+	var secondResp struct {
+		Filename  string `json:"filename"`
+		Duplicate bool   `json:"duplicate"`
+	}
+	if err := json.Unmarshal(second.Body.Bytes(), &secondResp); err != nil {
+		t.Fatalf("unmarshal second response: %v", err)
+	}
+	if !secondResp.Duplicate {
+		t.Error("second upload of identical content should report duplicate=true")
+	}
+	if secondResp.Filename != firstResp.Filename {
+		t.Errorf("second upload filename = %q, want reused first filename %q", secondResp.Filename, firstResp.Filename)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("target dir has %d entries after duplicate upload, want exactly 1: %v", len(entries), entries)
 	}
 }
 
