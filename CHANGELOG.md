@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-30
+
 ### Changed
 - **Open WebUI integration guide overhauled based on real-world testing against current Open WebUI releases.** OpenAI-compatible connection is now the primary recommendation (Ollama-native's API key field is inconsistent across Open WebUI versions), Docker Compose is now the lead example, and new sections cover Desktop-vs-server, localhost-vs-LAN-IP, Docker networking, and a connectivity check to run before touching the Open WebUI UI at all.
 
