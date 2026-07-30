@@ -836,6 +836,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/backup", s.cors(s.adminAuth(s.handleBackupNow)))
 	reg("GET /admin/backup/list", s.cors(s.adminAuth(s.handleListBackups)))
 	reg("POST /admin/backup/restore", s.cors(s.adminAuth(s.handleRestoreBackup)))
+	reg("POST /admin/backup/upload", s.cors(s.adminAuth(s.handleUploadBackup)))
 
 	reg("GET /admin/requests", s.cors(s.adminAuth(s.handleRequests)))
 	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
@@ -6108,6 +6109,95 @@ func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, backupFilename(time.Now())))
 	http.ServeFile(w, r, tmpPath)
 	s.logSystemChange(r, "manual_backup", "global", "Downloaded an on-demand mesh.db backup")
+}
+
+// maxUploadedBackupSize caps a browser-uploaded backup file to 2 GiB -
+// generous for a mesh.db (typically low tens of MB) while still bounding
+// disk/memory use against an abusive or mistaken upload.
+const maxUploadedBackupSize = 2 << 30 // 2 GiB
+
+// handleUploadBackup lets an operator attach an arbitrary local .db file
+// (the "+" control next to the restore picker in Settings) and adds it to
+// the same pool of restorable backups as scheduled/manual ones. The upload
+// is staged to a temp file inside TargetDir first and validated with the
+// same store.ValidateBackupFile (PRAGMA quick_check) used everywhere else in
+// this feature, so a non-database file is rejected before it ever becomes a
+// restore candidate. The staged file is then renamed to the standard
+// mesh-backup-<timestamp>.db shape (backupFilename) so it passes
+// backupFilenameRE and shows up in handleListBackups like any other backup -
+// no separate "uploaded" code path for handleRestoreBackup to special-case.
+func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	targetDir := s.cfg.Backup.TargetDir
+	s.mu.RUnlock()
+	if targetDir == "" {
+		writeJSONError(w, http.StatusBadRequest, "no backup target directory configured")
+		return
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("create backup target directory: %v", err))
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadedBackupSize)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid upload (file too large or malformed request)")
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "missing file field")
+		return
+	}
+	defer file.Close()
+
+	// Staged inside targetDir (not os.TempDir) so the final rename below is
+	// an atomic same-filesystem move, not a cross-filesystem copy.
+	tmp, err := os.CreateTemp(targetDir, "mesh-backup-upload-*.tmp")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to stage upload")
+		return
+	}
+	tmpPath := tmp.Name()
+	if _, err := io.Copy(tmp, file); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		writeJSONError(w, http.StatusBadRequest, "failed to read upload (too large or connection interrupted)")
+		return
+	}
+	tmp.Close()
+
+	if err := store.ValidateBackupFile(tmpPath); err != nil {
+		os.Remove(tmpPath)
+		writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("not a valid mesh.db backup: %v", err))
+		return
+	}
+
+	// backupFilename is second-resolution; retry on the rare collision with
+	// another upload or a scheduled backup landing in the same second rather
+	// than ever overwriting an existing backup.
+	var finalName, finalPath string
+	saved := false
+	for attempt := 0; attempt < 5; attempt++ {
+		finalName = backupFilename(time.Now())
+		finalPath = filepath.Join(targetDir, finalName)
+		if _, err := os.Stat(finalPath); os.IsNotExist(err) {
+			if err := os.Rename(tmpPath, finalPath); err == nil {
+				saved = true
+			}
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if !saved {
+		os.Remove(tmpPath)
+		writeJSONError(w, http.StatusConflict, "a backup with this timestamp already exists - please retry")
+		return
+	}
+
+	s.logSystemChange(r, "upload_backup", "global", fmt.Sprintf("Uploaded a custom backup file as %s", finalName))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"filename": finalName})
 }
 
 // handleAnalyticsExport serves analytics data as CSV or JSON.

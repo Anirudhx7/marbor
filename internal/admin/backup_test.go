@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,29 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
+
+// newUploadRequest builds a multipart/form-data POST body carrying content
+// under the "file" field, matching what a browser's <input type="file">
+// submission (via FormData, as ui/src/lib/api.ts's uploadBackup sends it)
+// produces.
+func newUploadRequest(t *testing.T, filename string, content []byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("multipart Close: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/backup/upload", &body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
 
 // TestHandleBackupNow_StreamsValidDatabase verifies the manual backup
 // endpoint returns a 200 with a Content-Disposition attachment whose body is
@@ -317,5 +341,124 @@ func TestValidateBackupFile(t *testing.T) {
 	}
 	if err := store.ValidateBackupFile(invalidPath); err == nil {
 		t.Error("ValidateBackupFile(garbage file) = nil, want an error")
+	}
+}
+
+// validSQLiteBytes returns the raw bytes of a genuine SQLite database, so
+// upload tests can exercise handleUploadBackup with content that passes
+// store.ValidateBackupFile, not just a random byte string.
+func validSQLiteBytes(t *testing.T) []byte {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "seed.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	st.Close()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	return data
+}
+
+// TestHandleUploadBackup_ValidFileIsSavedAndListed verifies a genuine
+// SQLite file uploaded through the "+" attach control is saved under the
+// standard mesh-backup-<timestamp>.db name (so it passes backupFilenameRE
+// and shows up in the restore picker like any scheduled/manual backup) and
+// is reported back to the caller.
+func TestHandleUploadBackup_ValidFileIsSavedAndListed(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	dir := t.TempDir()
+	setBackupTargetDir(s, dir)
+
+	req := newUploadRequest(t, "my-old-mesh.db", validSQLiteBytes(t))
+	rec := httptest.NewRecorder()
+	s.handleUploadBackup(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("handleUploadBackup status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Filename string `json:"filename"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !backupFilenameRE.MatchString(resp.Filename) {
+		t.Errorf("uploaded filename %q does not match backupFilenameRE", resp.Filename)
+	}
+	if _, err := os.Stat(filepath.Join(dir, resp.Filename)); err != nil {
+		t.Errorf("uploaded file not found on disk: %v", err)
+	}
+
+	// No leftover .tmp staging file should remain in the target directory.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("target dir has %d entries, want exactly 1 (the saved backup): %v", len(entries), entries)
+	}
+}
+
+// TestHandleUploadBackup_RejectsNonDatabaseFile verifies an uploaded file
+// that isn't a genuine SQLite database is rejected and never saved into
+// TargetDir - the same validation gate every other entry point into the
+// backup pool goes through.
+func TestHandleUploadBackup_RejectsNonDatabaseFile(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	dir := t.TempDir()
+	setBackupTargetDir(s, dir)
+
+	req := newUploadRequest(t, "not-a-db.txt", []byte("hello, this is definitely not a sqlite database"))
+	rec := httptest.NewRecorder()
+	s.handleUploadBackup(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("rejected upload left %d files behind, want 0: %v", len(entries), entries)
+	}
+}
+
+// TestHandleUploadBackup_NoTargetDirRejected verifies an unconfigured backup
+// target directory fails loudly instead of silently discarding the upload.
+func TestHandleUploadBackup_NoTargetDirRejected(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	req := newUploadRequest(t, "seed.db", validSQLiteBytes(t))
+	rec := httptest.NewRecorder()
+	s.handleUploadBackup(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestHandleUploadBackup_MissingFileFieldRejected verifies a malformed
+// request with no "file" part is rejected rather than panicking or saving
+// an empty file.
+func TestHandleUploadBackup_MissingFileFieldRejected(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	setBackupTargetDir(s, t.TempDir())
+
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	_ = w.WriteField("not_file", "irrelevant")
+	if err := w.Close(); err != nil {
+		t.Fatalf("multipart Close: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/backup/upload", &body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	rec := httptest.NewRecorder()
+	s.handleUploadBackup(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }

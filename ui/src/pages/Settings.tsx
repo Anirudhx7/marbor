@@ -5,7 +5,7 @@ import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
 import { defaultSettings, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup } from '../lib/api';
+import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup } from '../lib/api';
 import type { Settings, CloudProvider, CloudProviderInput, BackupFileInfo } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
@@ -193,6 +193,27 @@ export function SettingsPage() {
   }, [demoMode, location.pathname]);
 
   const selectedBackup = backupList.find(b => b.name === selectedBackupName) || null;
+
+  const [uploadingBackup, setUploadingBackup] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleBackupFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    setUploadingBackup(true);
+    setUploadError(null);
+    try {
+      const filename = await uploadBackup(file);
+      const list = await fetchBackupList();
+      setBackupList(list);
+      setSelectedBackupName(list.some(b => b.name === filename) ? filename : (list[0]?.name || ''));
+    } catch (err: any) {
+      setUploadError(err.message || 'Upload failed');
+    } finally {
+      setUploadingBackup(false);
+    }
+  };
 
   const handleRestoreConfirm = async () => {
     if (!restoreTarget) return;
@@ -1672,22 +1693,46 @@ export function SettingsPage() {
             {restoreError && (
               <p className="text-xs text-red-500 mb-3">{restoreError}</p>
             )}
+            {uploadError && (
+              <p className="text-xs text-red-500 mb-3">{uploadError}</p>
+            )}
             {backupListLoading ? (
               <p className="text-xs text-muted-foreground">Loading backups...</p>
-            ) : backupList.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No scheduled backups found yet in the target directory.</p>
             ) : (
               <div>
                 <div className="flex items-center gap-2">
-                  <select
-                    value={selectedBackupName}
-                    onChange={(e) => setSelectedBackupName(e.target.value)}
-                    className="flex-1 min-w-0 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                  {backupList.length === 0 ? (
+                    <p className="flex-1 min-w-0 text-xs text-muted-foreground">
+                      No backups found yet in the target directory.
+                    </p>
+                  ) : (
+                    <select
+                      value={selectedBackupName}
+                      onChange={(e) => setSelectedBackupName(e.target.value)}
+                      className="flex-1 min-w-0 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    >
+                      {backupList.map((b) => (
+                        <option key={b.name} value={b.name}>{b.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <label
+                    title="Attach a .db file from your computer as a backup"
+                    className={`shrink-0 w-9 h-9 flex items-center justify-center bg-secondary/50 border border-border rounded-lg text-foreground transition-colors ${uploadingBackup ? 'opacity-50 cursor-not-allowed' : 'hover:bg-secondary cursor-pointer'}`}
                   >
-                    {backupList.map((b) => (
-                      <option key={b.name} value={b.name}>{b.name}</option>
-                    ))}
-                  </select>
+                    {uploadingBackup ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4" />
+                    )}
+                    <input
+                      type="file"
+                      accept=".db"
+                      className="hidden"
+                      disabled={uploadingBackup}
+                      onChange={handleBackupFileChosen}
+                    />
+                  </label>
                   <button
                     onClick={() => selectedBackup && setRestoreTarget(selectedBackup)}
                     disabled={!selectedBackup}
