@@ -97,15 +97,28 @@ function ModelDetailPanel({
   const fetchDetails = useCallback(async (len: number) => {
     if (demoMode) {
       const mock = mockHFRepoDetails[model.id];
+      const diskFreeGB = mock?.disk_free_gb ?? 500;
+      const diskFit = (sizeMB: number): 'ok' | 'insufficient' | 'unknown' =>
+        sizeMB / 1024 > diskFreeGB ? 'insufficient' : 'ok';
       if (mock) {
         const adjustedVariants = mock.variants.map((v: any) => {
           const estVram = v.size_mb * 1.10 + len * 0.15;
           let fit: 'green' | 'yellow' | 'red' = 'green';
           if (estVram > 24576) fit = 'red';
           else if (estVram > 10240) fit = 'yellow';
-          return { ...v, vram_est_mb: Math.round(estVram), fit };
+          return { ...v, vram_est_mb: Math.round(estVram), fit, disk_fit: diskFit(v.size_mb) };
         });
-        setDetails({ ...mock, variants: adjustedVariants });
+        // disk_free_gb/disk_total_gb/disk_known explicitly set (not just
+        // spread from mock) - most mock entries don't declare them, and the
+        // render below unconditionally calls details.disk_free_gb.toFixed(1)
+        // whenever a variant's disk_fit is 'insufficient'.
+        setDetails({
+          ...mock,
+          variants: adjustedVariants,
+          disk_free_gb: diskFreeGB,
+          disk_total_gb: mock.disk_total_gb ?? 1000,
+          disk_known: mock.disk_known ?? true,
+        });
       } else {
         setDetails({
           id: model.id,
@@ -113,7 +126,10 @@ function ModelDetailPanel({
           likes: model.likes,
           tags: model.tags,
           last_modified: model.lastModified,
-          variants: [{ tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', downloaded: false }],
+          variants: [{ tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', disk_fit: diskFit(3500), downloaded: false }],
+          disk_free_gb: diskFreeGB,
+          disk_total_gb: 1000,
+          disk_known: true,
         });
       }
       return;
@@ -134,6 +150,13 @@ function ModelDetailPanel({
 
   const handlePull = (variant: ModelVariantFit) => {
     if (!nodeName) return;
+    // Disk space is a hard block, no override (unlike VRAM's confirm-anyway
+    // above) - unlike VRAM, free disk isn't a transient snapshot the mesh's
+    // own scheduling causes to fluctuate wrongly; a pull exceeding free disk
+    // WILL fail. The Pull button is already disabled for this case (see
+    // render below); this is a defense-in-depth guard against any stale-prop
+    // race, not the primary gate.
+    if (variant.disk_fit === 'insufficient') return;
     if (variant.fit === 'red') {
       const needGB = (variant.vram_est_mb / 1024).toFixed(1);
       const haveGB = nodeVRAMTotalBytes > 0 ? (nodeVRAMTotalBytes / (1024 * 1024 * 1024)).toFixed(1) : 'unknown';
@@ -275,6 +298,14 @@ function ModelDetailPanel({
                     </div>
                     <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
                       <FitBadge fit={v.fit} />
+                      {v.disk_fit === 'insufficient' && (
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30"
+                          title={`Needs ~${sizeGB} disk, node "${nodeName}" has ${details.disk_free_gb.toFixed(1)} GB free`}
+                        >
+                          No Disk Space
+                        </span>
+                      )}
                       <button
                         onClick={() => setConfigTag(v.tag)}
                         title={`Advanced settings for ${v.tag}`}
@@ -289,9 +320,13 @@ function ModelDetailPanel({
                       ) : (!actualRuntime || actualRuntime === 'ollama') ? (
                         <button
                           onClick={() => handlePull(v)}
-                          disabled={(!demoMode && !isLive) || !nodeName || isPulling}
+                          disabled={(!demoMode && !isLive) || !nodeName || isPulling || v.disk_fit === 'insufficient'}
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:hover:bg-primary text-[11px] font-medium text-primary-foreground rounded transition-colors cursor-pointer"
-                          title={v.fit === 'red' ? 'May exceed this node\'s total VRAM - you will be asked to confirm' : ''}
+                          title={
+                            v.disk_fit === 'insufficient'
+                              ? `Insufficient disk space on node "${nodeName}" - needs ~${sizeGB}, ${details.disk_free_gb.toFixed(1)} GB free. Free up space to pull.`
+                              : v.fit === 'red' ? 'May exceed this node\'s total VRAM - you will be asked to confirm' : ''
+                          }
                         >
                           {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                           Pull

@@ -457,6 +457,7 @@ export interface CatalogModel {
 // A variant decorated with its per-node fit classification.
 export interface CatalogVariantFit extends ModelVariant {
   fit: FitStatus;
+  disk_fit: 'ok' | 'insufficient' | 'unknown';
 }
 
 // A catalog model decorated for a specific node.
@@ -473,6 +474,9 @@ export interface CatalogNodeEntry {
   vram_total_bytes: number;
   vram_used_bytes?: number;
   vram_source: 'nvidia-smi' | 'rocm-smi' | 'xpu-smi' | 'system_profiler' | 'agent' | 'inferred' | 'unknown' | 'declared';
+  disk_free_gb: number;
+  disk_total_gb: number;
+  disk_known: boolean;
   models: CatalogModelFit[];
 }
 

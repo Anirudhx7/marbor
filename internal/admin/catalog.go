@@ -254,7 +254,8 @@ var catalogModels = []CatalogModel{
 // catalogVariantFit is a variant decorated with per-node fit classification.
 type catalogVariantFit struct {
 	ModelVariant
-	Fit string `json:"fit"` // green / yellow / red / unknown
+	Fit     string `json:"fit"`      // green / yellow / red / unknown
+	DiskFit string `json:"disk_fit"` // ok / insufficient / unknown
 }
 
 // catalogModelFit is a catalog model decorated for one node: per-variant fit
@@ -273,7 +274,90 @@ type catalogNodeEntry struct {
 	VRAMTotalBytes int64             `json:"vram_total_bytes"`
 	VRAMUsedBytes  int64             `json:"vram_used_bytes"`
 	VRAMSource     string            `json:"vram_source"`
+	DiskFreeGB     float64           `json:"disk_free_gb"`
+	DiskTotalGB    float64           `json:"disk_total_gb"`
+	DiskKnown      bool              `json:"disk_known"` // false when the agent has never reported disk telemetry (R1 - never fabricate a reading)
 	Models         []catalogModelFit `json:"models"`
+}
+
+// classifyDiskFit reports whether a pull of sizeMB (download size, MiB) would
+// fit in diskFreeGB (decimal GB, from Node.DiskFreeGB) of free disk space.
+// Unlike VRAM fit, disk space is not a transient snapshot the mesh's own
+// scheduling causes to fluctuate wrongly - a pull exceeding free disk WILL
+// fail (partial download, or worst case fills the node's disk and disrupts
+// the OS/other running models), so this is a hard yes/no, not a
+// green/yellow/red gradient. "unknown" (never a fabricated "ok") applies
+// whenever the agent hasn't reported disk telemetry - no agent, an agent
+// build predating disk telemetry, or a non-Linux agent (host_other.go
+// reports no disk stats today, R1) - so the caller must treat "unknown" as
+// "cannot verify" and never silently allow-by-default on it for a
+// hard-block decision.
+//
+// diskTotalGB (not diskFreeGB) is the "do we have real telemetry" signal:
+// both fields come from the same syscall.Statfs read (host_linux.go), so
+// DiskFreeGB legitimately reports 0 for a node that is genuinely completely
+// full - using diskFreeGB<=0 as the unknown-check would misclassify that
+// worst case as "unknown" and silently skip the hard block precisely when
+// it matters most. DiskTotalGB is only 0/absent when the agent has never
+// reported real disk stats at all.
+func classifyDiskFit(sizeMB int64, diskFreeGB, diskTotalGB float64, agentPresent bool) string {
+	if !agentPresent || diskTotalGB <= 0 {
+		return "unknown"
+	}
+	neededBytes := float64(sizeMB) * 1024 * 1024
+	freeBytes := diskFreeGB * 1e9
+	if neededBytes > freeBytes {
+		return "insufficient"
+	}
+	return "ok"
+}
+
+// findCatalogVariantSizeMB looks up the download size (MiB) of a curated
+// catalog variant by its pull tag, using the same tag/base-name matching
+// isDownloaded already uses. Returns ok=false for any tag not in the static
+// catalog (e.g. an HF repo tag, or an Ollama registry model not curated
+// here) - callers must skip the disk check rather than guess a size (R1).
+func findCatalogVariantSizeMB(model string) (int64, bool) {
+	for _, cm := range catalogModels {
+		for _, v := range cm.Variants {
+			if v.Tag == model || v.Tag+":latest" == model {
+				return v.SizeMB, true
+			}
+		}
+		if cm.Name == model || cm.Name+":latest" == model {
+			// Bare catalog name with no explicit variant tag (e.g. "llama3.2:3b"
+			// pulled directly) - use the recommended variant's size, falling
+			// back to the first variant.
+			for _, v := range cm.Variants {
+				if v.Recommended {
+					return v.SizeMB, true
+				}
+			}
+			if len(cm.Variants) > 0 {
+				return cm.Variants[0].SizeMB, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// nodeDiskState looks up a node's agent-reported disk telemetry by name for
+// use by the pull-time hard-block gate (handleNodePull). Returns
+// agentPresent=false for an unknown node name, matching every other
+// agent-derived-field lookup's fail-closed-to-unknown behavior in this file.
+func nodeDiskState(nodes []*router.NodeState, name string) (diskFreeGB, diskTotalGB float64, agentPresent bool) {
+	for _, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		n.RLock()
+		diskFreeGB = n.DiskFreeGB
+		diskTotalGB = n.DiskTotalGB
+		agentPresent = n.AgentPresent
+		n.RUnlock()
+		return
+	}
+	return 0, 0, false
 }
 
 // classifyFit returns the fit color for an estimated VRAM requirement (in bytes)
@@ -319,6 +403,9 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		for _, m := range n.LoadedModels {
 			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
 		}
+		agentPresent := n.AgentPresent
+		diskFreeGB := n.DiskFreeGB
+		diskTotalGB := n.DiskTotalGB
 		n.RUnlock()
 
 		var vramFreeBytes int64
@@ -360,6 +447,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 				variants = append(variants, catalogVariantFit{
 					ModelVariant: v,
 					Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
+					DiskFit:      classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent),
 				})
 			}
 			models = append(models, catalogModelFit{
@@ -376,6 +464,9 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			VRAMTotalBytes: vramTotalBytes,
 			VRAMUsedBytes:  vramUsedMBFromPS * 1024 * 1024,
 			VRAMSource:     vramSource,
+			DiskFreeGB:     diskFreeGB,
+			DiskTotalGB:    diskTotalGB,
+			DiskKnown:      agentPresent && diskTotalGB > 0,
 			Models:         models,
 		})
 	}
@@ -477,7 +568,8 @@ type ModelVariantFit struct {
 	Quantization string `json:"quantization"` // "Q4_K_M"
 	VRAMEstMB    int64  `json:"vram_est_mb"`
 	SizeMB       int64  `json:"size_mb"`
-	Fit          string `json:"fit"` // "green", "yellow", "red", "unknown"
+	Fit          string `json:"fit"`      // "green", "yellow", "red", "unknown"
+	DiskFit      string `json:"disk_fit"` // "ok", "insufficient", "unknown"
 	Downloaded   bool   `json:"downloaded"`
 }
 
@@ -630,6 +722,9 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	vramFreeBytes := int64(0)
 	vramTotalBytes := int64(0)
 	vramSource := "unknown"
+	diskFreeGB := float64(0)
+	diskTotalGB := float64(0)
+	agentPresent := false
 
 	nodes := s.router.Nodes()
 	var targetNode *router.NodeState
@@ -653,6 +748,9 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		for _, m := range targetNode.LoadedModels {
 			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
 		}
+		agentPresent = targetNode.AgentPresent
+		diskFreeGB = targetNode.DiskFreeGB
+		diskTotalGB = targetNode.DiskTotalGB
 		targetNode.RUnlock()
 
 		if vramTotalMB > 0 {
@@ -720,6 +818,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				VRAMEstMB:    vramEstMB,
 				SizeMB:       sizeMB,
 				Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
+				DiskFit:      classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent),
 				Downloaded:   isDl,
 			})
 		}
@@ -745,6 +844,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				VRAMEstMB:    vramEstMB,
 				SizeMB:       sizeMB,
 				Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
+				DiskFit:      classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent),
 				Downloaded:   isDl,
 			})
 		}
@@ -758,6 +858,9 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		"tags":          repo.Tags,
 		"last_modified": repo.LastModified,
 		"variants":      variants,
+		"disk_free_gb":  diskFreeGB,
+		"disk_total_gb": diskTotalGB,
+		"disk_known":    agentPresent && diskTotalGB > 0,
 	})
 }
 

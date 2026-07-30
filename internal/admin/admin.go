@@ -4779,13 +4779,36 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fetched once and reused below (nodeIsHealthy, the disk gate,
+	// nodeHasAgentCapability) rather than re-snapshotting the fleet's node
+	// list under its own RLock on every check in this handler.
+	nodes := s.router.Nodes()
+
 	// A down node's URL may still be answering (e.g. some other service
 	// listening on that port), producing a confusing upstream error that
 	// looks model-specific when the real problem is just node reachability.
 	// Fail fast with an honest reason instead.
-	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
+	if !nodeIsHealthy(nodes, nodeName) {
 		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before pulling", nodeName))
 		return
+	}
+
+	// Hard-block a pull that free disk cannot possibly satisfy - unlike VRAM
+	// fit (soft confirm, see P47), a disk overrun is a guaranteed failure
+	// (partial download, or worst case fills the node's disk and disrupts
+	// the OS/other running models), so there is no confirm-anyway override.
+	// Only covers models resolvable to a known size today (the curated
+	// catalog) - an unresolvable tag (arbitrary Ollama registry name, HF
+	// tag) skips the check entirely rather than guessing a size (R1); this
+	// is a known v1 scope limit, not silent - see P48 in EXECUTION-QUEUE.md.
+	if sizeMB, known := findCatalogVariantSizeMB(body.Model); known {
+		diskFreeGB, diskTotalGB, agentPresent := nodeDiskState(nodes, nodeName)
+		if classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent) == "insufficient" {
+			writeJSONError(w, http.StatusInsufficientStorage, fmt.Sprintf(
+				"insufficient disk space on node %q: %q needs ~%.1f GB, only %.1f GB free",
+				nodeName, body.Model, float64(sizeMB)/1024, diskFreeGB))
+			return
+		}
 	}
 
 	s.sweepOldPullJobs()
