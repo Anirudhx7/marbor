@@ -171,6 +171,7 @@ export function SettingsPage() {
   // Restore-from-backup picker
   const [backupList, setBackupList] = useState<BackupFileInfo[]>([]);
   const [backupListLoading, setBackupListLoading] = useState(false);
+  const [selectedBackupName, setSelectedBackupName] = useState<string>('');
   const [restoreTarget, setRestoreTarget] = useState<BackupFileInfo | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
@@ -181,11 +182,17 @@ export function SettingsPage() {
     let active = true;
     setBackupListLoading(true);
     fetchBackupList()
-      .then(list => { if (active) setBackupList(list); })
+      .then(list => {
+        if (!active) return;
+        setBackupList(list);
+        setSelectedBackupName(prev => (prev && list.some(b => b.name === prev)) ? prev : (list[0]?.name || ''));
+      })
       .catch(() => { if (active) setBackupList([]); })
       .finally(() => { if (active) setBackupListLoading(false); });
     return () => { active = false; };
   }, [demoMode, location.pathname]);
+
+  const selectedBackup = backupList.find(b => b.name === selectedBackupName) || null;
 
   const handleRestoreConfirm = async () => {
     if (!restoreTarget) return;
@@ -1670,23 +1677,30 @@ export function SettingsPage() {
             ) : backupList.length === 0 ? (
               <p className="text-xs text-muted-foreground">No scheduled backups found yet in the target directory.</p>
             ) : (
-              <div className="space-y-1.5">
-                {backupList.map((b) => (
-                  <div key={b.name} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
-                    <div className="min-w-0">
-                      <p className="text-sm text-foreground truncate">{b.name}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {new Date(b.modified_at).toLocaleString()} - {formatBackupSize(b.size_bytes)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setRestoreTarget(b)}
-                      className="shrink-0 px-3 py-1.5 bg-red-600 hover:bg-red-600/90 text-white text-xs font-medium rounded-lg transition-colors"
-                    >
-                      Restore
-                    </button>
-                  </div>
-                ))}
+              <div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedBackupName}
+                    onChange={(e) => setSelectedBackupName(e.target.value)}
+                    className="flex-1 min-w-0 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                  >
+                    {backupList.map((b) => (
+                      <option key={b.name} value={b.name}>{b.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => selectedBackup && setRestoreTarget(selectedBackup)}
+                    disabled={!selectedBackup}
+                    className="shrink-0 px-3 py-2 bg-red-600 hover:bg-red-600/90 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Restore
+                  </button>
+                </div>
+                {selectedBackup && (
+                  <p className="text-[10px] text-muted-foreground mt-1.5">
+                    {new Date(selectedBackup.modified_at).toLocaleString()} - {formatBackupSize(selectedBackup.size_bytes)}
+                  </p>
+                )}
               </div>
             )}
           </div>
