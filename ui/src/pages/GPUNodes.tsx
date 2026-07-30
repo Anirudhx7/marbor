@@ -544,11 +544,12 @@ export function GPUNodes() {
     setAgentBusy(true);
     setAgentError(null);
     if (demoMode) {
-      const token = `demo-${Math.random().toString(36).slice(2, 10)}`;
+      const enrollCode = `demo-${Math.random().toString(36).slice(2, 10)}`;
+      const meshUrl = window.location.origin;
       setAgentStatus({ node: agentNode.name, enabled: true, port });
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent TOKEN=${token} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:TOKEN="${token}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setNodes(prev => prev.map(n => n.name === agentNode.name
         ? {
@@ -585,11 +586,12 @@ export function GPUNodes() {
     setAgentBusy(true);
     setAgentError(null);
     if (demoMode) {
-      const token = `demo-${Math.random().toString(36).slice(2, 10)}`;
+      const enrollCode = `demo-${Math.random().toString(36).slice(2, 10)}`;
+      const meshUrl = window.location.origin;
       const port = agentStatus?.port ?? 11435;
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent TOKEN=${token} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:TOKEN="${token}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setAgentBusy(false);
       return;
