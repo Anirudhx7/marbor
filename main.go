@@ -728,6 +728,20 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 		os.Exit(1)
 	}
 
+	// Re-validate the staged copy itself, not just backupPath earlier in
+	// admin.go: the graceful-shutdown drain above can take up to
+	// proxySrv.WriteTimeout+5s between that validation and this copy, during
+	// which the source file could change underneath it (e.g. a concurrent
+	// scheduled backup/retention prune, or filesystem trouble). This is the
+	// last chance to catch corruption before the swap makes tmpPath the live
+	// database - never fabricate a "restore complete" on unverified bytes.
+	if err := store.ValidateBackupFile(tmpPath); err != nil {
+		os.Remove(tmpPath)
+		log.Printf("ERROR: restore aborted - staged copy failed validation: %v", err)
+		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		os.Exit(1)
+	}
+
 	// WAL/SHM sidecars belong to the OLD database contents - remove them so
 	// the restored file isn't reconciled against stale write-ahead data on
 	// next boot.
