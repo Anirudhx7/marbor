@@ -6144,6 +6144,13 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid upload (file too large or malformed request)")
 		return
 	}
+	// ParseMultipartForm spills any part over the 32MB threshold to its own
+	// temp file under os.TempDir() - a mesh.db upload always does, since it's
+	// well above 32MB. That spill file is separate from tmpPath below (which
+	// this handler stages and cleans up itself) and net/http never removes
+	// it on the success path, so without this it leaks a full-size temp file
+	// on every single upload.
+	defer r.MultipartForm.RemoveAll()
 	file, _, err := r.FormFile("file")
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "missing file field")
@@ -6177,23 +6184,38 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 	// another upload or a scheduled backup landing in the same second rather
 	// than ever overwriting an existing backup.
 	var finalName, finalPath string
+	var renameErr error
 	saved := false
 	for attempt := 0; attempt < 5; attempt++ {
 		finalName = backupFilename(time.Now())
 		finalPath = filepath.Join(targetDir, finalName)
 		if _, err := os.Stat(finalPath); os.IsNotExist(err) {
-			if err := os.Rename(tmpPath, finalPath); err == nil {
-				saved = true
-			}
+			renameErr = os.Rename(tmpPath, finalPath)
+			saved = renameErr == nil
 			break
 		}
 		time.Sleep(time.Second)
 	}
 	if !saved {
 		os.Remove(tmpPath)
+		if renameErr != nil {
+			// A rename failure here (permissions, disk full, cross-device)
+			// is a fundamentally different problem than a name collision -
+			// report the real cause rather than a misleading 409.
+			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save uploaded backup: %v", renameErr))
+			return
+		}
 		writeJSONError(w, http.StatusConflict, "a backup with this timestamp already exists - please retry")
 		return
 	}
+
+	// An uploaded file is added to the same pool scheduled backups prune from
+	// - without this, repeated uploads could fill the disk with no cap even
+	// while scheduled backups (with their own RetentionCount) stay bounded.
+	s.mu.RLock()
+	retentionCount := s.cfg.Backup.RetentionCount
+	s.mu.RUnlock()
+	s.pruneOldBackups(targetDir, retentionCount)
 
 	s.logSystemChange(r, "upload_backup", "global", fmt.Sprintf("Uploaded a custom backup file as %s", finalName))
 	w.Header().Set("Content-Type", "application/json")
