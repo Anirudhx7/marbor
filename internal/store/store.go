@@ -69,6 +69,21 @@ type Store interface {
 	AllNodeAgents() ([]NodeAgentRecord, error)
 	DeleteNodeAgent(name string) error
 
+	// Node ControlDriver config (per-node, how the agent controls the
+	// runtime process - P43, .local/specs/node-agent-capabilities.md
+	// section 5.5). Discovered is freely overwritten by a re-scan;
+	// Configured changes only via UpsertNodeControlConfigured, the operator
+	// Accept action - never as a side effect of a discovery re-run.
+	UpsertNodeControlDiscovered(name, driver, identifier string, evidence []string) error
+	UpsertNodeControlConfigured(name, driver, identifier string) error
+	// ClearNodeControlConfigured un-configures a node (an operator removing
+	// its accepted driver) without discarding the discovered/evidence
+	// columns, unlike DeleteNodeControl which drops the whole row.
+	ClearNodeControlConfigured(name string) error
+	GetNodeControl(name string) (NodeControlRecord, bool, error)
+	AllNodeControl() ([]NodeControlRecord, error)
+	DeleteNodeControl(name string) error
+
 	// Predictive engine transition history (survives restart)
 	AppendPredictiveTransition(fromModel, toModel string, ts time.Time) error
 	PredictiveHistory() ([]PredictiveTransition, error)
@@ -291,6 +306,25 @@ type NodeAgentRecord struct {
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
 	Token   string `json:"token,omitempty"`
+}
+
+// NodeControlRecord is the per-node ControlDriver configuration (P43) - how
+// the Node Agent starts/stops/restarts the inference runtime process on
+// this node. Discovered* is what the most recent probe found (evidence, not
+// a bare confidence label - node-agent-capabilities.md section 5.5);
+// Driver/Identifier/Configured is what an operator has explicitly accepted
+// and the only value lifecycle actions ever read. Configured is false
+// until an operator accepts a value - a node with no ControlDriver
+// configured stays fully usable for every non-lifecycle action.
+type NodeControlRecord struct {
+	Name       string `json:"name"`
+	Driver     string `json:"driver,omitempty"`
+	Identifier string `json:"identifier,omitempty"`
+	Configured bool   `json:"configured"`
+
+	DiscoveredDriver     string   `json:"discovered_driver,omitempty"`
+	DiscoveredIdentifier string   `json:"discovered_identifier,omitempty"`
+	DiscoveredEvidence   []string `json:"discovered_evidence,omitempty"`
 }
 
 // PredictiveTransition is one persisted model-to-model transition, used to
@@ -566,8 +600,16 @@ func (NopStore) UpsertNodeAgent(_ NodeAgentRecord) error                        
 func (NopStore) GetNodeAgent(_ string) (NodeAgentRecord, bool, error) {
 	return NodeAgentRecord{}, false, nil
 }
-func (NopStore) AllNodeAgents() ([]NodeAgentRecord, error)                 { return nil, nil }
-func (NopStore) DeleteNodeAgent(_ string) error                            { return nil }
+func (NopStore) AllNodeAgents() ([]NodeAgentRecord, error)                    { return nil, nil }
+func (NopStore) DeleteNodeAgent(_ string) error                               { return nil }
+func (NopStore) UpsertNodeControlDiscovered(_, _, _ string, _ []string) error { return nil }
+func (NopStore) UpsertNodeControlConfigured(_, _, _ string) error             { return nil }
+func (NopStore) ClearNodeControlConfigured(_ string) error                    { return nil }
+func (NopStore) GetNodeControl(_ string) (NodeControlRecord, bool, error) {
+	return NodeControlRecord{}, false, nil
+}
+func (NopStore) AllNodeControl() ([]NodeControlRecord, error)              { return nil, nil }
+func (NopStore) DeleteNodeControl(_ string) error                          { return nil }
 func (NopStore) AppendPredictiveTransition(_, _ string, _ time.Time) error { return nil }
 func (NopStore) PredictiveHistory() ([]PredictiveTransition, error)        { return nil, nil }
 func (NopStore) UpsertKey(_ KeyRecord) error                               { return nil }

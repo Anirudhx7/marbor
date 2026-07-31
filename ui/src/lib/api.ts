@@ -1187,6 +1187,46 @@ export async function disableNodeAgent(name: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to disable node agent'); }
 }
 
+// ControlDriver (P43) - how the Node Agent starts/stops/restarts the
+// inference runtime process on this node. `discovered` is a suggestion
+// only, refreshed by the agent's own probe on every poll cycle; `driver`/
+// `identifier`/`configured` is the operator-accepted value, which only
+// ever changes via acceptNodeControl - never a side effect of a re-scan.
+export interface NodeControlStatus {
+  node: string;
+  configured: boolean;
+  driver: string;
+  identifier: string;
+  discovered: {
+    driver: string;
+    identifier: string;
+    evidence: string[] | null;
+  };
+}
+
+export async function getNodeControl(name: string): Promise<NodeControlStatus> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/control`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch node control status');
+  return res.json();
+}
+
+export async function acceptNodeControl(name: string, driver: string, identifier: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/control/accept`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ driver, identifier }),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to accept control driver'); }
+}
+
+export async function clearNodeControl(name: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/control`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to clear control driver'); }
+}
+
 // getNodeModels lists models already downloaded on a node (not just
 // currently loaded - node.loadedModels covers that), via the node's Node
 // Agent ("models.list" capability). Callers must check

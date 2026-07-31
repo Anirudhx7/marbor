@@ -958,6 +958,9 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleEnableNodeAgent)))
 	reg("DELETE /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleDisableNodeAgent)))
 	reg("POST /admin/nodes/{name}/agent/regenerate", s.cors(s.adminAuth(s.handleRegenerateNodeAgentToken)))
+	reg("GET /admin/nodes/{name}/control", s.cors(s.adminAuth(s.handleGetNodeControl)))
+	reg("POST /admin/nodes/{name}/control/accept", s.cors(s.adminAuth(s.handleAcceptNodeControl)))
+	reg("DELETE /admin/nodes/{name}/control", s.cors(s.adminAuth(s.handleClearNodeControl)))
 	// Deliberately no s.adminAuth: the caller is the Node Agent process
 	// itself during install (agent service install --enroll=<code>), not an
 	// authenticated admin browser session. Safety rests entirely on the code
@@ -1949,6 +1952,104 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 		"install_command":         unixCmd,
 		"install_command_windows": windowsCmd,
 	})
+}
+
+// validControlDrivers are the only driver names an operator may Accept
+// (P43 v1 set - node-agent-capabilities.md section 5.4). Kept in sync with
+// internal/nodeagent/control's driver Name() constants.
+var validControlDrivers = map[string]bool{
+	"systemd": true, "docker": true, "process": true, "launchd": true, "windows_service": true,
+}
+
+// handleGetNodeControl returns the node's operator-accepted ControlDriver
+// config (from the store) alongside the most recent discovery result (from
+// the router's live agent-poll cache) - discovered is never substituted for
+// the accepted value (node-agent-capabilities.md section 5.6).
+// GET /admin/nodes/{name}/control
+func (s *Server) handleGetNodeControl(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	n := s.router.FindNode(name)
+	if n == nil {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+	rec, _, err := s.st.GetNodeControl(name)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read node control config")
+		return
+	}
+	n.RLock()
+	discDriver, discIdentifier, discEvidence := n.AgentControlDiscoveredDriver, n.AgentControlDiscoveredIdentifier, n.AgentControlDiscoveredEvidence
+	n.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"node":       name,
+		"configured": rec.Configured,
+		"driver":     rec.Driver,
+		"identifier": rec.Identifier,
+		"discovered": map[string]interface{}{
+			"driver":     discDriver,
+			"identifier": discIdentifier,
+			"evidence":   discEvidence,
+		},
+	})
+}
+
+// handleAcceptNodeControl persists an operator's explicit Accept of a
+// control driver + identifier - the only place `configured` ever changes
+// (never as a side effect of a re-scan, section 5.6). driver/identifier are
+// typically copied from the discovered block returned by
+// handleGetNodeControl, but an operator may type a different value (e.g.
+// the Process driver's PID file path is often not auto-discoverable).
+// POST /admin/nodes/{name}/control/accept  body: {"driver","identifier"}
+func (s *Server) handleAcceptNodeControl(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if s.router.FindNode(name) == nil {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+	var body struct {
+		Driver     string `json:"driver"`
+		Identifier string `json:"identifier"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Identifier == "" {
+		writeJSONError(w, http.StatusBadRequest, "driver and identifier are required")
+		return
+	}
+	if !validControlDrivers[body.Driver] {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown control driver %q", body.Driver))
+		return
+	}
+	if err := s.st.UpsertNodeControlConfigured(name, body.Driver, body.Identifier); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist node control config")
+		return
+	}
+	s.router.SetNodeControl(name, router.ControlConfig{Driver: body.Driver, Identifier: body.Identifier, Configured: true})
+	s.logSystemChange(r, "accept_node_control", name, fmt.Sprintf("Driver: %s, Identifier: %s", body.Driver, body.Identifier))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"node": name, "configured": true, "driver": body.Driver, "identifier": body.Identifier,
+	})
+}
+
+// handleClearNodeControl un-configures a node's control driver - lifecycle
+// actions on it return "no control driver configured" again until an
+// operator accepts a new value. Discovered evidence is left intact (only
+// the accepted driver/identifier/configured columns are cleared).
+// DELETE /admin/nodes/{name}/control
+func (s *Server) handleClearNodeControl(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if s.router.FindNode(name) == nil {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+	if err := s.st.ClearNodeControlConfigured(name); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to clear node control config")
+		return
+	}
+	s.router.SetNodeControl(name, router.ControlConfig{Configured: false})
+	s.logSystemChange(r, "clear_node_control", name, "")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // newEnrollmentCode generates a fresh one-time enrollment code for node,

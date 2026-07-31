@@ -45,6 +45,7 @@ type Telemetry struct {
 	Host         *HostTelemetry `json:"host,omitempty"`
 	GPU          *GPUBlock      `json:"gpu,omitempty"`
 	Runtime      *RuntimeInfo   `json:"runtime,omitempty"`
+	Control      *ControlInfo   `json:"control,omitempty"`
 	Health       Health         `json:"health"`
 	// LastUpdated is when this snapshot was actually collected, set by
 	// Scheduler.refresh - NOT the time of the HTTP request that served it,
@@ -167,6 +168,29 @@ type RuntimeInfo struct {
 	// no runtime probe this agent uses exposes one today, so this is never
 	// populated yet (0 -> omitted via omitempty, R1: never fabricated).
 	QueueDepth int `json:"queue_depth,omitempty"`
+}
+
+// ControlInfo is the Node Agent Protocol's "control" resource (P43,
+// node-agent-capabilities.md section 5.7) - descriptive telemetry of the
+// node's configured ControlDriver, additive and sibling to Runtime/Health.
+// An unconfigured node reports Driver="" (omitted), Configured=false,
+// Capabilities=nil (omitted) - never a fabricated driver name (R1).
+// Discovered carries what the agent's most recent probe found, purely
+// informational for the admin API's probe/accept UI - never substituted
+// for Driver/Configured by any lifecycle action (section 5.6).
+type ControlInfo struct {
+	Driver       string            `json:"driver,omitempty"`
+	Configured   bool              `json:"configured"`
+	Capabilities []string          `json:"capabilities,omitempty"`
+	Discovered   *ControlDiscovery `json:"discovered,omitempty"`
+}
+
+// ControlDiscovery is what the agent's most recent ControlDriver probe
+// found - evidence strings, never a bare confidence label (section 5.5).
+type ControlDiscovery struct {
+	Driver     string   `json:"driver,omitempty"`
+	Identifier string   `json:"identifier,omitempty"`
+	Evidence   []string `json:"evidence,omitempty"`
 }
 
 // Health is the Node Agent Protocol's "health" resource - deliberately
