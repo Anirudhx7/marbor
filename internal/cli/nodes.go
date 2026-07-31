@@ -17,12 +17,8 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 		return reportError(err, stderr)
 	}
 
-	if flags.jsonOutput {
-		if err := writeJSON(stdout, nodes); err != nil {
-			fmt.Fprintln(stderr, err)
-			return ExitServerError
-		}
-		return ExitOK
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, nodes); handled {
+		return code
 	}
 
 	tw := newTabWriter(stdout)

@@ -31,6 +31,17 @@ func TestRun_Help(t *testing.T) {
 	}
 }
 
+func TestRun_UnknownFlag_WritesToInjectedStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "--bogusflag"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d, got %d", ExitUserError, code)
+	}
+	if stderr.Len() == 0 {
+		t.Fatal("expected the flag-parse error to be written to the injected stderr writer, got an empty buffer")
+	}
+}
+
 func TestRun_Version_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -64,6 +75,29 @@ func TestRun_Version_ServerUnreachable(t *testing.T) {
 	}
 	if out.ServerReachable {
 		t.Fatalf("expected server_reachable=false, got %+v", out)
+	}
+}
+
+func TestRun_Version_JSON_AlwaysHasServerVersionKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// A reachable server with no version stamped (e.g. a local dev build
+		// with no -X ldflag) reports version:"".
+		w.Write([]byte(`{"status":"ok","version":"","nodes":{"total":0,"healthy":0}}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"version", "--server", srv.URL, "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+		t.Fatalf("could not parse JSON output: %v", err)
+	}
+	if _, ok := raw["server_version"]; !ok {
+		t.Fatalf("expected server_version key to always be present in the --json contract, got %v", raw)
 	}
 }
 
@@ -212,5 +246,8 @@ func TestRun_Models_Table(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "llama3") {
 		t.Fatalf("expected table output to contain model name, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "HEALTHY NODES") {
+		t.Fatalf("expected the column header to say HEALTHY (not TOTAL) since the server field is a healthy-node count, got %q", stdout.String())
 	}
 }

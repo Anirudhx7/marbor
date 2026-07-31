@@ -18,8 +18,9 @@ type globalFlags struct {
 	password   string
 }
 
-func newFlagSet(name string) (*flag.FlagSet, *globalFlags) {
+func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(stderr)
 	g := &globalFlags{}
 	fs.StringVar(&g.server, "server", envOr("MESH_SERVER", "http://localhost:8080"), "Admin API base URL")
 	fs.BoolVar(&g.jsonOutput, "json", false, "output machine-readable JSON instead of a human table")
@@ -102,25 +103,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, usage)
 		return ExitOK
 	case "version":
-		fs, flags := newFlagSet("version")
+		fs, flags := newFlagSet("version", stderr)
 		if err := fs.Parse(rest); err != nil {
 			return ExitUserError
 		}
 		return runVersion(flags, stdout, stderr)
 	case "status":
-		fs, flags := newFlagSet("status")
+		fs, flags := newFlagSet("status", stderr)
 		if err := fs.Parse(rest); err != nil {
 			return ExitUserError
 		}
 		return runStatus(flags, stdout, stderr)
 	case "nodes":
-		fs, flags := newFlagSet("nodes")
+		fs, flags := newFlagSet("nodes", stderr)
 		if err := fs.Parse(rest); err != nil {
 			return ExitUserError
 		}
 		return runNodes(flags, stdout, stderr)
 	case "models":
-		fs, flags := newFlagSet("models")
+		fs, flags := newFlagSet("models", stderr)
 		if err := fs.Parse(rest); err != nil {
 			return ExitUserError
 		}

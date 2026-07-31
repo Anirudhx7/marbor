@@ -14,12 +14,8 @@ func runStatus(flags *globalFlags, stdout, stderr io.Writer) int {
 		return reportError(err, stderr)
 	}
 
-	if flags.jsonOutput {
-		if err := writeJSON(stdout, health); err != nil {
-			fmt.Fprintln(stderr, err)
-			return ExitServerError
-		}
-		return ExitOK
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, health); handled {
+		return code
 	}
 
 	uptime := time.Duration(health.UptimeSeconds) * time.Second
