@@ -1770,7 +1770,7 @@ export function GPUNodes() {
             </div>
           )}
 
-          {controlStatus && (
+          {(controlStatus || controlError) && (
             <div className="p-4 bg-secondary/40 border border-border rounded-xl space-y-3">
               <p className="text-sm font-semibold text-foreground">Runtime Control</p>
               <p className="text-xs text-muted-foreground">
@@ -1778,7 +1778,7 @@ export function GPUNodes() {
               </p>
               {controlError && <p className="text-sm text-destructive">{controlError}</p>}
 
-              {controlStatus.configured ? (
+              {controlStatus && (controlStatus.configured ? (
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm text-foreground">
                     Configured: <span className="font-mono">{controlStatus.driver}</span> / <span className="font-mono">{controlStatus.identifier}</span>
@@ -1811,7 +1811,7 @@ export function GPUNodes() {
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No control method auto-discovered on this node yet.</p>
-              )}
+              ))}
 
               <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-border">
                 <div>
@@ -1820,7 +1820,7 @@ export function GPUNodes() {
                     value={controlManualDriver}
                     onChange={setControlManualDriver}
                     size="sm"
-                    className="w-32"
+                    className="w-40"
                     options={[
                       { value: 'systemd', label: 'systemd' },
                       { value: 'docker', label: 'docker' },
