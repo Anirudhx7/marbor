@@ -1197,6 +1197,7 @@ export interface NodeControlStatus {
   configured: boolean;
   driver: string;
   identifier: string;
+  start_command?: string;
   discovered: {
     driver: string;
     identifier: string;
@@ -1210,11 +1211,11 @@ export async function getNodeControl(name: string): Promise<NodeControlStatus> {
   return res.json();
 }
 
-export async function acceptNodeControl(name: string, driver: string, identifier: string): Promise<void> {
+export async function acceptNodeControl(name: string, driver: string, identifier: string, startCommand?: string): Promise<void> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/control/accept`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ driver, identifier }),
+    body: JSON.stringify({ driver, identifier, ...(startCommand ? { start_command: startCommand } : {}) }),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to accept control driver'); }
 }
@@ -1225,6 +1226,35 @@ export async function clearNodeControl(name: string): Promise<void> {
     headers: authHeaders(),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to clear control driver'); }
+}
+
+// startNodeRuntime/stopNodeRuntime/restartNodeRuntime dispatch P43 Step 3's
+// runtime.start/runtime.stop/runtime.restart capability - only meaningful
+// once a control driver is configured (controlStatus.configured); the
+// Admin API returns "Runtime control unavailable: no control driver
+// configured" (422) otherwise, surfaced here as a thrown error.
+export async function startNodeRuntime(name: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/start`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to start runtime'); }
+}
+
+export async function stopNodeRuntime(name: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/stop`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to stop runtime'); }
+}
+
+export async function restartNodeRuntime(name: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to restart runtime'); }
 }
 
 // getNodeModels lists models already downloaded on a node (not just

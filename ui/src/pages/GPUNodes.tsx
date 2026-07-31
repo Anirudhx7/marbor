@@ -10,7 +10,7 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime } from '../lib/api';
 import type { NodeAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
@@ -512,6 +512,12 @@ export function GPUNodes() {
   const [controlError, setControlError] = useState<string | null>(null);
   const [controlManualDriver, setControlManualDriver] = useState('process');
   const [controlManualIdentifier, setControlManualIdentifier] = useState('');
+  const [controlManualStartCommand, setControlManualStartCommand] = useState('');
+  // --- Runtime lifecycle actions (P43 Step 3) - only enabled once a
+  // control driver is configured; demo mode shows the buttons but never
+  // hits a real endpoint (matches the existing demo-banner discipline).
+  const [runtimeActionBusy, setRuntimeActionBusy] = useState<'start' | 'stop' | 'restart' | null>(null);
+  const [runtimeActionError, setRuntimeActionError] = useState<string | null>(null);
 
   const openAgentModal = async (node: GPUNode) => {
     setAgentNode(node);
@@ -524,6 +530,9 @@ export function GPUNodes() {
     setControlError(null);
     setControlManualDriver('process');
     setControlManualIdentifier('');
+    setControlManualStartCommand('');
+    setRuntimeActionBusy(null);
+    setRuntimeActionError(null);
     if (demoMode) {
       setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
       setAgentPort('11435');
@@ -576,18 +585,42 @@ export function GPUNodes() {
     if (!agentNode || !controlManualIdentifier.trim()) return;
     setControlBusy(true);
     setControlError(null);
+    const startCommand = controlManualDriver === 'process' ? controlManualStartCommand.trim() : '';
     if (demoMode) {
-      setControlStatus(s => s && { ...s, configured: true, driver: controlManualDriver, identifier: controlManualIdentifier.trim() });
+      setControlStatus(s => s && { ...s, configured: true, driver: controlManualDriver, identifier: controlManualIdentifier.trim(), start_command: startCommand });
       setControlBusy(false);
       return;
     }
     try {
-      await acceptNodeControl(agentNode.name, controlManualDriver, controlManualIdentifier.trim());
+      await acceptNodeControl(agentNode.name, controlManualDriver, controlManualIdentifier.trim(), startCommand || undefined);
       setControlStatus(await getNodeControl(agentNode.name));
     } catch (e: any) {
       setControlError(e?.message || 'Failed to accept control driver');
     } finally {
       setControlBusy(false);
+    }
+  };
+
+  // runRuntimeAction dispatches P43 Step 3's start/stop/restart to the
+  // node's agent via the Admin API - only ever called when controlStatus
+  // .configured is true (the buttons are disabled otherwise); demo mode is
+  // a no-op so a demo click never hits a real endpoint.
+  const runRuntimeAction = async (action: 'start' | 'stop' | 'restart') => {
+    if (!agentNode || !controlStatus?.configured) return;
+    setRuntimeActionBusy(action);
+    setRuntimeActionError(null);
+    if (demoMode) {
+      setTimeout(() => setRuntimeActionBusy(null), 400);
+      return;
+    }
+    try {
+      if (action === 'start') await startNodeRuntime(agentNode.name);
+      else if (action === 'stop') await stopNodeRuntime(agentNode.name);
+      else await restartNodeRuntime(agentNode.name);
+    } catch (e: any) {
+      setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
+    } finally {
+      setRuntimeActionBusy(null);
     }
   };
 
@@ -619,6 +652,8 @@ export function GPUNodes() {
     setHealthCheckResult(null);
     setControlStatus(null);
     setControlError(null);
+    setRuntimeActionBusy(null);
+    setRuntimeActionError(null);
   };
 
   const handleEnableAgent = async () => {
@@ -1780,17 +1815,46 @@ export function GPUNodes() {
               {controlError && <p className="text-sm text-destructive">{controlError}</p>}
 
               {controlStatus && (controlStatus.configured ? (
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-foreground">
-                    Configured: <span className="font-mono">{controlStatus.driver}</span> / <span className="font-mono">{controlStatus.identifier}</span>
-                  </p>
-                  <button
-                    onClick={clearControl}
-                    disabled={controlBusy}
-                    className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors shadow-sm"
-                  >
-                    {controlBusy ? 'Working...' : 'Clear'}
-                  </button>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-foreground">
+                      Configured: <span className="font-mono">{controlStatus.driver}</span> / <span className="font-mono">{controlStatus.identifier}</span>
+                    </p>
+                    <button
+                      onClick={clearControl}
+                      disabled={controlBusy}
+                      className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors shadow-sm"
+                    >
+                      {controlBusy ? 'Working...' : 'Clear'}
+                    </button>
+                  </div>
+                  {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      onClick={() => runRuntimeAction('start')}
+                      disabled={runtimeActionBusy !== null}
+                      title={demoMode ? 'No-op in demo mode' : undefined}
+                      className="px-3 py-1.5 bg-success/20 hover:bg-success/30 disabled:opacity-50 disabled:cursor-not-allowed text-success font-medium rounded-lg text-xs transition-colors"
+                    >
+                      {runtimeActionBusy === 'start' ? 'Starting...' : 'Start'}
+                    </button>
+                    <button
+                      onClick={() => runRuntimeAction('stop')}
+                      disabled={runtimeActionBusy !== null}
+                      title={demoMode ? 'No-op in demo mode' : undefined}
+                      className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors"
+                    >
+                      {runtimeActionBusy === 'stop' ? 'Stopping...' : 'Stop'}
+                    </button>
+                    <button
+                      onClick={() => runRuntimeAction('restart')}
+                      disabled={runtimeActionBusy !== null}
+                      title={demoMode ? 'No-op in demo mode' : undefined}
+                      className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
+                    >
+                      {runtimeActionBusy === 'restart' ? 'Restarting...' : 'Restart'}
+                    </button>
+                  </div>
                 </div>
               ) : controlStatus.discovered.driver ? (
                 <div className="space-y-2">
@@ -1841,6 +1905,18 @@ export function GPUNodes() {
                     className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground"
                   />
                 </div>
+                {controlManualDriver === 'process' && (
+                  <div className="flex-1 min-w-[14rem]">
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Start command</label>
+                    <input
+                      type="text"
+                      value={controlManualStartCommand}
+                      onChange={(e) => setControlManualStartCommand(e.target.value)}
+                      placeholder="e.g. /usr/local/bin/ollama serve"
+                      className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground"
+                    />
+                  </div>
+                )}
                 <button
                   onClick={acceptManualControl}
                   disabled={controlBusy || !controlManualIdentifier.trim()}

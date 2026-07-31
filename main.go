@@ -407,7 +407,7 @@ func main() {
 	if controls, err := st.AllNodeControl(); err == nil {
 		for _, c := range controls {
 			if c.Configured {
-				r.SetNodeControl(c.Name, router.ControlConfig{Driver: c.Driver, Identifier: c.Identifier, Configured: true})
+				r.SetNodeControl(c.Name, router.ControlConfig{Driver: c.Driver, Identifier: c.Identifier, Configured: true, StartCommand: c.StartCommand})
 			}
 		}
 	} else {

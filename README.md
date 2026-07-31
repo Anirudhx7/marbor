@@ -430,21 +430,29 @@ mesh-cli version                          # CLI version, plus server version if 
 mesh-cli status                           # health/uptime/node-count summary (GET /health)
 mesh-cli nodes --username admin --password admin   # node list (requires auth)
 mesh-cli models --token <session-token>            # model list across the fleet (requires auth)
+
+mesh-cli node control probe gpu-03 --token <session-token>     # what control driver was auto-discovered
+mesh-cli node control accept gpu-03 --driver systemd --identifier ollama.service --token <session-token>
+mesh-cli runtime restart gpu-03 --token <session-token>        # requires an accepted control driver first
 ```
 
 Every command supports `--json` from day one - this is the actual compatibility contract for
 scripts/CI/Ansible, not the human table output, which may change shape between releases. `--server`
 (default `http://localhost:8080`, env `MESH_SERVER`) points at a different Admin API instance.
 
-`nodes` and `models` require a session: either an existing token (`--token`, env `MESH_TOKEN`), or
-`--username`/`--password` (env `MESH_USERNAME`/`MESH_PASSWORD`), which the CLI exchanges for a
-session token via `POST /admin/v1/login` for that invocation. `status` and `version` never need
-auth (`GET /health` is unauthenticated).
+`nodes`, `models`, `node control probe|accept`, and `runtime start|stop|restart` require a session:
+either an existing token (`--token`, env `MESH_TOKEN`), or `--username`/`--password` (env
+`MESH_USERNAME`/`MESH_PASSWORD`), which the CLI exchanges for a session token via
+`POST /admin/v1/login` for that invocation. `status` and `version` never need auth (`GET /health`
+is unauthenticated).
 
-Exit codes: `0` success, `1` user/input error (bad flag, missing credentials), `2` server/Admin API
-error (unreachable, 5xx), `4` authentication/authorization failure (401/403).
+Exit codes: `0` success, `1` user/input error (bad flag, missing credentials, no control driver
+accepted yet), `2` server/Admin API error (unreachable, 5xx, agent dispatch failure), `4`
+authentication/authorization failure (401/403).
 
-This is a read-only foundation - no `restart`/`stop`/`start`/`delete`/`drain` commands yet.
+`runtime start|stop|restart <node>` only works once a control driver has been accepted for that
+node (via `node control accept`, or the GPU Nodes page's "Runtime Control" panel) - the mesh never
+guesses which service manager controls a node's runtime process.
 
 ---
 

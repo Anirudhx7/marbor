@@ -961,6 +961,9 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/nodes/{name}/control", s.cors(s.adminAuth(s.handleGetNodeControl)))
 	reg("POST /admin/nodes/{name}/control/accept", s.cors(s.adminAuth(s.handleAcceptNodeControl)))
 	reg("DELETE /admin/nodes/{name}/control", s.cors(s.adminAuth(s.handleClearNodeControl)))
+	reg("POST /admin/nodes/{name}/runtime/start", s.cors(s.adminAuth(s.handleNodeRuntimeStart)))
+	reg("POST /admin/nodes/{name}/runtime/stop", s.cors(s.adminAuth(s.handleNodeRuntimeStop)))
+	reg("POST /admin/nodes/{name}/runtime/restart", s.cors(s.adminAuth(s.handleNodeRuntimeRestart)))
 	// Deliberately no s.adminAuth: the caller is the Node Agent process
 	// itself during install (agent service install --enroll=<code>), not an
 	// authenticated admin browser session. Safety rests entirely on the code
@@ -1983,10 +1986,11 @@ func (s *Server) handleGetNodeControl(w http.ResponseWriter, r *http.Request) {
 	n.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"node":       name,
-		"configured": rec.Configured,
-		"driver":     rec.Driver,
-		"identifier": rec.Identifier,
+		"node":          name,
+		"configured":    rec.Configured,
+		"driver":        rec.Driver,
+		"identifier":    rec.Identifier,
+		"start_command": rec.StartCommand,
 		"discovered": map[string]interface{}{
 			"driver":     discDriver,
 			"identifier": discIdentifier,
@@ -2011,6 +2015,11 @@ func (s *Server) handleAcceptNodeControl(w http.ResponseWriter, r *http.Request)
 	var body struct {
 		Driver     string `json:"driver"`
 		Identifier string `json:"identifier"`
+		// StartCommand is only meaningful for the Process driver's Start
+		// action (Step 3) - a bare PID-file convention alone gives no way to
+		// know how to launch the process fresh. Ignored for every other
+		// driver.
+		StartCommand string `json:"start_command,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Identifier == "" {
 		writeJSONError(w, http.StatusBadRequest, "driver and identifier are required")
@@ -2020,15 +2029,15 @@ func (s *Server) handleAcceptNodeControl(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown control driver %q", body.Driver))
 		return
 	}
-	if err := s.st.UpsertNodeControlConfigured(name, body.Driver, body.Identifier); err != nil {
+	if err := s.st.UpsertNodeControlConfigured(name, body.Driver, body.Identifier, body.StartCommand); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node control config")
 		return
 	}
-	s.router.SetNodeControl(name, router.ControlConfig{Driver: body.Driver, Identifier: body.Identifier, Configured: true})
+	s.router.SetNodeControl(name, router.ControlConfig{Driver: body.Driver, Identifier: body.Identifier, Configured: true, StartCommand: body.StartCommand})
 	s.logSystemChange(r, "accept_node_control", name, fmt.Sprintf("Driver: %s, Identifier: %s", body.Driver, body.Identifier))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"node": name, "configured": true, "driver": body.Driver, "identifier": body.Identifier,
+		"node": name, "configured": true, "driver": body.Driver, "identifier": body.Identifier, "start_command": body.StartCommand,
 	})
 }
 
@@ -2050,6 +2059,134 @@ func (s *Server) handleClearNodeControl(w http.ResponseWriter, r *http.Request) 
 	s.router.SetNodeControl(name, router.ControlConfig{Configured: false})
 	s.logSystemChange(r, "clear_node_control", name, "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// nodeRuntimeActionTimeout bounds how long the admin API waits for a node
+// agent's runtime start/stop/restart response - generous compared to a
+// health check but not as long as a model pull, since a service-manager
+// verb (systemctl/docker/launchctl/sc) normally returns quickly even when
+// the underlying process takes longer to actually finish starting.
+var nodeRuntimeActionTimeout = 30 * time.Second
+
+// handleNodeRuntimeStart/Stop/Restart are the Admin API's dispatch points
+// for P43 Step 3's runtime.start/runtime.stop/runtime.restart capabilities -
+// POST /admin/nodes/{name}/runtime/{start,stop,restart}. Each follows the
+// same template as handleNodeDeleteModel/handleNodeHealthCheck: health
+// check -> capability check -> read the operator-accepted ControlDriver
+// config from the router (never re-discovered - section 5.6) -> dispatch to
+// the agent -> audit log on success.
+func (s *Server) handleNodeRuntimeStart(w http.ResponseWriter, r *http.Request) {
+	s.handleNodeRuntimeAction(w, r, "start")
+}
+
+func (s *Server) handleNodeRuntimeStop(w http.ResponseWriter, r *http.Request) {
+	s.handleNodeRuntimeAction(w, r, "stop")
+}
+
+func (s *Server) handleNodeRuntimeRestart(w http.ResponseWriter, r *http.Request) {
+	s.handleNodeRuntimeAction(w, r, "restart")
+}
+
+func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request, action string) {
+	nodeName := r.PathValue("name")
+
+	urls := s.router.NodeURLs()
+	nodeURL, ok := urls[nodeName]
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+		return
+	}
+
+	// Same fail-fast reasoning as handleNodePull/handleNodeDeleteModel: a
+	// down node's URL may still answer with something (another service on
+	// that port), producing a confusing agent-dispatch error that looks
+	// capability-specific when the real problem is just reachability.
+	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before running runtime %s", nodeName, action))
+		return
+	}
+
+	capability := "runtime." + action
+	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, capability) {
+		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for runtime %s", nodeName, action))
+		return
+	}
+
+	// The mesh constructs {driver, identifier} from its own store-backed
+	// cache at dispatch time and hands it to the agent fresh on every
+	// request - the agent never persists control config itself (P43 Step 3
+	// design decision). A node with no operator-accepted driver returns the
+	// exact error node-agent-capabilities.md section 5.6 mandates, never a
+	// guess.
+	ctrl, configured := s.router.NodeControlSetting(nodeName)
+	if !configured {
+		writeJSONError(w, http.StatusUnprocessableEntity, "Runtime control unavailable: no control driver configured")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), nodeRuntimeActionTimeout)
+	defer cancel()
+	if err := s.runtimeActionViaAgent(ctx, nodeURL, agentCfg, action, ctrl); err != nil {
+		writeJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	s.logSystemChange(r, "runtime_"+action, nodeName, fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier))
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+// runtimeActionViaAgent dispatches action ("start"/"stop"/"restart") to
+// nodeURL's Node Agent (POST /v1/runtime/{action}, capability
+// "runtime.{action}"). start_command is only included for the Process
+// driver's Start action (Step 2 never persisted a StartCommand for any
+// other driver - it stays empty and is simply omitted).
+func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, action string, ctrl router.ControlConfig) error {
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/"+action)
+	if err != nil {
+		return err
+	}
+
+	reqBody := map[string]interface{}{"driver": ctrl.Driver, "identifier": ctrl.Identifier}
+	if action == "start" && ctrl.Driver == "process" && ctrl.StartCommand != "" {
+		reqBody["start_command"] = ctrl.StartCommand
+	}
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodeRuntimeActionTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("agent runtime %s failed: %w", action, err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return fmt.Errorf("agent runtime %s: could not decode response (status %d)", action, resp.StatusCode)
+	}
+	if !out.OK {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return errors.New(msg)
+	}
+	return nil
 }
 
 // newEnrollmentCode generates a fresh one-time enrollment code for node,

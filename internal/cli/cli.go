@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // globalFlags holds the flags every subcommand accepts, per
@@ -28,6 +29,35 @@ func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 	fs.StringVar(&g.username, "username", os.Getenv("MESH_USERNAME"), "admin username, used to log in if --token is not set")
 	fs.StringVar(&g.password, "password", os.Getenv("MESH_PASSWORD"), "admin password, used to log in if --token is not set")
 	return fs, g
+}
+
+// splitFlagsAndArgs separates args into flag tokens and positional
+// arguments, tolerating either order (e.g. both "restart gpu-0 --token x"
+// and "restart --token x gpu-0" work) - Go's flag.FlagSet only supports
+// "flags then positional args" natively (it stops parsing at the first
+// non-flag token), which is too strict for "mesh runtime restart <node>
+// [flags]" where a human naturally types the node name first. boolFlagNames
+// lists flags (without leading dashes) that never consume a following
+// value token, e.g. "json" - every flag not in the set is treated as
+// taking a value (either "--name=value" or "--name value").
+func splitFlagsAndArgs(args []string, boolFlagNames map[string]bool) (flagArgs, positional []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
+			positional = append(positional, a)
+			continue
+		}
+		flagArgs = append(flagArgs, a)
+		name := strings.TrimLeft(a, "-")
+		if strings.Contains(name, "=") || boolFlagNames[name] {
+			continue
+		}
+		if i+1 < len(args) {
+			flagArgs = append(flagArgs, args[i+1])
+			i++
+		}
+	}
+	return flagArgs, positional
 }
 
 func envOr(key, def string) string {
@@ -71,10 +101,14 @@ Usage:
   mesh <command> [flags]
 
 Commands:
-  version   print CLI and (if reachable) server version
-  status    print mesh health/status summary
-  nodes     list nodes known to the mesh
-  models    list models known across the fleet
+  version                          print CLI and (if reachable) server version
+  status                           print mesh health/status summary
+  nodes                            list nodes known to the mesh
+  models                           list models known across the fleet
+  runtime start|stop|restart <node>          start/stop/restart a node's inference runtime process
+  node control probe <node>                  show a node's control-driver status (configured + discovered)
+  node control accept <node> --driver X --identifier Y [--start-command Z]
+                                              accept a control driver + identifier for a node
 
 Global flags:
   --server string      Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
@@ -83,8 +117,12 @@ Global flags:
   --username string     admin username, used to log in if --token is unset (env MESH_USERNAME)
   --password string      admin password, used to log in if --token is unset (env MESH_PASSWORD)
 
-"nodes" and "models" require credentials (--token, or --username/--password).
-"version" and "status" do not.
+"nodes", "models", "runtime", and "node control" require credentials
+(--token, or --username/--password). "version" and "status" do not.
+
+"runtime start|stop|restart" requires the target node to have an
+operator-accepted control driver (see "node control accept") - a node with
+none configured returns an error rather than guessing one.
 `
 
 // Run parses args and dispatches to the requested subcommand, returning the
@@ -126,6 +164,69 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return ExitUserError
 		}
 		return runModels(flags, stdout, stderr)
+	case "runtime":
+		if len(rest) < 1 {
+			fmt.Fprintln(stderr, "usage: mesh runtime <start|stop|restart> <node>")
+			return ExitUserError
+		}
+		action := rest[0]
+		if action != "start" && action != "stop" && action != "restart" {
+			fmt.Fprintf(stderr, "unknown runtime action %q (want start, stop, or restart)\n\n", action)
+			return ExitUserError
+		}
+		fs, flags := newFlagSet("runtime "+action, stderr)
+		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+		if err := fs.Parse(flagArgs); err != nil {
+			return ExitUserError
+		}
+		if len(positional) != 1 {
+			fmt.Fprintf(stderr, "usage: mesh runtime %s <node> [flags]\n", action)
+			return ExitUserError
+		}
+		return runRuntimeAction(flags, action, positional[0], stdout, stderr)
+	case "node":
+		if len(rest) < 1 || rest[0] != "control" {
+			fmt.Fprintln(stderr, "usage: mesh node control <probe|accept> <node> [flags]")
+			return ExitUserError
+		}
+		if len(rest) < 2 {
+			fmt.Fprintln(stderr, "usage: mesh node control <probe|accept> <node> [flags]")
+			return ExitUserError
+		}
+		switch rest[1] {
+		case "probe":
+			fs, flags := newFlagSet("node control probe", stderr)
+			flagArgs, positional := splitFlagsAndArgs(rest[2:], map[string]bool{"json": true})
+			if err := fs.Parse(flagArgs); err != nil {
+				return ExitUserError
+			}
+			if len(positional) != 1 {
+				fmt.Fprintln(stderr, "usage: mesh node control probe <node> [flags]")
+				return ExitUserError
+			}
+			return runNodeControlProbe(flags, positional[0], stdout, stderr)
+		case "accept":
+			fs, flags := newFlagSet("node control accept", stderr)
+			driver := fs.String("driver", "", "control driver: systemd, docker, process, launchd, or windows_service")
+			identifier := fs.String("identifier", "", "driver-specific identifier (unit name, container name, PID file path, plist label, service name)")
+			startCommand := fs.String("start-command", "", "launch command for the process driver's Start action (only meaningful when --driver=process)")
+			flagArgs, positional := splitFlagsAndArgs(rest[2:], map[string]bool{"json": true})
+			if err := fs.Parse(flagArgs); err != nil {
+				return ExitUserError
+			}
+			if len(positional) != 1 {
+				fmt.Fprintln(stderr, "usage: mesh node control accept <node> --driver X --identifier Y [--start-command Z]")
+				return ExitUserError
+			}
+			if *driver == "" || *identifier == "" {
+				fmt.Fprintln(stderr, "error: --driver and --identifier are required")
+				return ExitUserError
+			}
+			return runNodeControlAccept(flags, positional[0], *driver, *identifier, *startCommand, stdout, stderr)
+		default:
+			fmt.Fprintf(stderr, "unknown node control action %q\n\n", rest[1])
+			return ExitUserError
+		}
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n", cmd)
 		fmt.Fprint(stderr, usage)

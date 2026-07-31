@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -149,6 +150,128 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 		return nil, serverErrorf("unexpected response (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
 	}
 	return resp, nil
+}
+
+// doRequestBody performs an authed HTTP request with a JSON body against
+// the Admin API, classified into the same exit-code taxonomy as doRequest.
+// Every mutating CLI command (runtime start/stop/restart, node control
+// accept) goes through this - per operational-interfaces.md, the CLI is
+// always exactly one Admin API request, never a direct Node Agent call.
+func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Response, error) {
+	if c.Token == "" {
+		return nil, userErrorf("authentication required: pass --token, or --username/--password (or MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
+	}
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return nil, userErrorf("building request body: %v", err)
+		}
+		reader = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequest(method, c.BaseURL+path, reader)
+	if err != nil {
+		return nil, userErrorf("building request: %v", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, serverErrorf("could not reach %s: %v", c.BaseURL, err)
+	}
+
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		defer resp.Body.Close()
+		return nil, authErrorf("%s", readErrorMessage(resp.Body))
+	case resp.StatusCode == http.StatusUnprocessableEntity:
+		// 422 (e.g. "no control driver configured") is a user error, not a
+		// server error - the request reached the server fine, the operator
+		// just needs to configure something first.
+		defer resp.Body.Close()
+		return nil, userErrorf("%s", readErrorMessage(resp.Body))
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented:
+		defer resp.Body.Close()
+		return nil, userErrorf("%s", readErrorMessage(resp.Body))
+	case resp.StatusCode >= 400:
+		defer resp.Body.Close()
+		return nil, serverErrorf("unexpected response (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
+	}
+	return resp, nil
+}
+
+// RuntimeAction calls POST /admin/nodes/{name}/runtime/{action} (action is
+// "start", "stop", or "restart") - the CLI's first mutating command,
+// mirroring the Admin API's own dispatch-to-agent contract exactly (no
+// business logic lives in the CLI - Law #6).
+func (c *Client) RuntimeAction(node, action string) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/runtime/"+action, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// NodeControlDiscovery mirrors the "discovered" object in GET
+// /admin/nodes/{name}/control's response.
+type NodeControlDiscovery struct {
+	Driver     string   `json:"driver"`
+	Identifier string   `json:"identifier"`
+	Evidence   []string `json:"evidence"`
+}
+
+// NodeControlInfo mirrors admin.go's handleGetNodeControl response shape.
+type NodeControlInfo struct {
+	Node         string               `json:"node"`
+	Configured   bool                 `json:"configured"`
+	Driver       string               `json:"driver"`
+	Identifier   string               `json:"identifier"`
+	StartCommand string               `json:"start_command"`
+	Discovered   NodeControlDiscovery `json:"discovered"`
+}
+
+// NodeControlProbe calls GET /admin/nodes/{name}/control - a read, so it
+// uses doRequest's GET path rather than doRequestBody.
+func (c *Client) NodeControlProbe(node string) (*NodeControlInfo, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/control", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out NodeControlInfo
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse control status response: %v", err)
+	}
+	return &out, nil
+}
+
+// NodeControlAccept calls POST /admin/nodes/{name}/control/accept - the
+// operator's explicit confirmation of a discovered (or manually typed)
+// control driver + identifier. startCommand is only meaningful for the
+// Process driver's Start action; pass "" for every other driver.
+func (c *Client) NodeControlAccept(node, driver, identifier, startCommand string) error {
+	body := map[string]string{"driver": driver, "identifier": identifier}
+	if startCommand != "" {
+		body["start_command"] = startCommand
+	}
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/control/accept", body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// urlPathEscape escapes name for use as a single path segment - node names
+// don't contain "/" the way model names do, so no per-segment splitting is
+// needed (unlike escapeModelPathSegments on the admin side).
+func urlPathEscape(name string) string {
+	return url.PathEscape(name)
 }
 
 // HealthResp mirrors GET /health's response shape (admin.go handleHealth).
