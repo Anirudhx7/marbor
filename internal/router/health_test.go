@@ -48,3 +48,43 @@ func TestPollNode_RecoversFromProbePanic(t *testing.T) {
 		t.Errorf("Failures = %d, want 1 (markFailure should run after recovering the panic)", failures)
 	}
 }
+
+// residentProbe simulates a runtime that reports exactly the given models as
+// resident, for testing poll-driven reservation cleanup (P51).
+type residentProbe struct {
+	models []runtimepkg.LoadedModel
+}
+
+func (p residentProbe) Probe(ctx context.Context, nodeURL string) (runtimepkg.ProbeResult, error) {
+	return runtimepkg.ProbeResult{LoadedModels: p.models}, nil
+}
+
+// TestPollNode_ClearsWarmReservationOnConfirmedResidency is the P51
+// reservation-cleanup regression test: once a real poll confirms a model is
+// actually resident, any hot-path or proactive VRAM reservation for that
+// (node, model) must be cleared immediately rather than left to expire after
+// the full warmReservationTTL, which would otherwise double-count it against
+// the now-real VRAMUsedMB for up to several minutes.
+func TestPollNode_ClearsWarmReservationOnConfirmedResidency(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Runtime: "ollama"},
+	}, nil)
+
+	r.nodes[0].mu.Lock()
+	r.nodes[0].probe = residentProbe{models: []runtimepkg.LoadedModel{
+		{Name: "model-x", SizeVRAMBytes: 3000 * mib},
+	}}
+	r.nodes[0].mu.Unlock()
+
+	// Simulate a cold-start reservation made moments earlier on the request path.
+	r.reserveWarmBytes("gpu-0", "model-x", 3000*mib)
+	if got := r.PendingPrewarmBytes("gpu-0"); got != 3000*mib {
+		t.Fatalf("PendingPrewarmBytes(gpu-0) = %d before poll, want %d", got, 3000*mib)
+	}
+
+	r.pollNode(r.nodes[0])
+
+	if got := r.PendingPrewarmBytes("gpu-0"); got != 0 {
+		t.Errorf("PendingPrewarmBytes(gpu-0) = %d after a poll confirming residency, want 0 (reservation should be cleared, not left to expire via TTL)", got)
+	}
+}

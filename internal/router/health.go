@@ -251,6 +251,11 @@ func (r *Router) pollNode(n *NodeState) {
 	n.mu.Unlock()
 	for _, m := range models {
 		r.recordLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
+		// Residency is now confirmed by real poll data - drop any hot-path or
+		// proactive reservation for this (node, model) so it can't keep
+		// double-counting against the now-real VRAMUsedMB for up to the full
+		// warmReservationTTL (P51).
+		r.clearWarmReservation(nodeName, m.Name)
 	}
 	if nowHealthy {
 		metrics.NodeHealthy(n.Name, 1)
