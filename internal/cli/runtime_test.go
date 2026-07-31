@@ -88,6 +88,71 @@ func TestRun_RuntimeAction_MissingNodeArg_ExitUserError(t *testing.T) {
 	}
 }
 
+func TestRun_RuntimeLogs_JSON(t *testing.T) {
+	var gotMethod, gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.RequestURI()
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"lines":["line one","line two"]}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "logs", "gpu-0", "--lines", "50", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("expected POST, got %s", gotMethod)
+	}
+	if gotPath != "/admin/nodes/gpu-0/runtime/logs?lines=50" {
+		t.Errorf("expected /admin/nodes/gpu-0/runtime/logs?lines=50, got %s", gotPath)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Errorf("expected Bearer tok, got %q", gotAuth)
+	}
+	if !strings.Contains(stdout.String(), "line one") || !strings.Contains(stdout.String(), "line two") {
+		t.Errorf("expected both log lines in JSON output, got %s", stdout.String())
+	}
+}
+
+func TestRun_RuntimeLogs_TextOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"lines":["line one","line two"]}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "logs", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if stdout.String() != "line one\nline two\n" {
+		t.Errorf("expected raw log lines, got %q", stdout.String())
+	}
+}
+
+func TestRun_RuntimeLogs_NotSupported_ExitServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(`{"error":"process: log retrieval not supported without a supervisor"}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "logs", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	if code != ExitServerError {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitServerError, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "not supported without a supervisor") {
+		t.Errorf("expected the driver's real error text in stderr, got %q", stderr.String())
+	}
+}
+
 func TestRun_RuntimeAction_Unauthorized_ExitAuthError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

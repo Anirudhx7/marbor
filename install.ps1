@@ -29,6 +29,25 @@
 
 $ErrorActionPreference = "Stop"
 
+# Windows closes the console the instant this script's process exits -
+# whether that's a double-clicked .ps1/.lnk or a one-shot `powershell
+# -Command "...; irm ... | iex"` launch (e.g. the enroll one-liner from the
+# mesh admin UI). Either way the final success/error message flashes and
+# vanishes before anyone can read it. `exit N` inside the try block below
+# still runs this finally block (PowerShell unwinds try/finally on exit), so
+# wrapping the whole script is enough to always pause before the window
+# closes - but only when someone is actually watching it happen.
+$PauseBeforeExit = [Environment]::UserInteractive -and ($Host.Name -eq "ConsoleHost") -and (-not $env:CI)
+function Wait-ForExit {
+    if ($PauseBeforeExit) {
+        Write-Host ""
+        Write-Host "Press any key to exit..." -ForegroundColor DarkGray
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    }
+}
+
+try {
+
 $Repo = "Anirudhx7/ollama-mesh"
 $BinName = "ollama-mesh.exe"
 $Role = if ($env:ROLE) { $env:ROLE } else { "mesh" }
@@ -56,8 +75,29 @@ $Arch = "amd64"
 $BinaryAsset = "ollama-mesh-windows-$Arch.exe"
 $Url = "https://github.com/$Repo/releases/latest/download/$BinaryAsset"
 $BinPath = Join-Path $InstallDir $BinName
+$ServiceName = "ollama-mesh-agent"
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+
+if ($Role -eq "agent") {
+    # Windows locks a running .exe's file - downloading over $BinPath below
+    # would fail outright if an already-installed agent service is still
+    # holding it open (e.g. re-running this script to pick up a new
+    # release). Linux/systemd can replace a running binary's file freely, so
+    # this has no equivalent there. Stop the existing service first and wait
+    # for it to actually exit before the download runs; ignore all errors
+    # here (sc.exe/query failing just means no prior install to stop).
+    $null = & sc.exe query $ServiceName 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        & sc.exe stop $ServiceName 2>$null | Out-Null
+        $deadline = (Get-Date).AddSeconds(10)
+        while ((Get-Date) -lt $deadline) {
+            $state = & sc.exe query $ServiceName 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not ($state -match "RUNNING")) { break }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
 
 Write-Host "Downloading ollama-mesh for windows/$Arch..."
 Write-Host "  $Url"
@@ -113,3 +153,7 @@ Write-Host ""
 Write-Host "ollama-mesh successfully installed to $BinPath"
 Write-Host "Run: & '$BinPath'"
 Write-Host "Docs: https://github.com/$Repo"
+
+} finally {
+    Wait-ForExit
+}
