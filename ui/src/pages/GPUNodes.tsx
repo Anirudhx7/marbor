@@ -519,6 +519,7 @@ export function GPUNodes() {
   const [runtimeActionBusy, setRuntimeActionBusy] = useState<'start' | 'stop' | 'restart' | null>(null);
   const [runtimeActionError, setRuntimeActionError] = useState<string | null>(null);
   const [runtimeActionConfirm, setRuntimeActionConfirm] = useState<'start' | 'stop' | 'restart' | null>(null);
+  const [runtimeActionNotice, setRuntimeActionNotice] = useState<string | null>(null);
 
   const openAgentModal = async (node: GPUNode) => {
     setAgentNode(node);
@@ -609,6 +610,7 @@ export function GPUNodes() {
   const runRuntimeAction = async (action: 'start' | 'stop' | 'restart') => {
     if (!agentNode || !controlStatus?.configured) return;
     setRuntimeActionConfirm(null);
+    setRuntimeActionNotice(null);
     setRuntimeActionBusy(action);
     setRuntimeActionError(null);
     if (demoMode) {
@@ -657,6 +659,7 @@ export function GPUNodes() {
     setRuntimeActionBusy(null);
     setRuntimeActionError(null);
     setRuntimeActionConfirm(null);
+    setRuntimeActionNotice(null);
   };
 
   const handleEnableAgent = async () => {
@@ -1832,9 +1835,17 @@ export function GPUNodes() {
                     </button>
                   </div>
                   {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
+                  {runtimeActionNotice && <p className="text-sm text-muted-foreground">{runtimeActionNotice}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
-                      onClick={() => setRuntimeActionConfirm('start')}
+                      onClick={() => {
+                        setRuntimeActionNotice(null);
+                        if (agentNode?.runtimeStatus === 'up') {
+                          setRuntimeActionNotice('Runtime is already running on this node.');
+                          return;
+                        }
+                        setRuntimeActionConfirm('start');
+                      }}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-success/20 hover:bg-success/30 disabled:opacity-50 disabled:cursor-not-allowed text-success font-medium rounded-lg text-xs transition-colors"
@@ -1842,7 +1853,7 @@ export function GPUNodes() {
                       {runtimeActionBusy === 'start' ? 'Starting...' : 'Start'}
                     </button>
                     <button
-                      onClick={() => setRuntimeActionConfirm('stop')}
+                      onClick={() => { setRuntimeActionNotice(null); setRuntimeActionConfirm('stop'); }}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors"
@@ -1850,7 +1861,7 @@ export function GPUNodes() {
                       {runtimeActionBusy === 'stop' ? 'Stopping...' : 'Stop'}
                     </button>
                     <button
-                      onClick={() => setRuntimeActionConfirm('restart')}
+                      onClick={() => { setRuntimeActionNotice(null); setRuntimeActionConfirm('restart'); }}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
