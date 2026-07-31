@@ -51,6 +51,31 @@ func TestOllamaProbe_HappyPath(t *testing.T) {
 	}
 }
 
+func TestOllamaProbe_DigestParsing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"models": []map[string]any{
+				{"name": "llama3:8b", "size_vram": 8 * 1024 * 1024 * 1024, "digest": "sha256:abc123"},
+				{"name": "mistral:7b", "size_vram": 4 * 1024 * 1024 * 1024},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	probe := &OllamaProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.LoadedModels[0].Digest != "sha256:abc123" {
+		t.Errorf("expected digest sha256:abc123, got %q", result.LoadedModels[0].Digest)
+	}
+	if result.LoadedModels[1].Digest != "" {
+		t.Errorf("expected empty digest when runtime omits it, got %q", result.LoadedModels[1].Digest)
+	}
+}
+
 func TestOllamaProbe_NonOKStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)

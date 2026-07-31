@@ -347,6 +347,9 @@ export interface Savings {
 export interface ModelNode {
   name: string;
   healthy: boolean;
+  // digest is this node's runtime-reported content digest for the model, when
+  // known (currently only Ollama). Absent when unknown.
+  digest?: string;
 }
 
 export interface ModelEntry {
@@ -360,6 +363,9 @@ export interface ModelEntry {
   warm_count: number;
   total_nodes: number;
   family?: string;
+  // digest_mismatch is true when 2+ nodes report different non-empty digests
+  // for this model name (e.g. the same tag re-pulled with different content).
+  digest_mismatch?: boolean;
 }
 
 export interface ModelCatalog {

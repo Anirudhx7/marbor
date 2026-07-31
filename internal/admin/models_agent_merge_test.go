@@ -21,12 +21,14 @@ func newAdminModelsRequest(t *testing.T, s *Server) *http.Request {
 
 type modelsListResponse struct {
 	Models []struct {
-		Name      string `json:"name"`
-		WarmCount int    `json:"warm_count"`
-		Family    string `json:"family"`
-		Nodes     []struct {
+		Name           string `json:"name"`
+		WarmCount      int    `json:"warm_count"`
+		Family         string `json:"family"`
+		DigestMismatch bool   `json:"digest_mismatch"`
+		Nodes          []struct {
 			Name    string `json:"name"`
 			Healthy bool   `json:"healthy"`
+			Digest  string `json:"digest"`
 		} `json:"nodes"`
 	} `json:"models"`
 	TotalModels int `json:"total_models"`
@@ -187,5 +189,61 @@ func TestHandleModels_ReportsFamilyFromTags(t *testing.T) {
 	}
 	if resp.Models[0].Family != "bert" {
 		t.Errorf("expected family %q for mxbai-embed, got %q", "bert", resp.Models[0].Family)
+	}
+}
+
+// TestHandleModels_DigestMismatch verifies P52's cross-node digest-mismatch
+// detection: two nodes reporting different non-empty digests for the same
+// model name flag digest_mismatch=true; the same digest on both, or fewer
+// than 2 nodes reporting a digest at all, must never produce a false
+// positive.
+func TestHandleModels_DigestMismatch(t *testing.T) {
+	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://127.0.0.1:1"},
+		{Name: "gpu-1", URL: "http://127.0.0.1:2"},
+		{Name: "gpu-2", URL: "http://127.0.0.1:3"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		switch n.Name {
+		case "gpu-0":
+			n.LoadedModels = []router.ModelInfo{
+				{Name: "drifted:8b", SizeVRAM: 1, Digest: "sha256:aaa"},
+				{Name: "stable:8b", SizeVRAM: 1, Digest: "sha256:zzz"},
+				{Name: "partial:8b", SizeVRAM: 1, Digest: "sha256:only"},
+			}
+		case "gpu-1":
+			n.LoadedModels = []router.ModelInfo{
+				{Name: "drifted:8b", SizeVRAM: 1, Digest: "sha256:bbb"},
+				{Name: "stable:8b", SizeVRAM: 1, Digest: "sha256:zzz"},
+				{Name: "partial:8b", SizeVRAM: 1}, // no digest reported by this node
+			}
+		}
+		n.Unlock()
+	}
+	s := NewServer(r, nil, config.Config{})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newAdminModelsRequest(t, s))
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Result().StatusCode)
+	}
+	var resp modelsListResponse
+	if err := json.NewDecoder(w.Result().Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	byName := map[string]bool{}
+	for _, m := range resp.Models {
+		byName[m.Name] = m.DigestMismatch
+	}
+	if mismatch, ok := byName["drifted:8b"]; !ok || !mismatch {
+		t.Errorf("expected drifted:8b digest_mismatch=true, got %v (present=%v)", mismatch, ok)
+	}
+	if mismatch, ok := byName["stable:8b"]; !ok || mismatch {
+		t.Errorf("expected stable:8b digest_mismatch=false (same digest both nodes), got %v (present=%v)", mismatch, ok)
+	}
+	if mismatch, ok := byName["partial:8b"]; !ok || mismatch {
+		t.Errorf("expected partial:8b digest_mismatch=false (only 1 node reported a digest), got %v (present=%v)", mismatch, ok)
 	}
 }

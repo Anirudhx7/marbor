@@ -413,9 +413,13 @@ export const mockModelCatalog: ModelCatalog = {
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
       warm_count: 2,
       total_nodes: 3,
+      // Demo parity for P52's digest-mismatch warning: these two nodes
+      // deliberately report different digests for the same model name, as if
+      // the tag was re-pulled with different content mid-rollout.
+      digest_mismatch: true,
       nodes: [
-        { name: 'gpu-node-01', healthy: true },
-        { name: 'gpu-node-02', healthy: true },
+        { name: 'gpu-node-01', healthy: true, digest: 'sha256:9f8a1c2d47e0b6f3a5d9c8e1b2f4a7d6' },
+        { name: 'gpu-node-02', healthy: true, digest: 'sha256:3b7e0a91c4d8f2a6b0e5d7c3f9a1b8e4' },
       ],
     },
     {
