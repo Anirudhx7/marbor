@@ -518,6 +518,7 @@ export function GPUNodes() {
   // hits a real endpoint (matches the existing demo-banner discipline).
   const [runtimeActionBusy, setRuntimeActionBusy] = useState<'start' | 'stop' | 'restart' | null>(null);
   const [runtimeActionError, setRuntimeActionError] = useState<string | null>(null);
+  const [runtimeActionConfirm, setRuntimeActionConfirm] = useState<'start' | 'stop' | 'restart' | null>(null);
 
   const openAgentModal = async (node: GPUNode) => {
     setAgentNode(node);
@@ -607,6 +608,7 @@ export function GPUNodes() {
   // a no-op so a demo click never hits a real endpoint.
   const runRuntimeAction = async (action: 'start' | 'stop' | 'restart') => {
     if (!agentNode || !controlStatus?.configured) return;
+    setRuntimeActionConfirm(null);
     setRuntimeActionBusy(action);
     setRuntimeActionError(null);
     if (demoMode) {
@@ -654,6 +656,7 @@ export function GPUNodes() {
     setControlError(null);
     setRuntimeActionBusy(null);
     setRuntimeActionError(null);
+    setRuntimeActionConfirm(null);
   };
 
   const handleEnableAgent = async () => {
@@ -1831,7 +1834,7 @@ export function GPUNodes() {
                   {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
-                      onClick={() => runRuntimeAction('start')}
+                      onClick={() => setRuntimeActionConfirm('start')}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-success/20 hover:bg-success/30 disabled:opacity-50 disabled:cursor-not-allowed text-success font-medium rounded-lg text-xs transition-colors"
@@ -1839,7 +1842,7 @@ export function GPUNodes() {
                       {runtimeActionBusy === 'start' ? 'Starting...' : 'Start'}
                     </button>
                     <button
-                      onClick={() => runRuntimeAction('stop')}
+                      onClick={() => setRuntimeActionConfirm('stop')}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors"
@@ -1847,7 +1850,7 @@ export function GPUNodes() {
                       {runtimeActionBusy === 'stop' ? 'Stopping...' : 'Stop'}
                     </button>
                     <button
-                      onClick={() => runRuntimeAction('restart')}
+                      onClick={() => setRuntimeActionConfirm('restart')}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
@@ -2007,6 +2010,55 @@ export function GPUNodes() {
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {agentBusy ? 'Disabling...' : 'Disable Agent'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Runtime Start/Stop/Restart Confirmation Modal */}
+      <Modal
+        isOpen={runtimeActionConfirm !== null}
+        onClose={() => setRuntimeActionConfirm(null)}
+        title={
+          runtimeActionConfirm === 'start' ? 'Start Runtime'
+          : runtimeActionConfirm === 'stop' ? 'Stop Runtime'
+          : 'Restart Runtime'
+        }
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {runtimeActionConfirm === 'start' && <>Start the inference runtime process on <span className="text-foreground font-semibold">{agentNode?.name}</span>?</>}
+            {runtimeActionConfirm === 'stop' && <>Stop the inference runtime process on <span className="text-foreground font-semibold">{agentNode?.name}</span>?</>}
+            {runtimeActionConfirm === 'restart' && <>Restart the inference runtime process on <span className="text-foreground font-semibold">{agentNode?.name}</span>?</>}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {runtimeActionConfirm === 'start' && 'Reversible: the runtime is idle before this. Any currently-loaded models stay unloaded until requests warm them back up. No in-flight requests are at risk since the runtime is not serving traffic yet.'}
+            {runtimeActionConfirm === 'stop' && 'Disruptive and immediate: any in-flight requests on this node fail right now, and all warm/loaded models are evicted from VRAM. The mesh routes new requests to other nodes, but this node serves nothing until you start it again.'}
+            {runtimeActionConfirm === 'restart' && 'Disruptive and immediate: the runtime process is killed and relaunched. In-flight requests on this node fail, and all warm/loaded models are evicted and must reload from cold on next use. The process comes back up on its own once restarted - no separate start needed.'}
+          </p>
+          {runtimeActionError && (
+            <p className="text-sm text-destructive">{runtimeActionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setRuntimeActionConfirm(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => runtimeActionConfirm && runRuntimeAction(runtimeActionConfirm)}
+              disabled={runtimeActionBusy !== null}
+              className={
+                runtimeActionConfirm === 'start'
+                  ? "px-4 py-2 bg-success hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  : "px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+              }
+            >
+              {runtimeActionBusy !== null
+                ? (runtimeActionConfirm === 'start' ? 'Starting...' : runtimeActionConfirm === 'stop' ? 'Stopping...' : 'Restarting...')
+                : (runtimeActionConfirm === 'start' ? 'Start' : runtimeActionConfirm === 'stop' ? 'Stop' : 'Restart')}
             </button>
           </div>
         </div>
