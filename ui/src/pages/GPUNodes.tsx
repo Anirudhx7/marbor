@@ -9,8 +9,8 @@ import { SearchInput } from '../components/SearchInput';
 import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
-import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime } from '../lib/api';
+import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
 import type { NodeAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
@@ -520,6 +520,12 @@ export function GPUNodes() {
   const [runtimeActionError, setRuntimeActionError] = useState<string | null>(null);
   const [runtimeActionConfirm, setRuntimeActionConfirm] = useState<'start' | 'stop' | 'restart' | null>(null);
   const [runtimeActionNotice, setRuntimeActionNotice] = useState<string | null>(null);
+  // --- Runtime logs (P58) - a pure read, no confirm dialog needed (R10
+  // exemption for non-destructive actions).
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [logsBusy, setLogsBusy] = useState(false);
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [logsLines, setLogsLines] = useState<string[] | null>(null);
 
   const openAgentModal = async (node: GPUNode) => {
     setAgentNode(node);
@@ -535,6 +541,9 @@ export function GPUNodes() {
     setControlManualStartCommand('');
     setRuntimeActionBusy(null);
     setRuntimeActionError(null);
+    setLogsBusy(false);
+    setLogsError(null);
+    setLogsLines(null);
     if (demoMode) {
       setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
       setAgentPort('11435');
@@ -625,6 +634,29 @@ export function GPUNodes() {
       setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
     } finally {
       setRuntimeActionBusy(null);
+    }
+  };
+
+  // viewRuntimeLogs fetches P58's runtime.logs snapshot - only ever called
+  // when controlStatus.configured is true (same gate as start/stop/restart);
+  // demo mode shows static sample lines without hitting a real endpoint.
+  const viewRuntimeLogs = async () => {
+    if (!agentNode || !controlStatus?.configured) return;
+    setLogsError(null);
+    setLogsModalOpen(true);
+    if (demoMode) {
+      setLogsLines(mockRuntimeLogLines);
+      return;
+    }
+    setLogsBusy(true);
+    setLogsLines(null);
+    try {
+      const { lines } = await getNodeRuntimeLogs(agentNode.name);
+      setLogsLines(lines);
+    } catch (e: any) {
+      setLogsError(e?.message || 'Failed to fetch runtime logs');
+    } finally {
+      setLogsBusy(false);
     }
   };
 
@@ -1884,6 +1916,13 @@ export function GPUNodes() {
                     >
                       {runtimeActionBusy === 'restart' ? 'Restarting...' : 'Restart'}
                     </button>
+                    <button
+                      onClick={viewRuntimeLogs}
+                      title={demoMode ? 'Showing sample logs' : undefined}
+                      className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
+                    >
+                      View Logs
+                    </button>
                   </div>
                 </div>
               ) : controlStatus.discovered.driver ? (
@@ -2102,6 +2141,35 @@ export function GPUNodes() {
               {runtimeActionBusy !== null
                 ? (runtimeActionConfirm === 'start' ? 'Starting...' : runtimeActionConfirm === 'stop' ? 'Stopping...' : 'Restarting...')
                 : (runtimeActionConfirm === 'start' ? 'Start' : runtimeActionConfirm === 'stop' ? 'Stop' : 'Restart')}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Runtime Logs Modal (P58) - a pure read, no confirm needed */}
+      <Modal
+        isOpen={logsModalOpen}
+        onClose={() => setLogsModalOpen(false)}
+        title={`Runtime Logs — ${agentNode?.name ?? ''}`}
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Point-in-time snapshot, not a live tail.
+          </p>
+          {logsBusy && <p className="text-sm text-muted-foreground">Loading...</p>}
+          {logsError && <p className="text-sm text-destructive">{logsError}</p>}
+          {!logsBusy && !logsError && logsLines && (
+            <pre className="text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto bg-secondary/40 border border-border rounded-lg p-3">
+              {logsLines.length > 0 ? logsLines.join('\n') : 'No log lines returned.'}
+            </pre>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setLogsModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Close
             </button>
           </div>
         </div>
