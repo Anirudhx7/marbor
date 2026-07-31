@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/runtime/start", requireToken(s.Token, s.handleRuntimeStart))
 	mux.HandleFunc("POST /v1/runtime/stop", requireToken(s.Token, s.handleRuntimeStop))
 	mux.HandleFunc("POST /v1/runtime/restart", requireToken(s.Token, s.handleRuntimeRestart))
+	mux.HandleFunc("POST /v1/runtime/logs", requireToken(s.Token, s.handleRuntimeLogs))
 	return mux
 }
 

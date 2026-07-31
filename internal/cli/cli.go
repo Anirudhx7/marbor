@@ -106,6 +106,7 @@ Commands:
   nodes                            list nodes known to the mesh
   models                           list models known across the fleet
   runtime start|stop|restart <node>          start/stop/restart a node's inference runtime process
+  runtime logs <node> [--lines=N]            fetch recent log lines from a node's runtime process
   node control probe <node>                  show a node's control-driver status (configured + discovered)
   node control accept <node> --driver X --identifier Y [--start-command Z]
                                               accept a control driver + identifier for a node
@@ -123,6 +124,10 @@ Global flags:
 "runtime start|stop|restart" requires the target node to have an
 operator-accepted control driver (see "node control accept") - a node with
 none configured returns an error rather than guessing one.
+
+"runtime logs" is a point-in-time snapshot, not a live tail. A node whose
+control driver has no real log source (e.g. a bare PID-file process with no
+supervisor) returns a clear "not supported" error.
 `
 
 // Run parses args and dispatches to the requested subcommand, returning the
@@ -166,15 +171,27 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runModels(flags, stdout, stderr)
 	case "runtime":
 		if len(rest) < 1 {
-			fmt.Fprintln(stderr, "usage: mesh runtime <start|stop|restart> <node>")
+			fmt.Fprintln(stderr, "usage: mesh runtime <start|stop|restart|logs> <node>")
 			return ExitUserError
 		}
 		action := rest[0]
-		if action != "start" && action != "stop" && action != "restart" {
-			fmt.Fprintf(stderr, "unknown runtime action %q (want start, stop, or restart)\n\n", action)
+		if action != "start" && action != "stop" && action != "restart" && action != "logs" {
+			fmt.Fprintf(stderr, "unknown runtime action %q (want start, stop, restart, or logs)\n\n", action)
 			return ExitUserError
 		}
 		fs, flags := newFlagSet("runtime "+action, stderr)
+		if action == "logs" {
+			lines := fs.Int("lines", 0, "number of log lines to fetch (0 = server default)")
+			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+			if err := fs.Parse(flagArgs); err != nil {
+				return ExitUserError
+			}
+			if len(positional) != 1 {
+				fmt.Fprintln(stderr, "usage: mesh runtime logs <node> [--lines=N] [flags]")
+				return ExitUserError
+			}
+			return runRuntimeLogs(flags, positional[0], *lines, stdout, stderr)
+		}
 		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
 		if err := fs.Parse(flagArgs); err != nil {
 			return ExitUserError

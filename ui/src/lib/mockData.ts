@@ -4,6 +4,17 @@ import type { SystemInfo } from './api';
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
 
+// mockRuntimeLogLines is the static sample shown by the "View Logs" panel
+// in demo mode (P58) - plausible, not a real capture, matching how other
+// demo surfaces show static representative data rather than a live call.
+export const mockRuntimeLogLines: string[] = [
+  'Aug 01 00:12:03 gpu-node-01 systemd[1]: Started Ollama Service.',
+  'time=2026-08-01T00:12:03.114Z level=INFO source=routes.go:1288 msg="Listening on 127.0.0.1:11434 (version 0.6.5)"',
+  'time=2026-08-01T00:12:03.201Z level=INFO source=gpu.go:217 msg="detected GPU" library=cuda variant=v12 compute=8.9 driver=12.4 name="NVIDIA RTX 4090" total="24.0 GiB"',
+  'time=2026-08-01T00:14:41.882Z level=INFO source=server.go:113 msg="model loaded" model=llama3:70b duration=8.9s',
+  'time=2026-08-01T00:22:07.005Z level=INFO source=sched.go:406 msg="model unloaded due to idle timeout" model=llama3:70b',
+];
+
 export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-1',

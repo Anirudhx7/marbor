@@ -1036,6 +1036,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/nodes/{name}/runtime/start", s.cors(s.adminAuth(s.handleNodeRuntimeStart)))
 	reg("POST /admin/nodes/{name}/runtime/stop", s.cors(s.adminAuth(s.handleNodeRuntimeStop)))
 	reg("POST /admin/nodes/{name}/runtime/restart", s.cors(s.adminAuth(s.handleNodeRuntimeRestart)))
+	reg("POST /admin/nodes/{name}/runtime/logs", s.cors(s.adminAuth(s.handleNodeRuntimeLogs)))
 	// Deliberately no s.adminAuth: the caller is the Node Agent process
 	// itself during install (agent service install --enroll=<code>), not an
 	// authenticated admin browser session. Safety rests entirely on the code
@@ -2259,6 +2260,122 @@ func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agen
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// defaultNodeRuntimeLogLines/maxNodeRuntimeLogLines mirror the agent-side
+// defaultLogLines/maxLogLines bounds (control_actions.go) - the admin API
+// clamps here too so a malformed or hostile ?lines= query can't be forwarded
+// straight to the agent unbounded.
+const (
+	defaultNodeRuntimeLogLines = 200
+	maxNodeRuntimeLogLines     = 5000
+)
+
+// handleNodeRuntimeLogs is the Admin API's dispatch point for P58's
+// runtime.logs capability - POST /admin/nodes/{name}/runtime/logs?lines=N.
+// Same template as handleNodeRuntimeAction (health check -> capability
+// check -> read the operator-accepted ControlDriver config -> dispatch to
+// the agent), but this is a pure read: it never mutates the node, so unlike
+// start/stop/restart it is not audit-logged (same reasoning as
+// handleNodeHealthCheck, also a pure read with no logSystemChange call).
+func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
+	nodeName := r.PathValue("name")
+
+	urls := s.router.NodeURLs()
+	nodeURL, ok := urls[nodeName]
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+		return
+	}
+
+	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before running runtime logs", nodeName))
+		return
+	}
+
+	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "runtime.logs") {
+		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for runtime logs", nodeName))
+		return
+	}
+
+	ctrl, configured := s.router.NodeControlSetting(nodeName)
+	if !configured {
+		writeJSONError(w, http.StatusUnprocessableEntity, "Runtime control unavailable: no control driver configured")
+		return
+	}
+
+	lines := defaultNodeRuntimeLogLines
+	if raw := r.URL.Query().Get("lines"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			lines = n
+		}
+	}
+	if lines > maxNodeRuntimeLogLines {
+		lines = maxNodeRuntimeLogLines
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), nodeRuntimeActionTimeout)
+	defer cancel()
+	logLines, err := s.runtimeLogsViaAgent(ctx, nodeURL, agentCfg, ctrl, lines)
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"lines": logLines})
+}
+
+// runtimeLogsViaAgent dispatches to nodeURL's Node Agent (POST
+// /v1/runtime/logs, capability "runtime.logs"). start_command is included
+// only for the Process driver, same conditional as runtimeActionViaAgent's
+// Start case, even though ProcessDriver.Logs ignores it today - keeps the
+// payload construction identical if that ever changes.
+func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, ctrl router.ControlConfig, lines int) ([]string, error) {
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/logs")
+	if err != nil {
+		return nil, err
+	}
+
+	reqBody := map[string]interface{}{"driver": ctrl.Driver, "identifier": ctrl.Identifier, "lines": lines}
+	if ctrl.Driver == "process" && ctrl.StartCommand != "" {
+		reqBody["start_command"] = ctrl.StartCommand
+	}
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: nodeRuntimeActionTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("agent runtime logs failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Lines []string `json:"lines"`
+		Error string   `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("agent runtime logs: could not decode response (status %d)", resp.StatusCode)
+	}
+	if resp.StatusCode != http.StatusOK {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+		}
+		return nil, errors.New(msg)
+	}
+	return out.Lines, nil
 }
 
 // newEnrollmentCode generates a fresh one-time enrollment code for node,
