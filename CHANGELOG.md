@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Admin API v1 surface audited for CLI/SDK consumption; one gap closed.** `POST /admin/login` was the only admin route missing its `/admin/v1/` twin (every other route already had one via the existing route-mirroring helper) - a v1-only client would have had to special-case login. `POST /admin/v1/login` now works identically to the existing `/admin/login`.
 - **The Models page now warns when the same model name has different content on different nodes** (e.g. the same tag re-pulled with a different quant/build mid-rollout, without every node picking up the change yet). Ollama already reports a per-model content digest that the mesh previously discarded; it's now tracked per node and, when two or more nodes disagree on it for the same model name, a warning badge appears on that model's card, with each node chip's tooltip showing its own digest so you can see which node is the outlier. Other runtimes (vLLM/TGI/llama.cpp/MLX) don't expose a comparable digest today, so this check is silently skipped for them rather than guessing.
 
 ### Fixed
