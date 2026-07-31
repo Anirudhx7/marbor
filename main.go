@@ -404,6 +404,15 @@ func main() {
 	} else {
 		log.Printf("WARNING: could not load node agents from store: %v", err)
 	}
+	if controls, err := st.AllNodeControl(); err == nil {
+		for _, c := range controls {
+			if c.Configured {
+				r.SetNodeControl(c.Name, router.ControlConfig{Driver: c.Driver, Identifier: c.Identifier, Configured: true})
+			}
+		}
+	} else {
+		log.Printf("WARNING: could not load node control config from store: %v", err)
+	}
 
 	// Cloud providers: entirely store-driven now.
 	if providers, err := st.AllCloudProviders(); err == nil {
