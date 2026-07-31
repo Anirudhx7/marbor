@@ -159,3 +159,35 @@ func TestBuildControlDriver_ProcessSplitsStartCommand(t *testing.T) {
 		t.Fatalf("StartCommand = %v, want [/usr/local/bin/ollama serve]", pd.StartCommand)
 	}
 }
+
+// TestBuildControlDriver_ProcessSplitsQuotedStartCommand verifies a
+// double-quoted segment (e.g. a Windows path with a space) survives as one
+// argv token instead of being broken apart by a plain whitespace split.
+func TestBuildControlDriver_ProcessSplitsQuotedStartCommand(t *testing.T) {
+	drv, err := buildControlDriver("process", "pid", `"C:\Program Files\Ollama\ollama.exe" serve --model "llama 3"`)
+	if err != nil {
+		t.Fatalf("buildControlDriver: %v", err)
+	}
+	pd := drv.(*control.ProcessDriver)
+	want := []string{`C:\Program Files\Ollama\ollama.exe`, "serve", "--model", "llama 3"}
+	if len(pd.StartCommand) != len(want) {
+		t.Fatalf("StartCommand = %v, want %v", pd.StartCommand, want)
+	}
+	for i := range want {
+		if pd.StartCommand[i] != want[i] {
+			t.Fatalf("StartCommand[%d] = %q, want %q (full: %v)", i, pd.StartCommand[i], want[i], pd.StartCommand)
+		}
+	}
+}
+
+// TestBuildControlDriver_StartCommandRejectedForNonProcessDriver verifies
+// the defensive guard: start_command is only ever meaningful for the
+// process driver, so any other driver combined with a non-empty
+// start_command is rejected rather than silently ignored - this is the only
+// enforcement point, since a future caller besides runtimeActionViaAgent
+// could otherwise send the mismatched combination unnoticed.
+func TestBuildControlDriver_StartCommandRejectedForNonProcessDriver(t *testing.T) {
+	if _, err := buildControlDriver("systemd", "ollama.service", "/usr/local/bin/ollama serve"); err == nil {
+		t.Fatal("expected an error when start_command is set for a non-process driver")
+	}
+}
