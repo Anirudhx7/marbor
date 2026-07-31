@@ -522,6 +522,8 @@ export function GPUNodes() {
     setHealthCheckResult(null);
     setControlStatus(null);
     setControlError(null);
+    setControlManualDriver('process');
+    setControlManualIdentifier('');
     if (demoMode) {
       setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
       setAgentPort('11435');
@@ -1814,17 +1816,19 @@ export function GPUNodes() {
               <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-border">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Driver</label>
-                  <select
+                  <CustomSelect
                     value={controlManualDriver}
-                    onChange={(e) => setControlManualDriver(e.target.value)}
-                    className="px-2 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground"
-                  >
-                    <option value="systemd">systemd</option>
-                    <option value="docker">docker</option>
-                    <option value="process">process</option>
-                    <option value="launchd">launchd</option>
-                    <option value="windows_service">windows_service</option>
-                  </select>
+                    onChange={setControlManualDriver}
+                    size="sm"
+                    className="w-32"
+                    options={[
+                      { value: 'systemd', label: 'systemd' },
+                      { value: 'docker', label: 'docker' },
+                      { value: 'process', label: 'process' },
+                      { value: 'launchd', label: 'launchd' },
+                      { value: 'windows_service', label: 'windows_service' },
+                    ]}
+                  />
                 </div>
                 <div className="flex-1 min-w-[10rem]">
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Identifier</label>
