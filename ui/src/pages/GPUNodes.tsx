@@ -1853,7 +1853,14 @@ export function GPUNodes() {
                       {runtimeActionBusy === 'start' ? 'Starting...' : 'Start'}
                     </button>
                     <button
-                      onClick={() => { setRuntimeActionNotice(null); setRuntimeActionConfirm('stop'); }}
+                      onClick={() => {
+                        setRuntimeActionNotice(null);
+                        if (agentNode?.runtimeStatus && agentNode.runtimeStatus !== 'up') {
+                          setRuntimeActionNotice('Runtime is already stopped on this node.');
+                          return;
+                        }
+                        setRuntimeActionConfirm('stop');
+                      }}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors"
