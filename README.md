@@ -419,6 +419,35 @@ Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI respons
 
 ---
 
+## CLI
+
+`mesh` is a thin CLI client of the Admin API - it never talks to a Node Agent directly, every
+command is exactly one Admin API request. Build it with `make mesh-cli` (produces `./mesh-cli`) or
+`go build -o mesh-cli ./cmd/mesh`.
+
+```bash
+mesh-cli version                          # CLI version, plus server version if reachable
+mesh-cli status                           # health/uptime/node-count summary (GET /health)
+mesh-cli nodes --username admin --password admin   # node list (requires auth)
+mesh-cli models --token <session-token>            # model list across the fleet (requires auth)
+```
+
+Every command supports `--json` from day one - this is the actual compatibility contract for
+scripts/CI/Ansible, not the human table output, which may change shape between releases. `--server`
+(default `http://localhost:8080`, env `MESH_SERVER`) points at a different Admin API instance.
+
+`nodes` and `models` require a session: either an existing token (`--token`, env `MESH_TOKEN`), or
+`--username`/`--password` (env `MESH_USERNAME`/`MESH_PASSWORD`), which the CLI exchanges for a
+session token via `POST /admin/v1/login` for that invocation. `status` and `version` never need
+auth (`GET /health` is unauthenticated).
+
+Exit codes: `0` success, `1` user/input error (bad flag, missing credentials), `2` server/Admin API
+error (unreachable, 5xx), `4` authentication/authorization failure (401/403).
+
+This is a read-only foundation - no `restart`/`stop`/`start`/`delete`/`drain` commands yet.
+
+---
+
 ## Observability Stack
 
 ### Prometheus
