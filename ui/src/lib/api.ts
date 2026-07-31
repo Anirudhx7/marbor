@@ -1257,6 +1257,20 @@ export async function restartNodeRuntime(name: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to restart runtime'); }
 }
 
+// getNodeRuntimeLogs fetches a point-in-time snapshot of recent log lines
+// from a node's runtime process (P58) - not a live tail. A node whose
+// control driver has no real log source (e.g. a bare PID-file process with
+// no supervisor) rejects with that driver's own "not supported" error.
+export async function getNodeRuntimeLogs(name: string, lines?: number): Promise<{ lines: string[] }> {
+  const qs = lines ? `?lines=${lines}` : '';
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/logs${qs}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to fetch runtime logs'); }
+  return res.json();
+}
+
 // getNodeModels lists models already downloaded on a node (not just
 // currently loaded - node.loadedModels covers that), via the node's Node
 // Agent ("models.list" capability). Callers must check
