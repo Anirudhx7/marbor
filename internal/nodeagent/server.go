@@ -36,8 +36,8 @@ import (
 // GPU/host/runtime assumptions itself - those live entirely behind the
 // Scheduler/GPUCollector/HostCollector seam.
 type Server struct {
-	Token     string
-	Version   string
+	Token   string
+	Version string
 	// scheduler holds the *Scheduler pointer atomically so the background
 	// goroutine that constructs+seeds it can publish it safely without a
 	// data race against concurrent HTTP handler reads.
