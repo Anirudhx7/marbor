@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // windowsManager implements Manager on top of sc.exe, the service-control
@@ -117,13 +118,34 @@ func (windowsManager) Install(cfg Config) error {
 	}
 
 	// Stop it if currently running (ignore errors - it may not be running),
-	// then start it fresh so the new binPath/token takes effect.
+	// then start it fresh so the new binPath/token takes effect. "sc stop"
+	// only requests the stop and returns immediately, without waiting for
+	// the process to actually exit - starting right away can race the old
+	// process still holding cfg.Port, surfacing as a bind failure on an
+	// otherwise-routine re-install/upgrade. systemctl's "restart" on Linux
+	// (service_linux.go) blocks until the unit is actually down first, so
+	// this race has no equivalent there.
 	_, _ = runSC("stop", Name)
+	waitForStopped(10 * time.Second)
 	if out, err := runSC("start", Name); err != nil {
 		return fmt.Errorf("service: sc start failed: %w: %s", err, out)
 	}
 
 	return nil
+}
+
+// waitForStopped polls "sc query" until Name is no longer RUNNING or the
+// timeout elapses, so a stop-then-start reinstall doesn't race the old
+// process for the same port.
+func waitForStopped(timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		out, err := runSC("query", Name)
+		if err != nil || !strings.Contains(out, "RUNNING") {
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 func (windowsManager) Uninstall(purge bool) error {
