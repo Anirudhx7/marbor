@@ -123,6 +123,14 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 	freeVRAM := 0.0
 	if n.VRAMTotalMB > 0 {
 		free := n.VRAMTotalMB - n.VRAMUsedMB
+		// Discount VRAM already reserved-but-unconfirmed by an in-flight
+		// cold-start pick on this node (see reserveColdStartBytes) - without
+		// this, two concurrent requests for two different cold models can
+		// both see the same stale last-poll snapshot and both pick this node
+		// before either load is confirmed by the next poll (P51).
+		if reserved := r.PendingPrewarmBytes(n.Name); reserved > 0 {
+			free -= reserved / (1024 * 1024)
+		}
 		if free > 0 {
 			freeVRAM = float64(free) / float64(n.VRAMTotalMB)
 		}
@@ -225,6 +233,10 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 		metrics.CacheHit()
 	} else {
 		metrics.CacheMiss()
+		// Reserve this cold-start pick immediately so a concurrent request for
+		// a different cold model scores this node's remaining headroom
+		// correctly instead of racing against the same stale snapshot (P51).
+		r.reserveColdStartBytes(bestNode.URL, bestNode.Name, modelName)
 	}
 	return bestNode, warm
 }
@@ -263,7 +275,14 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 		if node := r.stickyNode(sessionID); node != nil {
 			if runtimeFilter == "" || node.GetRuntime() == runtimeFilter {
 				r.RecordTransition(modelName, time.Now())
-				return node, isModelWarm(node, modelName)
+				warm := isModelWarm(node, modelName)
+				if !warm {
+					// Same race guard as selectBestNode's cold-start path -
+					// the sticky-session shortcut bypasses selectBestNode
+					// entirely, so it needs its own reservation write (P51).
+					r.reserveColdStartBytes(node.URL, node.Name, modelName)
+				}
+				return node, warm
 			}
 			r.affinityMu.Lock()
 			delete(r.affinity, sessionID)

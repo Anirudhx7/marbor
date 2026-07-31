@@ -570,14 +570,14 @@ func TestEstimateModelSizeBytesPrefersLastKnownRealVRAM(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "pve", URL: srv.URL}}, nil)
 
 	// Never observed loaded yet: falls back to the on-disk size.
-	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest"); got != 9608350718 {
+	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest", true); got != 9608350718 {
 		t.Fatalf("before any observation, estimate = %d, want on-disk size 9608350718", got)
 	}
 
 	// A poll confirms the real, much smaller VRAM footprint.
 	r.recordLastKnownVRAM("pve", "gemma4:latest", 3327739904)
 
-	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest"); got != 3327739904 {
+	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest", true); got != 3327739904 {
 		t.Fatalf("after observing real VRAM usage, estimate = %d, want real size 3327739904", got)
 	}
 }
@@ -612,7 +612,7 @@ func TestEnsureHeadroomUsesRealVRAMNotDiskSizeForSiblingReservation(t *testing.T
 	// entire node, but its real, previously-observed VRAM footprint (3200
 	// MiB) does not - the reservation must use the real figure.
 	r.recordLastKnownVRAM("pve", "gemma", 3200*mib)
-	r.reserveWarmBytes("pve", "gemma", r.estimateModelSizeBytes(srv.URL, "gemma"))
+	r.reserveWarmBytes("pve", "gemma", r.estimateModelSizeBytes(srv.URL, "gemma", true))
 
 	// mxbai (640 MiB on disk, never loaded before) should still fit in the
 	// ~896 MiB left over (4096 - 3200 MiB), not be blocked by a phantom 9GiB
@@ -866,5 +866,60 @@ func TestEnsureHeadroomNoopWhenFits(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if hit {
 		t.Error("ensureHeadroom evicted despite ample free VRAM")
+	}
+}
+
+// TestReserveColdStartBytes_NeverFetchesOverHTTP guards P51's core constraint:
+// the hot request-routing path (Route/selectBestNode/RouteExcluding) must
+// never block on I/O (R2). reserveColdStartBytes must use only already-known,
+// zero-I/O size data - never estimateModelSizeBytes's HTTP-fetch fallback -
+// even when a live /api/tags endpoint would happily answer.
+func TestReserveColdStartBytes_NeverFetchesOverHTTP(t *testing.T) {
+	fetched := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetched = true
+		w.Write([]byte(`{"models":[{"name":"model-x","size":9999999}]}`))
+	}))
+	defer srv.Close()
+
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n1", URL: srv.URL}}, nil)
+
+	// No lastKnownVRAM, no VRAMOverrides recorded: size is genuinely unknown
+	// via any zero-I/O path, even though the on-disk size IS available over
+	// HTTP. Must be a silent no-op (R1: never guess), and must never call the
+	// server to find out.
+	r.reserveColdStartBytes(srv.URL, "n1", "model-x")
+
+	if fetched {
+		t.Error("reserveColdStartBytes made an HTTP call - the hot request path must never block on I/O (R2)")
+	}
+	if got := r.PendingPrewarmBytes("n1"); got != 0 {
+		t.Errorf("PendingPrewarmBytes(n1) = %d, want 0 (unknown size must not reserve anything)", got)
+	}
+}
+
+// TestReserveColdStartBytes_UsesKnownSizeWithoutFetching verifies the
+// zero-I/O estimate path (lastKnownVRAM) still results in a real reservation
+// once residency has been observed at least once - the whole point of
+// reserving on the hot path is to protect repeat cold-starts of a
+// previously-seen model, which is the common case in practice.
+func TestReserveColdStartBytes_UsesKnownSizeWithoutFetching(t *testing.T) {
+	fetched := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetched = true
+		w.Write([]byte(`{"models":[{"name":"model-x","size":9999999}]}`))
+	}))
+	defer srv.Close()
+
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n1", URL: srv.URL}}, nil)
+	r.recordLastKnownVRAM("n1", "model-x", 4000*mib)
+
+	r.reserveColdStartBytes(srv.URL, "n1", "model-x")
+
+	if fetched {
+		t.Error("reserveColdStartBytes made an HTTP call despite a known lastKnownVRAM size - must prefer the zero-I/O source")
+	}
+	if got := r.PendingPrewarmBytes("n1"); got != 4000*mib {
+		t.Errorf("PendingPrewarmBytes(n1) = %d, want %d (the real lastKnownVRAM figure)", got, 4000*mib)
 	}
 }

@@ -198,3 +198,59 @@ func TestPlacementScoring(t *testing.T) {
 		}
 	})
 }
+
+// TestRoute_ColdStartReservationPreventsDoubleBooking is the P51 regression
+// test. Two identically-scored cold nodes both have just enough VRAM for ONE
+// of two same-size models, never both. Without a hot-path reservation, both
+// Route calls independently see the same stale (unreserved) snapshot and the
+// deterministic tiebreak would send BOTH models to node-a - a real
+// double-booking. With the fix, the first cold pick's reservation discounts
+// node-a's free_vram_headroom term enough that the second pick's score
+// comparison favors node-b instead.
+func TestRoute_ColdStartReservationPreventsDoubleBooking(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434"},
+		{Name: "node-b", URL: "http://node-b:11434"},
+	}, nil)
+
+	// VRAMTotalMB is the live, poll-populated field (unlike NodeConfig's
+	// VRAMTotalMB, which only seeds NodeState.VRAMTotalMBConfig) - set it
+	// directly, matching every other placement test in this file.
+	r.nodes[0].mu.Lock()
+	r.nodes[0].VRAMTotalMB = 5000
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].VRAMTotalMB = 5000
+	r.nodes[1].mu.Unlock()
+
+	// Both models' real VRAM footprint is already known from a prior
+	// observation (the common case in practice) - this is exactly the
+	// zero-I/O data reserveColdStartBytes is allowed to use on the hot path.
+	r.recordLastKnownVRAM("node-a", "model-a", 3000*mib)
+	r.recordLastKnownVRAM("node-b", "model-a", 3000*mib)
+	r.recordLastKnownVRAM("node-a", "model-b", 3000*mib)
+	r.recordLastKnownVRAM("node-b", "model-b", 3000*mib)
+
+	// First cold request: node-a and node-b tie on every score term, so the
+	// deterministic alphabetical tiebreak picks node-a.
+	n1, warm1 := r.Route("model-a", "", "")
+	if n1 == nil || n1.Name != "node-a" {
+		t.Fatalf("first Route(model-a) = %v, want node-a (tiebreak)", n1)
+	}
+	if warm1 {
+		t.Fatal("first Route(model-a) reported warm=true, want false (cold)")
+	}
+
+	// Second, concurrent-in-spirit request for a DIFFERENT cold model: node-a
+	// only has 5000-3000=2000 MiB left once model-a's reservation is
+	// discounted, not enough headroom to also justify picking it over node-b
+	// (which is still fully free). node-b must win - proving the two models
+	// did not both land on node-a.
+	n2, warm2 := r.Route("model-b", "", "")
+	if n2 == nil || n2.Name != "node-b" {
+		t.Fatalf("second Route(model-b) = %v, want node-b (node-a's headroom must be discounted by model-a's pending reservation)", n2)
+	}
+	if warm2 {
+		t.Fatal("second Route(model-b) reported warm=true, want false (cold)")
+	}
+}

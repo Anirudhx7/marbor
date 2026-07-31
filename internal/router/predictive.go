@@ -227,7 +227,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 
 				if !wasAlreadyWarm {
 					// Check VRAM headroom
-					estSize := r.estimateModelSizeBytes(n.URL, P)
+					estSize := r.estimateModelSizeBytes(n.URL, P, true)
 					n.mu.RLock()
 					freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
 					n.mu.RUnlock()
@@ -320,7 +320,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 
 				if !loaded {
 					// Check VRAM headroom
-					estSize := r.estimateModelSizeBytes(n.URL, model)
+					estSize := r.estimateModelSizeBytes(n.URL, model, true)
 					n.mu.RLock()
 					freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
 					n.mu.RUnlock()

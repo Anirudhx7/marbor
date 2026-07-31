@@ -637,13 +637,16 @@ const evictCooldown = 15 * time.Second
 // small GPU) can use far less real VRAM than its on-disk weights size, so once
 // we've actually seen it loaded, that beats guessing from the file forever
 // after; (2) the node's /api/tags on-disk size (a good proxy for GGUF weights
-// before the model has ever been observed loaded); (3) non-Ollama runtimes
-// (vllm, tgi, llamacpp, mlx) don't expose /api/tags, so FetchModelTags fails or
-// the model is absent from the result - fall back to the operator-declared
-// vram_overrides size for that node+model (R1: an explicit operator
-// declaration, not a guess). Returns 0 when the size is unknown by any path so
-// callers can decline to evict/warm blindly.
-func (r *Router) estimateModelSizeBytes(nodeURL, model string) int64 {
+// before the model has ever been observed loaded) - only consulted when
+// allowFetch is true, since FetchModelTags can perform a live HTTP call on a
+// cache miss and some callers (the streaming request-routing hot path) must
+// never block on I/O (R2); (3) non-Ollama runtimes (vllm, tgi, llamacpp, mlx)
+// don't expose /api/tags, so FetchModelTags fails or the model is absent from
+// the result - fall back to the operator-declared vram_overrides size for that
+// node+model (R1: an explicit operator declaration, not a guess). Returns 0
+// when the size is unknown by any allowed path so callers can decline to
+// evict/warm/reserve blindly.
+func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool) int64 {
 	r.mu.RLock()
 	var nodeName string
 	var overrideMB int64
@@ -665,10 +668,12 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string) int64 {
 		}
 	}
 
-	if tags, err := r.FetchModelTags(nodeURL); err == nil {
-		for _, t := range tags {
-			if t.Name == model {
-				return t.Size
+	if allowFetch {
+		if tags, err := r.FetchModelTags(nodeURL); err == nil {
+			for _, t := range tags {
+				if t.Name == model {
+					return t.Size
+				}
 			}
 		}
 	}
@@ -729,6 +734,19 @@ func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 	return others
 }
 
+// reserveColdStartBytes records a best-effort VRAM reservation for a request
+// that just picked node for a not-yet-warm model. Used on the streaming
+// request-routing hot path (Route/selectBestNode/RouteExcluding), so it only
+// ever consults already-known, zero-I/O size data (estimateModelSizeBytes with
+// allowFetch=false) - never a blocking fetch (R2). A no-op when the size isn't
+// already known, matching estimateModelSizeBytes's existing "unknown ->
+// decline" convention (R1: never guess).
+func (r *Router) reserveColdStartBytes(nodeURL, nodeName, model string) {
+	if est := r.estimateModelSizeBytes(nodeURL, model, false); est > 0 {
+		r.reserveWarmBytes(nodeName, model, est)
+	}
+}
+
 // FallbackChainFor returns the operator-declared, ordered list of alternate
 // models to try for model, or nil if none is configured. Opt-in only - a
 // model absent from routing.fallback_chains has no substitution behavior.
@@ -759,7 +777,7 @@ func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
 		if !healthy || !vramKnown {
 			continue
 		}
-		size := r.estimateModelSizeBytes(nodeURL, model)
+		size := r.estimateModelSizeBytes(nodeURL, model, true)
 		if size <= 0 {
 			continue
 		}
@@ -864,7 +882,7 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	if resident || totalBytes <= 0 {
 		return
 	}
-	est := r.estimateModelSizeBytes(nodeURL, model)
+	est := r.estimateModelSizeBytes(nodeURL, model, true)
 	if est <= 0 {
 		return // unknown size
 	}
