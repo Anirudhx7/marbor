@@ -1958,44 +1958,6 @@ export function GPUNodes() {
             </div>
           )}
 
-          {agentInstallCommand && (
-            <div className="p-4 bg-success/10 border border-success/30 rounded-xl space-y-4">
-              <p className="text-sm font-semibold text-success">
-                Run one of these on the GPU node - the token is shown once and won't be shown again
-              </p>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Linux / macOS</p>
-                <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
-                  {agentInstallCommand.unix}
-                </code>
-                <div className="flex justify-end mt-2">
-                  <button
-                    onClick={() => copyAgentCommand(agentInstallCommand.unix, 'unix')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    {agentCopiedWhich === 'unix' ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-1">Windows (PowerShell, run as Administrator)</p>
-                <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
-                  {agentInstallCommand.windows}
-                </code>
-                <div className="flex justify-end mt-2">
-                  <button
-                    onClick={() => copyAgentCommand(agentInstallCommand.windows, 'windows')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    {agentCopiedWhich === 'windows' ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="flex justify-end pt-4 border-t border-border">
             <button
               onClick={closeAgentModal}
@@ -2005,6 +1967,60 @@ export function GPUNodes() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Node Agent Install Command Modal - separate dialog so the enroll token/commands don't get buried below Runtime Control */}
+      <Modal
+        isOpen={agentInstallCommand !== null}
+        onClose={() => setAgentInstallCommand(null)}
+        title="Node Agent Install Command"
+        maxWidth="lg"
+      >
+        {agentInstallCommand && (
+          <div className="space-y-4">
+            <p className="text-sm font-semibold text-success">
+              Run one of these on the GPU node - the token is shown once and won't be shown again
+            </p>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Linux / macOS</p>
+              <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                {agentInstallCommand.unix}
+              </code>
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => copyAgentCommand(agentInstallCommand.unix, 'unix')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {agentCopiedWhich === 'unix' ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Windows (PowerShell, run as Administrator)</p>
+              <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                {agentInstallCommand.windows}
+              </code>
+              <div className="flex justify-end mt-2">
+                <button
+                  onClick={() => copyAgentCommand(agentInstallCommand.windows, 'windows')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {agentCopiedWhich === 'windows' ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2 border-t border-border">
+              <button
+                onClick={() => setAgentInstallCommand(null)}
+                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Disable Node Agent Confirmation Modal */}
