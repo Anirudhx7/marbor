@@ -99,7 +99,8 @@ func TestServerMetricsRequiresToken(t *testing.T) {
 func TestServerServesCachedSnapshotBetweenRequests(t *testing.T) {
 	scheduler := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
 	scheduler.Seed()
-	srv := &Server{Token: "sekret", Version: "v-test", Scheduler: scheduler}
+	srv := &Server{Token: "sekret", Version: "v-test"}
+	srv.SetScheduler(scheduler)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

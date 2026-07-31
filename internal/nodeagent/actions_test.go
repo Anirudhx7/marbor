@@ -23,7 +23,9 @@ func newTestServerWithRuntimeURL(t *testing.T, runtime, url string) *Server {
 	rd := fakeRuntimeDetector{name: runtime, url: url, found: runtime != ""}
 	s := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, rd)
 	s.Seed()
-	return &Server{Token: "tok", Version: "v-test", Scheduler: s}
+	srv := &Server{Token: "tok", Version: "v-test"}
+	srv.SetScheduler(s)
+	return srv
 }
 
 func doPull(t *testing.T, srv *Server, body string) *http.Response {
