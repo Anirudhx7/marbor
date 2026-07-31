@@ -216,6 +216,30 @@ func (c *Client) RuntimeAction(node, action string) error {
 	return nil
 }
 
+// RuntimeLogs calls POST /admin/nodes/{name}/runtime/logs?lines=N - a pure
+// read (P58), still a POST since the mesh injects driver/identifier into
+// the agent-side request body, same as start/stop/restart. lines<=0 means
+// "use the server-side default" - omitted from the query string.
+func (c *Client) RuntimeLogs(node string, lines int) ([]string, error) {
+	path := "/admin/nodes/" + urlPathEscape(node) + "/runtime/logs"
+	if lines > 0 {
+		path += fmt.Sprintf("?lines=%d", lines)
+	}
+	resp, err := c.doRequestBody(http.MethodPost, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Lines []string `json:"lines"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse runtime logs response: %v", err)
+	}
+	return out.Lines, nil
+}
+
 // NodeControlDiscovery mirrors the "discovered" object in GET
 // /admin/nodes/{name}/control's response.
 type NodeControlDiscovery struct {
