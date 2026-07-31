@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Package, Download, Settings2, Trash2 } from 'lucide-react';
+import { Package, Download, Settings2, Trash2, AlertTriangle } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
@@ -102,6 +102,11 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
           >
             <Settings2 className="w-3.5 h-3.5" />
           </button>
+          {model.digest_mismatch && (
+            <span title="Nodes disagree on this model's content - different digests reported for the same name">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+            </span>
+          )}
           <Badge variant={isWarm ? 'success' : 'muted'} size="sm">
             {isWarm ? `${model.warm_count} warm` : 'cold'}
           </Badge>
@@ -120,6 +125,7 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
           {model.nodes.map((node) => (
             <span
               key={node.name}
+              title={node.digest ? `Digest: ${node.digest}` : undefined}
               className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-md text-xs font-medium text-foreground"
             >
               <StatusDot status={node.healthy ? 'healthy' : 'down'} />

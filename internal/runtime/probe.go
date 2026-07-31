@@ -11,6 +11,9 @@ import (
 type LoadedModel struct {
 	Name          string
 	SizeVRAMBytes int64 // 0 when unknown
+	// Digest is the backend-reported content digest/checksum, when it exposes one
+	// (currently only Ollama's /api/ps). Empty when unknown - never fabricated.
+	Digest string
 }
 
 // ProbeResult is returned by every RuntimeProbe implementation.

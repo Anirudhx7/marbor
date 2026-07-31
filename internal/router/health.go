@@ -165,7 +165,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// Convert runtime.LoadedModel slice to []ModelInfo (router's internal type).
 	models := make([]ModelInfo, len(result.LoadedModels))
 	for i, m := range result.LoadedModels {
-		models[i] = ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAMBytes}
+		models[i] = ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAMBytes, Digest: m.Digest}
 	}
 	psUsedMB := result.VRAMUsedMB
 

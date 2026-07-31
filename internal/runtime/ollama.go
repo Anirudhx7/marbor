@@ -30,11 +30,12 @@ func (p *OllamaProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, e
 		return ProbeResult{}, fmt.Errorf("ollama probe: /api/ps returned %d", resp.StatusCode)
 	}
 
-	// Ollama sends size_vram (snake_case) per loaded model.
+	// Ollama sends size_vram (snake_case) and a manifest digest per loaded model.
 	var ps struct {
 		Models []struct {
 			Name     string `json:"name"`
 			SizeVRAM int64  `json:"size_vram"`
+			Digest   string `json:"digest"`
 		} `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
@@ -44,7 +45,7 @@ func (p *OllamaProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, e
 	models := make([]LoadedModel, len(ps.Models))
 	var totalBytes int64
 	for i, m := range ps.Models {
-		models[i] = LoadedModel{Name: m.Name, SizeVRAMBytes: m.SizeVRAM}
+		models[i] = LoadedModel{Name: m.Name, SizeVRAMBytes: m.SizeVRAM, Digest: m.Digest}
 		totalBytes += m.SizeVRAM
 	}
 

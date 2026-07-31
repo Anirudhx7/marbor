@@ -4712,6 +4712,9 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	type nodeInfo struct {
 		Name    string `json:"name"`
 		Healthy bool   `json:"healthy"`
+		// Digest is this node's runtime-reported content digest for the model,
+		// when known (currently only Ollama). Empty/omitted otherwise (R1).
+		Digest string `json:"digest,omitempty"`
 	}
 	type modelEntry struct {
 		Name     string `json:"name"`
@@ -4730,6 +4733,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		// HF-cache scan (no family metadata available - Architecture Law 5's
 		// stated deferral, not a silent gap).
 		Family string `json:"family,omitempty"`
+		// DigestMismatch is true when 2+ nodes report different non-empty
+		// digests for this model name - e.g. the same tag re-pulled with
+		// different content mid-rollout. False when fewer than 2 nodes have
+		// reported a digest at all (never a false positive from partial data).
+		DigestMismatch bool `json:"digest_mismatch,omitempty"`
 	}
 
 	nodes := s.router.Nodes()
@@ -4761,6 +4769,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			modelMap[m.Name].Nodes = append(modelMap[m.Name].Nodes, nodeInfo{
 				Name:    nodeName,
 				Healthy: nodeHealthy,
+				Digest:  m.Digest,
 			})
 			if nodeHealthy {
 				modelMap[m.Name].WarmCount++
@@ -4887,6 +4896,16 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	entries := make([]modelEntry, 0, len(modelMap))
 	for _, v := range modelMap {
 		v.TotalNodes = totalHealthy
+		// A model "disagrees" across the fleet when 2+ nodes report a non-empty
+		// digest for it and those digests aren't all the same - e.g. the same
+		// tag re-pulled with different content on some nodes but not others.
+		seenDigests := make(map[string]bool)
+		for _, ni := range v.Nodes {
+			if ni.Digest != "" {
+				seenDigests[ni.Digest] = true
+			}
+		}
+		v.DigestMismatch = len(seenDigests) > 1
 		entries = append(entries, *v)
 	}
 

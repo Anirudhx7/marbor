@@ -25,6 +25,9 @@ import (
 type ModelInfo struct {
 	Name     string `json:"name"`
 	SizeVRAM int64  `json:"sizeVram"`
+	// Digest is the runtime-reported content digest/checksum for this loaded model, when the
+	// runtime exposes one (currently only Ollama). Empty when unknown - never fabricated.
+	Digest string `json:"digest,omitempty"`
 }
 
 type NodeState struct {
