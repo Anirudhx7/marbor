@@ -144,3 +144,25 @@ func TestClientIP_FallsBackOnMalformedAddr(t *testing.T) {
 		t.Errorf("clientIP() = %q, want fallback %q", got, "not-a-host-port")
 	}
 }
+
+// TestAdminV1Login_MatchesLegacyLoginRoute is a P56 regression test: /admin/login
+// was registered directly (not via the reg helper), so it had no /admin/v1/login
+// twin - the one gap the P56 admin-API-v1 audit found. A CLI/SDK targeting
+// /admin/v1/* uniformly must be able to log in through the v1 surface too.
+func TestAdminV1Login_MatchesLegacyLoginRoute(t *testing.T) {
+	s := newTestServer()
+	s.SetDemoMode(true)
+
+	body, _ := json.Marshal(map[string]string{"username": "admin", "password": "admin"})
+	req := httptest.NewRequest(http.MethodPost, "/admin/v1/login", bytes.NewReader(body))
+	req.RemoteAddr = "10.0.0.99:5000"
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /admin/v1/login status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(rec.Result().Cookies()) == 0 {
+		t.Error("POST /admin/v1/login did not set a session cookie")
+	}
+}

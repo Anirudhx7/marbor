@@ -998,6 +998,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /login", s.cors(s.handleLogin))
 	mux.HandleFunc("POST /admin/login", s.cors(s.handleAdminLogin))
+	// /admin/login is registered directly (not via reg) so it predates the v1
+	// twin convention - add the v1 form explicitly so a CLI/SDK targeting
+	// /admin/v1/* uniformly can log in without special-casing this one route.
+	mux.HandleFunc("POST /admin/v1/login", s.cors(s.handleAdminLogin))
 	reg("POST /admin/logout", s.cors(s.adminAuth(s.handleLogout)))
 	reg("POST /admin/change-password", s.cors(s.adminAuth(s.handleChangePassword)))
 	reg("POST /admin/skip-password-change", s.cors(s.adminAuth(s.handleSkipPasswordChange)))
