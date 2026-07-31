@@ -53,6 +53,9 @@ type controlActionRequest struct {
 var newControlDriver = buildControlDriver
 
 func buildControlDriver(driver, identifier, startCommand string) (control.ControlDriver, error) {
+	if startCommand != "" && driver != "process" {
+		return nil, fmt.Errorf("start_command is only valid for the process driver, got %q", driver)
+	}
 	switch driver {
 	case "systemd":
 		return &control.SystemdDriver{Unit: identifier}, nil
@@ -61,7 +64,7 @@ func buildControlDriver(driver, identifier, startCommand string) (control.Contro
 	case "process":
 		var cmd []string
 		if startCommand != "" {
-			cmd = strings.Fields(startCommand)
+			cmd = splitCommand(startCommand)
 		}
 		return &control.ProcessDriver{PIDFile: identifier, StartCommand: cmd}, nil
 	case "launchd":
@@ -71,6 +74,41 @@ func buildControlDriver(driver, identifier, startCommand string) (control.Contro
 	default:
 		return nil, fmt.Errorf("unknown control driver %q", driver)
 	}
+}
+
+// splitCommand splits a start command into argv, honoring double-quoted
+// segments so a path or argument containing spaces (e.g. `C:\Program
+// Files\Ollama\ollama.exe`) survives as one token instead of being broken by
+// a plain whitespace split. No external dependency (Architecture Law #4) -
+// this is deliberately minimal, not a full shell-quoting parser.
+func splitCommand(s string) []string {
+	var (
+		args     []string
+		cur      strings.Builder
+		inQuotes bool
+		hasToken bool
+	)
+	flush := func() {
+		if hasToken {
+			args = append(args, cur.String())
+			cur.Reset()
+			hasToken = false
+		}
+	}
+	for _, r := range s {
+		switch {
+		case r == '"':
+			inQuotes = !inQuotes
+			hasToken = true
+		case r == ' ' && !inQuotes:
+			flush()
+		default:
+			cur.WriteRune(r)
+			hasToken = true
+		}
+	}
+	flush()
+	return args
 }
 
 // handleRuntimeStart/Stop/Restart are the POST /v1/runtime/{start,stop,
