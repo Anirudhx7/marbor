@@ -1834,6 +1834,15 @@ export function GPUNodes() {
                       {controlBusy ? 'Working...' : 'Clear'}
                     </button>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={agentNode?.runtimeStatus === 'up' ? 'online' : agentNode?.runtimeStatus ? 'offline' : 'suspended'} size="sm" />
+                    <p className="text-sm text-foreground">
+                      Runtime is currently{' '}
+                      <span className="font-semibold">
+                        {agentNode?.runtimeStatus === 'up' ? 'running' : agentNode?.runtimeStatus ? 'stopped' : 'unknown'}
+                      </span>
+                    </p>
+                  </div>
                   {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
                   {runtimeActionNotice && <p className="text-sm text-muted-foreground">{runtimeActionNotice}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
