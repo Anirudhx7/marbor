@@ -34,6 +34,18 @@ func Run(args []string, version string) {
 		return
 	}
 
+	if handled, err := runWindowsServiceIfService(func() { runAgent(args, version) }); handled {
+		if err != nil {
+			log.Fatalf("nodeagent: windows service execution failed: %v", err)
+		}
+		return
+	}
+
+	runAgent(args, version)
+}
+
+func runAgent(args []string, version string) {
+
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
 	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
