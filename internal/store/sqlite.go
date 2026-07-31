@@ -205,6 +205,24 @@ func (s *sqliteStore) migrate() error {
 			token   TEXT NOT NULL DEFAULT ''
 		)`,
 
+		// node_control holds the per-node ControlDriver configuration (P43,
+		// node-agent-capabilities.md section 5.5) - none of these columns
+		// are secrets (no token/key here), unlike node_agent, so no
+		// secretbox encryption applies. discovered_evidence is a JSON array
+		// stored as TEXT, same convention as other JSON-in-TEXT columns in
+		// this file (e.g. runtime_keys.models). configured is 0 until an
+		// operator explicitly accepts a value (5.6) - never flipped by a
+		// discovery re-scan.
+		`CREATE TABLE IF NOT EXISTS node_control (
+			name                  TEXT PRIMARY KEY,
+			driver                TEXT NOT NULL DEFAULT '',
+			identifier            TEXT NOT NULL DEFAULT '',
+			configured            INTEGER NOT NULL DEFAULT 0,
+			discovered_driver     TEXT NOT NULL DEFAULT '',
+			discovered_identifier TEXT NOT NULL DEFAULT '',
+			discovered_evidence   TEXT NOT NULL DEFAULT '[]'
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS predictive_history (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
 			from_model TEXT NOT NULL,
@@ -1045,6 +1063,119 @@ func (s *sqliteStore) DeleteNodeAgent(name string) error {
 	_, err := s.db.Exec(`DELETE FROM node_agent WHERE name=?`, name)
 	if err != nil {
 		return fmt.Errorf("store: DeleteNodeAgent: %w", err)
+	}
+	return nil
+}
+
+// --- Node ControlDriver config (per-node, P43) ---
+
+// UpsertNodeControlDiscovered records what the most recent probe found,
+// without touching the operator-accepted configured/driver/identifier
+// columns - a re-scan must never silently change what lifecycle actions
+// read (node-agent-capabilities.md section 5.6).
+func (s *sqliteStore) UpsertNodeControlDiscovered(name, driver, identifier string, evidence []string) error {
+	evJSON, err := json.Marshal(evidence)
+	if err != nil {
+		return fmt.Errorf("store: UpsertNodeControlDiscovered: marshal evidence: %w", err)
+	}
+	_, err = s.db.Exec(`
+		INSERT INTO node_control (name, discovered_driver, discovered_identifier, discovered_evidence)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			discovered_driver = excluded.discovered_driver,
+			discovered_identifier = excluded.discovered_identifier,
+			discovered_evidence = excluded.discovered_evidence
+	`, name, driver, identifier, string(evJSON))
+	if err != nil {
+		return fmt.Errorf("store: UpsertNodeControlDiscovered: %w", err)
+	}
+	return nil
+}
+
+// UpsertNodeControlConfigured persists an operator's explicit Accept - the
+// only writer of the configured/driver/identifier columns.
+func (s *sqliteStore) UpsertNodeControlConfigured(name, driver, identifier string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO node_control (name, driver, identifier, configured)
+		VALUES (?, ?, ?, 1)
+		ON CONFLICT(name) DO UPDATE SET
+			driver = excluded.driver,
+			identifier = excluded.identifier,
+			configured = 1
+	`, name, driver, identifier)
+	if err != nil {
+		return fmt.Errorf("store: UpsertNodeControlConfigured: %w", err)
+	}
+	return nil
+}
+
+// ClearNodeControlConfigured un-configures name (operator removing an
+// accepted driver) without discarding the discovered/evidence columns - a
+// no-op if the row doesn't exist yet.
+func (s *sqliteStore) ClearNodeControlConfigured(name string) error {
+	_, err := s.db.Exec(`UPDATE node_control SET driver = '', identifier = '', configured = 0 WHERE name = ?`, name)
+	if err != nil {
+		return fmt.Errorf("store: ClearNodeControlConfigured: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) GetNodeControl(name string) (NodeControlRecord, bool, error) {
+	var rec NodeControlRecord
+	var configured int
+	var evJSON string
+	err := s.db.QueryRow(`
+		SELECT name, driver, identifier, configured, discovered_driver, discovered_identifier, discovered_evidence
+		FROM node_control WHERE name = ?
+	`, name).Scan(&rec.Name, &rec.Driver, &rec.Identifier, &configured, &rec.DiscoveredDriver, &rec.DiscoveredIdentifier, &evJSON)
+	if err == sql.ErrNoRows {
+		return NodeControlRecord{}, false, nil
+	}
+	if err != nil {
+		return NodeControlRecord{}, false, fmt.Errorf("store: GetNodeControl: %w", err)
+	}
+	rec.Configured = configured != 0
+	if err := json.Unmarshal([]byte(evJSON), &rec.DiscoveredEvidence); err != nil {
+		return NodeControlRecord{}, false, fmt.Errorf("store: GetNodeControl: unmarshal evidence: %w", err)
+	}
+	return rec, true, nil
+}
+
+func (s *sqliteStore) AllNodeControl() ([]NodeControlRecord, error) {
+	rows, err := s.db.Query(`
+		SELECT name, driver, identifier, configured, discovered_driver, discovered_identifier, discovered_evidence
+		FROM node_control
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllNodeControl: %w", err)
+	}
+	defer rows.Close()
+
+	var out []NodeControlRecord
+	for rows.Next() {
+		var rec NodeControlRecord
+		var configured int
+		var evJSON string
+		if err := rows.Scan(&rec.Name, &rec.Driver, &rec.Identifier, &configured, &rec.DiscoveredDriver, &rec.DiscoveredIdentifier, &evJSON); err != nil {
+			return nil, fmt.Errorf("store: AllNodeControl scan: %w", err)
+		}
+		rec.Configured = configured != 0
+		if err := json.Unmarshal([]byte(evJSON), &rec.DiscoveredEvidence); err != nil {
+			log.Printf("store: AllNodeControl: dropping %s: bad evidence JSON: %v", rec.Name, err)
+			continue
+		}
+		out = append(out, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllNodeControl rows: %w", err)
+	}
+	return out, nil
+}
+
+func (s *sqliteStore) DeleteNodeControl(name string) error {
+	_, err := s.db.Exec(`DELETE FROM node_control WHERE name=?`, name)
+	if err != nil {
+		return fmt.Errorf("store: DeleteNodeControl: %w", err)
 	}
 	return nil
 }

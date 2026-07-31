@@ -198,6 +198,15 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 		n.RuntimeVersion = ""
 		n.RuntimeStatus = ""
 	}
+	if t.Control != nil && t.Control.Discovered != nil {
+		n.AgentControlDiscoveredDriver = t.Control.Discovered.Driver
+		n.AgentControlDiscoveredIdentifier = t.Control.Discovered.Identifier
+		n.AgentControlDiscoveredEvidence = append([]string(nil), t.Control.Discovered.Evidence...)
+	} else {
+		n.AgentControlDiscoveredDriver = ""
+		n.AgentControlDiscoveredIdentifier = ""
+		n.AgentControlDiscoveredEvidence = nil
+	}
 	n.mu.Unlock()
 	r.agentReachable(n.Name, nodeURL)
 }

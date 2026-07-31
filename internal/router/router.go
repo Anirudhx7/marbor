@@ -154,6 +154,15 @@ type NodeState struct {
 	// distinct from AgentRuntime (just the runtime name, already above).
 	RuntimeVersion string
 	RuntimeStatus  string
+	// AgentControlDiscovered* is what the agent's most recent ControlDriver
+	// probe found (nodeagent.ControlDiscovery, P43) - purely informational
+	// for the admin API's probe/accept UI. The operator-accepted value
+	// lifecycle actions actually read lives in ControlConfig (SetNodeControl/
+	// NodeControlSetting below), never here - this is never substituted in
+	// as a fallback (node-agent-capabilities.md section 5.6).
+	AgentControlDiscoveredDriver     string
+	AgentControlDiscoveredIdentifier string
+	AgentControlDiscoveredEvidence   []string
 	// WarmupErrors holds the last warmup-ping failure per model (model ->
 	// error string), so a model that never reaches "resident" is diagnosable
 	// instead of silently stuck (previously the error was only visible as an
@@ -305,6 +314,11 @@ type Router struct {
 	// false) is polled for /api/ps as normal but never has its agent fields
 	// (AgentPresent, FanPercent, RAMUsedMB, DiskFreeGB) populated.
 	nodeAgents map[string]NodeAgentConfig
+	// nodeControl holds the per-node accepted ControlDriver config (P43),
+	// guarded by r.mu same as nodeAgents. Absent (or Configured: false)
+	// means lifecycle actions must return the "no control driver
+	// configured" error rather than guessing.
+	nodeControl map[string]ControlConfig
 	// schedules holds recurring time-of-day warmup/drain/undrain actions (guarded
 	// by r.mu). schedLastFired (guarded by schedMu) dedupes firing within a minute.
 	schedules      []Schedule
@@ -583,6 +597,41 @@ func (r *Router) NodeAgentSetting(name string) (NodeAgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	cfg, ok := r.nodeAgents[name]
+	return cfg, ok
+}
+
+// ControlConfig is the router's in-memory view of a node's accepted
+// ControlDriver configuration (P43) - Driver/Identifier are the operator-
+// accepted values lifecycle actions read; Configured is false until an
+// operator explicitly accepts one (node-agent-capabilities.md section 5.6).
+type ControlConfig struct {
+	Driver     string
+	Identifier string
+	Configured bool
+}
+
+// SetNodeControl sets the per-node ControlDriver config (admin-toggled,
+// store-persisted by the caller). Removing the node from the map entirely
+// on !configured mirrors SetNodeAgent's disable behavior.
+func (r *Router) SetNodeControl(name string, cfg ControlConfig) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.nodeControl == nil {
+		r.nodeControl = make(map[string]ControlConfig)
+	}
+	if !cfg.Configured {
+		delete(r.nodeControl, name)
+		return
+	}
+	r.nodeControl[name] = cfg
+}
+
+// NodeControlSetting returns the accepted ControlDriver config for name and
+// whether one is configured at all.
+func (r *Router) NodeControlSetting(name string) (ControlConfig, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cfg, ok := r.nodeControl[name]
 	return cfg, ok
 }
 

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent/control"
 	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
 )
 
@@ -221,6 +222,25 @@ func (s *Scheduler) refresh() {
 		}
 		t.Runtime = ri
 		t.Health = Health{RuntimeReachable: ri.Status == "up"}
+
+		// ControlDriver discovery (P43) piggybacks this same refresh tick -
+		// no new poll loop. Re-run every tick (unlike runtime detection,
+		// never treated as "fixed once found") since a re-scan is expected
+		// to reflect drift (e.g. systemd -> Docker migration) freely; this
+		// only ever populates Discovered, never Driver/Configured - the
+		// agent does not yet track an operator-accepted driver (that
+		// arrives with the control-actions capability), so those stay at
+		// their zero value here.
+		dctx, dcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		disc := control.Discover(dctx, name, url)
+		dcancel()
+		t.Control = &ControlInfo{
+			Discovered: &ControlDiscovery{
+				Driver:     disc.Driver,
+				Identifier: disc.Identifier,
+				Evidence:   disc.Evidence,
+			},
+		}
 	}
 
 	t.LastUpdated = time.Now().UTC()

@@ -10,8 +10,8 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth } from '../lib/api';
-import type { NodeAgentStatus, NodeHealthCheckResult } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl } from '../lib/api';
+import type { NodeAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
 
@@ -503,6 +503,16 @@ export function GPUNodes() {
   const agentNodeRef = useRef<GPUNode | null>(null);
   useEffect(() => { agentNodeRef.current = agentNode; }, [agentNode]);
 
+  // --- ControlDriver (P43) - registration flow: probe, confirm, persist.
+  // discovered/configured are always shown separately - accepting only
+  // ever happens on an explicit operator click, never automatically from a
+  // re-scan (node-agent-capabilities.md section 5.6).
+  const [controlStatus, setControlStatus] = useState<NodeControlStatus | null>(null);
+  const [controlBusy, setControlBusy] = useState(false);
+  const [controlError, setControlError] = useState<string | null>(null);
+  const [controlManualDriver, setControlManualDriver] = useState('process');
+  const [controlManualIdentifier, setControlManualIdentifier] = useState('');
+
   const openAgentModal = async (node: GPUNode) => {
     setAgentNode(node);
     setAgentError(null);
@@ -510,9 +520,18 @@ export function GPUNodes() {
     setAgentCopiedWhich(null);
     setHealthCheckBusy(false);
     setHealthCheckResult(null);
+    setControlStatus(null);
+    setControlError(null);
     if (demoMode) {
       setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
       setAgentPort('11435');
+      setControlStatus({
+        node: node.name,
+        configured: true,
+        driver: 'systemd',
+        identifier: 'ollama.service',
+        discovered: { driver: 'systemd', identifier: 'ollama.service', evidence: ['unit ollama.service found', 'unit active'] },
+      });
       return;
     }
     try {
@@ -523,6 +542,70 @@ export function GPUNodes() {
       setAgentStatus({ node: node.name, enabled: false, port: 0 });
       setAgentError(e?.message || 'Failed to fetch node agent status');
     }
+    try {
+      const control = await getNodeControl(node.name);
+      setControlStatus(control);
+      setControlManualIdentifier(control.discovered.identifier || '');
+    } catch (e: any) {
+      setControlError(e?.message || 'Failed to fetch control driver status');
+    }
+  };
+
+  const acceptDiscoveredControl = async () => {
+    if (!agentNode || !controlStatus?.discovered.driver) return;
+    setControlBusy(true);
+    setControlError(null);
+    if (demoMode) {
+      setControlStatus(s => s && { ...s, configured: true, driver: s.discovered.driver, identifier: s.discovered.identifier });
+      setControlBusy(false);
+      return;
+    }
+    try {
+      await acceptNodeControl(agentNode.name, controlStatus.discovered.driver, controlStatus.discovered.identifier);
+      setControlStatus(await getNodeControl(agentNode.name));
+    } catch (e: any) {
+      setControlError(e?.message || 'Failed to accept control driver');
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
+  const acceptManualControl = async () => {
+    if (!agentNode || !controlManualIdentifier.trim()) return;
+    setControlBusy(true);
+    setControlError(null);
+    if (demoMode) {
+      setControlStatus(s => s && { ...s, configured: true, driver: controlManualDriver, identifier: controlManualIdentifier.trim() });
+      setControlBusy(false);
+      return;
+    }
+    try {
+      await acceptNodeControl(agentNode.name, controlManualDriver, controlManualIdentifier.trim());
+      setControlStatus(await getNodeControl(agentNode.name));
+    } catch (e: any) {
+      setControlError(e?.message || 'Failed to accept control driver');
+    } finally {
+      setControlBusy(false);
+    }
+  };
+
+  const clearControl = async () => {
+    if (!agentNode) return;
+    setControlBusy(true);
+    setControlError(null);
+    if (demoMode) {
+      setControlStatus(s => s && { ...s, configured: false, driver: '', identifier: '' });
+      setControlBusy(false);
+      return;
+    }
+    try {
+      await clearNodeControl(agentNode.name);
+      setControlStatus(await getNodeControl(agentNode.name));
+    } catch (e: any) {
+      setControlError(e?.message || 'Failed to clear control driver');
+    } finally {
+      setControlBusy(false);
+    }
   };
 
   const closeAgentModal = () => {
@@ -532,6 +615,8 @@ export function GPUNodes() {
     setAgentError(null);
     setHealthCheckBusy(false);
     setHealthCheckResult(null);
+    setControlStatus(null);
+    setControlError(null);
   };
 
   const handleEnableAgent = async () => {
@@ -1678,6 +1763,85 @@ export function GPUNodes() {
                   className="px-4 py-2 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-sm transition-colors shadow-sm"
                 >
                   Disable Agent
+                </button>
+              </div>
+            </div>
+          )}
+
+          {controlStatus && (
+            <div className="p-4 bg-secondary/40 border border-border rounded-xl space-y-3">
+              <p className="text-sm font-semibold text-foreground">Runtime Control</p>
+              <p className="text-xs text-muted-foreground">
+                How the agent starts/stops/restarts the inference runtime process on this node.
+              </p>
+              {controlError && <p className="text-sm text-destructive">{controlError}</p>}
+
+              {controlStatus.configured ? (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-foreground">
+                    Configured: <span className="font-mono">{controlStatus.driver}</span> / <span className="font-mono">{controlStatus.identifier}</span>
+                  </p>
+                  <button
+                    onClick={clearControl}
+                    disabled={controlBusy}
+                    className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors shadow-sm"
+                  >
+                    {controlBusy ? 'Working...' : 'Clear'}
+                  </button>
+                </div>
+              ) : controlStatus.discovered.driver ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-foreground">
+                    Discovered: <span className="font-mono">{controlStatus.discovered.driver}</span> / <span className="font-mono">{controlStatus.discovered.identifier}</span>
+                  </p>
+                  {controlStatus.discovered.evidence && controlStatus.discovered.evidence.length > 0 && (
+                    <ul className="text-xs text-muted-foreground list-disc list-inside space-y-0.5">
+                      {controlStatus.discovered.evidence.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  )}
+                  <button
+                    onClick={acceptDiscoveredControl}
+                    disabled={controlBusy}
+                    className="px-3 py-1.5 bg-success/20 hover:bg-success/30 disabled:opacity-50 disabled:cursor-not-allowed text-success font-medium rounded-lg text-xs transition-colors"
+                  >
+                    {controlBusy ? 'Working...' : 'Accept'}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No control method auto-discovered on this node yet.</p>
+              )}
+
+              <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-border">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Driver</label>
+                  <select
+                    value={controlManualDriver}
+                    onChange={(e) => setControlManualDriver(e.target.value)}
+                    className="px-2 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground"
+                  >
+                    <option value="systemd">systemd</option>
+                    <option value="docker">docker</option>
+                    <option value="process">process</option>
+                    <option value="launchd">launchd</option>
+                    <option value="windows_service">windows_service</option>
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[10rem]">
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Identifier</label>
+                  <input
+                    type="text"
+                    value={controlManualIdentifier}
+                    onChange={(e) => setControlManualIdentifier(e.target.value)}
+                    placeholder="e.g. ollama.service, container name, PID file path"
+                    className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground"
+                  />
+                </div>
+                <button
+                  onClick={acceptManualControl}
+                  disabled={controlBusy || !controlManualIdentifier.trim()}
+                  className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
+                >
+                  Set Manually
                 </button>
               </div>
             </div>
