@@ -61,20 +61,30 @@ func Run(args []string, version string) {
 		log.Fatal("nodeagent: --refresh-interval must be positive")
 	}
 
-	// Seed synchronously so the very first request never observes an
-	// empty/never-collected cache, then hand refreshing off to a background
-	// goroutine - GET /v1/status and GET /metrics only ever read the cache
-	// (see scheduler.go, server.go), never fork nvidia-smi on the request
-	// path. NewScheduler also does GPU vendor detection once here, at
-	// startup - see gpu.go.
-	scheduler := NewScheduler(version)
-	scheduler.Seed()
+	// Start the HTTP server before building/seeding the scheduler so the
+	// listener binds within Windows SCM's 30-second start timeout (error
+	// 1053). The full blocking startup chain is:
+	//   NewScheduler        : up to 15 s (5 s GPU detect + 10 s runtime detect)
+	//   Seed/refresh        : up to 20 s (GPU + host + runtime probes)
+	// Together that exceeds the 30 s deadline on a cold machine.
+	//
+	// Server.Snapshot() handles the pre-construction window safely: it
+	// returns metadata-only (node_id/version/capabilities/platform) with nil
+	// GPU/Host/Runtime blocks until the Scheduler is wired up and Seed has
+	// run. The mesh poller treats nil blocks as "not yet collected."
+	srv := &Server{Token: token, Version: version}
+	addr := fmt.Sprintf(":%d", *port)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go scheduler.Start(ctx, *refreshInterval)
+	// Build, seed, and refresh the scheduler entirely in the background so
+	// ListenAndServe can bind (and signal SCM) without waiting.
+	go func() {
+		sched := NewScheduler(version)
+		sched.Seed()
+		srv.SetScheduler(sched) // atomic store - safe concurrent read by HTTP handlers
+		sched.Start(ctx, *refreshInterval)
+	}()
 
-	srv := &Server{Token: token, Version: version, Scheduler: scheduler}
-	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("ollama-mesh agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		log.Fatalf("nodeagent: %v", err)

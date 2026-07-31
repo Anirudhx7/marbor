@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"encoding/json"
 	"net/http"
+	"sync/atomic"
 )
 
 // Server is the Node Agent Protocol's local HTTP server: GET /v1/status
@@ -21,6 +22,14 @@ import (
 // test) falls back to a one-off Scheduler per request, so the zero value
 // stays usable rather than panicking - see snapshot() below.
 //
+// On Windows, the Scheduler is built and seeded in a background goroutine so
+// that http.ListenAndServe can bind within the Windows SCM's 30-second start
+// deadline (error 1053). SetScheduler uses an atomic store so the goroutine
+// can publish the ready Scheduler to concurrent HTTP handlers without a data
+// race. All reads go through scheduler(), which returns nil in the
+// (brief, startup-only) window before construction completes - snapshot() and
+// runtimeTarget() already handle nil gracefully.
+//
 // This type is deliberately just an HTTP router: adding a future resource
 // route (e.g. GET /v1/models, POST /v1/runtime/restart) needs no change
 // here beyond registering it on the mux, since Server never encodes
@@ -29,8 +38,18 @@ import (
 type Server struct {
 	Token     string
 	Version   string
-	Scheduler *Scheduler
+	// scheduler holds the *Scheduler pointer atomically so the background
+	// goroutine that constructs+seeds it can publish it safely without a
+	// data race against concurrent HTTP handler reads.
+	schedulerPtr atomic.Pointer[Scheduler]
 }
+
+// SetScheduler stores sched atomically. Called once from agent.go's background
+// goroutine after NewScheduler+Seed complete.
+func (s *Server) SetScheduler(sched *Scheduler) { s.schedulerPtr.Store(sched) }
+
+// scheduler returns the current *Scheduler, or nil if not yet set.
+func (s *Server) scheduler() *Scheduler { return s.schedulerPtr.Load() }
 
 // Handler returns the agent's http.Handler with every route registered and
 // token-gated.
@@ -73,8 +92,8 @@ func (s *Server) Handler() http.Handler {
 // zero-value Server stays usable in tests/callers that predate the caching
 // change, not as a production code path.
 func (s *Server) snapshot() Telemetry {
-	if s.Scheduler != nil {
-		return s.Scheduler.Snapshot()
+	if sched := s.scheduler(); sched != nil {
+		return sched.Snapshot()
 	}
 	sched := NewScheduler(s.Version)
 	sched.Seed()
@@ -86,7 +105,7 @@ func (s *Server) snapshot() Telemetry {
 // snapshot() above, since handleListModels needs the runtime's own URL, not
 // just its name (which Telemetry.Runtime already exposes via snapshot()).
 func (s *Server) runtimeTarget() (name, url string) {
-	sched := s.Scheduler
+	sched := s.scheduler()
 	if sched == nil {
 		sched = NewScheduler(s.Version)
 		sched.Seed()
