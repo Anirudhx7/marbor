@@ -1644,6 +1644,7 @@ export function GPUNodes() {
         isOpen={agentNode !== null}
         onClose={closeAgentModal}
         title={`Node Agent: ${agentNode?.name ?? ''}`}
+        maxWidth="2xl"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
