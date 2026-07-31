@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"embed"
 	"encoding/base64"
 	"encoding/csv"
@@ -835,18 +836,89 @@ func (s *Server) pruneOldBackups(dir string, retentionCount int) {
 	}
 }
 
+// backupDedupIgnoredSettingsKeys are settings rows excluded from the dedup
+// hash (hashBackupFile) because runScheduledBackup writes them into the live
+// store itself right after every successful run, scheduled or skipped. Left
+// in, that write would poison every future backup's snapshot with the
+// previous run's own completion timestamp, so two backups of an otherwise
+// byte-for-byte-unchanged mesh.db would never hash-equal past the first.
+var backupDedupIgnoredSettingsKeys = []string{"backup_last_at", "backup_last_error"}
+
 // hashBackupFile returns the SHA-256 hex digest of the file at path, used to
 // detect a backup that is byte-for-byte identical to one already on disk.
+// It hashes a scratch copy with backupDedupIgnoredSettingsKeys stripped out
+// first, never the file at path itself - path may be an existing kept backup
+// (or, for the upload endpoint, an operator's file) that must not be mutated.
 func hashBackupFile(path string) (string, error) {
-	f, err := os.Open(path)
+	scratch, err := os.CreateTemp(filepath.Dir(path), "backup-dedup-*.db")
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	scratchPath := scratch.Name()
+	defer os.Remove(scratchPath)
+
+	src, err := os.Open(path)
+	if err != nil {
+		scratch.Close()
 		return "", err
 	}
+	_, copyErr := io.Copy(scratch, src)
+	src.Close()
+	closeErr := scratch.Close()
+	if copyErr != nil {
+		return "", copyErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+
+	db, err := sql.Open("sqlite", scratchPath)
+	if err != nil {
+		return "", err
+	}
+	for _, key := range backupDedupIgnoredSettingsKeys {
+		if _, err := db.Exec(`DELETE FROM settings WHERE key = ?`, key); err != nil {
+			db.Close()
+			return "", err
+		}
+	}
+	// VACUUM recompacts into a canonical page layout - without it, two files
+	// with identical post-delete logical content can still differ byte-for-
+	// byte because their b-tree layout carries the imprint of a different
+	// insert/delete history (e.g. one file's row was deleted just now, the
+	// other's key was simply never present).
+	if _, err := db.Exec(`VACUUM`); err != nil {
+		db.Close()
+		return "", err
+	}
+	if err := db.Close(); err != nil {
+		return "", err
+	}
+
+	// Zero the SQLite header's file change counter (offsets 24-27) and its
+	// mirror, the version-valid-for number (offsets 92-95, SQLite file
+	// format spec). Both are incremented on every committed write
+	// transaction, including a DELETE that touches zero rows - so a scratch
+	// copy where backupDedupIgnoredSettingsKeys' DELETEs were no-ops (the
+	// key was never present) ends up with a different counter value than a
+	// copy where they actually removed rows, even once VACUUM has made
+	// every other byte identical. Left unzeroed, that counter drift alone
+	// causes a false hash mismatch on otherwise byte-for-byte-identical
+	// content.
+	scratchBytes, err := os.ReadFile(scratchPath)
+	if err != nil {
+		return "", err
+	}
+	for _, off := range [2]int{24, 92} {
+		if off+4 <= len(scratchBytes) {
+			for i := 0; i < 4; i++ {
+				scratchBytes[off+i] = 0
+			}
+		}
+	}
+
+	h := sha256.New()
+	h.Write(scratchBytes)
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
