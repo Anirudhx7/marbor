@@ -75,7 +75,10 @@ type Store interface {
 	// Configured changes only via UpsertNodeControlConfigured, the operator
 	// Accept action - never as a side effect of a discovery re-run.
 	UpsertNodeControlDiscovered(name, driver, identifier string, evidence []string) error
-	UpsertNodeControlConfigured(name, driver, identifier string) error
+	// startCommand is the Process driver's launch command (Step 3) - only
+	// meaningful when driver=="process", but accepted unconditionally since
+	// the store has no opinion on which driver a given node uses.
+	UpsertNodeControlConfigured(name, driver, identifier, startCommand string) error
 	// ClearNodeControlConfigured un-configures a node (an operator removing
 	// its accepted driver) without discarding the discovered/evidence
 	// columns, unlike DeleteNodeControl which drops the whole row.
@@ -325,6 +328,12 @@ type NodeControlRecord struct {
 	DiscoveredDriver     string   `json:"discovered_driver,omitempty"`
 	DiscoveredIdentifier string   `json:"discovered_identifier,omitempty"`
 	DiscoveredEvidence   []string `json:"discovered_evidence,omitempty"`
+
+	// StartCommand is the Process driver's launch command (Step 3) - the
+	// bare PID-file convention alone gives no way to know how to launch the
+	// process fresh, so an operator configures it explicitly at Accept time.
+	// Only meaningful when Driver=="process"; empty for every other driver.
+	StartCommand string `json:"start_command,omitempty"`
 }
 
 // PredictiveTransition is one persisted model-to-model transition, used to
@@ -603,7 +612,7 @@ func (NopStore) GetNodeAgent(_ string) (NodeAgentRecord, bool, error) {
 func (NopStore) AllNodeAgents() ([]NodeAgentRecord, error)                    { return nil, nil }
 func (NopStore) DeleteNodeAgent(_ string) error                               { return nil }
 func (NopStore) UpsertNodeControlDiscovered(_, _, _ string, _ []string) error { return nil }
-func (NopStore) UpsertNodeControlConfigured(_, _, _ string) error             { return nil }
+func (NopStore) UpsertNodeControlConfigured(_, _, _, _ string) error          { return nil }
 func (NopStore) ClearNodeControlConfigured(_ string) error                    { return nil }
 func (NopStore) GetNodeControl(_ string) (NodeControlRecord, bool, error) {
 	return NodeControlRecord{}, false, nil

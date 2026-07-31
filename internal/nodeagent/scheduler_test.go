@@ -182,7 +182,7 @@ func TestSchedulerMetadataFields(t *testing.T) {
 	if snap.Agent.NodeID == "" {
 		t.Error("expected node_id to be set")
 	}
-	wantCapabilities := []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check"}
+	wantCapabilities := []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart"}
 	if len(snap.Capabilities) != len(wantCapabilities) {
 		t.Fatalf("Capabilities = %v, want %v", snap.Capabilities, wantCapabilities)
 	}

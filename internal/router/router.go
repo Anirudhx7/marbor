@@ -608,6 +608,10 @@ type ControlConfig struct {
 	Driver     string
 	Identifier string
 	Configured bool
+	// StartCommand is the Process driver's launch command (Step 3) - only
+	// meaningful when Driver=="process", carried alongside Driver/Identifier
+	// so a lifecycle dispatch never has to re-read the store mid-request.
+	StartCommand string
 }
 
 // SetNodeControl sets the per-node ControlDriver config (admin-toggled,

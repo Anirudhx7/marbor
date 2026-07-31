@@ -220,7 +220,8 @@ func (s *sqliteStore) migrate() error {
 			configured            INTEGER NOT NULL DEFAULT 0,
 			discovered_driver     TEXT NOT NULL DEFAULT '',
 			discovered_identifier TEXT NOT NULL DEFAULT '',
-			discovered_evidence   TEXT NOT NULL DEFAULT '[]'
+			discovered_evidence   TEXT NOT NULL DEFAULT '[]',
+			start_command         TEXT NOT NULL DEFAULT ''
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS predictive_history (
@@ -424,6 +425,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
+		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -1093,16 +1095,20 @@ func (s *sqliteStore) UpsertNodeControlDiscovered(name, driver, identifier strin
 }
 
 // UpsertNodeControlConfigured persists an operator's explicit Accept - the
-// only writer of the configured/driver/identifier columns.
-func (s *sqliteStore) UpsertNodeControlConfigured(name, driver, identifier string) error {
+// only writer of the configured/driver/identifier/start_command columns.
+// startCommand is only meaningful for the Process driver's Start action
+// (5.6/Step 3) but is accepted unconditionally here - the store has no
+// opinion on which driver a given node uses.
+func (s *sqliteStore) UpsertNodeControlConfigured(name, driver, identifier, startCommand string) error {
 	_, err := s.db.Exec(`
-		INSERT INTO node_control (name, driver, identifier, configured)
-		VALUES (?, ?, ?, 1)
+		INSERT INTO node_control (name, driver, identifier, configured, start_command)
+		VALUES (?, ?, ?, 1, ?)
 		ON CONFLICT(name) DO UPDATE SET
 			driver = excluded.driver,
 			identifier = excluded.identifier,
-			configured = 1
-	`, name, driver, identifier)
+			configured = 1,
+			start_command = excluded.start_command
+	`, name, driver, identifier, startCommand)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeControlConfigured: %w", err)
 	}
@@ -1113,7 +1119,7 @@ func (s *sqliteStore) UpsertNodeControlConfigured(name, driver, identifier strin
 // accepted driver) without discarding the discovered/evidence columns - a
 // no-op if the row doesn't exist yet.
 func (s *sqliteStore) ClearNodeControlConfigured(name string) error {
-	_, err := s.db.Exec(`UPDATE node_control SET driver = '', identifier = '', configured = 0 WHERE name = ?`, name)
+	_, err := s.db.Exec(`UPDATE node_control SET driver = '', identifier = '', configured = 0, start_command = '' WHERE name = ?`, name)
 	if err != nil {
 		return fmt.Errorf("store: ClearNodeControlConfigured: %w", err)
 	}
@@ -1125,9 +1131,9 @@ func (s *sqliteStore) GetNodeControl(name string) (NodeControlRecord, bool, erro
 	var configured int
 	var evJSON string
 	err := s.db.QueryRow(`
-		SELECT name, driver, identifier, configured, discovered_driver, discovered_identifier, discovered_evidence
+		SELECT name, driver, identifier, configured, discovered_driver, discovered_identifier, discovered_evidence, start_command
 		FROM node_control WHERE name = ?
-	`, name).Scan(&rec.Name, &rec.Driver, &rec.Identifier, &configured, &rec.DiscoveredDriver, &rec.DiscoveredIdentifier, &evJSON)
+	`, name).Scan(&rec.Name, &rec.Driver, &rec.Identifier, &configured, &rec.DiscoveredDriver, &rec.DiscoveredIdentifier, &evJSON, &rec.StartCommand)
 	if err == sql.ErrNoRows {
 		return NodeControlRecord{}, false, nil
 	}
@@ -1143,7 +1149,7 @@ func (s *sqliteStore) GetNodeControl(name string) (NodeControlRecord, bool, erro
 
 func (s *sqliteStore) AllNodeControl() ([]NodeControlRecord, error) {
 	rows, err := s.db.Query(`
-		SELECT name, driver, identifier, configured, discovered_driver, discovered_identifier, discovered_evidence
+		SELECT name, driver, identifier, configured, discovered_driver, discovered_identifier, discovered_evidence, start_command
 		FROM node_control
 	`)
 	if err != nil {
@@ -1156,7 +1162,7 @@ func (s *sqliteStore) AllNodeControl() ([]NodeControlRecord, error) {
 		var rec NodeControlRecord
 		var configured int
 		var evJSON string
-		if err := rows.Scan(&rec.Name, &rec.Driver, &rec.Identifier, &configured, &rec.DiscoveredDriver, &rec.DiscoveredIdentifier, &evJSON); err != nil {
+		if err := rows.Scan(&rec.Name, &rec.Driver, &rec.Identifier, &configured, &rec.DiscoveredDriver, &rec.DiscoveredIdentifier, &evJSON, &rec.StartCommand); err != nil {
 			return nil, fmt.Errorf("store: AllNodeControl scan: %w", err)
 		}
 		rec.Configured = configured != 0

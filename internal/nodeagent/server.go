@@ -55,6 +55,14 @@ func (s *Server) Handler() http.Handler {
 	// Health.RuntimeReachable field (which only reflects the last poll
 	// cycle's passive reading). GET because this never mutates state.
 	mux.HandleFunc("GET /v1/runtime/health", requireToken(s.Token, s.handleHealthCheck))
+	// The "runtime" resource's lifecycle verbs (P43 Step 3, capabilities
+	// "runtime.start"/"runtime.stop"/"runtime.restart") - the agent builds
+	// the ControlDriver fresh per-request from the {driver, identifier,
+	// start_command} the mesh's Admin API supplies in the body; see
+	// control_actions.go.
+	mux.HandleFunc("POST /v1/runtime/start", requireToken(s.Token, s.handleRuntimeStart))
+	mux.HandleFunc("POST /v1/runtime/stop", requireToken(s.Token, s.handleRuntimeStop))
+	mux.HandleFunc("POST /v1/runtime/restart", requireToken(s.Token, s.handleRuntimeRestart))
 	return mux
 }
 
