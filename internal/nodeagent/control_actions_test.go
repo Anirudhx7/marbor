@@ -17,6 +17,8 @@ import (
 // depending on any real subprocess execution.
 type fakeControlDriver struct {
 	startErr, stopErr, restartErr error
+	logsOut                       []string
+	logsErr                       error
 	called                        []string
 }
 
@@ -37,8 +39,11 @@ func (f *fakeControlDriver) Restart(ctx context.Context) error {
 func (f *fakeControlDriver) Status(ctx context.Context) (control.Status, error) {
 	return control.Status{}, nil
 }
-func (f *fakeControlDriver) Logs(ctx context.Context, lines int) ([]string, error) { return nil, nil }
-func (f *fakeControlDriver) Validate(ctx context.Context) error                    { return nil }
+func (f *fakeControlDriver) Logs(ctx context.Context, lines int) ([]string, error) {
+	f.called = append(f.called, "logs")
+	return f.logsOut, f.logsErr
+}
+func (f *fakeControlDriver) Validate(ctx context.Context) error { return nil }
 
 func withFakeControlDriver(t *testing.T, fake *fakeControlDriver) {
 	t.Helper()
@@ -61,6 +66,82 @@ func doRuntimeAction(t *testing.T, s *Server, action string, body map[string]str
 
 func newControlActionTestServer() *Server {
 	return &Server{Token: "test-token"}
+}
+
+func doRuntimeLogs(t *testing.T, s *Server, body map[string]interface{}) *httptest.ResponseRecorder {
+	t.Helper()
+	payload, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/v1/runtime/logs", strings.NewReader(string(payload)))
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+	return w
+}
+
+// TestHandleRuntimeLogs_ConfiguredSuccess verifies the configured success
+// path: the request's driver/identifier builds a ControlDriver and Logs is
+// invoked, returning its lines verbatim.
+func TestHandleRuntimeLogs_ConfiguredSuccess(t *testing.T) {
+	fake := &fakeControlDriver{logsOut: []string{"line one", "line two"}}
+	withFakeControlDriver(t, fake)
+	s := newControlActionTestServer()
+
+	w := doRuntimeLogs(t, s, map[string]interface{}{"driver": "systemd", "identifier": "ollama.service", "lines": 50})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	var resp logsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Lines) != 2 || resp.Lines[0] != "line one" || resp.Lines[1] != "line two" {
+		t.Fatalf("Lines = %v, want [line one line two]", resp.Lines)
+	}
+	if len(fake.called) != 1 || fake.called[0] != "logs" {
+		t.Fatalf("expected logs called once, got %v", fake.called)
+	}
+}
+
+// TestHandleRuntimeLogs_Unconfigured verifies the same mandated error as
+// start/stop/restart when the mesh sends no driver.
+func TestHandleRuntimeLogs_Unconfigured(t *testing.T) {
+	s := newControlActionTestServer()
+
+	w := doRuntimeLogs(t, s, map[string]interface{}{})
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422, body=%s", w.Code, w.Body.String())
+	}
+	var resp logsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Error != "Runtime control unavailable: no control driver configured" {
+		t.Fatalf("error = %q, want the exact mandated message", resp.Error)
+	}
+}
+
+// TestHandleRuntimeLogs_DriverExecutionError verifies a real driver failure
+// (e.g. journalctl failing) is relayed as a 502 with the driver's own error
+// text, never swallowed into an empty-looking success.
+func TestHandleRuntimeLogs_DriverExecutionError(t *testing.T) {
+	fake := &fakeControlDriver{logsErr: errors.New("journalctl: unit ollama.service not found")}
+	withFakeControlDriver(t, fake)
+	s := newControlActionTestServer()
+
+	w := doRuntimeLogs(t, s, map[string]interface{}{"driver": "systemd", "identifier": "ollama.service"})
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502, body=%s", w.Code, w.Body.String())
+	}
+	var resp logsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(resp.Error, "not found") {
+		t.Fatalf("error = %q, want it to contain the driver's real error text", resp.Error)
+	}
 }
 
 // TestHandleRuntimeAction_ConfiguredSuccess verifies the configured success

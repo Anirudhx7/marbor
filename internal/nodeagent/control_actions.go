@@ -44,7 +44,31 @@ type controlActionRequest struct {
 	// - a bare PID-file convention alone gives no way to know how to launch
 	// the process fresh. Ignored by every other driver's Start.
 	StartCommand string `json:"start_command,omitempty"`
+	// Lines is only meaningful for the runtime.logs action - how many lines
+	// of log output to fetch. Ignored by start/stop/restart.
+	Lines int `json:"lines,omitempty"`
 }
+
+// logsResponse is the body POST /v1/runtime/logs returns - a distinct shape
+// from actionResponse since a log fetch returns data, not just ok/error.
+type logsResponse struct {
+	Lines []string `json:"lines,omitempty"`
+	Error string   `json:"error,omitempty"`
+}
+
+func writeLogs(w http.ResponseWriter, status int, resp logsResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// defaultLogLines/maxLogLines bound an unspecified or unreasonable "lines"
+// request - a snapshot fetch (R2's spirit extended to this subsystem: no
+// unbounded journalctl/docker logs invocation).
+const (
+	defaultLogLines = 200
+	maxLogLines     = 5000
+)
 
 // newControlDriver builds a control.ControlDriver from the wire request -
 // a package-level var (same seam pattern as lookPath/runCommand in
@@ -170,4 +194,45 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 		return
 	}
 	writeAction(w, http.StatusOK, actionResponse{OK: true})
+}
+
+// handleRuntimeLogs is the POST /v1/runtime/logs handler, capability
+// "runtime.logs". Unlike start/stop/restart this is a pure read - it never
+// mutates the node - but still needs the mesh to inject driver/identifier on
+// every call, same as the other three actions, since the agent holds no
+// persisted control config of its own.
+func (s *Server) handleRuntimeLogs(w http.ResponseWriter, r *http.Request) {
+	var req controlActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeLogs(w, http.StatusBadRequest, logsResponse{Error: "invalid request body"})
+		return
+	}
+
+	if req.Driver == "" {
+		writeLogs(w, http.StatusUnprocessableEntity, logsResponse{Error: "Runtime control unavailable: no control driver configured"})
+		return
+	}
+
+	drv, err := newControlDriver(req.Driver, req.Identifier, req.StartCommand)
+	if err != nil {
+		writeLogs(w, http.StatusUnprocessableEntity, logsResponse{Error: err.Error()})
+		return
+	}
+
+	lines := req.Lines
+	if lines <= 0 {
+		lines = defaultLogLines
+	} else if lines > maxLogLines {
+		lines = maxLogLines
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), controlActionTimeout)
+	defer cancel()
+
+	out, err := drv.Logs(ctx, lines)
+	if err != nil {
+		writeLogs(w, http.StatusBadGateway, logsResponse{Error: err.Error()})
+		return
+	}
+	writeLogs(w, http.StatusOK, logsResponse{Lines: out})
 }
