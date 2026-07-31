@@ -17,16 +17,17 @@ func runModels(flags *globalFlags, stdout, stderr io.Writer) int {
 		return reportError(err, stderr)
 	}
 
-	if flags.jsonOutput {
-		if err := writeJSON(stdout, models); err != nil {
-			fmt.Fprintln(stderr, err)
-			return ExitServerError
-		}
-		return ExitOK
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, models); handled {
+		return code
 	}
 
+	// Header says "healthy", not "total", because ModelEntry.TotalNodes is
+	// populated server-side (admin.go handleModels) from the count of
+	// currently-healthy nodes, not the fleet's total node count - labeling
+	// it "total" here would silently understate the fleet whenever any node
+	// is unhealthy.
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "NAME\tWARM/TOTAL NODES\tVRAM\tDISK\tFAMILY\tDIGEST MISMATCH")
+	fmt.Fprintln(tw, "NAME\tWARM/HEALTHY NODES\tVRAM\tDISK\tFAMILY\tDIGEST MISMATCH")
 	for _, m := range models.Models {
 		fmt.Fprintf(tw, "%s\t%d/%d\t%s\t%s\t%s\t%s\n",
 			m.Name, m.WarmCount, m.TotalNodes, fmtMB(m.SizeVRAM/1024/1024), fmtMB(m.SizeDisk/1024/1024),

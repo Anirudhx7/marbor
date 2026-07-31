@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,6 +25,24 @@ func TestClient_Health(t *testing.T) {
 	}
 	if health.Status != "ok" || health.Version != "v0.19.0" || health.Nodes.Total != 2 || health.Nodes.Healthy != 2 {
 		t.Fatalf("unexpected health response: %+v", health)
+	}
+}
+
+func TestClient_Health_Degraded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"status":"degraded","version":"v0.19.0","proxy_port":11434,"uptime_seconds":5,"nodes":{"total":3,"healthy":0}}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	health, err := client.Health()
+	if err != nil {
+		t.Fatalf("Health() should decode a 503 degraded body instead of erroring, got: %v", err)
+	}
+	if health.Status != "degraded" || health.Nodes.Total != 3 || health.Nodes.Healthy != 0 {
+		t.Fatalf("unexpected degraded health response: %+v", health)
 	}
 }
 
@@ -66,6 +85,51 @@ func TestClient_Login(t *testing.T) {
 	}
 	if client.Token != "test-session-token" {
 		t.Fatalf("expected token to be captured from Set-Cookie, got %q", client.Token)
+	}
+}
+
+func TestClient_Login_MustChangePassword(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "fresh-session-token"})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"role":"admin","username":"admin","must_change_password":true}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	err := client.Login("admin", "admin")
+	cliErr, ok := err.(*CLIError)
+	if !ok || cliErr.Code != ExitAuthError {
+		t.Fatalf("expected ExitAuthError when must_change_password is true, got %v", err)
+	}
+}
+
+func TestClient_Login_ControlCharacterInPassword(t *testing.T) {
+	var receivedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		receivedBody, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("could not read request body: %v", err)
+		}
+		if !json.Valid(receivedBody) {
+			t.Fatalf("login request body is not valid JSON: %q", receivedBody)
+		}
+		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "tok"})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"role":"admin","username":"admin"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL, "")
+	// A control byte outside the small set strconv.Quote maps to a named
+	// escape (\a \b \f \n \r \t \v) previously became a \xHH escape, which
+	// is not valid JSON.
+	if err := client.Login("admin", "pass\x01word"); err != nil {
+		t.Fatalf("Login() error with a control character in the password: %v", err)
+	}
+	if receivedBody == nil {
+		t.Fatal("server never received a request body")
 	}
 }
 

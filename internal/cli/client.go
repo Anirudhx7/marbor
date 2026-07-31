@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,8 +65,14 @@ func NewClient(baseURL, token string) *Client {
 // the JSON body - admin.go:handleLoginForRole only sets it via cookie).
 // On success it also stores the token on the Client for subsequent calls.
 func (c *Client) Login(username, password string) error {
-	body := fmt.Sprintf(`{"username":%q,"password":%q}`, username, password)
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/admin/v1/login", strings.NewReader(body))
+	payload, err := json.Marshal(struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}{username, password})
+	if err != nil {
+		return userErrorf("building login request: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/admin/v1/login", bytes.NewReader(payload))
 	if err != nil {
 		return userErrorf("building login request: %v", err)
 	}
@@ -84,9 +91,21 @@ func (c *Client) Login(username, password string) error {
 		return serverErrorf("login failed with status %d: %s", resp.StatusCode, readErrorMessage(resp.Body))
 	}
 
+	var respBody struct {
+		MustChangePassword bool `json:"must_change_password"`
+	}
+	// Best-effort: a malformed body here doesn't invalidate a successful
+	// login (the cookie is still authoritative), so decode errors are not
+	// fatal - just skip the must-change-password fast-path below.
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	_ = json.Unmarshal(bodyBytes, &respBody)
+
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "mesh_session" {
 			c.Token = cookie.Value
+			if respBody.MustChangePassword {
+				return authErrorf("password change required: log in via the web dashboard once to set a new password before using the CLI")
+			}
 			return nil
 		}
 	}
@@ -117,6 +136,11 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		defer resp.Body.Close()
 		return nil, authErrorf("%s", readErrorMessage(resp.Body))
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		// GET /health returns 503 with a still-decodable body to signal a
+		// degraded (not down) mesh, not a hard failure - let the caller
+		// decode it instead of discarding it as a generic server error.
+		return resp, nil
 	case resp.StatusCode >= 500:
 		defer resp.Body.Close()
 		return nil, serverErrorf("server error (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
