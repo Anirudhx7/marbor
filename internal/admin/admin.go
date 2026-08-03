@@ -184,6 +184,7 @@ type Server struct {
 	logChan        chan store.RequestRecord
 	logDone        chan struct{} // closed by Shutdown to signal drain-and-stop
 	logWg          sync.WaitGroup
+	statsChan      chan statsJob             // hourly bucket + model stat upserts, same async-drain pattern as logChan
 	pullsMu        sync.Mutex                // guards pullJobs
 	pullJobs       map[string]*pullJob       // "node|model" -> job state; ephemeral, never persisted
 	coldStarts     int64                     // atomic - total cold start events
@@ -601,6 +602,7 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 		resetPwLimiter: newResetPasswordRateLimiter(),
 		logChan:        make(chan store.RequestRecord, 5000),
 		logDone:        make(chan struct{}),
+		statsChan:      make(chan statsJob, 5000),
 		pullJobs:       make(map[string]*pullJob),
 		benchJobs:      make(map[string]*benchmarkJob),
 		enrollCodes:    make(map[string]enrollmentCode),
@@ -611,22 +613,38 @@ func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...st
 	return s
 }
 
+// statsJob bundles the hourly-bucket and model-stat writes TrackLocalRequestModel
+// makes per local request, so both go through one async queue entry instead
+// of two separate blocking SQLite calls. TrackCloudCostModel does NOT use
+// this - its write stays synchronous, see the comment on that function.
+type statsJob struct {
+	bucket store.HourlyBucket
+	stat   store.ModelStat
+}
+
 func (s *Server) startAsyncLogger() {
 	defer s.logWg.Done()
 	for {
 		select {
 		case rec := <-s.logChan:
 			_ = s.st.AppendRequest(rec)
+		case job := <-s.statsChan:
+			_ = s.st.UpsertHourlyBucket(job.bucket)
+			_ = s.st.UpsertModelStat(job.stat)
 		case <-s.logDone:
-			// Drain whatever is already buffered, then stop. logChan is
-			// never closed (LogRequest keeps sending on it via a
-			// non-blocking select even after Shutdown), so this only
-			// races benignly: any record enqueued after the drain below
-			// just sits unread, it never panics on a closed channel.
+			// Drain whatever is already buffered, then stop. logChan and
+			// statsChan are never closed (LogRequest/TrackLocalRequestModel
+			// keep sending on them via a non-blocking select even after
+			// Shutdown), so this only races benignly: anything enqueued after
+			// the drain below just sits unread, it never panics on a closed
+			// channel.
 			for {
 				select {
 				case rec := <-s.logChan:
 					_ = s.st.AppendRequest(rec)
+				case job := <-s.statsChan:
+					_ = s.st.UpsertHourlyBucket(job.bucket)
+					_ = s.st.UpsertModelStat(job.stat)
 				default:
 					return
 				}
@@ -4845,22 +4863,37 @@ func (s *Server) TrackLocalRequestModel(model string, tokens, genDurationMs int6
 	atomic.AddInt64(&s.localCount, 1)
 	atomic.AddInt64(&s.localTokens, tokens)
 	s.analytics.recordLocal(model, tokens, genDurationMs)
-	// Persist hourly bucket and model stat for this request.
+	// Persist hourly bucket and model stat for this request, async (see
+	// .local/audit-fixes-2026-08-03.md #1 - these were synchronous SQLite
+	// writes on every single inference request before).
 	now := time.Now().UTC().Truncate(time.Hour)
 	saved := s.refCostPer1K * float64(tokens) / 1000.0
-	_ = s.st.UpsertHourlyBucket(store.HourlyBucket{
-		Hour:          now,
-		LocalRequests: 1,
-		Tokens:        tokens,
-		CostUSD:       0,
-		GenDurationMs: genDurationMs,
+	s.enqueueStats(statsJob{
+		bucket: store.HourlyBucket{
+			Hour:          now,
+			LocalRequests: 1,
+			Tokens:        tokens,
+			CostUSD:       0,
+			GenDurationMs: genDurationMs,
+		},
+		stat: store.ModelStat{
+			Model:    model,
+			Requests: 1,
+			Tokens:   tokens,
+			CostUSD:  saved,
+		},
 	})
-	_ = s.st.UpsertModelStat(store.ModelStat{
-		Model:    model,
-		Requests: 1,
-		Tokens:   tokens,
-		CostUSD:  saved,
-	})
+}
+
+// enqueueStats sends a statsJob to the async writer without blocking the
+// caller. If the queue is completely backed up the job is dropped and
+// logged, same trade-off LogRequest already makes for logChan.
+func (s *Server) enqueueStats(job statsJob) {
+	select {
+	case s.statsChan <- job:
+	default:
+		log.Printf("async logger: stats queue full, dropped hourly/model-stat update for %s", job.stat.Model)
+	}
 }
 
 // LocalTokens returns the running total of real tokens served by local nodes.
@@ -4882,7 +4915,14 @@ func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int
 	s.cloudSpentUSD += cost
 	s.mu.Unlock()
 	s.analytics.recordCloud(model, costPer1K, tokens)
-	// Persist hourly bucket and model stat for this request.
+	// Persist hourly bucket and model stat for this request. Kept SYNCHRONOUS
+	// (unlike TrackLocalRequestModel above) because cloudSpendSince() reads
+	// this exact hourly_buckets row to enforce the daily/monthly cloud spend
+	// cap in CloudBudgetExceeded - making this write async would let a burst
+	// of concurrent cloud requests blow through a configured budget cap
+	// before the async writer catches up. CostUSD is the only field here
+	// that gates a real-time decision; everything else this file made async
+	// (audit log, local-request stats) has no such immediate-read dependency.
 	now := time.Now().UTC().Truncate(time.Hour)
 	_ = s.st.UpsertHourlyBucket(store.HourlyBucket{
 		Hour:          now,
