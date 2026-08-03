@@ -288,6 +288,12 @@ type NodeRecord struct {
 	URL         string `json:"url"`
 	Runtime     string `json:"runtime"`
 	VRAMTotalMB *int64 `json:"vram_total_mb,omitempty"`
+	// Host groups this node with any other node sharing the same physical
+	// machine, so they can share one Node Agent enrollment/token instead of
+	// each needing its own - empty means "not explicitly grouped," resolved
+	// to a default (the URL's hostname) in internal/router.AddNode, never
+	// left ambiguous in memory.
+	Host string `json:"host,omitempty"`
 }
 
 // NodeOverride holds operator-declared overrides for a node.

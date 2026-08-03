@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +23,21 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
+// hostOrDefault returns host if non-empty, else rawURL's bare hostname -
+// the shared default used by both New (statically-configured nodes) and
+// AddNode (store/admin/Docker-discovered nodes) so every NodeState always
+// has a real, non-empty Host to key its Node Agent config by, even for a
+// node whose config.NodeConfig.Host was never explicitly set.
+func hostOrDefault(host, rawURL string) string {
+	if host != "" {
+		return host
+	}
+	if u, err := url.Parse(rawURL); err == nil {
+		return u.Hostname()
+	}
+	return ""
+}
+
 type ModelInfo struct {
 	Name     string `json:"name"`
 	SizeVRAM int64  `json:"sizeVram"`
@@ -31,8 +47,14 @@ type ModelInfo struct {
 }
 
 type NodeState struct {
-	Name          string
-	URL           string
+	Name string
+	URL  string
+	// Host groups this node with any other node sharing the same physical
+	// machine, so a single Node Agent process/enrollment/token covers all of
+	// them (see SetNodeAgent/NodeAgentSetting, keyed by Host, not Name).
+	// Always non-empty in memory: defaulted to the URL's hostname in AddNode
+	// when config.NodeConfig.Host is unset, so it never needs a nil check.
+	Host          string
 	GPUModel      string
 	NvidiaIndex   int
 	LoadedModels  []ModelInfo
@@ -124,6 +146,16 @@ type NodeState struct {
 	AgentArchitecture string
 	AgentGPUVendor    string
 	AgentRuntime      string
+	// AgentRuntimeID pins this node row to one entry of the shared host's
+	// polled nodeagent.Telemetry.Runtimes array (see agent_poll.go's
+	// pollAgentHost) - stable across a port edit to this node's URL, since
+	// it's matched by the agent's own opaque runtime_id, not by port. Empty
+	// until the first successful match; in-memory only (not persisted to
+	// SQLite - a mesh restart simply re-bootstraps the pin via the port
+	// heuristic on the next poll, which is harmless). Never surfaced
+	// directly in the admin API/UI - it's routing plumbing, not a
+	// fleet-debugging fact like AgentNodeID below.
+	AgentRuntimeID string
 	// AgentNodeID is the agent's self-persisted node_id (internal/nodeagent
 	// identity.go) - a stable UUID surviving agent binary upgrades and
 	// hostname/IP/DNS changes. Not yet used to re-identify a node across a
@@ -307,12 +339,16 @@ type Router struct {
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
 	nodeWarmup map[string]NodeWarmup
-	// nodeAgents holds per-node Node Agent poll configuration (enabled, port,
-	// bearer token), toggled via the admin API and persisted in the
-	// node_agent table (internal/store). Guarded by r.mu, same pattern as
-	// nodeWarmup. A node absent from this map (or present with Enabled:
-	// false) is polled for /api/ps as normal but never has its agent fields
-	// (AgentPresent, FanPercent, RAMUsedMB, DiskFreeGB) populated.
+	// nodeAgents holds per-HOST Node Agent poll configuration (enabled,
+	// port, bearer token), keyed by NodeState.Host - not by node name - so
+	// every node sharing a physical machine polls the same agent process
+	// with the same token (see pollAgentHost in agent_poll.go). Toggled via
+	// the admin API (resolved from a node name to its Host first) and
+	// persisted in the node_agent table (internal/store) under that same
+	// host-string key. Guarded by r.mu, same pattern as nodeWarmup. A host
+	// absent from this map (or present with Enabled: false) means every
+	// node on it is polled for /api/ps as normal but never has its agent
+	// fields (AgentPresent, FanPercent, RAMUsedMB, DiskFreeGB) populated.
 	nodeAgents map[string]NodeAgentConfig
 	// nodeControl holds the per-node accepted ControlDriver config (P43),
 	// guarded by r.mu same as nodeAgents. Absent (or Configured: false)
@@ -412,6 +448,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		ns := &NodeState{
 			Name:              n.Name,
 			URL:               n.URL,
+			Host:              hostOrDefault(n.Host, n.URL),
 			GPUModel:          n.GPUModel,
 			NvidiaIndex:       n.NvidiaIndex,
 			VRAMTotalMBConfig: n.VRAMTotalMB,
@@ -565,39 +602,72 @@ func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
 	return NodeWarmup{Enabled: nw.Enabled, Models: append([]string(nil), nw.Models...)}
 }
 
-// NodeAgentConfig is the router's in-memory view of a node's Node Agent
+// NodeAgentConfig is the router's in-memory view of a host's Node Agent
 // poll configuration: whether the agent is enabled, which port it listens
-// on, and the bearer token the mesh presents when polling it.
+// on, and the bearer token the mesh presents when polling it. One config
+// per physical host, shared by every node row on that host.
 type NodeAgentConfig struct {
 	Enabled bool
 	Port    int
 	Token   string
 }
 
-// SetNodeAgent sets the per-node Node Agent poll config (admin-toggled,
-// store-persisted by the caller). Disabling removes the node from the map
-// entirely so pollAgentTelemetry's "no agent configured" branch runs on the
-// next poll, clearing any previously-reported agent fields.
-func (r *Router) SetNodeAgent(name string, enabled bool, port int, token string) {
+// SetNodeAgent sets the per-HOST Node Agent poll config (admin-toggled,
+// store-persisted by the caller under the same host key). Disabling removes
+// the host from the map entirely so pollAgentHost's "no agent configured"
+// branch runs on the next poll, clearing any previously-reported agent
+// fields for every node on that host.
+func (r *Router) SetNodeAgent(host string, enabled bool, port int, token string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.nodeAgents == nil {
 		r.nodeAgents = make(map[string]NodeAgentConfig)
 	}
 	if !enabled {
-		delete(r.nodeAgents, name)
+		delete(r.nodeAgents, host)
 		return
 	}
-	r.nodeAgents[name] = NodeAgentConfig{Enabled: true, Port: port, Token: token}
+	r.nodeAgents[host] = NodeAgentConfig{Enabled: true, Port: port, Token: token}
 }
 
-// NodeAgentSetting returns the agent config for name and whether one is
-// configured (enabled) at all.
+// NodeAgentSetting returns the agent config for the HOST that name's node
+// belongs to, and whether one is configured (enabled) at all. Callers that
+// already have a host string (e.g. pollAgentHost) should index nodeAgents
+// directly instead - this is the node-name-based convenience for admin.go
+// handlers that still receive a node name from the URL path.
 func (r *Router) NodeAgentSetting(name string) (NodeAgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	cfg, ok := r.nodeAgents[name]
+	host, ok := r.hostOfLocked(name)
+	if !ok {
+		return NodeAgentConfig{}, false
+	}
+	cfg, ok := r.nodeAgents[host]
 	return cfg, ok
+}
+
+// NodeHost returns the Host that name's node belongs to, and whether name
+// was found at all. admin.go handlers use this to resolve a node name (from
+// the URL path) to the shared host key before reading/writing node_agent -
+// see SetNodeAgent/NodeAgentSetting's doc comments.
+func (r *Router) NodeHost(name string) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.hostOfLocked(name)
+}
+
+// hostOfLocked returns the Host of the node named name - caller must already
+// hold r.mu (read or write lock).
+func (r *Router) hostOfLocked(name string) (string, bool) {
+	for _, n := range r.nodes {
+		if n.Name == name {
+			n.RLock()
+			host := n.Host
+			n.RUnlock()
+			return host, true
+		}
+	}
+	return "", false
 }
 
 // ControlConfig is the router's in-memory view of a node's accepted
@@ -888,6 +958,7 @@ func safeRun(label string, fn func()) {
 func (r *Router) Start(ctx context.Context) {
 	safeRun("pollNvidiaAll", r.pollNvidiaAll)
 	safeRun("pollAll", r.pollAll)
+	safeRun("pollAgentHosts", r.pollAgentHosts)
 	safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
@@ -959,6 +1030,10 @@ func (r *Router) Start(ctx context.Context) {
 					safeRun("pollAll", r.pollAll)
 				}()
 			}
+			// Runs alongside pollAll, not nested inside it - one poll per
+			// physical host (see pollAgentHosts), independent of the
+			// per-node /api/ps health poll's own in-flight guard above.
+			go safeRun("pollAgentHosts", r.pollAgentHosts)
 		case <-dockerTicker.C:
 			safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
 		case <-nvidiaTicker.C:
@@ -1013,6 +1088,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 	node := &NodeState{
 		Name:          n.Name,
 		URL:           n.URL,
+		Host:          hostOrDefault(n.Host, n.URL),
 		GPUModel:      n.GPUModel,
 		NvidiaIndex:   n.NvidiaIndex,
 		VRAMOverrides: n.VRAMOverrides,
@@ -1035,17 +1111,32 @@ func (r *Router) AddNode(n config.NodeConfig) {
 
 func (r *Router) RemoveNode(name string) {
 	r.mu.Lock()
-	var urlToRemove string
+	var urlToRemove, hostRemoved string
 	for i, n := range r.nodes {
 		if n.Name == name {
-			urlToRemove = n.URL
+			urlToRemove, hostRemoved = n.URL, n.Host
 			r.nodes = append(r.nodes[:i], r.nodes[i+1:]...)
 			break
 		}
 	}
 	delete(r.prevHealthy, name)
 	delete(r.prevAgentPresent, name)
-	delete(r.nodeAgents, name)
+	// nodeAgents is keyed by Host, shared by every node on that host - only
+	// drop the entry once no other node still references this host, so
+	// removing one node on a multi-runtime host doesn't disable the agent
+	// for its siblings.
+	if hostRemoved != "" {
+		stillShared := false
+		for _, n := range r.nodes {
+			if n.Host == hostRemoved {
+				stillShared = true
+				break
+			}
+		}
+		if !stillShared {
+			delete(r.nodeAgents, hostRemoved)
+		}
+	}
 	if urlToRemove != "" {
 		delete(r.discoveredURLs, urlToRemove)
 		r.tagsMu.Lock()

@@ -1762,6 +1762,18 @@ export function GPUNodes() {
             The Node Agent is an optional process you run on this GPU node to report CPU usage, fan speed, RAM usage, and free disk space back to the mesh. Everything else (VRAM, temperature, power) is already collected without it.
           </p>
 
+          {agentNode && (() => {
+            const siblings = nodes.filter((n) => n.name !== agentNode.name && n.host === agentNode.host);
+            if (siblings.length === 0) return null;
+            return (
+              <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-3 py-2">
+                Shared with {siblings.map((n) => n.name).join(', ')} - this physical machine runs
+                more than one node row, so enabling/disabling/regenerating the agent here applies
+                to all of them (one agent process per host, not per runtime).
+              </p>
+            );
+          })()}
+
           {agentError && (
             <p className="text-sm text-destructive">{agentError}</p>
           )}

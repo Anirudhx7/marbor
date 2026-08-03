@@ -82,7 +82,11 @@ export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-2',
     name: 'gpu-node-02',
-    host: '10.0.0.12',
+    // Same host as node-1 (10.0.0.11) on purpose - demonstrates the
+    // multi-runtime-per-host Node Agent fix: one physical box running both
+    // Ollama (:11434, node-1) and vLLM (:8000, here), sharing one agent
+    // process/enrollment, both showing agentPresent: true.
+    host: '10.0.0.11',
     gpuModel: 'NVIDIA A100 80GB',
     port: 8000,
     runtime: 'vllm',

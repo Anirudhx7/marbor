@@ -1798,6 +1798,7 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 	_ = s.st.UpsertNode(store.NodeRecord{
 		Name:        cfg.Name,
 		URL:         cfg.URL,
+		Host:        cfg.Host,
 		Runtime:     cfg.Runtime,
 		VRAMTotalMB: vramPtr,
 	})
@@ -1894,11 +1895,14 @@ func generateEnrollmentCode() (string, error) {
 // GET /admin/nodes/{name}/agent
 func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if _, found := s.router.NodeURLs()[name]; !found {
+	host, found := s.router.NodeHost(name)
+	if !found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	rec, found, err := s.st.GetNodeAgent(name)
+	// node_agent is keyed by the shared host string (see SetNodeAgent's doc
+	// comment) - every node on this host reads/writes the same record.
+	rec, found, err := s.st.GetNodeAgent(host)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read node agent config")
 		return
@@ -1923,7 +1927,8 @@ func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 // POST /admin/nodes/{name}/agent  body: {"port": <int>}
 func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if _, found := s.router.NodeURLs()[name]; !found {
+	host, found := s.router.NodeHost(name)
+	if !found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
@@ -1943,14 +1948,19 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
-	rec := store.NodeAgentRecord{Name: name, Enabled: true, Port: body.Port, Token: token}
+	// Persisted/pushed keyed by host, not name - every node sharing this
+	// physical machine now reads the same enabled/port/token record and is
+	// polled by the same single agent process (see SetNodeAgent's doc
+	// comment). Enabling from any one node's UI panel enables it for all of
+	// them.
+	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token}
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
 	}
-	s.router.SetNodeAgent(name, true, body.Port, token)
-	s.logSystemChange(r, "enable_node_agent", name, fmt.Sprintf("Port: %d", body.Port))
-	code, err := s.newEnrollmentCode(name, token)
+	s.router.SetNodeAgent(host, true, body.Port, token)
+	s.logSystemChange(r, "enable_node_agent", host, fmt.Sprintf("Port: %d", body.Port))
+	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
 		return
@@ -1973,16 +1983,19 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 // DELETE /admin/nodes/{name}/agent
 func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if _, found := s.router.NodeURLs()[name]; !found {
+	host, found := s.router.NodeHost(name)
+	if !found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	if err := s.st.DeleteNodeAgent(name); err != nil {
+	// Disables for the whole shared host, not just this one node row - see
+	// SetNodeAgent's doc comment.
+	if err := s.st.DeleteNodeAgent(host); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to delete node agent config")
 		return
 	}
-	s.router.SetNodeAgent(name, false, 0, "")
-	s.logSystemChange(r, "disable_node_agent", name, "")
+	s.router.SetNodeAgent(host, false, 0, "")
+	s.logSystemChange(r, "disable_node_agent", host, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1993,7 +2006,12 @@ func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) 
 // POST /admin/nodes/{name}/agent/regenerate
 func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	rec, found, err := s.st.GetNodeAgent(name)
+	host, found := s.router.NodeHost(name)
+	if !found {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+	rec, found, err := s.st.GetNodeAgent(host)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read node agent config")
 		return
@@ -2012,9 +2030,9 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
 	}
-	s.router.SetNodeAgent(name, true, rec.Port, token)
-	s.logSystemChange(r, "regenerate_node_agent_token", name, "")
-	code, err := s.newEnrollmentCode(name, token)
+	s.router.SetNodeAgent(host, true, rec.Port, token)
+	s.logSystemChange(r, "regenerate_node_agent_token", host, "")
+	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
 		return

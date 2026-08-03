@@ -121,12 +121,11 @@ func (r *Router) pollNode(n *NodeState) {
 		if !reached {
 			// Node was never actually contacted (transport-level failure) -
 			// leave autoDetect pending so the next poll interval retries,
-			// instead of permanently committing the "ollama" fallback.
-			// Still poll the agent (an independent HTTP endpoint, unrelated
-			// to /api/ps reachability) so a node whose runtime is down but
-			// whose agent is still up doesn't keep showing stale agent
-			// telemetry indefinitely (R1).
-			r.pollAgentTelemetry(n)
+			// instead of permanently committing the "ollama" fallback. Agent
+			// telemetry is polled independently now (see pollAgentHosts,
+			// once per host per interval, not nested in this per-node
+			// runtime-health poll) - unaffected by this node's /api/ps
+			// reachability, so no call needed here.
 			r.markFailure(n)
 			return
 		}
@@ -148,17 +147,12 @@ func (r *Router) pollNode(n *NodeState) {
 		// mesh process (single-process architecture - R1/architecture law).
 		// If this is ever hit, something upstream regressed that invariant;
 		// treat it exactly like an unreachable node instead of crashing.
-		r.pollAgentTelemetry(n)
 		r.markFailure(n)
 		return
 	}
 
 	result, err := probe.Probe(ctx, n.URL)
 	if err != nil {
-		// Same reasoning as the auto-detect failure path above: the agent is
-		// a fully independent HTTP endpoint from /api/ps, so a runtime crash
-		// must not freeze its last-reported telemetry as if still current.
-		r.pollAgentTelemetry(n)
 		r.markFailure(n)
 		return
 	}
@@ -262,12 +256,6 @@ func (r *Router) pollNode(n *NodeState) {
 	} else {
 		metrics.NodeHealthy(n.Name, 0)
 	}
-
-	// Node Agent telemetry poll: opt-in per node (see internal/nodeagent),
-	// shares this same poll cycle rather than a second ticker/goroutine, per
-	// the build spec ("mesh polls it exactly like it already polls /api/ps
-	// today"). A no-op (clears stale fields) when no agent is configured.
-	r.pollAgentTelemetry(n)
 
 	if shouldThermalDrain {
 		r.DrainNode(nodeName, "thermal")

@@ -48,7 +48,10 @@ func TestHandleNodeRuntimeAction_DispatchesToAgentWhenConfigured(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	// nodeAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetNodeAgent's doc comment.
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -101,7 +104,10 @@ func TestHandleNodeRuntimeAction_WorksWhileRuntimeUnhealthy(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	// nodeAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetNodeAgent's doc comment.
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -166,7 +172,10 @@ func TestHandleNodeRuntimeAction_UnconfiguredNodeReturns422(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	// nodeAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetNodeAgent's doc comment.
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -223,7 +232,10 @@ func TestHandleNodeRuntimeLogs_DispatchesToAgentWhenConfigured(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	// nodeAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetNodeAgent's doc comment.
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -302,7 +314,10 @@ func TestHandleNodeRuntimeLogs_UnconfiguredNodeReturns422(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	// nodeAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetNodeAgent's doc comment.
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -345,7 +360,10 @@ func TestHandleNodeRuntimeLogs_AgentErrorPassthrough(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	// nodeAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetNodeAgent's doc comment.
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -390,7 +408,10 @@ func TestHandleNodeRuntimeAction_AgentErrorPassthrough(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	// nodeAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetNodeAgent's doc comment.
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()

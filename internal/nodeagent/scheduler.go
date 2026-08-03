@@ -35,36 +35,32 @@ type Scheduler struct {
 	// can retry detection while localRuntime is still empty - see the
 	// re-probe comment below. Never used once localRuntime is non-empty.
 	rd RuntimeDetector
-	// runtimeMu guards localRuntime/runtimeURL/runtimeVersion below - unlike
-	// the original "written once at construction, read-only after" shape,
-	// refresh() may now write these on a later tick (see localRuntime's own
-	// comment), concurrently with RuntimeTarget() being read from an HTTP
-	// handler goroutine.
+	// registry assigns each runtime DetectAll finds a stable RuntimeID across
+	// refresh cycles - see runtime_identity.go. Only ever touched from
+	// refresh()'s single goroutine (Seed, then the Start ticker), so it needs
+	// no mutex of its own.
+	registry *runtimeRegistry
+	// runtimeMu guards primaryRuntime/primaryURL and versionCache below -
+	// written by refresh() on every tick (a host-scoped agent must re-scan
+	// every cycle: a second runtime can start on this host well after the
+	// first was found - see DetectAll), concurrently with RuntimeTarget()
+	// being read from an HTTP handler goroutine.
 	runtimeMu sync.RWMutex
-	// localRuntime/runtimeURL are the detected local inference runtime name
-	// and the base URL it answered on (see runtime_detect.go), or "" if none
-	// has been found *yet*. Detection is attempted once at construction and,
-	// if that finds nothing, retried on every refresh tick until it succeeds
-	// - an agent process routinely starts (systemd/launchd boot ordering,
-	// container restart) before its runtime is up and listening, and without
-	// a retry that race would permanently omit RuntimeInfo/warm_models from
-	// every /v1/status response for the rest of the agent's life, even once
-	// the runtime comes up moments later. Once a runtime is found, it is
-	// treated as fixed for the process lifetime (a node's runtime doesn't
-	// change while the agent keeps running) and never re-probed - only its
-	// live reachability/warm-models are re-probed every refresh, via
-	// runtimeClient, since those genuinely change.
-	localRuntime string
-	runtimeURL   string
-	// runtimeVersion is detected once, the same moment localRuntime is first
-	// found (construction, or a later refresh-tick retry) - a runtime's own
-	// reported version string cannot change while its process keeps running,
-	// so re-running the version command every refresh tick would be pure
-	// waste (and, for "ollama version", a forked subprocess every 5s on every
-	// agent-enabled node in the fleet for an answer that's already known).
-	runtimeVersion string
-	runtimeClient  *http.Client
-	snap           atomic.Pointer[Telemetry]
+	// primaryRuntime/primaryURL mirror Runtimes[0] (the first entry DetectAll
+	// returns this cycle) - kept as scalars for RuntimeTarget()'s single-dial
+	// callers (model-pull actions), which are not yet multi-runtime aware
+	// (out of scope for this change - see plan's Scope section). Empty when
+	// nothing was detected this cycle.
+	primaryRuntime string
+	primaryURL     string
+	// versionCache remembers each RuntimeID's version string once queried -
+	// a runtime's own reported version cannot change while its process keeps
+	// running, so re-running the version command (e.g. a forked "ollama
+	// version" subprocess) every refresh tick for every runtime on every
+	// agent-enabled node in the fleet would be pure waste.
+	versionCache  map[string]string
+	runtimeClient *http.Client
+	snap          atomic.Pointer[Telemetry]
 }
 
 // NewScheduler creates a Scheduler for the given agent_version string,
@@ -86,31 +82,19 @@ func NewScheduler(version string) *Scheduler {
 // than depending on whatever hardware/local processes happen to be present
 // on the machine running the test.
 func newSchedulerWithBackends(version string, gpu GPUCollector, host HostCollector, rd RuntimeDetector) *Scheduler {
-	// A generous but bounded budget: RuntimeDetector may try several
-	// candidate ports, each with its own multi-second timeout, so this
-	// needs enough room for a full worst-case "nothing is listening" sweep
-	// without hanging construction indefinitely.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	name, url, _ := rd.Detect(ctx)
-	var runtimeVer string
-	if name != "" {
-		// Bounded independently of the detection timeout above - a version
-		// query is a single local command, not a multi-candidate sweep.
-		vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
-		runtimeVer = detectRuntimeVersion(vctx, name)
-		vcancel()
-	}
+	// Detection itself now happens inside refresh() (called by Seed right
+	// after construction, before the HTTP server starts accepting
+	// connections - see agent.go) rather than here, since a host-scoped
+	// agent re-scans every cycle regardless of what construction found.
 	return &Scheduler{
-		version:        version,
-		nodeID:         loadOrCreateNodeID(),
-		gpu:            gpu,
-		host:           host,
-		rd:             rd,
-		localRuntime:   name,
-		runtimeURL:     url,
-		runtimeVersion: runtimeVer,
-		runtimeClient:  &http.Client{Timeout: 5 * time.Second},
+		version:       version,
+		nodeID:        loadOrCreateNodeID(),
+		gpu:           gpu,
+		host:          host,
+		rd:            rd,
+		registry:      loadOrCreateRuntimeRegistry(),
+		versionCache:  make(map[string]string),
+		runtimeClient: &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
@@ -179,60 +163,66 @@ func (s *Scheduler) refresh() {
 
 	t.Host = s.host.Collect(ctx)
 
-	s.runtimeMu.RLock()
-	name, url, version := s.localRuntime, s.runtimeURL, s.runtimeVersion
-	s.runtimeMu.RUnlock()
-
-	// Nothing found yet - retry detection this tick rather than leaving
-	// RuntimeInfo permanently omitted for the rest of the process's life (see
-	// the localRuntime field comment above). Cheap once a runtime is found:
-	// this branch is never reached again afterward.
-	if name == "" && s.rd != nil {
+	// A host-scoped agent re-scans every candidate port every cycle (unlike
+	// the old single-runtime "detect once, fixed for the process lifetime"
+	// model) - a second runtime can legitimately start on this host well
+	// after the first was found, and without a continuous re-scan it would
+	// never be reported. The three fixed-candidate local HTTP probes this
+	// does are the same class of cheap localhost dial the live-reachability
+	// probe below already performs every tick for a known runtime; the
+	// actually expensive operation (a forked version-query subprocess) is
+	// cached per RuntimeID below, not re-run every cycle.
+	var detected []DetectedRuntime
+	if s.rd != nil {
 		dctx, dcancel := context.WithTimeout(context.Background(), 5*time.Second)
-		foundName, foundURL, found := s.rd.Detect(dctx)
+		detected = s.rd.DetectAll(dctx)
 		dcancel()
-		if found {
-			vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
-			foundVersion := detectRuntimeVersion(vctx, foundName)
-			vcancel()
-
-			s.runtimeMu.Lock()
-			s.localRuntime, s.runtimeURL, s.runtimeVersion = foundName, foundURL, foundVersion
-			s.runtimeMu.Unlock()
-			name, url, version = foundName, foundURL, foundVersion
-		}
 	}
 
-	if name != "" {
-		ri := &RuntimeInfo{Name: name, Version: version}
-		// Independent timeout, not the same ctx already spent on GPU/host
-		// collection above - a slow nvidia-smi cycle must not starve this
-		// probe's budget and report a false "down" purely from an expired
-		// deadline it never got a fair share of.
-		pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-		result, err := runtimepkg.NewProbe(name, s.runtimeClient).Probe(pctx, url)
-		pcancel()
-		if err == nil {
-			ri.Status = "up"
-			for _, m := range result.LoadedModels {
-				ri.WarmModels = append(ri.WarmModels, m.Name)
-			}
-		} else {
-			ri.Status = "down"
-		}
-		t.Runtime = ri
-		t.Health = Health{RuntimeReachable: ri.Status == "up"}
+	if len(detected) > 0 {
+		runtimes := s.registry.Reconcile(detected)
+		for i := range runtimes {
+			d := detected[i]
 
-		// ControlDriver discovery (P43) piggybacks this same refresh tick -
-		// no new poll loop. Re-run every tick (unlike runtime detection,
-		// never treated as "fixed once found") since a re-scan is expected
-		// to reflect drift (e.g. systemd -> Docker migration) freely; this
-		// only ever populates Discovered, never Driver/Configured - the
-		// agent does not yet track an operator-accepted driver (that
-		// arrives with the control-actions capability), so those stay at
-		// their zero value here.
+			// Independent timeout, not the same ctx already spent on
+			// GPU/host collection above - a slow nvidia-smi cycle must not
+			// starve this probe's budget and report a false "down" purely
+			// from an expired deadline it never got a fair share of.
+			pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
+			result, err := runtimepkg.NewProbe(d.Name, s.runtimeClient).Probe(pctx, d.URL)
+			pcancel()
+			if err == nil {
+				runtimes[i].Status = "up"
+				for _, m := range result.LoadedModels {
+					runtimes[i].WarmModels = append(runtimes[i].WarmModels, m.Name)
+				}
+			} else {
+				runtimes[i].Status = "down"
+			}
+
+			runtimes[i].Version = s.runtimeVersion(runtimes[i].ID, d.Name)
+		}
+
+		t.Runtimes = runtimes
+		primary := runtimes[0]
+		t.Runtime = &primary
+		t.Health = Health{RuntimeReachable: primary.Status == "up"}
+
+		s.runtimeMu.Lock()
+		s.primaryRuntime, s.primaryURL = detected[0].Name, detected[0].URL
+		s.runtimeMu.Unlock()
+
+		// ControlDriver discovery (P43) piggybacks the primary runtime this
+		// same refresh tick - no new poll loop. Re-run every tick (a re-scan
+		// is expected to reflect drift, e.g. systemd -> Docker migration,
+		// freely); this only ever populates Discovered, never
+		// Driver/Configured - the agent does not yet track an
+		// operator-accepted driver (that arrives with the control-actions
+		// capability), so those stay at their zero value here. Scoped to the
+		// primary runtime only, same known limitation as RuntimeTarget (not
+		// yet multi-runtime aware - see plan's Scope section).
 		dctx, dcancel := context.WithTimeout(context.Background(), 5*time.Second)
-		disc := control.Discover(dctx, name, url)
+		disc := control.Discover(dctx, detected[0].Name, detected[0].URL)
 		dcancel()
 		t.Control = &ControlInfo{
 			Discovered: &ControlDiscovery{
@@ -241,10 +231,33 @@ func (s *Scheduler) refresh() {
 				Evidence:   disc.Evidence,
 			},
 		}
+	} else {
+		s.runtimeMu.Lock()
+		s.primaryRuntime, s.primaryURL = "", ""
+		s.runtimeMu.Unlock()
 	}
 
 	t.LastUpdated = time.Now().UTC()
 	s.snap.Store(&t)
+}
+
+// runtimeVersion returns id's cached version string, querying (and caching)
+// it on first sight of this RuntimeID - see versionCache's field comment for
+// why this must not re-run the query every cycle.
+func (s *Scheduler) runtimeVersion(id, name string) string {
+	s.runtimeMu.RLock()
+	v, ok := s.versionCache[id]
+	s.runtimeMu.RUnlock()
+	if ok {
+		return v
+	}
+	vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
+	v = detectRuntimeVersion(vctx, name)
+	vcancel()
+	s.runtimeMu.Lock()
+	s.versionCache[id] = v
+	s.runtimeMu.Unlock()
+	return v
 }
 
 // Snapshot returns the most recently collected Telemetry. Before Seed has
@@ -262,14 +275,16 @@ func (s *Scheduler) Snapshot() Telemetry {
 	return s.metadata()
 }
 
-// RuntimeTarget returns the detected local runtime's name and base URL - the
-// same facts Telemetry.Runtime.Name is built from, exposed directly for
-// callers (handleListModels) that need to dial the runtime themselves rather
-// than read its already-collected telemetry. Empty until detection succeeds
-// (see localRuntime's field comment - detection retries on every refresh
-// tick until it does).
+// RuntimeTarget returns the primary (first-detected this cycle) local
+// runtime's name and base URL - the same facts Telemetry.Runtime is built
+// from, exposed directly for callers (handleListModels, model-pull actions)
+// that need to dial a runtime themselves rather than read the already-
+// collected telemetry. These callers are not yet multi-runtime aware (see
+// plan's Scope section) - on a host running more than one runtime, this
+// always targets whichever DetectAll returned first. Empty until the first
+// refresh tick completes.
 func (s *Scheduler) RuntimeTarget() (name, url string) {
 	s.runtimeMu.RLock()
 	defer s.runtimeMu.RUnlock()
-	return s.localRuntime, s.runtimeURL
+	return s.primaryRuntime, s.primaryURL
 }

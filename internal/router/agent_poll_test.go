@@ -53,6 +53,7 @@ func TestPollAgentTelemetryNoAgentConfigured(t *testing.T) {
 	}, nil)
 
 	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
@@ -125,9 +126,9 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, token)
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, token)
 
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
@@ -208,11 +209,12 @@ func TestPollAgentTelemetryFillsGPUModelWhenUnset(t *testing.T) {
 		{Name: "gpu-0", URL: psSrv0.URL, GPUModel: "Unknown GPU"},
 		{Name: "gpu-1", URL: psSrv1.URL, GPUModel: "My Custom Label"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "")
-	r.SetNodeAgent("gpu-1", true, agentPort, "")
+	// Both nodes' URLs are httptest servers, which bind to 127.0.0.1 - same
+	// default Host, so they legitimately share one agent config/poll (the
+	// whole point of this change: one physical machine, multiple runtimes).
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "")
 
-	r.pollNode(r.nodes[0])
-	r.pollNode(r.nodes[1])
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	got0 := r.nodes[0].GPUModel
@@ -245,9 +247,9 @@ func TestPollAgentTelemetryWrongTokenClearsFields(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "wrong-token-mismatch")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "wrong-token-mismatch")
 
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
@@ -278,8 +280,8 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
-	r.pollNode(r.nodes[0])
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	present := r.nodes[0].AgentPresent
@@ -289,8 +291,8 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	}
 
 	// Now disable and poll again.
-	r.SetNodeAgent("gpu-0", false, 0, "")
-	r.pollNode(r.nodes[0])
+	r.SetNodeAgent(r.nodes[0].Host, false, 0, "")
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
@@ -350,9 +352,9 @@ func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
 
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 	r.nodes[0].mu.RLock()
 	preTemp, preVRAM := r.nodes[0].Temperature, r.nodes[0].VRAMTotalMB
 	r.nodes[0].mu.RUnlock()
@@ -360,7 +362,7 @@ func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
 		t.Fatalf("precondition failed: first poll should have populated Temperature=70/VRAMTotalMB=16000, got %v/%d", preTemp, preVRAM)
 	}
 
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
 	if !r.nodes[0].AgentPresent {
@@ -421,8 +423,8 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
-	r.pollNode(r.nodes[0])
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
@@ -467,8 +469,8 @@ func TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
-	r.pollNode(r.nodes[0])
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
@@ -506,16 +508,16 @@ func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
 
 	var logBuf bytes.Buffer
 	oldOutput := log.Writer()
 	log.SetOutput(&logBuf)
 	defer log.SetOutput(oldOutput)
 
-	r.pollNode(r.nodes[0])
-	r.pollNode(r.nodes[0])
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
+	r.pollAgentHosts()
+	r.pollAgentHosts()
 
 	out := logBuf.String()
 	count := strings.Count(out, "newer than this mesh understands")
@@ -569,7 +571,7 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
 	r.SetWebhookConfig(config.WebhookConfig{Enabled: true, URL: whSrv.URL})
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
 
 	waitForCount := func(n int) {
 		t.Helper()
@@ -588,7 +590,7 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 
 	// First successful poll: agent comes up for the first time ever - no
 	// agent_up webhook expected (nothing to "recover" from).
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 	time.Sleep(100 * time.Millisecond)
 	mu.Lock()
 	gotFirst := len(received)
@@ -603,16 +605,16 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 	agentMu.Lock()
 	agentUp = false
 	agentMu.Unlock()
-	r.pollNode(r.nodes[0])
-	r.pollNode(r.nodes[0])
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
+	r.pollAgentHosts()
+	r.pollAgentHosts()
 	waitForCount(1)
 
 	// Agent recovers.
 	agentMu.Lock()
 	agentUp = true
 	agentMu.Unlock()
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 	waitForCount(2)
 
 	mu.Lock()
@@ -663,10 +665,10 @@ func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
 
 	// Establish a healthy baseline.
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 	r.nodes[0].mu.RLock()
 	if !r.nodes[0].AgentPresent {
 		r.nodes[0].mu.RUnlock()
@@ -681,7 +683,7 @@ func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *
 	// healthFailureThreshold defaults to 3 (router.go) when unset, as here.
 	// The first threshold-1 failures must leave telemetry untouched.
 	for i := 0; i < r.healthFailureThreshold-1; i++ {
-		r.pollNode(r.nodes[0])
+		r.pollAgentHosts()
 		r.nodes[0].mu.RLock()
 		present, f := r.nodes[0].AgentPresent, r.nodes[0].FanPercent
 		r.nodes[0].mu.RUnlock()
@@ -694,7 +696,7 @@ func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *
 	}
 
 	// The threshold-th failure must clear it.
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
 	if r.nodes[0].AgentPresent {
@@ -735,7 +737,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
 
 	var logBuf bytes.Buffer
 	oldOutput := log.Writer()
@@ -743,7 +745,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 	defer log.SetOutput(oldOutput)
 
 	// First success: warning latches and logs once.
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 
 	// Agent goes down long enough to cross the failure threshold and clear
 	// telemetry (agentProtocolWarned must NOT be reset by this).
@@ -751,7 +753,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 	up = false
 	upMu.Unlock()
 	for i := 0; i < r.healthFailureThreshold; i++ {
-		r.pollNode(r.nodes[0])
+		r.pollAgentHosts()
 	}
 
 	// Agent recovers, still reporting the same newer protocol version. If the
@@ -760,7 +762,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 	upMu.Lock()
 	up = true
 	upMu.Unlock()
-	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 
 	out := logBuf.String()
 	count := strings.Count(out, "newer than this mesh understands")
@@ -795,9 +797,15 @@ func TestPollAgentTelemetryStillPolledWhenAPIPSFails(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: psSrv.URL},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "tok")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "tok")
 
+	// Agent telemetry is now a fully separate top-level poll pass
+	// (pollAgentHosts), not nested inside pollNode at all - the two calls
+	// below directly demonstrate that independence: /api/ps failing (via
+	// pollNode) has zero effect on whether the agent poll (pollAgentHosts)
+	// succeeds.
 	r.pollNode(r.nodes[0])
+	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()

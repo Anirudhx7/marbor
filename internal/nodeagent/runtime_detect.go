@@ -3,25 +3,41 @@ package nodeagent
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
 )
 
-// RuntimeDetector identifies which inference runtime (if any) is listening
-// locally on this node, exposed as agent metadata (Telemetry.Runtime) so an
-// operator debugging a mixed-version/mixed-runtime fleet can see it without
-// a second hop through the mesh's own /api/ps poll. Detected once at
-// Scheduler construction - same "detect once, use it for the process
-// lifetime" shape as GPU vendor selection (gpu.go) - a node's runtime
-// doesn't change while the agent process is running.
+// DetectedRuntime is one inference runtime found listening locally, before
+// stable identity (RuntimeID) is assigned - see runtime_identity.go, which
+// takes a []DetectedRuntime and reconciles it against the persisted registry.
+type DetectedRuntime struct {
+	Name string
+	URL  string
+	Port int
+}
+
+// RuntimeDetector identifies which inference runtime(s) (if any) are
+// listening locally on this host, exposed as agent metadata
+// (Telemetry.Runtimes) so an operator debugging a mixed-version/mixed-runtime
+// fleet can see them without a second hop through the mesh's own /api/ps
+// poll. A host-scoped agent may have more than one runtime running at once
+// (e.g. Ollama on :11434 and vLLM on :8000 on the same box) - DetectAll scans
+// every candidate port every cycle rather than stopping at the first hit, so
+// none of them go silently unreported.
 type RuntimeDetector interface {
-	// Detect returns the runtime name ("ollama", "vllm", "tgi", "llamacpp"),
-	// the base URL it answered on (needed so Scheduler can re-probe it every
-	// refresh for warm models/reachability), and whether one was actually
-	// found. found=false means "couldn't tell" - callers must omit the
-	// runtime resource entirely (R1), never guess.
+	// Detect returns the first runtime found (name, base URL, found) - kept
+	// for callers that only care about "the primary local runtime" (e.g.
+	// RuntimeTarget's single-dial use case). Equivalent to the first element
+	// of DetectAll, or found=false if DetectAll returns nothing.
 	Detect(ctx context.Context) (name string, url string, found bool)
+
+	// DetectAll returns every runtime currently listening on a candidate
+	// port. An empty slice means "couldn't tell" - callers must omit the
+	// runtime resource(s) entirely (R1), never guess.
+	DetectAll(ctx context.Context) []DetectedRuntime
 }
 
 // localRuntimePorts are the well-known local ports each supported runtime
@@ -45,10 +61,27 @@ func newLocalhostRuntimeDetector() RuntimeDetector {
 }
 
 func (d localhostRuntimeDetector) Detect(ctx context.Context) (string, string, bool) {
-	for _, url := range localRuntimePorts {
-		if name, reached := runtimepkg.DetectRuntime(ctx, url, d.client); reached {
-			return name, url, true
-		}
+	all := d.DetectAll(ctx)
+	if len(all) == 0 {
+		return "", "", false
 	}
-	return "", "", false
+	return all[0].Name, all[0].URL, true
+}
+
+func (d localhostRuntimeDetector) DetectAll(ctx context.Context) []DetectedRuntime {
+	var found []DetectedRuntime
+	for _, candidate := range localRuntimePorts {
+		name, reached := runtimepkg.DetectRuntime(ctx, candidate, d.client)
+		if !reached {
+			continue
+		}
+		port := 0
+		if u, err := url.Parse(candidate); err == nil {
+			if p, err := strconv.Atoi(u.Port()); err == nil {
+				port = p
+			}
+		}
+		found = append(found, DetectedRuntime{Name: name, URL: candidate, Port: port})
+	}
+	return found
 }
