@@ -1053,6 +1053,7 @@ func (r *Router) Start(ctx context.Context) {
 			safeRun("pollNvidiaAll", r.pollNvidiaAll)
 		case <-sweepTicker.C:
 			safeRun("sweepAffinity", r.sweepAffinity)
+			safeRun("FlushAffinity", r.FlushAffinity)
 		case <-warmupTickerC:
 			go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) })
 		case <-scheduleTicker.C:

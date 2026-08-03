@@ -195,6 +195,13 @@ type Store interface {
 	ReconcileNodeWarmState(node string, residentModels []string) error
 	AllWarmState() ([]WarmStateRecord, error)
 
+	// Session affinity - persisted sticky-session -> node pinning (see
+	// AffinityRecord). SnapshotAffinity replaces the whole table with exactly
+	// the given entries (mirrors the in-memory map's own bounded, TTL-swept
+	// lifecycle - a snapshot-replace, not an ever-growing upsert log).
+	SnapshotAffinity(entries []AffinityRecord) error
+	AllAffinity() ([]AffinityRecord, error)
+
 	// Model configuration overrides - an operator-declared default parameter
 	// profile (load-time engine params, inference-time sampling defaults, meta
 	// fields) for a model on a specific node, applied whenever ollama-mesh
@@ -476,6 +483,19 @@ type WarmStateRecord struct {
 	LoadCount int64     `json:"load_count"`
 }
 
+// AffinityRecord is one persisted sticky-session entry: which node a session
+// was last pinned to and when it was last seen. Persisted so a mesh restart
+// doesn't drop every in-flight sticky session and force a cold KV-cache
+// round-trip on the next request (see .local/audit-fixes-2026-08-03.md #7).
+// Still only ever a soft preference at restore time - Route always
+// re-validates health/draining before honoring a restored entry, exactly as
+// it does for one created during normal operation.
+type AffinityRecord struct {
+	SessionID string    `json:"session_id"`
+	NodeURL   string    `json:"node_url"`
+	LastSeen  time.Time `json:"last_seen"`
+}
+
 // ModelConfig is the operator-declared default parameter profile for a model  --
 // covering Ollama's load-time engine params, inference-time sampling defaults,
 // and ollama-mesh's own meta/orchestration fields (system prompt override,
@@ -688,6 +708,8 @@ func (NopStore) SnapshotWarmState(_ WarmStateRecord) error         { return nil 
 func (NopStore) DeleteWarmState(_, _ string) error                 { return nil }
 func (NopStore) DeleteWarmStateByNode(_ string) error              { return nil }
 func (NopStore) AllWarmState() ([]WarmStateRecord, error)          { return nil, nil }
+func (NopStore) SnapshotAffinity(_ []AffinityRecord) error         { return nil }
+func (NopStore) AllAffinity() ([]AffinityRecord, error)            { return nil, nil }
 func (NopStore) ReconcileNodeWarmState(_ string, _ []string) error { return nil }
 func (NopStore) GetModelConfig(_, _ string) (ModelConfig, error)   { return ModelConfig{}, ErrNotFound }
 func (NopStore) SetModelConfig(_ ModelConfig) error                { return nil }

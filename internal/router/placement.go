@@ -7,11 +7,13 @@ package router
 // to support multi-factor placement scoring, model pinning, and node cooldown.
 
 import (
+	"log"
 	"math"
 	"sync/atomic"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
+	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 // recordModelDigest remembers the first non-empty digest observed for a
@@ -77,6 +79,75 @@ func (r *Router) sweepAffinity() {
 		}
 	}
 	r.affinityMu.Unlock()
+}
+
+// FlushAffinity snapshots the current in-memory affinity map to the store, so
+// a restart doesn't drop every in-flight sticky session and force a cold
+// KV-cache round-trip on the next request for each of them (see
+// .local/audit-fixes-2026-08-03.md #7). Called on the same periodic cadence
+// as sweepAffinity and once more at shutdown, alongside FlushWarmState. A nil
+// store (tests, or persistence disabled) makes this a no-op. Best-effort - a
+// store error is logged and swallowed, matching every other warm/affinity
+// persistence path in this package.
+func (r *Router) FlushAffinity() {
+	st := r.warmStore()
+	if st == nil {
+		return
+	}
+	r.affinityMu.RLock()
+	entries := make([]store.AffinityRecord, 0, len(r.affinity))
+	for id, e := range r.affinity {
+		entries = append(entries, store.AffinityRecord{
+			SessionID: id,
+			NodeURL:   e.nodeURL,
+			LastSeen:  time.Unix(0, e.lastSeen.Load()),
+		})
+	}
+	r.affinityMu.RUnlock()
+	if err := st.SnapshotAffinity(entries); err != nil {
+		log.Printf("affinity: flush: %v", err)
+	}
+}
+
+// RestoreAffinity seeds the in-memory affinity map from the store at startup,
+// so sticky sessions survive a mesh restart. Entries already past the TTL
+// window are skipped rather than restored and immediately swept - Route
+// still re-validates health/draining before honoring any restored entry,
+// exactly as it does for one created during normal operation. Returns the
+// number of entries restored. Call after nodes are registered and before
+// serving client traffic, alongside RestoreWarmState.
+func (r *Router) RestoreAffinity() (int, error) {
+	st := r.warmStore()
+	if st == nil {
+		return 0, nil
+	}
+	rows, err := st.AllAffinity()
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
+	restored := 0
+	r.affinityMu.Lock()
+	if r.affinity == nil {
+		r.affinity = make(map[string]*affinityEntry)
+	}
+	for _, w := range rows {
+		if w.LastSeen.IsZero() || time.Since(w.LastSeen) >= r.affinityTTL {
+			continue
+		}
+		if len(r.affinity) >= maxAffinityEntries {
+			break
+		}
+		entry := &affinityEntry{nodeURL: w.NodeURL}
+		entry.lastSeen.Store(w.LastSeen.UnixNano())
+		r.affinity[w.SessionID] = entry
+		restored++
+	}
+	r.affinityMu.Unlock()
+	return restored, nil
 }
 
 // stickyNode returns the pinned node for sessionID if it is still healthy and

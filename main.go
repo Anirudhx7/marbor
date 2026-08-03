@@ -482,6 +482,17 @@ func main() {
 		log.Printf("store: restored warm state for %d (model,node) pair(s)", n)
 	}
 
+	// Restore sticky-session affinity so a restart doesn't drop every
+	// in-flight session and force a cold KV-cache round-trip on its next
+	// request (.local/audit-fixes-2026-08-03.md #7). Still only a soft
+	// preference at restore time - Route re-validates health/draining
+	// before honoring any restored entry.
+	if n, err := r.RestoreAffinity(); err != nil {
+		log.Printf("WARNING: could not restore session affinity from store: %v", err)
+	} else if n > 0 {
+		log.Printf("store: restored session affinity for %d session(s)", n)
+	}
+
 	// Load persisted per-node warmup settings (admin-toggled) from the KV store
 	// so proactive warmup survives a restart.
 	if settings, err := st.AllSettings(); err == nil {
@@ -701,6 +712,9 @@ func main() {
 	// Tier 3: flush the full warm-state residency snapshot on graceful shutdown so
 	// the router restores its warm set on the next start.
 	r.FlushWarmState()
+	// Same tier for sticky-session affinity, so a graceful restart doesn't
+	// drop in-flight sessions either (.local/audit-fixes-2026-08-03.md #7).
+	r.FlushAffinity()
 
 	if pendingRestorePath != "" {
 		// os.Exit inside performRestore skips every defer below main() -
