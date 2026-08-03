@@ -451,6 +451,31 @@ func TestScheduledUnloadSuppressesNextWarmupTick(t *testing.T) {
 	}
 }
 
+// TestPingWarmupModelsSkipsDrainingNode reproduces the reported bug: a node
+// with an active keep-warm config or schedule kept reloading a model the
+// operator drained, because pingWarmupModels never checked NodeState.Draining
+// (routing and eviction already did - only the warmup path was missing it).
+// A draining node must receive zero warmup pings.
+func TestPingWarmupModelsSkipsDrainingNode(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes:      []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true, Draining: true}},
+		nodeWarmup: map[string]NodeWarmup{"n1": {Enabled: true, Models: []string{"llama3.2"}}},
+	}
+	r.pingWarmupModels(context.Background())
+	time.Sleep(200 * time.Millisecond)
+
+	if got := atomic.LoadInt32(&hits); got != 0 {
+		t.Fatalf("warmup pinged a draining node %d time(s); want 0", got)
+	}
+}
+
 // TestEffectiveKeepAlive verifies the keep_alive is bumped past the interval so
 // models never unload between pings, and preserved when already long enough.
 func TestEffectiveKeepAlive(t *testing.T) {

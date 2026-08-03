@@ -101,6 +101,14 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 		if rt := n.GetRuntime(); rt != "ollama" && rt != "" {
 			continue
 		}
+		// A draining node is being emptied - reloading a keep-warm model into
+		// it here would silently undo the drain (see DrainNode/UndrainNode).
+		n.mu.RLock()
+		draining := n.Draining
+		n.mu.RUnlock()
+		if draining {
+			continue
+		}
 		// Publish this node's current priority order before warming, so
 		// EvictForHeadroom can protect a higher-priority keep-warm model from
 		// being evicted to make room for a lower-priority one below.
