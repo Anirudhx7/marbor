@@ -66,6 +66,21 @@ func TestDiscoverFallsBackToDockerWhenNoSystemdMatch(t *testing.T) {
 	}
 }
 
+func TestDiscoverSkipsItsOwnAgentUnit(t *testing.T) {
+	fakeToolPresence(t, map[string]bool{"systemctl": true})
+	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "systemctl" {
+			return "ollama-mesh-agent.service loaded active running ollama-mesh Node Agent\n", nil
+		}
+		return "", errors.New("unexpected command")
+	})
+
+	res := Discover(context.Background(), "ollama", "")
+	if res.Driver != "" || res.Identifier != "" {
+		t.Errorf("Driver/Identifier = %q/%q, want empty - the agent's own unit must never be mistaken for the runtime", res.Driver, res.Identifier)
+	}
+}
+
 func TestDiscoverPortProbeNeverSelectsADriver(t *testing.T) {
 	fakeToolPresence(t, map[string]bool{})
 	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {

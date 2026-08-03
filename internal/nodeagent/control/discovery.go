@@ -4,7 +4,20 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent/service"
 )
+
+// isSelf reports whether a discovered service/container/unit name is the
+// node agent's own registration (service.Name, e.g.
+// "ollama-mesh-agent.service" for systemd) rather than the inference
+// runtime it is trying to find. Needed because a naive substring match on
+// runtimeName (e.g. "ollama") also matches the agent's own unit name
+// ("ollama-mesh-agent"), which would make every probe report the agent
+// controlling itself instead of the runtime.
+func isSelf(name string) bool {
+	return strings.Contains(strings.ToLower(name), strings.ToLower(service.Name))
+}
 
 // DiscoveryResult is what a re-scan reports for the operator's Accept/Change
 // decision (node-agent-capabilities.md section 5.5) - Driver/Identifier are
@@ -74,6 +87,9 @@ func (systemdProber) probe(ctx context.Context, runtimeName string) (DiscoveryRe
 			continue
 		}
 		unit := fields[0]
+		if isSelf(unit) {
+			continue
+		}
 		if strings.Contains(strings.ToLower(unit), strings.ToLower(runtimeName)) {
 			return DiscoveryResult{
 				Driver:     "systemd",
@@ -106,6 +122,9 @@ func (launchdProber) probe(ctx context.Context, runtimeName string) (DiscoveryRe
 			continue
 		}
 		label := fields[len(fields)-1]
+		if isSelf(label) {
+			continue
+		}
 		if strings.Contains(strings.ToLower(label), strings.ToLower(runtimeName)) {
 			return DiscoveryResult{
 				Driver:     "launchd",
@@ -137,6 +156,9 @@ func (windowsServiceProber) probe(ctx context.Context, runtimeName string) (Disc
 			continue
 		}
 		name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "SERVICE_NAME:"))
+		if isSelf(name) {
+			continue
+		}
 		if strings.Contains(strings.ToLower(name), strings.ToLower(runtimeName)) {
 			return DiscoveryResult{
 				Driver:     "windows_service",
@@ -170,6 +192,9 @@ func (dockerProber) probe(ctx context.Context, runtimeName string) (DiscoveryRes
 		image := ""
 		if len(parts) > 1 {
 			image = parts[1]
+		}
+		if isSelf(name) {
+			continue
 		}
 		if strings.Contains(strings.ToLower(name), lower) || strings.Contains(strings.ToLower(image), lower) {
 			evidence := []string{fmt.Sprintf("docker container %q found", name)}
