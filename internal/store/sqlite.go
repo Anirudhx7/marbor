@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -438,8 +439,79 @@ func (s *sqliteStore) migrate() error {
 	if err := s.migrateEncryptSecrets(); err != nil {
 		return fmt.Errorf("migrate encrypt secrets: %w", err)
 	}
+	if err := s.migrateNodeAgentRekeyByHost(); err != nil {
+		return fmt.Errorf("migrate node_agent rekey by host: %w", err)
+	}
 	if err := s.SetSetting("schema_version", strconv.Itoa(CurrentSchemaVersion)); err != nil {
 		return fmt.Errorf("migrate: stamp schema_version: %w", err)
+	}
+	return nil
+}
+
+// migrateNodeAgentRekeyByHost moves any node_agent row still keyed by an old
+// node name (from before host-scoping) onto its node's shared host key, so
+// disable/enable/regenerate - which all operate by host post-fix - actually
+// find the row. A row is left alone if its key already matches some node's
+// host (already migrated, or coincidentally identical to the node's name).
+// Idempotent: safe to run on every boot.
+func (s *sqliteStore) migrateNodeAgentRekeyByHost() error {
+	nodes, err := s.AllNodes()
+	if err != nil {
+		return fmt.Errorf("select runtime_nodes: %w", err)
+	}
+	nameToHost := make(map[string]string, len(nodes))
+	hosts := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		host := n.Host
+		if host == "" {
+			if u, err := url.Parse(n.URL); err == nil {
+				host = u.Hostname()
+			}
+		}
+		if host == "" {
+			continue
+		}
+		nameToHost[n.Name] = host
+		hosts[host] = true
+	}
+
+	rows, err := s.db.Query(`SELECT name FROM node_agent`)
+	if err != nil {
+		return fmt.Errorf("select node_agent: %w", err)
+	}
+	var keys []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan node_agent: %w", err)
+		}
+		keys = append(keys, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("node_agent rows: %w", err)
+	}
+
+	for _, key := range keys {
+		if hosts[key] {
+			continue // already keyed by a valid host
+		}
+		host, ok := nameToHost[key]
+		if !ok || host == key {
+			continue // not a known node name, or would be a no-op rename
+		}
+		if _, err := s.db.Exec(
+			`INSERT OR IGNORE INTO node_agent (name, enabled, port, token)
+			 SELECT ?, enabled, port, token FROM node_agent WHERE name = ?`,
+			host, key,
+		); err != nil {
+			return fmt.Errorf("rekey node_agent %s -> %s: %w", key, host, err)
+		}
+		if _, err := s.db.Exec(`DELETE FROM node_agent WHERE name = ?`, key); err != nil {
+			return fmt.Errorf("delete legacy node_agent row %s: %w", key, err)
+		}
+		log.Printf("store: migrated node_agent config for %q to shared host key %q", key, host)
 	}
 	return nil
 }
@@ -819,18 +891,55 @@ func (s *sqliteStore) UpdateNodeURL(name string, url string) error {
 }
 
 func (s *sqliteStore) DeleteNode(name string) error {
-	_, err := s.db.Exec(`DELETE FROM runtime_nodes WHERE name=?`, name)
-	if err != nil {
+	var nodeURL string
+	var host sql.NullString
+	if err := s.db.QueryRow(`SELECT url, host FROM runtime_nodes WHERE name=?`, name).Scan(&nodeURL, &host); err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("store: DeleteNode: lookup host: %w", err)
+	}
+
+	if _, err := s.db.Exec(`DELETE FROM runtime_nodes WHERE name=?`, name); err != nil {
 		return fmt.Errorf("store: DeleteNode: %w", err)
+	}
+
+	// node_agent is keyed by the node's shared host (see UpsertNodeAgent
+	// callers), not by node name - deleting by name here would silently
+	// leave the real row (and its secret token) orphaned (R8). Only delete
+	// it if no other node still shares that host, since node_agent covers
+	// every node on the host, not just the one being removed.
+	agentHost := hostForDelete(host, nodeURL)
+	if agentHost == "" {
+		return nil
+	}
+	remainingNodes, err := s.AllNodes()
+	if err != nil {
+		return fmt.Errorf("store: DeleteNode: list remaining nodes: %w", err)
+	}
+	for _, n := range remainingNodes {
+		if hostForDelete(sql.NullString{String: n.Host, Valid: n.Host != ""}, n.URL) == agentHost {
+			return nil
+		}
 	}
 	// A stale node-agent token for a deleted node is a real dangling-secret
 	// concern (R8), so it is cleaned up here even though node_overrides/
 	// node_drain rows for a deleted node are left behind by the existing
 	// pattern - don't invent broader cleanup discipline beyond this.
-	if err := s.DeleteNodeAgent(name); err != nil {
+	if err := s.DeleteNodeAgent(agentHost); err != nil {
 		return fmt.Errorf("store: DeleteNode: cascade node_agent: %w", err)
 	}
 	return nil
+}
+
+// hostForDelete mirrors router.hostOrDefault's fallback (explicit host, else
+// the URL's parsed hostname) for use in DeleteNode's cascade, without
+// importing the router package.
+func hostForDelete(host sql.NullString, rawURL string) string {
+	if host.Valid && host.String != "" {
+		return host.String
+	}
+	if u, err := url.Parse(rawURL); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return ""
 }
 
 func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {

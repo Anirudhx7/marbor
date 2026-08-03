@@ -178,10 +178,13 @@ func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
 	}
 	defer st.Close()
 
+	// node_agent is keyed by the node's shared host, not its name (see
+	// admin.go's handleEnableNodeAgent: NodeAgentRecord{Name: host, ...}) -
+	// this fixture mirrors that real write pattern.
 	if err := st.UpsertNode(NodeRecord{Name: "gpu-1", URL: "http://10.0.0.5:11434", Runtime: "ollama"}); err != nil {
 		t.Fatalf("UpsertNode: %v", err)
 	}
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
+	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "10.0.0.5", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
 		t.Fatalf("UpsertNodeAgent: %v", err)
 	}
 
@@ -189,12 +192,47 @@ func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	_, found, err := st.GetNodeAgent("gpu-1")
+	_, found, err := st.GetNodeAgent("10.0.0.5")
 	if err != nil {
 		t.Fatalf("GetNodeAgent after DeleteNode: %v", err)
 	}
 	if found {
 		t.Fatal("DeleteNode did not cascade-delete the node_agent row - stale token left behind (R8)")
+	}
+}
+
+// TestDeleteNodeDoesNotCascadeSharedHostAgent verifies DeleteNode leaves the
+// node_agent row alone when another node still shares its host - deleting
+// one runtime on a multi-runtime box must not kill the Node Agent config for
+// its sibling node(s) on the same physical machine.
+func TestDeleteNodeDoesNotCascadeSharedHostAgent(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	if err := st.UpsertNode(NodeRecord{Name: "gpu-1", URL: "http://10.0.0.5:11434", Runtime: "ollama"}); err != nil {
+		t.Fatalf("UpsertNode gpu-1: %v", err)
+	}
+	if err := st.UpsertNode(NodeRecord{Name: "gpu-2", URL: "http://10.0.0.5:8000", Runtime: "vllm"}); err != nil {
+		t.Fatalf("UpsertNode gpu-2: %v", err)
+	}
+	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "10.0.0.5", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
+		t.Fatalf("UpsertNodeAgent: %v", err)
+	}
+
+	if err := st.DeleteNode("gpu-1"); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	_, found, err := st.GetNodeAgent("10.0.0.5")
+	if err != nil {
+		t.Fatalf("GetNodeAgent after DeleteNode: %v", err)
+	}
+	if !found {
+		t.Fatal("DeleteNode wrongly cascade-deleted the node_agent row still used by gpu-2")
 	}
 }
 

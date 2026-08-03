@@ -32,10 +32,14 @@ func hostOrDefault(host, rawURL string) string {
 	if host != "" {
 		return host
 	}
-	if u, err := url.Parse(rawURL); err == nil {
+	parseURL := rawURL
+	if !strings.Contains(parseURL, "://") {
+		parseURL = "//" + parseURL
+	}
+	if u, err := url.Parse(parseURL); err == nil && u.Hostname() != "" {
 		return u.Hostname()
 	}
-	return ""
+	return rawURL
 }
 
 type ModelInfo struct {
