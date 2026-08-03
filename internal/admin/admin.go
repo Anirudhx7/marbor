@@ -447,15 +447,22 @@ type nodeResp struct {
 	// last failed scheduled/agent unload per model (see NodeState.UnloadErrors
 	// in router.go), so a schedule that reports "ok" (dispatch succeeded) but
 	// whose actual unload failed is still diagnosable from the dashboard.
-	UnloadErrors     map[string]string `json:"unloadErrors,omitempty"`
-	ActiveConns      int32             `json:"activeConns"`
-	RequestsTotal    int64             `json:"requestsTotal"`
-	HealthHistory    []float64         `json:"healthHistory"`
-	PendingPrewarmMB int64             `json:"pendingPrewarmMB"`
-	ColdStarts       int64             `json:"coldStarts"`
-	TokensTotal      int64             `json:"tokensTotal"`
-	AvgLatencyMs     float64           `json:"avgLatencyMs"`
-	WarmHitRatio     float64           `json:"warmHitRatio"`
+	UnloadErrors map[string]string `json:"unloadErrors,omitempty"`
+	// WarmupState lists models currently suppressed on this node (a manual or
+	// scheduled unload took them cold and they won't be reloaded until an
+	// explicit warmup re-arms them, per router.suppressWarmup) - the
+	// operator-facing shape of router.SuppressedWarmupInfo, never the raw
+	// suppression map/bool. A model that's warm, cold-but-never-suppressed, or
+	// failed (see WarmupErrors above) has no entry here.
+	WarmupState      []warmupStateEntry `json:"warmupState,omitempty"`
+	ActiveConns      int32              `json:"activeConns"`
+	RequestsTotal    int64              `json:"requestsTotal"`
+	HealthHistory    []float64          `json:"healthHistory"`
+	PendingPrewarmMB int64              `json:"pendingPrewarmMB"`
+	ColdStarts       int64              `json:"coldStarts"`
+	TokensTotal      int64              `json:"tokensTotal"`
+	AvgLatencyMs     float64            `json:"avgLatencyMs"`
+	WarmHitRatio     float64            `json:"warmHitRatio"`
 	// Node Agent-derived fields (internal/nodeagent). AgentPresent is false
 	// (and every other field below zero-value) whenever no agent is
 	// configured for this node, or the most recent agent poll failed - the
@@ -499,6 +506,17 @@ type nodeResp struct {
 	BootTime       int64            `json:"bootTime,omitempty"`
 	RuntimeVersion string           `json:"runtimeVersion,omitempty"`
 	RuntimeStatus  string           `json:"runtimeStatus,omitempty"`
+}
+
+// warmupStateEntry is the operator-facing shape of one suppressed keep-warm
+// model - see WarmupState on nodeResp above. Reason is one of
+// "manual_unload"/"scheduled_unload" (router.suppressedInfo.Reason); Since is
+// RFC3339 UTC, the moment the suppression was set.
+type warmupStateEntry struct {
+	Model  string `json:"model"`
+	State  string `json:"state"` // always "suppressed" today - see WarmupState doc comment
+	Reason string `json:"reason"`
+	Since  string `json:"since"`
 }
 
 // agentGPUDevice is the admin API's camelCase projection of
@@ -1282,6 +1300,16 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 	hist := make([]float64, len(n.HealthHistory))
 	copy(hist, n.HealthHistory)
 
+	var warmupState []warmupStateEntry
+	for model, info := range s.router.SuppressedWarmupInfo(n.Name) {
+		warmupState = append(warmupState, warmupStateEntry{
+			Model:  model,
+			State:  "suppressed",
+			Reason: info.Reason,
+			Since:  info.Since.UTC().Format(time.RFC3339),
+		})
+	}
+
 	return nodeResp{
 		ID:                id,
 		Name:              n.Name,
@@ -1302,6 +1330,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		LoadedModels:      safeModelInfoSlice(n.LoadedModels),
 		WarmupErrors:      safeStringMap(n.WarmupErrors),
 		UnloadErrors:      safeStringMap(n.UnloadErrors),
+		WarmupState:       warmupState,
 		ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
 		HealthHistory:     hist,
 		PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),

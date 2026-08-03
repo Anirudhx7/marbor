@@ -78,6 +78,13 @@ export const mockGPUNodes: GPUNode[] = [
     uptimeSeconds: 14 * 86400 + 6 * 3600,
     runtimeVersion: '0.6.5',
     runtimeStatus: 'up',
+    // Demo parity for the "SUPPRESSED" badge (GPUNodes.tsx) and the Warmup
+    // page's per-model suppression line - a scheduled unload took this
+    // keep-warm model cold, and it stays that way until an explicit warmup
+    // re-arms it, distinct from a warmupErrors failure.
+    warmupState: [
+      { model: 'qwen2.5:7b', state: 'suppressed', reason: 'scheduled_unload', since: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() },
+    ],
   },
   {
     id: 'node-2',

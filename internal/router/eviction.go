@@ -126,25 +126,53 @@ func (r *Router) IsPinned(node, model string) bool {
 
 // --- warmup suppression (manual/scheduled unload must stick until re-armed) ---
 
+// suppressedInfo records why and when a (node, model) pair was suppressed -
+// the operator-facing detail behind isWarmupSuppressed's plain bool, surfaced
+// via SuppressedWarmupInfo/WarmupState so the dashboard can show *why* a
+// keep-warm model is sitting cold instead of leaving it unexplained.
+type suppressedInfo struct {
+	Reason string // "manual_unload" | "scheduled_unload"
+	Since  time.Time
+}
+
 // suppressWarmup marks (node, model) so pingWarmupModels skips it on its next
 // tick, instead of immediately reloading a model an operator just unloaded.
-func (r *Router) suppressWarmup(node, model string) {
+// reason is "manual" or "scheduled" (the same tag recordUnloadSideEffects
+// already uses for its log line), stored as the operator-facing enum value.
+func (r *Router) suppressWarmup(node, model, reason string) {
 	r.suppressMu.Lock()
 	defer r.suppressMu.Unlock()
 	if r.warmupSuppressed == nil {
-		r.warmupSuppressed = make(map[string]map[string]bool)
+		r.warmupSuppressed = make(map[string]map[string]suppressedInfo)
 	}
 	if r.warmupSuppressed[node] == nil {
-		r.warmupSuppressed[node] = make(map[string]bool)
+		r.warmupSuppressed[node] = make(map[string]suppressedInfo)
 	}
-	r.warmupSuppressed[node][model] = true
+	enumReason := reason + "_unload"
+	r.warmupSuppressed[node][model] = suppressedInfo{Reason: enumReason, Since: time.Now()}
 }
 
 // isWarmupSuppressed reports whether (node, model) is currently suppressed.
 func (r *Router) isWarmupSuppressed(node, model string) bool {
 	r.suppressMu.Lock()
 	defer r.suppressMu.Unlock()
-	return r.warmupSuppressed[node][model]
+	_, ok := r.warmupSuppressed[node][model]
+	return ok
+}
+
+// SuppressedWarmupInfo returns a copy of node's suppressed-model set (model ->
+// reason/since), for admin.go to shape into the dashboard-facing WarmupState -
+// never the raw map itself, and never a bare bool (see EXECUTION-QUEUE.md's
+// "Warmup/unload state is invisible on the dashboard" item for why: a second
+// suppression reason was always going to need more than a boolean).
+func (r *Router) SuppressedWarmupInfo(node string) map[string]suppressedInfo {
+	r.suppressMu.Lock()
+	defer r.suppressMu.Unlock()
+	out := make(map[string]suppressedInfo, len(r.warmupSuppressed[node]))
+	for m, info := range r.warmupSuppressed[node] {
+		out[m] = info
+	}
+	return out
 }
 
 // clearWarmupSuppress re-arms warmup for the given models on node - called
@@ -245,7 +273,7 @@ func (r *Router) recordUnloadSideEffects(nodeName, model, reason string) {
 	// that path evicts a keep-warm model only to make transient room for another
 	// request, and must remain eligible to warm back up on the very next tick.
 	if reason == "manual" || reason == "scheduled" {
-		r.suppressWarmup(nodeName, model)
+		r.suppressWarmup(nodeName, model, reason)
 	}
 	// Drop the unloaded model from warm state immediately (Tier 1): a manual,
 	// scheduled, or LRU-headroom unload is a residency change that must not wait

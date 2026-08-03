@@ -408,7 +408,7 @@ type Router struct {
 	// re-armed (SetNodeWarmup or a "warmup" schedule/WarmModels call) instead of
 	// silently reloading them on the next warmup tick. Guarded by suppressMu.
 	suppressMu       sync.Mutex
-	warmupSuppressed map[string]map[string]bool
+	warmupSuppressed map[string]map[string]suppressedInfo
 	// store persists the warm-state residency map so the router starts warm after
 	// a restart instead of cold (Phase 1). Set once via SetStore before Start; nil
 	// disables all warm-state persistence (the default for tests). Guarded by r.mu.
