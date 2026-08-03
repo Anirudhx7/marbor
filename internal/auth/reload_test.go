@@ -136,6 +136,46 @@ func TestReloadAddsNewKey(t *testing.T) {
 	}
 }
 
+// TestReloadRecreatesLimiterOnRateLimitChange is the regression guard for
+// the bug where Reload() updated existing.rateLimit for an unchanged key but
+// left existing.limiter untouched, so a lowered/raised rate_limit had no
+// effect on admission until the key's token was rotated - a config change
+// that appeared to succeed in the admin UI while the old quota kept being
+// enforced.
+func TestReloadRecreatesLimiterOnRateLimitChange(t *testing.T) {
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: config.BoolPtr(true),
+		Keys:    []config.KeyConfig{{Name: "alice", Key: "sk-alice", RateLimit: 1}},
+	})
+
+	mw.mu.RLock()
+	ks := mw.byName["alice"]
+	mw.mu.RUnlock()
+
+	// Exhaust the 1-request-per-hour bucket.
+	if !ks.limiter.allow() {
+		t.Fatal("setup: first request should be allowed")
+	}
+	if ks.limiter.allow() {
+		t.Fatal("setup: bucket should be exhausted at rate_limit=1")
+	}
+
+	// Reload raising rate_limit for the same key - the limiter must reset,
+	// not just the recorded rateLimit field.
+	mw.Reload(config.AuthConfig{
+		Enabled: config.BoolPtr(true),
+		Keys:    []config.KeyConfig{{Name: "alice", Key: "sk-alice", RateLimit: 1000}},
+	})
+
+	mw.mu.RLock()
+	ks2 := mw.byName["alice"]
+	mw.mu.RUnlock()
+
+	if !ks2.limiter.allow() {
+		t.Error("raised rate_limit should take effect immediately via a recreated limiter, not require key rotation")
+	}
+}
+
 func TestReloadTogglesEnabled(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{
 		Enabled: config.BoolPtr(true),

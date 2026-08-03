@@ -1268,8 +1268,19 @@ func (s *sqliteStore) RevokeKey(name string) error {
 // keys with no long-term meaning to retain - see the Store interface's doc
 // comment on this method.
 func (s *sqliteStore) DeleteKey(name string) error {
-	_, err := s.db.Exec(`DELETE FROM runtime_keys WHERE name=?`, name)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return fmt.Errorf("store: DeleteKey: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM runtime_keys WHERE name=?`, name); err != nil {
+		return fmt.Errorf("store: DeleteKey: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM key_counters WHERE name=?`, name); err != nil {
+		return fmt.Errorf("store: DeleteKey: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: DeleteKey: %w", err)
 	}
 	return nil
