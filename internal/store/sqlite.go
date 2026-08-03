@@ -371,6 +371,16 @@ func (s *sqliteStore) migrate() error {
 			PRIMARY KEY (model, node)
 		)`,
 
+		// session_affinity is the persisted sticky-session -> node pinning map
+		// (AffinityRecord). SnapshotAffinity replaces the whole table's
+		// contents each flush - it mirrors the in-memory map's own bounded,
+		// TTL-swept lifecycle rather than growing forever.
+		`CREATE TABLE IF NOT EXISTS session_affinity (
+			session_id TEXT PRIMARY KEY,
+			node_url   TEXT NOT NULL,
+			last_seen  INTEGER NOT NULL DEFAULT 0
+		)`,
+
 		// model_configs holds the operator-declared default parameter profile
 		// per (model, node) pair (item #20 - advanced model config overrides).
 		// Keyed by node, not just model: the same model name can be resident
@@ -2399,6 +2409,60 @@ func (s *sqliteStore) AllWarmState() ([]WarmStateRecord, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: AllWarmState rows: %w", err)
+	}
+	return out, nil
+}
+
+// --- Session affinity (sticky-session -> node map) ---
+
+// SnapshotAffinity replaces the entire session_affinity table's contents with
+// exactly the given entries, in one transaction. A full replace (not an
+// incremental upsert) matches the in-memory affinity map's own lifecycle -
+// entries the map no longer holds (expired, evicted) must not linger forever
+// as stale rows.
+func (s *sqliteStore) SnapshotAffinity(entries []AffinityRecord) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("store: SnapshotAffinity begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM session_affinity`); err != nil {
+		return fmt.Errorf("store: SnapshotAffinity delete: %w", err)
+	}
+	for _, e := range entries {
+		if _, err := tx.Exec(
+			`INSERT INTO session_affinity (session_id, node_url, last_seen) VALUES (?, ?, ?)`,
+			e.SessionID, e.NodeURL, warmUsedToUnix(e.LastSeen),
+		); err != nil {
+			return fmt.Errorf("store: SnapshotAffinity insert: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: SnapshotAffinity commit: %w", err)
+	}
+	return nil
+}
+
+func (s *sqliteStore) AllAffinity() ([]AffinityRecord, error) {
+	rows, err := s.db.Query(`SELECT session_id, node_url, last_seen FROM session_affinity`)
+	if err != nil {
+		return nil, fmt.Errorf("store: AllAffinity: %w", err)
+	}
+	defer rows.Close()
+
+	var out []AffinityRecord
+	for rows.Next() {
+		var e AffinityRecord
+		var lastSeen int64
+		if err := rows.Scan(&e.SessionID, &e.NodeURL, &lastSeen); err != nil {
+			return nil, fmt.Errorf("store: AllAffinity scan: %w", err)
+		}
+		e.LastSeen = warmUnixToUsed(lastSeen)
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: AllAffinity rows: %w", err)
 	}
 	return out, nil
 }
