@@ -209,6 +209,18 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 	return sticky
 }
 
+// staticVRAMReservation reports whether runtime statically pre-allocates
+// GPU memory at startup (weights + KV cache), making VRAMUsedMB a
+// by-design constant rather than a live pressure signal (P62). Confirmed
+// today for vLLM only (gpu-memory-utilization); TGI has a static mode too
+// but that is not yet confirmed against this mesh's telemetry, so it is
+// deliberately NOT included here - narrowing to what's verified, not
+// guessing across the runtime matrix (Architecture Law 5). Ollama,
+// llama.cpp, and MLX dynamically allocate and are unaffected.
+func staticVRAMReservation(runtime string) bool {
+	return runtime == "vllm"
+}
+
 // computeNodeScore calculates a multi-factor score for a node.
 // score = (warm_model_resident * 50) + (free_vram_headroom * 20) +
 //
@@ -233,7 +245,20 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 
 	// 2. free_vram_headroom
 	freeVRAM := 0.0
-	if n.VRAMTotalMB > 0 {
+	if staticVRAMReservation(n.Runtime) {
+		// vLLM (gpu-memory-utilization, commonly 0.8-0.9) statically
+		// pre-allocates weights + KV cache at startup, so VRAMUsedMB sits at
+		// ~90%+ by design even when the node is idle and fully able to
+		// serve (P62). Instantaneous free bytes is not a capacity signal for
+		// these runtimes - do not credit or penalize the reserved block.
+		// Use the same real, already-tracked in-flight request count that
+		// drives factor 3 (inverse_queue_depth) as the "capacity to accept
+		// another request" signal instead; no runtime today reports a
+		// usable queue-depth or declared-concurrency telemetry field
+		// (nodeagent.RuntimeInfo.QueueDepth is never populated - R1).
+		conns := atomic.LoadInt32(&n.ActiveConns)
+		freeVRAM = 1.0 / (1.0 + float64(conns))
+	} else if n.VRAMTotalMB > 0 {
 		free := n.VRAMTotalMB - n.VRAMUsedMB
 		// Discount VRAM already reserved-but-unconfirmed by an in-flight
 		// cold-start pick on this node (see reserveColdStartBytes) - without
