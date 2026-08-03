@@ -81,6 +81,51 @@ func TestDiscoverSkipsItsOwnAgentUnit(t *testing.T) {
 	}
 }
 
+func TestDiscoverSkipsItsOwnAgentLaunchdLabel(t *testing.T) {
+	fakeToolPresence(t, map[string]bool{"launchctl": true})
+	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "launchctl" {
+			return "-\t0\tcom.ollama-mesh-agent\n", nil
+		}
+		return "", errors.New("unexpected command")
+	})
+
+	res := Discover(context.Background(), "ollama", "")
+	if res.Driver != "" || res.Identifier != "" {
+		t.Errorf("Driver/Identifier = %q/%q, want empty - the agent's own launchd label must never be mistaken for the runtime", res.Driver, res.Identifier)
+	}
+}
+
+func TestDiscoverSkipsItsOwnAgentWindowsService(t *testing.T) {
+	fakeToolPresence(t, map[string]bool{"sc": true})
+	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "sc" {
+			return "SERVICE_NAME: ollama-mesh-agent\n        STATE              : 4  RUNNING\n", nil
+		}
+		return "", errors.New("unexpected command")
+	})
+
+	res := Discover(context.Background(), "ollama", "")
+	if res.Driver != "" || res.Identifier != "" {
+		t.Errorf("Driver/Identifier = %q/%q, want empty - the agent's own Windows service must never be mistaken for the runtime", res.Driver, res.Identifier)
+	}
+}
+
+func TestDiscoverSkipsItsOwnAgentDockerContainer(t *testing.T) {
+	fakeToolPresence(t, map[string]bool{"docker": true})
+	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "docker" {
+			return "ollama-mesh-agent\tollama-mesh/agent:latest\n", nil
+		}
+		return "", errors.New("unexpected command")
+	})
+
+	res := Discover(context.Background(), "ollama", "")
+	if res.Driver != "" || res.Identifier != "" {
+		t.Errorf("Driver/Identifier = %q/%q, want empty - the agent's own docker container must never be mistaken for the runtime", res.Driver, res.Identifier)
+	}
+}
+
 func TestDiscoverPortProbeNeverSelectsADriver(t *testing.T) {
 	fakeToolPresence(t, map[string]bool{})
 	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {

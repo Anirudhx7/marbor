@@ -503,6 +503,18 @@ export function GPUNodes() {
   const agentNodeRef = useRef<GPUNode | null>(null);
   useEffect(() => { agentNodeRef.current = agentNode; }, [agentNode]);
 
+  // Keeps the open modal's agentNode (runtimeStatus, health, etc.) synced
+  // with the polled nodes list (10s interval, see loadNodes below) instead
+  // of freezing at whatever it was when the modal opened - otherwise
+  // "Runtime is currently running" can keep showing stale state for a full
+  // poll interval (or longer) after the runtime was actually stopped or
+  // started, even though the list itself is refreshing in the background.
+  useEffect(() => {
+    if (!agentNode) return;
+    const fresh = nodes.find(n => n.name === agentNode.name);
+    if (fresh && fresh !== agentNode) setAgentNode(fresh);
+  }, [nodes, agentNode]);
+
   // --- ControlDriver (P43) - registration flow: probe, confirm, persist.
   // discovered/configured are always shown separately - accepting only
   // ever happens on an explicit operator click, never automatically from a
@@ -513,6 +525,12 @@ export function GPUNodes() {
   const [controlManualDriver, setControlManualDriver] = useState('process');
   const [controlManualIdentifier, setControlManualIdentifier] = useState('');
   const [controlManualStartCommand, setControlManualStartCommand] = useState('');
+  // Set Manually reconfigures what Start/Stop/Restart actually execute
+  // against - a wrong driver/identifier pair silently breaks runtime
+  // control (e.g. a "process" driver has no log/restart supervisor), so it
+  // gets the same confirm-before-persist treatment as the Start/Stop/
+  // Restart actions themselves rather than applying on a single click.
+  const [controlManualConfirm, setControlManualConfirm] = useState(false);
   // --- Runtime lifecycle actions (P43 Step 3) - only enabled once a
   // control driver is configured; demo mode shows the buttons but never
   // hits a real endpoint (matches the existing demo-banner discipline).
@@ -536,6 +554,7 @@ export function GPUNodes() {
     setHealthCheckResult(null);
     setControlStatus(null);
     setControlError(null);
+    setControlManualConfirm(false);
     setControlManualDriver('process');
     setControlManualIdentifier('');
     setControlManualStartCommand('');
@@ -567,7 +586,13 @@ export function GPUNodes() {
     try {
       const control = await getNodeControl(node.name);
       setControlStatus(control);
-      setControlManualIdentifier(control.discovered.identifier || '');
+      // Deliberately never pre-fill the manual Driver/Identifier fields from
+      // control.discovered here: the Discovered section above already has
+      // its own "Accept" button that applies driver+identifier as a
+      // matched pair. Pre-filling just the identifier into the manual form
+      // (whose Driver dropdown defaults to "process", unrelated to
+      // whatever was discovered) let an operator submit a mismatched
+      // combination without ever touching the fields themselves.
     } catch (e: any) {
       setControlError(e?.message || 'Failed to fetch control driver status');
     }
@@ -630,6 +655,11 @@ export function GPUNodes() {
       if (action === 'start') await startNodeRuntime(agentNode.name);
       else if (action === 'stop') await stopNodeRuntime(agentNode.name);
       else await restartNodeRuntime(agentNode.name);
+      // Refresh immediately instead of waiting up to 10s for the next poll
+      // tick - the modal's agentNode.runtimeStatus otherwise looks stale
+      // right after a successful action even though the change already
+      // took effect.
+      await loadNodes();
     } catch (e: any) {
       setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
     } finally {
@@ -688,6 +718,7 @@ export function GPUNodes() {
     setHealthCheckResult(null);
     setControlStatus(null);
     setControlError(null);
+    setControlManualConfirm(false);
     setRuntimeActionBusy(null);
     setRuntimeActionError(null);
     setRuntimeActionConfirm(null);
@@ -1987,7 +2018,7 @@ export function GPUNodes() {
                   </div>
                 )}
                 <button
-                  onClick={acceptManualControl}
+                  onClick={() => setControlManualConfirm(true)}
                   disabled={controlBusy || !controlManualIdentifier.trim()}
                   className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
                 >
@@ -2146,11 +2177,59 @@ export function GPUNodes() {
         </div>
       </Modal>
 
+      {/* Set Manually Confirmation Modal - reconfiguring the control driver
+          silently changes what Start/Stop/Restart execute against, so it
+          gets a review step instead of applying on the first click. */}
+      <Modal
+        isOpen={controlManualConfirm}
+        onClose={() => setControlManualConfirm(false)}
+        title="Set Control Driver Manually"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Set the control driver for <span className="text-foreground font-semibold">{agentNode?.name}</span> to:
+          </p>
+          <div className="bg-background border border-border rounded-lg px-3 py-2 space-y-1">
+            <p className="text-sm text-foreground">
+              Driver: <span className="font-mono font-semibold">{controlManualDriver}</span>
+            </p>
+            <p className="text-sm text-foreground">
+              Identifier: <span className="font-mono font-semibold">{controlManualIdentifier}</span>
+            </p>
+            {controlManualDriver === 'process' && controlManualStartCommand.trim() && (
+              <p className="text-sm text-foreground">
+                Start command: <span className="font-mono font-semibold">{controlManualStartCommand}</span>
+              </p>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This replaces any previously configured driver. Start/Stop/Restart/Logs will run against this driver and identifier from now on - double-check they match what actually runs the inference runtime on this node, not the ollama-mesh Node Agent itself.
+          </p>
+          {controlError && <p className="text-sm text-destructive">{controlError}</p>}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setControlManualConfirm(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => { setControlManualConfirm(false); await acceptManualControl(); }}
+              disabled={controlBusy}
+              className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {controlBusy ? 'Setting...' : 'Set Manually'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Runtime Logs Modal (P58) - a pure read, no confirm needed */}
       <Modal
         isOpen={logsModalOpen}
         onClose={() => setLogsModalOpen(false)}
-        title={`Runtime Logs — ${agentNode?.name ?? ''}`}
+        title={`Runtime Logs - ${agentNode?.name ?? ''}`}
         maxWidth="lg"
       >
         <div className="space-y-4">

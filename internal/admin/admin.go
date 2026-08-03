@@ -2170,12 +2170,13 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// Same fail-fast reasoning as handleNodePull/handleNodeDeleteModel: a
-	// down node's URL may still answer with something (another service on
-	// that port), producing a confusing agent-dispatch error that looks
-	// capability-specific when the real problem is just reachability.
-	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
-		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before running runtime %s", nodeName, action))
+	// This dispatches to the node's Node Agent, not to the runtime itself
+	// (start/stop/restart are only meaningful because the runtime may
+	// legitimately be down right now) - gate on agent reachability, never
+	// nodeIsHealthy's runtime reachability, or "stop" ever succeeding once
+	// would permanently block "start" from working again on this node.
+	if !nodeAgentIsPresent(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the Node Agent process/service on that host before running runtime %s", nodeName, action))
 		return
 	}
 
@@ -2288,8 +2289,11 @@ func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !nodeIsHealthy(s.router.Nodes(), nodeName) {
-		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q is currently unreachable (down) - check its URL/connectivity before running runtime logs", nodeName))
+	// Same reasoning as handleNodeRuntimeAction: logs are read via the Node
+	// Agent, and are exactly what an operator needs while the runtime itself
+	// is stopped - gate on agent reachability, not runtime reachability.
+	if !nodeAgentIsPresent(s.router.Nodes(), nodeName) {
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the Node Agent process/service on that host before running runtime logs", nodeName))
 		return
 	}
 
@@ -5980,6 +5984,15 @@ func (s *Server) handleCancelPull(w http.ResponseWriter, r *http.Request) {
 // nodeIsHealthy reports whether the node named name is currently marked
 // healthy by the router's poller. Returns false if the node isn't found -
 // callers already validated existence via NodeURLs() before reaching here.
+//
+// This reflects RUNTIME reachability (the router's poll of the node's own
+// inference-runtime URL, health.go's pollNode/probe.Probe) - correct for
+// gating anything that proxies inference traffic or reads runtime-served
+// data (pull/models/delete-model), but wrong for gating a call that talks
+// to the Node Agent instead (see nodeAgentIsPresent below): an operator
+// intentionally stopping the runtime via Runtime Control makes this false
+// by design, and using it there would make "Start" unreachable right
+// after "Stop" ever succeeded once.
 func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
 	for _, n := range nodes {
 		if n.Name != name {
@@ -5989,6 +6002,28 @@ func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
 		healthy := n.Healthy
 		n.RUnlock()
 		return healthy
+	}
+	return false
+}
+
+// nodeAgentIsPresent reports whether the node named name's Node Agent
+// answered the mesh's last poll (router.NodeState.AgentPresent, set by
+// agent_poll.go - independent of runtime reachability, per that file's own
+// "the agent is a fully independent HTTP endpoint from /api/ps" reasoning).
+// Use this, not nodeIsHealthy, to gate any admin handler that dispatches to
+// the agent itself (runtime start/stop/restart, runtime logs) rather than
+// to the runtime it manages - the whole point of these calls is to work
+// while the runtime is stopped. Returns false if the node isn't found,
+// same as nodeIsHealthy.
+func nodeAgentIsPresent(nodes []*router.NodeState, name string) bool {
+	for _, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		n.RLock()
+		present := n.AgentPresent
+		n.RUnlock()
+		return present
 	}
 	return false
 }

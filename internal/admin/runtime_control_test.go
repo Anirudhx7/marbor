@@ -52,6 +52,7 @@ func TestHandleNodeRuntimeAction_DispatchesToAgentWhenConfigured(t *testing.T) {
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
+			n.AgentPresent = true
 			n.AgentCapabilities = []string{"status", "runtime.start", "runtime.stop", "runtime.restart"}
 			n.Unlock()
 		}
@@ -80,6 +81,52 @@ func TestHandleNodeRuntimeAction_DispatchesToAgentWhenConfigured(t *testing.T) {
 	}
 }
 
+// TestHandleNodeRuntimeAction_WorksWhileRuntimeUnhealthy is the exact
+// scenario Runtime Control exists for: an operator stops the runtime, the
+// router's next poll of the (now intentionally down) runtime URL marks
+// n.Healthy false, and the operator then clicks Start. This must still
+// dispatch to the agent - gating on runtime health here would make "start"
+// permanently unreachable the moment "stop" ever succeeded once.
+func TestHandleNodeRuntimeAction_WorksWhileRuntimeUnhealthy(t *testing.T) {
+	var gotPath string
+	mockAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer mockAgent.Close()
+	agentPort := 0
+	fmt.Sscanf(strings.TrimPrefix(mockAgent.URL, "http://127.0.0.1:"), "%d", &agentPort)
+
+	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:11434"},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	for _, n := range r.Nodes() {
+		if n.Name == "gpu-0" {
+			n.Lock()
+			n.AgentPresent = true
+			n.Healthy = false // the runtime is intentionally stopped
+			n.AgentCapabilities = []string{"status", "runtime.start"}
+			n.Unlock()
+		}
+	}
+	r.SetNodeControl("gpu-0", router.ControlConfig{Driver: "systemd", Identifier: "ollama.service", Configured: true})
+	s := NewServer(r, nil, config.Config{
+		Auth: config.AuthConfig{Enabled: config.BoolPtr(true), Keys: []config.KeyConfig{{Name: "t", Key: "test-token"}}},
+	})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newRuntimeActionRequest(t, s, "gpu-0", "start"))
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 (start must work on an unhealthy/stopped runtime), got %d: %s", w.Result().StatusCode, w.Body.String())
+	}
+	if gotPath != "/v1/runtime/start" {
+		t.Errorf("expected agent request path /v1/runtime/start, got %q", gotPath)
+	}
+}
+
 // TestHandleNodeRuntimeAction_NoAgentCapabilityReturns501 verifies a node
 // without the runtime.{action} capability gets a clear, honest error - never
 // a fabricated success for an action that never ran (R1).
@@ -87,6 +134,13 @@ func TestHandleNodeRuntimeAction_NoAgentCapabilityReturns501(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	})
+	for _, n := range s.router.Nodes() {
+		if n.Name == "gpu-0" {
+			n.Lock()
+			n.AgentPresent = true
+			n.Unlock()
+		}
+	}
 	s.router.SetNodeControl("gpu-0", router.ControlConfig{Driver: "systemd", Identifier: "ollama.service", Configured: true})
 
 	w := httptest.NewRecorder()
@@ -116,6 +170,7 @@ func TestHandleNodeRuntimeAction_UnconfiguredNodeReturns422(t *testing.T) {
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
+			n.AgentPresent = true
 			n.AgentCapabilities = []string{"status", "runtime.start", "runtime.stop", "runtime.restart"}
 			n.Unlock()
 		}
@@ -172,6 +227,7 @@ func TestHandleNodeRuntimeLogs_DispatchesToAgentWhenConfigured(t *testing.T) {
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
+			n.AgentPresent = true
 			n.AgentCapabilities = []string{"status", "runtime.logs"}
 			n.Unlock()
 		}
@@ -216,6 +272,13 @@ func TestHandleNodeRuntimeLogs_NoAgentCapabilityReturns501(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	})
+	for _, n := range s.router.Nodes() {
+		if n.Name == "gpu-0" {
+			n.Lock()
+			n.AgentPresent = true
+			n.Unlock()
+		}
+	}
 	s.router.SetNodeControl("gpu-0", router.ControlConfig{Driver: "systemd", Identifier: "ollama.service", Configured: true})
 
 	w := httptest.NewRecorder()
@@ -243,6 +306,7 @@ func TestHandleNodeRuntimeLogs_UnconfiguredNodeReturns422(t *testing.T) {
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
+			n.AgentPresent = true
 			n.AgentCapabilities = []string{"status", "runtime.logs"}
 			n.Unlock()
 		}
@@ -285,6 +349,7 @@ func TestHandleNodeRuntimeLogs_AgentErrorPassthrough(t *testing.T) {
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
+			n.AgentPresent = true
 			n.AgentCapabilities = []string{"status", "runtime.logs"}
 			n.Unlock()
 		}
@@ -329,6 +394,7 @@ func TestHandleNodeRuntimeAction_AgentErrorPassthrough(t *testing.T) {
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
+			n.AgentPresent = true
 			n.AgentCapabilities = []string{"status", "runtime.restart"}
 			n.Unlock()
 		}
