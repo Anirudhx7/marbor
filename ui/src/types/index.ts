@@ -80,6 +80,12 @@ export interface GPUNode {
   // dispatched successfully but whose actual unload failed is still
   // diagnosable instead of only ever appearing in the mesh's own logs.
   unloadErrors?: Record<string, string>;
+  // Models currently suppressed on this node - a manual or scheduled unload
+  // took them cold and they won't be reloaded until an explicit warmup
+  // re-arms them. Distinct from warmupErrors above: this is a deliberate
+  // operator decision holding, not a failure. Empty/absent means no model on
+  // this node is suppressed right now.
+  warmupState?: { model: string; state: string; reason: string; since: string }[];
   healthHistory: number[];
   // Real in-flight warmup VRAM reservation (never a separate estimate) from
   // the same accounting used for headroom checks. 0 = nothing pending.

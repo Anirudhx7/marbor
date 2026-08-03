@@ -48,7 +48,17 @@ function ModelPills({ allModels, selected, onChange }: {
 // EvictForHeadroom): the top model always wins a VRAM contest over ones below
 // it when a node can't fit all of them at once. Reorder controls only show up
 // once there's more than one model, since order is meaningless otherwise.
-function KeepWarmList({ models, onChange, warmupErrors }: { models: string[]; onChange: (models: string[]) => void; warmupErrors?: Record<string, string> }) {
+const SUPPRESSION_REASON_LABEL: Record<string, string> = {
+  manual_unload: 'manually unloaded',
+  scheduled_unload: 'unloaded by schedule',
+};
+
+function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
+  models: string[];
+  onChange: (models: string[]) => void;
+  warmupErrors?: Record<string, string>;
+  warmupState?: { model: string; state: string; reason: string; since: string }[];
+}) {
   if (models.length === 0) return null;
 
   function move(index: number, dir: -1 | 1) {
@@ -63,6 +73,7 @@ function KeepWarmList({ models, onChange, warmupErrors }: { models: string[]; on
     <div className="space-y-1.5 mb-2.5">
       {models.map((model, index) => {
         const error = warmupErrors?.[model];
+        const suppressed = warmupState?.find(s => s.model === model && s.state === 'suppressed');
         return (
         <div key={model} className="flex items-center justify-between gap-2 pl-1 pr-1.5 py-1.5 rounded-lg border border-border bg-secondary/30">
           <div className="flex items-center gap-2 min-w-0">
@@ -74,6 +85,14 @@ function KeepWarmList({ models, onChange, warmupErrors }: { models: string[]; on
               {error && (
                 <span title={error} className="text-[10px] text-destructive truncate block">
                   Warmup failed: {error}
+                </span>
+              )}
+              {!error && suppressed && (
+                <span
+                  title={`Suppressed since ${new Date(suppressed.since).toLocaleString()} - ${SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}`}
+                  className="text-[10px] text-amber-500 truncate block"
+                >
+                  Suppressed - {SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}, resumes on next warmup
                 </span>
               )}
             </div>
@@ -221,7 +240,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
         </button>
         {showModels && (
           <div className="px-4 pb-3">
-            <KeepWarmList models={selectedModels} onChange={setSelectedModels} warmupErrors={node.warmupErrors} />
+            <KeepWarmList models={selectedModels} onChange={setSelectedModels} warmupErrors={node.warmupErrors} warmupState={node.warmupState} />
             {selectedModels.length > 1 && (
               <p className="text-[10px] text-muted-foreground/60 mb-2.5">Order sets priority - if this node can't fit them all, #1 always stays warm first.</p>
             )}
