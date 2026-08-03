@@ -225,7 +225,13 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				_, wasAlreadyWarm := loaded[P]
 				warmupTriggered := false
 
-				if !wasAlreadyWarm {
+				// A manual/scheduled unload took P cold on purpose and it's
+				// suppressed until an explicit rewarm (see suppressWarmup in
+				// eviction.go) - the predictive engine must defer to that
+				// operator decision, not silently reload it because it also
+				// happens to be a likely-next model. Recorded below as a
+				// normal "skipped" decision, same as any other unmet prediction.
+				if !wasAlreadyWarm && !r.isWarmupSuppressed(n.Name, P) {
 					// Check VRAM headroom
 					estSize := r.estimateModelSizeBytes(n.URL, P, true)
 					n.mu.RLock()
@@ -318,7 +324,10 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 				}
 				n.mu.RUnlock()
 
-				if !loaded {
+				// Same deference to an operator's manual/scheduled unload as
+				// the transition-based prediction above - a time-of-day
+				// pattern must not override an explicit "keep this cold".
+				if !loaded && !r.isWarmupSuppressed(n.Name, model) {
 					// Check VRAM headroom
 					estSize := r.estimateModelSizeBytes(n.URL, model, true)
 					n.mu.RLock()
