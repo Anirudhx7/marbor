@@ -270,6 +270,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t nodeagent.Telemetry) {
 		n.AgentRuntime = ""
 		n.RuntimeVersion = ""
 		n.RuntimeStatus = ""
+		n.AgentRuntimeID = ""
 	}
 	if t.Control != nil && t.Control.Discovered != nil {
 		n.AgentControlDiscoveredDriver = t.Control.Discovered.Driver
