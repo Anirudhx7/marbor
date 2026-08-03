@@ -426,6 +426,12 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
+		// host groups multiple runtime_nodes rows that live on the same
+		// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one
+		// box) so they can share one Node Agent enrollment/token instead of
+		// each needing its own - see internal/router.AddNode for the
+		// default-from-URL-hostname fallback when this is left empty.
+		`ALTER TABLE runtime_nodes ADD COLUMN host TEXT`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -790,9 +796,9 @@ func (s *sqliteStore) UpsertNode(nc NodeRecord) error {
 		vram = sql.NullInt64{Int64: *nc.VRAMTotalMB, Valid: true}
 	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO runtime_nodes (name, url, runtime, vram_total_mb)
-		 VALUES (?, ?, ?, ?)`,
-		nc.Name, nc.URL, nc.Runtime, vram,
+		`INSERT OR REPLACE INTO runtime_nodes (name, url, runtime, vram_total_mb, host)
+		 VALUES (?, ?, ?, ?, ?)`,
+		nc.Name, nc.URL, nc.Runtime, vram, nc.Host,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNode: %w", err)
@@ -829,7 +835,7 @@ func (s *sqliteStore) DeleteNode(name string) error {
 
 func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT name, url, runtime, vram_total_mb FROM runtime_nodes`,
+		`SELECT name, url, runtime, vram_total_mb, host FROM runtime_nodes`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllNodes: %w", err)
@@ -840,11 +846,15 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 	for rows.Next() {
 		var nc NodeRecord
 		var vram sql.NullInt64
-		if err := rows.Scan(&nc.Name, &nc.URL, &nc.Runtime, &vram); err != nil {
+		var host sql.NullString
+		if err := rows.Scan(&nc.Name, &nc.URL, &nc.Runtime, &vram, &host); err != nil {
 			return nil, fmt.Errorf("store: AllNodes scan: %w", err)
 		}
 		if vram.Valid {
 			nc.VRAMTotalMB = &vram.Int64
+		}
+		if host.Valid {
+			nc.Host = host.String
 		}
 		nodes = append(nodes, nc)
 	}

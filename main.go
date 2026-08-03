@@ -372,6 +372,7 @@ func main() {
 			r.AddNode(config.NodeConfig{
 				Name:        n.Name,
 				URL:         n.URL,
+				Host:        n.Host,
 				Runtime:     rt,
 				VRAMTotalMB: vram,
 			})
@@ -397,9 +398,26 @@ func main() {
 	}
 	if agents, err := st.AllNodeAgents(); err == nil {
 		for _, a := range agents {
-			if a.Enabled {
-				r.SetNodeAgent(a.Name, true, a.Port, a.Token)
+			if !a.Enabled {
+				continue
 			}
+			// a.Name was the persisted key before this change - historically
+			// always a node name (node_agent was per-node, keyed 1:1 with
+			// runtime_nodes.name). Now that nodeAgents is host-keyed,
+			// translate: if a.Name still matches an existing node, resolve
+			// that node's Host and use it as the key, so an upgrade doesn't
+			// silently orphan every pre-existing agent-enabled install
+			// (Host defaults to the URL's hostname, not the node name, so
+			// the two rarely coincide). If no node matches a.Name, it's
+			// either already a host string (a fresh install created after
+			// this change) or a stale orphaned record either way - use it
+			// as-is; it simply sits unused until a node with that host
+			// exists.
+			key := a.Name
+			if host, ok := r.NodeHost(a.Name); ok {
+				key = host
+			}
+			r.SetNodeAgent(key, true, a.Port, a.Token)
 		}
 	} else {
 		log.Printf("WARNING: could not load node agents from store: %v", err)

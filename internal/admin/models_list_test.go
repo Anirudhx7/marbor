@@ -50,7 +50,8 @@ func TestHandleNodeModels_DispatchesToAgentWhenCapable(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, agentPort, "agent-secret-token")
+	agentHost, _ := r.NodeHost("gpu-0")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()

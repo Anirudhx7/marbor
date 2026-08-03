@@ -1,10 +1,15 @@
 package router
 
-// agent_poll.go - polls a node's Node Agent (internal/nodeagent) for
-// GPU/host telemetry on the same poll cycle as /api/ps. Pull-only, per
-// .local/specs/node-agent.md section 3: no new transport layer, no
-// reconnect/backpressure logic - reuses the same http.Client used for
-// everything else in this package.
+// agent_poll.go - polls each physical host's Node Agent (internal/nodeagent)
+// exactly once per refresh interval, on its own goroutine group (see
+// pollAgentHosts, called alongside - not nested inside - the per-node
+// /api/ps health poll in health.go). One poll's Telemetry is fanned out to
+// every NodeState that shares that host (see NodeState.Host), so a
+// multi-runtime box (e.g. Ollama on :11434 and vLLM on :8000) needs exactly
+// one agent process/enrollment/token and exactly one HTTP request per tick,
+// never N. Pull-only: no new transport layer, no reconnect/backpressure
+// logic - reuses the same http.Client used for everything else in this
+// package.
 
 import (
 	"context"
@@ -13,41 +18,82 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 )
 
-// pollAgentTelemetry updates n's agent-derived telemetry fields. If no
-// agent is configured for n (the common case - agent is opt-in per node),
-// it clears any previously-reported agent fields so a node that had its
-// agent disabled doesn't keep showing stale data (R1). On any failure to
-// reach a configured agent (network error, non-200, bad token, malformed
-// body), it likewise clears the fields rather than leaving a stale value -
-// AgentPresent is the single source of truth consumers must check before
-// trusting FanPercent/RAMUsedMB/DiskFreeGB/AgentVersion.
-func (r *Router) pollAgentTelemetry(n *NodeState) {
-	n.mu.RLock()
-	nodeURL := n.URL
-	hasGPU := n.VRAMSource == "nvidia"
-	n.mu.RUnlock()
+// pollAgentHosts groups every current node by its shared Host, polls each
+// enabled host's agent exactly once, and fans the result out via
+// pollAgentHost. Any node whose host has no enabled agent configured gets
+// its stale telemetry cleared here too, same as the old per-node "no agent
+// configured" branch.
+func (r *Router) pollAgentHosts() {
+	r.mu.RLock()
+	nodes := make([]*NodeState, len(r.nodes))
+	copy(nodes, r.nodes)
+	nodeAgentsSnapshot := make(map[string]NodeAgentConfig, len(r.nodeAgents))
+	for h, cfg := range r.nodeAgents {
+		nodeAgentsSnapshot[h] = cfg
+	}
+	r.mu.RUnlock()
 
-	cfg, ok := r.NodeAgentSetting(n.Name)
-	if !ok || !cfg.Enabled {
+	groups := make(map[string][]*NodeState)
+	for _, n := range nodes {
+		n.RLock()
+		host := n.Host
+		n.RUnlock()
+		if cfg, ok := nodeAgentsSnapshot[host]; ok && cfg.Enabled {
+			groups[host] = append(groups[host], n)
+			continue
+		}
+		// No agent configured (or deliberately disabled) for this node's
+		// host - not a failure, never fires agent_down for it, and drops any
+		// stale prior state so a later re-enable doesn't fire a spurious
+		// transition based on whatever the agent's state was before it was
+		// disabled.
 		clearAgentTelemetry(n)
-		// No agent configured (or deliberately disabled) is not a failure -
-		// never fire agent_down for it, and drop any stale prior state so a
-		// later re-enable doesn't fire a spurious transition based on
-		// whatever the agent's state was before it was disabled.
 		r.mu.Lock()
 		delete(r.prevAgentPresent, n.Name)
 		r.mu.Unlock()
+	}
+
+	var wg sync.WaitGroup
+	for host, members := range groups {
+		cfg := nodeAgentsSnapshot[host]
+		wg.Add(1)
+		go func(host string, cfg NodeAgentConfig, members []*NodeState) {
+			defer wg.Done()
+			r.pollAgentHost(host, cfg, members)
+		}(host, cfg, members)
+	}
+	wg.Wait()
+}
+
+// pollAgentHost makes the single HTTP request for host and applies the
+// result to every member sharing it - host telemetry/GPU/capabilities
+// identically to each, runtime-specific fields (AgentRuntime/RuntimeVersion/
+// RuntimeStatus/AgentRuntimeID) matched per member against the polled
+// Telemetry.Runtimes array. On any failure to reach the agent, every member
+// is cleared exactly like the old single-node failure path.
+func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*NodeState) {
+	if len(members) == 0 {
 		return
 	}
 
-	agentURL, err := buildAgentURL(nodeURL, cfg.Port)
+	// Host is a bare hostname (NodeState.Host), but the scheme (http/https)
+	// isn't tracked at the host level - derive it from any one member's own
+	// URL, same source buildAgentURL used per-node before this change.
+	members[0].RLock()
+	scheme := schemeOf(members[0].URL)
+	members[0].RUnlock()
+
+	agentURL, err := buildAgentURL(host, cfg.Port, scheme)
 	if err != nil {
-		r.agentUnreachable(n, nodeURL)
+		for _, n := range members {
+			r.agentUnreachable(n)
+		}
 		return
 	}
 
@@ -55,27 +101,53 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, agentURL, nil)
 	if err != nil {
-		r.agentUnreachable(n, nodeURL)
+		for _, n := range members {
+			r.agentUnreachable(n)
+		}
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		r.agentUnreachable(n, nodeURL)
+		for _, n := range members {
+			r.agentUnreachable(n)
+		}
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		r.agentUnreachable(n, nodeURL)
+		for _, n := range members {
+			r.agentUnreachable(n)
+		}
 		return
 	}
 
 	var t nodeagent.Telemetry
 	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		r.agentUnreachable(n, nodeURL)
+		for _, n := range members {
+			r.agentUnreachable(n)
+		}
 		return
 	}
+
+	for _, n := range members {
+		r.applyAgentTelemetry(n, t)
+		r.agentReachable(n.Name)
+	}
+}
+
+// applyAgentTelemetry writes one member's share of a host-level Telemetry
+// snapshot: the shared host/GPU/capability fields identically, and this
+// member's own runtime-specific fields matched out of t.Runtimes.
+func (r *Router) applyAgentTelemetry(n *NodeState, t nodeagent.Telemetry) {
+	n.mu.RLock()
+	hasGPU := n.VRAMSource == "nvidia"
+	pinnedID := n.AgentRuntimeID
+	nodePort := portOf(n.URL)
+	n.mu.RUnlock()
+
+	entry, matchedID := matchRuntime(t, pinnedID, nodePort)
 
 	n.mu.Lock()
 	n.AgentFailures = 0
@@ -189,10 +261,11 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 		n.CUDAVersion = ""
 		n.FanPercent = nil
 	}
-	if t.Runtime != nil {
-		n.AgentRuntime = t.Runtime.Name
-		n.RuntimeVersion = t.Runtime.Version
-		n.RuntimeStatus = t.Runtime.Status
+	if entry != nil {
+		n.AgentRuntime = entry.Name
+		n.RuntimeVersion = entry.Version
+		n.RuntimeStatus = entry.Status
+		n.AgentRuntimeID = matchedID
 	} else {
 		n.AgentRuntime = ""
 		n.RuntimeVersion = ""
@@ -208,7 +281,71 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 		n.AgentControlDiscoveredEvidence = nil
 	}
 	n.mu.Unlock()
-	r.agentReachable(n.Name, nodeURL)
+}
+
+// matchRuntime picks the *nodeagent.RuntimeInfo (from t.Runtimes, or the
+// legacy singular t.Runtime for an old agent build) that corresponds to one
+// node row, and the RuntimeID it should now be pinned to (unchanged from
+// pinnedID when falling back to the legacy field, since that carries no
+// ID). Matching order:
+//  1. pinnedID already set and still present in t.Runtimes -> stays pinned,
+//     stable across a port edit to this node's URL (the whole point of
+//     RuntimeID - see runtime_identity.go).
+//  2. No pin yet (first contact, or a mesh restart) -> bootstrap by port
+//     against this node's own configured URL port.
+//  3. t.Runtimes is empty -> fall back to the legacy singular t.Runtime
+//     field (an agent build older than this change - R9).
+//  4. No match at all -> nil, this node's runtime-specific fields get
+//     cleared while the shared host fields (still reachable) stay populated.
+func matchRuntime(t nodeagent.Telemetry, pinnedID string, nodePort int) (*nodeagent.RuntimeInfo, string) {
+	if pinnedID != "" {
+		for i := range t.Runtimes {
+			if t.Runtimes[i].ID == pinnedID {
+				return &t.Runtimes[i], pinnedID
+			}
+		}
+	}
+	if nodePort > 0 {
+		for i := range t.Runtimes {
+			if t.Runtimes[i].Port == nodePort {
+				return &t.Runtimes[i], t.Runtimes[i].ID
+			}
+		}
+	}
+	if len(t.Runtimes) == 0 && t.Runtime != nil {
+		return t.Runtime, pinnedID
+	}
+	return nil, pinnedID
+}
+
+// portOf returns rawURL's port as an int, or 0 if it can't be parsed - used
+// only as a one-time bootstrap heuristic for matchRuntime, never as
+// identity (see NodeState.AgentRuntimeID's field comment).
+func portOf(rawURL string) int {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return 0
+	}
+	p := u.Port()
+	if p == "" {
+		return 0
+	}
+	var port int
+	if _, err := fmt.Sscanf(p, "%d", &port); err != nil {
+		return 0
+	}
+	return port
+}
+
+// schemeOf returns rawURL's scheme, defaulting to "http" - used to derive a
+// host's agent URL scheme from one of its member nodes' own URLs, since
+// scheme isn't tracked at the host level itself.
+func schemeOf(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" {
+		return "http"
+	}
+	return u.Scheme
 }
 
 // agentUnreachable records a failed agent poll and, once AgentFailures
@@ -219,11 +356,14 @@ func (r *Router) pollAgentTelemetry(n *NodeState) {
 // "agent_down" webhook - the same reuse of the existing node_up/node_down
 // webhook mechanism (fireWebhook, router.go). A single dropped poll (one TCP
 // blip, one timeout) below that threshold intentionally leaves the last-known
-// telemetry in place rather than blanking the dashboard for one cycle.
-func (r *Router) agentUnreachable(n *NodeState, nodeURL string) {
+// telemetry in place rather than blanking the dashboard for one cycle. Called
+// once per member of a host group that failed to poll - a host-level
+// failure clears every node on it, not just one.
+func (r *Router) agentUnreachable(n *NodeState) {
 	n.mu.Lock()
 	n.AgentFailures++
 	crossedThreshold := n.AgentFailures >= r.healthFailureThreshold
+	nodeURL := n.URL
 	n.mu.Unlock()
 	if !crossedThreshold {
 		return
@@ -248,7 +388,19 @@ func (r *Router) agentUnreachable(n *NodeState, nodeURL string) {
 // down, not merely never-before-seen), fires an "agent_up" webhook. Mirrors
 // pollNode's node_up gate: a node's very first successful poll is never
 // treated as a "recovery."
-func (r *Router) agentReachable(nodeName, nodeURL string) {
+func (r *Router) agentReachable(nodeName string) {
+	r.mu.RLock()
+	var nodeURL string
+	for _, n := range r.nodes {
+		if n.Name == nodeName {
+			n.RLock()
+			nodeURL = n.URL
+			n.RUnlock()
+			break
+		}
+	}
+	r.mu.RUnlock()
+
 	r.mu.Lock()
 	exists := r.nodeExistsLocked(nodeName)
 	prev, seen := r.prevAgentPresent[nodeName]
@@ -272,8 +424,8 @@ func derefOr(p *float64, fallback float64) float64 {
 }
 
 // clearAgentTelemetry resets every agent-derived field to its zero/unknown
-// value. Called whenever no agent is configured for a node, or the most
-// recent poll of a configured agent failed.
+// value. Called whenever no agent is configured for a node's host, or the
+// most recent poll of a configured host's agent failed.
 func clearAgentTelemetry(n *NodeState) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -293,6 +445,7 @@ func clearAgentTelemetry(n *NodeState) {
 	n.AgentRuntime = ""
 	n.RuntimeVersion = ""
 	n.RuntimeStatus = ""
+	n.AgentRuntimeID = ""
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0
@@ -301,10 +454,10 @@ func clearAgentTelemetry(n *NodeState) {
 	n.Hostname = ""
 	n.UptimeSeconds = 0
 	n.BootTime = 0
-	// CPUPercent (agent_poll.go's success path, above) is the only writer of
-	// NodeState.CPUPercent anywhere in the codebase - reset it here too, or a
-	// disabled/unreachable agent's last-reported CPU reading would linger
-	// forever with nothing to mark it stale (R1).
+	// CPUPercent (applyAgentTelemetry's success path, above) is the only
+	// writer of NodeState.CPUPercent anywhere in the codebase - reset it
+	// here too, or a disabled/unreachable agent's last-reported CPU reading
+	// would linger forever with nothing to mark it stale (R1).
 	n.CPUPercent = 0
 	if wasAgentSourced {
 		// Fall back to whatever the node's declared/API-derived VRAM would
@@ -322,20 +475,21 @@ func clearAgentTelemetry(n *NodeState) {
 	}
 }
 
-// buildAgentURL derives the agent's /v1/status URL from the node's own URL
-// (same host) and the configured agent port, via url.Parse per R5 - never
-// arithmetic port derivation.
-func buildAgentURL(nodeURL string, port int) (string, error) {
-	u, err := url.Parse(nodeURL)
-	if err != nil {
-		return "", fmt.Errorf("parse node URL: %w", err)
+// buildAgentURL derives a host's /v1/status URL from its bare hostname, the
+// configured agent port, and a scheme (derived by the caller from one member
+// node's own URL, per R5 - never arithmetic port derivation).
+func buildAgentURL(host string, port int, scheme string) (string, error) {
+	// host is normally already a bare hostname (NodeState.Host), but a
+	// config file or the admin API's optional host field isn't guaranteed
+	// to be pre-stripped of a scheme - tolerate that defensively.
+	if u, err := url.Parse(host); err == nil && u.Hostname() != "" {
+		host = u.Hostname()
 	}
-	if u.Hostname() == "" {
-		return "", fmt.Errorf("node URL %q has no host", nodeURL)
+	if host == "" {
+		return "", fmt.Errorf("host is empty")
 	}
-	scheme := u.Scheme
 	if scheme == "" {
 		scheme = "http"
 	}
-	return fmt.Sprintf("%s://%s:%d/v1/status", scheme, u.Hostname(), port), nil
+	return fmt.Sprintf("%s://%s:%d/v1/status", scheme, host, port), nil
 }

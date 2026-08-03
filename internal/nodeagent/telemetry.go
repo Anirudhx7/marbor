@@ -44,9 +44,17 @@ type Telemetry struct {
 	Capabilities []string       `json:"capabilities"`
 	Host         *HostTelemetry `json:"host,omitempty"`
 	GPU          *GPUBlock      `json:"gpu,omitempty"`
-	Runtime      *RuntimeInfo   `json:"runtime,omitempty"`
-	Control      *ControlInfo   `json:"control,omitempty"`
-	Health       Health         `json:"health"`
+	// Runtime is the first entry of Runtimes, kept for back-compat with a
+	// mesh binary older than this field's introduction (R9 - additive only,
+	// never removed). New mesh code should read Runtimes instead.
+	Runtime *RuntimeInfo `json:"runtime,omitempty"`
+	// Runtimes is every inference runtime this host-scoped agent detected
+	// this cycle (see runtime_detect.go's DetectAll) - a host can legitimately
+	// run more than one (e.g. Ollama on :11434 and vLLM on :8000 on the same
+	// box). Omitted/empty means none detected, never guessed (R1).
+	Runtimes []RuntimeInfo `json:"runtimes,omitempty"`
+	Control  *ControlInfo  `json:"control,omitempty"`
+	Health   Health        `json:"health"`
 	// LastUpdated is when this snapshot was actually collected, set by
 	// Scheduler.refresh - NOT the time of the HTTP request that served it,
 	// since /v1/status and /metrics serve a cached background snapshot (see
@@ -152,6 +160,16 @@ type RuntimeInfo struct {
 	// "tgi", "llamacpp", "mlx"). This entire RuntimeInfo is omitted from
 	// Telemetry (nil) when no runtime could be identified - never guessed.
 	Name string `json:"name,omitempty"`
+	// ID is this runtime's stable identity (see runtime_identity.go),
+	// independent of Name/Port - both of those are attributes that can
+	// change (a port gets reconfigured) without the runtime becoming a
+	// "different" one. Mesh-side, a node row pins itself to this ID once
+	// matched and never re-derives identity from Port after that (Port is
+	// only ever used as a one-time bootstrap heuristic).
+	ID string `json:"id,omitempty"`
+	// Port is the port this runtime instance answered on this cycle -
+	// current-cycle metadata only, never identity.
+	Port int `json:"port,omitempty"`
 	// Version is the runtime's own reported version, when a version query
 	// exists for it (today: "ollama version" only - see runtime_version.go).
 	// Omitted, never guessed, for runtimes with no such primitive.
