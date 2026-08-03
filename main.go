@@ -27,6 +27,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/ollama-mesh/ollama-mesh/internal/winexit"
 )
 
 // Version is set at build time via ldflags: -X main.Version=v0.x.y
@@ -244,7 +245,7 @@ func main() {
 
 	if len(seedNodes) > 0 {
 		if err := seedNodesToStore(dbPath, seedNodes); err != nil {
-			log.Fatalf("seed nodes: %v", err)
+			winexit.Fatalf("seed nodes: %v", err)
 		}
 		return
 	}
@@ -252,7 +253,7 @@ func main() {
 	cfg := &config.Config{}
 	cfg.Backup.TargetDir = backupDir
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid default config: %v", err)
+		winexit.Fatalf("invalid default config: %v", err)
 	}
 
 	// Open the SQLite persistence store. "-" disables it (NopStore) for
@@ -264,7 +265,7 @@ func main() {
 		var stErr error
 		st, stErr = store.Open(dbPath)
 		if stErr != nil {
-			log.Fatalf("failed to open store: %v", stErr)
+			winexit.Fatalf("failed to open store: %v", stErr)
 		}
 		defer st.Close()
 	}
@@ -750,14 +751,14 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if err != nil {
 		log.Printf("ERROR: restore aborted - could not open backup file %s: %v", backupPath, err)
 		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
-		os.Exit(1)
+		winexit.Exit(1)
 	}
 	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		src.Close()
 		log.Printf("ERROR: restore aborted - could not create %s: %v", tmpPath, err)
 		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
-		os.Exit(1)
+		winexit.Exit(1)
 	}
 	_, copyErr := io.Copy(dst, src)
 	src.Close()
@@ -766,7 +767,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
 		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
-		os.Exit(1)
+		winexit.Exit(1)
 	}
 
 	// Re-validate the staged copy itself, not just backupPath earlier in
@@ -780,7 +781,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted - staged copy failed validation: %v", err)
 		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
-		os.Exit(1)
+		winexit.Exit(1)
 	}
 
 	// WAL/SHM sidecars belong to the OLD database contents - remove them so
@@ -791,10 +792,10 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if err := os.Rename(tmpPath, dbPath); err != nil {
 		log.Printf("ERROR: restore failed at the final swap: %v", err)
 		log.Printf("ERROR: the validated replacement is staged at %s - move it to %s manually, then restart", tmpPath, dbPath)
-		os.Exit(1)
+		winexit.Exit(1)
 	}
 
 	log.Printf("Restore complete: %s -> %s", backupPath, dbPath)
 	log.Println("Exiting so the process supervisor restarts the mesh with the restored database")
-	os.Exit(1)
+	winexit.Exit(1)
 }

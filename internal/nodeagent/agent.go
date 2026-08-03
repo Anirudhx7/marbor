@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/winexit"
 )
 
 // defaultRefreshInterval is how often the background Scheduler re-collects
@@ -36,7 +38,7 @@ func Run(args []string, version string) {
 
 	if handled, err := runWindowsServiceIfService(func() { runAgent(args, version) }); handled {
 		if err != nil {
-			log.Fatalf("nodeagent: windows service execution failed: %v", err)
+			winexit.Fatalf("nodeagent: windows service execution failed: %v", err)
 		}
 		return
 	}
@@ -59,7 +61,7 @@ func runAgent(args []string, version string) {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
-		log.Fatalf("nodeagent: %v", err)
+		winexit.Fatalf("nodeagent: %v", err)
 	}
 
 	token := *tokenFlag
@@ -67,10 +69,10 @@ func runAgent(args []string, version string) {
 		token = os.Getenv("TOKEN")
 	}
 	if token == "" {
-		log.Fatal("nodeagent: a token is required: pass --token=<token> or set the TOKEN environment variable")
+		winexit.Fatal("nodeagent: a token is required: pass --token=<token> or set the TOKEN environment variable")
 	}
 	if *refreshInterval <= 0 {
-		log.Fatal("nodeagent: --refresh-interval must be positive")
+		winexit.Fatal("nodeagent: --refresh-interval must be positive")
 	}
 
 	// Start the HTTP server before building/seeding the scheduler so the
@@ -99,6 +101,6 @@ func runAgent(args []string, version string) {
 
 	log.Printf("ollama-mesh agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
-		log.Fatalf("nodeagent: %v", err)
+		winexit.Fatalf("nodeagent: %v", err)
 	}
 }
