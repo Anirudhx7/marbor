@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -192,6 +193,41 @@ func TestFireSchedule_ContinuityReflectsRealPerModelFailure(t *testing.T) {
 	}
 	if scheds[0].LastError == "" {
 		t.Error("LastError is empty, want a real per-model failure message")
+	}
+}
+
+// TestRunSchedulesWarmupSkipsDrainingNode reproduces the reported bug: a
+// scheduled "warmup" fired against a node that is currently draining reloaded
+// the model anyway (WarmModels never checked NodeState.Draining), silently
+// undoing the drain. It must skip the ping and record the schedule as failed.
+func TestRunSchedulesWarmupSkipsDrainingNode(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes:          []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true, Draining: true}},
+		schedLastFired: map[string]string{},
+	}
+	now := time.Now()
+	at := fmt.Sprintf("%02d:%02d", now.Hour(), now.Minute())
+	r.SetSchedules([]Schedule{{ID: "s1", Action: "warmup", Node: "n1", Models: []string{"llama3"}, At: at, Enabled: true}})
+
+	r.runSchedules(context.Background(), now)
+	time.Sleep(200 * time.Millisecond)
+
+	if got := atomic.LoadInt32(&hits); got != 0 {
+		t.Fatalf("scheduled warmup pinged a draining node %d time(s); want 0", got)
+	}
+	scheds := r.Schedules()
+	if len(scheds) != 1 {
+		t.Fatalf("expected 1 schedule, got %d", len(scheds))
+	}
+	if scheds[0].LastStatus != "error" {
+		t.Errorf("LastStatus = %q, want error (warmup against a draining node must not report ok)", scheds[0].LastStatus)
 	}
 }
 

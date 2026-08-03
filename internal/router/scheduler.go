@@ -169,6 +169,13 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		log.Printf("scheduled warmup skipped: node %q runtime %q does not support keep_alive warmup", nodeName, rt)
 		return fmt.Errorf("node %q runtime %q does not support keep_alive warmup", nodeName, rt)
 	}
+	target.mu.RLock()
+	draining := target.Draining
+	target.mu.RUnlock()
+	if draining {
+		log.Printf("scheduled warmup skipped: node %q is draining", nodeName)
+		return fmt.Errorf("node %q is draining", nodeName)
+	}
 	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
 	// A scheduled warmup is an explicit "be warm again" request - it must
 	// override any suppression a prior manual/scheduled unload left behind,
