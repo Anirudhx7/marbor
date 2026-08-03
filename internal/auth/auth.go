@@ -373,14 +373,17 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 	for _, k := range cfg.Keys {
 		existing, sameName := oldByName[k.Name]
 		if sameName && existing.key == k.Key {
-			// Same key value - preserve counter + limiter, update policy fields.
+			// Same key value - preserve counter, update policy fields.
 			existing.mu.Lock()
 			existing.models = k.Models
 			existing.dailyLimit = k.DailyLimit
 			existing.monthlyLimit = k.MonthlyLimit
 			existing.dailyUsdCap = k.DailyUsdCap
 			existing.monthlyUsdCap = k.MonthlyUsdCap
-			existing.rateLimit = k.RateLimit
+			if k.RateLimit != existing.rateLimit {
+				existing.rateLimit = k.RateLimit
+				existing.limiter = newTokenBucket(k.RateLimit)
+			}
 			existing.expiresAt = k.ExpiresAt
 			existing.mu.Unlock()
 			newKeys[k.Key] = existing
