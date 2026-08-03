@@ -531,6 +531,11 @@ export function GPUNodes() {
   // gets the same confirm-before-persist treatment as the Start/Stop/
   // Restart actions themselves rather than applying on a single click.
   const [controlManualConfirm, setControlManualConfirm] = useState(false);
+  // Clearing the control driver disables Start/Stop/Restart/Logs on this
+  // node until a new driver is configured - same confirm-before-persist
+  // discipline as Set Manually, since it's an equally consequential
+  // one-click action on the same panel.
+  const [controlClearConfirm, setControlClearConfirm] = useState(false);
   // --- Runtime lifecycle actions (P43 Step 3) - only enabled once a
   // control driver is configured; demo mode shows the buttons but never
   // hits a real endpoint (matches the existing demo-banner discipline).
@@ -555,6 +560,7 @@ export function GPUNodes() {
     setControlStatus(null);
     setControlError(null);
     setControlManualConfirm(false);
+    setControlClearConfirm(false);
     setControlManualDriver('process');
     setControlManualIdentifier('');
     setControlManualStartCommand('');
@@ -719,6 +725,7 @@ export function GPUNodes() {
     setControlStatus(null);
     setControlError(null);
     setControlManualConfirm(false);
+    setControlClearConfirm(false);
     setRuntimeActionBusy(null);
     setRuntimeActionError(null);
     setRuntimeActionConfirm(null);
@@ -1890,7 +1897,7 @@ export function GPUNodes() {
                       Configured: <span className="font-mono">{controlStatus.driver}</span> / <span className="font-mono">{controlStatus.identifier}</span>
                     </p>
                     <button
-                      onClick={clearControl}
+                      onClick={() => setControlClearConfirm(true)}
                       disabled={controlBusy}
                       className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-xs transition-colors shadow-sm"
                     >
@@ -2220,6 +2227,42 @@ export function GPUNodes() {
               className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {controlBusy ? 'Setting...' : 'Set Manually'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Clear Control Driver Confirmation Modal - clearing disables
+          Start/Stop/Restart/Logs on this node until a new driver is
+          configured, same review-before-persist discipline as Set
+          Manually. */}
+      <Modal
+        isOpen={controlClearConfirm}
+        onClose={() => setControlClearConfirm(false)}
+        title="Clear Control Driver"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Clear the configured control driver (<span className="font-mono text-foreground">{controlStatus?.driver}</span> / <span className="font-mono text-foreground">{controlStatus?.identifier}</span>) for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Start/Stop/Restart/Logs will stop working on this node until a driver is configured again (via Accept or Set Manually). This does not stop the runtime itself - it only removes the mesh's ability to control it.
+          </p>
+          {controlError && <p className="text-sm text-destructive">{controlError}</p>}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setControlClearConfirm(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => { setControlClearConfirm(false); await clearControl(); }}
+              disabled={controlBusy}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {controlBusy ? 'Clearing...' : 'Clear'}
             </button>
           </div>
         </div>
