@@ -172,6 +172,24 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 		}
 	}
 
+	// Stale-telemetry penalty: markFailure only flips Healthy false after
+	// healthFailureThreshold CONSECUTIVE poll failures (health.go), so a node
+	// that just crashed keeps scoring as if its last-known VRAM/queue/loaded-
+	// models snapshot were still current for that whole grace window. Once a
+	// node's poll data is older than the grace window a healthy node's poll
+	// cadence would have refreshed it by, apply the same -50 penalty as the
+	// error cooldown above rather than trusting a snapshot that's actually
+	// gone stale. See .local/audit-fixes-2026-08-03.md #3.
+	if !n.LastPollAt.IsZero() && r.interval > 0 {
+		staleAfter := time.Duration(r.healthFailureThreshold) * r.interval
+		if time.Since(n.LastPollAt) > staleAfter {
+			score -= 50.0
+			if score < 0 {
+				score = 0
+			}
+		}
+	}
+
 	return score
 }
 
