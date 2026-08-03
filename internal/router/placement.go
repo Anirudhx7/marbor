@@ -14,15 +14,52 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
 )
 
-// isModelWarm reports whether modelName is currently loaded in VRAM on node n.
-func isModelWarm(n *NodeState, modelName string) bool {
+// recordModelDigest remembers the first non-empty digest observed for a
+// model name, across all nodes. A later observation of a DIFFERENT non-empty
+// digest under the same name is not overwritten here - it's surfaced via
+// digestMismatch so placement scoring can react to it, not silently adopted
+// as the new "truth" (there's no way to know which node has the "right"
+// weights, only that they disagree).
+func (r *Router) recordModelDigest(name, digest string) {
+	if name == "" || digest == "" {
+		return
+	}
+	r.digestMu.Lock()
+	if _, ok := r.modelDigests[name]; !ok {
+		r.modelDigests[name] = digest
+	}
+	r.digestMu.Unlock()
+}
+
+// digestMismatch reports whether digest is known to differ from the
+// first-observed digest recorded for name. Always false when either side is
+// empty - a runtime that doesn't report a digest (anything but Ollama today,
+// per ModelInfo.Digest) or a name with no digest recorded yet is never
+// flagged, matching R1 (never fabricate a comparison from missing data).
+func (r *Router) digestMismatch(name, digest string) bool {
+	if name == "" || digest == "" {
+		return false
+	}
+	r.digestMu.RLock()
+	known, ok := r.modelDigests[name]
+	r.digestMu.RUnlock()
+	return ok && known != digest
+}
+
+// isModelWarm reports whether modelName is currently loaded in VRAM on node n
+// with a digest that doesn't conflict with another node's copy under the
+// same name. A loaded model whose digest mismatches the first-observed
+// digest for modelName is NOT counted as warm here - crediting it as an
+// interchangeable warm hit would silently mix two different sets of weights
+// under one model name (see .local/audit-fixes-2026-08-03.md #4).
+func (r *Router) isModelWarm(n *NodeState, modelName string) bool {
 	if modelName == "" {
 		return false
 	}
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	for _, m := range n.LoadedModels {
-		if m.Name == modelName {
+		if m.Name == modelName && !r.digestMismatch(m.Name, m.Digest) {
 			return true
 		}
 	}
@@ -113,7 +150,11 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 	// 1. warm_model_resident
 	warm := 0.0
 	for _, m := range n.LoadedModels {
-		if m.Name == model {
+		// Skip a loaded copy whose digest is known to conflict with another
+		// node's copy under the same name - crediting it as an
+		// interchangeable warm hit would silently mix variants. See
+		// isModelWarm's doc comment.
+		if m.Name == model && !r.digestMismatch(m.Name, m.Digest) {
 			warm = 1.0
 			break
 		}
@@ -224,7 +265,7 @@ func (r *Router) findBestByScore(nodes []*NodeState, modelName string) *NodeStat
 			r.clearWarmReservation(reservedFor.Name, modelName)
 			reservedFor = nil
 		}
-		if modelName != "" && !isModelWarm(n, modelName) {
+		if modelName != "" && !r.isModelWarm(n, modelName) {
 			r.reserveColdStartBytes(n.URL, n.Name, modelName)
 			reservedFor = n
 		}
@@ -243,7 +284,7 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 	if modelName != "" {
 		var pinnedAndWarm []*NodeState
 		for _, n := range candidates {
-			if r.isPinned(n.Name, modelName) && isModelWarm(n, modelName) {
+			if r.isPinned(n.Name, modelName) && r.isModelWarm(n, modelName) {
 				pinnedAndWarm = append(pinnedAndWarm, n)
 			}
 		}
@@ -259,7 +300,7 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 	if bestNode == nil {
 		return nil, false
 	}
-	warm := isModelWarm(bestNode, modelName)
+	warm := r.isModelWarm(bestNode, modelName)
 	if warm {
 		metrics.CacheHit()
 	} else {
@@ -306,7 +347,7 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 		if node := r.stickyNode(sessionID); node != nil {
 			if runtimeFilter == "" || node.GetRuntime() == runtimeFilter {
 				r.RecordTransition(modelName, time.Now())
-				warm := isModelWarm(node, modelName)
+				warm := r.isModelWarm(node, modelName)
 				if !warm {
 					// Same race guard as selectBestNode's cold-start path -
 					// the sticky-session shortcut bypasses selectBestNode

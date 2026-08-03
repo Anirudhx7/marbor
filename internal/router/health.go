@@ -160,6 +160,7 @@ func (r *Router) pollNode(n *NodeState) {
 	models := make([]ModelInfo, len(result.LoadedModels))
 	for i, m := range result.LoadedModels {
 		models[i] = ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAMBytes, Digest: m.Digest}
+		r.recordModelDigest(m.Name, m.Digest)
 	}
 	psUsedMB := result.VRAMUsedMB
 
