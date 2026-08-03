@@ -3,7 +3,9 @@
 package audit
 
 import (
+	"log"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,14 +32,52 @@ type Entry struct {
 type Logger struct {
 	st      store.Store
 	enabled atomic.Bool
+
+	// writes is a bounded async queue so Log never blocks the proxy's
+	// request-handling goroutine on a SQLite insert (this was a synchronous
+	// per-request write before - see .local/audit-fixes-2026-08-03.md #1).
+	writes    chan store.AuditEntry
+	done      chan struct{}
+	closeOnce sync.Once
+	wg        sync.WaitGroup
 }
 
 // New returns a Logger backed by st. When enabled is false every Log call is
 // a no-op, but Query still reads existing entries from the store.
 func New(st store.Store, enabled bool) *Logger {
-	l := &Logger{st: st}
+	l := &Logger{
+		st:     st,
+		writes: make(chan store.AuditEntry, 5000),
+		done:   make(chan struct{}),
+	}
 	l.enabled.Store(enabled)
+	l.wg.Add(1)
+	go l.run()
 	return l
+}
+
+func (l *Logger) run() {
+	defer l.wg.Done()
+	for {
+		select {
+		case e := <-l.writes:
+			_ = l.st.AppendAuditLog(e)
+		case <-l.done:
+			// Drain whatever is already buffered, then stop. writes is never
+			// closed (Log keeps sending on it via a non-blocking select even
+			// after Close), so this only races benignly: any entry enqueued
+			// after the drain below just sits unread, it never panics on a
+			// closed channel.
+			for {
+				select {
+				case e := <-l.writes:
+					_ = l.st.AppendAuditLog(e)
+				default:
+					return
+				}
+			}
+		}
+	}
 }
 
 // SetEnabled flips audit logging on/off on a running Logger, so toggling the
@@ -50,12 +90,15 @@ func (l *Logger) SetEnabled(enabled bool) {
 	l.enabled.Store(enabled)
 }
 
-// Log writes one audit entry. No-ops if the logger is disabled.
+// Log enqueues one audit entry for async persistence. No-ops if the logger
+// is disabled. Never blocks the caller: if the write queue is completely
+// backed up the entry is dropped and logged, same trade-off the admin
+// package's request-log queue already makes.
 func (l *Logger) Log(e Entry) {
 	if l == nil || !l.enabled.Load() {
 		return
 	}
-	_ = l.st.AppendAuditLog(store.AuditEntry{
+	entry := store.AuditEntry{
 		Time:       e.Time,
 		RequestID:  e.RequestID,
 		KeyName:    e.KeyName,
@@ -65,7 +108,12 @@ func (l *Logger) Log(e Entry) {
 		LatencyMs:  e.LatencyMs,
 		Cloud:      e.Cloud,
 		CloudModel: e.CloudModel,
-	})
+	}
+	select {
+	case l.writes <- entry:
+	default:
+		log.Printf("audit logger: queue full, dropped audit entry for request %s", e.RequestID)
+	}
 }
 
 // QueryOptions controls filtering and limiting for Query.
@@ -124,5 +172,19 @@ func FilterModel(entry Entry, model string) bool {
 	return strings.Contains(strings.ToLower(entry.Model), strings.ToLower(model))
 }
 
-// Close is a no-op. The underlying store manages its own lifecycle.
-func (l *Logger) Close() error { return nil }
+// Close drains any in-flight audit entries and stops the async writer. Call
+// this after the HTTP servers have stopped accepting new requests and
+// before closing the store, or the writer can still be writing through l.st
+// after it's been closed. Safe to call more than once - main.go's
+// os.Exit-before-defers restore path calls this explicitly, and the normal
+// shutdown path calls it again via defer.
+func (l *Logger) Close() error {
+	if l == nil {
+		return nil
+	}
+	l.closeOnce.Do(func() {
+		close(l.done)
+		l.wg.Wait()
+	})
+	return nil
+}
