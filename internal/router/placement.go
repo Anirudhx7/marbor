@@ -177,25 +177,38 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 
 // findBestByScore finds the best node from the given slice based on weighted score,
 // using alphabetical order of Name as a deterministic tiebreaker.
+//
+// It also holds a provisional cold-start VRAM reservation on whichever node is
+// the leading candidate at each point in the loop (see reserveColdStartBytes),
+// moving it to the new leader whenever a later candidate displaces the current
+// one. This narrows - it does not eliminate - the score-read vs
+// reservation-write race between two concurrent Route() calls for different
+// cold models: previously the reservation for the eventual winner was only
+// written after every candidate had been scored (selectBestNode, post-P51),
+// so a concurrent call scoring the same node saw stale headroom for the
+// entire scoring pass, not just the time after this candidate became the
+// leader. See .local/audit-fixes-2026-08-03.md #2.
 func (r *Router) findBestByScore(nodes []*NodeState, modelName string) *NodeState {
 	var bestNode *NodeState
 	var bestScore float64 = -999.0
+	var reservedFor *NodeState // node currently holding this loop's provisional reservation, if any
 
 	for _, n := range nodes {
 		score := r.computeNodeScore(n, modelName)
-		if bestNode == nil {
-			bestNode = n
-			bestScore = score
+		isNewBest := bestNode == nil || score > bestScore || (score == bestScore && n.Name < bestNode.Name)
+		if !isNewBest {
 			continue
 		}
-		if score > bestScore {
-			bestNode = n
-			bestScore = score
-		} else if score == bestScore {
-			if n.Name < bestNode.Name {
-				bestNode = n
-				bestScore = score
-			}
+		bestNode = n
+		bestScore = score
+
+		if reservedFor != nil && reservedFor != n {
+			r.clearWarmReservation(reservedFor.Name, modelName)
+			reservedFor = nil
+		}
+		if modelName != "" && !isModelWarm(n, modelName) {
+			r.reserveColdStartBytes(n.URL, n.Name, modelName)
+			reservedFor = n
 		}
 	}
 	return bestNode
@@ -233,10 +246,10 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 		metrics.CacheHit()
 	} else {
 		metrics.CacheMiss()
-		// Reserve this cold-start pick immediately so a concurrent request for
-		// a different cold model scores this node's remaining headroom
-		// correctly instead of racing against the same stale snapshot (P51).
-		r.reserveColdStartBytes(bestNode.URL, bestNode.Name, modelName)
+		// findBestByScore already holds a provisional reservation on
+		// bestNode by the time it returns (it reserves on whichever
+		// candidate is the leader as the loop proceeds, not just at the
+		// end) - no separate reserve call needed here.
 	}
 	return bestNode, warm
 }
