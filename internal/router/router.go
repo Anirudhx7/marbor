@@ -331,6 +331,14 @@ type Router struct {
 	nvidiaCache        map[int]GPUStats
 	nvidiaMu           sync.RWMutex
 	nvidiaPollInterval time.Duration
+	// modelDigests remembers the first-observed content digest per model
+	// name across all nodes (see ModelInfo.Digest - currently Ollama-only).
+	// Used to detect a name collision between two different sets of weights
+	// (a stale re-pull, a mismatched quantization) so warm-residency scoring
+	// doesn't silently treat them as fungible. See recordModelDigest/
+	// digestMismatch in placement.go and .local/audit-fixes-2026-08-03.md #4.
+	modelDigests map[string]string
+	digestMu     sync.RWMutex
 	// notifyCh is closed and recreated to broadcast wakes when a connection is freed.
 	notifyCh      chan struct{}
 	notifyMu      sync.Mutex
@@ -535,6 +543,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		affinity:                 make(map[string]*affinityEntry),
 		affinityTTL:              affinityTTL,
 		sessionAffinity:          cfg.SessionAffinity,
+		modelDigests:             make(map[string]string),
 		nodeWarmup:               make(map[string]NodeWarmup),
 		nodeAgents:               make(map[string]NodeAgentConfig),
 		schedLastFired:           make(map[string]string),

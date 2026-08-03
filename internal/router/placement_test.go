@@ -254,3 +254,52 @@ func TestRoute_ColdStartReservationPreventsDoubleBooking(t *testing.T) {
 		t.Fatal("second Route(model-b) reported warm=true, want false (cold)")
 	}
 }
+
+// TestIsModelWarm_DigestMismatchNotWarm covers audit finding #1/#9
+// (.local/audit-fixes-2026-08-03.md): two nodes serving the same model NAME
+// with different content digests (a stale re-pull, a mismatched
+// quantization) must not be treated as interchangeable warm hits.
+func TestIsModelWarm_DigestMismatchNotWarm(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+
+	// node-a's copy is observed first and becomes the recorded reference digest.
+	r.recordModelDigest("model-x", "sha256:aaa")
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-x", Digest: "sha256:aaa"}}
+	// node-b has a DIFFERENT digest under the same name - e.g. a re-pull that
+	// landed a different quantization without renaming the tag.
+	r.nodes[1].LoadedModels = []ModelInfo{{Name: "model-x", Digest: "sha256:bbb"}}
+
+	if !r.isModelWarm(r.nodes[0], "model-x") {
+		t.Error("node-a: isModelWarm = false, want true (digest matches the recorded reference)")
+	}
+	if r.isModelWarm(r.nodes[1], "model-x") {
+		t.Error("node-b: isModelWarm = true, want false (digest conflicts with node-a's recorded reference)")
+	}
+
+	// computeNodeScore must not award the +50 warm bonus to the mismatched node either.
+	scoreA := r.computeNodeScore(r.nodes[0], "model-x")
+	scoreB := r.computeNodeScore(r.nodes[1], "model-x")
+	if scoreA <= scoreB {
+		t.Errorf("scoreA=%v scoreB=%v, want scoreA > scoreB (only node-a's digest-matched copy should get the warm bonus)", scoreA, scoreB)
+	}
+}
+
+// TestIsModelWarm_MissingDigestNeverFlagged covers R1 for the digest check:
+// a runtime that doesn't report a digest (anything but Ollama today) must
+// never be treated as mismatched just because it reported nothing.
+func TestIsModelWarm_MissingDigestNeverFlagged(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+	}, nil)
+
+	r.recordModelDigest("model-x", "sha256:aaa")
+	// No digest reported for this node's copy (e.g. vLLM/TGI/llama.cpp/MLX).
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-x"}}
+
+	if !r.isModelWarm(r.nodes[0], "model-x") {
+		t.Error("isModelWarm = false, want true (missing digest must never be treated as a mismatch)")
+	}
+}
