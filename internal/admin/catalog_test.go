@@ -101,6 +101,62 @@ func TestHandleModelRepo_ExcludesMmprojFiles(t *testing.T) {
 	}
 }
 
+// TestHandleModelRepo_ExcludesShardedGGUF is a regression test for the bug
+// where a sharded multi-part GGUF quant (confirmed against
+// unsloth/Kimi-K2.5-GGUF on 2026-08-04 - "Q3_K_S/Kimi-K2.5-Q3_K_S-00001-of-
+// 00010.gguf" through "...-00010-of-00010.gguf") got offered as 10 separate
+// one-click "Pull" variants, each only a fraction of the real total size.
+// Ollama's own manifest resolution explicitly refuses these
+// (https://github.com/ollama/ollama/issues/5245), and even where that
+// wouldn't apply, one Pull click can never fetch all required parts through
+// this one-file-per-variant flow - the whole shard set must be excluded.
+func TestHandleModelRepo_ExcludesShardedGGUF(t *testing.T) {
+	fakeHF := `{
+		"id": "unsloth/Kimi-K2.5-GGUF",
+		"downloads": 50000,
+		"likes": 100,
+		"tags": ["text-generation"],
+		"lastModified": "2026-01-01T00:00:00.000Z",
+		"siblings": [
+			{"rfilename": "Q3_K_S/Kimi-K2.5-Q3_K_S-00001-of-00010.gguf", "size": 5000000000},
+			{"rfilename": "Q3_K_S/Kimi-K2.5-Q3_K_S-00002-of-00010.gguf", "size": 5000000000},
+			{"rfilename": "Q3_K_S/Kimi-K2.5-Q3_K_S-00003-of-00010.gguf", "size": 5000000000},
+			{"rfilename": "Kimi-K2.5-Q2_K.gguf", "size": 40000000000}
+		]
+	}`
+	origTransport := hfHTTPClient.Transport
+	hfHTTPClient.Transport = stubRoundTripper{body: fakeHF}
+	defer func() { hfHTTPClient.Transport = origTransport }()
+
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/repo?id=unsloth/Kimi-K2.5-GGUF", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Variants []ModelVariantFit `json:"variants"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	for _, v := range resp.Variants {
+		if strings.Contains(strings.ToLower(v.Tag), "q3_k_s") {
+			t.Errorf("variant %q is a sharded multi-part file - one Pull click can never fetch all 10 parts, must be excluded entirely", v.Tag)
+		}
+	}
+	if len(resp.Variants) != 1 {
+		t.Errorf("got %d variants, want exactly 1 (the single-file Q2_K) - all 3 sharded Q3_K_S parts must be filtered out", len(resp.Variants))
+	}
+}
+
 // catalogResponse mirrors the JSON shape returned by handleModelCatalog.
 type catalogResponse struct {
 	Catalog []CatalogModel     `json:"catalog"`
