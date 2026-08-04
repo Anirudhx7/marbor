@@ -794,6 +794,73 @@ export function ModelAdvisor() {
         </div>
       )}
 
+      {sysInfo && (
+        <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs shadow-sm">
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
+          <span className="flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-foreground font-semibold">{sysInfo.cpu_cores} cores</span>
+            <span className="text-muted-foreground font-medium">{sysInfo.arch} · {sysInfo.os}</span>
+          </span>
+          {sysInfo.ram_total_mb > 0 && (
+            <span className="flex items-center gap-1.5">
+              <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-foreground font-semibold">{(sysInfo.ram_free_mb / 1024).toFixed(1)} GB free</span>
+              <span className="text-muted-foreground font-medium">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB RAM</span>
+            </span>
+          )}
+        </div>
+      )}
+
+      {activeNode && (
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div>
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">GPU Node</span>
+              <h3 className="font-semibold text-foreground mt-0.5">{activeNode.name}</h3>
+            </div>
+            <span className="text-xs text-muted-foreground self-start sm:self-auto">
+              VRAM source:{' '}
+              <span className={`px-1.5 py-0.5 rounded font-semibold ${
+                LIVE_VRAM_TOOL_SOURCES.has(activeNode.vram_source)
+                  ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+                  : activeNode.vram_source === 'inferred'
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                  : activeNode.vram_source === 'declared'
+                  ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                  : 'bg-secondary text-muted-foreground'
+              }`}>
+                {activeNode.vram_source === 'declared' ? 'declared' : activeNode.vram_source}
+              </span>
+            </span>
+          </div>
+          {activeNode.vram_total_bytes > 0 ? (
+            <>
+              <VramBar
+                used={(activeNode.vram_total_bytes - activeNode.vram_free_bytes) / (1024 * 1024 * 1024)}
+                total={activeNode.vram_total_bytes / (1024 * 1024 * 1024)}
+              />
+              <p className="text-xs text-muted-foreground font-medium mt-2">
+                {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
+              </p>
+            </>
+          ) : (activeNode.vram_used_bytes ?? 0) > 0 ? (
+            <>
+              <div className="w-full bg-secondary rounded-full h-2 mt-1">
+                <div className="bg-amber-500 h-2 rounded-full w-full opacity-40" />
+              </div>
+              <p className="text-xs text-muted-foreground font-medium mt-2">
+                {bytesToGB(activeNode.vram_used_bytes!)} in use &middot; total unknown
+              </p>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground font-medium">
+              VRAM totals unavailable - nvidia-smi reads the mesh host only.
+            </p>
+          )}
+        </div>
+      )}
+
       {tab === 'favourites' ? (
         favoriteModels.length === 0 ? (
           <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
@@ -832,73 +899,8 @@ export function ModelAdvisor() {
         )
       ) : (
       <>
-      {sysInfo && (
-        <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs shadow-sm">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
-          <span className="flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-foreground font-semibold">{sysInfo.cpu_cores} cores</span>
-            <span className="text-muted-foreground font-medium">{sysInfo.arch} · {sysInfo.os}</span>
-          </span>
-          {sysInfo.ram_total_mb > 0 && (
-            <span className="flex items-center gap-1.5">
-              <HardDrive className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-foreground font-semibold">{(sysInfo.ram_free_mb / 1024).toFixed(1)} GB free</span>
-              <span className="text-muted-foreground font-medium">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB RAM</span>
-            </span>
-          )}
-        </div>
-      )}
-
       {activeNode && (
         <>
-          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-              <div>
-                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">GPU Node</span>
-                <h3 className="font-semibold text-foreground mt-0.5">{activeNode.name}</h3>
-              </div>
-              <span className="text-xs text-muted-foreground self-start sm:self-auto">
-                VRAM source:{' '}
-                <span className={`px-1.5 py-0.5 rounded font-semibold ${
-                  LIVE_VRAM_TOOL_SOURCES.has(activeNode.vram_source)
-                    ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                    : activeNode.vram_source === 'inferred'
-                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                    : activeNode.vram_source === 'declared'
-                    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
-                    : 'bg-secondary text-muted-foreground'
-                }`}>
-                  {activeNode.vram_source === 'declared' ? 'declared' : activeNode.vram_source}
-                </span>
-              </span>
-            </div>
-            {activeNode.vram_total_bytes > 0 ? (
-              <>
-                <VramBar
-                  used={(activeNode.vram_total_bytes - activeNode.vram_free_bytes) / (1024 * 1024 * 1024)}
-                  total={activeNode.vram_total_bytes / (1024 * 1024 * 1024)}
-                />
-                <p className="text-xs text-muted-foreground font-medium mt-2">
-                  {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
-                </p>
-              </>
-            ) : (activeNode.vram_used_bytes ?? 0) > 0 ? (
-              <>
-                <div className="w-full bg-secondary rounded-full h-2 mt-1">
-                  <div className="bg-amber-500 h-2 rounded-full w-full opacity-40" />
-                </div>
-                <p className="text-xs text-muted-foreground font-medium mt-2">
-                  {bytesToGB(activeNode.vram_used_bytes!)} in use &middot; total unknown
-                </p>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground font-medium">
-                VRAM totals unavailable - nvidia-smi reads the mesh host only.
-              </p>
-            )}
-          </div>
-
           <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground leading-relaxed shadow-sm">
             <span className="font-semibold text-foreground block mb-1">How to add models to nodes:</span>
             1. Search for any GGUF model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below.
