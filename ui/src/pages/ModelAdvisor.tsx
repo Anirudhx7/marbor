@@ -48,6 +48,7 @@ function ModelDetailPanel({
   nodeName,
   nodeRuntime,
   actualRuntime,
+  agentPullCapable,
   nodeVRAMTotalBytes,
   isLive,
   demoMode,
@@ -57,6 +58,7 @@ function ModelDetailPanel({
   nodeName: string | null;
   nodeRuntime: string | null;
   actualRuntime: string | null;
+  agentPullCapable: boolean;
   nodeVRAMTotalBytes: number;
   isLive: boolean;
   demoMode: boolean;
@@ -320,7 +322,7 @@ function ModelDetailPanel({
                         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
                           <Check className="w-3.5 h-3.5" /> Ready
                         </span>
-                      ) : (!actualRuntime || actualRuntime === 'ollama') ? (
+                      ) : (!actualRuntime || actualRuntime === 'ollama' || agentPullCapable) ? (
                         <button
                           onClick={() => handlePull(v)}
                           disabled={(!demoMode && !isLive) || !nodeName || isPulling || v.disk_fit === 'insufficient'}
@@ -888,6 +890,7 @@ export function ModelAdvisor() {
                   nodeName={selectedNode}
                   nodeRuntime={browseRuntime}
                   actualRuntime={activeNode?.runtime ?? null}
+                  agentPullCapable={activeNode?.capabilities?.includes('models.pull') ?? false}
                   nodeVRAMTotalBytes={activeNode?.vram_total_bytes ?? 0}
                   isLive={isLive}
                   demoMode={demoMode}
@@ -1032,6 +1035,7 @@ export function ModelAdvisor() {
                     nodeName={selectedNode}
                     nodeRuntime={browseRuntime}
                     actualRuntime={activeNode?.runtime ?? null}
+                    agentPullCapable={activeNode?.capabilities?.includes('models.pull') ?? false}
                     nodeVRAMTotalBytes={activeNode?.vram_total_bytes ?? 0}
                     isLive={isLive}
                     demoMode={demoMode}
