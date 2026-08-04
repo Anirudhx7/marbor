@@ -325,9 +325,18 @@ func TestParseDFOutput(t *testing.T) {
 // non-docker (or unconfigured) case never attempts a docker exec at all -
 // it returns whatever host-level disk telemetry this agent already
 // collected, exactly like GET /v1/status would, since for a native install
-// the host's disk *is* the runtime's disk.
+// the host's disk *is* the runtime's disk. Uses a deterministic
+// fakeHostCollector (the same seam scheduler_test.go uses) rather than
+// asserting on a bare *Server's fallback numbers - snapshot() seeds a live
+// one-off Scheduler when none is set, which reads this *test machine's*
+// real disk and previously made this test pass locally (Windows: host
+// telemetry unimplemented, fields omitted) while failing in CI (Linux:
+// real, non-zero numbers) - a platform-dependent assertion, not a real bug.
 func TestHandleRuntimeDisk_NoDriverFallsBackToHostTelemetry(t *testing.T) {
 	s := newControlActionTestServer()
+	sched := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{DiskFreeGB: 220, DiskTotalGB: 1000}}, noRuntimeDetector)
+	sched.Seed()
+	s.SetScheduler(sched)
 
 	w := doRuntimeAction(t, s, "disk", map[string]string{})
 
@@ -339,9 +348,11 @@ func TestHandleRuntimeDisk_NoDriverFallsBackToHostTelemetry(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if resp.Error != "" {
-		t.Errorf("Error = %q, want empty (no scheduler configured is a known-unknown, never an error)", resp.Error)
+		t.Errorf("Error = %q, want empty", resp.Error)
 	}
-	if resp.FreeBytes != 0 || resp.TotalBytes != 0 {
-		t.Errorf("FreeBytes/TotalBytes = %d/%d, want 0/0 (no host telemetry collected in this test server)", resp.FreeBytes, resp.TotalBytes)
+	wantFree := int64(220 * 1024 * 1024 * 1024)
+	wantTotal := int64(1000 * 1024 * 1024 * 1024)
+	if resp.FreeBytes != wantFree || resp.TotalBytes != wantTotal {
+		t.Errorf("FreeBytes/TotalBytes = %d/%d, want %d/%d (the fake host collector's fixed values, unaffected by the driver being unconfigured)", resp.FreeBytes, resp.TotalBytes, wantFree, wantTotal)
 	}
 }
