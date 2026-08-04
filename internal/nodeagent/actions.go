@@ -212,13 +212,34 @@ func runDownload(ctx context.Context, driver, identifier, hfToken string, name s
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stripANSI(stderr.String()))
+		msg := lastMeaningfulLine(stripANSI(stderr.String()))
 		if msg == "" {
 			msg = err.Error()
 		}
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// lastMeaningfulLine returns the last non-empty, trimmed line of s. A CLI
+// not attached to a real TTY (as every one of these subprocesses is) writes
+// a fresh stderr line per progress tick instead of overwriting the same
+// line in place via cursor-movement escapes - stripANSI removes the escape
+// codes but not the hundreds of near-identical "pulling <digest>: N%" lines
+// they were meant to collapse into one. Returning that entire multi-hundred-
+// line transcript as "the error" is what blows up the admin UI's pull toast
+// into an unreadable, viewport-covering wall of repeated text; the actual
+// failure reason is always the last line the process wrote before exiting
+// non-zero (true for ollama's own CLI, and for huggingface-cli/Python
+// tracebacks, which likewise put the real exception message last).
+func lastMeaningfulLine(s string) string {
+	lines := strings.Split(s, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // ansiEscapeSequence matches CSI (Control Sequence Introducer) escapes -
