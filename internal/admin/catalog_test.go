@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
 // stubRoundTripper returns a canned response for every request, letting a
@@ -421,6 +424,96 @@ func TestDetectSafetensorsQuant(t *testing.T) {
 		if got := detectSafetensorsQuant(c.tags); got != c.want {
 			t.Errorf("detectSafetensorsQuant(%v) = %q, want %q", c.tags, got, c.want)
 		}
+	}
+}
+
+// TestHandleModelCatalog_Capabilities is a regression test for the Model
+// Advisor Pull-button bug: the frontend used to hardcode
+// actualRuntime === 'ollama' to decide whether to show "Pull", ignoring the
+// Node Agent's real "models.pull" capability entirely for vllm/tgi/llamacpp/
+// mlx nodes. The fix requires the catalog response to carry the node's
+// effective capability list, computed exactly like handleNodePull's own
+// direct-vs-agent dispatch decision - not the raw agent-advertised list -
+// so a node whose agent is present but disabled in settings must report no
+// capabilities, even though it last polled some.
+func TestHandleModelCatalog_Capabilities(t *testing.T) {
+	// Each node needs its own host:port - SetNodeAgent keys agent config by
+	// host, so nodes sharing one URL would clobber each other's agent config.
+	ollamaA := mockOllamaServer(t)
+	defer ollamaA.Close()
+	ollamaB := mockOllamaServer(t)
+	defer ollamaB.Close()
+	ollamaC := mockOllamaServer(t)
+	defer ollamaC.Close()
+
+	// hostOrDefault falls back to url.Hostname(), which strips the port - all
+	// three mock servers bind to 127.0.0.1, so distinct Host values must be
+	// set explicitly or SetNodeAgent (keyed by host) would clobber each
+	// other's config despite each node having a different URL/port.
+	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 60000}, []config.NodeConfig{
+		{Name: "agent-enabled", URL: ollamaA.URL, Host: "host-a", Runtime: "vllm"},
+		{Name: "agent-disabled", URL: ollamaB.URL, Host: "host-b", Runtime: "tgi"},
+		{Name: "no-agent", URL: ollamaC.URL, Host: "host-c", Runtime: "ollama"},
+	}, nil)
+
+	enabledHost, _ := r.NodeHost("agent-enabled")
+	r.SetNodeAgent(enabledHost, true, 9999, "token-a")
+	disabledHost, _ := r.NodeHost("agent-disabled")
+	r.SetNodeAgent(disabledHost, false, 9999, "token-b")
+
+	for _, n := range r.Nodes() {
+		n.Lock()
+		switch n.Name {
+		case "agent-enabled":
+			n.AgentCapabilities = []string{"status", "models.pull", "models.list"}
+		case "agent-disabled":
+			// Agent last reported these capabilities before being disabled in
+			// settings - the effective list must still come out empty.
+			n.AgentCapabilities = []string{"status", "models.pull"}
+		}
+		n.Unlock()
+	}
+
+	s := NewServer(r, nil, config.Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp catalogResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	byName := map[string]catalogNodeEntry{}
+	for _, n := range resp.Nodes {
+		byName[n.Name] = n
+	}
+
+	if got := byName["agent-enabled"]; got.Runtime != "vllm" {
+		t.Errorf("agent-enabled runtime = %q, want vllm", got.Runtime)
+	}
+	hasPull := false
+	for _, c := range byName["agent-enabled"].Capabilities {
+		if c == "models.pull" {
+			hasPull = true
+		}
+	}
+	if !hasPull {
+		t.Errorf("agent-enabled capabilities = %v, want to include models.pull", byName["agent-enabled"].Capabilities)
+	}
+
+	if caps := byName["agent-disabled"].Capabilities; len(caps) != 0 {
+		t.Errorf("agent-disabled capabilities = %v, want empty (agent disabled in settings must not report last-known capabilities)", caps)
+	}
+
+	if caps := byName["no-agent"].Capabilities; len(caps) != 0 {
+		t.Errorf("no-agent capabilities = %v, want empty", caps)
 	}
 }
 
