@@ -2,10 +2,104 @@ package admin
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+// stubRoundTripper returns a canned response for every request, letting a
+// test stand in for the real huggingface.co API without a network call.
+type stubRoundTripper struct {
+	body string
+}
+
+func (s stubRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(s.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+// TestHandleModelRepo_ExcludesMmprojFiles is a regression test for the bug
+// where a multimodal repo's mmproj-*.gguf vision-projector companion file
+// (a few hundred MB, unrelated to the main model's actual size) got read as
+// if it were a legitimate "F16"/"BF16"/"F32" quantization of the model
+// itself - extractQuantization finds that substring in "mmproj-F16.gguf"
+// same as it would in the real model's filename, with no filename prefix
+// check to tell the two apart. Confirmed against unsloth/Qwen3.5-4B-GGUF on
+// 2026-08-04: real Qwen3.5-4B-BF16.gguf is 8.42 GB; mmproj-F16.gguf is 641 MB
+// but was shown as a "F16" variant of the 4B model.
+func TestHandleModelRepo_ExcludesMmprojFiles(t *testing.T) {
+	fakeHF := `{
+		"id": "unsloth/Qwen3.5-4B-GGUF",
+		"downloads": 1169980,
+		"likes": 357,
+		"tags": ["image-text-to-text"],
+		"lastModified": "2026-01-01T00:00:00.000Z",
+		"siblings": [
+			{"rfilename": "Qwen3.5-4B-BF16.gguf", "size": 8424393632},
+			{"rfilename": "Qwen3.5-4B-Q6_K.gguf", "size": 3525956768},
+			{"rfilename": "mmproj-F16.gguf", "size": 672423616},
+			{"rfilename": "mmproj-BF16.gguf", "size": 675569344},
+			{"rfilename": "mmproj-F32.gguf", "size": 1334075072}
+		]
+	}`
+	origTransport := hfHTTPClient.Transport
+	hfHTTPClient.Transport = stubRoundTripper{body: fakeHF}
+	defer func() { hfHTTPClient.Transport = origTransport }()
+
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/repo?id=unsloth/Qwen3.5-4B-GGUF", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Variants []ModelVariantFit `json:"variants"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// The three mmproj-*.gguf siblings (641/644/1272 MB) must never appear at
+	// all - checking by size (not just quant label) since the bug's whole
+	// symptom was an mmproj file surfacing under a real-looking quant label.
+	for _, v := range resp.Variants {
+		if v.SizeMB < 2000 {
+			t.Errorf("variant %q (quant %q, %d MB) is small enough to be an mmproj companion file mislabeled as a model variant - must be excluded", v.Tag, v.Quantization, v.SizeMB)
+		}
+	}
+
+	// The two real main-model files must still appear, unaffected -
+	// excluding mmproj must not over-filter and drop legitimate variants.
+	foundRealBF16, foundRealQ6K := false, false
+	for _, v := range resp.Variants {
+		if strings.Contains(strings.ToLower(v.Tag), "bf16") && v.SizeMB > 7000 {
+			foundRealBF16 = true
+		}
+		if strings.Contains(strings.ToLower(v.Tag), "q6_k") && v.SizeMB > 3000 {
+			foundRealQ6K = true
+		}
+	}
+	if !foundRealBF16 {
+		t.Error("expected the real Qwen3.5-4B-BF16.gguf (~8 GB) to still appear as a variant - only the mmproj files should be excluded")
+	}
+	if !foundRealQ6K {
+		t.Error("expected the real Qwen3.5-4B-Q6_K.gguf (~3.3 GB) to still appear as a variant - only the mmproj files should be excluded")
+	}
+	if len(resp.Variants) != 2 {
+		t.Errorf("got %d variants, want exactly 2 (the real BF16 and Q6_K files) - the three mmproj files must all be filtered out", len(resp.Variants))
+	}
+}
 
 // catalogResponse mirrors the JSON shape returned by handleModelCatalog.
 type catalogResponse struct {
