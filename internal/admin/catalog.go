@@ -780,7 +780,20 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	variants := []ModelVariantFit{}
 	if ggufOnlyRuntime(runtime) {
 		for _, sib := range repo.Siblings {
-			if !strings.HasSuffix(strings.ToLower(sib.Rfilename), ".gguf") {
+			lowerName := strings.ToLower(sib.Rfilename)
+			if !strings.HasSuffix(lowerName, ".gguf") {
+				continue
+			}
+			// mmproj-*.gguf is a multimodal vision-projector companion file,
+			// not a quantization of the model itself - e.g. "mmproj-F16.gguf"
+			// is a few hundred MB regardless of the main model's actual size,
+			// but extractQuantization would still read "F16" out of its name
+			// and offer it as if it were a legitimate (and wildly undersized)
+			// "F16" variant of the model. Ollama's own `ollama pull` already
+			// fetches a repo's mmproj file automatically alongside the main
+			// GGUF when one exists - there is never a reason to list it here
+			// as its own pullable variant.
+			if strings.HasPrefix(lowerName, "mmproj") {
 				continue
 			}
 
