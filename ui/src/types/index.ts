@@ -507,6 +507,7 @@ export interface CatalogNodeEntry {
   disk_free_gb: number;
   disk_total_gb: number;
   disk_known: boolean;
+  capabilities?: string[];
   models: CatalogModelFit[];
 }
 

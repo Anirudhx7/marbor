@@ -276,6 +276,7 @@ type catalogModelFit struct {
 type catalogNodeEntry struct {
 	Name           string  `json:"name"`
 	URL            string  `json:"url"`
+	Runtime        string  `json:"runtime,omitempty"`
 	VRAMFreeBytes  int64   `json:"vram_free_bytes"`
 	VRAMTotalBytes int64   `json:"vram_total_bytes"`
 	VRAMUsedBytes  int64   `json:"vram_used_bytes"`
@@ -292,8 +293,15 @@ type catalogNodeEntry struct {
 	// (admin.go's containerDiskStatsViaAgent); this field lets the UI flag
 	// the same caveat on the figure it displays, rather than showing a
 	// number that may silently not match what the container has.
-	DockerDeployed bool              `json:"docker_deployed"`
-	Models         []catalogModelFit `json:"models"`
+	DockerDeployed bool `json:"docker_deployed"`
+	// Capabilities lists the node's effective Node Agent action capabilities
+	// (e.g. "models.pull", "runtime.restart") - empty/omitted when there is no
+	// agent, the agent hasn't reported yet, or the agent is disabled in
+	// settings, matching exactly what handleNodePull's dispatch would do
+	// (never the raw agent-advertised list when settings would refuse to use
+	// it - see handleModelCatalog).
+	Capabilities []string          `json:"capabilities,omitempty"`
+	Models       []catalogModelFit `json:"models"`
 }
 
 // classifyDiskFit reports whether a pull of sizeMB (download size, MiB) would
@@ -413,6 +421,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		n.RLock()
 		nodeURL := n.URL
 		nodeName := n.Name
+		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
@@ -422,7 +431,17 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		agentPresent := n.AgentPresent
 		diskFreeGB := n.DiskFreeGB
 		diskTotalGB := n.DiskTotalGB
+		agentCapabilities := append([]string(nil), n.AgentCapabilities...)
 		n.RUnlock()
+
+		// Effective capabilities: only what handleNodePull's dispatch would
+		// actually use - a node whose agent is present-but-disabled in
+		// settings must report no capabilities, not the raw agent-advertised
+		// list, so the catalog and real pull dispatch never disagree.
+		var capabilities []string
+		if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled {
+			capabilities = agentCapabilities
+		}
 
 		var vramFreeBytes int64
 		var vramTotalBytes int64
@@ -484,6 +503,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		nodeEntries = append(nodeEntries, catalogNodeEntry{
 			Name:           nodeName,
 			URL:            nodeURL,
+			Runtime:        nodeRuntime,
 			VRAMFreeBytes:  vramFreeBytes,
 			VRAMTotalBytes: vramTotalBytes,
 			VRAMUsedBytes:  vramUsedMBFromPS * 1024 * 1024,
@@ -492,6 +512,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			DiskTotalGB:    diskTotalGB,
 			DiskKnown:      agentPresent && diskTotalGB > 0,
 			DockerDeployed: dockerDeployed,
+			Capabilities:   capabilities,
 			Models:         models,
 		})
 	}
