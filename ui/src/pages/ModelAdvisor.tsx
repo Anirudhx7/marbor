@@ -271,6 +271,11 @@ function ModelDetailPanel({
           </div>
         ) : details && details.variants && details.variants.length > 0 ? (
           <div className="space-y-2">
+            {details.docker_deployed && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 leading-normal">
+                This node's runtime runs in Docker - the disk figures below reflect the host machine, not necessarily the container's own storage volume. The mesh checks the container's real free space before actually pulling, so a pull is never started if it would genuinely run out of room.
+              </p>
+            )}
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
               {(!nodeRuntime || nodeRuntime === 'ollama' || nodeRuntime === 'llamacpp') ? 'GGUF File Quantizations' : 'Safetensors Repository'}
             </span>

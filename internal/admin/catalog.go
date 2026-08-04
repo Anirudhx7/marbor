@@ -274,15 +274,25 @@ type catalogModelFit struct {
 
 // catalogNodeEntry holds the fit results for a single node.
 type catalogNodeEntry struct {
-	Name           string            `json:"name"`
-	URL            string            `json:"url"`
-	VRAMFreeBytes  int64             `json:"vram_free_bytes"`
-	VRAMTotalBytes int64             `json:"vram_total_bytes"`
-	VRAMUsedBytes  int64             `json:"vram_used_bytes"`
-	VRAMSource     string            `json:"vram_source"`
-	DiskFreeGB     float64           `json:"disk_free_gb"`
-	DiskTotalGB    float64           `json:"disk_total_gb"`
-	DiskKnown      bool              `json:"disk_known"` // false when the agent has never reported disk telemetry (R1 - never fabricate a reading)
+	Name           string  `json:"name"`
+	URL            string  `json:"url"`
+	VRAMFreeBytes  int64   `json:"vram_free_bytes"`
+	VRAMTotalBytes int64   `json:"vram_total_bytes"`
+	VRAMUsedBytes  int64   `json:"vram_used_bytes"`
+	VRAMSource     string  `json:"vram_source"`
+	DiskFreeGB     float64 `json:"disk_free_gb"`
+	DiskTotalGB    float64 `json:"disk_total_gb"`
+	DiskKnown      bool    `json:"disk_known"` // false when the agent has never reported disk telemetry (R1 - never fabricate a reading)
+	// DockerDeployed flags that DiskFreeGB/DiskTotalGB are this agent's own
+	// *host* filesystem reading (host_linux.go's readDiskStatsGB("/")) while
+	// the runtime itself is Docker-controlled - the container's actual model
+	// storage can live on a separate, differently-sized volume the host
+	// reading knows nothing about. The mesh's pre-pull disk-fit gate already
+	// checks the container's real number before actually pulling
+	// (admin.go's containerDiskStatsViaAgent); this field lets the UI flag
+	// the same caveat on the figure it displays, rather than showing a
+	// number that may silently not match what the container has.
+	DockerDeployed bool              `json:"docker_deployed"`
 	Models         []catalogModelFit `json:"models"`
 }
 
@@ -445,6 +455,14 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// See catalogNodeEntry.DockerDeployed's doc comment: diskFreeGB/
+		// diskTotalGB above are this agent's host filesystem, which can
+		// differ from a Docker-controlled runtime's actual storage volume.
+		dockerDeployed := false
+		if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
+			dockerDeployed = true
+		}
+
 		models := make([]catalogModelFit, 0, len(catalogModels))
 		for _, cm := range catalogModels {
 			variants := make([]catalogVariantFit, 0, len(cm.Variants))
@@ -473,6 +491,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			DiskFreeGB:     diskFreeGB,
 			DiskTotalGB:    diskTotalGB,
 			DiskKnown:      agentPresent && diskTotalGB > 0,
+			DockerDeployed: dockerDeployed,
 			Models:         models,
 		})
 	}
@@ -745,9 +764,11 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		targetNode = nodes[0]
 	}
 
+	dockerDeployed := false
 	if targetNode != nil {
 		targetNode.RLock()
 		nodeURL := targetNode.URL
+		nodeName := targetNode.Name
 		vramTotalMB := targetNode.VRAMTotalMB
 		vramUsedMBFromPS := int64(0)
 		vramSource = targetNode.VRAMSource
@@ -758,6 +779,20 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		diskFreeGB = targetNode.DiskFreeGB
 		diskTotalGB = targetNode.DiskTotalGB
 		targetNode.RUnlock()
+
+		// The disk figures above are always this agent's *host* filesystem
+		// (host_linux.go's readDiskStatsGB("/")) - for a Docker-controlled
+		// node, the runtime's actual model storage can live on a separate,
+		// differently-sized container volume the host reading knows nothing
+		// about (the exact gap admin.go's handleNodePull pre-pull gate now
+		// checks the container's real number for - see
+		// containerDiskStatsViaAgent). dockerDeployed lets the UI flag that
+		// gap on this figure explicitly rather than silently showing a
+		// number that may not match what the container actually has, which
+		// is exactly the operator confusion this field exists to prevent.
+		if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
+			dockerDeployed = true
+		}
 
 		if vramTotalMB > 0 {
 			vramTotalBytes = vramTotalMB * 1024 * 1024
@@ -889,15 +924,16 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":            repo.ID,
-		"downloads":     repo.Downloads,
-		"likes":         repo.Likes,
-		"tags":          repo.Tags,
-		"last_modified": repo.LastModified,
-		"variants":      variants,
-		"disk_free_gb":  diskFreeGB,
-		"disk_total_gb": diskTotalGB,
-		"disk_known":    agentPresent && diskTotalGB > 0,
+		"id":              repo.ID,
+		"downloads":       repo.Downloads,
+		"likes":           repo.Likes,
+		"tags":            repo.Tags,
+		"last_modified":   repo.LastModified,
+		"variants":        variants,
+		"disk_free_gb":    diskFreeGB,
+		"disk_total_gb":   diskTotalGB,
+		"disk_known":      agentPresent && diskTotalGB > 0,
+		"docker_deployed": dockerDeployed,
 	})
 }
 

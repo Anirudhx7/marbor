@@ -1034,6 +1034,14 @@ export interface HFRepoDetails {
   disk_free_gb: number;
   disk_total_gb: number;
   disk_known: boolean;
+  // docker_deployed: disk_free_gb/disk_total_gb are always this node's
+  // agent's own *host* filesystem reading - when the runtime itself is
+  // Docker-controlled, its actual model storage can live on a separate,
+  // differently-sized container volume the host reading knows nothing
+  // about. The mesh's pull gate already checks the container's real number
+  // before actually pulling; this flag lets the UI caveat the figure it's
+  // displaying instead of silently showing a number that may not match.
+  docker_deployed?: boolean;
 }
 
 export interface HFSearchFilters {
