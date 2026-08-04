@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -478,12 +479,39 @@ var deleteModelTimeout = 60 * time.Second
 // local Hugging Face cache pullViaHFHub downloads into and listViaHFCache
 // scans - the only place those runtimes' downloaded-but-not-loaded models
 // actually live on disk.
-var deleteCommands = map[string]func(ctx context.Context, model string) error{
+var deleteCommands = map[string]func(ctx context.Context, model, driver, identifier string) error{
 	"ollama":   deleteViaOllama,
 	"tgi":      deleteViaHFCache,
 	"vllm":     deleteViaHFCache,
 	"llamacpp": deleteViaHFCache,
 	"mlx":      deleteViaHFCache,
+}
+
+// controlRequest carries the same Driver/Identifier fields as
+// pullModelRequest (actions.go)/controlActionRequest (control_actions.go) -
+// the mesh's per-request {driver, identifier} injection, threaded through
+// delete/unload the same way pull already is. A DELETE/POST with no body (or
+// an empty one) decodes to the zero value, which is exactly the pre-existing
+// behavior (native/no-driver-configured), so this is additive-only for every
+// node that isn't Docker-controlled.
+type controlRequest struct {
+	Driver     string `json:"driver,omitempty"`
+	Identifier string `json:"identifier,omitempty"`
+}
+
+// decodeControlRequest reads an optional JSON body for Driver/Identifier,
+// tolerating a missing/empty body (io.EOF) since neither delete nor unload
+// required a request body before this field existed - only a genuinely
+// malformed non-empty body is an error.
+func decodeControlRequest(r *http.Request) (controlRequest, error) {
+	var req controlRequest
+	if r.Body == nil {
+		return req, nil
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		return controlRequest{}, err
+	}
+	return req, nil
 }
 
 // handleDeleteModel is the DELETE /v1/models/{name...} handler, gated by the
@@ -496,6 +524,11 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 	model := r.PathValue("name")
 	if model == "" {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing model name in path"})
+		return
+	}
+	ctrl, err := decodeControlRequest(r)
+	if err != nil {
+		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid request body"})
 		return
 	}
 
@@ -512,7 +545,7 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), deleteModelTimeout)
 	defer cancel()
-	if err := fn(ctx, model); err != nil {
+	if err := fn(ctx, model, ctrl.Driver, ctrl.Identifier); err != nil {
 		writeAction(w, http.StatusBadGateway, actionResponse{Error: err.Error()})
 		return
 	}
@@ -523,8 +556,8 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 // pullViaOllama, for the same reason: Ollama's own CLI is what already
 // understands its model-name/tag format, so there is no benefit to
 // reimplementing that against its HTTP DELETE /api/delete instead.
-func deleteViaOllama(ctx context.Context, model string) error {
-	return runDownload(ctx, "", "", "", "ollama", "rm", model)
+func deleteViaOllama(ctx context.Context, model, driver, identifier string) error {
+	return runDownload(ctx, driver, identifier, "", "ollama", "rm", model)
 }
 
 // deleteViaHFCache removes a model's directory from the local Hugging Face
@@ -539,7 +572,16 @@ func deleteViaOllama(ctx context.Context, model string) error {
 // (mapped or loaded) is safe in practice: on Linux, unlink only detaches the
 // directory entry - any process that already holds an open handle to a file
 // underneath keeps working until it closes that handle on its own.
-func deleteViaHFCache(_ context.Context, model string) error {
+//
+// driver/identifier are accepted (matching deleteCommands' shared signature)
+// but unused - this scans the agent process's own host filesystem cache,
+// which is a separate, pre-existing gap from the one this change fixes: a
+// containerized vLLM/TGI/llama.cpp/mlx's actual HF cache lives inside that
+// container's filesystem, not this host's, so this path is only correct for
+// a natively-installed runtime regardless of driver. Tracked as a distinct
+// follow-up, not folded into this fix (different mechanism - a directory
+// scan, not a subprocess exec - so `docker exec` doesn't apply the same way).
+func deleteViaHFCache(_ context.Context, model, _, _ string) error {
 	dir, err := hfCacheDir()
 	if err != nil {
 		return err
@@ -612,7 +654,7 @@ var unloadModelTimeout = 30 * time.Second
 //     router mode is actually running (a side-effect-free GET {url}/models)
 //     before ever attempting the unload, rather than assuming every node
 //     identified as "llamacpp" supports it.
-var unloadCommands = map[string]func(ctx context.Context, runtimeURL, model string) error{
+var unloadCommands = map[string]func(ctx context.Context, runtimeURL, model, driver, identifier string) error{
 	"ollama":   unloadViaOllama,
 	"llamacpp": unloadViaLlamaCppRouter,
 }
@@ -635,6 +677,11 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing model name in path"})
 		return
 	}
+	ctrl, err := decodeControlRequest(r)
+	if err != nil {
+		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid request body"})
+		return
+	}
 
 	runtimeName, runtimeURL := s.runtimeTarget()
 	fn, ok := unloadCommands[runtimeName]
@@ -649,7 +696,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), unloadModelTimeout)
 	defer cancel()
-	if err := fn(ctx, runtimeURL, model); err != nil {
+	if err := fn(ctx, runtimeURL, model, ctrl.Driver, ctrl.Identifier); err != nil {
 		writeAction(w, http.StatusBadGateway, actionResponse{Error: err.Error()})
 		return
 	}
@@ -662,8 +709,8 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 // pullViaOllama/deleteViaOllama, for the same reason: Ollama's own CLI
 // already understands its model-name/tag format. runtimeURL is unused here
 // (part of unloadCommands' shared signature) - Ollama's CLI needs no address.
-func unloadViaOllama(ctx context.Context, _, model string) error {
-	return runDownload(ctx, "", "", "", "ollama", "stop", model)
+func unloadViaOllama(ctx context.Context, _, model, driver, identifier string) error {
+	return runDownload(ctx, driver, identifier, "", "ollama", "stop", model)
 }
 
 // llamaCppRouterModelList is GET {runtimeURL}/models' response shape in
@@ -793,7 +840,7 @@ func resolveLlamaCppRouterModelID(list *llamaCppRouterModelList, model string) (
 // router's own id via resolveLlamaCppRouterModelID before the real POST -
 // see that function's doc comment for why "org/repo" alone cannot be sent
 // to the router directly (P34).
-func unloadViaLlamaCppRouter(ctx context.Context, runtimeURL, model string) error {
+func unloadViaLlamaCppRouter(ctx context.Context, runtimeURL, model, _, _ string) error {
 	list, err := fetchLlamaCppRouterModels(ctx, runtimeURL)
 	if err != nil {
 		return fmt.Errorf("unsupported: llama.cpp router mode not detected on this node (%w) - /models/unload only exists when llama-server runs in router mode", err)

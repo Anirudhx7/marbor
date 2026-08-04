@@ -2929,7 +2929,8 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), nodeUnloadModelTimeout)
 		defer cancel()
-		if err := s.unloadModelViaAgent(ctx, nodeURL, agentCfg, body.Model); err != nil {
+		ctrl, _ := s.router.NodeControlSetting(name)
+		if err := s.unloadModelViaAgent(ctx, nodeURL, agentCfg, body.Model, ctrl); err != nil {
 			// The agent's own error text (e.g. "unsupported: no unload
 			// primitive for runtime \"vllm\"") is the whole point of R1 here -
 			// it is what turns a non-Ollama runtime into a clear "not
@@ -5964,7 +5965,8 @@ func (s *Server) bestEffortUnloadAfterVerify(nodeName, model string) {
 	var err error
 	if useAgent {
 		nodeURL := s.router.NodeURLs()[nodeName]
-		err = s.unloadModelViaAgent(ctx, nodeURL, agentCfg, model)
+		ctrl, _ := s.router.NodeControlSetting(nodeName)
+		err = s.unloadModelViaAgent(ctx, nodeURL, agentCfg, model, ctrl)
 	} else {
 		_, err = s.router.UnloadModel(ctx, nodeName, model)
 	}
@@ -6381,7 +6383,8 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), nodeDeleteModelTimeout)
 	defer cancel()
-	if err := s.deleteModelViaAgent(ctx, nodeURL, agentCfg, model); err != nil {
+	ctrl, _ := s.router.NodeControlSetting(nodeName)
+	if err := s.deleteModelViaAgent(ctx, nodeURL, agentCfg, model, ctrl); err != nil {
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -6394,17 +6397,26 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 }
 
 // deleteModelViaAgent dispatches a model delete to nodeURL's Node Agent
-// (DELETE /v1/models/{name}, capability "models.delete").
-func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
+// (DELETE /v1/models/{name}, capability "models.delete"). ctrl carries the
+// node's configured driver/identifier (same router.ControlConfig cache
+// runtimeActionViaAgent reads) so the agent knows to route the delete
+// through `docker exec` when the runtime is Docker-controlled - see
+// pullModelViaAgent's identical reasoning.
+func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models/"+escapeModelPathSegments(model))
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, actionURL, nil)
+	reqBody, err := json.Marshal(map[string]string{"driver": ctrl.Driver, "identifier": ctrl.Identifier})
 	if err != nil {
 		return err
 	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, actionURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
 	client := &http.Client{Timeout: nodeDeleteModelTimeout}
@@ -6578,16 +6590,21 @@ var nodeUnloadModelTimeout = 30 * time.Second
 // (POST /v1/models/{name...}, capability "models.unload") instead of the
 // node's own runtime HTTP API. See actions.go's handleUnloadModel for why
 // POST (not a literal "/unload" suffix) is the verb used on this path shape.
-func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
+func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentUnloadURL(nodeURL, agentCfg.Port, model)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, nil)
+	reqBody, err := json.Marshal(map[string]string{"driver": ctrl.Driver, "identifier": ctrl.Identifier})
 	if err != nil {
 		return err
 	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
 	client := &http.Client{Timeout: nodeUnloadModelTimeout}

@@ -343,7 +343,8 @@ func (s *Server) evictModelForBenchmark(ctx context.Context, nodeName, model str
 		}
 		unloadCtx, cancel := context.WithTimeout(ctx, nodeUnloadModelTimeout)
 		defer cancel()
-		if err := s.unloadModelViaAgent(unloadCtx, nodeURL, agentCfg, model); err != nil {
+		ctrl, _ := s.router.NodeControlSetting(nodeName)
+		if err := s.unloadModelViaAgent(unloadCtx, nodeURL, agentCfg, model, ctrl); err != nil {
 			return err
 		}
 		s.router.RecordManualUnload(nodeName, model)
