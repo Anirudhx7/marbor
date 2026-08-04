@@ -272,3 +272,76 @@ func TestBuildControlDriver_StartCommandRejectedForNonProcessDriver(t *testing.T
 		t.Fatal("expected an error when start_command is set for a non-process driver")
 	}
 }
+
+// TestParseDFOutput is a regression test for the disk-space check behind
+// handleRuntimeDisk: a real production report had the mesh's pre-pull
+// disk-fit gate wave a pull through (host-level disk looked fine) that then
+// failed deep into a multi-GB transfer with "no space left on device" -
+// because the container's actual storage lived on a different, smaller
+// volume than the agent's own host filesystem. This is the parser for the
+// `docker exec <container> df -Pk <path>` output that fixes that gap.
+func TestParseDFOutput(t *testing.T) {
+	// Standard GNU coreutils / busybox `df -Pk` output: a header line plus
+	// exactly one data row (guaranteed by -P, the "portable" format).
+	out := "Filesystem     1024-blocks      Used Available Capacity Mounted on\n" +
+		"overlay          61255492  32000000  26000000      56% /\n"
+	free, total, err := parseDFOutput(out)
+	if err != nil {
+		t.Fatalf("parseDFOutput: %v", err)
+	}
+	if want := int64(26000000) * 1024; free != want {
+		t.Errorf("free = %d, want %d", free, want)
+	}
+	if want := int64(61255492) * 1024; total != want {
+		t.Errorf("total = %d, want %d", total, want)
+	}
+
+	// A long device/volume name (common for a Docker named volume, e.g.
+	// "/dev/mapper/docker-253:1-1234567-ollama_data") - -P's whole point is
+	// a fixed, always-one-line-per-filesystem format, so this must parse
+	// exactly like the short-name case above, not wrap onto a second line.
+	longName := "Filesystem                                                  1024-blocks      Used Available Capacity Mounted on\n" +
+		"/dev/mapper/docker-253:1-1234567-ollama_data                   10000000   4000000   6000000      40% /root/.ollama\n"
+	free, total, err = parseDFOutput(longName)
+	if err != nil {
+		t.Fatalf("parseDFOutput(longName): %v", err)
+	}
+	if want := int64(6000000) * 1024; free != want {
+		t.Errorf("longName free = %d, want %d", free, want)
+	}
+	if want := int64(10000000) * 1024; total != want {
+		t.Errorf("longName total = %d, want %d", total, want)
+	}
+
+	if _, _, err := parseDFOutput(""); err == nil {
+		t.Error("expected an error for empty df output")
+	}
+	if _, _, err := parseDFOutput("not df output at all"); err == nil {
+		t.Error("expected an error for unparseable df output")
+	}
+}
+
+// TestHandleRuntimeDisk_NoDriverFallsBackToHostTelemetry verifies the
+// non-docker (or unconfigured) case never attempts a docker exec at all -
+// it returns whatever host-level disk telemetry this agent already
+// collected, exactly like GET /v1/status would, since for a native install
+// the host's disk *is* the runtime's disk.
+func TestHandleRuntimeDisk_NoDriverFallsBackToHostTelemetry(t *testing.T) {
+	s := newControlActionTestServer()
+
+	w := doRuntimeAction(t, s, "disk", map[string]string{})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	var resp diskStatsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Error != "" {
+		t.Errorf("Error = %q, want empty (no scheduler configured is a known-unknown, never an error)", resp.Error)
+	}
+	if resp.FreeBytes != 0 || resp.TotalBytes != 0 {
+		t.Errorf("FreeBytes/TotalBytes = %d/%d, want 0/0 (no host telemetry collected in this test server)", resp.FreeBytes, resp.TotalBytes)
+	}
+}
