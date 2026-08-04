@@ -5715,6 +5715,28 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// is a known v1 scope limit, not silent - see P48 in EXECUTION-QUEUE.md.
 	if sizeMB, known := findCatalogVariantSizeMB(body.Model); known {
 		diskFreeGB, diskTotalGB, agentPresent := nodeDiskState(nodes, nodeName)
+		// For a Docker-controlled node, the host-level reading above can be
+		// wrong: Ollama's actual model storage may live on a separate,
+		// differently-sized container volume/mount, while this agent-reported
+		// figure only ever reflects the *host's* root filesystem. When an
+		// agent capable of reporting the container's own real disk stats is
+		// available, prefer that fresh, on-demand reading over the periodic
+		// (and for this case, potentially misleading) telemetry snapshot for
+		// this one safety-critical decision - this is exactly the gap that
+		// let a disk-full pull fail deep into a multi-GB transfer instead of
+		// being caught before it started.
+		if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
+			if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled && nodeHasAgentCapability(nodes, nodeName, "runtime.disk") {
+				if freeB, totalB, err := s.containerDiskStatsViaAgent(r.Context(), nodeURL, agentCfg, ctrl); err == nil && totalB > 0 {
+					diskFreeGB = float64(freeB) / (1024 * 1024 * 1024)
+					diskTotalGB = float64(totalB) / (1024 * 1024 * 1024)
+					agentPresent = true
+				}
+				// On error, silently keep the host-level reading already
+				// computed above - this extra safety check failing to run
+				// must never itself become a reason to block a pull outright.
+			}
+		}
 		if classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent) == "insufficient" {
 			writeJSONError(w, http.StatusInsufficientStorage, fmt.Sprintf(
 				"insufficient disk space on node %q: %q needs ~%.1f GB, only %.1f GB free",
@@ -6314,6 +6336,50 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// containerDiskStatsViaAgent asks nodeURL's Node Agent for the real disk
+// stats of the container ctrl identifies (POST /v1/runtime/disk, capability
+// "runtime.disk") - see internal/nodeagent's handleRuntimeDisk for why this
+// can differ from the host-level DiskFreeGB/DiskTotalGB the periodic
+// telemetry poll already reports for a Docker-controlled node.
+func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, ctrl router.ControlConfig) (freeBytes, totalBytes int64, err error) {
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/disk")
+	if err != nil {
+		return 0, 0, err
+	}
+	reqBody, err := json.Marshal(map[string]string{"driver": ctrl.Driver, "identifier": ctrl.Identifier})
+	if err != nil {
+		return 0, 0, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, actionURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return 0, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, 0, fmt.Errorf("agent disk stats failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		FreeBytes  int64  `json:"free_bytes"`
+		TotalBytes int64  `json:"total_bytes"`
+		Error      string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, 0, fmt.Errorf("agent disk stats: could not decode response (status %d)", resp.StatusCode)
+	}
+	if out.Error != "" {
+		return 0, 0, errors.New(out.Error)
+	}
+	return out.FreeBytes, out.TotalBytes, nil
 }
 
 // buildAgentURL derives an agent URL from the node's own URL (same host),

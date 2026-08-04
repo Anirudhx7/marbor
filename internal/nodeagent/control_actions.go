@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -235,4 +237,107 @@ func (s *Server) handleRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeLogs(w, http.StatusOK, logsResponse{Lines: out})
+}
+
+// diskStatsResponse is POST /v1/runtime/disk's response body, capability
+// "runtime.disk". Free/TotalBytes are the disk stats of wherever the
+// runtime's model storage actually lives - for a driver=="docker" node this
+// means asking the container itself (docker exec + df), never this agent's
+// own host filesystem, which can be backed by an entirely different,
+// differently-sized volume/mount than wherever the container actually
+// persists its data. That gap is exactly what let a disk-full pull fail deep
+// into a multi-GB transfer instead of being caught before it started - the
+// mesh's pre-pull disk-fit gate (admin.go's handleNodePull) was already
+// correct, it just had no way to see the container's real numbers before
+// this endpoint existed.
+type diskStatsResponse struct {
+	FreeBytes  int64  `json:"free_bytes,omitempty"`
+	TotalBytes int64  `json:"total_bytes,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+func writeDiskStats(w http.ResponseWriter, status int, resp diskStatsResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// handleRuntimeDisk is the POST /v1/runtime/disk handler, gated by the same
+// per-node bearer token as every other route. Same {driver, identifier}
+// per-request injection as start/stop/restart/logs (control_actions.go) -
+// the agent still persists nothing of its own (P43 Step 3 unchanged); this
+// is a plain read triggered fresh by an incoming request, same as those.
+func (s *Server) handleRuntimeDisk(w http.ResponseWriter, r *http.Request) {
+	var req controlActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeDiskStats(w, http.StatusBadRequest, diskStatsResponse{Error: "invalid request body"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), controlActionTimeout)
+	defer cancel()
+
+	if req.Driver == "docker" && req.Identifier != "" {
+		free, total, err := dockerContainerDiskStats(ctx, req.Identifier)
+		if err != nil {
+			writeDiskStats(w, http.StatusBadGateway, diskStatsResponse{Error: err.Error()})
+			return
+		}
+		writeDiskStats(w, http.StatusOK, diskStatsResponse{FreeBytes: free, TotalBytes: total})
+		return
+	}
+
+	// Non-docker (or no driver configured for this node): fall back to this
+	// agent's own already-collected host-level telemetry - the same numbers
+	// GET /v1/status already reports, never a second, different measurement
+	// for the same case (native install: host disk *is* the runtime's disk).
+	snap := s.snapshot()
+	if snap.Host == nil || snap.Host.DiskTotalGB <= 0 {
+		writeDiskStats(w, http.StatusOK, diskStatsResponse{})
+		return
+	}
+	writeDiskStats(w, http.StatusOK, diskStatsResponse{
+		FreeBytes:  int64(snap.Host.DiskFreeGB * 1024 * 1024 * 1024),
+		TotalBytes: int64(snap.Host.DiskTotalGB * 1024 * 1024 * 1024),
+	})
+}
+
+// dockerContainerDiskStats returns the real free/total disk bytes as seen
+// from inside the container - not this agent's own host filesystem view.
+// Resolves the runtime's data directory the same way Ollama itself would
+// (OLLAMA_MODELS if set, otherwise $HOME/.ollama), falling back to the
+// container's root filesystem if neither exists - still far more accurate
+// than the host's, since it reflects whatever volume/mount is actually
+// backing the container regardless of which one that is.
+func dockerContainerDiskStats(ctx context.Context, container string) (freeBytes, totalBytes int64, err error) {
+	cmd := exec.CommandContext(ctx, "docker", "exec", container, "sh", "-c",
+		`p="${OLLAMA_MODELS:-${HOME:-/root}/.ollama}"; df -Pk "$p" 2>/dev/null || df -Pk /`)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, 0, fmt.Errorf("docker exec df: %w", err)
+	}
+	return parseDFOutput(string(out))
+}
+
+// parseDFOutput parses POSIX `df -Pk` output (`-P` for the portable one-
+// line-per-filesystem format, `-k` for 1024-byte blocks) - supported by both
+// GNU coreutils and busybox df, so this works against ollama's official
+// Debian-based image and a minimal Alpine-based one alike. Only the last
+// line is read (the one data row `-P` guarantees), regardless of how many
+// header/wrapped lines precede it.
+func parseDFOutput(out string) (freeBytes, totalBytes int64, err error) {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		return 0, 0, fmt.Errorf("unexpected df output: %q", out)
+	}
+	fields := strings.Fields(lines[len(lines)-1])
+	if len(fields) < 4 {
+		return 0, 0, fmt.Errorf("unexpected df output: %q", out)
+	}
+	totalKB, err1 := strconv.ParseInt(fields[1], 10, 64)
+	availKB, err2 := strconv.ParseInt(fields[3], 10, 64)
+	if err1 != nil || err2 != nil {
+		return 0, 0, fmt.Errorf("could not parse df output: %q", out)
+	}
+	return availKB * 1024, totalKB * 1024, nil
 }

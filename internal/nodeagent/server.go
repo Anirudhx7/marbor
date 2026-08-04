@@ -83,6 +83,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/runtime/stop", requireToken(s.Token, s.handleRuntimeStop))
 	mux.HandleFunc("POST /v1/runtime/restart", requireToken(s.Token, s.handleRuntimeRestart))
 	mux.HandleFunc("POST /v1/runtime/logs", requireToken(s.Token, s.handleRuntimeLogs))
+	// The "runtime" resource's disk-usage read, capability "runtime.disk" -
+	// same {driver, identifier} per-request injection as start/stop/restart/
+	// logs above, used to answer "how much disk does the runtime actually
+	// have" from inside the container when driver=="docker", since this
+	// agent's own host filesystem can be backed by an entirely different,
+	// differently-sized volume/mount than wherever the container persists
+	// its model storage. See control_actions.go's handleRuntimeDisk.
+	mux.HandleFunc("POST /v1/runtime/disk", requireToken(s.Token, s.handleRuntimeDisk))
 	return mux
 }
 
