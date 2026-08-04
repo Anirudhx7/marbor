@@ -5774,7 +5774,8 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	if useAgent {
 		go func() {
 			defer cancel()
-			err := s.pullModelViaAgent(pullCtx, nodeURL, agentCfg, body.Model)
+			ctrl, _ := s.router.NodeControlSetting(nodeName)
+			err := s.pullModelViaAgent(pullCtx, nodeURL, agentCfg, body.Model, ctrl)
 			if err != nil {
 				job.finish("failed", err.Error())
 				return
@@ -6257,13 +6258,25 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 // per-request - never stored on the agent side, only set in the pull
 // subprocess's own environment for its lifetime (see
 // .local/specs/node-agent.md section 16).
-func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string) error {
+func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models")
 	if err != nil {
 		return err
 	}
 
-	reqBody, err := json.Marshal(map[string]string{"model": model, "hf_token": s.cfg.HuggingFace.Token})
+	// Driver/Identifier are only meaningful when ctrl.Driver == "docker": the
+	// agent's own download commands (ollama/huggingface-cli/etc.) run as a
+	// host subprocess by default, which fails when the runtime is actually
+	// inside a container - see actions.go's runDownload doc comment. Passed
+	// through unconditionally (empty strings when unconfigured) exactly like
+	// runtimeActionViaAgent does, so a node with no control driver configured
+	// (the common systemd/native-process case) sees no behavior change.
+	reqBody, err := json.Marshal(map[string]string{
+		"model":      model,
+		"hf_token":   s.cfg.HuggingFace.Token,
+		"driver":     ctrl.Driver,
+		"identifier": ctrl.Identifier,
+	})
 	if err != nil {
 		return err
 	}
