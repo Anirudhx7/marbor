@@ -793,3 +793,32 @@ func TestStripANSI(t *testing.T) {
 		t.Errorf("stripANSI should be a no-op on plain text, got %q", got)
 	}
 }
+
+// TestLastMeaningfulLine guards against a real production report: a failed
+// pull's stderr held hundreds of repeated "pulling <digest>: 100%" lines (one
+// per progress tick, since ollama isn't attached to a real TTY as a
+// subprocess) followed by the actual "Error: file does not exist" - runDownload
+// used to return the whole transcript as the error, blowing up the admin
+// UI's pull toast into an unreadable, viewport-covering wall of text.
+func TestLastMeaningfulLine(t *testing.T) {
+	var sb strings.Builder
+	for i := 0; i < 300; i++ {
+		sb.WriteString("pulling 9e6e2841a75f: 100%\n")
+	}
+	sb.WriteString("Error: file does not exist\n")
+	if got := lastMeaningfulLine(sb.String()); got != "Error: file does not exist" {
+		t.Errorf("lastMeaningfulLine = %q, want %q", got, "Error: file does not exist")
+	}
+
+	if got := lastMeaningfulLine("single line, no trailing newline"); got != "single line, no trailing newline" {
+		t.Errorf("lastMeaningfulLine(single line) = %q, want the line itself", got)
+	}
+
+	if got := lastMeaningfulLine("trailing blank lines\n\n\n"); got != "trailing blank lines" {
+		t.Errorf("lastMeaningfulLine(trailing blanks) = %q, want %q", got, "trailing blank lines")
+	}
+
+	if got := lastMeaningfulLine(""); got != "" {
+		t.Errorf("lastMeaningfulLine(empty) = %q, want empty", got)
+	}
+}
