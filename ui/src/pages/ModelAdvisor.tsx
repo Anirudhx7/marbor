@@ -766,6 +766,29 @@ export function ModelAdvisor() {
         ))}
       </div>
 
+      {activeNode && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Node</span>
+          {nodes.length > 1 ? (
+            nodes.map((n) => (
+              <button
+                key={n.name}
+                onClick={() => setSelectedNode(n.name)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+                  n.name === selectedNode
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {n.name}
+              </button>
+            ))
+          ) : (
+            <span className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-secondary text-foreground">{activeNode.name}</span>
+          )}
+        </div>
+      )}
+
       {tab === 'favourites' ? (
         favoriteModels.length === 0 ? (
           <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
@@ -824,24 +847,6 @@ export function ModelAdvisor() {
 
       {activeNode && (
         <>
-          {nodes.length > 1 && (
-            <div className="flex flex-wrap gap-2">
-              {nodes.map((n) => (
-                <button
-                  key={n.name}
-                  onClick={() => setSelectedNode(n.name)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
-                    n.name === selectedNode
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  {n.name}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
               <div>

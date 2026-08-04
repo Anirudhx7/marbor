@@ -42,6 +42,18 @@ type pullModelRequest struct {
 	// for the lifetime of that one command, never the agent process's own
 	// environment.
 	HFToken string `json:"hf_token,omitempty"`
+	// Driver/Identifier mirror controlActionRequest's fields (control_actions.go)
+	// - the mesh constructs them fresh from its own store-backed
+	// router.ControlConfig cache on every request, same as it does for
+	// runtime.start/stop/restart. Empty when the node has no control driver
+	// configured (the common systemd/native-process case), in which case
+	// runDownload behaves exactly as before this field existed. Only
+	// Driver=="docker" changes anything: the runtime's own CLI (ollama,
+	// huggingface-cli, ...) lives inside the container, not this agent
+	// process's host PATH, so the download command must run via `docker exec
+	// <Identifier> ...` instead of directly.
+	Driver     string `json:"driver,omitempty"`
+	Identifier string `json:"identifier,omitempty"`
 }
 
 type actionResponse struct {
@@ -59,7 +71,7 @@ type actionResponse struct {
 // downloaded the same way (safetensors + config.json in MLX's own quant
 // format, tagged library:mlx on HF) - mlx-lm itself has no standalone pull
 // command either.
-var pullCommands = map[string]func(ctx context.Context, model, hfToken string) error{
+var pullCommands = map[string]func(ctx context.Context, model, hfToken, driver, identifier string) error{
 	"ollama":   pullViaOllama,
 	"tgi":      pullViaTGI,
 	"vllm":     pullViaHFHub,
@@ -93,7 +105,7 @@ func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), pullTimeout)
 	defer cancel()
-	if err := fn(ctx, req.Model, req.HFToken); err != nil {
+	if err := fn(ctx, req.Model, req.HFToken, req.Driver, req.Identifier); err != nil {
 		writeAction(w, http.StatusBadGateway, actionResponse{Error: err.Error()})
 		return
 	}
@@ -103,19 +115,24 @@ func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
 // pullViaOllama runs `ollama pull <model>` - model is passed through exactly
 // as given (e.g. "hf.co/org/repo:Q4_K_M" or an official library tag like
 // "llama3:8b"), since Ollama's own CLI is what resolves that tag format.
-func pullViaOllama(ctx context.Context, model, hfToken string) error {
-	return runDownload(ctx, hfToken, "ollama", "pull", model)
+func pullViaOllama(ctx context.Context, model, hfToken, driver, identifier string) error {
+	return runDownload(ctx, driver, identifier, hfToken, "ollama", "pull", model)
 }
 
 // pullViaTGI runs `text-generation-server download-weights <repo>`. TGI's
 // download step takes a bare Hugging Face repo id, not an Ollama-style
 // "hf.co/...:quant" tag (TGI serves full-precision/HF-format weights, not
 // GGUF quant files) - hfRepoID strips the parts that are meaningless here.
-func pullViaTGI(ctx context.Context, model, hfToken string) error {
-	if _, err := lookPath("text-generation-server"); err != nil {
-		return errors.New("unsupported: text-generation-server not found on PATH")
+// The lookPath preflight is skipped for the docker driver: it checks this
+// agent process's own host PATH, which says nothing about what's installed
+// inside the container runDownload will actually exec into.
+func pullViaTGI(ctx context.Context, model, hfToken, driver, identifier string) error {
+	if driver != "docker" {
+		if _, err := lookPath("text-generation-server"); err != nil {
+			return errors.New("unsupported: text-generation-server not found on PATH")
+		}
 	}
-	return runDownload(ctx, hfToken, "text-generation-server", "download-weights", hfRepoID(model))
+	return runDownload(ctx, driver, identifier, hfToken, "text-generation-server", "download-weights", hfRepoID(model))
 }
 
 // pullViaHFHub is the fallback for runtimes (vLLM, llama.cpp) with no
@@ -126,12 +143,15 @@ func pullViaTGI(ctx context.Context, model, hfToken string) error {
 // and TGI depend on huggingface_hub internally, so it is very likely
 // already installed alongside either; a node genuinely missing it gets a
 // clear, honest error rather than a silent no-op (R1 extended to actions:
-// an action that didn't happen must never report ok:true).
-func pullViaHFHub(ctx context.Context, model, hfToken string) error {
-	if _, err := lookPath("huggingface-cli"); err != nil {
-		return errors.New("unsupported: huggingface-cli not found on PATH (required to pull models for this runtime)")
+// an action that didn't happen must never report ok:true). Same
+// docker-driver lookPath skip as pullViaTGI, for the same reason.
+func pullViaHFHub(ctx context.Context, model, hfToken, driver, identifier string) error {
+	if driver != "docker" {
+		if _, err := lookPath("huggingface-cli"); err != nil {
+			return errors.New("unsupported: huggingface-cli not found on PATH (required to pull models for this runtime)")
+		}
 	}
-	return runDownload(ctx, hfToken, "huggingface-cli", "download", hfRepoID(model))
+	return runDownload(ctx, driver, identifier, hfToken, "huggingface-cli", "download", hfRepoID(model))
 }
 
 // hfRepoID strips an Ollama-style "hf.co/" prefix and ":quant" suffix down
@@ -154,16 +174,39 @@ func hfRepoID(model string) string {
 // actual reason (gated repo, 404, disk full, etc.) an operator needs to see
 // - never a bare "exit status 1".
 //
-// Always builds an explicit env with HOME guaranteed present: a node agent
-// running as a systemd service (or other stripped-down service environment)
-// may have no $HOME set, and ollama's own CLI panics rather than falling
-// back when it's missing - so the agent can't just trust its own inherited
-// environment to be complete before handing it to a child process.
-func runDownload(ctx context.Context, hfToken string, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Env = ensureHome(os.Environ())
-	if hfToken != "" {
-		cmd.Env = append(cmd.Env, "HF_TOKEN="+hfToken)
+// When driver is "docker" and identifier is non-empty, name+args are run
+// inside that container via `docker exec` instead of directly on this host -
+// the runtime's own CLI (ollama, huggingface-cli, ...) lives in the
+// container's filesystem/PATH, not this agent process's, when the runtime is
+// deployed that way (P43's ControlDriver abstraction already knows this for
+// start/stop/restart/logs; pull/delete/unload need the same awareness).
+// HF_TOKEN is passed via `docker exec -e` in that case, since a container's
+// exec environment is set per-invocation, not by mutating a *exec.Cmd.Env
+// that only affects the host-side `docker` process itself.
+//
+// Otherwise (native/systemd/process driver, or no driver configured at all -
+// the pre-existing behavior for every node before this field existed) always
+// builds an explicit env with HOME guaranteed present: a node agent running
+// as a systemd service (or other stripped-down service environment) may have
+// no $HOME set, and ollama's own CLI panics rather than falling back when
+// it's missing - so the agent can't just trust its own inherited environment
+// to be complete before handing it to a child process.
+func runDownload(ctx context.Context, driver, identifier, hfToken string, name string, args ...string) error {
+	var cmd *exec.Cmd
+	if driver == "docker" && identifier != "" {
+		dockerArgs := []string{"exec"}
+		if hfToken != "" {
+			dockerArgs = append(dockerArgs, "-e", "HF_TOKEN="+hfToken)
+		}
+		dockerArgs = append(dockerArgs, identifier, name)
+		dockerArgs = append(dockerArgs, args...)
+		cmd = exec.CommandContext(ctx, "docker", dockerArgs...)
+	} else {
+		cmd = exec.CommandContext(ctx, name, args...)
+		cmd.Env = ensureHome(os.Environ())
+		if hfToken != "" {
+			cmd.Env = append(cmd.Env, "HF_TOKEN="+hfToken)
+		}
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -481,7 +524,7 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 // understands its model-name/tag format, so there is no benefit to
 // reimplementing that against its HTTP DELETE /api/delete instead.
 func deleteViaOllama(ctx context.Context, model string) error {
-	return runDownload(ctx, "", "ollama", "rm", model)
+	return runDownload(ctx, "", "", "", "ollama", "rm", model)
 }
 
 // deleteViaHFCache removes a model's directory from the local Hugging Face
@@ -620,7 +663,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 // already understands its model-name/tag format. runtimeURL is unused here
 // (part of unloadCommands' shared signature) - Ollama's CLI needs no address.
 func unloadViaOllama(ctx context.Context, _, model string) error {
-	return runDownload(ctx, "", "ollama", "stop", model)
+	return runDownload(ctx, "", "", "", "ollama", "stop", model)
 }
 
 // llamaCppRouterModelList is GET {runtimeURL}/models' response shape in
