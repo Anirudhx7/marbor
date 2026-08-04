@@ -427,7 +427,7 @@ func TestDeleteViaHFCache_PathTraversalRejected(t *testing.T) {
 
 	sep := string(filepath.Separator)
 	traversal := "foo" + sep + ".." + sep + ".." + sep + "secret-outside-cache"
-	if err := deleteViaHFCache(context.Background(), traversal); err == nil {
+	if err := deleteViaHFCache(context.Background(), traversal, "", ""); err == nil {
 		t.Fatal("expected an error rejecting a path-traversal model name")
 	}
 	if _, err := os.Stat(secret); err != nil {
@@ -460,7 +460,7 @@ func TestDeleteViaHFCache_SymlinkRejected(t *testing.T) {
 	}
 	t.Setenv("HF_HOME", tmp)
 
-	if err := deleteViaHFCache(context.Background(), "org/repo"); err == nil {
+	if err := deleteViaHFCache(context.Background(), "org/repo", "", ""); err == nil {
 		t.Fatal("expected an error rejecting a symlinked cache entry")
 	}
 	if _, err := os.Stat(secret); err != nil {
