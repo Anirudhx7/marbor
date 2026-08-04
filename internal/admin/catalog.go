@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
+
+// shardedGGUFFilename matches a multi-part GGUF split filename, e.g.
+// "kimi-k2.5-q3_k_s-00001-of-00010.gguf" - see the exclusion in
+// handleModelRepo's GGUF loop for why these are never offered as a variant.
+var shardedGGUFFilename = regexp.MustCompile(`-\d+-of-\d+\.gguf$`)
 
 // hfHTTPClient is shared across all Hugging Face search/browse requests.
 // http.Client is safe for concurrent use, and a single instance keeps a live
@@ -794,6 +800,24 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			// GGUF when one exists - there is never a reason to list it here
 			// as its own pullable variant.
 			if strings.HasPrefix(lowerName, "mmproj") {
+				continue
+			}
+			// A sharded GGUF quant (e.g. "Q3_K_S/Kimi-K2.5-Q3_K_S-00001-of-
+			// 00010.gguf" - confirmed against unsloth/Kimi-K2.5-GGUF,
+			// 2026-08-04) is split across multiple files the way a
+			// safetensors repo is - but our variant list is one entry per
+			// .gguf file with a single "Pull" button, which has no way to
+			// fetch every part together. Ollama's own manifest resolution
+			// explicitly refuses these outright ("The specified repository
+			// contains sharded GGUF. Ollama does not support this yet.",
+			// https://github.com/ollama/ollama/issues/5245) - and even where
+			// that 400 wouldn't apply, one Pull click here would only ever
+			// fetch one of many required parts, silently producing an
+			// unloadable partial model rather than a clear error. Excluding
+			// the shard files entirely (not just for ollama) means a user
+			// never sees a Pull button that cannot possibly result in a
+			// complete, loadable model through this flow.
+			if shardedGGUFFilename.MatchString(lowerName) {
 				continue
 			}
 
