@@ -815,6 +815,7 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       disk_free_gb: 900,
       disk_total_gb: 2000,
       disk_known: true,
+      capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
       models: [],
     },
   ],
