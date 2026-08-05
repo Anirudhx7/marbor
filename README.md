@@ -421,19 +421,37 @@ Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI respons
 
 ## CLI
 
-`mesh` is a thin CLI client of the Admin API - it never talks to a Node Agent directly, every
-command is exactly one Admin API request. Build it with `make mesh-cli` (produces `./mesh-cli`) or
-`go build -o mesh-cli ./cmd/mesh`.
+`ollama-mesh` is a single static binary that is three tools in one - the server, the Node Agent, and
+a thin CLI client of the Admin API - selected by its first argument:
+
+| Command | Purpose |
+|---|---|
+| `ollama-mesh` | Run the mesh server (default, no argument needed) |
+| `ollama-mesh agent` | Run a Node Agent (node-local execution point for the mesh) |
+| `ollama-mesh bench` | Benchmark warm-vs-cold first-token latency against a running mesh |
+| `ollama-mesh version` | Print version (CLI + reachable server version) |
+| `ollama-mesh status` | Health/uptime/node-count summary (`GET /health`) |
+| `ollama-mesh nodes` | List nodes known to the mesh (requires auth) |
+| `ollama-mesh models` | List models known across the fleet (requires auth) |
+| `ollama-mesh runtime start\|stop\|restart\|logs <node>` | Control a node's inference runtime process (requires auth + accepted control driver) |
+| `ollama-mesh node control probe\|accept <node>` | Node enrollment: discover/accept a control driver (requires auth) |
+
+> **Breaking change (beta, no migration shim):** the separate `mesh`/`mesh-cli` binary
+> (`cmd/mesh`) has been merged into the main `ollama-mesh` binary above. There were no external
+> users of the standalone CLI binary, so it was removed outright rather than kept as an alias.
+
+The CLI subcommands never talk to a Node Agent directly - every command is exactly one Admin API
+request:
 
 ```bash
-mesh-cli version                          # CLI version, plus server version if reachable
-mesh-cli status                           # health/uptime/node-count summary (GET /health)
-mesh-cli nodes --username admin --password admin   # node list (requires auth)
-mesh-cli models --token <session-token>            # model list across the fleet (requires auth)
+ollama-mesh version                          # CLI version, plus server version if reachable
+ollama-mesh status                           # health/uptime/node-count summary (GET /health)
+ollama-mesh nodes --username admin --password admin   # node list (requires auth)
+ollama-mesh models --token <session-token>            # model list across the fleet (requires auth)
 
-mesh-cli node control probe gpu-03 --token <session-token>     # what control driver was auto-discovered
-mesh-cli node control accept gpu-03 --driver systemd --identifier ollama.service --token <session-token>
-mesh-cli runtime restart gpu-03 --token <session-token>        # requires an accepted control driver first
+ollama-mesh node control probe gpu-03 --token <session-token>     # what control driver was auto-discovered
+ollama-mesh node control accept gpu-03 --driver systemd --identifier ollama.service --token <session-token>
+ollama-mesh runtime restart gpu-03 --token <session-token>        # requires an accepted control driver first
 ```
 
 Every command supports `--json` from day one - this is the actual compatibility contract for
@@ -453,6 +471,15 @@ authentication/authorization failure (401/403).
 `runtime start|stop|restart <node>` only works once a control driver has been accepted for that
 node (via `node control accept`, or the GPU Nodes page's "Runtime Control" panel) - the mesh never
 guesses which service manager controls a node's runtime process.
+
+### Running the CLI against a container
+
+The Docker image already contains the merged binary, so no image changes are needed to use the
+CLI against a containerized mesh - run it inside the running container:
+
+```bash
+docker exec <container> ollama-mesh status
+```
 
 ---
 

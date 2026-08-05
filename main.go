@@ -22,6 +22,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/bench"
+	"github.com/ollama-mesh/ollama-mesh/internal/cli"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
@@ -191,6 +192,54 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	store.GetJSONSetting(st, "context_windows", &cfg.ContextWindows)
 }
 
+// resolveCommand decides which path main() should take for the given raw
+// os.Args[1:], kept as a pure function (no I/O, no globals) so dispatch
+// logic is unit-testable without spinning up servers. Dash-prefixed tokens
+// (e.g. "-version") never match a bare subcommand word, so root's own flags
+// and the CLI's subcommand names never collide.
+func resolveCommand(args []string) string {
+	if len(args) == 0 {
+		return "server"
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		return "help"
+	case "bench":
+		return "bench"
+	case "agent":
+		return "agent"
+	case "version", "status", "nodes", "models", "runtime", "node":
+		return "cli"
+	default:
+		return "server"
+	}
+}
+
+// printTopLevelHelp is the single, unified --help output for the merged
+// binary - one command table covering the server, the Node Agent, the
+// benchmark tool, and the Admin API CLI, rather than separate help systems
+// per subcommand family.
+func printTopLevelHelp() {
+	fmt.Fprintf(os.Stderr, "ollama-mesh %s - warm-model-aware load balancer with cloud overflow for Ollama\n\n", Version)
+	fmt.Fprint(os.Stderr, `Usage:
+  ollama-mesh [flags]              run the mesh server (default)
+  ollama-mesh agent [flags]        run the Node Agent (node-local execution point for the mesh)
+  ollama-mesh bench [flags]        warm-vs-cold first-token latency benchmark
+  ollama-mesh version               print version
+  ollama-mesh status                print mesh health/status summary
+  ollama-mesh nodes                 list nodes known to the mesh
+  ollama-mesh models                list models known across the fleet
+  ollama-mesh runtime <action> ...  start/stop/restart/logs for a node's runtime process
+  ollama-mesh node control ...       node enrollment probe/accept
+
+Run "ollama-mesh <command> --help" for flags specific to that command.
+
+Server flags:
+`)
+	flag.PrintDefaults()
+	fmt.Fprint(os.Stderr, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (admin/admin on first run).\n")
+}
+
 func main() {
 	var (
 		showVersion   = flag.Bool("version", false, "print version and exit")
@@ -199,21 +248,23 @@ func main() {
 		seedNodes     stringSliceFlag
 	)
 	flag.Var(&seedNodes, "seed-node", `add a node directly to the database and exit, format: "name=...,url=...,runtime=..." (repeatable)`)
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "ollama-mesh %s - warm-model-aware load balancer with cloud overflow for Ollama\n\n", Version)
-		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh [flags]\n  ollama-mesh agent -h   (Node Agent: node-local execution point for the mesh)\n\nFlags:\n")
-		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (admin/admin on first run).\n")
-	}
+	flag.Usage = printTopLevelHelp
+
 	// Subcommand dispatch: check before flag.Parse() so each subcommand
 	// owns its own flag set and does not pollute the main flag namespace.
-	if len(os.Args) > 1 && os.Args[1] == "bench" {
+	switch resolveCommand(os.Args[1:]) {
+	case "help":
+		printTopLevelHelp()
+		return
+	case "bench":
 		bench.Run(os.Args[2:])
 		return
-	}
-	if len(os.Args) > 1 && os.Args[1] == "agent" {
+	case "agent":
 		nodeagent.Run(os.Args[2:], Version)
 		return
+	case "cli":
+		cli.Version = Version
+		os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
 
 	flag.Parse()

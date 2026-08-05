@@ -95,10 +95,10 @@ func reportError(err error, stderr io.Writer) int {
 	return ExitServerError
 }
 
-const usage = `mesh - CLI client for the ollama-mesh Admin API
+const usage = `ollama-mesh - CLI client for the ollama-mesh Admin API
 
 Usage:
-  mesh <command> [flags]
+  ollama-mesh <command> [flags]
 
 Commands:
   version                          print CLI and (if reachable) server version
@@ -171,7 +171,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runModels(flags, stdout, stderr)
 	case "runtime":
 		if len(rest) < 1 {
-			fmt.Fprintln(stderr, "usage: mesh runtime <start|stop|restart|logs> <node>")
+			fmt.Fprintln(stderr, "usage: ollama-mesh runtime <start|stop|restart|logs> <node>")
 			return ExitUserError
 		}
 		action := rest[0]
@@ -187,7 +187,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				return ExitUserError
 			}
 			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: mesh runtime logs <node> [--lines=N] [flags]")
+				fmt.Fprintln(stderr, "usage: ollama-mesh runtime logs <node> [--lines=N] [flags]")
 				return ExitUserError
 			}
 			return runRuntimeLogs(flags, positional[0], *lines, stdout, stderr)
@@ -197,17 +197,17 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return ExitUserError
 		}
 		if len(positional) != 1 {
-			fmt.Fprintf(stderr, "usage: mesh runtime %s <node> [flags]\n", action)
+			fmt.Fprintf(stderr, "usage: ollama-mesh runtime %s <node> [flags]\n", action)
 			return ExitUserError
 		}
 		return runRuntimeAction(flags, action, positional[0], stdout, stderr)
 	case "node":
 		if len(rest) < 1 || rest[0] != "control" {
-			fmt.Fprintln(stderr, "usage: mesh node control <probe|accept> <node> [flags]")
+			fmt.Fprintln(stderr, "usage: ollama-mesh node control <probe|accept> <node> [flags]")
 			return ExitUserError
 		}
 		if len(rest) < 2 {
-			fmt.Fprintln(stderr, "usage: mesh node control <probe|accept> <node> [flags]")
+			fmt.Fprintln(stderr, "usage: ollama-mesh node control <probe|accept> <node> [flags]")
 			return ExitUserError
 		}
 		switch rest[1] {
@@ -218,7 +218,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				return ExitUserError
 			}
 			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: mesh node control probe <node> [flags]")
+				fmt.Fprintln(stderr, "usage: ollama-mesh node control probe <node> [flags]")
 				return ExitUserError
 			}
 			return runNodeControlProbe(flags, positional[0], stdout, stderr)
@@ -232,7 +232,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				return ExitUserError
 			}
 			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: mesh node control accept <node> --driver X --identifier Y [--start-command Z]")
+				fmt.Fprintln(stderr, "usage: ollama-mesh node control accept <node> --driver X --identifier Y [--start-command Z]")
 				return ExitUserError
 			}
 			if *driver == "" || *identifier == "" {
