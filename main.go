@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -219,20 +220,33 @@ func resolveCommand(args []string) string {
 // binary - one command table covering the server, the Node Agent, the
 // benchmark tool, and the Admin API CLI, rather than separate help systems
 // per subcommand family.
-func printTopLevelHelp() {
-	fmt.Fprintf(os.Stderr, "ollama-mesh %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\n", Version)
-	fmt.Fprint(os.Stderr, `Usage:
-  ollama-mesh [flags]              run the mesh server (default)
-  ollama-mesh agent [flags]        run the Node Agent (node-local execution point for the mesh)
-  ollama-mesh bench [flags]        warm-vs-cold first-token latency benchmark
-  ollama-mesh version               print version
-  ollama-mesh status                print mesh health/status summary
-  ollama-mesh nodes                 list nodes known to the mesh
-  ollama-mesh models <action> ...  list (fleet-wide), or pull/delete/unload/list (per-node)
-  ollama-mesh runtime <action> ...  start/stop/restart/logs/drain/undrain/health for a node's runtime process
-  ollama-mesh node control ...       node enrollment probe/accept
+// helpTableRows renders as a two-column, tab-aligned list via
+// text/tabwriter rather than a hand-spaced string literal - alignment is
+// then correct regardless of any row's length, instead of silently drifting
+// out of alignment the moment one row's length changes (as happened here
+// before this fix).
+var helpTableRows = [][2]string{
+	{"ollama-mesh [flags]", "run the mesh server (default)"},
+	{"ollama-mesh agent [flags]", "run the Node Agent (node-local execution point for the mesh)"},
+	{"ollama-mesh bench [flags]", "warm-vs-cold first-token latency benchmark"},
+	{"ollama-mesh version", "print version"},
+	{"ollama-mesh status", "print mesh health/status summary"},
+	{"ollama-mesh nodes", "list nodes known to the mesh"},
+	{"ollama-mesh models [action] ...", "fleet-wide list, or pull/delete/unload/list on one node"},
+	{"ollama-mesh runtime <action> ...", "start/stop/restart/logs/drain/undrain/health on one node"},
+	{"ollama-mesh node control ...", "node enrollment probe/accept"},
+}
 
-Run "ollama-mesh <command> --help" for flags specific to that command.
+func printTopLevelHelp() {
+	fmt.Fprintf(os.Stderr, "ollama-mesh %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\nUsage:\n", Version)
+	tw := tabwriter.NewWriter(os.Stderr, 0, 4, 2, ' ', 0)
+	for _, r := range helpTableRows {
+		fmt.Fprintf(tw, "  %s\t%s\n", r[0], r[1])
+	}
+	tw.Flush()
+	fmt.Fprint(os.Stderr, `
+Run "ollama-mesh <command> --help" for the full list of actions and flags for
+that command.
 
 Server flags:
 `)

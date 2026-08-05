@@ -42,6 +42,73 @@ func TestRun_UnknownFlag_WritesToInjectedStderr(t *testing.T) {
 	}
 }
 
+func TestRun_ModelsHelp_ExitsOKAndListsActions(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"models", "--help"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("a help request is not a failure - expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("a successful --help must write to stdout, not stderr (GNU convention) - got stderr: %q", stderr.String())
+	}
+	for _, want := range []string{"pull <node> <model>", "delete <node> <model>", "unload <node> <model>", "list <node>"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("expected %q in models --help output, got %q", want, stdout.String())
+		}
+	}
+}
+
+func TestRun_RuntimeHelp_ExitsOKAndListsActions(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "--help"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("a help request is not a failure - expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	for _, want := range []string{"drain <node>", "undrain <node>", "health <node>", "start|stop|restart"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("expected %q in runtime --help output, got %q", want, stdout.String())
+		}
+	}
+}
+
+func TestRun_NodeControlHelp_ExitsOK(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"node", "control", "--help"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("a help request is not a failure - expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "probe <node>") || !strings.Contains(stdout.String(), "accept <node>") {
+		t.Errorf("expected probe/accept actions in node control --help output, got %q", stdout.String())
+	}
+}
+
+func TestRun_RuntimeDrainHelp_ExitsOK(t *testing.T) {
+	// A specific action's own --help (not just the bare "runtime --help")
+	// must exit 0 and print to stdout too - this goes through parseFlags'
+	// pre-Parse -h/--help intercept, a different code path than the bare
+	// "runtime" case's explicit check before any FlagSet exists.
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "drain", "--help"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("a successful --help must write to stdout, not stderr - got stderr: %q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "drain <node>") {
+		t.Errorf("expected drain action in stdout, got %q", stdout.String())
+	}
+}
+
+func TestRun_RuntimeUnknownAction_StillExitsUserError(t *testing.T) {
+	// A genuinely unknown action is not a help request - must still fail.
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "bogus", "gpu-0"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d, got %d", ExitUserError, code)
+	}
+}
+
 func TestRun_Version_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
