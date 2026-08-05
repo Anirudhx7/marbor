@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Version is set at build time via ldflags: -X internal/cli.Version=v0.x.y
-// (mirrors main.Version's convention in main.go). Defaults to "dev".
+// Version is set at process startup from main.Version (main.go's cli.Version
+// = Version assignment). Defaults to "dev".
 var Version = "dev"
 
 type versionOutput struct {
