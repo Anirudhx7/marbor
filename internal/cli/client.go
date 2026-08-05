@@ -298,6 +298,165 @@ func urlPathEscape(name string) string {
 	return url.PathEscape(name)
 }
 
+// escapeModelPathSegments mirrors admin.go's function of the same name - a
+// model name may itself contain "/" (e.g. an HF-style "namespace/repo" tag),
+// which must survive as path separators, not be percent-encoded into %2F.
+func escapeModelPathSegments(model string) string {
+	parts := strings.Split(model, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return strings.Join(parts, "/")
+}
+
+// PullResult mirrors handleNodePull's 202-Accepted response body - the pull
+// itself runs async server-side (P42), so this only confirms the job started,
+// same "one Admin API request" contract as RuntimeAction.
+type PullResult struct {
+	OK    bool   `json:"ok"`
+	Node  string `json:"node"`
+	Model string `json:"model"`
+}
+
+// PullModel calls POST /admin/nodes/{name}/pull - starts an async model pull,
+// mirroring the UI's Models.tsx pull flow. Like the UI, this does not block
+// for completion; the caller should poll `models list` or watch the
+// dashboard's pull progress for the terminal outcome.
+func (c *Client) PullModel(node, model string) (*PullResult, error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/pull", map[string]string{"model": model})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out PullResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse pull response: %v", err)
+	}
+	return &out, nil
+}
+
+// DeleteNodeModel calls DELETE /admin/nodes/{name}/models/{model} -
+// capability "models.delete", mirroring the UI's Models.tsx delete action.
+func (c *Client) DeleteNodeModel(node, model string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/models/"+escapeModelPathSegments(model), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// NodeModelEntry mirrors admin.go's nodeModelEntry - a single model in a
+// node's local inventory (distinct from ModelEntry, which is the fleet-wide
+// aggregate `models` uses).
+type NodeModelEntry struct {
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"sizeBytes,omitempty"`
+	Source    string `json:"source"`
+	Family    string `json:"family,omitempty"`
+}
+
+// NodeModels calls GET /admin/nodes/{name}/models - capability "models.list",
+// the per-node local inventory (as opposed to Models(), the fleet-wide
+// summary).
+func (c *Client) NodeModels(node string) ([]NodeModelEntry, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/models", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Models []NodeModelEntry `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse node models response: %v", err)
+	}
+	return out.Models, nil
+}
+
+// UnloadModel calls POST /admin/nodes/{name}/unload - evicts a model from a
+// node's warm state, mirroring the UI's GPUNodes.tsx card action.
+func (c *Client) UnloadModel(node, model string) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/unload", map[string]string{"model": model})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// DrainResult mirrors handleDrainNode/handleUndrainNode's response body.
+type DrainResult struct {
+	Node     string `json:"node"`
+	Draining bool   `json:"draining"`
+	Reason   string `json:"reason,omitempty"`
+}
+
+// DrainNode calls POST /admin/nodes/{name}/drain - marks a node as draining
+// (mesh-internal routing state; never sent to the Node Agent), mirroring the
+// UI's GPUNodes.tsx "Drain" action.
+func (c *Client) DrainNode(node, reason string) (*DrainResult, error) {
+	var body map[string]string
+	if reason != "" {
+		body = map[string]string{"reason": reason}
+	}
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/drain", body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out DrainResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse drain response: %v", err)
+	}
+	return &out, nil
+}
+
+// UndrainNode calls DELETE /admin/nodes/{name}/drain - reverses DrainNode,
+// mirroring the UI's GPUNodes.tsx "Undrain" action.
+func (c *Client) UndrainNode(node string) (*DrainResult, error) {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/drain", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out DrainResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse undrain response: %v", err)
+	}
+	return &out, nil
+}
+
+// HealthCheckResult mirrors admin.go's nodeHealthCheckResult - an on-demand
+// active liveness probe result, capability "runtime.health_check".
+type HealthCheckResult struct {
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	LatencyMs int64  `json:"latencyMs"`
+}
+
+// HealthCheck calls GET /admin/nodes/{name}/health-check - mirroring the
+// UI's GPUNodes.tsx checkNodeHealth action. A populated result with OK=false
+// is a successful probe reporting a down runtime, not a request failure -
+// only a transport/dispatch error returns a non-nil error.
+func (c *Client) HealthCheck(node string) (*HealthCheckResult, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/health-check", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out HealthCheckResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse health check response: %v", err)
+	}
+	return &out, nil
+}
+
 // HealthResp mirrors GET /health's response shape (admin.go handleHealth).
 type HealthResp struct {
 	Status        string `json:"status"`

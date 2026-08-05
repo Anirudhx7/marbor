@@ -58,3 +58,76 @@ func runRuntimeLogs(flags *globalFlags, node string, lines int, stdout, stderr i
 	}
 	return ExitOK
 }
+
+// runRuntimeDrain implements `mesh runtime drain <node> [--reason=X]` - POST
+// /admin/nodes/{name}/drain. Mesh-internal routing state (never sent to the
+// Node Agent) - same exit-code taxonomy as runRuntimeAction.
+func runRuntimeDrain(flags *globalFlags, node, reason string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	result, err := client.DrainNode(node, reason)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
+		return code
+	}
+
+	fmt.Fprintf(stdout, "%s: draining\n", node)
+	return ExitOK
+}
+
+// runRuntimeUndrain implements `mesh runtime undrain <node>` - DELETE
+// /admin/nodes/{name}/drain.
+func runRuntimeUndrain(flags *globalFlags, node string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	result, err := client.UndrainNode(node)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
+		return code
+	}
+
+	fmt.Fprintf(stdout, "%s: undrained\n", node)
+	return ExitOK
+}
+
+// runRuntimeHealth implements `mesh runtime health <node>` - GET
+// /admin/nodes/{name}/health-check, capability "runtime.health_check" - an
+// on-demand active liveness probe (as opposed to the passive, poll-cycle
+// health already shown on `mesh nodes`). A populated result with ok=false is
+// a successful probe reporting a down runtime, not a CLI failure - it still
+// exits ExitOK, matching the UI's checkNodeHealth, which renders the result
+// rather than treating it as an error.
+func runRuntimeHealth(flags *globalFlags, node string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	result, err := client.HealthCheck(node)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
+		return code
+	}
+
+	if result.OK {
+		fmt.Fprintf(stdout, "%s: ok (%dms)\n", node, result.LatencyMs)
+	} else {
+		fmt.Fprintf(stdout, "%s: unhealthy - %s\n", node, result.Error)
+	}
+	return ExitOK
+}

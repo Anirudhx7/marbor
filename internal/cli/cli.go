@@ -105,8 +105,15 @@ Commands:
   status                           print mesh health/status summary
   nodes                            list nodes known to the mesh
   models                           list models known across the fleet
+  models pull <node> <model>                 start pulling a model onto a node (async - does not wait for completion)
+  models delete <node> <model>               delete a model from a node's local storage
+  models unload <node> <model>               unload a model from a node's warm state
+  models list <node>                         list models present on a node's local storage
   runtime start|stop|restart <node>          start/stop/restart a node's inference runtime process
   runtime logs <node> [--lines=N]            fetch recent log lines from a node's runtime process
+  runtime drain <node> [--reason=X]          mark a node draining (stop routing new requests to it)
+  runtime undrain <node>                     reverse "runtime drain"
+  runtime health <node>                      run an on-demand active liveness probe on a node
   node control probe <node>                  show a node's control-driver status (configured + discovered)
   node control accept <node> --driver X --identifier Y [--start-command Z]
                                               accept a control driver + identifier for a node
@@ -164,6 +171,54 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		return runNodes(flags, stdout, stderr)
 	case "models":
+		if len(rest) > 0 {
+			switch rest[0] {
+			case "pull":
+				fs, flags := newFlagSet("models pull", stderr)
+				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+				if err := fs.Parse(flagArgs); err != nil {
+					return ExitUserError
+				}
+				if len(positional) != 2 {
+					fmt.Fprintln(stderr, "usage: ollama-mesh models pull <node> <model> [flags]")
+					return ExitUserError
+				}
+				return runModelsPull(flags, positional[0], positional[1], stdout, stderr)
+			case "delete":
+				fs, flags := newFlagSet("models delete", stderr)
+				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+				if err := fs.Parse(flagArgs); err != nil {
+					return ExitUserError
+				}
+				if len(positional) != 2 {
+					fmt.Fprintln(stderr, "usage: ollama-mesh models delete <node> <model> [flags]")
+					return ExitUserError
+				}
+				return runModelsDelete(flags, positional[0], positional[1], stdout, stderr)
+			case "unload":
+				fs, flags := newFlagSet("models unload", stderr)
+				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+				if err := fs.Parse(flagArgs); err != nil {
+					return ExitUserError
+				}
+				if len(positional) != 2 {
+					fmt.Fprintln(stderr, "usage: ollama-mesh models unload <node> <model> [flags]")
+					return ExitUserError
+				}
+				return runModelsUnload(flags, positional[0], positional[1], stdout, stderr)
+			case "list":
+				fs, flags := newFlagSet("models list", stderr)
+				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+				if err := fs.Parse(flagArgs); err != nil {
+					return ExitUserError
+				}
+				if len(positional) != 1 {
+					fmt.Fprintln(stderr, "usage: ollama-mesh models list <node> [flags]")
+					return ExitUserError
+				}
+				return runModelsList(flags, positional[0], stdout, stderr)
+			}
+		}
 		fs, flags := newFlagSet("models", stderr)
 		if err := fs.Parse(rest); err != nil {
 			return ExitUserError
@@ -171,16 +226,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runModels(flags, stdout, stderr)
 	case "runtime":
 		if len(rest) < 1 {
-			fmt.Fprintln(stderr, "usage: ollama-mesh runtime <start|stop|restart|logs> <node>")
+			fmt.Fprintln(stderr, "usage: ollama-mesh runtime <start|stop|restart|logs|drain|undrain|health> <node>")
 			return ExitUserError
 		}
 		action := rest[0]
-		if action != "start" && action != "stop" && action != "restart" && action != "logs" {
-			fmt.Fprintf(stderr, "unknown runtime action %q (want start, stop, restart, or logs)\n\n", action)
-			return ExitUserError
-		}
-		fs, flags := newFlagSet("runtime "+action, stderr)
-		if action == "logs" {
+		switch action {
+		case "start", "stop", "restart":
+			fs, flags := newFlagSet("runtime "+action, stderr)
+			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+			if err := fs.Parse(flagArgs); err != nil {
+				return ExitUserError
+			}
+			if len(positional) != 1 {
+				fmt.Fprintf(stderr, "usage: ollama-mesh runtime %s <node> [flags]\n", action)
+				return ExitUserError
+			}
+			return runRuntimeAction(flags, action, positional[0], stdout, stderr)
+		case "logs":
+			fs, flags := newFlagSet("runtime logs", stderr)
 			lines := fs.Int("lines", 0, "number of log lines to fetch (0 = server default)")
 			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
 			if err := fs.Parse(flagArgs); err != nil {
@@ -191,16 +254,44 @@ func Run(args []string, stdout, stderr io.Writer) int {
 				return ExitUserError
 			}
 			return runRuntimeLogs(flags, positional[0], *lines, stdout, stderr)
-		}
-		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-		if err := fs.Parse(flagArgs); err != nil {
+		case "drain":
+			fs, flags := newFlagSet("runtime drain", stderr)
+			reason := fs.String("reason", "", "reason recorded for the drain (default \"manual\")")
+			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+			if err := fs.Parse(flagArgs); err != nil {
+				return ExitUserError
+			}
+			if len(positional) != 1 {
+				fmt.Fprintln(stderr, "usage: ollama-mesh runtime drain <node> [--reason=X] [flags]")
+				return ExitUserError
+			}
+			return runRuntimeDrain(flags, positional[0], *reason, stdout, stderr)
+		case "undrain":
+			fs, flags := newFlagSet("runtime undrain", stderr)
+			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+			if err := fs.Parse(flagArgs); err != nil {
+				return ExitUserError
+			}
+			if len(positional) != 1 {
+				fmt.Fprintln(stderr, "usage: ollama-mesh runtime undrain <node> [flags]")
+				return ExitUserError
+			}
+			return runRuntimeUndrain(flags, positional[0], stdout, stderr)
+		case "health":
+			fs, flags := newFlagSet("runtime health", stderr)
+			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+			if err := fs.Parse(flagArgs); err != nil {
+				return ExitUserError
+			}
+			if len(positional) != 1 {
+				fmt.Fprintln(stderr, "usage: ollama-mesh runtime health <node> [flags]")
+				return ExitUserError
+			}
+			return runRuntimeHealth(flags, positional[0], stdout, stderr)
+		default:
+			fmt.Fprintf(stderr, "unknown runtime action %q (want start, stop, restart, logs, drain, undrain, or health)\n\n", action)
 			return ExitUserError
 		}
-		if len(positional) != 1 {
-			fmt.Fprintf(stderr, "usage: ollama-mesh runtime %s <node> [flags]\n", action)
-			return ExitUserError
-		}
-		return runRuntimeAction(flags, action, positional[0], stdout, stderr)
 	case "node":
 		if len(rest) < 1 || rest[0] != "control" {
 			fmt.Fprintln(stderr, "usage: ollama-mesh node control <probe|accept> <node> [flags]")
