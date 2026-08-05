@@ -20,6 +20,11 @@ import (
 // Each subcommand owns its own flag set, same pattern as Run's top-level
 // dispatch in main.go.
 func runServiceCommand(args []string, version string) {
+	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+		fmt.Println("Usage: ollama-mesh agent service {install|uninstall|start|stop|status} [flags]")
+		fmt.Println(`Run "ollama-mesh agent service <subcommand> --help" for flags specific to that subcommand.`)
+		return
+	}
 	if len(args) == 0 {
 		winexit.Fatal("nodeagent: usage: ollama-mesh agent service {install|uninstall|start|stop|status}")
 	}
@@ -164,6 +169,25 @@ func runServiceUninstall(args []string) {
 }
 
 func runServiceControl(args []string, action string) {
+	// action never had its own flag.FlagSet, so it never recognized -h/--help
+	// at all - args was silently ignored entirely, meaning "agent service
+	// stop --help" used to skip straight to actually stopping the real
+	// installed OS service instead of showing help. Any other unexpected
+	// argument is now also rejected rather than silently ignored.
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			verb := "Starts"
+			if action == "stop" {
+				verb = "Stops"
+			}
+			fmt.Printf("Usage: ollama-mesh agent service %s\n\n%s the already-installed Node Agent OS service. Takes no flags.\n", action, verb)
+			return
+		}
+	}
+	if len(args) > 0 {
+		winexit.Fatalf("nodeagent: agent service %s takes no arguments (got %q)", action, args[0])
+	}
+
 	mgr, err := service.New()
 	if err != nil {
 		winexit.Fatalf("nodeagent: %v", err)
