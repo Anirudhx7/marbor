@@ -208,6 +208,22 @@ func runServiceControl(args []string, action string) {
 }
 
 func runServiceStatus(args []string) {
+	// Same bug class as runServiceControl (fixed above): this never had its
+	// own flag.FlagSet and used to silently ignore args entirely, so
+	// "agent service status --help" ran the real mgr.Status() call instead
+	// of showing help - it happened to still exit 0 because Status()
+	// succeeds even when unwanted, which made the bug easy to miss.
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			fmt.Println("Usage: ollama-mesh agent service status")
+			fmt.Println("\nPrints the installed Node Agent OS service's current status. Takes no flags.")
+			return
+		}
+	}
+	if len(args) > 0 {
+		winexit.Fatalf("nodeagent: agent service status takes no arguments (got %q)", args[0])
+	}
+
 	mgr, err := service.New()
 	if err != nil {
 		winexit.Fatalf("nodeagent: %v", err)
