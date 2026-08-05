@@ -1146,6 +1146,7 @@ export function GPUNodes() {
   const [editHost, setEditHost] = useState('');
   const [editPort, setEditPort] = useState('');
   const [editVRAM, setEditVRAM] = useState('');
+  const [editVRAMUnit, setEditVRAMUnit] = useState<'MB' | 'GB'>('MB');
   const [editGPUModel, setEditGPUModel] = useState('');
   const [editRuntime, setEditRuntime] = useState('');
   const [editSaving, setEditSaving] = useState(false);
@@ -1157,6 +1158,7 @@ export function GPUNodes() {
     setEditHost(node.host ?? '');
     setEditPort(node.port ? String(node.port) : '');
     setEditVRAM(node.vramTotalMB > 0 ? String(node.vramTotalMB) : '');
+    setEditVRAMUnit('MB');
     setEditGPUModel(node.gpuModel ?? '');
     setEditRuntime(node.runtime || 'ollama');
     setEditError('');
@@ -1167,8 +1169,8 @@ export function GPUNodes() {
     const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } = {};
     if (editVRAM.trim() !== '') {
       const v = parseInt(editVRAM, 10);
-      if (isNaN(v) || v < 0) { setEditError('VRAM must be a non-negative integer (MB)'); return 'invalid'; }
-      patch.vram_total_mb = v;
+      if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative integer (${editVRAMUnit})`); return 'invalid'; }
+      patch.vram_total_mb = editVRAMUnit === 'GB' ? v * 1024 : v;
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
     if (editRuntime && editRuntime !== (editNode.runtime || 'ollama')) patch.runtime = editRuntime;
@@ -1521,18 +1523,29 @@ export function GPUNodes() {
           </div>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              VRAM Total Override (MB)
+              VRAM Total Override
             </label>
-            <input
-              type="number"
-              min="0"
-              value={editVRAM}
-              onChange={(e) => setEditVRAM(e.target.value)}
-              placeholder="e.g., 24576 for 24 GB"
-              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-            />
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min="0"
+                value={editVRAM}
+                onChange={(e) => setEditVRAM(e.target.value)}
+                placeholder={editVRAMUnit === 'GB' ? 'e.g., 24' : 'e.g., 24576'}
+                className="flex-1 min-w-0 px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+              <CustomSelect
+                value={editVRAMUnit}
+                onChange={(v) => setEditVRAMUnit(v as 'MB' | 'GB')}
+                options={[
+                  { value: 'MB', label: 'MB' },
+                  { value: 'GB', label: 'GB' },
+                ]}
+                className="w-24 shrink-0"
+              />
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Only applied when nvidia-smi has no measurement (remote nodes). Ignored if source is nvidia.
+              Only applied when no live GPU telemetry exists (nvidia-smi, ROCm, etc). When applied, it directly drives placement decisions and Model Advisor fit checks.
             </p>
           </div>
           {editError && (
