@@ -1,6 +1,5 @@
 ollama-mesh
 ollama-mesh.exe
-mesh-cli
 ui/node_modules/
 internal/admin/web/dist/
 *.exe

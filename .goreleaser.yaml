@@ -25,22 +25,6 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w -X main.Version={{.Version}}
-  - id: mesh
-    main: ./cmd/mesh
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
-      - -s -w -X github.com/ollama-mesh/ollama-mesh/internal/cli.Version={{.Version}}
 
 # Raw binaries (not tarballs) so the README one-liner works:
 # curl -Lo ollama-mesh .../releases/latest/download/ollama-mesh-linux-amd64
@@ -49,10 +33,6 @@ archives:
     ids: [ollama-mesh]
     formats: ['binary']
     name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
-  - id: mesh
-    ids: [mesh]
-    formats: ['binary']
-    name_template: 'mesh-{{ .Os }}-{{ .Arch }}'
 
 checksum:
   name_template: 'checksums.txt'

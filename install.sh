@@ -237,6 +237,7 @@ if [ "$START_DAEMON" = false ]; then
   echo ""
   echo "ollama-mesh successfully installed to $BIN_PATH"
   echo "Run: ollama-mesh"
+  echo "Once it's running, check it with: ollama-mesh status  (or ollama-mesh --help for all commands)"
   echo "Docs: https://github.com/$REPO"
   echo "Uninstall: https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
   exit 0
@@ -465,6 +466,7 @@ WantedBy=multi-user.target
     echo "  Database:         ${DB_PATH}"
     echo "--------------------------------------------------------"
     echo "Enabled - will restart on failure and on reboot."
+    echo "Check status any time with: ollama-mesh status  (or ollama-mesh --help for all commands)"
     echo "Uninstall:        https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
     return 0
   else
@@ -653,6 +655,7 @@ if [ -f "$PIDFILE" ]; then
     echo "ollama-mesh is already running in the background (PID $EXISTING_PID)."
     echo "Skipping duplicate start. To restart: kill $EXISTING_PID and re-run this installer,"
     echo "or re-run with SERVICE=1 to switch to a managed systemd service."
+    echo "Check status any time with: ollama-mesh status  (or ollama-mesh --help for all commands)"
     if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
       echo "Note: the binary on disk was just upgraded to $NEW_VERSION, but the running"
       echo "process (PID $EXISTING_PID) is still $OLD_VERSION until it's restarted."
@@ -682,6 +685,7 @@ if kill -0 $PID >/dev/null 2>&1; then
   echo "--------------------------------------------------------"
   run_health_checks "$(pwd)/ollama-mesh.log"
   echo ""
+  echo "Check status any time with: ollama-mesh status  (or ollama-mesh --help for all commands)"
   echo "Uninstall: https://raw.githubusercontent.com/$REPO/main/uninstall.sh"
 else
   rm -f "$PIDFILE"

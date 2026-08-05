@@ -1,4 +1,4 @@
-.PHONY: all build ui backend clean test dev demo demo-build demo-down demo-db bench smoke mesh-cli
+.PHONY: all build ui backend clean test dev demo demo-build demo-down demo-db bench smoke
 
 all: ui backend
 
@@ -54,10 +54,7 @@ bench: ## Warm-vs-cold first-token latency benchmark. Pass BENCH_ARGS to overrid
 	## Example: make bench BENCH_ARGS="-endpoint http://localhost:11434 -model llama3 -runs 5"
 	go run ./cmd/bench $(BENCH_ARGS)
 
-mesh-cli: ## Build the mesh CLI binary (thin Admin API client - version/status/nodes/models)
-	go build -o mesh-cli ./cmd/mesh
-
 clean:
-	rm -f ollama-mesh mesh-cli
+	rm -f ollama-mesh
 	rm -rf internal/admin/web/dist
 	rm -rf ui/node_modules
