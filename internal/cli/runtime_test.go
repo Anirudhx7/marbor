@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -150,6 +151,89 @@ func TestRun_RuntimeLogs_NotSupported_ExitServerError(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "not supported without a supervisor") {
 		t.Errorf("expected the driver's real error text in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRun_RuntimeDrain_JSON(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"node":"gpu-0","draining":true,"reason":"maintenance"}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "drain", "gpu-0", "--reason", "maintenance", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("expected POST, got %s", gotMethod)
+	}
+	if gotPath != "/admin/nodes/gpu-0/drain" {
+		t.Errorf("expected /admin/nodes/gpu-0/drain, got %s", gotPath)
+	}
+	if !strings.Contains(string(gotBody), `"reason":"maintenance"`) {
+		t.Errorf("expected reason in request body, got %s", gotBody)
+	}
+	if !strings.Contains(stdout.String(), `"draining": true`) {
+		t.Errorf("expected draining:true in JSON output, got %s", stdout.String())
+	}
+}
+
+func TestRun_RuntimeUndrain_TextOutput(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"node":"gpu-0","draining":false}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "undrain", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("expected DELETE, got %s", gotMethod)
+	}
+	if gotPath != "/admin/nodes/gpu-0/drain" {
+		t.Errorf("expected /admin/nodes/gpu-0/drain, got %s", gotPath)
+	}
+	if stdout.String() != "gpu-0: undrained\n" {
+		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+func TestRun_RuntimeHealth_Unhealthy_StillExitOK(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":false,"error":"connection refused","latencyMs":5}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "health", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d (a completed probe reporting unhealthy is not a CLI failure), got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if gotMethod != http.MethodGet {
+		t.Errorf("expected GET, got %s", gotMethod)
+	}
+	if gotPath != "/admin/nodes/gpu-0/health-check" {
+		t.Errorf("expected /admin/nodes/gpu-0/health-check, got %s", gotPath)
+	}
+	if !strings.Contains(stdout.String(), "unhealthy - connection refused") {
+		t.Errorf("expected unhealthy reason in stdout, got %q", stdout.String())
 	}
 }
 
