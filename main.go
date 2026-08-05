@@ -220,7 +220,7 @@ func resolveCommand(args []string) string {
 // benchmark tool, and the Admin API CLI, rather than separate help systems
 // per subcommand family.
 func printTopLevelHelp() {
-	fmt.Fprintf(os.Stderr, "ollama-mesh %s - warm-model-aware load balancer with cloud overflow for Ollama\n\n", Version)
+	fmt.Fprintf(os.Stderr, "ollama-mesh %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\n", Version)
 	fmt.Fprint(os.Stderr, `Usage:
   ollama-mesh [flags]              run the mesh server (default)
   ollama-mesh agent [flags]        run the Node Agent (node-local execution point for the mesh)
@@ -228,8 +228,8 @@ func printTopLevelHelp() {
   ollama-mesh version               print version
   ollama-mesh status                print mesh health/status summary
   ollama-mesh nodes                 list nodes known to the mesh
-  ollama-mesh models                list models known across the fleet
-  ollama-mesh runtime <action> ...  start/stop/restart/logs for a node's runtime process
+  ollama-mesh models <action> ...  list (fleet-wide), or pull/delete/unload/list (per-node)
+  ollama-mesh runtime <action> ...  start/stop/restart/logs/drain/undrain/health for a node's runtime process
   ollama-mesh node control ...       node enrollment probe/accept
 
 Run "ollama-mesh <command> --help" for flags specific to that command.
