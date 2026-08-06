@@ -198,6 +198,7 @@ func TestRun_Status_ServerDown(t *testing.T) {
 }
 
 func TestRun_Nodes_NoCredentials(t *testing.T) {
+	withTempConfigDir(t) // no saved session either - the real missing-credentials path
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"nodes", "--server", "http://example.invalid"}, &stdout, &stderr)
 	if code != ExitUserError {

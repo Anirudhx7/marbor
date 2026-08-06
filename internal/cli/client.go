@@ -49,6 +49,26 @@ type Client struct {
 	BaseURL    string
 	Token      string
 	HTTPClient *http.Client
+
+	// Username, Role, and ExpiresAt are populated by Login from the
+	// /admin/v1/login response body - empty when the client was instead
+	// built from a --token flag/env or a saved session (neither of those
+	// paths calls Login, and the Admin API has no session-introspection
+	// endpoint today to recover identity from a bare token - see the
+	// runWhoami doc comment in auth_cmds.go).
+	Username  string
+	Role      string
+	ExpiresAt string
+
+	// usingSavedSession is set by authenticatedClient when Token came from
+	// the persisted session file (internal/cli/session.go), not a --token
+	// flag/env or a fresh --username/--password login. doRequest and
+	// doRequestBody use it to append a "run ollama-mesh login again" hint
+	// to a 401/403 - the exact "clear message" the CLI persistent-auth
+	// queue item calls for, produced from a real server response rather
+	// than a local expiry guess (the saved session intentionally carries no
+	// expiry timestamp - the server is the sole source of truth for that).
+	usingSavedSession bool
 }
 
 // NewClient builds a Client for baseURL. token may be empty; Login can be
@@ -93,17 +113,24 @@ func (c *Client) Login(username, password string) error {
 	}
 
 	var respBody struct {
-		MustChangePassword bool `json:"must_change_password"`
+		Username           string `json:"username"`
+		Role               string `json:"role"`
+		ExpiresAt          string `json:"expires_at"`
+		MustChangePassword bool   `json:"must_change_password"`
 	}
 	// Best-effort: a malformed body here doesn't invalidate a successful
 	// login (the cookie is still authoritative), so decode errors are not
-	// fatal - just skip the must-change-password fast-path below.
+	// fatal - just skip the must-change-password fast-path and identity
+	// fields below.
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	_ = json.Unmarshal(bodyBytes, &respBody)
 
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "mesh_session" {
 			c.Token = cookie.Value
+			c.Username = respBody.Username
+			c.Role = respBody.Role
+			c.ExpiresAt = respBody.ExpiresAt
 			if respBody.MustChangePassword {
 				return authErrorf("password change required: log in via the web dashboard once to set a new password before using the CLI")
 			}
@@ -123,7 +150,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	}
 	if authed {
 		if c.Token == "" {
-			return nil, userErrorf("authentication required: pass --token, or --username/--password (or MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
+			return nil, userErrorf("authentication required: run ollama-mesh login, or pass --token (or --username/--password / MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
 		}
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -136,7 +163,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		defer resp.Body.Close()
-		return nil, authErrorf("%s", readErrorMessage(resp.Body))
+		return nil, authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
 	case resp.StatusCode == http.StatusServiceUnavailable:
 		// GET /health returns 503 with a still-decodable body to signal a
 		// degraded (not down) mesh, not a hard failure - let the caller
@@ -159,7 +186,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 // always exactly one Admin API request, never a direct Node Agent call.
 func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Response, error) {
 	if c.Token == "" {
-		return nil, userErrorf("authentication required: pass --token, or --username/--password (or MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
+		return nil, userErrorf("authentication required: run ollama-mesh login, or pass --token (or --username/--password / MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
 	}
 	var reader io.Reader
 	if body != nil {
@@ -186,7 +213,7 @@ func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Res
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		defer resp.Body.Close()
-		return nil, authErrorf("%s", readErrorMessage(resp.Body))
+		return nil, authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
 	case resp.StatusCode == http.StatusUnprocessableEntity:
 		// 422 (e.g. "no control driver configured") is a user error, not a
 		// server error - the request reached the server fine, the operator
@@ -558,6 +585,17 @@ func (c *Client) Models() (*ModelsResp, error) {
 		return nil, serverErrorf("could not parse /admin/v1/models response: %v", err)
 	}
 	return &out, nil
+}
+
+// savedSessionHint returns a suffix clarifying that a 401/403 came from a
+// saved-session token specifically (as opposed to an explicit --token the
+// operator just typed), which is the case where "run it again" is the right
+// next step. Empty for every other token source.
+func (c *Client) savedSessionHint() string {
+	if c.usingSavedSession {
+		return " - run ollama-mesh login again"
+	}
+	return ""
 }
 
 // readErrorMessage best-effort extracts the "error" field the Admin API's

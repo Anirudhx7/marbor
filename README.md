@@ -431,6 +431,9 @@ a thin CLI client of the Admin API - selected by its first argument:
 | `ollama-mesh bench` | Benchmark warm-vs-cold first-token latency against a running mesh |
 | `ollama-mesh version` | Print version (CLI + reachable server version) |
 | `ollama-mesh status` | Health/uptime/node-count summary (`GET /health`) |
+| `ollama-mesh login` | Authenticate once and save the session locally (recommended over passing credentials every time) |
+| `ollama-mesh logout` | Remove the saved session |
+| `ollama-mesh whoami` | Show the CLI's saved identity, live-verified against the server |
 | `ollama-mesh nodes` | List nodes known to the mesh (requires auth) |
 | `ollama-mesh models` | List models known across the fleet (requires auth) |
 | `ollama-mesh runtime start\|stop\|restart\|logs <node>` | Control a node's inference runtime process (requires auth + accepted control driver) |
@@ -446,27 +449,43 @@ request:
 ```bash
 ollama-mesh version                          # CLI version, plus server version if reachable
 ollama-mesh status                           # health/uptime/node-count summary (GET /health)
-ollama-mesh nodes --username admin --password admin   # node list (requires auth)
-ollama-mesh models --token <session-token>            # model list across the fleet (requires auth)
 
-ollama-mesh node control probe gpu-03 --token <session-token>     # what control driver was auto-discovered
-ollama-mesh node control accept gpu-03 --driver systemd --identifier ollama.service --token <session-token>
-ollama-mesh runtime restart gpu-03 --token <session-token>        # requires an accepted control driver first
+ollama-mesh login                            # authenticate once (prompts interactively) ...
+ollama-mesh nodes                            # ... then every other command works with zero flags
+ollama-mesh whoami                           # who the CLI is currently authenticated as
+ollama-mesh logout                           # remove the saved session
+
+ollama-mesh node control probe gpu-03        # what control driver was auto-discovered
+ollama-mesh node control accept gpu-03 --driver systemd --identifier ollama.service
+ollama-mesh runtime restart gpu-03           # requires an accepted control driver first
 ```
 
 Every command supports `--json` from day one - this is the actual compatibility contract for
 scripts/CI/Ansible, not the human table output, which may change shape between releases. `--server`
 (default `http://localhost:8080`, env `MESH_SERVER`) points at a different Admin API instance.
 
-`nodes`, `models`, `node control probe|accept`, and `runtime start|stop|restart` require a session:
-either an existing token (`--token`, env `MESH_TOKEN`), or `--username`/`--password` (env
-`MESH_USERNAME`/`MESH_PASSWORD`), which the CLI exchanges for a session token via
-`POST /admin/v1/login` for that invocation. `status` and `version` never need auth (`GET /health`
-is unauthenticated).
+`nodes`, `models`, `node control probe|accept`, and `runtime start|stop|restart` require a session.
+The recommended flow is `ollama-mesh login` once (interactively, or with
+`--username`/`--password`, or `--token` to save an existing token) - the CLI persists the
+resulting session to a local file (`0600`, under the OS user config dir) so every later command in
+that shell, in a fresh terminal, or across a reboot works with zero flags until the session
+expires. For scripts/CI/containers where a persisted file isn't wanted, pass credentials on every
+invocation instead: `--token`/`MESH_TOKEN`, or `--username`/`--password`/`MESH_USERNAME`+
+`MESH_PASSWORD` (these always take priority over the saved session). `ollama-mesh whoami` reports
+the saved identity, live-verified against the server; `ollama-mesh logout` deletes the saved file.
+`status` and `version` never need auth (`GET /health` is unauthenticated).
+
+**Shared Linux accounts are not recommended for administrative use.** The audit log records the
+authenticated mesh user, not necessarily the individual human using a shared operating-system
+account. If a shared account is unavoidable, prefer a per-shell `MESH_TOKEN` environment variable
+over the persisted session file (env vars are process-scoped and don't collide across concurrent
+sessions on the same account; the saved file is one shared file). For production environments, the
+recommended deployment is one Linux account per administrator and one mesh user per administrator
+- this gives accurate audit attribution and isolated CLI sessions.
 
 Exit codes: `0` success, `1` user/input error (bad flag, missing credentials, no control driver
 accepted yet), `2` server/Admin API error (unreachable, 5xx, agent dispatch failure), `4`
-authentication/authorization failure (401/403).
+authentication/authorization failure (401/403, including an expired or invalid saved session).
 
 `runtime start|stop|restart <node>` only works once a control driver has been accepted for that
 node (via `node control accept`, or the GPU Nodes page's "Runtime Control" panel) - the mesh never
