@@ -143,3 +143,23 @@ func TestRun_Models_BareCommand_UnaffectedByNewSubcommands(t *testing.T) {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
 }
+
+// TestRun_Models_UnknownAction_Errors guards against the models subcommand
+// switch silently falling through to the bare fleet-wide list on a typo'd
+// action - it must reject an unrecognized action the same way runtime/node
+// control already do, not silently run the wrong command.
+func TestRun_Models_UnknownAction_Errors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be contacted for an unknown models action, got %s", r.URL.Path)
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"models", "bogus", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d, got %d (stdout: %s, stderr: %s)", ExitUserError, code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unknown models action") {
+		t.Fatalf("expected an unknown-action error on stderr, got: %s", stderr.String())
+	}
+}
