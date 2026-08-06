@@ -182,6 +182,65 @@ func TestRun_Login_WithFlags_SavesSessionWithoutLeakingToken(t *testing.T) {
 	}
 }
 
+func TestRun_Login_ExplicitFlags_BeatAmbientMESH_TOKEN(t *testing.T) {
+	withTempConfigDir(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/v1/login" {
+			t.Fatalf("expected a real login round trip via /admin/v1/login, got %s", r.URL.Path)
+		}
+		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "freshly-logged-in-token"})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"role":"admin","username":"admin"}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("MESH_TOKEN", "stray-env-token-from-another-tool")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"login", "--server", srv.URL, "--username", "admin", "--password", "admin"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+
+	session, err := loadSession()
+	if err != nil {
+		t.Fatalf("loadSession: %v", err)
+	}
+	if session == nil || session.Token != "freshly-logged-in-token" {
+		t.Fatalf("explicit --username/--password must win over an ambient MESH_TOKEN - expected the freshly logged-in token to be saved, got %+v", session)
+	}
+}
+
+func TestRun_Login_ExplicitTokenFlag_BeatsAmbientUsernamePassword(t *testing.T) {
+	withTempConfigDir(t)
+
+	// A server that would fail the test if login ever actually attempted a
+	// username/password round trip - only --token's "save as-is" path
+	// should run.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("login must not contact the server when --token is explicitly passed, got request to %s", r.URL.Path)
+	}))
+	defer srv.Close()
+
+	t.Setenv("MESH_USERNAME", "stray-env-username")
+	t.Setenv("MESH_PASSWORD", "stray-env-password")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"login", "--server", srv.URL, "--token", "explicitly-provided-token"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+
+	session, err := loadSession()
+	if err != nil {
+		t.Fatalf("loadSession: %v", err)
+	}
+	if session == nil || session.Token != "explicitly-provided-token" {
+		t.Fatalf("an explicitly-passed --token must win over ambient MESH_USERNAME/MESH_PASSWORD, got %+v", session)
+	}
+}
+
 func TestRun_Login_NonInteractive_NoCredentials_UserError(t *testing.T) {
 	withTempConfigDir(t)
 

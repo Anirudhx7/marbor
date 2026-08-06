@@ -290,7 +290,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if ok, code := parseFlags(fs, rest, printLoginUsage, stdout); !ok {
 			return code
 		}
-		return runLogin(flags, stdout, stderr)
+		explicitToken := false
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "token" {
+				explicitToken = true
+			}
+		})
+		return runLogin(flags, explicitToken, stdout, stderr)
 	case "logout":
 		fs, flags := newFlagSet("logout", stderr)
 		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
