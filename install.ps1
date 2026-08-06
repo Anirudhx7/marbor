@@ -133,7 +133,14 @@ if ($Role -eq "agent") {
     Write-Host ""
     Write-Host "Installing ollama-mesh Node Agent as a Windows service (port $Port)..."
     if ($Token) {
-        & $BinPath agent service install --port=$Port --token=$Token
+        # Deliberately not passing --token=$Token here - that would put the
+        # real bearer token in this process's argv (visible via Task
+        # Manager/`Get-Process -IncludeUserName`/WMI for the life of the
+        # install). $env:TOKEN is already set in this process's environment
+        # and is inherited by the child process automatically; the binary's
+        # own "agent service install" subcommand already falls back to the
+        # TOKEN env var when --token isn't given.
+        & $BinPath agent service install --port=$Port
     } else {
         & $BinPath agent service install --port=$Port --enroll=$Enroll --mesh=$Mesh
     }
