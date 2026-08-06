@@ -36,7 +36,12 @@ func sessionFilePath() (string, error) {
 }
 
 // saveSession persists s to the session file with 0600 permissions - never
-// world/group readable, since it carries a live bearer token.
+// world/group readable, since it carries a live bearer token. os.WriteFile
+// only applies the given mode when it creates the file - if a file already
+// exists there with looser permissions (e.g. restored from a backup made
+// before this project existed, or touched by another tool), a plain
+// WriteFile would silently leave those looser permissions in place. The
+// explicit Chmod makes 0600 an invariant on every login, not just the first.
 func saveSession(s savedSession) error {
 	path, err := sessionFilePath()
 	if err != nil {
@@ -49,7 +54,10 @@ func saveSession(s savedSession) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0600)
 }
 
 // loadSession reads the saved session file. A missing file is not an error -

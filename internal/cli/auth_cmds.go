@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -19,8 +20,21 @@ type loginOutput struct {
 // the local session file (session.go), so every other CLI command can omit
 // --token/--username/--password afterward (authenticatedClient's fallback in
 // cli.go). Never prints the token itself, in table or JSON mode.
-func runLogin(flags *globalFlags, stdout, stderr io.Writer) int {
+//
+// explicitToken is true only when --token was passed on this command line
+// (fs.Visit in cli.go, not merely defaulted from MESH_TOKEN). Without that
+// distinction, a human running `ollama-mesh login --username x --password y`
+// to deliberately start a fresh session would have that explicit intent
+// silently discarded whenever MESH_TOKEN happened to be set in their shell -
+// login would just re-save the ambient env token and never call
+// client.Login at all. An explicitly-typed --token still wins over
+// --username/--password if both are somehow given together, matching how
+// --token already outranks credentials everywhere else in this CLI.
+func runLogin(flags *globalFlags, explicitToken bool, stdout, stderr io.Writer) int {
 	switch {
+	case flags.username != "" && flags.password != "" && !explicitToken:
+		return doLogin(flags, flags.username, flags.password, stdout, stderr)
+
 	case flags.token != "":
 		// An existing token, handed in directly - saved as-is. There is no
 		// session-introspection endpoint to recover username/role from a
@@ -36,17 +50,19 @@ func runLogin(flags *globalFlags, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "session token saved for %s (identity unknown until the next login or command)\n", flags.server)
 		return ExitOK
 
-	case flags.username != "" && flags.password != "":
-		return doLogin(flags, flags.username, flags.password, stdout, stderr)
-
 	case isTerminal(os.Stdin.Fd()) && isTerminal(os.Stdout.Fd()):
+		// One shared reader across both prompts - see readPassword's doc
+		// comment on why a second, independently constructed bufio.Reader
+		// would risk losing input that arrived in the same burst as the
+		// username line.
+		reader := bufio.NewReader(os.Stdin)
 		fmt.Fprint(stdout, "Username: ")
-		username, err := readLine(os.Stdin)
+		username, err := readLine(reader)
 		if err != nil {
 			return reportError(userErrorf("reading username: %v", err), stderr)
 		}
 		fmt.Fprint(stdout, "Password: ")
-		password, err := readPassword(os.Stdin)
+		password, err := readPassword(os.Stdin.Fd(), reader)
 		fmt.Fprintln(stdout)
 		if err != nil {
 			return reportError(userErrorf("reading password: %v", err), stderr)
