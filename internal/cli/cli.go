@@ -128,6 +128,28 @@ supervisor) returns a clear "not supported" error.
 `)
 }
 
+// loginFlagsRows is authFlagsRows minus --token's "used to authenticate"
+// framing - login is the command that produces a session, not one that
+// consumes an already-resolved one, though --token is still accepted (to
+// save an existing token without a fresh username/password round trip).
+var loginFlagsRows = [][2]string{
+	{"--server string", `Admin API base URL (default "http://localhost:8080", env MESH_SERVER)`},
+	{"--json", "output machine-readable JSON instead of a human table"},
+	{"--token string", "save this existing token instead of logging in with username/password (env MESH_TOKEN)"},
+	{"--username string", "admin username (env MESH_USERNAME) - prompted interactively if omitted in a terminal"},
+	{"--password string", "admin password (env MESH_PASSWORD) - prompted interactively (no echo) if omitted in a terminal"},
+}
+
+func printLoginUsage(w io.Writer) {
+	fmt.Fprint(w, "Usage: ollama-mesh login [flags]\n\n")
+	fmt.Fprint(w, "Authenticates once and saves the resulting session to a local file (0600,\n")
+	fmt.Fprint(w, "under the OS user config dir) so other commands can omit --token/\n")
+	fmt.Fprint(w, "--username/--password afterward. Run without --username/--password/--token\n")
+	fmt.Fprint(w, "in a terminal to be prompted interactively (password input is not echoed).\n\n")
+	fmt.Fprint(w, "Flags:\n")
+	renderTable(w, "  ", loginFlagsRows)
+}
+
 func printNodeControlUsage(w io.Writer) {
 	fmt.Fprint(w, "Usage: ollama-mesh node control <action> <node> [flags]\n\nActions:\n")
 	renderTable(w, "  ", [][2]string{
@@ -167,19 +189,28 @@ func envOr(key, def string) string {
 
 // authenticatedClient builds a Client for a command that requires a session
 // (mesh nodes, mesh models). Missing credentials is a user error (1), not an
-// auth error (4) - auth was never attempted against the server.
+// auth error (4) - auth was never attempted against the server. Resolution
+// priority: --token flag/env > --username/--password flag/env > the saved
+// session file written by "ollama-mesh login" (lowest priority, and only
+// used when it was saved against this same --server - a saved session for
+// one mesh must never be silently replayed against a different one).
 func authenticatedClient(flags *globalFlags) (*Client, error) {
 	if flags.token != "" {
 		return NewClient(flags.server, flags.token), nil
 	}
-	if flags.username == "" || flags.password == "" {
-		return nil, userErrorf("authentication required: pass --token, or --username/--password (or MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
+	if flags.username != "" && flags.password != "" {
+		client := NewClient(flags.server, "")
+		if err := client.Login(flags.username, flags.password); err != nil {
+			return nil, err
+		}
+		return client, nil
 	}
-	client := NewClient(flags.server, "")
-	if err := client.Login(flags.username, flags.password); err != nil {
-		return nil, err
+	if session, err := loadSession(); err == nil && session != nil && session.Server == flags.server {
+		client := NewClient(flags.server, session.Token)
+		client.usingSavedSession = true
+		return client, nil
 	}
-	return client, nil
+	return nil, userErrorf("authentication required: run ollama-mesh login, or pass --token (or --username/--password / MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
 }
 
 // reportError prints err's message to stderr and returns the exit code it
@@ -201,6 +232,9 @@ Usage:
 Commands:
   version                                    print CLI and (if reachable) server version
   status                                     print mesh health/status summary
+  login                                      authenticate once and save the session locally (recommended)
+  logout                                     remove the saved session
+  whoami                                     show the CLI's saved identity (live-verified)
   nodes                                      list nodes known to the mesh
   models [action] ...                        fleet-wide list, or pull/delete/unload/list on one node
   runtime <action> <node> [flags]            start/stop/restart/logs/drain/undrain/health on one node
@@ -218,8 +252,10 @@ Global flags:
   --username string     admin username, used to log in if --token is unset (env MESH_USERNAME)
   --password string      admin password, used to log in if --token is unset (env MESH_PASSWORD)
 
-"nodes", "models", "runtime", and "node control" require credentials
-(--token, or --username/--password). "version" and "status" do not.
+"nodes", "models", "runtime", and "node control" require credentials: run
+"ollama-mesh login" once (recommended), or pass --token / --username+--password
+(or MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD) on every invocation instead.
+"version" and "status" do not require credentials.
 `
 
 // Run parses args and dispatches to the requested subcommand, returning the
@@ -249,6 +285,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return code
 		}
 		return runStatus(flags, stdout, stderr)
+	case "login":
+		fs, flags := newFlagSet("login", stderr)
+		if ok, code := parseFlags(fs, rest, printLoginUsage, stdout); !ok {
+			return code
+		}
+		return runLogin(flags, stdout, stderr)
+	case "logout":
+		fs, flags := newFlagSet("logout", stderr)
+		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
+			return code
+		}
+		return runLogout(flags, stdout, stderr)
+	case "whoami":
+		fs, flags := newFlagSet("whoami", stderr)
+		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
+			return code
+		}
+		return runWhoami(flags, stdout, stderr)
 	case "nodes":
 		fs, flags := newFlagSet("nodes", stderr)
 		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {

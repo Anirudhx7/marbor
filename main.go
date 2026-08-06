@@ -209,7 +209,7 @@ func resolveCommand(args []string) string {
 		return "bench"
 	case "agent":
 		return "agent"
-	case "version", "status", "nodes", "models", "runtime", "node":
+	case "version", "status", "login", "logout", "whoami", "nodes", "models", "runtime", "node":
 		return "cli"
 	default:
 		return "server"
@@ -231,6 +231,9 @@ var helpTableRows = [][2]string{
 	{"ollama-mesh bench [flags]", "warm-vs-cold first-token latency benchmark"},
 	{"ollama-mesh version", "print version"},
 	{"ollama-mesh status", "print mesh health/status summary"},
+	{"ollama-mesh login", "authenticate once and save the session locally (recommended)"},
+	{"ollama-mesh logout", "remove the saved session"},
+	{"ollama-mesh whoami", "show the CLI's saved identity (live-verified)"},
 	{"ollama-mesh nodes", "list nodes known to the mesh"},
 	{"ollama-mesh models [action] ...", "fleet-wide list, or pull/delete/unload/list on one node"},
 	{"ollama-mesh runtime <action> ...", "start/stop/restart/logs/drain/undrain/health on one node"},
