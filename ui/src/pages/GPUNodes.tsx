@@ -1534,15 +1534,16 @@ export function GPUNodes() {
                 placeholder={editVRAMUnit === 'GB' ? 'e.g., 24' : 'e.g., 24576'}
                 className="flex-1 min-w-0 px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
-              <CustomSelect
-                value={editVRAMUnit}
-                onChange={(v) => setEditVRAMUnit(v as 'MB' | 'GB')}
-                options={[
-                  { value: 'MB', label: 'MB' },
-                  { value: 'GB', label: 'GB' },
-                ]}
-                className="w-24 shrink-0"
-              />
+              <div className="w-24 shrink-0">
+                <CustomSelect
+                  value={editVRAMUnit}
+                  onChange={(v) => setEditVRAMUnit(v as 'MB' | 'GB')}
+                  options={[
+                    { value: 'MB', label: 'MB' },
+                    { value: 'GB', label: 'GB' },
+                  ]}
+                />
+              </div>
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Only applied when no live GPU telemetry exists (nvidia-smi, ROCm, etc). When applied, it directly drives placement decisions and Model Advisor fit checks.
