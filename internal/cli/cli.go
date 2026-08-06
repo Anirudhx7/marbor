@@ -24,16 +24,46 @@ type globalFlags struct {
 // (not -h/--help - see parseFlags) print via flag's own default Usage
 // ("Usage of <name>:" plus PrintDefaults) to stderr, which is correct GNU
 // convention for an error path.
+//
+// --token/--username/--password deliberately register with an empty flag
+// default rather than os.Getenv(...) directly: flag.FlagSet.PrintDefaults
+// prints every non-empty default verbatim as `(default "...")`, so seeding
+// a secret env var as the flag's default would leak it in plain text on
+// both the --help path and the genuine-parse-error path above (e.g. a
+// mistyped flag on any command, with MESH_TOKEN exported, would print the
+// live bearer token to stderr - straight into a CI log if that's where
+// MESH_TOKEN is coming from). Env fallback for these three fields happens
+// later, via resolveCred, only in the two places that actually consume
+// them (authenticatedClient, runLogin) - never as a flag default.
 func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	g := &globalFlags{}
 	fs.StringVar(&g.server, "server", envOr("MESH_SERVER", "http://localhost:8080"), "Admin API base URL")
 	fs.BoolVar(&g.jsonOutput, "json", false, "output machine-readable JSON instead of a human table")
-	fs.StringVar(&g.token, "token", os.Getenv("MESH_TOKEN"), "session token (Authorization: Bearer)")
-	fs.StringVar(&g.username, "username", os.Getenv("MESH_USERNAME"), "admin username, used to log in if --token is not set")
-	fs.StringVar(&g.password, "password", os.Getenv("MESH_PASSWORD"), "admin password, used to log in if --token is not set")
+	fs.StringVar(&g.token, "token", "", "session token (Authorization: Bearer, env MESH_TOKEN)")
+	fs.StringVar(&g.username, "username", "", "admin username, used to log in if --token is not set (env MESH_USERNAME)")
+	fs.StringVar(&g.password, "password", "", "admin password, used to log in if --token is not set (env MESH_PASSWORD)")
 	return fs, g
+}
+
+// resolveCred returns flagVal if set, otherwise the named environment
+// variable - the flag>env priority previously baked into the flag default
+// itself (see newFlagSet's doc comment for why that was unsafe for secrets).
+func resolveCred(flagVal, envKey string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return os.Getenv(envKey)
+}
+
+// normalizeServerURL strips a trailing slash, matching NewClient's own
+// normalization (client.go) - without this, a session saved against
+// "http://mesh:8080/" would never match a later "--server http://mesh:8080"
+// (or vice versa), silently missing the saved-session fallback with no
+// indication why.
+func normalizeServerURL(s string) string {
+	return strings.TrimSuffix(s, "/")
 }
 
 // hasHelpFlag reports whether -h/--help appears anywhere in args.
@@ -195,17 +225,25 @@ func envOr(key, def string) string {
 // used when it was saved against this same --server - a saved session for
 // one mesh must never be silently replayed against a different one).
 func authenticatedClient(flags *globalFlags) (*Client, error) {
-	if flags.token != "" {
-		return NewClient(flags.server, flags.token), nil
+	token := resolveCred(flags.token, "MESH_TOKEN")
+	username := resolveCred(flags.username, "MESH_USERNAME")
+	password := resolveCred(flags.password, "MESH_PASSWORD")
+
+	if token != "" {
+		return NewClient(flags.server, token), nil
 	}
-	if flags.username != "" && flags.password != "" {
+	if username != "" && password != "" {
 		client := NewClient(flags.server, "")
-		if err := client.Login(flags.username, flags.password); err != nil {
+		if err := client.Login(username, password); err != nil {
 			return nil, err
 		}
 		return client, nil
 	}
-	if session, err := loadSession(); err == nil && session != nil && session.Server == flags.server {
+	session, err := loadSession()
+	if err != nil {
+		return nil, serverErrorf("could not read saved session: %v - run ollama-mesh login again", err)
+	}
+	if session != nil && normalizeServerURL(session.Server) == normalizeServerURL(flags.server) {
 		client := NewClient(flags.server, session.Token)
 		client.usingSavedSession = true
 		return client, nil

@@ -31,16 +31,26 @@ type loginOutput struct {
 // --username/--password if both are somehow given together, matching how
 // --token already outranks credentials everywhere else in this CLI.
 func runLogin(flags *globalFlags, explicitToken bool, stdout, stderr io.Writer) int {
-	switch {
-	case flags.username != "" && flags.password != "" && !explicitToken:
-		return doLogin(flags, flags.username, flags.password, stdout, stderr)
+	token := resolveCred(flags.token, "MESH_TOKEN")
+	username := resolveCred(flags.username, "MESH_USERNAME")
+	password := resolveCred(flags.password, "MESH_PASSWORD")
 
-	case flags.token != "":
+	// username+password wins over token UNLESS a non-empty --token was
+	// explicitly passed on this command line. This is deliberately not
+	// "unless explicitToken", full stop: --token "" explicitly passed (a
+	// no-op value) must not block falling back to username/password that
+	// are otherwise available - only a token that actually resolved to
+	// something should out-rank them.
+	if username != "" && password != "" && !(explicitToken && token != "") {
+		return doLogin(flags, username, password, stdout, stderr)
+	}
+
+	if token != "" {
 		// An existing token, handed in directly - saved as-is. There is no
 		// session-introspection endpoint to recover username/role from a
 		// bare token (same gap runWhoami documents below), so those fields
 		// stay empty until the next login or a successful whoami/command.
-		if err := saveSession(savedSession{Server: flags.server, Token: flags.token}); err != nil {
+		if err := saveSession(savedSession{Server: normalizeServerURL(flags.server), Token: token}); err != nil {
 			return reportError(serverErrorf("could not save session: %v", err), stderr)
 		}
 		out := loginOutput{Server: flags.server}
@@ -49,29 +59,38 @@ func runLogin(flags *globalFlags, explicitToken bool, stdout, stderr io.Writer) 
 		}
 		fmt.Fprintf(stdout, "session token saved for %s (identity unknown until the next login or command)\n", flags.server)
 		return ExitOK
+	}
 
-	case isTerminal(os.Stdin.Fd()) && isTerminal(os.Stdout.Fd()):
+	if isTerminal(os.Stdin.Fd()) && isTerminal(os.Stdout.Fd()) {
 		// One shared reader across both prompts - see readPassword's doc
 		// comment on why a second, independently constructed bufio.Reader
 		// would risk losing input that arrived in the same burst as the
-		// username line.
+		// username line. Only the fields not already resolved above (from
+		// a flag or env var) get prompted for - `login --username admin`
+		// with the password typed interactively (kept out of shell history
+		// and `ps`) must not have its --username silently discarded.
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Fprint(stdout, "Username: ")
-		username, err := readLine(reader)
-		if err != nil {
-			return reportError(userErrorf("reading username: %v", err), stderr)
+		if username == "" {
+			fmt.Fprint(stdout, "Username: ")
+			u, err := readLine(reader)
+			if err != nil {
+				return reportError(userErrorf("reading username: %v", err), stderr)
+			}
+			username = u
 		}
-		fmt.Fprint(stdout, "Password: ")
-		password, err := readPassword(os.Stdin.Fd(), reader)
-		fmt.Fprintln(stdout)
-		if err != nil {
-			return reportError(userErrorf("reading password: %v", err), stderr)
+		if password == "" {
+			fmt.Fprint(stdout, "Password: ")
+			p, err := readPassword(os.Stdin.Fd(), reader)
+			fmt.Fprintln(stdout)
+			if err != nil {
+				return reportError(userErrorf("reading password: %v", err), stderr)
+			}
+			password = p
 		}
 		return doLogin(flags, username, password, stdout, stderr)
-
-	default:
-		return reportError(userErrorf("authentication required: pass --username and --password (or --token), or run interactively in a terminal"), stderr)
 	}
+
+	return reportError(userErrorf("authentication required: pass --username and --password (or --token), or run interactively in a terminal"), stderr)
 }
 
 func doLogin(flags *globalFlags, username, password string, stdout, stderr io.Writer) int {
@@ -80,7 +99,7 @@ func doLogin(flags *globalFlags, username, password string, stdout, stderr io.Wr
 		return reportError(err, stderr)
 	}
 	if err := saveSession(savedSession{
-		Server:   flags.server,
+		Server:   normalizeServerURL(flags.server),
 		Token:    client.Token,
 		Username: client.Username,
 		Role:     client.Role,

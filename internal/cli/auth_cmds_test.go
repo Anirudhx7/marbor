@@ -11,9 +11,33 @@ import (
 	"testing"
 )
 
-// withTempConfigDir redirects userConfigDir to a fresh temp directory for
-// the duration of a test, so session-file tests never touch the real OS
-// config dir and never see a session left over from a previous test.
+// TestMain redirects userConfigDir to a temp directory for this entire test
+// binary run, before any test executes - a package-wide safety net so that a
+// test which forgets withTempConfigDir (below) still can't read or write the
+// real OS config dir or trip over a session a developer has actually logged
+// into. This matters concretely for authenticatedClient's saved-session
+// fallback: a test built around "no credentials given" (e.g. in
+// runtime_test.go/models_test.go/control_test.go, none of which know
+// anything about sessions) would otherwise silently pick up a real saved
+// session on any machine where someone has run `ollama-mesh login`, and -
+// since the credentialed commands are mutating (runtime restart, model
+// pull/delete) - could fire a real request against whatever --server those
+// tests use.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "ollama-mesh-cli-test-config-*")
+	if err != nil {
+		panic(err)
+	}
+	userConfigDir = func() (string, error) { return dir, nil }
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// withTempConfigDir redirects userConfigDir to its own fresh temp directory
+// for the duration of a test, on top of TestMain's package-wide one - tests
+// that read/write/assert on session-file state need isolation from every
+// other test, not just from the real OS config dir.
 func withTempConfigDir(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
@@ -238,6 +262,112 @@ func TestRun_Login_ExplicitTokenFlag_BeatsAmbientUsernamePassword(t *testing.T) 
 	}
 	if session == nil || session.Token != "explicitly-provided-token" {
 		t.Fatalf("an explicitly-passed --token must win over ambient MESH_USERNAME/MESH_PASSWORD, got %+v", session)
+	}
+}
+
+func TestRun_Login_ExplicitEmptyTokenFallsBackToUsernamePassword(t *testing.T) {
+	withTempConfigDir(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/v1/login" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "tok"})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"role":"admin","username":"admin"}`))
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	// --token "" is explicitly passed (empty value) alongside valid
+	// username/password - the empty token must not block falling back to
+	// them, even though --token was technically "explicit".
+	code := Run([]string{"login", "--server", srv.URL, "--token", "", "--username", "admin", "--password", "admin"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	session, err := loadSession()
+	if err != nil {
+		t.Fatalf("loadSession: %v", err)
+	}
+	if session == nil || session.Token != "tok" {
+		t.Fatalf("expected the username/password login to have run, got %+v", session)
+	}
+}
+
+func TestRun_Login_UsernameFlagPlusPasswordEnv_BothResolve(t *testing.T) {
+	withTempConfigDir(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Username, Password string }
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Username != "admin" || body.Password != "from-env" {
+			t.Fatalf("expected username/password resolved from mixed flag+env sources, got %+v", body)
+		}
+		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "tok"})
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"role":"admin","username":"admin"}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("MESH_PASSWORD", "from-env")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"login", "--server", srv.URL, "--username", "admin"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+}
+
+func TestRun_NoEnvSecretLeaksViaHelpOrParseError(t *testing.T) {
+	withTempConfigDir(t)
+	t.Setenv("MESH_TOKEN", "SEKRET-TOKEN-VALUE")
+	t.Setenv("MESH_PASSWORD", "SEKRET-PASSWORD-VALUE")
+
+	for _, args := range [][]string{
+		{"whoami", "--help"},
+		{"login", "--help"},
+		{"logout", "--help"},
+		{"nodes", "--help"},
+		{"version", "--help"},
+		{"status", "--help"},
+		{"nodes", "--this-flag-does-not-exist"},
+		{"login", "--this-flag-does-not-exist"},
+	} {
+		var stdout, stderr bytes.Buffer
+		Run(args, &stdout, &stderr)
+		for _, secret := range []string{"SEKRET-TOKEN-VALUE", "SEKRET-PASSWORD-VALUE"} {
+			if strings.Contains(stdout.String(), secret) || strings.Contains(stderr.String(), secret) {
+				t.Fatalf("%v leaked %q - stdout=%q stderr=%q", args, secret, stdout.String(), stderr.String())
+			}
+		}
+	}
+}
+
+func TestAuthenticatedClient_SavedSessionMatchesDespiteTrailingSlash(t *testing.T) {
+	withTempConfigDir(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer saved-tok" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`[]`))
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"unauthorized"}`))
+	}))
+	defer srv.Close()
+
+	// Saved with a trailing slash (e.g. from a prior `login --server X/`).
+	if err := saveSession(savedSession{Server: srv.URL + "/", Token: "saved-tok"}); err != nil {
+		t.Fatalf("saveSession: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	// Looked up WITHOUT a trailing slash - must still match.
+	code := Run([]string{"nodes", "--server", srv.URL, "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d despite the trailing-slash mismatch, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
 }
 
