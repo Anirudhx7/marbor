@@ -49,13 +49,13 @@ func runServiceCommand(args []string, version string) {
 func runServiceInstall(args []string, version string) {
 	fs := flag.NewFlagSet("agent service install", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port for the installed service to serve /v1/status and /metrics on")
-	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
+	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the TOKEN env var instead)")
 	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the mesh admin UI, exchanged for the real token (or set the ENROLL env var); requires --mesh")
 	meshFlag := fs.String("mesh", "", "mesh admin base URL, required together with --enroll (or set the MESH env var)")
 	refreshInterval := fs.Duration("refresh-interval", 0, "how often the installed service re-collects telemetry (default: the agent's own built-in default)")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "ollama-mesh agent service install - register the Node Agent as a persistent, auto-restarting OS service\n\n")
-		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent service install --port=<port> --token=<token>\n")
+		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent service install --port=<port>   (set the TOKEN env var)\n")
 		fmt.Fprintf(w, "  ollama-mesh agent service install --port=<port> --enroll=<code> --mesh=<url>\n\n")
 		fmt.Fprintf(w, "Safe to re-run: re-installing (e.g. after a binary upgrade, or to rotate the token)\n")
 		fmt.Fprintf(w, "reconfigures and restarts the existing service rather than requiring uninstall first.\n\nFlags:\n")
@@ -77,6 +77,7 @@ func runServiceInstall(args []string, version string) {
 		winexit.Fatalf("nodeagent: %v", err)
 	}
 
+	warnIfTokenFlagUsed(os.Stderr, *tokenFlag)
 	token := *tokenFlag
 	if token == "" {
 		token = os.Getenv("TOKEN")

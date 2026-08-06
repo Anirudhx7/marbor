@@ -210,16 +210,24 @@ if [ "$ROLE" = "agent" ]; then
   # set -- preserves per-arg quoting (unlike an unquoted variable expansion,
   # which would word-split/glob a code, token, or URL containing whitespace
   # or shell metacharacters) - "$@" below expands each positional param as
-  # its own word, exactly like the original --token="$TOKEN" call did.
+  # its own word. TOKEN is deliberately NOT passed as --token here (that
+  # would put the real bearer token in this process's argv, visible via
+  # `ps`/Task Manager for the life of the install) - it's already in this
+  # shell's environment (TOKEN=... sh), and the binary's own "agent service
+  # install" subcommand already falls back to the TOKEN env var when
+  # --token isn't given, so it's just inherited below.
   if [ -n "$TOKEN" ]; then
-    set -- agent service install --port="$AGENT_PORT" --token="$TOKEN"
+    set -- agent service install --port="$AGENT_PORT"
   else
     set -- agent service install --port="$AGENT_PORT" --enroll="$ENROLL" --mesh="$MESH"
   fi
   if [ "$(id -u)" = "0" ]; then
     "$BIN_PATH" "$@"
   elif command -v sudo >/dev/null 2>&1; then
-    sudo "$BIN_PATH" "$@"
+    # -E forwards this shell's environment (incl. TOKEN) to the sudo'd
+    # process instead of resetting it - required for the TOKEN env-var
+    # fallback above to actually reach the binary under sudo.
+    sudo -E "$BIN_PATH" "$@"
   else
     echo "Error: installing the Node Agent service requires root, and sudo is not available."
     exit 1
