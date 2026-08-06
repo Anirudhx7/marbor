@@ -622,7 +622,7 @@ func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
 type NodeAgentConfig struct {
 	Enabled bool
 	Port    int
-	Token   string
+	Token   string `json:"-"`
 }
 
 // SetNodeAgent sets the per-HOST Node Agent poll config (admin-toggled,

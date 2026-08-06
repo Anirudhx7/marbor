@@ -60,25 +60,44 @@ func runSC(args ...string) (string, error) {
 	return buf.String(), err
 }
 
-// serviceRegistryKey is where sc.exe registers Name; setting an Environment
-// value here (read by every Windows service host at process start) is how
-// the token reaches the agent without putting it in binPath, which sc qc and
-// Task Manager's "Command line" column both expose to any local user.
-func serviceRegistryKey() string {
-	return `HKLM\SYSTEM\CurrentControlSet\Services\` + Name
+// serviceRegistryPath is where sc.exe registers Name, in PowerShell's
+// registry-provider drive syntax; setting an Environment value here (read by
+// every Windows service host at process start) is how the token reaches the
+// agent without putting it in binPath, which sc qc and Task Manager's
+// "Command line" column both expose to any local user.
+func serviceRegistryPath() string {
+	return `HKLM:\SYSTEM\CurrentControlSet\Services\` + Name
+}
+
+// setServiceTokenEnvCommand builds the powershell.exe invocation that writes
+// TOKEN=<token> as the service's Environment (REG_MULTI_SZ - the type
+// Windows services read their environment block from) registry value. The
+// token is delivered via the command's Stdin, never as a command-line
+// argument: unlike reg.exe's "/d TOKEN=<token>" form, this keeps the token
+// out of Task Manager's "Command line" column, sc qc, WMI
+// Win32_Process.CommandLine, and Sysmon Event ID 1 - the same class of
+// exposure windowsBinPath already keeps --token out of, just via a
+// different native tool that only accepts secrets as an argument. Split out
+// from setServiceTokenEnv so a test can assert on the built command's Args
+// without requiring an elevated Windows box to actually run it.
+func setServiceTokenEnvCommand(token string) *exec.Cmd {
+	script := `$t = [Console]::In.ReadLine(); Set-ItemProperty -Path '` + serviceRegistryPath() + `' -Name Environment -Value @("TOKEN=$t") -Type MultiString`
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd.Stdin = strings.NewReader(token + "\n")
+	return cmd
 }
 
 // setServiceTokenEnv writes TOKEN=<token> as the service's Environment
-// registry value via reg.exe (same "shell out to a native OS tool" pattern
-// as sc.exe - no new dependency). REG_MULTI_SZ is the type Windows services
-// read their Environment block from.
+// registry value via powershell.exe (same "shell out to a native OS tool"
+// pattern as sc.exe - no new Go module dependency), passing the token via
+// stdin rather than argv (see setServiceTokenEnvCommand).
 func setServiceTokenEnv(token string) error {
-	cmd := exec.Command("reg", "add", serviceRegistryKey(), "/v", "Environment", "/t", "REG_MULTI_SZ", "/d", "TOKEN="+token, "/f")
+	cmd := setServiceTokenEnvCommand(token)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("reg add Environment: %w: %s", err, strings.TrimSpace(buf.String()))
+		return fmt.Errorf("set service Environment: %w: %s", err, strings.TrimSpace(buf.String()))
 	}
 	return nil
 }

@@ -1,10 +1,22 @@
 package store
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestNodeAgentRecord_TokenNeverMarshaled(t *testing.T) {
+	rec := NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "secret-value"}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if strings.Contains(string(b), "secret-value") {
+		t.Fatalf("NodeAgentRecord must never marshal Token (P68 - closes config-dump leak path), got %s", b)
+	}
+}
 
 func TestUpsertAndGetNodeAgent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")

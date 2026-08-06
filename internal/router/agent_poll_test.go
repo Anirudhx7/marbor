@@ -18,6 +18,17 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 )
 
+func TestNodeAgentConfig_TokenNeverMarshaled(t *testing.T) {
+	cfg := NodeAgentConfig{Enabled: true, Port: 9200, Token: "secret-value"}
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if strings.Contains(string(b), "secret-value") {
+		t.Fatalf("NodeAgentConfig must never marshal Token (P68 - closes config-dump leak path), got %s", b)
+	}
+}
+
 func mustPort(t *testing.T, rawURL string) int {
 	t.Helper()
 	u, err := url.Parse(rawURL)
