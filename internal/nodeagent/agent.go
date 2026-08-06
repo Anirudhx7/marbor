@@ -20,6 +20,20 @@ import (
 // own node poll interval.
 const defaultRefreshInterval = 5 * time.Second
 
+// warnIfTokenFlagUsed prints a deprecation notice to w when the caller passed
+// --token directly (tokenFlag != ""), never for the TOKEN env var or the
+// --enroll/--mesh flow. Shared by runAgent and runServiceInstall
+// (service_cmd.go). Written to stderr (via the caller passing os.Stderr),
+// not through the logger: this is CLI UX aimed at whoever typed the flag,
+// not a runtime log line that should get timestamped or land in a service
+// log when the agent runs under systemd/launchd/Windows service.
+func warnIfTokenFlagUsed(w io.Writer, tokenFlag string) {
+	if tokenFlag == "" {
+		return
+	}
+	fmt.Fprintln(w, "warning: --token is deprecated and will be removed in the next major release. Use the TOKEN environment variable or the ENROLL flow instead.")
+}
+
 // Run is the "ollama-mesh agent" subcommand entry point (called from main.go
 // the same way "ollama-mesh bench" dispatches to internal/bench.Run) - same
 // binary, same cross-compile targets as the mesh itself, per the build spec.
@@ -51,12 +65,12 @@ func runAgent(args []string, version string) {
 
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
-	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
+	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the TOKEN env var instead)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "ollama-mesh agent - Node Agent: node-local execution point for the mesh\n\n")
-		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent --port=<port> --token=<token>   (runs in the foreground)\n")
-		fmt.Fprintf(w, "  ollama-mesh agent service install --port=<port> --token=<token>\n")
+		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent --port=<port>   (runs in the foreground; set the TOKEN env var)\n")
+		fmt.Fprintf(w, "  ollama-mesh agent service install --port=<port>\n")
 		fmt.Fprintf(w, "                                                     (installs as a persistent OS service)\n")
 		fmt.Fprintf(w, "  ollama-mesh agent service {uninstall|start|stop|status}\n\nFlags:\n")
 		fs.SetOutput(w)
@@ -77,6 +91,7 @@ func runAgent(args []string, version string) {
 		winexit.Fatalf("nodeagent: %v", err)
 	}
 
+	warnIfTokenFlagUsed(os.Stderr, *tokenFlag)
 	token := *tokenFlag
 	if token == "" {
 		token = os.Getenv("TOKEN")
