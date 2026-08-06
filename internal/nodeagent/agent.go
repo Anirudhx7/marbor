@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -52,13 +53,25 @@ func runAgent(args []string, version string) {
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
 	tokenFlag := fs.String("token", "", "bearer token required on every request (or set the TOKEN env var)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "ollama-mesh agent - Node Agent: node-local execution point for the mesh\n\n")
-		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh agent --port=<port> --token=<token>   (runs in the foreground)\n")
-		fmt.Fprintf(os.Stderr, "  ollama-mesh agent service install --port=<port> --token=<token>\n")
-		fmt.Fprintf(os.Stderr, "                                                     (installs as a persistent OS service)\n")
-		fmt.Fprintf(os.Stderr, "  ollama-mesh agent service {uninstall|start|stop|status}\n\nFlags:\n")
+	usage := func(w io.Writer) {
+		fmt.Fprintf(w, "ollama-mesh agent - Node Agent: node-local execution point for the mesh\n\n")
+		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent --port=<port> --token=<token>   (runs in the foreground)\n")
+		fmt.Fprintf(w, "  ollama-mesh agent service install --port=<port> --token=<token>\n")
+		fmt.Fprintf(w, "                                                     (installs as a persistent OS service)\n")
+		fmt.Fprintf(w, "  ollama-mesh agent service {uninstall|start|stop|status}\n\nFlags:\n")
+		fs.SetOutput(w)
 		fs.PrintDefaults()
+	}
+	fs.Usage = func() { usage(os.Stderr) }
+
+	// -h/--help must be intercepted before fs.Parse runs, same reasoning as
+	// internal/bench.Run and internal/cli's parseFlags: flag's own usage hook
+	// fires identically for a real bad-flag error and for a help request.
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			usage(os.Stdout)
+			return
+		}
 	}
 	if err := fs.Parse(args); err != nil {
 		winexit.Fatalf("nodeagent: %v", err)

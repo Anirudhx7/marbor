@@ -37,19 +37,33 @@ type Result struct {
 // Run is the entry-point for the "bench" subcommand.  args is os.Args[2:].
 func Run(args []string) {
 	fs := flag.NewFlagSet("bench", flag.ExitOnError)
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: ollama-mesh bench [flags]\n\n")
-		fmt.Fprintf(os.Stderr, "Measures cold vs warm Time-To-First-Token (TTFT) through the mesh proxy.\n")
-		fmt.Fprintf(os.Stderr, "--target must point at the mesh proxy port, not an Ollama backend directly.\n\n")
-		fmt.Fprintf(os.Stderr, "Flags:\n")
+	usage := func(w io.Writer) {
+		fmt.Fprintf(w, "Usage: ollama-mesh bench [flags]\n\n")
+		fmt.Fprintf(w, "Measures cold vs warm Time-To-First-Token (TTFT) through the mesh proxy.\n")
+		fmt.Fprintf(w, "--target must point at the mesh proxy port, not an Ollama backend directly.\n\n")
+		fmt.Fprintf(w, "Flags:\n")
+		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
+	fs.Usage = func() { usage(os.Stderr) }
 
 	target := fs.String("target", "http://localhost:11435", "Mesh proxy base URL (not the Ollama backend)")
 	model := fs.String("model", "", "Model to benchmark (auto-detected from /v1/models if omitted)")
 	apiKey := fs.String("key", "", "Bearer API key (required if auth is enabled on the mesh)")
 	jsonOut := fs.Bool("json", false, "Emit JSON output instead of the human-readable table")
 	timeout := fs.Duration("timeout", 300*time.Second, "Per-request timeout (cold load can take minutes on a large model)")
+
+	// -h/--help must be intercepted before fs.Parse runs: flag's own usage
+	// hook fires identically for a genuine bad-flag error and for a help
+	// request, so routing help to stdout (vs. stderr for real errors) has to
+	// be decided before Parse, not after (same pattern as internal/cli's
+	// parseFlags).
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			usage(os.Stdout)
+			return
+		}
+	}
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}

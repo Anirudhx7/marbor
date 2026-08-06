@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -52,13 +53,25 @@ func runServiceInstall(args []string, version string) {
 	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the mesh admin UI, exchanged for the real token (or set the ENROLL env var); requires --mesh")
 	meshFlag := fs.String("mesh", "", "mesh admin base URL, required together with --enroll (or set the MESH env var)")
 	refreshInterval := fs.Duration("refresh-interval", 0, "how often the installed service re-collects telemetry (default: the agent's own built-in default)")
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "ollama-mesh agent service install - register the Node Agent as a persistent, auto-restarting OS service\n\n")
-		fmt.Fprintf(os.Stderr, "Usage:\n  ollama-mesh agent service install --port=<port> --token=<token>\n")
-		fmt.Fprintf(os.Stderr, "  ollama-mesh agent service install --port=<port> --enroll=<code> --mesh=<url>\n\n")
-		fmt.Fprintf(os.Stderr, "Safe to re-run: re-installing (e.g. after a binary upgrade, or to rotate the token)\n")
-		fmt.Fprintf(os.Stderr, "reconfigures and restarts the existing service rather than requiring uninstall first.\n\nFlags:\n")
+	usage := func(w io.Writer) {
+		fmt.Fprintf(w, "ollama-mesh agent service install - register the Node Agent as a persistent, auto-restarting OS service\n\n")
+		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent service install --port=<port> --token=<token>\n")
+		fmt.Fprintf(w, "  ollama-mesh agent service install --port=<port> --enroll=<code> --mesh=<url>\n\n")
+		fmt.Fprintf(w, "Safe to re-run: re-installing (e.g. after a binary upgrade, or to rotate the token)\n")
+		fmt.Fprintf(w, "reconfigures and restarts the existing service rather than requiring uninstall first.\n\nFlags:\n")
+		fs.SetOutput(w)
 		fs.PrintDefaults()
+	}
+	fs.Usage = func() { usage(os.Stderr) }
+
+	// -h/--help must be intercepted before fs.Parse runs, same reasoning as
+	// runAgent/bench.Run: flag's own usage hook fires identically for a real
+	// bad-flag error and for a help request.
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			usage(os.Stdout)
+			return
+		}
 	}
 	if err := fs.Parse(args); err != nil {
 		winexit.Fatalf("nodeagent: %v", err)
@@ -154,6 +167,17 @@ func exchangeEnrollmentCode(meshBaseURL, code string) (string, error) {
 func runServiceUninstall(args []string) {
 	fs := flag.NewFlagSet("agent service uninstall", flag.ExitOnError)
 	purge := fs.Bool("purge", false, "also delete the installed binary (default: only removes the service registration)")
+
+	// -h/--help must be intercepted before fs.Parse runs (same reasoning as
+	// runServiceInstall above); this FlagSet has no custom fs.Usage, so fall
+	// back to flag's own default usage output, just routed to stdout.
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			fs.SetOutput(os.Stdout)
+			fs.Usage()
+			return
+		}
+	}
 	if err := fs.Parse(args); err != nil {
 		winexit.Fatalf("nodeagent: %v", err)
 	}
