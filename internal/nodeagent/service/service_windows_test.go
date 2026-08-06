@@ -3,6 +3,7 @@
 package service
 
 import (
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -48,6 +49,29 @@ func TestWindowsBinPath_NoSpacesStillQuoted(t *testing.T) {
 	want := `"C:\ollama-mesh\ollama-mesh.exe" agent --port=8080`
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
+	}
+}
+
+func TestSetServiceTokenEnvCommand_ArgsNeverContainToken(t *testing.T) {
+	const token = "sekret-node-agent-token"
+	cmd := setServiceTokenEnvCommand(token)
+
+	for i, arg := range cmd.Args {
+		if strings.Contains(arg, token) {
+			t.Fatalf("setServiceTokenEnvCommand() must never place the token in argv (Task Manager/sc qc/WMI/Sysmon all read it), but Args[%d] = %q", i, arg)
+		}
+	}
+
+	stdinBytes, err := io.ReadAll(cmd.Stdin)
+	if err != nil {
+		t.Fatalf("reading cmd.Stdin: %v", err)
+	}
+	if !strings.Contains(string(stdinBytes), token) {
+		t.Fatalf("setServiceTokenEnvCommand() must deliver the token via Stdin, got %q", stdinBytes)
+	}
+
+	if cmd.Path == "" || !strings.Contains(strings.ToLower(cmd.Path), "powershell") {
+		t.Errorf("setServiceTokenEnvCommand() expected a powershell.exe invocation, got Path %q", cmd.Path)
 	}
 }
 

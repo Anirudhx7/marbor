@@ -321,7 +321,7 @@ type NodeAgentRecord struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
-	Token   string `json:"token,omitempty"`
+	Token   string `json:"-"`
 }
 
 // NodeControlRecord is the per-node ControlDriver configuration (P43) - how
