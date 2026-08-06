@@ -1168,9 +1168,9 @@ export function GPUNodes() {
     if (!editNode) return null;
     const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } = {};
     if (editVRAM.trim() !== '') {
-      const v = parseInt(editVRAM, 10);
-      if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative integer (${editVRAMUnit})`); return 'invalid'; }
-      patch.vram_total_mb = editVRAMUnit === 'GB' ? v * 1024 : v;
+      const v = parseFloat(editVRAM);
+      if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative number (${editVRAMUnit})`); return 'invalid'; }
+      patch.vram_total_mb = Math.round(editVRAMUnit === 'GB' ? v * 1024 : v);
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
     if (editRuntime && editRuntime !== (editNode.runtime || 'ollama')) patch.runtime = editRuntime;
@@ -1537,7 +1537,16 @@ export function GPUNodes() {
               <div className="w-24 shrink-0">
                 <CustomSelect
                   value={editVRAMUnit}
-                  onChange={(v) => setEditVRAMUnit(v as 'MB' | 'GB')}
+                  onChange={(v) => {
+                    const unit = v as 'MB' | 'GB';
+                    if (unit !== editVRAMUnit) {
+                      const n = parseFloat(editVRAM);
+                      if (!isNaN(n)) {
+                        setEditVRAM(String(unit === 'GB' ? n / 1024 : Math.round(n * 1024)));
+                      }
+                    }
+                    setEditVRAMUnit(unit);
+                  }}
                   options={[
                     { value: 'MB', label: 'MB' },
                     { value: 'GB', label: 'GB' },
