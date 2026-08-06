@@ -256,7 +256,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		return runNodes(flags, stdout, stderr)
 	case "models":
-		if len(rest) > 0 {
+		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
 			switch rest[0] {
 			case "pull":
 				fs, flags := newFlagSet("models pull", stderr)
@@ -302,6 +302,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 					return ExitUserError
 				}
 				return runModelsList(flags, positional[0], stdout, stderr)
+			default:
+				fmt.Fprintf(stderr, "unknown models action %q (want pull, delete, unload, or list)\n\n", rest[0])
+				printModelsUsage(stderr)
+				return ExitUserError
 			}
 		}
 		fs, flags := newFlagSet("models", stderr)
