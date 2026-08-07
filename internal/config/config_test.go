@@ -181,3 +181,29 @@ func TestCloudProviderPriorityFieldRoundTrips(t *testing.T) {
 		t.Errorf("Priority = %d, want 5", out.Priority)
 	}
 }
+
+// TestCloudProviderReservedNameRejected guards the P66 spill_counters
+// invariant: "local" and "blocked" are reserved served_by sentinels, so a
+// cloud provider using either name must fail Validate() rather than silently
+// merging its real cloud traffic into the reserved bucket.
+func TestCloudProviderReservedNameRejected(t *testing.T) {
+	for _, reserved := range []string{"local", "blocked"} {
+		cfg := Config{
+			CloudProviders: []CloudProvider{
+				{Name: reserved, Provider: "openai", BaseURL: "https://api.openai.com/v1", APIKey: "sk-1", Enabled: true},
+			},
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("Validate() with cloud provider name %q should have failed", reserved)
+		}
+	}
+
+	cfg := Config{
+		CloudProviders: []CloudProvider{
+			{Name: "openai", Provider: "openai", BaseURL: "https://api.openai.com/v1", APIKey: "sk-1", Enabled: true},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() with a non-reserved provider name should not fail: %v", err)
+	}
+}
