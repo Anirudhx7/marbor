@@ -105,6 +105,16 @@ type Store interface {
 	// KeySpendSince sums real cloud-fallback cost_usd for keyName since the
 	// given time, for per-key cloud spend cap checks.
 	KeySpendSince(keyName string, since time.Time) (float64, error)
+	// IncrSpillCounter increments the (keyName, servedBy) row in
+	// spill_counters by one, creating it if absent. servedBy is "local", a
+	// cloud provider's Name, or "blocked". Best-effort accounting only - any
+	// error here must never affect the caller's inference request; callers
+	// should log and ignore it, not propagate it into the request path.
+	IncrSpillCounter(keyName, servedBy string) error
+	// SpillCounters returns every (key_name, served_by) row fleet-wide. The
+	// table is bounded by keys x providers, so a per-key drill-down is just
+	// a client-side filter of this same payload - no separate query needed.
+	SpillCounters() ([]SpillCounterRow, error)
 
 	// Audit log (replaces audit/audit.go file-based logger)
 	AppendAuditLog(e AuditEntry) error
@@ -369,6 +379,20 @@ type KeyRecord struct {
 	Models        []string `json:"models"`
 	Revoked       bool     `json:"revoked"`
 	ExpiresAt     string   `json:"expires_at"`
+	LocalOnly     bool     `json:"local_only"`
+}
+
+// SpillCounterRow is one (key_name, served_by) count from the spill_counters
+// table - "how many requests this key sent to this destination". served_by
+// is "local", a cloud provider's Name, or "blocked" (a local_only policy
+// rejection). For any given key, summing requests across "local", every
+// enabled cloud provider, and "blocked" equals that key's total completed
+// routing decisions - a future code path that forgets to increment any
+// bucket is detectable as a mismatch against that invariant.
+type SpillCounterRow struct {
+	KeyName  string `json:"key_name"`
+	ServedBy string `json:"served_by"`
+	Requests int64  `json:"requests"`
 }
 
 // AuditEntry is one structured audit log record persisted to SQLite.
@@ -652,6 +676,8 @@ func (NopStore) RevokeKey(_ string) error                                  { ret
 func (NopStore) DeleteKey(_ string) error                                  { return nil }
 func (NopStore) AllKeys() ([]KeyRecord, error)                             { return nil, nil }
 func (NopStore) KeySpendSince(_ string, _ time.Time) (float64, error)      { return 0, nil }
+func (NopStore) IncrSpillCounter(_, _ string) error                        { return nil }
+func (NopStore) SpillCounters() ([]SpillCounterRow, error)                 { return nil, nil }
 func (NopStore) AppendAuditLog(_ AuditEntry) error                         { return nil }
 func (NopStore) QueryAuditLog(_ AuditQuery) ([]AuditEntry, error)          { return nil, nil }
 func (NopStore) PruneAuditLog(_ int) error                                 { return nil }
