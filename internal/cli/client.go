@@ -150,7 +150,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	}
 	if authed {
 		if c.Token == "" {
-			return nil, userErrorf("authentication required: run ollama-mesh login, or pass --token (or --username/--password / MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
+			return nil, userErrorf("authentication required: run ollama-mesh login, or pass --username/--password (or MESH_USERNAME+MESH_PASSWORD)")
 		}
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}

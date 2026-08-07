@@ -17,9 +17,11 @@ func TestRun_NodeControlProbe_JSON(t *testing.T) {
 		w.Write([]byte(`{"node":"gpu-0","configured":true,"driver":"systemd","identifier":"ollama.service","start_command":"","discovered":{"driver":"systemd","identifier":"ollama.service","evidence":["unit ollama.service found"]}}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"node", "control", "probe", "gpu-0", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"node", "control", "probe", "gpu-0", "--server", srv.URL, "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -34,9 +36,11 @@ func TestRun_NodeControlProbe_Table(t *testing.T) {
 		w.Write([]byte(`{"node":"gpu-0","configured":false,"driver":"","identifier":"","start_command":"","discovered":{"driver":"","identifier":"","evidence":null}}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"node", "control", "probe", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"node", "control", "probe", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -58,9 +62,11 @@ func TestRun_NodeControlAccept_JSON(t *testing.T) {
 		w.Write([]byte(`{"node":"gpu-0","configured":true,"driver":"systemd","identifier":"ollama.service"}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"node", "control", "accept", "gpu-0", "--driver", "systemd", "--identifier", "ollama.service", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"node", "control", "accept", "gpu-0", "--driver", "systemd", "--identifier", "ollama.service", "--server", srv.URL, "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -88,12 +94,15 @@ func TestRun_NodeControlAccept_StartCommandPassedThrough(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{
 		"node", "control", "accept", "gpu-0",
 		"--driver", "process", "--identifier", "/var/run/ollama.pid",
 		"--start-command", "/usr/local/bin/ollama serve",
-		"--server", srv.URL, "--token", "tok",
+		"--server", srv.URL,
 	}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())

@@ -18,47 +18,17 @@ type loginOutput struct {
 
 // runLogin authenticates once and persists the resulting session token to
 // the local session file (session.go), so every other CLI command can omit
-// --token/--username/--password afterward (authenticatedClient's fallback in
-// cli.go). Never prints the token itself, in table or JSON mode.
-//
-// explicitToken is true only when --token was passed on this command line
-// (fs.Visit in cli.go, not merely defaulted from MESH_TOKEN). Without that
-// distinction, a human running `ollama-mesh login --username x --password y`
-// to deliberately start a fresh session would have that explicit intent
-// silently discarded whenever MESH_TOKEN happened to be set in their shell -
-// login would just re-save the ambient env token and never call
-// client.Login at all. An explicitly-typed --token still wins over
-// --username/--password if both are somehow given together, matching how
-// --token already outranks credentials everywhere else in this CLI.
-func runLogin(flags *globalFlags, explicitToken bool, stdout, stderr io.Writer) int {
-	token := resolveCred(flags.token, "MESH_TOKEN")
+// --username/--password afterward (authenticatedClient's fallback in
+// cli.go). Never prints the token itself, in table or JSON mode. There is
+// deliberately no way to hand in an existing token directly (no --token
+// flag) - see newFlagSet's doc comment in cli.go; username/password (flag,
+// env, or interactive prompt) is the only input this command accepts.
+func runLogin(flags *globalFlags, stdout, stderr io.Writer) int {
 	username := resolveCred(flags.username, "MESH_USERNAME")
 	password := resolveCred(flags.password, "MESH_PASSWORD")
 
-	// username+password wins over token UNLESS a non-empty --token was
-	// explicitly passed on this command line. This is deliberately not
-	// "unless explicitToken", full stop: --token "" explicitly passed (a
-	// no-op value) must not block falling back to username/password that
-	// are otherwise available - only a token that actually resolved to
-	// something should out-rank them.
-	if username != "" && password != "" && !(explicitToken && token != "") {
+	if username != "" && password != "" {
 		return doLogin(flags, username, password, stdout, stderr)
-	}
-
-	if token != "" {
-		// An existing token, handed in directly - saved as-is. There is no
-		// session-introspection endpoint to recover username/role from a
-		// bare token (same gap runWhoami documents below), so those fields
-		// stay empty until the next login or a successful whoami/command.
-		if err := saveSession(savedSession{Server: normalizeServerURL(flags.server), Token: token}); err != nil {
-			return reportError(serverErrorf("could not save session: %v", err), stderr)
-		}
-		out := loginOutput{Server: flags.server}
-		if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, out); handled {
-			return code
-		}
-		fmt.Fprintf(stdout, "session token saved for %s (identity unknown until the next login or command)\n", flags.server)
-		return ExitOK
 	}
 
 	if isTerminal(os.Stdin.Fd()) && isTerminal(os.Stdout.Fd()) {
@@ -90,7 +60,7 @@ func runLogin(flags *globalFlags, explicitToken bool, stdout, stderr io.Writer) 
 		return doLogin(flags, username, password, stdout, stderr)
 	}
 
-	return reportError(userErrorf("authentication required: pass --username and --password (or --token), or run interactively in a terminal"), stderr)
+	return reportError(userErrorf("authentication required: pass --username and --password, or run interactively in a terminal"), stderr)
 }
 
 func doLogin(flags *globalFlags, username, password string, stdout, stderr io.Writer) int {

@@ -46,6 +46,21 @@ func withTempConfigDir(t *testing.T) {
 	t.Cleanup(func() { userConfigDir = orig })
 }
 
+// mustSaveSession saves a session for server/token, failing the test on
+// error. Used by control_test.go/models_test.go/runtime_test.go as the
+// stand-in for what those tests used to do with a bare --token flag value -
+// there is no CLI flag for handing in an existing token anymore (see
+// newFlagSet's doc comment in cli.go), so tests that only need
+// authenticatedClient to succeed (not to exercise login itself) go through
+// the saved-session file directly. Callers must call withTempConfigDir(t)
+// first for isolation from other tests.
+func mustSaveSession(t *testing.T, server, token string) {
+	t.Helper()
+	if err := saveSession(savedSession{Server: server, Token: token}); err != nil {
+		t.Fatalf("saveSession: %v", err)
+	}
+}
+
 func TestSessionFile_SaveLoadDelete(t *testing.T) {
 	withTempConfigDir(t)
 
@@ -147,17 +162,26 @@ func TestAuthenticatedClient_SavedSessionIgnoredForDifferentServer(t *testing.T)
 	}
 }
 
-func TestAuthenticatedClient_ExplicitTokenBeatsSavedSession(t *testing.T) {
+func TestAuthenticatedClient_ExplicitUsernamePasswordBeatsSavedSession(t *testing.T) {
 	withTempConfigDir(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "Bearer explicit-tok" {
+		switch r.URL.Path {
+		case "/admin/v1/login":
+			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "explicit-tok"})
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-			return
+			w.Write([]byte(`{"role":"admin","username":"admin"}`))
+		case "/admin/v1/nodes":
+			if r.Header.Get("Authorization") == "Bearer explicit-tok" {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`[]`))
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthorized"}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"unauthorized"}`))
 	}))
 	defer srv.Close()
 
@@ -166,9 +190,22 @@ func TestAuthenticatedClient_ExplicitTokenBeatsSavedSession(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"nodes", "--server", srv.URL, "--token", "explicit-tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"nodes", "--server", srv.URL, "--username", "admin", "--password", "admin", "--json"}, &stdout, &stderr)
 	if code != ExitOK {
-		t.Fatalf("expected exit %d, --token must win over the saved session, got %d (stderr: %s)", ExitOK, code, stderr.String())
+		t.Fatalf("expected exit %d, --username/--password must win over the saved session, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+}
+
+func TestRun_Login_NoTokenFlag_IsUnknownFlag(t *testing.T) {
+	withTempConfigDir(t)
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"login", "--server", "http://example.invalid", "--token", "anything"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d (unknown flag), got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "flag provided but not defined") {
+		t.Fatalf("expected an unknown-flag error for --token, got %q", stderr.String())
 	}
 }
 
@@ -206,95 +243,6 @@ func TestRun_Login_WithFlags_SavesSessionWithoutLeakingToken(t *testing.T) {
 	}
 }
 
-func TestRun_Login_ExplicitFlags_BeatAmbientMESH_TOKEN(t *testing.T) {
-	withTempConfigDir(t)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/admin/v1/login" {
-			t.Fatalf("expected a real login round trip via /admin/v1/login, got %s", r.URL.Path)
-		}
-		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "freshly-logged-in-token"})
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"role":"admin","username":"admin"}`))
-	}))
-	defer srv.Close()
-
-	t.Setenv("MESH_TOKEN", "stray-env-token-from-another-tool")
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"login", "--server", srv.URL, "--username", "admin", "--password", "admin"}, &stdout, &stderr)
-	if code != ExitOK {
-		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
-	}
-
-	session, err := loadSession()
-	if err != nil {
-		t.Fatalf("loadSession: %v", err)
-	}
-	if session == nil || session.Token != "freshly-logged-in-token" {
-		t.Fatalf("explicit --username/--password must win over an ambient MESH_TOKEN - expected the freshly logged-in token to be saved, got %+v", session)
-	}
-}
-
-func TestRun_Login_ExplicitTokenFlag_BeatsAmbientUsernamePassword(t *testing.T) {
-	withTempConfigDir(t)
-
-	// A server that would fail the test if login ever actually attempted a
-	// username/password round trip - only --token's "save as-is" path
-	// should run.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatalf("login must not contact the server when --token is explicitly passed, got request to %s", r.URL.Path)
-	}))
-	defer srv.Close()
-
-	t.Setenv("MESH_USERNAME", "stray-env-username")
-	t.Setenv("MESH_PASSWORD", "stray-env-password")
-
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"login", "--server", srv.URL, "--token", "explicitly-provided-token"}, &stdout, &stderr)
-	if code != ExitOK {
-		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
-	}
-
-	session, err := loadSession()
-	if err != nil {
-		t.Fatalf("loadSession: %v", err)
-	}
-	if session == nil || session.Token != "explicitly-provided-token" {
-		t.Fatalf("an explicitly-passed --token must win over ambient MESH_USERNAME/MESH_PASSWORD, got %+v", session)
-	}
-}
-
-func TestRun_Login_ExplicitEmptyTokenFallsBackToUsernamePassword(t *testing.T) {
-	withTempConfigDir(t)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/admin/v1/login" {
-			t.Fatalf("unexpected path %s", r.URL.Path)
-		}
-		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "tok"})
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"role":"admin","username":"admin"}`))
-	}))
-	defer srv.Close()
-
-	var stdout, stderr bytes.Buffer
-	// --token "" is explicitly passed (empty value) alongside valid
-	// username/password - the empty token must not block falling back to
-	// them, even though --token was technically "explicit".
-	code := Run([]string{"login", "--server", srv.URL, "--token", "", "--username", "admin", "--password", "admin"}, &stdout, &stderr)
-	if code != ExitOK {
-		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
-	}
-	session, err := loadSession()
-	if err != nil {
-		t.Fatalf("loadSession: %v", err)
-	}
-	if session == nil || session.Token != "tok" {
-		t.Fatalf("expected the username/password login to have run, got %+v", session)
-	}
-}
-
 func TestRun_Login_UsernameFlagPlusPasswordEnv_BothResolve(t *testing.T) {
 	withTempConfigDir(t)
 
@@ -321,7 +269,6 @@ func TestRun_Login_UsernameFlagPlusPasswordEnv_BothResolve(t *testing.T) {
 
 func TestRun_NoEnvSecretLeaksViaHelpOrParseError(t *testing.T) {
 	withTempConfigDir(t)
-	t.Setenv("MESH_TOKEN", "SEKRET-TOKEN-VALUE")
 	t.Setenv("MESH_PASSWORD", "SEKRET-PASSWORD-VALUE")
 
 	for _, args := range [][]string{
@@ -336,7 +283,7 @@ func TestRun_NoEnvSecretLeaksViaHelpOrParseError(t *testing.T) {
 	} {
 		var stdout, stderr bytes.Buffer
 		Run(args, &stdout, &stderr)
-		for _, secret := range []string{"SEKRET-TOKEN-VALUE", "SEKRET-PASSWORD-VALUE"} {
+		for _, secret := range []string{"SEKRET-PASSWORD-VALUE"} {
 			if strings.Contains(stdout.String(), secret) || strings.Contains(stderr.String(), secret) {
 				t.Fatalf("%v leaked %q - stdout=%q stderr=%q", args, secret, stdout.String(), stderr.String())
 			}

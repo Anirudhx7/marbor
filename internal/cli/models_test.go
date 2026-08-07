@@ -21,9 +21,11 @@ func TestRun_ModelsPull_JSON(t *testing.T) {
 		w.Write([]byte(`{"ok":true,"node":"gpu-0","model":"llama3:8b"}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "pull", "gpu-0", "llama3:8b", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"models", "pull", "gpu-0", "llama3:8b", "--server", srv.URL, "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -50,9 +52,11 @@ func TestRun_ModelsDelete_TextOutput(t *testing.T) {
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "delete", "gpu-0", "llama3:8b", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"models", "delete", "gpu-0", "llama3:8b", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -76,9 +80,11 @@ func TestRun_ModelsUnload_TextOutput(t *testing.T) {
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "unload", "gpu-0", "llama3:8b", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"models", "unload", "gpu-0", "llama3:8b", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -102,9 +108,11 @@ func TestRun_ModelsList_JSON(t *testing.T) {
 		w.Write([]byte(`{"models":[{"name":"llama3:8b","sizeBytes":4700000000,"source":"ollama-tags","family":"llama"}]}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "list", "gpu-0", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"models", "list", "gpu-0", "--server", srv.URL, "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -136,9 +144,11 @@ func TestRun_Models_BareCommand_UnaffectedByNewSubcommands(t *testing.T) {
 		w.Write([]byte(`{"models":[]}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"models", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -155,7 +165,7 @@ func TestRun_Models_UnknownAction_Errors(t *testing.T) {
 	defer srv.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "bogus", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"models", "bogus", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitUserError {
 		t.Fatalf("expected exit %d, got %d (stdout: %s, stderr: %s)", ExitUserError, code, stdout.String(), stderr.String())
 	}
