@@ -272,6 +272,8 @@ Commands:
   node control probe <node>                  show a node's control-driver status (configured + discovered)
   node control accept <node> --driver X --identifier Y [--start-command Z]
                                               accept a control driver + identifier for a node
+  key set-local-only <name> <true|false>    block (or re-allow) cloud fallback for one API key
+  spill                                       show per-key, per-provider local-vs-cloud request counts
 
 Run "ollama-mesh <command> --help" for the full list of actions and flags for
 that command.
@@ -523,6 +525,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			printNodeControlUsage(stderr)
 			return ExitUserError
 		}
+	case "key":
+		if len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
+			printKeyUsage(stdout)
+			return ExitOK
+		}
+		if len(rest) < 1 || rest[0] != "set-local-only" {
+			printKeyUsage(stderr)
+			return ExitUserError
+		}
+		fs, flags := newFlagSet("key set-local-only", stderr)
+		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+		if ok, code := parseFlags(fs, flagArgs, printKeyUsage, stdout); !ok {
+			return code
+		}
+		if len(positional) != 2 {
+			fmt.Fprintln(stderr, "usage: ollama-mesh key set-local-only <name> <true|false>")
+			return ExitUserError
+		}
+		return runKeySetLocalOnly(flags, positional[0], positional[1], stdout, stderr)
+	case "spill":
+		fs, flags := newFlagSet("spill", stderr)
+		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
+			return code
+		}
+		return runSpill(flags, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n", cmd)
 		fmt.Fprint(stderr, usage)

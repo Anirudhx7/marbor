@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow } from '../types';
 
 const BASE = '/admin';
 
@@ -447,7 +447,7 @@ export async function fetchSummary() {
   };
 }
 
-export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string; dailyUsdCap?: number; monthlyUsdCap?: number }): Promise<{ key: string }> {
+export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string; dailyUsdCap?: number; monthlyUsdCap?: number; localOnly?: boolean }): Promise<{ key: string }> {
   const res = await apiFetch(`${BASE}/keys`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -517,13 +517,19 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
   return res.json() as Promise<import('../types').GPUNode>;
 }
 
-export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string }) {
+export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string; local_only?: boolean }) {
   const res = await apiFetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Failed to patch key');
+  return res.json();
+}
+
+export async function getSpillCounters(): Promise<SpillCounterRow[]> {
+  const res = await apiFetch(`${BASE}/spill`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch spill counters');
   return res.json();
 }
 

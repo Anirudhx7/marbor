@@ -391,6 +391,8 @@ Set a provider configuration (JSON format for `POST /admin/v1/cloud/providers` o
 
 Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI response translated back to Ollama NDJSON - clients never see a format difference.
 
+Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API Keys page's edit modal) to forbid that key from ever reaching a cloud provider - a request that would otherwise fall back instead fails closed with a `503 local_only_blocked` error. Every request's local/cloud/blocked outcome is durably counted per key and per provider, readable via `GET /admin/v1/spill` or `mesh spill`, and shown on the Analytics page's Cloud Spill table.
+
 ---
 
 ## Operational Topology
@@ -411,6 +413,7 @@ Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI respons
 | GET | `/admin/v1/keys` | API keys: usage stats, monthly cost, token totals |
 | GET | `/admin/v1/metrics/savings` | Cost savings vs pure cloud - current process lifetime |
 | GET | `/admin/v1/cloud/providers` | Cloud fallback providers: status, spend |
+| GET | `/admin/v1/spill` | Per-key, per-provider local/cloud/blocked request counts |
 | GET | `/health` | 200 OK when control plane is ready (unauthenticated, for LB health checks) |
 | POST | `/admin/nodes/{name}/drain` | Drain node for maintenance |
 | PATCH | `/admin/keys/{name}` | Mutate key rate limits, quotas, model allow-lists at runtime |

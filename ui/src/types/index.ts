@@ -218,6 +218,16 @@ export interface APIKey {
   allowedModels: string[];
   models?: string[];
   expiresAt: string | null;
+  localOnly?: boolean;
+}
+
+// SpillCounterRow mirrors one row of GET /admin/v1/spill - a per-key,
+// per-served_by request count. servedBy is "local", a cloud provider's
+// name, or "blocked" (a local_only policy rejection).
+export interface SpillCounterRow {
+  key_name: string;
+  served_by: string;
+  requests: number;
 }
 
 export interface RoutingRule {
