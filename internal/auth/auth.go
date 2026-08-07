@@ -65,6 +65,7 @@ type keyState struct {
 	monthlyLimit  int
 	dailyUsdCap   float64
 	monthlyUsdCap float64
+	localOnly     bool
 }
 
 type keyCounter struct {
@@ -282,6 +283,7 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 			monthlyLimit:  k.MonthlyLimit,
 			dailyUsdCap:   k.DailyUsdCap,
 			monthlyUsdCap: k.MonthlyUsdCap,
+			localOnly:     k.LocalOnly,
 		}
 		m.keys[k.Key] = ks
 		m.byName[k.Name] = ks
@@ -299,6 +301,7 @@ type KeyPatch struct {
 	MonthlyUsdCap *float64 `json:"monthly_usd_cap"`
 	Models        []string `json:"models"`
 	ExpiresAt     *string  `json:"expires_at"`
+	LocalOnly     *bool    `json:"local_only"`
 }
 
 // PatchKey updates mutable fields of an existing key without rotating it.
@@ -333,6 +336,9 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 	if patch.ExpiresAt != nil {
 		ks.expiresAt = *patch.ExpiresAt
 	}
+	if patch.LocalOnly != nil {
+		ks.localOnly = *patch.LocalOnly
+	}
 	ks.mu.Unlock()
 	return true
 }
@@ -351,6 +357,7 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 		monthlyLimit:  k.MonthlyLimit,
 		dailyUsdCap:   k.DailyUsdCap,
 		monthlyUsdCap: k.MonthlyUsdCap,
+		localOnly:     k.LocalOnly,
 	}
 	m.mu.Lock()
 	m.keys[k.Key] = ks
@@ -380,6 +387,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 			existing.monthlyLimit = k.MonthlyLimit
 			existing.dailyUsdCap = k.DailyUsdCap
 			existing.monthlyUsdCap = k.MonthlyUsdCap
+			existing.localOnly = k.LocalOnly
 			if k.RateLimit != existing.rateLimit {
 				existing.rateLimit = k.RateLimit
 				existing.limiter = newTokenBucket(k.RateLimit)
@@ -401,6 +409,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 				createdAt:    time.Now(),
 				dailyLimit:   k.DailyLimit,
 				monthlyLimit: k.MonthlyLimit,
+				localOnly:    k.LocalOnly,
 			}
 			newKeys[k.Key] = ks
 			newByName[k.Name] = ks
@@ -440,6 +449,30 @@ func (m *Middleware) KeyUsdCaps(name string) (daily, monthly float64, ok bool) {
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
 	return ks.dailyUsdCap, ks.monthlyUsdCap, true
+}
+
+// IsLocalOnly reports whether name's live (possibly patched) policy forbids
+// cloud fallback - a request that would otherwise spill to a cloud provider
+// must instead fail closed. Returns false for an unknown key name: an
+// unrecognized/anonymous request was never cloud-gated by this check, so it
+// fails open to today's existing behavior rather than blocking it.
+//
+// Locking follows the same discipline as KeyUsdCaps above: Middleware.mu is
+// held only briefly to look up the key, then released before keyState.mu is
+// taken - never the reverse, and never held across a call into
+// internal/store. This is a pure in-memory read with no store lock at all,
+// so it is a strict subset of KeyUsdCaps'/CloudBudgetExceeded's existing
+// lock ordering, not a new hierarchy.
+func (m *Middleware) IsLocalOnly(name string) bool {
+	m.mu.RLock()
+	ks, found := m.byName[name]
+	m.mu.RUnlock()
+	if !found {
+		return false
+	}
+	ks.mu.RLock()
+	defer ks.mu.RUnlock()
+	return ks.localOnly
 }
 
 // Refund restores one request's rate-limit token and quota count for a key,
