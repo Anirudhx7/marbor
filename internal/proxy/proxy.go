@@ -56,6 +56,29 @@ func writeAPIError(w http.ResponseWriter, status int, message, errType, code str
 	}})
 }
 
+// localOnlyBlocked checks whether keyName is configured local_only and, if
+// so, fails the request closed instead of letting the caller proceed to
+// CloudChain()/proxyToCloud - a local_only key's traffic must never leave
+// local nodes, even when a cloud provider is configured and reachable.
+// Callers must check this BEFORE computing CloudChain() at every
+// cloud-fallback decision point, and must not call proxyToCloud if this
+// returns true. Returns false (does nothing) for a key that is not
+// local_only, so both existing call sites fall through to today's behavior
+// unchanged.
+func (h *Handler) localOnlyBlocked(w http.ResponseWriter, keyName, modelName string) bool {
+	if h.auth == nil || !h.auth.IsLocalOnly(keyName) {
+		return false
+	}
+	writeAPIError(w, http.StatusServiceUnavailable,
+		"key is configured local_only and no local node is available; request was not sent to any cloud provider",
+		"server_error", "local_only_blocked")
+	metrics.RequestsTotal(keyName, modelName, "none", "503")
+	if h.admin != nil {
+		h.admin.IncrSpill(keyName, "blocked")
+	}
+	return true
+}
+
 type Handler struct {
 	router *router.Router
 	admin  *admin.Server
@@ -354,6 +377,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
 
 	if node == nil {
+		if h.localOnlyBlocked(w, keyName, modelName) {
+			return
+		}
 		// Try cloud fallback first - cloud providers support /api/* paths via
 		// the translating transport, so Ollama-native clients can still reach
 		// cloud when no local Ollama node is available.
@@ -482,6 +508,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// No alternate nodes - try cloud fallback.
+			if h.localOnlyBlocked(rw, keyName, modelName) {
+				retryErr = errCloudHandled
+				return
+			}
 			clouds := h.router.CloudChain()
 			if len(clouds) > 0 {
 				if h.admin != nil {
@@ -589,7 +619,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, logTokens)
 		if tokens >= 0 {
-			h.admin.TrackLocalRequestModel(modelName, tokens, rec.evalDurationMs())
+			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
 		}
 	}
@@ -987,7 +1017,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		}
 		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, logTokens)
 		if tokens >= 0 {
-			h.admin.TrackCloudCostModel(modelName, cloud.CostPer1KTokens, tokens)
+			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local mesh
 			// node's profile and don't apply to cloud dispatch - cloud spend
 			// already has its own governance via CloudBudgetExceeded and the
