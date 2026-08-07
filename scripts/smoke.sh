@@ -94,9 +94,9 @@ else
   "$cli_bin" status --server "http://localhost:8080" >/dev/null \
     || fail "ollama-mesh status against live demo stack failed"
 
-  nodes_json=$("$cli_bin" nodes --server "http://localhost:8080" --token "$ADMIN_TOKEN" --json) \
+  nodes_json=$("$cli_bin" nodes --server "http://localhost:8080" --username admin --password admin --json) \
     || fail "ollama-mesh nodes against live demo stack failed"
-  models_json=$("$cli_bin" models --server "http://localhost:8080" --token "$ADMIN_TOKEN" --json) \
+  models_json=$("$cli_bin" models --server "http://localhost:8080" --username admin --password admin --json) \
     || fail "ollama-mesh models against live demo stack failed"
 
   if command -v jq &>/dev/null; then
