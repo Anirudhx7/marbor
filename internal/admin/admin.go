@@ -594,6 +594,7 @@ type keyResp struct {
 	Status            string   `json:"status"`
 	AllowedModels     []string `json:"allowedModels"`
 	ExpiresAt         string   `json:"expiresAt,omitempty"`
+	LocalOnly         bool     `json:"localOnly,omitempty"`
 }
 
 func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...store.Store) *Server {
@@ -1017,6 +1018,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
 	reg("PATCH /admin/keys/{name}", s.cors(s.adminAuth(s.handlePatchKey)))
 	reg("DELETE /admin/keys/{name}", s.cors(s.adminAuth(s.handleRevokeKey)))
+	reg("GET /admin/spill", s.cors(s.adminAuth(s.handleSpillCounters)))
 
 	reg("GET /admin/routing/rules", s.cors(s.adminAuth(s.handleRoutingRules)))
 	reg("POST /admin/routing/rules", s.cors(s.adminAuth(s.handleAddRoutingRule)))
@@ -1439,6 +1441,7 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 				DailyUsdCap:   rk.DailyUsdCap,
 				MonthlyUsdCap: rk.MonthlyUsdCap,
 				Models:        rk.Models,
+				LocalOnly:     rk.LocalOnly,
 			})
 		}
 	}
@@ -1462,6 +1465,10 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			if kd, km, kok := s.auth.KeyUsdCaps(k.Name); kok {
 				dailyUsdCap, monthlyUsdCap = kd, km
 			}
+		}
+		localOnly := k.LocalOnly
+		if s.auth != nil {
+			localOnly = s.auth.IsLocalOnly(k.Name)
 		}
 
 		// Determine status: revoked if not present in auth, expired if past expiresAt, else active.
@@ -1503,10 +1510,38 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			Status:            status,
 			AllowedModels:     models,
 			ExpiresAt:         expires,
+			LocalOnly:         localOnly,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
+}
+
+// handleSpillCounters returns the full spill_counters table fleet-wide: one
+// row per (key_name, served_by), where served_by is "local", a cloud
+// provider's Name, or "blocked" (a local_only policy rejection). Response
+// shape:
+//
+//	[
+//	  {"key_name": "finance", "served_by": "local",  "requests": 1234},
+//	  {"key_name": "finance", "served_by": "openai", "requests": 4},
+//	  {"key_name": "finance", "served_by": "blocked","requests": 2}
+//	]
+//
+// A per-key drill-down is a client-side filter of this same payload - the
+// table is bounded by keys x providers, so a second endpoint would be pure
+// duplication. GET /admin/spill
+func (s *Server) handleSpillCounters(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.st.SpillCounters()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read spill counters")
+		return
+	}
+	if rows == nil {
+		rows = []store.SpillCounterRow{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rows)
 }
 
 func (s *Server) handleLiveRequests(w http.ResponseWriter, r *http.Request) {
@@ -4384,8 +4419,9 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		Models:        k.Models,
 		Revoked:       false,
 		ExpiresAt:     k.ExpiresAt,
+		LocalOnly:     k.LocalOnly,
 	})
-	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models))
+	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v, LocalOnly: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models, k.LocalOnly))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(k)
@@ -4455,9 +4491,12 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		if patch.ExpiresAt != nil {
 			keyRecord.ExpiresAt = *patch.ExpiresAt
 		}
+		if patch.LocalOnly != nil {
+			keyRecord.LocalOnly = *patch.LocalOnly
+		}
 		_ = s.st.UpsertKey(*keyRecord)
 	}
-	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v, ExpiresAtChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil, patch.ExpiresAt != nil))
+	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v, ExpiresAtChanged: %v, LocalOnlyChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil, patch.ExpiresAt != nil, patch.LocalOnly != nil))
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"key":%q,"updated":true}`, name)
 }
@@ -4785,6 +4824,18 @@ func (s *Server) logSystemChange(r *http.Request, action, target, details string
 	})
 }
 
+// IncrSpill increments the (keyName, servedBy) row in spill_counters.
+// servedBy is "local", a cloud provider's Name, or "blocked" (a local_only
+// policy rejection). Best-effort accounting only: a SQLite error here (e.g.
+// momentarily locked) is logged and otherwise ignored - it must never affect
+// the inference request that triggered it, the same posture LogRequest's
+// own async writer already takes on a full queue.
+func (s *Server) IncrSpill(keyName, servedBy string) {
+	if err := s.st.IncrSpillCounter(keyName, servedBy); err != nil {
+		log.Printf("admin: IncrSpill(%s, %s): %v", keyName, servedBy, err)
+	}
+}
+
 func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latencyMs int, tokens int64) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
@@ -4889,10 +4940,11 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 // milliseconds (generation time only, excluding prompt processing); 0 means
 // unavailable (cloud responses never report it) and is excluded from the
 // hourly tokens-per-second rollup rather than skewing it toward infinity.
-func (s *Server) TrackLocalRequestModel(model string, tokens, genDurationMs int64) {
+func (s *Server) TrackLocalRequestModel(keyName, model string, tokens, genDurationMs int64) {
 	atomic.AddInt64(&s.localCount, 1)
 	atomic.AddInt64(&s.localTokens, tokens)
 	s.analytics.recordLocal(model, tokens, genDurationMs)
+	s.IncrSpill(keyName, "local")
 	// Persist hourly bucket and model stat for this request, async (see
 	// .local/audit-fixes-2026-08-03.md #1 - these were synchronous SQLite
 	// writes on every single inference request before).
@@ -4937,7 +4989,7 @@ func (s *Server) LocalTokens() int64 {
 // TrackCloudCostModel tracks a cloud request with model-level granularity.
 // tokens is the real token count parsed from the provider response; 0 means
 // the count was unavailable and no cost is recorded for the request.
-func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int64) {
+func (s *Server) TrackCloudCostModel(keyName, provider, model string, costPer1K float64, tokens int64) {
 	atomic.AddInt64(&s.cloudCount, 1)
 	atomic.AddInt64(&s.cloudTokens, tokens)
 	cost := costPer1K * float64(tokens) / 1000.0
@@ -4945,6 +4997,7 @@ func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int
 	s.cloudSpentUSD += cost
 	s.mu.Unlock()
 	s.analytics.recordCloud(model, costPer1K, tokens)
+	s.IncrSpill(keyName, provider)
 	// Persist hourly bucket and model stat for this request. Kept SYNCHRONOUS
 	// (unlike TrackLocalRequestModel above) because cloudSpendSince() reads
 	// this exact hourly_buckets row to enforce the daily/monthly cloud spend

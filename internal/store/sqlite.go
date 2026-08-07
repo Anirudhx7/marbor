@@ -402,6 +402,19 @@ func (s *sqliteStore) migrate() error {
 		// benchmark_runs is the history table for the in-dashboard hardware
 		// benchmark page (evict -> N cold samples -> N warm samples via the
 		// mesh's own /v1/chat/completions). No secrets here - R8 doesn't apply.
+		// spill_counters is a durable, increment-in-place count of requests
+		// per key x served_by ("local", a cloud provider name, or "blocked"
+		// for a local_only policy rejection). Bounded by keys x providers -
+		// never grows with request volume, unlike request_log. Rows are
+		// historical telemetry: deleting an API key never deletes its rows
+		// here (no FK/cascade to runtime_keys).
+		`CREATE TABLE IF NOT EXISTS spill_counters (
+			key_name  TEXT NOT NULL,
+			served_by TEXT NOT NULL,
+			requests  INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (key_name, served_by)
+		)`,
+
 		`CREATE TABLE IF NOT EXISTS benchmark_runs (
 			id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			node         TEXT NOT NULL,
@@ -434,6 +447,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN daily_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runtime_keys ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
@@ -1366,15 +1380,19 @@ func (s *sqliteStore) UpsertKey(k KeyRecord) error {
 	if k.Revoked {
 		revoked = 1
 	}
+	localOnly := 0
+	if k.LocalOnly {
+		localOnly = 1
+	}
 	encKey, err := encryptSecret(s.secretKey, k.Key)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
 	}
 	_, err = s.db.Exec(
 		`INSERT OR REPLACE INTO runtime_keys
-			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		k.Name, encKey, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked, k.ExpiresAt,
+			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at, local_only)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.Name, encKey, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked, k.ExpiresAt, localOnly,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
@@ -1417,7 +1435,7 @@ func (s *sqliteStore) DeleteKey(name string) error {
 
 func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at FROM runtime_keys`,
+		`SELECT name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at, local_only FROM runtime_keys`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllKeys: %w", err)
@@ -1428,10 +1446,11 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 	for rows.Next() {
 		var k KeyRecord
 		var modelsJSON string
-		var revoked int
-		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked, &k.ExpiresAt); err != nil {
+		var revoked, localOnly int
+		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked, &k.ExpiresAt, &localOnly); err != nil {
 			return nil, fmt.Errorf("store: AllKeys scan: %w", err)
 		}
+		k.LocalOnly = localOnly != 0
 		dec, decErr := decryptSecret(s.secretKey, k.Key)
 		if decErr != nil {
 			// A single undecryptable row (corrupt data, rotated key) must not
@@ -1480,6 +1499,40 @@ func (s *sqliteStore) KeySpendSince(keyName string, since time.Time) (float64, e
 		return 0, fmt.Errorf("store: KeySpendSince: %w", err)
 	}
 	return total, nil
+}
+
+// IncrSpillCounter increments (keyName, servedBy)'s request count by one,
+// creating the row if absent. Best-effort: callers must treat an error here
+// as non-fatal to the request being served.
+func (s *sqliteStore) IncrSpillCounter(keyName, servedBy string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO spill_counters (key_name, served_by, requests) VALUES (?, ?, 1)
+			ON CONFLICT(key_name, served_by) DO UPDATE SET requests = requests + 1`,
+		keyName, servedBy,
+	)
+	if err != nil {
+		return fmt.Errorf("store: IncrSpillCounter: %w", err)
+	}
+	return nil
+}
+
+// SpillCounters returns every (key_name, served_by) row fleet-wide.
+func (s *sqliteStore) SpillCounters() ([]SpillCounterRow, error) {
+	rows, err := s.db.Query(`SELECT key_name, served_by, requests FROM spill_counters`)
+	if err != nil {
+		return nil, fmt.Errorf("store: SpillCounters: %w", err)
+	}
+	defer rows.Close()
+
+	var out []SpillCounterRow
+	for rows.Next() {
+		var r SpillCounterRow
+		if err := rows.Scan(&r.KeyName, &r.ServedBy, &r.Requests); err != nil {
+			return nil, fmt.Errorf("store: SpillCounters scan: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 // --- Audit log ---

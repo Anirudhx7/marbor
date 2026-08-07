@@ -45,7 +45,7 @@ export function APIKeys() {
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [editKey, setEditKey] = useState<APIKey | null>(null);
-  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[]; expiresAt: string }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [], expiresAt: '' });
+  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[]; expiresAt: string; localOnly: boolean }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [], expiresAt: '', localOnly: false });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -59,13 +59,14 @@ export function APIKeys() {
       monthlyUsdCap: key.monthlyUsdCap != null ? String(key.monthlyUsdCap) : '',
       models: key.allowedModels ?? [],
       expiresAt: key.expiresAt ?? '',
+      localOnly: key.localOnly ?? false,
     });
     setEditError('');
   };
 
   const handleSaveKeyPatch = async () => {
     if (!editKey) return;
-    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string } = {};
+    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string; local_only?: boolean } = {};
     if (editForm.rateLimit.trim()) {
       const v = parseInt(editForm.rateLimit, 10);
       if (isNaN(v) || v < 0) { setEditError('Rate limit must be a non-negative integer'); return; }
@@ -105,6 +106,9 @@ export function APIKeys() {
       }
       patch.expires_at = editForm.expiresAt;
     }
+    if (editForm.localOnly !== (editKey.localOnly ?? false)) {
+      patch.local_only = editForm.localOnly;
+    }
     if (Object.keys(patch).length === 0) { setEditKey(null); return; }
 
     if (demoMode) {
@@ -118,6 +122,7 @@ export function APIKeys() {
             monthlyUsdCap: patch.monthly_usd_cap ?? k.monthlyUsdCap,
             allowedModels: patch.models ?? k.allowedModels,
             expiresAt: patch.expires_at !== undefined ? (patch.expires_at || null) : k.expiresAt,
+            localOnly: patch.local_only ?? k.localOnly,
           }
         : k));
       setEditKey(null);
@@ -761,6 +766,21 @@ export function APIKeys() {
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
             </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div>
+              <div className="text-sm font-medium text-foreground">Local-only (never use cloud fallback)</div>
+              <div className="text-xs text-muted-foreground">Requests will fail instead of spilling to a cloud provider.</div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={editForm.localOnly}
+              onClick={() => setEditForm({ ...editForm, localOnly: !editForm.localOnly })}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.localOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.localOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
           </div>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">

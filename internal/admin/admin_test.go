@@ -26,9 +26,9 @@ func newTestServer() *Server {
 func TestTrackLocalRequestModel(t *testing.T) {
 	s := newTestServer()
 
-	s.TrackLocalRequestModel("llama3", 100, 0)
-	s.TrackLocalRequestModel("llama3", 200, 0)
-	s.TrackLocalRequestModel("llama3", 0, 0) // token count unavailable
+	s.TrackLocalRequestModel("testkey", "llama3", 100, 0)
+	s.TrackLocalRequestModel("testkey", "llama3", 200, 0)
+	s.TrackLocalRequestModel("testkey", "llama3", 0, 0) // token count unavailable
 
 	if got := atomic.LoadInt64(&s.localCount); got != 3 {
 		t.Errorf("localCount = %d, want 3", got)
@@ -42,8 +42,8 @@ func TestTrackLocalRequestModelComputesTokensPerSec(t *testing.T) {
 	s := newTestServer()
 
 	// 100 tokens in 2000ms, then 100 more in 2000ms: 200 tokens / 4s = 50 tok/s.
-	s.TrackLocalRequestModel("llama3", 100, 2000)
-	s.TrackLocalRequestModel("llama3", 100, 2000)
+	s.TrackLocalRequestModel("testkey", "llama3", 100, 2000)
+	s.TrackLocalRequestModel("testkey", "llama3", 100, 2000)
 
 	buckets := s.analytics.last24hBuckets()
 	last := buckets[len(buckets)-1]
@@ -57,7 +57,7 @@ func TestTrackLocalRequestModelZeroDurationExcludedFromTPS(t *testing.T) {
 
 	// Cloud-shaped response with tokens but no real generation duration must
 	// not be divided by zero or rendered as a fabricated rate.
-	s.TrackLocalRequestModel("llama3", 100, 0)
+	s.TrackLocalRequestModel("testkey", "llama3", 100, 0)
 
 	buckets := s.analytics.last24hBuckets()
 	last := buckets[len(buckets)-1]
@@ -69,8 +69,8 @@ func TestTrackLocalRequestModelZeroDurationExcludedFromTPS(t *testing.T) {
 func TestTrackCloudCostModel(t *testing.T) {
 	s := newTestServer()
 
-	s.TrackCloudCostModel("gpt-4o", 0.002, 1000)
-	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 0.002, 1000)
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 0.002, 500)
 
 	if gotCount := atomic.LoadInt64(&s.cloudCount); gotCount != 2 {
 		t.Errorf("cloudCount = %d, want 2", gotCount)
@@ -90,7 +90,7 @@ func TestTrackCloudCostModel(t *testing.T) {
 func TestTrackCloudCostModelUnknownTokensAddsNoCost(t *testing.T) {
 	s := newTestServer()
 
-	s.TrackCloudCostModel("gpt-4o", 0.002, 0)
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 0.002, 0)
 
 	s.mu.RLock()
 	gotSpent := s.cloudSpentUSD
@@ -182,11 +182,11 @@ func TestHandleSavings(t *testing.T) {
 	s := newTestServer()
 
 	// 3 local requests totaling 1500 tokens, 2 cloud at $0.002/1K tokens
-	s.TrackLocalRequestModel("llama3", 500, 0)
-	s.TrackLocalRequestModel("llama3", 500, 0)
-	s.TrackLocalRequestModel("llama3", 500, 0)
-	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
-	s.TrackCloudCostModel("gpt-4o", 0.002, 500)
+	s.TrackLocalRequestModel("testkey", "llama3", 500, 0)
+	s.TrackLocalRequestModel("testkey", "llama3", 500, 0)
+	s.TrackLocalRequestModel("testkey", "llama3", 500, 0)
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 0.002, 500)
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 0.002, 500)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil)
 	rec := httptest.NewRecorder()
@@ -237,7 +237,7 @@ func TestHandleSavingsCustomReferenceRate(t *testing.T) {
 	cfg := config.Config{Savings: config.SavingsConfig{ReferenceCostPer1K: 0.01}}
 	s := NewServer(r, nil, cfg)
 
-	s.TrackLocalRequestModel("llama3", 1500, 0)
+	s.TrackLocalRequestModel("testkey", "llama3", 1500, 0)
 
 	rec := httptest.NewRecorder()
 	s.handleSavings(rec, httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil))
@@ -267,8 +267,8 @@ func TestHandleSavingsNullWhenNoTokenData(t *testing.T) {
 	s := newTestServer()
 
 	// Requests happened but no token counts could be parsed.
-	s.TrackLocalRequestModel("llama3", 0, 0)
-	s.TrackCloudCostModel("gpt-4o", 0.002, 0)
+	s.TrackLocalRequestModel("testkey", "llama3", 0, 0)
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 0.002, 0)
 
 	rec := httptest.NewRecorder()
 	s.handleSavings(rec, httptest.NewRequest(http.MethodGet, "/admin/metrics/savings", nil))
@@ -722,7 +722,7 @@ func TestHandlePatchNode_SetsRuntime(t *testing.T) {
 
 func TestCloudBudgetExceeded_DisabledByDefault(t *testing.T) {
 	s := newTestServer()
-	s.TrackCloudCostModel("gpt-4o", 1000.0, 1000) // huge cost, caps still 0/disabled
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 1000.0, 1000) // huge cost, caps still 0/disabled
 
 	if exceeded, reason := s.CloudBudgetExceeded(""); exceeded {
 		t.Errorf("CloudBudgetExceeded = true (%q), want false when both caps are 0", reason)
@@ -747,7 +747,7 @@ func TestCloudBudgetExceeded_DailyCapReached(t *testing.T) {
 	}
 
 	// costPer1K * tokens/1000 = 2.0 * 1000/1000 = $1.00, hits the $1.00 cap.
-	s.TrackCloudCostModel("gpt-4o", 2.0, 1000)
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 2.0, 1000)
 
 	exceeded, reason := s.CloudBudgetExceeded("")
 	if !exceeded {
@@ -771,7 +771,7 @@ func TestCloudBudgetExceeded_MonthlyCapReached(t *testing.T) {
 		CloudBudget: config.CloudBudgetConfig{MonthlyUSDCap: 0.5},
 	}, st)
 
-	s.TrackCloudCostModel("gpt-4o", 1.0, 1000) // $1.00 spent, over the $0.50 monthly cap
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 1.0, 1000) // $1.00 spent, over the $0.50 monthly cap
 
 	exceeded, reason := s.CloudBudgetExceeded("")
 	if !exceeded {
@@ -895,7 +895,7 @@ func TestCloudBudgetExceeded_UnderCapAllowsFallback(t *testing.T) {
 		CloudBudget: config.CloudBudgetConfig{DailyUSDCap: 100.0},
 	}, st)
 
-	s.TrackCloudCostModel("gpt-4o", 1.0, 1000) // $0.001, well under the $100 cap
+	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 1.0, 1000) // $0.001, well under the $100 cap
 
 	if exceeded, reason := s.CloudBudgetExceeded(""); exceeded {
 		t.Errorf("CloudBudgetExceeded = true (%q), want false when spend is under the cap", reason)

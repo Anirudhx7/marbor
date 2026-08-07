@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,9 +11,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/admin"
 	"github.com/ollama-mesh/ollama-mesh/internal/audit"
+	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
@@ -42,6 +45,29 @@ func fetchLiveRequests(t *testing.T, a *admin.Server) []liveRequestEntry {
 		t.Fatalf("decode live requests: %v", err)
 	}
 	return entries
+}
+
+// waitForAuditEntries polls al.Query until it returns at least want entries
+// or the timeout elapses. audit.Logger.Log enqueues onto a channel drained
+// by a background writer goroutine (internal/audit/audit.go), so a query
+// issued immediately after ServeHTTP returns can race the writer under load
+// - this makes that race deterministic in tests instead of relying on the
+// writer winning a scheduling race every time.
+func waitForAuditEntries(t *testing.T, al *audit.Logger, want int) []audit.Entry {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	var audits []audit.Entry
+	for {
+		var err error
+		audits, err = al.Query(audit.QueryOptions{})
+		if err != nil {
+			t.Fatalf("audit query: %v", err)
+		}
+		if len(audits) >= want || time.Now().After(deadline) {
+			return audits
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 func TestProxyNoHealthyNodes(t *testing.T) {
@@ -194,7 +220,7 @@ func TestProxyCloudBudgetExceededBlocksFallback(t *testing.T) {
 		CloudBudget: config.CloudBudgetConfig{DailyUSDCap: 1.0},
 	}, st)
 	// $2.00 spent already, over the $1.00 daily cap.
-	a.TrackCloudCostModel("gpt-4o", 2.0, 1000)
+	a.TrackCloudCostModel("testkey", "openai", "gpt-4o", 2.0, 1000)
 
 	h := NewHandler(r, a, nil)
 	req := httptest.NewRequest("POST", "/api/chat", bytes.NewReader([]byte(`{"model":"llama3.2:8b","messages":[]}`)))
@@ -499,10 +525,7 @@ func TestCloudModelMappingVisibleInLogs(t *testing.T) {
 	}
 
 	// Audit entry keeps the original model and records the cloud model.
-	audits, err := al.Query(audit.QueryOptions{})
-	if err != nil {
-		t.Fatalf("audit query: %v", err)
-	}
+	audits := waitForAuditEntries(t, al, 1)
 	if len(audits) != 1 {
 		t.Fatalf("got %d audit entries, want 1", len(audits))
 	}
@@ -545,15 +568,146 @@ func TestCloudModelNotRewrittenLogsPlainModel(t *testing.T) {
 		t.Errorf("request log model = %q, want plain llama3 when no rewrite", entries[0].Model)
 	}
 
-	audits, err := al.Query(audit.QueryOptions{})
-	if err != nil {
-		t.Fatalf("audit query: %v", err)
-	}
+	audits := waitForAuditEntries(t, al, 1)
 	if len(audits) != 1 {
 		t.Fatalf("got %d audit entries, want 1", len(audits))
 	}
 	if audits[0].CloudModel != "" {
 		t.Errorf("audit cloud_model = %q, want empty when no rewrite", audits[0].CloudModel)
+	}
+}
+
+// newLocalOnlyHandler mirrors newCloudFallbackHandler but additionally wires
+// an auth.Middleware with the given keys, so localOnlyBlocked has a key to
+// look up via auth.KeyNameFromContext. Returns the store too, so tests can
+// assert on spill_counters directly (the P66 admin/CLI/UI read surfaces are
+// exercised separately; this is the enforcement-path test).
+func newLocalOnlyHandler(t *testing.T, cloud config.CloudProvider, keys []config.KeyConfig) (*Handler, store.Store) {
+	t.Helper()
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "V100"},
+	}, []config.CloudProvider{cloud})
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = false
+		n.Unlock()
+	}
+	a := admin.NewServer(r, nil, config.Config{})
+	tmpDB := filepath.Join(t.TempDir(), "local_only.db")
+	st, err := store.Open(tmpDB)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	a.SetStore(st)
+	h := NewHandler(r, a, nil)
+	h.SetAuth(auth.NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true), Keys: keys}))
+	return h, st
+}
+
+// requestWithKeyName builds a request carrying keyName in context exactly as
+// auth.Middleware would inject it after a successful key check, so the
+// handler's auth.KeyNameFromContext lookup (and therefore localOnlyBlocked)
+// sees the right key without needing a full auth round-trip in this test.
+func requestWithKeyName(keyName string) *http.Request {
+	req := httptest.NewRequest("POST", "/api/chat", bytes.NewReader([]byte(`{"model":"llama3","messages":[]}`)))
+	ctx := context.WithValue(req.Context(), auth.KeyNameContextKey, keyName)
+	return req.WithContext(ctx)
+}
+
+// TestLocalOnlyBlockedWhenNoLocalNode guards the P66 fail-closed policy: a
+// local_only key with no local node available must get a 503
+// local_only_blocked error and must never reach the cloud provider, even
+// though one is configured and would otherwise serve the request.
+func TestLocalOnlyBlockedWhenNoLocalNode(t *testing.T) {
+	cloudCalled := false
+	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cloudCalled = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"test","choices":[]}`))
+	}))
+	defer cloudSrv.Close()
+
+	h, st := newLocalOnlyHandler(t, config.CloudProvider{
+		Name: "fake-openai", Provider: "openai", BaseURL: cloudSrv.URL,
+		APIKey: "test-key", Enabled: true,
+	}, []config.KeyConfig{
+		{Name: "finance", Key: "sk-finance", RateLimit: 100, LocalOnly: true},
+	})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, requestWithKeyName("finance"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if !strings.Contains(rec.Body.String(), "local_only_blocked") {
+		t.Errorf("body = %q, want it to contain local_only_blocked", rec.Body.String())
+	}
+	if cloudCalled {
+		t.Error("cloud provider must never be called for a local_only key")
+	}
+
+	rows, err := st.SpillCounters()
+	if err != nil {
+		t.Fatalf("SpillCounters: %v", err)
+	}
+	found := false
+	for _, r := range rows {
+		if r.KeyName == "finance" && r.ServedBy == "blocked" && r.Requests == 1 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a (finance, blocked, 1) spill_counters row, got: %+v", rows)
+	}
+}
+
+// TestLocalOnlyFalseStillFallsBackToCloud is the regression guard from the
+// P66 verification plan: a key with local_only=false (the default, i.e.
+// every existing key today) must behave exactly as before - falling back to
+// cloud and incrementing the provider's spill counter, never "blocked".
+func TestLocalOnlyFalseStillFallsBackToCloud(t *testing.T) {
+	cloudCalled := false
+	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cloudCalled = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"test","choices":[],"usage":{"total_tokens":10}}`))
+	}))
+	defer cloudSrv.Close()
+
+	h, st := newLocalOnlyHandler(t, config.CloudProvider{
+		Name: "fake-openai", Provider: "openai", BaseURL: cloudSrv.URL,
+		APIKey: "test-key", CostPer1KTokens: 0.002, Enabled: true,
+	}, []config.KeyConfig{
+		{Name: "default", Key: "sk-default", RateLimit: 100},
+	})
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, requestWithKeyName("default"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (cloud fallback should succeed)", rec.Code)
+	}
+	if !cloudCalled {
+		t.Error("expected cloud provider to be called for a non-local_only key")
+	}
+
+	rows, err := st.SpillCounters()
+	if err != nil {
+		t.Fatalf("SpillCounters: %v", err)
+	}
+	got := map[string]int64{}
+	for _, r := range rows {
+		if r.KeyName == "default" {
+			got[r.ServedBy] = r.Requests
+		}
+	}
+	if got["fake-openai"] != 1 {
+		t.Errorf("expected 1 request counted for served_by=fake-openai, got rows: %+v", rows)
+	}
+	if got["blocked"] != 0 {
+		t.Errorf("non-local_only key must never increment the blocked counter, got rows: %+v", rows)
 	}
 }
 

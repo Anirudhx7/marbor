@@ -11,10 +11,10 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { fetchAnalytics, analyticsExportUrl } from '../lib/api';
-import { mockAnalytics } from '../lib/mockData';
+import { fetchAnalytics, analyticsExportUrl, getSpillCounters } from '../lib/api';
+import { mockAnalytics, mockSpillCounters } from '../lib/mockData';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import type { Analytics, HourlyBucket, ModelStat } from '../types';
+import type { Analytics, HourlyBucket, ModelStat, SpillCounterRow } from '../types';
 
 function formatHourLabel(hour: string): string {
   // "2026-05-23T14" -> "14:00"
@@ -74,6 +74,8 @@ export function Analytics() {
   const [data, setData] = useState<Analytics | null>(demoMode ? mockAnalytics : null);
   const [loading, setLoading] = useState(!demoMode);
   const [error, setError] = useState<string | null>(null);
+  const [spillRows, setSpillRows] = useState<SpillCounterRow[]>(demoMode ? mockSpillCounters : []);
+  const [spillLoading, setSpillLoading] = useState(!demoMode);
 
   useEffect(() => {
     if (currentAppPath() !== '/analytics') return;
@@ -100,6 +102,36 @@ export function Analytics() {
     };
     load();
     const id = setInterval(load, 10000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [demoMode, location.pathname]);
+
+  useEffect(() => {
+    if (currentAppPath() !== '/analytics') return;
+    if (demoMode) {
+      setSpillRows(mockSpillCounters);
+      setSpillLoading(false);
+      return;
+    }
+    let active = true;
+    const loadSpill = async () => {
+      try {
+        const rows = await getSpillCounters();
+        if (!active || currentAppPath() !== '/analytics') return;
+        setSpillRows(rows || []);
+      } catch {
+        if (!active || currentAppPath() !== '/analytics') return;
+        setSpillRows([]);
+      } finally {
+        if (active && currentAppPath() === '/analytics') {
+          setSpillLoading(false);
+        }
+      }
+    };
+    loadSpill();
+    const id = setInterval(loadSpill, 10000);
     return () => {
       active = false;
       clearInterval(id);
@@ -355,6 +387,95 @@ export function Analytics() {
                   </div>
                 );
               })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Cloud Spill - per-key, per-provider local-vs-cloud request counts (P66) */}
+      <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-secondary/30">
+          <h3 className="text-sm font-semibold text-foreground">Cloud Spill</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Requests served locally, by a cloud provider, or blocked by a key's local-only policy.
+          </p>
+        </div>
+        {spillLoading ? (
+          <div className="divide-y divide-border">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="px-6 py-4 flex gap-4 animate-pulse">
+                <div className="h-4 bg-secondary rounded w-1/3" />
+                <div className="h-4 bg-secondary rounded w-24 ml-auto" />
+                <div className="h-4 bg-secondary rounded w-16" />
+              </div>
+            ))}
+          </div>
+        ) : !spillRows.length ? (
+          <div className="px-6 py-12 text-center text-sm text-muted-foreground font-medium">
+            No spill data yet. Send requests through the proxy to populate this table.
+          </div>
+        ) : (
+          <>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-secondary/50 text-muted-foreground">
+                    <th className="px-6 py-3 text-left font-medium">Key</th>
+                    <th className="px-6 py-3 text-left font-medium">Served By</th>
+                    <th className="px-6 py-3 text-right font-medium">Requests</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {spillRows.map((row) => (
+                    <tr key={`${row.key_name}-${row.served_by}`} className="hover:bg-secondary/50 transition-colors">
+                      <td className="px-6 py-3 font-mono font-medium text-foreground">{row.key_name || '-'}</td>
+                      <td className="px-6 py-3">
+                        <span className={
+                          row.served_by === 'local' ? 'text-success font-medium' :
+                          row.served_by === 'blocked' ? 'text-destructive font-medium' :
+                          row.served_by ? 'text-amber-500 font-medium' : 'text-muted-foreground'
+                        }>
+                          {row.served_by || '-'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-right font-mono font-medium text-foreground">
+                        {row.requests != null ? row.requests.toLocaleString() : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="md:hidden space-y-3 p-4">
+              {spillRows.map((row) => (
+                <div
+                  key={`${row.key_name}-${row.served_by}`}
+                  className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4"
+                >
+                  <p className="font-mono font-medium text-foreground text-sm mb-3 break-all">
+                    {row.key_name || '-'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Served By</p>
+                      <p className={
+                        row.served_by === 'local' ? 'text-sm text-success font-medium' :
+                        row.served_by === 'blocked' ? 'text-sm text-destructive font-medium' :
+                        row.served_by ? 'text-sm text-amber-500 font-medium' : 'text-sm text-muted-foreground'
+                      }>
+                        {row.served_by || '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Requests</p>
+                      <p className="text-sm font-mono font-medium text-foreground">
+                        {row.requests != null ? row.requests.toLocaleString() : '-'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </>
         )}

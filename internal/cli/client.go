@@ -545,6 +545,45 @@ func (c *Client) Nodes() ([]NodeResp, error) {
 	return out, nil
 }
 
+// SpillCounterRow mirrors one row of GET /admin/v1/spill - a per-key,
+// per-served_by request count. served_by is "local", a cloud provider's
+// name, or "blocked" (a local_only policy rejection).
+type SpillCounterRow struct {
+	KeyName  string `json:"key_name"`
+	ServedBy string `json:"served_by"`
+	Requests int64  `json:"requests"`
+}
+
+// SpillCounters calls GET /admin/v1/spill, returning every (key_name,
+// served_by) row fleet-wide.
+func (c *Client) SpillCounters() ([]SpillCounterRow, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/v1/spill", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out []SpillCounterRow
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse spill counters response: %v", err)
+	}
+	return out, nil
+}
+
+// PatchKeyLocalOnly calls PATCH /admin/v1/keys/{name} with local_only, the
+// P66 fail-closed policy toggle - matches auth.KeyPatch's snake_case JSON
+// tag (handlePatchKey decodes into that struct, unlike handleAddKey which
+// decodes into config.KeyConfig's camelCase tags).
+func (c *Client) PatchKeyLocalOnly(name string, localOnly bool) error {
+	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/keys/"+urlPathEscape(name),
+		map[string]bool{"local_only": localOnly})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // ModelNodeInfo mirrors handleModels' nested nodeInfo struct.
 type ModelNodeInfo struct {
 	Name    string `json:"name"`

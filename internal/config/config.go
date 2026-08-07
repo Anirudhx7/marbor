@@ -241,6 +241,12 @@ type KeyConfig struct {
 	// key's real cost_usd in request_log.
 	DailyUsdCap   float64 `yaml:"daily_usd_cap,omitempty" json:"dailyUsdCap,omitempty"`
 	MonthlyUsdCap float64 `yaml:"monthly_usd_cap,omitempty" json:"monthlyUsdCap,omitempty"`
+	// LocalOnly, when true, forbids cloud fallback for this key entirely: a
+	// request that would otherwise spill to a cloud provider instead fails
+	// closed with an explicit error, so the key's traffic never leaves local
+	// nodes. Default false preserves today's fallback behavior for every
+	// existing key.
+	LocalOnly bool `yaml:"local_only,omitempty" json:"localOnly,omitempty"`
 }
 
 type NodeConfig struct {
@@ -593,6 +599,13 @@ func (c *Config) Validate() error {
 	}
 
 	for i, cp := range c.CloudProviders {
+		// "local" and "blocked" are reserved served_by sentinels in the P66
+		// spill_counters table (see internal/admin's IncrSpill callers) - a
+		// provider using either name would have its real cloud traffic
+		// silently merged into that reserved bucket.
+		if cp.Name == "local" || cp.Name == "blocked" {
+			return fmt.Errorf("cloud provider %d: name %q is reserved and cannot be used for a cloud provider", i, cp.Name)
+		}
 		if cp.Enabled {
 			if cp.BaseURL == "" || cp.APIKey == "" {
 				return fmt.Errorf("cloud provider %d (%s) requires base_url and api_key when enabled", i, cp.Name)
