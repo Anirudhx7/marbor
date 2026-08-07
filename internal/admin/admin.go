@@ -4785,6 +4785,18 @@ func (s *Server) logSystemChange(r *http.Request, action, target, details string
 	})
 }
 
+// IncrSpill increments the (keyName, servedBy) row in spill_counters.
+// servedBy is "local", a cloud provider's Name, or "blocked" (a local_only
+// policy rejection). Best-effort accounting only: a SQLite error here (e.g.
+// momentarily locked) is logged and otherwise ignored - it must never affect
+// the inference request that triggered it, the same posture LogRequest's
+// own async writer already takes on a full queue.
+func (s *Server) IncrSpill(keyName, servedBy string) {
+	if err := s.st.IncrSpillCounter(keyName, servedBy); err != nil {
+		log.Printf("admin: IncrSpill(%s, %s): %v", keyName, servedBy, err)
+	}
+}
+
 func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latencyMs int, tokens int64) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
@@ -4889,10 +4901,11 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 // milliseconds (generation time only, excluding prompt processing); 0 means
 // unavailable (cloud responses never report it) and is excluded from the
 // hourly tokens-per-second rollup rather than skewing it toward infinity.
-func (s *Server) TrackLocalRequestModel(model string, tokens, genDurationMs int64) {
+func (s *Server) TrackLocalRequestModel(keyName, model string, tokens, genDurationMs int64) {
 	atomic.AddInt64(&s.localCount, 1)
 	atomic.AddInt64(&s.localTokens, tokens)
 	s.analytics.recordLocal(model, tokens, genDurationMs)
+	s.IncrSpill(keyName, "local")
 	// Persist hourly bucket and model stat for this request, async (see
 	// .local/audit-fixes-2026-08-03.md #1 - these were synchronous SQLite
 	// writes on every single inference request before).
@@ -4937,7 +4950,7 @@ func (s *Server) LocalTokens() int64 {
 // TrackCloudCostModel tracks a cloud request with model-level granularity.
 // tokens is the real token count parsed from the provider response; 0 means
 // the count was unavailable and no cost is recorded for the request.
-func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int64) {
+func (s *Server) TrackCloudCostModel(keyName, provider, model string, costPer1K float64, tokens int64) {
 	atomic.AddInt64(&s.cloudCount, 1)
 	atomic.AddInt64(&s.cloudTokens, tokens)
 	cost := costPer1K * float64(tokens) / 1000.0
@@ -4945,6 +4958,7 @@ func (s *Server) TrackCloudCostModel(model string, costPer1K float64, tokens int
 	s.cloudSpentUSD += cost
 	s.mu.Unlock()
 	s.analytics.recordCloud(model, costPer1K, tokens)
+	s.IncrSpill(keyName, provider)
 	// Persist hourly bucket and model stat for this request. Kept SYNCHRONOUS
 	// (unlike TrackLocalRequestModel above) because cloudSpendSince() reads
 	// this exact hourly_buckets row to enforce the daily/monthly cloud spend
