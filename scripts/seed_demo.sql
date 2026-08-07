@@ -6,9 +6,13 @@ DELETE FROM user_sessions;
 DELETE FROM settings;
 
 -- Insert admin user (username: admin, password hash of "admin")
--- Password hash: $2a$10$jBIxiUqWwZh0GorGJbaLaeo2UYxW5rbN6NzwCVRKYERDAh3ORFBFK
+-- Password hash: $2a$10$P61YB8dFDRNJZumNNZrhgeyziqeHyIJ68UsaxkpDwMMV//AMHvfbK
+-- (regenerated 2026-08-07: the previous hash did not actually verify against
+-- "admin" despite the comment - login always failed against it, masked until
+-- now by smoke.sh's CLI check using the pre-seeded session token below
+-- instead of a real login)
 INSERT INTO users (id, username, email, password_hash, salt, role, status, api_key_name, must_change_password, created_at, approved_at, approved_by, deleted_at, deleted_by)
-VALUES (1, 'admin', 'admin@local', '$2a$10$jBIxiUqWwZh0GorGJbaLaeo2UYxW5rbN6NzwCVRKYERDAh3ORFBFK', '', 'admin', 'active', '', 0, 1783087285, 1783087285, 'system', NULL, '');
+VALUES (1, 'admin', 'admin@local', '$2a$10$P61YB8dFDRNJZumNNZrhgeyziqeHyIJ68UsaxkpDwMMV//AMHvfbK', '', 'admin', 'active', '', 0, 1783087285, 1783087285, 'system', NULL, '');
 
 -- Insert persistent session for smoke test / demo access
 INSERT INTO user_sessions (token, user_id, role, username, must_change_password, created_at, expires_at)
