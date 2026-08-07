@@ -599,6 +599,13 @@ func (c *Config) Validate() error {
 	}
 
 	for i, cp := range c.CloudProviders {
+		// "local" and "blocked" are reserved served_by sentinels in the P66
+		// spill_counters table (see internal/admin's IncrSpill callers) - a
+		// provider using either name would have its real cloud traffic
+		// silently merged into that reserved bucket.
+		if cp.Name == "local" || cp.Name == "blocked" {
+			return fmt.Errorf("cloud provider %d: name %q is reserved and cannot be used for a cloud provider", i, cp.Name)
+		}
 		if cp.Enabled {
 			if cp.BaseURL == "" || cp.APIKey == "" {
 				return fmt.Errorf("cloud provider %d (%s) requires base_url and api_key when enabled", i, cp.Name)
