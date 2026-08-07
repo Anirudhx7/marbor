@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun } from '../types';
+import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow } from '../types';
 import type { SystemInfo } from './api';
 
 const GB = 1024;
@@ -284,6 +284,7 @@ export const mockAPIKeys: APIKey[] = [
     status: 'active',
     allowedModels: ['qwen2.5:14b', 'llama3.3:70b', 'deepseek-r1:7b'],
     expiresAt: null,
+    localOnly: true,
   },
   {
     id: 'key-3',
@@ -614,6 +615,16 @@ export const mockAnalytics: Analytics = {
     { model: 'mistral:7b',     local:  203, cloud:  8, saved_usd:  2.03 },
   ],
 };
+
+// Mock spill_counters rows (P66): one local_only key ("Data Platform")
+// showing its policy actively blocking spill attempts, plus normal
+// local/cloud rows for a key without the policy set.
+export const mockSpillCounters: SpillCounterRow[] = [
+  { key_name: 'Engineering Team', served_by: 'local', requests: 5312 },
+  { key_name: 'Engineering Team', served_by: 'fake-openai', requests: 142 },
+  { key_name: 'Data Platform', served_by: 'local', requests: 3890 },
+  { key_name: 'Data Platform', served_by: 'blocked', requests: 27 },
+];
 
 // Mock system info: single RTX 4090 node, 64 GB RAM, 24 cores
 export const mockSystemInfo: SystemInfo = {
