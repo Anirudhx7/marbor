@@ -241,6 +241,12 @@ type KeyConfig struct {
 	// key's real cost_usd in request_log.
 	DailyUsdCap   float64 `yaml:"daily_usd_cap,omitempty" json:"dailyUsdCap,omitempty"`
 	MonthlyUsdCap float64 `yaml:"monthly_usd_cap,omitempty" json:"monthlyUsdCap,omitempty"`
+	// LocalOnly, when true, forbids cloud fallback for this key entirely: a
+	// request that would otherwise spill to a cloud provider instead fails
+	// closed with an explicit error, so the key's traffic never leaves local
+	// nodes. Default false preserves today's fallback behavior for every
+	// existing key.
+	LocalOnly bool `yaml:"local_only,omitempty" json:"localOnly,omitempty"`
 }
 
 type NodeConfig struct {
