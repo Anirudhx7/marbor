@@ -429,7 +429,7 @@ type User struct {
 
 // UserSession is an authenticated session tied to a specific User row.
 type UserSession struct {
-	Token              string
+	Token              string `json:"-"`
 	UserID             int64
 	Role               string
 	Username           string

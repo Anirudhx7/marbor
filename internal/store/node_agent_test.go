@@ -18,6 +18,20 @@ func TestNodeAgentRecord_TokenNeverMarshaled(t *testing.T) {
 	}
 }
 
+func TestUserSession_TokenNeverMarshaled(t *testing.T) {
+	sess := UserSession{Token: "secret-session-token", UserID: 1, Role: "admin", Username: "u"}
+	b, err := json.Marshal(sess)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if strings.Contains(string(b), "secret-session-token") {
+		t.Fatalf("UserSession must never marshal Token, got %s", b)
+	}
+	if strings.Contains(string(b), `"token"`) {
+		t.Fatalf("UserSession must never marshal a token key, got %s", b)
+	}
+}
+
 func TestUpsertAndGetNodeAgent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
