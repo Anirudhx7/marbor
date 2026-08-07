@@ -206,20 +206,45 @@ func TestRun_Nodes_NoCredentials(t *testing.T) {
 	}
 }
 
-func TestRun_Nodes_WithToken_JSON(t *testing.T) {
+func TestRun_Nodes_NoTokenFlag_IsUnknownFlag(t *testing.T) {
+	// --token was removed entirely (no deprecation period) since login/
+	// logout/whoami plus --username/--password already cover every
+	// credential path, and a CLI-argv token has no legitimate use left to
+	// preserve - see the "Deprecate plaintext --token for the admin CLI"
+	// queue item.
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "--token", "anything"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d (unknown flag), got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "flag provided but not defined") {
+		t.Fatalf("expected an unknown-flag error for --token, got %q", stderr.String())
+	}
+}
+
+func TestRun_Nodes_WithLogin_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/admin/v1/nodes" && r.Header.Get("Authorization") == "Bearer good-token" {
+		switch r.URL.Path {
+		case "/admin/v1/login":
+			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "good-token"})
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[{"name":"gpu-01","host":"10.0.0.1","port":11434,"health":"healthy","runtime":"ollama","gpuModel":"RTX 4090","vramTotalMB":24576,"vramUsedMB":1024,"draining":false,"loadedModels":[]}]`))
-			return
+			w.Write([]byte(`{"role":"admin","username":"admin"}`))
+		case "/admin/v1/nodes":
+			if r.Header.Get("Authorization") == "Bearer good-token" {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`[{"name":"gpu-01","host":"10.0.0.1","port":11434,"health":"healthy","runtime":"ollama","gpuModel":"RTX 4090","vramTotalMB":24576,"vramUsedMB":1024,"draining":false,"loadedModels":[]}]`))
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthorized"}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"unauthorized"}`))
 	}))
 	defer srv.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"nodes", "--server", srv.URL, "--token", "good-token", "--json"}, &stdout, &stderr)
+	code := Run([]string{"nodes", "--server", srv.URL, "--username", "admin", "--password", "admin", "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -268,26 +293,35 @@ func TestRun_Nodes_Unauthorized(t *testing.T) {
 	defer srv.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"nodes", "--server", srv.URL, "--token", "bad"}, &stdout, &stderr)
+	code := Run([]string{"nodes", "--server", srv.URL, "--username", "admin", "--password", "wrong"}, &stdout, &stderr)
 	if code != ExitAuthError {
 		t.Fatalf("expected exit %d, got %d", ExitAuthError, code)
 	}
 }
 
-func TestRun_Models_WithToken_JSON(t *testing.T) {
+func TestRun_Models_WithLogin_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/admin/v1/models" && r.Header.Get("Authorization") == "Bearer good-token" {
+		switch r.URL.Path {
+		case "/admin/v1/login":
+			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "good-token"})
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"models":[{"name":"llama3","size_vram":1048576,"warm_count":1,"total_nodes":1}],"total_models":1,"total_nodes":1,"healthy_nodes":1}`))
-			return
+			w.Write([]byte(`{"role":"admin","username":"admin"}`))
+		case "/admin/v1/models":
+			if r.Header.Get("Authorization") == "Bearer good-token" {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"models":[{"name":"llama3","size_vram":1048576,"warm_count":1,"total_nodes":1}],"total_models":1,"total_nodes":1,"healthy_nodes":1}`))
+				return
+			}
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthorized"}`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"unauthorized"}`))
 	}))
 	defer srv.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "--server", srv.URL, "--token", "good-token", "--json"}, &stdout, &stderr)
+	code := Run([]string{"models", "--server", srv.URL, "--username", "admin", "--password", "admin", "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -302,13 +336,20 @@ func TestRun_Models_WithToken_JSON(t *testing.T) {
 
 func TestRun_Models_Table(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"models":[{"name":"llama3","size_vram":1048576,"warm_count":1,"total_nodes":2,"family":"llama"}],"total_models":1,"total_nodes":2,"healthy_nodes":2}`))
+		switch r.URL.Path {
+		case "/admin/v1/login":
+			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "abc"})
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"role":"admin","username":"admin"}`))
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"models":[{"name":"llama3","size_vram":1048576,"warm_count":1,"total_nodes":2,"family":"llama"}],"total_models":1,"total_nodes":2,"healthy_nodes":2}`))
+		}
 	}))
 	defer srv.Close()
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "--server", srv.URL, "--token", "abc"}, &stdout, &stderr)
+	code := Run([]string{"models", "--server", srv.URL, "--username", "admin", "--password", "admin"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}

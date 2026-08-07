@@ -19,9 +19,11 @@ func TestRun_RuntimeRestart_JSON(t *testing.T) {
 		w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "restart", "gpu-0", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "restart", "gpu-0", "--server", srv.URL, "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -46,9 +48,11 @@ func TestRun_RuntimeStart_Unconfigured_ExitUserError(t *testing.T) {
 		w.Write([]byte(`{"error":"Runtime control unavailable: no control driver configured"}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "start", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "start", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitUserError {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitUserError, code, stderr.String())
 	}
@@ -58,8 +62,11 @@ func TestRun_RuntimeStart_Unconfigured_ExitUserError(t *testing.T) {
 }
 
 func TestRun_RuntimeStop_ServerUnreachable_ExitServerError(t *testing.T) {
+	withTempConfigDir(t)
+	mustSaveSession(t, "http://127.0.0.1:1", "tok")
+
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "stop", "gpu-0", "--server", "http://127.0.0.1:1", "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "stop", "gpu-0", "--server", "http://127.0.0.1:1"}, &stdout, &stderr)
 	if code != ExitServerError {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitServerError, code, stderr.String())
 	}
@@ -99,9 +106,11 @@ func TestRun_RuntimeLogs_JSON(t *testing.T) {
 		w.Write([]byte(`{"lines":["line one","line two"]}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "logs", "gpu-0", "--lines", "50", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "logs", "gpu-0", "--lines", "50", "--server", srv.URL, "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -125,9 +134,11 @@ func TestRun_RuntimeLogs_TextOutput(t *testing.T) {
 		w.Write([]byte(`{"lines":["line one","line two"]}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "logs", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "logs", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -143,9 +154,11 @@ func TestRun_RuntimeLogs_NotSupported_ExitServerError(t *testing.T) {
 		w.Write([]byte(`{"error":"process: log retrieval not supported without a supervisor"}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "logs", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "logs", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitServerError {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitServerError, code, stderr.String())
 	}
@@ -165,9 +178,11 @@ func TestRun_RuntimeDrain_JSON(t *testing.T) {
 		w.Write([]byte(`{"node":"gpu-0","draining":true,"reason":"maintenance"}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "drain", "gpu-0", "--reason", "maintenance", "--server", srv.URL, "--token", "tok", "--json"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "drain", "gpu-0", "--reason", "maintenance", "--server", srv.URL, "--json"}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -194,9 +209,11 @@ func TestRun_RuntimeUndrain_TextOutput(t *testing.T) {
 		w.Write([]byte(`{"node":"gpu-0","draining":false}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "undrain", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "undrain", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -220,9 +237,11 @@ func TestRun_RuntimeHealth_Unhealthy_StillExitOK(t *testing.T) {
 		w.Write([]byte(`{"ok":false,"error":"connection refused","latencyMs":5}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "health", "gpu-0", "--server", srv.URL, "--token", "tok"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "health", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d (a completed probe reporting unhealthy is not a CLI failure), got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -243,9 +262,11 @@ func TestRun_RuntimeAction_Unauthorized_ExitAuthError(t *testing.T) {
 		w.Write([]byte(`{"error":"unauthorized"}`))
 	}))
 	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "bad-token")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"runtime", "restart", "gpu-0", "--server", srv.URL, "--token", "bad-token"}, &stdout, &stderr)
+	code := Run([]string{"runtime", "restart", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitAuthError {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitAuthError, code, stderr.String())
 	}

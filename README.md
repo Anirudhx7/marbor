@@ -466,22 +466,25 @@ scripts/CI/Ansible, not the human table output, which may change shape between r
 
 `nodes`, `models`, `node control probe|accept`, and `runtime start|stop|restart` require a session.
 The recommended flow is `ollama-mesh login` once (interactively, or with
-`--username`/`--password`, or `--token` to save an existing token) - the CLI persists the
-resulting session to a local file (`0600`, under the OS user config dir) so every later command in
-that shell, in a fresh terminal, or across a reboot works with zero flags until the session
-expires. For scripts/CI/containers where a persisted file isn't wanted, pass credentials on every
-invocation instead: `--token`/`MESH_TOKEN`, or `--username`/`--password`/`MESH_USERNAME`+
-`MESH_PASSWORD` (these always take priority over the saved session). `ollama-mesh whoami` reports
-the saved identity, live-verified against the server; `ollama-mesh logout` deletes the saved file.
-`status` and `version` never need auth (`GET /health` is unauthenticated).
+`--username`/`--password`) - the CLI persists the resulting session to a local file (`0600`, under
+the OS user config dir) so every later command in that shell, in a fresh terminal, or across a
+reboot works with zero flags until the session expires. For scripts/CI/containers where a
+persisted file isn't wanted, pass credentials on every invocation instead:
+`--username`/`--password` or `MESH_USERNAME`/`MESH_PASSWORD` (these always take priority over the
+saved session). There is no `--token`/`MESH_TOKEN` flag - a bearer token passed as a CLI argument
+or read from an env var would still be visible in shell history, `ps`/Task Manager, and
+process-creation logging for the life of that process, so login/saved-session and
+username+password are the only credential paths. `ollama-mesh whoami` reports the saved identity,
+live-verified against the server; `ollama-mesh logout` deletes the saved file. `status` and
+`version` never need auth (`GET /health` is unauthenticated).
 
 **Shared Linux accounts are not recommended for administrative use.** The audit log records the
 authenticated mesh user, not necessarily the individual human using a shared operating-system
-account. If a shared account is unavoidable, prefer a per-shell `MESH_TOKEN` environment variable
-over the persisted session file (env vars are process-scoped and don't collide across concurrent
-sessions on the same account; the saved file is one shared file). For production environments, the
-recommended deployment is one Linux account per administrator and one mesh user per administrator
-- this gives accurate audit attribution and isolated CLI sessions.
+account. If a shared account is unavoidable, prefer a per-shell `MESH_USERNAME`/`MESH_PASSWORD`
+pair over the persisted session file (env vars are process-scoped and don't collide across
+concurrent sessions on the same account; the saved file is one shared file). For production
+environments, the recommended deployment is one Linux account per administrator and one mesh user
+per administrator - this gives accurate audit attribution and isolated CLI sessions.
 
 Exit codes: `0` success, `1` user/input error (bad flag, missing credentials, no control driver
 accepted yet), `2` server/Admin API error (unreachable, 5xx, agent dispatch failure), `4`

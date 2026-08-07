@@ -15,7 +15,6 @@ import (
 type globalFlags struct {
 	server     string
 	jsonOutput bool
-	token      string
 	username   string
 	password   string
 }
@@ -25,25 +24,30 @@ type globalFlags struct {
 // ("Usage of <name>:" plus PrintDefaults) to stderr, which is correct GNU
 // convention for an error path.
 //
-// --token/--username/--password deliberately register with an empty flag
-// default rather than os.Getenv(...) directly: flag.FlagSet.PrintDefaults
-// prints every non-empty default verbatim as `(default "...")`, so seeding
-// a secret env var as the flag's default would leak it in plain text on
-// both the --help path and the genuine-parse-error path above (e.g. a
-// mistyped flag on any command, with MESH_TOKEN exported, would print the
-// live bearer token to stderr - straight into a CI log if that's where
-// MESH_TOKEN is coming from). Env fallback for these three fields happens
-// later, via resolveCred, only in the two places that actually consume
-// them (authenticatedClient, runLogin) - never as a flag default.
+// --username/--password deliberately register with an empty flag default
+// rather than os.Getenv(...) directly: flag.FlagSet.PrintDefaults prints
+// every non-empty default verbatim as `(default "...")`, so seeding a secret
+// env var as the flag's default would leak it in plain text on both the
+// --help path and the genuine-parse-error path above (e.g. a mistyped flag
+// on any command, with MESH_PASSWORD exported, would print the live
+// password to stderr - straight into a CI log if that's where MESH_PASSWORD
+// is coming from). Env fallback for these two fields happens later, via
+// resolveCred, only in the places that actually consume them
+// (authenticatedClient, runLogin) - never as a flag default.
+//
+// There is deliberately no --token flag: a bearer token passed as a CLI
+// argument is visible in shell history, `ps`/Task Manager, and
+// process-creation logging for the life of the process. "ollama-mesh login"
+// (which persists a session to a 0600 local file) plus --username/--password
+// are the only credential paths - see runLogin/authenticatedClient.
 func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	g := &globalFlags{}
 	fs.StringVar(&g.server, "server", envOr("MESH_SERVER", "http://localhost:8080"), "Admin API base URL")
 	fs.BoolVar(&g.jsonOutput, "json", false, "output machine-readable JSON instead of a human table")
-	fs.StringVar(&g.token, "token", "", "session token (Authorization: Bearer, env MESH_TOKEN)")
-	fs.StringVar(&g.username, "username", "", "admin username, used to log in if --token is not set (env MESH_USERNAME)")
-	fs.StringVar(&g.password, "password", "", "admin password, used to log in if --token is not set (env MESH_PASSWORD)")
+	fs.StringVar(&g.username, "username", "", "admin username, used to log in (env MESH_USERNAME)")
+	fs.StringVar(&g.password, "password", "", "admin password, used to log in (env MESH_PASSWORD)")
 	return fs, g
 }
 
@@ -118,9 +122,8 @@ func renderTable(w io.Writer, indent string, rows [][2]string) {
 var authFlagsRows = [][2]string{
 	{"--server string", `Admin API base URL (default "http://localhost:8080", env MESH_SERVER)`},
 	{"--json", "output machine-readable JSON instead of a human table"},
-	{"--token string", "session token for authenticated commands (env MESH_TOKEN)"},
-	{"--username string", "admin username, used to log in if --token is unset (env MESH_USERNAME)"},
-	{"--password string", "admin password, used to log in if --token is unset (env MESH_PASSWORD)"},
+	{"--username string", "admin username, used to log in (env MESH_USERNAME)"},
+	{"--password string", "admin password, used to log in (env MESH_PASSWORD)"},
 }
 
 func printModelsUsage(w io.Writer) {
@@ -158,24 +161,17 @@ supervisor) returns a clear "not supported" error.
 `)
 }
 
-// loginFlagsRows is authFlagsRows minus --token's "used to authenticate"
-// framing - login is the command that produces a session, not one that
-// consumes an already-resolved one, though --token is still accepted (to
-// save an existing token without a fresh username/password round trip).
-var loginFlagsRows = [][2]string{
-	{"--server string", `Admin API base URL (default "http://localhost:8080", env MESH_SERVER)`},
-	{"--json", "output machine-readable JSON instead of a human table"},
-	{"--token string", "save this existing token instead of logging in with username/password (env MESH_TOKEN)"},
-	{"--username string", "admin username (env MESH_USERNAME) - prompted interactively if omitted in a terminal"},
-	{"--password string", "admin password (env MESH_PASSWORD) - prompted interactively (no echo) if omitted in a terminal"},
-}
+// loginFlagsRows is authFlagsRows verbatim - login shares the exact same
+// credential flags as every other credentialed command, since it is itself
+// how a session is produced.
+var loginFlagsRows = authFlagsRows
 
 func printLoginUsage(w io.Writer) {
 	fmt.Fprint(w, "Usage: ollama-mesh login [flags]\n\n")
 	fmt.Fprint(w, "Authenticates once and saves the resulting session to a local file (0600,\n")
-	fmt.Fprint(w, "under the OS user config dir) so other commands can omit --token/\n")
-	fmt.Fprint(w, "--username/--password afterward. Run without --username/--password/--token\n")
-	fmt.Fprint(w, "in a terminal to be prompted interactively (password input is not echoed).\n\n")
+	fmt.Fprint(w, "under the OS user config dir) so other commands can omit --username/\n")
+	fmt.Fprint(w, "--password afterward. Run without --username/--password in a terminal to\n")
+	fmt.Fprint(w, "be prompted interactively (password input is not echoed).\n\n")
 	fmt.Fprint(w, "Flags:\n")
 	renderTable(w, "  ", loginFlagsRows)
 }
@@ -220,18 +216,15 @@ func envOr(key, def string) string {
 // authenticatedClient builds a Client for a command that requires a session
 // (mesh nodes, mesh models). Missing credentials is a user error (1), not an
 // auth error (4) - auth was never attempted against the server. Resolution
-// priority: --token flag/env > --username/--password flag/env > the saved
-// session file written by "ollama-mesh login" (lowest priority, and only
-// used when it was saved against this same --server - a saved session for
-// one mesh must never be silently replayed against a different one).
+// priority: --username/--password flag/env > the saved session file written
+// by "ollama-mesh login" (lowest priority, and only used when it was saved
+// against this same --server - a saved session for one mesh must never be
+// silently replayed against a different one). There is deliberately no
+// --token/MESH_TOKEN path - see newFlagSet's doc comment.
 func authenticatedClient(flags *globalFlags) (*Client, error) {
-	token := resolveCred(flags.token, "MESH_TOKEN")
 	username := resolveCred(flags.username, "MESH_USERNAME")
 	password := resolveCred(flags.password, "MESH_PASSWORD")
 
-	if token != "" {
-		return NewClient(flags.server, token), nil
-	}
 	if username != "" && password != "" {
 		client := NewClient(flags.server, "")
 		if err := client.Login(username, password); err != nil {
@@ -248,7 +241,7 @@ func authenticatedClient(flags *globalFlags) (*Client, error) {
 		client.usingSavedSession = true
 		return client, nil
 	}
-	return nil, userErrorf("authentication required: run ollama-mesh login, or pass --token (or --username/--password / MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
+	return nil, userErrorf("authentication required: run ollama-mesh login, or pass --username/--password (or MESH_USERNAME+MESH_PASSWORD)")
 }
 
 // reportError prints err's message to stderr and returns the exit code it
@@ -286,13 +279,12 @@ that command.
 Global flags:
   --server string      Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
   --json                output machine-readable JSON instead of a human table
-  --token string        session token for authenticated commands (env MESH_TOKEN)
-  --username string     admin username, used to log in if --token is unset (env MESH_USERNAME)
-  --password string      admin password, used to log in if --token is unset (env MESH_PASSWORD)
+  --username string     admin username, used to log in (env MESH_USERNAME)
+  --password string      admin password, used to log in (env MESH_PASSWORD)
 
 "nodes", "models", "runtime", and "node control" require credentials: run
-"ollama-mesh login" once (recommended), or pass --token / --username+--password
-(or MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD) on every invocation instead.
+"ollama-mesh login" once (recommended), or pass --username+--password (or
+MESH_USERNAME+MESH_PASSWORD) on every invocation instead.
 "version" and "status" do not require credentials.
 `
 
@@ -328,13 +320,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if ok, code := parseFlags(fs, rest, printLoginUsage, stdout); !ok {
 			return code
 		}
-		explicitToken := false
-		fs.Visit(func(f *flag.Flag) {
-			if f.Name == "token" {
-				explicitToken = true
-			}
-		})
-		return runLogin(flags, explicitToken, stdout, stderr)
+		return runLogin(flags, stdout, stderr)
 	case "logout":
 		fs, flags := newFlagSet("logout", stderr)
 		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
