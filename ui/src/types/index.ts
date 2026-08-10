@@ -219,6 +219,7 @@ export interface APIKey {
   models?: string[];
   expiresAt: string | null;
   localOnly?: boolean;
+  allowLocalDegradation?: boolean;
 }
 
 // SpillCounterRow mirrors one row of GET /admin/v1/spill - a per-key,

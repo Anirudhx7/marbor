@@ -404,14 +404,28 @@ func TestProxyQuantizationFallback_NoSubstitutionWhenPrimaryFits(t *testing.T) {
 	}
 }
 
+// withKeyName wires a real auth.Middleware carrying keys into h and returns a
+// copy of req carrying keyName in context exactly as auth.Middleware would
+// inject it after a successful key check - the same lightweight pattern
+// requestWithKeyName/newLocalOnlyHandler use elsewhere in this file, so
+// h.auth.IsAllowLocalDegradation(keyName) resolves for real rather than being
+// bypassed.
+func withKeyName(h *Handler, req *http.Request, keyName string, keys []config.KeyConfig) *http.Request {
+	h.SetAuth(auth.NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true), Keys: keys}))
+	ctx := context.WithValue(req.Context(), auth.KeyNameContextKey, keyName)
+	return req.WithContext(ctx)
+}
+
 // TestLocalDegradation_OptInResolvesToHealthyAlt verifies the P67 end-to-end
 // opt-in path: the single node fails the requested (large) model but can
 // serve the declared local alternate (small) just fine. With the retry
 // budget exhausted for the primary model (RouteExcluding has nothing left to
-// try - only one node, already tried) and the opt-in header present, the
-// local degradation chain is walked before cloud, the alternate is served,
-// the substitution is surfaced via the existing fallback header, and no
-// cloud provider is ever contacted.
+// try - only one node, already tried) and the key's policy granting
+// AllowLocalDegradation, the local degradation chain is walked before cloud,
+// the alternate is served, the substitution is surfaced via the existing
+// fallback header, and no cloud provider is ever contacted. The legacy
+// client header is also sent to prove it has no bearing on the outcome
+// (permission comes entirely from the key's policy).
 func TestLocalDegradation_OptInResolvesToHealthyAlt(t *testing.T) {
 	var gotModel atomic.Value
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -456,6 +470,9 @@ func TestLocalDegradation_OptInResolvesToHealthyAlt(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
 	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req = withKeyName(h, req, "test-key", []config.KeyConfig{
+		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
+	})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -470,13 +487,14 @@ func TestLocalDegradation_OptInResolvesToHealthyAlt(t *testing.T) {
 	}
 }
 
-// TestLocalDegradation_NoOptInHeaderFallsToCloud verifies the header is a
-// hard gate: with the identical fleet and chain as
-// TestLocalDegradation_OptInResolvesToHealthyAlt, omitting the opt-in header
-// must never substitute - the request proceeds to cloud fallback (or, with
-// no cloud configured here, a clear upstream error) exactly as it would
-// without P67 at all.
-func TestLocalDegradation_NoOptInHeaderFallsToCloud(t *testing.T) {
+// TestLocalDegradation_KeyNotAllowedFallsToCloud verifies the gate is now the
+// per-key AllowLocalDegradation policy, not the client-supplied header: with
+// the identical fleet and chain as TestLocalDegradation_OptInResolvesToHealthyAlt,
+// a key whose policy does NOT grant AllowLocalDegradation must never
+// substitute - even though the legacy header is sent set to "true" - and the
+// request proceeds to cloud fallback (or, with no cloud configured here, a
+// clear upstream error) exactly as it would without P67 at all.
+func TestLocalDegradation_KeyNotAllowedFallsToCloud(t *testing.T) {
 	var gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]interface{}
@@ -507,18 +525,92 @@ func TestLocalDegradation_NoOptInHeaderFallsToCloud(t *testing.T) {
 	h := NewHandler(r, a, nil)
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
-	// No X-Ollama-Mesh-Allow-Local-Degradation header.
+	// The legacy header is sent (and would have opted this request in under
+	// the old design) but the key's policy does not grant the permission, so
+	// it must be ignored entirely.
+	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req = withKeyName(h, req, "test-key", []config.KeyConfig{
+		{Name: "test-key", Key: "test-key", AllowLocalDegradation: false},
+	})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
 	if rec.Code == http.StatusOK {
-		t.Fatalf("status = 200, want a failure status - no opt-in header means no substitution and no cloud is configured")
+		t.Fatalf("status = 200, want a failure status - key policy does not allow degradation and no cloud is configured")
 	}
 	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (no opt-in header)", got)
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (key policy denies degradation)", got)
 	}
 	if gotModel != "big-model" {
 		t.Errorf("backend received model = %q, want big-model (no substitution attempted)", gotModel)
+	}
+}
+
+// TestLocalDegradation_HeaderCannotOverrideKeyPolicy is a direct regression
+// test for the code-review finding this change addresses: a client sending
+// the legacy X-Ollama-Mesh-Allow-Local-Degradation header must never be able
+// to grant itself a permission the operator did not configure for its key.
+// Unlike TestLocalDegradation_KeyNotAllowedFallsToCloud (where cloud is
+// simply absent), this reuses the exact healthy-alternate fleet from
+// TestLocalDegradation_OptInResolvesToHealthyAlt - the substitution would
+// succeed if it were attempted - so a non-degraded failure here can only be
+// explained by the header being ignored, not by the alternate being
+// unavailable.
+func TestLocalDegradation_HeaderCannotOverrideKeyPolicy(t *testing.T) {
+	var gotModel atomic.Value
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		model, _ := body["model"].(string)
+		gotModel.Store(model)
+		if model == "big-model" {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				return
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				return
+			}
+			conn.Close()
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"small-model","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{
+		LocalDegradationChains: map[string][]string{"big-model": {"small-model"}},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
+	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	// AllowLocalDegradation omitted -> defaults to false.
+	req = withKeyName(h, req, "test-key", []config.KeyConfig{
+		{Name: "test-key", Key: "test-key"},
+	})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("status = 200, want a failure status - the header must not be able to grant degradation the key's policy denies")
+	}
+	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty - header alone must not authorize substitution", got)
+	}
+	if got, _ := gotModel.Load().(string); got != "big-model" {
+		t.Errorf("backend last received model = %q, want big-model (no substitution attempted)", got)
 	}
 }
 
@@ -527,7 +619,9 @@ func TestLocalDegradation_NoOptInHeaderFallsToCloud(t *testing.T) {
 // already gave up), a declared local degradation chain is consulted but
 // correctly finds nothing (every candidate is exhausted, same as the fleet
 // state the primary model saw) and the request falls through to the existing
-// 503 behavior rather than hanging or panicking.
+// 503 behavior rather than hanging or panicking. The key here is granted
+// AllowLocalDegradation so the chain is genuinely walked (not short-circuited
+// by policy) and still correctly finds nothing.
 func TestLocalDegradation_ChainExhaustedFallsToCloud(t *testing.T) {
 	r := router.New(config.RoutingConfig{
 		LocalDegradationChains: map[string][]string{"big-model": {"small-model"}},
@@ -545,6 +639,9 @@ func TestLocalDegradation_ChainExhaustedFallsToCloud(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
 	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req = withKeyName(h, req, "test-key", []config.KeyConfig{
+		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
+	})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -562,7 +659,8 @@ func TestLocalDegradation_ChainExhaustedFallsToCloud(t *testing.T) {
 // degradation branch had no hop limit and never excluded already-tried
 // nodes. Single-hop enforcement (degradedOnce) now bounds any request to at
 // most one substitution regardless of chain shape, so this must terminate
-// quickly with a failure status rather than hang.
+// quickly with a failure status rather than hang. The key is granted
+// AllowLocalDegradation so the chain is genuinely walked.
 func TestLocalDegradation_CyclicChainDoesNotHang(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hj, ok := w.(http.Hijacker)
@@ -596,6 +694,9 @@ func TestLocalDegradation_CyclicChainDoesNotHang(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"model-a","prompt":"hi"}`)))
 	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req = withKeyName(h, req, "test-key", []config.KeyConfig{
+		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
+	})
 	rec := httptest.NewRecorder()
 
 	done := make(chan struct{})
@@ -622,7 +723,8 @@ func TestLocalDegradation_CyclicChainDoesNotHang(t *testing.T) {
 // per-key model allow-list was enforced only once, against the originally
 // requested model, before routing - local degradation could substitute a
 // model the key is not permitted to use. The substitution must now be
-// skipped when the alternate is outside the key's allow-list.
+// skipped when the alternate is outside the key's allow-list, even though
+// this key's policy does grant AllowLocalDegradation.
 func TestLocalDegradation_RespectsPerKeyAllowList(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hj, ok := w.(http.Hijacker)
@@ -653,6 +755,9 @@ func TestLocalDegradation_RespectsPerKeyAllowList(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
 	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req = withKeyName(h, req, "test-key", []config.KeyConfig{
+		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
+	})
 	// Simulate the auth middleware having already run: this key is only
 	// permitted to use "big-model", never "large-model".
 	req = req.WithContext(context.WithValue(req.Context(), auth.AllowedModelsContextKey, []string{"big-model"}))
