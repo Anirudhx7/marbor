@@ -420,24 +420,31 @@ func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) strin
 // for a node, and reports how many local GPUs it reflects. A node with only
 // one reported device (or no per-device breakdown at all - agentGPUs is
 // empty until an agent with the multi-GPU telemetry array reports in) keeps
-// today's single aggregate figure unchanged (basis "").
+// today's single aggregate figure unchanged (basis ""), and usedMB is -1 -
+// callers should keep using their own whole-node used figure (from /api/ps)
+// against it, exactly as before this function existed.
 //
 // For a node with more than one device, the correct capacity depends on
 // whether the target runtime can actually spread one model across all of
 // them:
 //   - Ollama and llama.cpp shard a model across every local GPU, so the
-//     model's real ceiling is the combined total (basis "combined").
+//     model's real ceiling is the combined total (basis "combined") - the
+//     whole-node used figure is the right pair for it, so usedMB is still -1.
 //   - vLLM, TGI, and MLX pin a model to a single device (no built-in
 //     multi-GPU sharding in the mesh's deployment model), so the real
 //     ceiling is whichever single card is biggest (basis "largest") - never
 //     the sum. Summing here would turn a genuine "won't fit on one card"
 //     into a false green, which is strictly worse than the false red it
 //     would otherwise show (R1: no dressing up an estimate as more certain,
-//     or more favorable, than it is).
-func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime string) (capacityMB int64, gpuCount int, basis string) {
+//     or more favorable, than it is). For this basis usedMB is that same
+//     device's own agent-reported VRAMUsedMB, never the whole-node figure -
+//     pairing a single device's capacity with every other GPU's usage too
+//     would make free VRAM read artificially low (or clamp to zero) even
+//     when the biggest card itself has room.
+func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime string) (capacityMB int64, usedMB int64, gpuCount int, basis string) {
 	gpuCount = len(agentGPUs)
 	if gpuCount < 2 {
-		return vramTotalMB, gpuCount, ""
+		return vramTotalMB, -1, gpuCount, ""
 	}
 	if ggufOnlyRuntime(runtime) {
 		var sum int64
@@ -445,20 +452,22 @@ func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime 
 			sum += g.VRAMTotalMB
 		}
 		if sum > 0 {
-			return sum, gpuCount, "combined"
+			return sum, -1, gpuCount, "combined"
 		}
-		return vramTotalMB, gpuCount, ""
+		return vramTotalMB, -1, gpuCount, ""
 	}
+	largestIdx := -1
 	var largest int64
-	for _, g := range agentGPUs {
+	for i, g := range agentGPUs {
 		if g.VRAMTotalMB > largest {
 			largest = g.VRAMTotalMB
+			largestIdx = i
 		}
 	}
 	if largest > 0 {
-		return largest, gpuCount, "largest"
+		return largest, agentGPUs[largestIdx].VRAMUsedMB, gpuCount, "largest"
 	}
-	return vramTotalMB, gpuCount, ""
+	return vramTotalMB, -1, gpuCount, ""
 }
 
 // handleModelCatalog serves the curated model catalog with per-node fit status.
@@ -500,14 +509,18 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			capabilities = agentCapabilities
 		}
 
-		capacityMB, gpuCount, vramFitBasis := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime)
+		capacityMB, capacityUsedMB, gpuCount, vramFitBasis := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime)
 
 		var vramFreeBytes int64
 		var vramTotalBytes int64
 		vramSource := "unknown"
 		if capacityMB > 0 {
 			vramTotalBytes = capacityMB * 1024 * 1024
-			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
+			usedMB := vramUsedMBFromPS
+			if capacityUsedMB >= 0 {
+				usedMB = capacityUsedMB
+			}
+			vramUsedBytes := usedMB * 1024 * 1024
 			vramFreeBytes = vramTotalBytes - vramUsedBytes
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
@@ -879,12 +892,16 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			dockerDeployed = true
 		}
 
-		capacityMB, gc, vfb := nodeVRAMCapacity(vramTotalMB, agentGPUs, runtime)
+		capacityMB, capacityUsedMB, gc, vfb := nodeVRAMCapacity(vramTotalMB, agentGPUs, runtime)
 		gpuCount = gc
 		vramFitBasis = vfb
 		if capacityMB > 0 {
 			vramTotalBytes = capacityMB * 1024 * 1024
-			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
+			usedMB := vramUsedMBFromPS
+			if capacityUsedMB >= 0 {
+				usedMB = capacityUsedMB
+			}
+			vramUsedBytes := usedMB * 1024 * 1024
 			vramFreeBytes = vramTotalBytes - vramUsedBytes
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
