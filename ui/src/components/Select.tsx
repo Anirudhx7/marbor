@@ -319,3 +319,108 @@ export function CustomCombobox({
     </div>
   );
 }
+
+interface CustomTagComboboxProps {
+  // Raw comma-separated text, exactly as typed/built - callers already parse
+  // this with `.split(',').map(s => s.trim()).filter(Boolean)`.
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}
+
+// CustomTagCombobox is CustomCombobox's sibling for a comma-separated list
+// value (e.g. an ordered chain of fallback model names) instead of a single
+// value. Autocompletes against the segment currently being typed (after the
+// last comma) and, on selection, appends the choice as a completed segment
+// rather than replacing the whole field - so multiple picks compose instead
+// of overwriting each other. Arbitrary typed text always remains valid,
+// same convention as CustomCombobox.
+export function CustomTagCombobox({
+  value,
+  onChange,
+  options,
+  placeholder = '',
+  className = '',
+  disabled = false,
+}: CustomTagComboboxProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const menuRect = useMenuPosition(containerRef, isOpen);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const target = event.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const segments = value.split(',');
+  const completedNames = segments.slice(0, -1).map((s) => s.trim()).filter(Boolean);
+  const currentSegment = segments[segments.length - 1].trim();
+
+  const filteredOptions = options.filter(
+    (opt) => !completedNames.includes(opt) && opt.toLowerCase().includes(currentSegment.toLowerCase())
+  );
+
+  const selectOption = (opt: string) => {
+    onChange([...completedNames, opt].join(', ') + ', ');
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>
+      <input
+        ref={inputRef}
+        type="text"
+        disabled={disabled}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setIsOpen(true)}
+        className={`w-full px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
+          disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:bg-secondary/40'
+        }`}
+      />
+
+      {isOpen && menuRect && createPortal(
+        <div
+          ref={menuRef}
+          style={menuFixedStyle(menuRect)}
+          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+        >
+          <div className="py-1">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground text-center">
+                {options.length === 0 ? 'No options found' : 'All matching models already added'}
+              </div>
+            ) : (
+              filteredOptions.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => selectOption(opt)}
+                  className="flex items-center w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-primary/10 hover:text-primary hover:bg-secondary/40"
+                >
+                  <span className="truncate">{opt}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
