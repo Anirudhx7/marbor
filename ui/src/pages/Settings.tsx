@@ -4,12 +4,12 @@ import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw,
 import { Badge } from '../components/Badge';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
-import { defaultSettings, mockCloudProviders } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup } from '../lib/api';
+import { defaultSettings, mockCloudProviders, mockModelCatalog } from '../lib/mockData';
+import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup, fetchModels } from '../lib/api';
 import type { Settings, CloudProvider, CloudProviderInput, BackupFileInfo } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
-import { CustomSelect } from '../components/Select';
+import { CustomSelect, CustomCombobox } from '../components/Select';
 
 // Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
 // auth and an OpenAI-compatible /chat/completions schema, matching this
@@ -147,6 +147,26 @@ export function SettingsPage() {
   // Local model fallback chain (P67)
   const [newDegModel, setNewDegModel] = useState('');
   const [newDegAlts, setNewDegAlts] = useState('');
+
+  // Known model names for the searchable comboboxes above (context windows +
+  // local fallback chain) - suggestions only, never enforced: an
+  // operator-declared name for a not-yet-pulled or temporarily unavailable
+  // model must stay a valid config entry.
+  const [knownModelNames, setKnownModelNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (currentAppPath() !== '/settings') return;
+    if (demoMode) {
+      setKnownModelNames((mockModelCatalog.models || []).map((m) => m.name));
+      return;
+    }
+    let active = true;
+    fetchModels().then((data) => {
+      if (!active || currentAppPath() !== '/settings') return;
+      setKnownModelNames((data.models || []).map((m) => m.name));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [demoMode, location.pathname]);
 
   // Admin credentials change
   const [credCurrentPw, setCredCurrentPw] = useState('');
@@ -1504,7 +1524,7 @@ export function SettingsPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <input type="text" value={newCtxModel} onChange={(e) => setNewCtxModel(e.target.value)} placeholder="llama3.2:8b" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <CustomCombobox value={newCtxModel} onChange={setNewCtxModel} options={knownModelNames} placeholder="llama3.2:8b" className="sm:flex-1" />
             <input type="number" value={newCtxTokens} onChange={(e) => setNewCtxTokens(e.target.value)} placeholder="8192" className="w-full sm:w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
             <button
               onClick={() => {
@@ -1559,7 +1579,7 @@ export function SettingsPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <input type="text" value={newDegModel} onChange={(e) => setNewDegModel(e.target.value)} placeholder="llama3.1:70b" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <CustomCombobox value={newDegModel} onChange={setNewDegModel} options={knownModelNames} placeholder="llama3.1:70b" className="sm:flex-1" />
             <input type="text" value={newDegAlts} onChange={(e) => setNewDegAlts(e.target.value)} placeholder="llama3.1:8b, phi3:mini" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
             <button
               onClick={() => {
