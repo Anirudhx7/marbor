@@ -59,6 +59,33 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsLocalDegradationChainSelfLoop verifies P67's config
+// guard: a chain entry that lists its own key as an alternate is a config
+// error, not a silently-accepted no-op.
+func TestValidateRejectsLocalDegradationChainSelfLoop(t *testing.T) {
+	cfg := Config{
+		Nodes: []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+		Routing: RoutingConfig{
+			LocalDegradationChains: map[string][]string{"big-model": {"big-model"}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("validate: want error for a chain entry that lists itself as an alternate, got nil")
+	}
+}
+
+func TestValidateAcceptsValidLocalDegradationChain(t *testing.T) {
+	cfg := Config{
+		Nodes: []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+		Routing: RoutingConfig{
+			LocalDegradationChains: map[string][]string{"big-model": {"small-model"}},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+}
+
 func TestSavingsReferenceRateDefault(t *testing.T) {
 	var cfg Config
 	if err := cfg.Validate(); err != nil {

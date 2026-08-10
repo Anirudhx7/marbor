@@ -769,6 +769,23 @@ func TestFallbackChainFor(t *testing.T) {
 	}
 }
 
+// TestLocalDegradationChainFor verifies the config-only, immutable-after-
+// construction accessor for P67's local degradation chain: declared models
+// return their chain, undeclared models return nil.
+func TestLocalDegradationChainFor(t *testing.T) {
+	r := New(config.RoutingConfig{
+		Strategy:               "warm-first",
+		LocalDegradationChains: map[string][]string{"big-model": {"small-model", "tiny-model"}},
+	}, nil, nil)
+
+	if got := r.LocalDegradationChainFor("big-model"); len(got) != 2 || got[0] != "small-model" {
+		t.Errorf("LocalDegradationChainFor(declared) = %v, want [small-model tiny-model]", got)
+	}
+	if got := r.LocalDegradationChainFor("undeclared-model"); got != nil {
+		t.Errorf("LocalDegradationChainFor(undeclared) = %v, want nil", got)
+	}
+}
+
 // TestEnsureHeadroomAccountsForConcurrentSiblingLoad verifies the fix for the
 // warmup headroom race: when one model's warmup is already in flight
 // (reserved, but not yet confirmed by a poll) on a node, a second model's

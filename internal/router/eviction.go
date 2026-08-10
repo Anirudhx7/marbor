@@ -782,6 +782,16 @@ func (r *Router) FallbackChainFor(model string) []string {
 	return r.fallbackChains[model]
 }
 
+// LocalDegradationChainFor returns the operator-declared, ordered list of
+// local alternate models to try for model when no node can serve it at all,
+// or nil if none is configured. Opt-in only - a model absent from
+// routing.local_degradation_chains has no substitution behavior. Single-hop
+// only: callers must not recursively resolve a chain for the returned
+// alternates.
+func (r *Router) LocalDegradationChainFor(model string) []string {
+	return r.localDegradationChains[model]
+}
+
 // ModelFitsAnyHealthyNode reports whether model could fit in free VRAM on at
 // least one healthy, non-draining node, using the same real size/headroom
 // data (tags-cache size, live VRAM) as predictive prewarm and eviction. If no

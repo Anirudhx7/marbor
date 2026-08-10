@@ -145,6 +145,7 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Routing.ThermalWatchdog.MaxTempCelsius = store.GetFloatSetting(st, "routing_thermal_watchdog_max_temp_celsius", cfg.Routing.ThermalWatchdog.MaxTempCelsius)
 	cfg.Routing.ThermalWatchdog.ConsecutiveBreaches = store.GetIntSetting(st, "routing_thermal_watchdog_consecutive_breaches", cfg.Routing.ThermalWatchdog.ConsecutiveBreaches)
 	store.GetJSONSetting(st, "routing_fallback_chains", &cfg.Routing.FallbackChains)
+	store.GetJSONSetting(st, "routing_local_degradation_chains", &cfg.Routing.LocalDegradationChains)
 
 	cfg.Metrics.Enabled = store.GetBoolSetting(st, "metrics_enabled", cfg.Metrics.Enabled)
 	cfg.Metrics.Port = store.GetIntSetting(st, "metrics_port", cfg.Metrics.Port)
