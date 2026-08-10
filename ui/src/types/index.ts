@@ -525,6 +525,13 @@ export interface CatalogNodeEntry {
   disk_known: boolean;
   capabilities?: string[];
   models: CatalogModelFit[];
+  // gpu_count/vram_fit_basis are only set on a node with more than one local
+  // GPU: vram_fit_basis is "combined" (fit sized against the sum of all
+  // devices, for a runtime that shards a model across them - Ollama,
+  // llama.cpp) or "largest" (fit sized against the single biggest device
+  // only, for a runtime that pins a model to one GPU - vLLM, TGI, MLX).
+  gpu_count?: number;
+  vram_fit_basis?: 'combined' | 'largest';
 }
 
 export interface ModelCatalogResponse {

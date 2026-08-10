@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
@@ -334,6 +335,36 @@ func TestClassifyFit(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			if got := classifyFit(c.estBytes, c.freeBytes, c.source); got != c.want {
 				t.Errorf("classifyFit = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestNodeVRAMCapacity(t *testing.T) {
+	cases := []struct {
+		name        string
+		vramTotalMB int64
+		agentGPUs   []nodeagent.GPUInfo
+		runtime     string
+		wantMB      int64
+		wantCount   int
+		wantBasis   string
+	}{
+		{"no agent GPUs falls back to aggregate", 24000, nil, "ollama", 24000, 0, ""},
+		{"single agent GPU falls back to aggregate", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}}, "ollama", 24000, 1, ""},
+		{"multi-GPU ollama sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 24000}}, "ollama", 48000, 2, "combined"},
+		{"multi-GPU llamacpp sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "llamacpp", 24000, 2, "combined"},
+		{"multi-GPU empty runtime treated as shardable (matches ggufOnlyRuntime)", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 12000}, {VRAMTotalMB: 12000}}, "", 24000, 2, "combined"},
+		{"multi-GPU vllm uses largest device only, never the sum", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 8000}}, "vllm", 24000, 2, "largest"},
+		{"multi-GPU tgi uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 8000}, {VRAMTotalMB: 24000}}, "tgi", 24000, 2, "largest"},
+		{"multi-GPU mlx uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "mlx", 16000, 2, "largest"},
+		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []nodeagent.GPUInfo{{}, {}}, "ollama", 24000, 2, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotMB, gotCount, gotBasis := nodeVRAMCapacity(c.vramTotalMB, c.agentGPUs, c.runtime)
+			if gotMB != c.wantMB || gotCount != c.wantCount || gotBasis != c.wantBasis {
+				t.Errorf("nodeVRAMCapacity = (%d, %d, %q), want (%d, %d, %q)", gotMB, gotCount, gotBasis, c.wantMB, c.wantCount, c.wantBasis)
 			}
 		})
 	}
