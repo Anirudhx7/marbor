@@ -1503,9 +1503,9 @@ export function SettingsPage() {
             )}
           </div>
 
-          <div className="flex gap-2">
-            <input type="text" value={newCtxModel} onChange={(e) => setNewCtxModel(e.target.value)} placeholder="llama3.2:8b" className="flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-            <input type="number" value={newCtxTokens} onChange={(e) => setNewCtxTokens(e.target.value)} placeholder="8192" className="w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input type="text" value={newCtxModel} onChange={(e) => setNewCtxModel(e.target.value)} placeholder="llama3.2:8b" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <input type="number" value={newCtxTokens} onChange={(e) => setNewCtxTokens(e.target.value)} placeholder="8192" className="w-full sm:w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
             <button
               onClick={() => {
                 const tokens = parseInt(newCtxTokens, 10);
