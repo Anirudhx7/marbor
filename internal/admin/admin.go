@@ -7294,7 +7294,9 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		n.RLock()
 		nodeURL := n.URL
 		nodeName := n.Name
+		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
+		agentGPUs := append([]nodeagent.GPUInfo(nil), n.AgentGPUs...)
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
 		agentGPUVendor := n.AgentGPUVendor
@@ -7310,10 +7312,17 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		var vramTotalBytes int64
 		vramSource := "unknown"
 
-		if vramTotalMB > 0 {
-			vramTotalBytes = vramTotalMB * 1024 * 1024
-			// Use nvidia-smi total minus what /api/ps says is loaded.
-			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
+		capacityMB, capacityUsedMB, _, _ := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime)
+		if capacityMB > 0 {
+			vramTotalBytes = capacityMB * 1024 * 1024
+			// Use nvidia-smi total minus what /api/ps says is loaded (or, on
+			// a multi-GPU node sized against a single device - see
+			// nodeVRAMCapacity - that same device's own reported usage).
+			usedMB := vramUsedMBFromPS
+			if capacityUsedMB >= 0 {
+				usedMB = capacityUsedMB
+			}
+			vramUsedBytes := usedMB * 1024 * 1024
 			vramFreeBytes = vramTotalBytes - vramUsedBytes
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
