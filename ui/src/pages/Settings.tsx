@@ -147,6 +147,7 @@ export function SettingsPage() {
   // Local model fallback chain (P67)
   const [newDegModel, setNewDegModel] = useState('');
   const [newDegAlts, setNewDegAlts] = useState('');
+  const [degChainError, setDegChainError] = useState<string | null>(null);
 
   // Known model names for the searchable comboboxes above (context windows +
   // local fallback chain) - suggestions only, never enforced: an
@@ -1579,13 +1580,31 @@ export function SettingsPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <CustomCombobox value={newDegModel} onChange={setNewDegModel} options={knownModelNames} placeholder="llama3.1:70b" className="sm:flex-1" />
-            <CustomTagCombobox value={newDegAlts} onChange={setNewDegAlts} options={knownModelNames} placeholder="llama3.1:8b, phi3:mini" className="sm:flex-1" />
+            <CustomCombobox value={newDegModel} onChange={(v) => { setNewDegModel(v); setDegChainError(null); }} options={knownModelNames} placeholder="llama3.1:70b" className="sm:flex-1" />
+            <CustomTagCombobox value={newDegAlts} onChange={(v) => { setNewDegAlts(v); setDegChainError(null); }} options={knownModelNames} placeholder="llama3.1:8b, phi3:mini" className="sm:flex-1" />
             <button
               onClick={() => {
+                const model = newDegModel.trim();
                 const alts = newDegAlts.split(',').map((s) => s.trim()).filter(Boolean);
-                if (!newDegModel.trim() || alts.length === 0) return;
-                setSettings({ ...settings, localDegradationChains: { ...settings.localDegradationChains, [newDegModel.trim()]: alts } });
+                if (!model || alts.length === 0) return;
+                // Mirror config.go Validate()'s local_degradation_chains rules
+                // client-side so a nonsensical chain never even makes it into
+                // the pending list - previously this only surfaced as a
+                // confusing "validation failed" error on Save.
+                if (alts.includes(model)) {
+                  setDegChainError(`"${model}" lists itself as an alternate`);
+                  return;
+                }
+                const seen = new Set<string>();
+                for (const alt of alts) {
+                  if (seen.has(alt)) {
+                    setDegChainError(`"${model}" lists "${alt}" more than once`);
+                    return;
+                  }
+                  seen.add(alt);
+                }
+                setDegChainError(null);
+                setSettings({ ...settings, localDegradationChains: { ...settings.localDegradationChains, [model]: alts } });
                 setNewDegModel('');
                 setNewDegAlts('');
               }}
@@ -1594,6 +1613,7 @@ export function SettingsPage() {
               <Plus className="w-4 h-4" />
             </button>
           </div>
+          {degChainError && <p className="text-sm text-destructive mt-2">{degChainError}</p>}
         </div>
 
         {/* Global Warmup & Audit */}
