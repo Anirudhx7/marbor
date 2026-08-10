@@ -359,9 +359,9 @@ type RoutingConfig struct {
 	// alternates to try when NO node can currently serve the requested model
 	// at all (vs. FallbackChains' VRAM-fit trigger) - the primary local-
 	// unavailable -> cloud egress path. Opt-in twice over: the operator must
-	// declare the chain here AND the individual request must send
-	// X-Ollama-Mesh-Allow-Local-Degradation, so no client is silently served
-	// a different model than it asked for. Unlike FallbackChains, an
+	// declare the chain here AND the request's API key must have its
+	// allow_local_degradation policy set to true, so no client is silently
+	// served a different model than it asked for. Unlike FallbackChains, an
 	// alternate here is not required to already be downloaded - a cold pull
 	// of a declared local alternate is still strictly better for a privacy-
 	// motivated operator than cloud egress. Single-hop only: an alternate
