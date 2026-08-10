@@ -9,7 +9,7 @@ import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, u
 import type { Settings, CloudProvider, CloudProviderInput, BackupFileInfo } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
-import { CustomSelect, CustomCombobox } from '../components/Select';
+import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/Select';
 
 // Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
 // auth and an OpenAI-compatible /chat/completions schema, matching this
@@ -1580,7 +1580,7 @@ export function SettingsPage() {
 
           <div className="flex flex-col sm:flex-row gap-2">
             <CustomCombobox value={newDegModel} onChange={setNewDegModel} options={knownModelNames} placeholder="llama3.1:70b" className="sm:flex-1" />
-            <input type="text" value={newDegAlts} onChange={(e) => setNewDegAlts(e.target.value)} placeholder="llama3.1:8b, phi3:mini" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <CustomTagCombobox value={newDegAlts} onChange={setNewDegAlts} options={knownModelNames} placeholder="llama3.1:8b, phi3:mini" className="sm:flex-1" />
             <button
               onClick={() => {
                 const alts = newDegAlts.split(',').map((s) => s.trim()).filter(Boolean);
