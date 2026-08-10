@@ -584,6 +584,20 @@ func (c *Client) PatchKeyLocalOnly(name string, localOnly bool) error {
 	return nil
 }
 
+// PatchKeyAllowLocalDegradation calls PATCH /admin/v1/keys/{name} with
+// allow_local_degradation, the P67 per-key policy gate on whether this key
+// may be substituted with an operator-declared local alternate model -
+// matches auth.KeyPatch's snake_case JSON tag, same as PatchKeyLocalOnly.
+func (c *Client) PatchKeyAllowLocalDegradation(name string, allow bool) error {
+	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/keys/"+urlPathEscape(name),
+		map[string]bool{"allow_local_degradation": allow})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // ModelNodeInfo mirrors handleModels' nested nodeInfo struct.
 type ModelNodeInfo struct {
 	Name    string `json:"name"`

@@ -301,6 +301,7 @@ export const mockAPIKeys: APIKey[] = [
     status: 'active',
     allowedModels: ['llama3.3:8b', 'deepseek-r1:7b'],
     expiresAt: null,
+    allowLocalDegradation: true,
   },
   {
     id: 'key-4',

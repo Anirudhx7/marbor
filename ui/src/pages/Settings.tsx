@@ -1529,7 +1529,7 @@ export function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">Local Model Fallback Chain</h3>
-              <p className="text-xs font-medium text-muted-foreground">Ordered local alternates to try when no node can serve the requested model, before cloud - opt-in per request via X-Ollama-Mesh-Allow-Local-Degradation</p>
+              <p className="text-xs font-medium text-muted-foreground">Ordered local alternates to try when no node can serve the requested model, before cloud - only applies to keys with "Allow local degradation" enabled (API Keys page)</p>
             </div>
           </div>
 

@@ -14,7 +14,6 @@ import (
 	"net/url"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -362,14 +361,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// absent or empty value means stateless routing (no sticky session).
 	sessionID := strings.TrimSpace(r.Header.Get("X-Session-ID"))
 
-	// Explicit per-request opt-in for local degradation chain substitution
-	// (P67). A silent model swap would be a correctness surprise for an API
-	// consumer, so a request is only eligible for chain substitution when it
-	// asks for it via this header - declaring routing.local_degradation_chains
-	// alone is not enough. strconv.ParseBool accepts the usual truthy
-	// spellings (true/1/t/TRUE/...); an absent or unparseable header defaults
-	// to false (opted out).
-	allowLocalDegradation, _ := strconv.ParseBool(r.Header.Get("X-Ollama-Mesh-Allow-Local-Degradation"))
+	// Per-key opt-in for local degradation chain substitution (P67). A silent
+	// model swap would be a correctness surprise for an API consumer, so a
+	// request is only eligible for chain substitution when the operator has
+	// granted this key that policy - declaring routing.local_degradation_chains
+	// alone is not enough, and the client cannot self-authorize it (a client
+	// deciding whether to degrade would defeat the point of an operator
+	// policy). An unknown/anonymous key defaults to false (opted out).
+	allowLocalDegradation := h.auth != nil && h.auth.IsAllowLocalDegradation(keyName)
 
 	// Determine runtime filter from request path. Ollama-native paths (/api/*)
 	// must only route to Ollama nodes; /v1/* paths can reach any backend

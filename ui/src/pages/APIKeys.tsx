@@ -45,7 +45,7 @@ export function APIKeys() {
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [editKey, setEditKey] = useState<APIKey | null>(null);
-  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[]; expiresAt: string; localOnly: boolean }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [], expiresAt: '', localOnly: false });
+  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[]; expiresAt: string; localOnly: boolean; allowLocalDegradation: boolean }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [], expiresAt: '', localOnly: false, allowLocalDegradation: false });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -60,13 +60,14 @@ export function APIKeys() {
       models: key.allowedModels ?? [],
       expiresAt: key.expiresAt ?? '',
       localOnly: key.localOnly ?? false,
+      allowLocalDegradation: key.allowLocalDegradation ?? false,
     });
     setEditError('');
   };
 
   const handleSaveKeyPatch = async () => {
     if (!editKey) return;
-    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string; local_only?: boolean } = {};
+    const patch: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string; local_only?: boolean; allow_local_degradation?: boolean } = {};
     if (editForm.rateLimit.trim()) {
       const v = parseInt(editForm.rateLimit, 10);
       if (isNaN(v) || v < 0) { setEditError('Rate limit must be a non-negative integer'); return; }
@@ -109,6 +110,9 @@ export function APIKeys() {
     if (editForm.localOnly !== (editKey.localOnly ?? false)) {
       patch.local_only = editForm.localOnly;
     }
+    if (editForm.allowLocalDegradation !== (editKey.allowLocalDegradation ?? false)) {
+      patch.allow_local_degradation = editForm.allowLocalDegradation;
+    }
     if (Object.keys(patch).length === 0) { setEditKey(null); return; }
 
     if (demoMode) {
@@ -123,6 +127,7 @@ export function APIKeys() {
             allowedModels: patch.models ?? k.allowedModels,
             expiresAt: patch.expires_at !== undefined ? (patch.expires_at || null) : k.expiresAt,
             localOnly: patch.local_only ?? k.localOnly,
+            allowLocalDegradation: patch.allow_local_degradation ?? k.allowLocalDegradation,
           }
         : k));
       setEditKey(null);
@@ -780,6 +785,21 @@ export function APIKeys() {
               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.localOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.localOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div>
+              <div className="text-sm font-medium text-foreground">Allow local degradation</div>
+              <div className="text-xs text-muted-foreground">Lets this key receive an operator-configured local alternate model (routing.local_degradation_chains) when its requested model is unavailable, before cloud fallback.</div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={editForm.allowLocalDegradation}
+              onClick={() => setEditForm({ ...editForm, allowLocalDegradation: !editForm.allowLocalDegradation })}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.allowLocalDegradation ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.allowLocalDegradation ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
           <div>

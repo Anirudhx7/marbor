@@ -52,20 +52,21 @@ type Middleware struct {
 }
 
 type keyState struct {
-	mu            sync.RWMutex
-	name          string
-	key           string
-	rateLimit     int
-	limiter       *tokenBucket
-	counter       *keyCounter
-	models        []string
-	expiresAt     string
-	createdAt     time.Time
-	dailyLimit    int
-	monthlyLimit  int
-	dailyUsdCap   float64
-	monthlyUsdCap float64
-	localOnly     bool
+	mu                    sync.RWMutex
+	name                  string
+	key                   string
+	rateLimit             int
+	limiter               *tokenBucket
+	counter               *keyCounter
+	models                []string
+	expiresAt             string
+	createdAt             time.Time
+	dailyLimit            int
+	monthlyLimit          int
+	dailyUsdCap           float64
+	monthlyUsdCap         float64
+	localOnly             bool
+	allowLocalDegradation bool
 }
 
 type keyCounter struct {
@@ -271,19 +272,20 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 	}
 	for _, k := range cfg.Keys {
 		ks := &keyState{
-			name:          k.Name,
-			key:           k.Key,
-			rateLimit:     k.RateLimit,
-			limiter:       newTokenBucket(k.RateLimit),
-			counter:       &keyCounter{lastReset: time.Now()},
-			models:        k.Models,
-			expiresAt:     k.ExpiresAt,
-			createdAt:     time.Now(),
-			dailyLimit:    k.DailyLimit,
-			monthlyLimit:  k.MonthlyLimit,
-			dailyUsdCap:   k.DailyUsdCap,
-			monthlyUsdCap: k.MonthlyUsdCap,
-			localOnly:     k.LocalOnly,
+			name:                  k.Name,
+			key:                   k.Key,
+			rateLimit:             k.RateLimit,
+			limiter:               newTokenBucket(k.RateLimit),
+			counter:               &keyCounter{lastReset: time.Now()},
+			models:                k.Models,
+			expiresAt:             k.ExpiresAt,
+			createdAt:             time.Now(),
+			dailyLimit:            k.DailyLimit,
+			monthlyLimit:          k.MonthlyLimit,
+			dailyUsdCap:           k.DailyUsdCap,
+			monthlyUsdCap:         k.MonthlyUsdCap,
+			localOnly:             k.LocalOnly,
+			allowLocalDegradation: k.AllowLocalDegradation,
 		}
 		m.keys[k.Key] = ks
 		m.byName[k.Name] = ks
@@ -294,14 +296,15 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 // KeyPatch holds optional runtime-mutable key settings.
 // Only non-nil fields are applied; counters are preserved.
 type KeyPatch struct {
-	RateLimit     *int     `json:"rate_limit"`
-	DailyLimit    *int     `json:"daily_limit"`
-	MonthlyLimit  *int     `json:"monthly_limit"`
-	DailyUsdCap   *float64 `json:"daily_usd_cap"`
-	MonthlyUsdCap *float64 `json:"monthly_usd_cap"`
-	Models        []string `json:"models"`
-	ExpiresAt     *string  `json:"expires_at"`
-	LocalOnly     *bool    `json:"local_only"`
+	RateLimit             *int     `json:"rate_limit"`
+	DailyLimit            *int     `json:"daily_limit"`
+	MonthlyLimit          *int     `json:"monthly_limit"`
+	DailyUsdCap           *float64 `json:"daily_usd_cap"`
+	MonthlyUsdCap         *float64 `json:"monthly_usd_cap"`
+	Models                []string `json:"models"`
+	ExpiresAt             *string  `json:"expires_at"`
+	LocalOnly             *bool    `json:"local_only"`
+	AllowLocalDegradation *bool    `json:"allow_local_degradation"`
 }
 
 // PatchKey updates mutable fields of an existing key without rotating it.
@@ -339,25 +342,29 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 	if patch.LocalOnly != nil {
 		ks.localOnly = *patch.LocalOnly
 	}
+	if patch.AllowLocalDegradation != nil {
+		ks.allowLocalDegradation = *patch.AllowLocalDegradation
+	}
 	ks.mu.Unlock()
 	return true
 }
 
 func (m *Middleware) AddKey(k config.KeyConfig) {
 	ks := &keyState{
-		name:          k.Name,
-		key:           k.Key,
-		rateLimit:     k.RateLimit,
-		limiter:       newTokenBucket(k.RateLimit),
-		counter:       &keyCounter{lastReset: time.Now()},
-		models:        k.Models,
-		expiresAt:     k.ExpiresAt,
-		createdAt:     time.Now(),
-		dailyLimit:    k.DailyLimit,
-		monthlyLimit:  k.MonthlyLimit,
-		dailyUsdCap:   k.DailyUsdCap,
-		monthlyUsdCap: k.MonthlyUsdCap,
-		localOnly:     k.LocalOnly,
+		name:                  k.Name,
+		key:                   k.Key,
+		rateLimit:             k.RateLimit,
+		limiter:               newTokenBucket(k.RateLimit),
+		counter:               &keyCounter{lastReset: time.Now()},
+		models:                k.Models,
+		expiresAt:             k.ExpiresAt,
+		createdAt:             time.Now(),
+		dailyLimit:            k.DailyLimit,
+		monthlyLimit:          k.MonthlyLimit,
+		dailyUsdCap:           k.DailyUsdCap,
+		monthlyUsdCap:         k.MonthlyUsdCap,
+		localOnly:             k.LocalOnly,
+		allowLocalDegradation: k.AllowLocalDegradation,
 	}
 	m.mu.Lock()
 	m.keys[k.Key] = ks
@@ -388,6 +395,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 			existing.dailyUsdCap = k.DailyUsdCap
 			existing.monthlyUsdCap = k.MonthlyUsdCap
 			existing.localOnly = k.LocalOnly
+			existing.allowLocalDegradation = k.AllowLocalDegradation
 			if k.RateLimit != existing.rateLimit {
 				existing.rateLimit = k.RateLimit
 				existing.limiter = newTokenBucket(k.RateLimit)
@@ -399,17 +407,18 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 		} else {
 			// New key or rotated token - fresh state.
 			ks := &keyState{
-				name:         k.Name,
-				key:          k.Key,
-				rateLimit:    k.RateLimit,
-				limiter:      newTokenBucket(k.RateLimit),
-				counter:      &keyCounter{lastReset: time.Now()},
-				models:       k.Models,
-				expiresAt:    k.ExpiresAt,
-				createdAt:    time.Now(),
-				dailyLimit:   k.DailyLimit,
-				monthlyLimit: k.MonthlyLimit,
-				localOnly:    k.LocalOnly,
+				name:                  k.Name,
+				key:                   k.Key,
+				rateLimit:             k.RateLimit,
+				limiter:               newTokenBucket(k.RateLimit),
+				counter:               &keyCounter{lastReset: time.Now()},
+				models:                k.Models,
+				expiresAt:             k.ExpiresAt,
+				createdAt:             time.Now(),
+				dailyLimit:            k.DailyLimit,
+				monthlyLimit:          k.MonthlyLimit,
+				localOnly:             k.LocalOnly,
+				allowLocalDegradation: k.AllowLocalDegradation,
 			}
 			newKeys[k.Key] = ks
 			newByName[k.Name] = ks
@@ -473,6 +482,29 @@ func (m *Middleware) IsLocalOnly(name string) bool {
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
 	return ks.localOnly
+}
+
+// IsAllowLocalDegradation reports whether name's live (possibly patched)
+// policy permits this key's requests to be substituted with an
+// operator-declared local alternate model (routing.local_degradation_chains)
+// before cloud fallback, when the requested model has no available node.
+// Returns false for an unknown key name: an unrecognized/anonymous request
+// was never allowed to degrade, so this preserves that fail-safe behavior.
+//
+// Locking follows the same discipline as IsLocalOnly above: Middleware.mu is
+// held only briefly to look up the key, then released before keyState.mu is
+// taken - never the reverse, and never held across a call into
+// internal/store.
+func (m *Middleware) IsAllowLocalDegradation(name string) bool {
+	m.mu.RLock()
+	ks, found := m.byName[name]
+	m.mu.RUnlock()
+	if !found {
+		return false
+	}
+	ks.mu.RLock()
+	defer ks.mu.RUnlock()
+	return ks.allowLocalDegradation
 }
 
 // Refund restores one request's rate-limit token and quota count for a key,

@@ -369,17 +369,18 @@ type PredictiveTransition struct {
 
 // KeyRecord is a runtime API key that should survive a process restart.
 type KeyRecord struct {
-	Name          string   `json:"name"`
-	Key           string   `json:"key"`
-	RateLimit     int      `json:"rate_limit"`
-	DailyLimit    int      `json:"daily_limit"`
-	MonthlyLimit  int      `json:"monthly_limit"`
-	DailyUsdCap   float64  `json:"daily_usd_cap"`
-	MonthlyUsdCap float64  `json:"monthly_usd_cap"`
-	Models        []string `json:"models"`
-	Revoked       bool     `json:"revoked"`
-	ExpiresAt     string   `json:"expires_at"`
-	LocalOnly     bool     `json:"local_only"`
+	Name                  string   `json:"name"`
+	Key                   string   `json:"key"`
+	RateLimit             int      `json:"rate_limit"`
+	DailyLimit            int      `json:"daily_limit"`
+	MonthlyLimit          int      `json:"monthly_limit"`
+	DailyUsdCap           float64  `json:"daily_usd_cap"`
+	MonthlyUsdCap         float64  `json:"monthly_usd_cap"`
+	Models                []string `json:"models"`
+	Revoked               bool     `json:"revoked"`
+	ExpiresAt             string   `json:"expires_at"`
+	LocalOnly             bool     `json:"local_only"`
+	AllowLocalDegradation bool     `json:"allow_local_degradation"`
 }
 
 // SpillCounterRow is one (key_name, served_by) count from the spill_counters

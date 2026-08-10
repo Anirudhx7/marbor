@@ -219,6 +219,7 @@ export interface APIKey {
   models?: string[];
   expiresAt: string | null;
   localOnly?: boolean;
+  allowLocalDegradation?: boolean;
 }
 
 // SpillCounterRow mirrors one row of GET /admin/v1/spill - a per-key,
@@ -325,7 +326,7 @@ export interface Settings {
 
   // Model name -> ordered list of local alternates to try when no node can
   // serve it at all (P67). Opt-in twice over: declared here AND the
-  // individual request must send X-Ollama-Mesh-Allow-Local-Degradation.
+  // request's API key must have its allowLocalDegradation policy set to true.
   localDegradationChains: Record<string, string[]>;
 
   // Scheduled mesh.db backup (P49). LastBackupAt/LastBackupError are

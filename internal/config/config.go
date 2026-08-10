@@ -247,6 +247,12 @@ type KeyConfig struct {
 	// nodes. Default false preserves today's fallback behavior for every
 	// existing key.
 	LocalOnly bool `yaml:"local_only,omitempty" json:"localOnly,omitempty"`
+	// AllowLocalDegradation, when true, permits this key's requests to be
+	// substituted with an operator-declared local alternate model
+	// (routing.local_degradation_chains) before cloud fallback, when the
+	// requested model has no available node. Default false preserves today's
+	// behavior for every existing key.
+	AllowLocalDegradation bool `yaml:"allow_local_degradation,omitempty" json:"allowLocalDegradation,omitempty"`
 }
 
 type NodeConfig struct {
@@ -353,9 +359,9 @@ type RoutingConfig struct {
 	// alternates to try when NO node can currently serve the requested model
 	// at all (vs. FallbackChains' VRAM-fit trigger) - the primary local-
 	// unavailable -> cloud egress path. Opt-in twice over: the operator must
-	// declare the chain here AND the individual request must send
-	// X-Ollama-Mesh-Allow-Local-Degradation, so no client is silently served
-	// a different model than it asked for. Unlike FallbackChains, an
+	// declare the chain here AND the request's API key must have its
+	// allow_local_degradation policy set to true, so no client is silently
+	// served a different model than it asked for. Unlike FallbackChains, an
 	// alternate here is not required to already be downloaded - a cold pull
 	// of a declared local alternate is still strictly better for a privacy-
 	// motivated operator than cloud egress. Single-hop only: an alternate
@@ -502,10 +508,15 @@ func (c *Config) Validate() error {
 		c.Routing.HealthSuccessThreshold = 2
 	}
 	for model, alts := range c.Routing.LocalDegradationChains {
+		seen := make(map[string]bool, len(alts))
 		for _, alt := range alts {
 			if alt == model {
 				return fmt.Errorf("routing.local_degradation_chains: %q lists itself as an alternate", model)
 			}
+			if seen[alt] {
+				return fmt.Errorf("routing.local_degradation_chains: %q lists %q more than once", model, alt)
+			}
+			seen[alt] = true
 		}
 	}
 	if c.Metrics.Port == 0 {
