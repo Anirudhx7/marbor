@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -285,9 +287,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	modelName := router.ExtractModelName(body)
 
 	// Enforce per-key model allow-list. An empty list means no restriction.
-	if allowed := auth.AllowedModelsFromContext(r.Context()); len(allowed) > 0 {
+	// Captured in allowedModels (rather than re-derived) so the local
+	// degradation chain below can re-apply the same restriction to any
+	// substitute model - a key's allow-list must survive a degradation swap.
+	allowedModels := auth.AllowedModelsFromContext(r.Context())
+	if len(allowedModels) > 0 {
 		permitted := false
-		for _, m := range allowed {
+		for _, m := range allowedModels {
 			if m == modelName {
 				permitted = true
 				break
@@ -356,6 +362,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// absent or empty value means stateless routing (no sticky session).
 	sessionID := strings.TrimSpace(r.Header.Get("X-Session-ID"))
 
+	// Explicit per-request opt-in for local degradation chain substitution
+	// (P67). A silent model swap would be a correctness surprise for an API
+	// consumer, so a request is only eligible for chain substitution when it
+	// asks for it via this header - declaring routing.local_degradation_chains
+	// alone is not enough. strconv.ParseBool accepts the usual truthy
+	// spellings (true/1/t/TRUE/...); an absent or unparseable header defaults
+	// to false (opted out).
+	allowLocalDegradation, _ := strconv.ParseBool(r.Header.Get("X-Ollama-Mesh-Allow-Local-Degradation"))
+
 	// Determine runtime filter from request path. Ollama-native paths (/api/*)
 	// must only route to Ollama nodes; /v1/* paths can reach any backend
 	// (vLLM, TGI, llama.cpp, Ollama). An empty filter means no restriction.
@@ -375,6 +390,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Ollama node could be available but the request still hit 503 because a
 	// non-Ollama node was returned and silently discarded (#3).
 	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
+
+	// degradedOnce enforces the documented single-hop invariant across both
+	// trigger sites in this method: a request may substitute at most once,
+	// even if the chosen alternate has its own chain entry. Without this, a
+	// chain of independently-declared entries (or a cycle) could substitute
+	// repeatedly across retry-loop iterations, defeating maxRetries and, for
+	// a cycle, looping the request indefinitely.
+	degradedOnce := false
+
+	if node == nil {
+		// Local degradation chain (P67): opt-in, local-only substitution tried
+		// before cloud egress - a degraded-but-local answer is strictly better
+		// than cloud for a privacy-motivated operator. Tried before
+		// localOnlyBlocked since a successful substitution never leaves local
+		// nodes and so never needs to be blocked.
+		if altNode, alt, altWarm, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
+			body = applyLocalDegradation(w, body, modelName, alt)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			modelName = alt
+			node = altNode
+			warm = altWarm
+			degradedOnce = true
+		}
+	}
 
 	if node == nil {
 		if h.localOnlyBlocked(w, keyName, modelName) {
@@ -504,6 +543,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					metrics.Retry(node.Name)
 					nextNode = alt
 					retryErr = e
+					return
+				}
+			}
+			// No alternate nodes for the current model. Try the local
+			// degradation chain (P67, opt-in) before falling through to
+			// cloud - gated on !degradedOnce so a request can only ever
+			// substitute once, even across retry-loop iterations (enforces
+			// the single-hop invariant in code, not just in a comment, and
+			// bounds a cyclic operator config to one substitution instead of
+			// looping the retry loop indefinitely).
+			if !degradedOnce {
+				if altNode, altModel, _, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
+					body = applyLocalDegradation(rw, body, modelName, altModel)
+					origReq.Body = io.NopCloser(bytes.NewReader(body))
+					modelName = altModel
+					nextNode = altNode
+					retryErr = e
+					degradedOnce = true
 					return
 				}
 			}
@@ -653,6 +710,49 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		LatencyMs:  int64(time.Since(start).Milliseconds()),
 		Cloud:      false,
 	})
+}
+
+// applyLocalDegradation records a local degradation substitution (the
+// fallback header and metric) and rewrites body's model field to alt.
+// Shared by both tryLocalDegradationChain call sites in ServeHTTP so the
+// header format, metric call, and rewrite stay in one place.
+func applyLocalDegradation(w http.ResponseWriter, body []byte, from, alt string) []byte {
+	w.Header().Set("X-Ollama-Mesh-Model-Fallback", from+" -> "+alt)
+	metrics.LocalDegradation(from, alt)
+	return rewriteModelField(body, alt)
+}
+
+// tryLocalDegradationChain walks the operator-declared local degradation
+// chain for modelName (routing.local_degradation_chains), in order, probing
+// each candidate with a single non-blocking RouteExcluding call. This never
+// queues behind an unavailable alternate - by design, only the non-blocking
+// call is used here, never WaitForNode. RouteExcluding (not Route) is used
+// deliberately: it never reads or writes session affinity, so degrading to
+// an alternate model can never pin the session's sticky node to a node
+// chosen for the wrong model. No node exclusion set is applied here - a node
+// that just failed to serve modelName may still be perfectly healthy for an
+// alternate model (the common single-node fleet case), so the retry loop's
+// per-model "tried" set must not carry over to a model switch. allowedModels
+// is the caller's per-key model allow-list (nil/empty means unrestricted); a
+// candidate the key is not permitted to use is skipped, never substituted.
+// Callers must enforce single-hop themselves (never call this again within
+// the same request after a successful substitution) - this function only
+// walks one level of one chain per call. Returns ok=false if allowDegradation
+// is false, no chain is declared for modelName, or every eligible candidate
+// is currently unavailable.
+func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allowDegradation bool, allowedModels []string) (node *router.NodeState, alt string, warm bool, ok bool) {
+	if !allowDegradation {
+		return nil, "", false, false
+	}
+	for _, candidate := range h.router.LocalDegradationChainFor(modelName) {
+		if len(allowedModels) > 0 && !slices.Contains(allowedModels, candidate) {
+			continue
+		}
+		if n, w := h.router.RouteExcluding(candidate, runtimeFilter, nil); n != nil {
+			return n, candidate, w, true
+		}
+	}
+	return nil, "", false, false
 }
 
 // errCloudHandled is a sentinel used inside the ErrorHandler closure to signal

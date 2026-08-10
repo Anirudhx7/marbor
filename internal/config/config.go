@@ -77,13 +77,13 @@ type WarmupConfig struct {
 
 type Config struct {
 	Timezone         string            `yaml:"timezone" json:"timezone"`
-	Proxy            ProxyConfig       `yaml:"proxy"`
+	Proxy            ProxyConfig       `yaml:"proxy" json:"proxy"`
 	Admin            AdminConfig       `yaml:"admin" json:"admin"`
-	Auth             AuthConfig        `yaml:"auth"`
-	Nodes            []NodeConfig      `yaml:"nodes"`
-	Routing          RoutingConfig     `yaml:"routing"`
-	Metrics          MetricsConfig     `yaml:"metrics"`
-	LiteLLM          LiteLLMConfig     `yaml:"litellm"`
+	Auth             AuthConfig        `yaml:"auth" json:"auth"`
+	Nodes            []NodeConfig      `yaml:"nodes" json:"nodes"`
+	Routing          RoutingConfig     `yaml:"routing" json:"routing"`
+	Metrics          MetricsConfig     `yaml:"metrics" json:"metrics"`
+	LiteLLM          LiteLLMConfig     `yaml:"litellm" json:"litellm"`
 	CloudProviders   []CloudProvider   `yaml:"cloud_providers" json:"cloud_providers"`
 	Docker           DockerConfig      `yaml:"docker" json:"docker"`
 	Audit            AuditConfig       `yaml:"audit" json:"audit"`
@@ -349,6 +349,19 @@ type RoutingConfig struct {
 	// pre-scoring Hard-Constraint filter; it does not touch weighted
 	// placement scoring.
 	FallbackChains map[string][]string `yaml:"fallback_chains" json:"fallback_chains"`
+	// LocalDegradationChains maps a model name to an ordered list of local
+	// alternates to try when NO node can currently serve the requested model
+	// at all (vs. FallbackChains' VRAM-fit trigger) - the primary local-
+	// unavailable -> cloud egress path. Opt-in twice over: the operator must
+	// declare the chain here AND the individual request must send
+	// X-Ollama-Mesh-Allow-Local-Degradation, so no client is silently served
+	// a different model than it asked for. Unlike FallbackChains, an
+	// alternate here is not required to already be downloaded - a cold pull
+	// of a declared local alternate is still strictly better for a privacy-
+	// motivated operator than cloud egress. Single-hop only: an alternate
+	// that is itself selected is never recursively degraded further, even if
+	// it has its own chain entry. Default nil/empty (no behavior change).
+	LocalDegradationChains map[string][]string `yaml:"local_degradation_chains" json:"local_degradation_chains"`
 	// OverflowSLAMs, when > 0, caps how long a request waits in the local
 	// capacity queue before falling through to cloud fallback (or 503),
 	// overriding the longer queue_timeout_ms for that purpose only. It never
@@ -487,6 +500,13 @@ func (c *Config) Validate() error {
 	}
 	if c.Routing.HealthSuccessThreshold == 0 {
 		c.Routing.HealthSuccessThreshold = 2
+	}
+	for model, alts := range c.Routing.LocalDegradationChains {
+		for _, alt := range alts {
+			if alt == model {
+				return fmt.Errorf("routing.local_degradation_chains: %q lists itself as an alternate", model)
+			}
+		}
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090

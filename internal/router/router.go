@@ -310,6 +310,11 @@ type Router struct {
 	// alternates to try when the primary model doesn't fit anywhere. Opt-in,
 	// immutable after construction (config-only, not runtime-toggleable).
 	fallbackChains map[string][]string
+	// localDegradationChains maps a model to an ordered list of local
+	// alternates to try when no node can serve it at all, gated by a
+	// per-request opt-in header (see config.RoutingConfig.LocalDegradationChains).
+	// Opt-in, immutable after construction (config-only, not runtime-toggleable).
+	localDegradationChains map[string][]string
 	// overflowSLA, when > 0, caps how long WaitForNode waits in the local
 	// capacity queue before returning nil (triggering cloud fallback or 503)
 	// - see config.RoutingConfig.OverflowSLAMs. It never affects Route()'s
@@ -538,6 +543,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		healthFailureThreshold:   healthFailureThreshold,
 		healthSuccessThreshold:   healthSuccessThreshold,
 		fallbackChains:           cfg.FallbackChains,
+		localDegradationChains:   cfg.LocalDegradationChains,
 		overflowSLA:              time.Duration(cfg.OverflowSLAMs) * time.Millisecond,
 		thermalWatchdog:          thermalWatchdog,
 		affinity:                 make(map[string]*affinityEntry),

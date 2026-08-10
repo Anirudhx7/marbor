@@ -144,6 +144,10 @@ export function SettingsPage() {
   const [newCtxModel, setNewCtxModel] = useState('');
   const [newCtxTokens, setNewCtxTokens] = useState('');
 
+  // Local model fallback chain (P67)
+  const [newDegModel, setNewDegModel] = useState('');
+  const [newDegAlts, setNewDegAlts] = useState('');
+
   // Admin credentials change
   const [credCurrentPw, setCredCurrentPw] = useState('');
   const [credNewPw, setCredNewPw] = useState('');
@@ -314,6 +318,7 @@ export function SettingsPage() {
           warmupKeepAlive: settingsData.warmup?.keep_alive || '10m',
 
           contextWindows: settingsData.context_windows || {},
+          localDegradationChains: settingsData.routing?.local_degradation_chains || {},
 
           backupEnabled: settingsData.backup?.enabled || false,
           backupIntervalHours: settingsData.backup?.interval_hours ?? 24,
@@ -362,6 +367,7 @@ export function SettingsPage() {
           health_failure_threshold: settings.routingHealthFailureThreshold,
           health_success_threshold: settings.routingHealthSuccessThreshold,
           overflow_sla_ms: settings.routingOverflowSlaMs,
+          local_degradation_chains: settings.localDegradationChains,
           thermal_watchdog: {
             enabled: settings.thermalWatchdogEnabled,
             max_temp_celsius: settings.thermalWatchdogMaxTempCelsius,
@@ -1497,9 +1503,9 @@ export function SettingsPage() {
             )}
           </div>
 
-          <div className="flex gap-2">
-            <input type="text" value={newCtxModel} onChange={(e) => setNewCtxModel(e.target.value)} placeholder="llama3.2:8b" className="flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-            <input type="number" value={newCtxTokens} onChange={(e) => setNewCtxTokens(e.target.value)} placeholder="8192" className="w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input type="text" value={newCtxModel} onChange={(e) => setNewCtxModel(e.target.value)} placeholder="llama3.2:8b" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <input type="number" value={newCtxTokens} onChange={(e) => setNewCtxTokens(e.target.value)} placeholder="8192" className="w-full sm:w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
             <button
               onClick={() => {
                 const tokens = parseInt(newCtxTokens, 10);
@@ -1509,6 +1515,61 @@ export function SettingsPage() {
                 setNewCtxTokens('');
               }}
               className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Local Model Fallback Chain (P67) */}
+        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="p-2 bg-teal-500/10 rounded-lg">
+              <HardDrive className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Local Model Fallback Chain</h3>
+              <p className="text-xs font-medium text-muted-foreground">Ordered local alternates to try when no node can serve the requested model, before cloud - opt-in per request via X-Ollama-Mesh-Allow-Local-Degradation</p>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            {Object.entries(settings.localDegradationChains).length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No local fallback chains declared</p>
+            ) : (
+              Object.entries(settings.localDegradationChains).map(([model, alts]) => (
+                <div key={model} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{model}</p>
+                    <p className="text-xs text-muted-foreground">{alts.join(' -> ')}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = { ...settings.localDegradationChains };
+                      delete next[model];
+                      setSettings({ ...settings, localDegradationChains: next });
+                    }}
+                    className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input type="text" value={newDegModel} onChange={(e) => setNewDegModel(e.target.value)} placeholder="llama3.1:70b" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <input type="text" value={newDegAlts} onChange={(e) => setNewDegAlts(e.target.value)} placeholder="llama3.1:8b, phi3:mini" className="w-full sm:flex-1 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <button
+              onClick={() => {
+                const alts = newDegAlts.split(',').map((s) => s.trim()).filter(Boolean);
+                if (!newDegModel.trim() || alts.length === 0) return;
+                setSettings({ ...settings, localDegradationChains: { ...settings.localDegradationChains, [newDegModel.trim()]: alts } });
+                setNewDegModel('');
+                setNewDegAlts('');
+              }}
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
             </button>
