@@ -381,18 +381,50 @@ export function CustomTagCombobox({
 
   return (
     <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>
-      <input
-        ref={inputRef}
-        type="text"
-        disabled={disabled}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setIsOpen(true)}
-        className={`w-full px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
-          disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:bg-secondary/40'
-        }`}
-      />
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          disabled={disabled}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setIsOpen(true)}
+          className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
+            disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:bg-secondary/40'
+          }`}
+        />
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 animate-fade-in">
+          {!!value && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setIsOpen(false);
+              }}
+              className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              if (isOpen) {
+                setIsOpen(false);
+              } else {
+                setIsOpen(true);
+                inputRef.current?.focus();
+              }
+            }}
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+      </div>
 
       {isOpen && menuRect && createPortal(
         <div
