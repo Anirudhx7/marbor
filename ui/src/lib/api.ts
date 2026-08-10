@@ -447,7 +447,7 @@ export async function fetchSummary() {
   };
 }
 
-export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string; dailyUsdCap?: number; monthlyUsdCap?: number; localOnly?: boolean }): Promise<{ key: string }> {
+export async function createKey(data: { name: string; rate_limit: number; models: string[]; expires_at: string; dailyUsdCap?: number; monthlyUsdCap?: number; localOnly?: boolean; allowLocalDegradation?: boolean }): Promise<{ key: string }> {
   const res = await apiFetch(`${BASE}/keys`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -517,7 +517,7 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
   return res.json() as Promise<import('../types').GPUNode>;
 }
 
-export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string; local_only?: boolean }) {
+export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string; local_only?: boolean; allow_local_degradation?: boolean }) {
   const res = await apiFetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

@@ -5,13 +5,15 @@ import (
 	"io"
 )
 
-// printKeyUsage documents the "key" command group. Only set-local-only ships
-// here (P66) - broader key add/list/patch/revoke CLI parity is a separate,
-// pre-existing gap this item does not widen.
+// printKeyUsage documents the "key" command group. Only set-local-only and
+// set-allow-local-degradation ship here (P66, P67) - broader key
+// add/list/patch/revoke CLI parity is a separate, pre-existing gap this item
+// does not widen.
 func printKeyUsage(w io.Writer) {
 	fmt.Fprint(w, "Usage: ollama-mesh key <action> [args] [flags]\n\nActions:\n")
 	renderTable(w, "  ", [][2]string{
 		{"set-local-only <name> <true|false>", "block (or re-allow) cloud fallback for one API key"},
+		{"set-allow-local-degradation <name> <true|false>", "let (or forbid) one API key receive a local alternate model"},
 	})
 	fmt.Fprint(w, "\nFlags:\n")
 	renderTable(w, "  ", authFlagsRows)
@@ -39,6 +41,32 @@ func runKeySetLocalOnly(flags *globalFlags, name, value string, stdout, stderr i
 		return reportError(err, stderr)
 	}
 	fmt.Fprintf(stdout, "key %q local_only=%v\n", name, localOnly)
+	return ExitOK
+}
+
+// runKeySetAllowLocalDegradation implements
+// `mesh key set-allow-local-degradation <name> <true|false>` - PATCH
+// /admin/v1/keys/{name} with allow_local_degradation.
+func runKeySetAllowLocalDegradation(flags *globalFlags, name, value string, stdout, stderr io.Writer) int {
+	var allow bool
+	switch value {
+	case "true":
+		allow = true
+	case "false":
+		allow = false
+	default:
+		fmt.Fprintf(stderr, "invalid value %q for allow_local_degradation (want true or false)\n", value)
+		return ExitUserError
+	}
+
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if err := client.PatchKeyAllowLocalDegradation(name, allow); err != nil {
+		return reportError(err, stderr)
+	}
+	fmt.Fprintf(stdout, "key %q allow_local_degradation=%v\n", name, allow)
 	return ExitOK
 }
 

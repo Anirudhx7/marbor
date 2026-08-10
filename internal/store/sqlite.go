@@ -448,6 +448,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN monthly_usd_cap REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE runtime_keys ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE runtime_keys ADD COLUMN allow_local_degradation INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
@@ -1384,15 +1385,19 @@ func (s *sqliteStore) UpsertKey(k KeyRecord) error {
 	if k.LocalOnly {
 		localOnly = 1
 	}
+	allowLocalDegradation := 0
+	if k.AllowLocalDegradation {
+		allowLocalDegradation = 1
+	}
 	encKey, err := encryptSecret(s.secretKey, k.Key)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
 	}
 	_, err = s.db.Exec(
 		`INSERT OR REPLACE INTO runtime_keys
-			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at, local_only)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		k.Name, encKey, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked, k.ExpiresAt, localOnly,
+			(name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at, local_only, allow_local_degradation)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.Name, encKey, k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, string(modelsJSON), revoked, k.ExpiresAt, localOnly, allowLocalDegradation,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
@@ -1435,7 +1440,7 @@ func (s *sqliteStore) DeleteKey(name string) error {
 
 func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at, local_only FROM runtime_keys`,
+		`SELECT name, key, rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap, models, revoked, expires_at, local_only, allow_local_degradation FROM runtime_keys`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllKeys: %w", err)
@@ -1446,11 +1451,12 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 	for rows.Next() {
 		var k KeyRecord
 		var modelsJSON string
-		var revoked, localOnly int
-		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked, &k.ExpiresAt, &localOnly); err != nil {
+		var revoked, localOnly, allowLocalDegradation int
+		if err := rows.Scan(&k.Name, &k.Key, &k.RateLimit, &k.DailyLimit, &k.MonthlyLimit, &k.DailyUsdCap, &k.MonthlyUsdCap, &modelsJSON, &revoked, &k.ExpiresAt, &localOnly, &allowLocalDegradation); err != nil {
 			return nil, fmt.Errorf("store: AllKeys scan: %w", err)
 		}
 		k.LocalOnly = localOnly != 0
+		k.AllowLocalDegradation = allowLocalDegradation != 0
 		dec, decErr := decryptSecret(s.secretKey, k.Key)
 		if decErr != nil {
 			// A single undecryptable row (corrupt data, rotated key) must not

@@ -273,6 +273,8 @@ Commands:
   node control accept <node> --driver X --identifier Y [--start-command Z]
                                               accept a control driver + identifier for a node
   key set-local-only <name> <true|false>    block (or re-allow) cloud fallback for one API key
+  key set-allow-local-degradation <name> <true|false>
+                                              let (or forbid) one API key receive a local alternate model
   spill                                       show per-key, per-provider local-vs-cloud request counts
 
 Run "ollama-mesh <command> --help" for the full list of actions and flags for
@@ -530,18 +532,22 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			printKeyUsage(stdout)
 			return ExitOK
 		}
-		if len(rest) < 1 || rest[0] != "set-local-only" {
+		if len(rest) < 1 || (rest[0] != "set-local-only" && rest[0] != "set-allow-local-degradation") {
 			printKeyUsage(stderr)
 			return ExitUserError
 		}
-		fs, flags := newFlagSet("key set-local-only", stderr)
+		action := rest[0]
+		fs, flags := newFlagSet("key "+action, stderr)
 		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
 		if ok, code := parseFlags(fs, flagArgs, printKeyUsage, stdout); !ok {
 			return code
 		}
 		if len(positional) != 2 {
-			fmt.Fprintln(stderr, "usage: ollama-mesh key set-local-only <name> <true|false>")
+			fmt.Fprintf(stderr, "usage: ollama-mesh key %s <name> <true|false>\n", action)
 			return ExitUserError
+		}
+		if action == "set-allow-local-degradation" {
+			return runKeySetAllowLocalDegradation(flags, positional[0], positional[1], stdout, stderr)
 		}
 		return runKeySetLocalOnly(flags, positional[0], positional[1], stdout, stderr)
 	case "spill":
