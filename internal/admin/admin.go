@@ -4775,9 +4775,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// List/map-typed fields: JSON-encoded, not representable as a single
 	// scalar settings value.
 	jsonSettings := map[string]any{
-		"warmup_models":           incoming.Warmup.Models,
-		"routing_fallback_chains": incoming.Routing.FallbackChains,
-		"context_windows":         incoming.ContextWindows,
+		"warmup_models":                    incoming.Warmup.Models,
+		"routing_fallback_chains":          incoming.Routing.FallbackChains,
+		"routing_local_degradation_chains": incoming.Routing.LocalDegradationChains,
+		"context_windows":                  incoming.ContextWindows,
 	}
 	for key, val := range jsonSettings {
 		if err := store.SetJSONSetting(s.st, key, val); err != nil {

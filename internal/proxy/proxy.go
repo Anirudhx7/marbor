@@ -13,6 +13,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -356,6 +357,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// absent or empty value means stateless routing (no sticky session).
 	sessionID := strings.TrimSpace(r.Header.Get("X-Session-ID"))
 
+	// Explicit per-request opt-in for local degradation chain substitution
+	// (P67). A silent model swap would be a correctness surprise for an API
+	// consumer, so a request is only eligible for chain substitution when it
+	// asks for it via this header - declaring routing.local_degradation_chains
+	// alone is not enough. strconv.ParseBool accepts the usual truthy
+	// spellings (true/1/t/TRUE/...); an absent or unparseable header defaults
+	// to false (opted out).
+	allowLocalDegradation, _ := strconv.ParseBool(r.Header.Get("X-Ollama-Mesh-Allow-Local-Degradation"))
+
 	// Determine runtime filter from request path. Ollama-native paths (/api/*)
 	// must only route to Ollama nodes; /v1/* paths can reach any backend
 	// (vLLM, TGI, llama.cpp, Ollama). An empty filter means no restriction.
@@ -375,6 +385,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Ollama node could be available but the request still hit 503 because a
 	// non-Ollama node was returned and silently discarded (#3).
 	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
+
+	if node == nil {
+		// Local degradation chain (P67): opt-in, local-only substitution tried
+		// before cloud egress - a degraded-but-local answer is strictly better
+		// than cloud for a privacy-motivated operator. Tried before
+		// localOnlyBlocked since a successful substitution never leaves local
+		// nodes and so never needs to be blocked.
+		if altNode, alt, altWarm, ok := h.tryLocalDegradationChain(modelName, sessionID, runtimeFilter, allowLocalDegradation); ok {
+			w.Header().Set("X-Ollama-Mesh-Model-Fallback", modelName+" -> "+alt)
+			metrics.LocalDegradation(modelName, alt)
+			body = rewriteModelField(body, alt)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			modelName = alt
+			node = altNode
+			warm = altWarm
+		}
+	}
 
 	if node == nil {
 		if h.localOnlyBlocked(w, keyName, modelName) {
@@ -506,6 +533,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					retryErr = e
 					return
 				}
+			}
+			// No alternate nodes for the current model. Try the local
+			// degradation chain (P67, opt-in) before falling through to
+			// cloud - same non-blocking, single-hop invariant as the primary
+			// trigger site.
+			if altNode, altModel, _, ok := h.tryLocalDegradationChain(modelName, sessionID, runtimeFilter, allowLocalDegradation); ok {
+				rw.Header().Set("X-Ollama-Mesh-Model-Fallback", modelName+" -> "+altModel)
+				metrics.LocalDegradation(modelName, altModel)
+				body = rewriteModelField(body, altModel)
+				origReq.Body = io.NopCloser(bytes.NewReader(body))
+				modelName = altModel
+				nextNode = altNode
+				retryErr = e
+				return
 			}
 			// No alternate nodes - try cloud fallback.
 			if h.localOnlyBlocked(rw, keyName, modelName) {
@@ -653,6 +694,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		LatencyMs:  int64(time.Since(start).Milliseconds()),
 		Cloud:      false,
 	})
+}
+
+// tryLocalDegradationChain walks the operator-declared local degradation
+// chain for modelName (routing.local_degradation_chains), in order, probing
+// each candidate with a single non-blocking Route call. This never queues
+// behind an unavailable alternate - by design, only the non-blocking Route
+// is used here, never WaitForNode. runtimeFilter and sessionID are passed
+// through unchanged, so a chain candidate can never bypass the
+// Ollama-native-vs-any-backend constraint and session affinity continues to
+// apply normally. Single-hop only: the returned alternate is never itself
+// walked further, even if it has its own chain entry - callers must not
+// recurse. Returns ok=false if allowDegradation is false, no chain is
+// declared for modelName, or every candidate is currently unavailable.
+func (h *Handler) tryLocalDegradationChain(modelName, sessionID, runtimeFilter string, allowDegradation bool) (node *router.NodeState, alt string, warm bool, ok bool) {
+	if !allowDegradation {
+		return nil, "", false, false
+	}
+	for _, candidate := range h.router.LocalDegradationChainFor(modelName) {
+		if n, w := h.router.Route(candidate, sessionID, runtimeFilter); n != nil {
+			return n, candidate, w, true
+		}
+	}
+	return nil, "", false, false
 }
 
 // errCloudHandled is a sentinel used inside the ErrorHandler closure to signal

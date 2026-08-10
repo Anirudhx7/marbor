@@ -104,6 +104,11 @@ var (
 		Help: "Requests that overflowed to a cloud provider because no local node could serve them",
 	}, []string{"provider"})
 
+	localDegradationTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "ollamamesh_local_degradation_total",
+		Help: "Requests substituted to a declared local alternate model (opt-in) instead of falling through to cloud",
+	}, []string{"from", "to"})
+
 	quotaRejectionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "ollamamesh_quota_rejections_total",
 		Help: "Requests rejected with 429 because a per-key daily or monthly quota was exhausted",
@@ -179,6 +184,13 @@ func Retry(node string) {
 // CloudFallback records a request overflowing to the named cloud provider.
 func CloudFallback(provider string) {
 	cloudFallbacksTotal.WithLabelValues(provider).Inc()
+}
+
+// LocalDegradation records a request substituted from its requested model to
+// a declared local alternate (opt-in chain) instead of falling through to
+// cloud.
+func LocalDegradation(from, to string) {
+	localDegradationTotal.WithLabelValues(from, to).Inc()
 }
 
 // QuotaRejection records a 429 caused by an exhausted per-key quota. period is
