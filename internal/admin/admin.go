@@ -580,21 +580,22 @@ type sysGPUEntry struct {
 }
 
 type keyResp struct {
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	Key               string   `json:"key"`
-	Created           string   `json:"created"`
-	RequestsToday     int      `json:"requestsToday"`
-	RequestsThisMonth int      `json:"requestsThisMonth"`
-	TokensThisMonth   int64    `json:"tokensThisMonth"`
-	EstimatedCostUsd  float64  `json:"estimatedCostUsd"`
-	RateLimit         int      `json:"rateLimit"`
-	DailyUsdCap       float64  `json:"dailyUsdCap,omitempty"`
-	MonthlyUsdCap     float64  `json:"monthlyUsdCap,omitempty"`
-	Status            string   `json:"status"`
-	AllowedModels     []string `json:"allowedModels"`
-	ExpiresAt         string   `json:"expiresAt,omitempty"`
-	LocalOnly         bool     `json:"localOnly,omitempty"`
+	ID                    string   `json:"id"`
+	Name                  string   `json:"name"`
+	Key                   string   `json:"key"`
+	Created               string   `json:"created"`
+	RequestsToday         int      `json:"requestsToday"`
+	RequestsThisMonth     int      `json:"requestsThisMonth"`
+	TokensThisMonth       int64    `json:"tokensThisMonth"`
+	EstimatedCostUsd      float64  `json:"estimatedCostUsd"`
+	RateLimit             int      `json:"rateLimit"`
+	DailyUsdCap           float64  `json:"dailyUsdCap,omitempty"`
+	MonthlyUsdCap         float64  `json:"monthlyUsdCap,omitempty"`
+	Status                string   `json:"status"`
+	AllowedModels         []string `json:"allowedModels"`
+	ExpiresAt             string   `json:"expiresAt,omitempty"`
+	LocalOnly             bool     `json:"localOnly,omitempty"`
+	AllowLocalDegradation bool     `json:"allowLocalDegradation,omitempty"`
 }
 
 func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...store.Store) *Server {
@@ -1433,15 +1434,16 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			keys = append(keys, config.KeyConfig{
-				Name:          rk.Name,
-				Key:           rk.Key,
-				RateLimit:     rk.RateLimit,
-				DailyLimit:    rk.DailyLimit,
-				MonthlyLimit:  rk.MonthlyLimit,
-				DailyUsdCap:   rk.DailyUsdCap,
-				MonthlyUsdCap: rk.MonthlyUsdCap,
-				Models:        rk.Models,
-				LocalOnly:     rk.LocalOnly,
+				Name:                  rk.Name,
+				Key:                   rk.Key,
+				RateLimit:             rk.RateLimit,
+				DailyLimit:            rk.DailyLimit,
+				MonthlyLimit:          rk.MonthlyLimit,
+				DailyUsdCap:           rk.DailyUsdCap,
+				MonthlyUsdCap:         rk.MonthlyUsdCap,
+				Models:                rk.Models,
+				LocalOnly:             rk.LocalOnly,
+				AllowLocalDegradation: rk.AllowLocalDegradation,
 			})
 		}
 	}
@@ -1469,6 +1471,10 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 		localOnly := k.LocalOnly
 		if s.auth != nil {
 			localOnly = s.auth.IsLocalOnly(k.Name)
+		}
+		allowLocalDegradation := k.AllowLocalDegradation
+		if s.auth != nil {
+			allowLocalDegradation = s.auth.IsAllowLocalDegradation(k.Name)
 		}
 
 		// Determine status: revoked if not present in auth, expired if past expiresAt, else active.
@@ -1498,19 +1504,20 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			Name: k.Name,
 			// Never re-serve the full secret. The plaintext key is shown once at
 			// creation (handleAddKey); the list only carries a masked preview.
-			Key:               maskKey(k.Key),
-			Created:           created,
-			RequestsToday:     today,
-			RequestsThisMonth: month,
-			TokensThisMonth:   tokensMonth,
-			EstimatedCostUsd:  estimatedCost,
-			RateLimit:         rateLimit,
-			DailyUsdCap:       dailyUsdCap,
-			MonthlyUsdCap:     monthlyUsdCap,
-			Status:            status,
-			AllowedModels:     models,
-			ExpiresAt:         expires,
-			LocalOnly:         localOnly,
+			Key:                   maskKey(k.Key),
+			Created:               created,
+			RequestsToday:         today,
+			RequestsThisMonth:     month,
+			TokensThisMonth:       tokensMonth,
+			EstimatedCostUsd:      estimatedCost,
+			RateLimit:             rateLimit,
+			DailyUsdCap:           dailyUsdCap,
+			MonthlyUsdCap:         monthlyUsdCap,
+			Status:                status,
+			AllowedModels:         models,
+			ExpiresAt:             expires,
+			LocalOnly:             localOnly,
+			AllowLocalDegradation: allowLocalDegradation,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -4409,19 +4416,20 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		s.auth.AddKey(k)
 	}
 	_ = s.st.UpsertKey(store.KeyRecord{
-		Name:          k.Name,
-		Key:           k.Key,
-		RateLimit:     k.RateLimit,
-		DailyLimit:    k.DailyLimit,
-		MonthlyLimit:  k.MonthlyLimit,
-		DailyUsdCap:   k.DailyUsdCap,
-		MonthlyUsdCap: k.MonthlyUsdCap,
-		Models:        k.Models,
-		Revoked:       false,
-		ExpiresAt:     k.ExpiresAt,
-		LocalOnly:     k.LocalOnly,
+		Name:                  k.Name,
+		Key:                   k.Key,
+		RateLimit:             k.RateLimit,
+		DailyLimit:            k.DailyLimit,
+		MonthlyLimit:          k.MonthlyLimit,
+		DailyUsdCap:           k.DailyUsdCap,
+		MonthlyUsdCap:         k.MonthlyUsdCap,
+		Models:                k.Models,
+		Revoked:               false,
+		ExpiresAt:             k.ExpiresAt,
+		LocalOnly:             k.LocalOnly,
+		AllowLocalDegradation: k.AllowLocalDegradation,
 	})
-	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v, LocalOnly: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models, k.LocalOnly))
+	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v, LocalOnly: %v, AllowLocalDegradation: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models, k.LocalOnly, k.AllowLocalDegradation))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(k)
@@ -4494,9 +4502,12 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		if patch.LocalOnly != nil {
 			keyRecord.LocalOnly = *patch.LocalOnly
 		}
+		if patch.AllowLocalDegradation != nil {
+			keyRecord.AllowLocalDegradation = *patch.AllowLocalDegradation
+		}
 		_ = s.st.UpsertKey(*keyRecord)
 	}
-	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v, ExpiresAtChanged: %v, LocalOnlyChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil, patch.ExpiresAt != nil, patch.LocalOnly != nil))
+	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v, ExpiresAtChanged: %v, LocalOnlyChanged: %v, AllowLocalDegradationChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil, patch.ExpiresAt != nil, patch.LocalOnly != nil, patch.AllowLocalDegradation != nil))
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"key":%q,"updated":true}`, name)
 }

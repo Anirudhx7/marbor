@@ -86,6 +86,36 @@ func TestValidateAcceptsValidLocalDegradationChain(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsLocalDegradationChainDuplicateAlternate verifies P67's
+// config guard: a chain entry that lists the same alternate more than once
+// is a config error, not a silently-accepted no-op.
+func TestValidateRejectsLocalDegradationChainDuplicateAlternate(t *testing.T) {
+	cfg := Config{
+		Nodes: []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+		Routing: RoutingConfig{
+			LocalDegradationChains: map[string][]string{"a": {"b", "b"}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("validate: want error for a chain entry that lists the same alternate more than once, got nil")
+	}
+}
+
+// TestValidateAcceptsLocalDegradationChainDistinctAlternates verifies the
+// duplicate-alternate guard does not false-positive on a chain whose
+// alternates are all distinct.
+func TestValidateAcceptsLocalDegradationChainDistinctAlternates(t *testing.T) {
+	cfg := Config{
+		Nodes: []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+		Routing: RoutingConfig{
+			LocalDegradationChains: map[string][]string{"a": {"b", "c"}},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+}
+
 func TestSavingsReferenceRateDefault(t *testing.T) {
 	var cfg Config
 	if err := cfg.Validate(); err != nil {
