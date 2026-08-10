@@ -323,6 +323,11 @@ export interface Settings {
   // Model name -> max context window in tokens, for admission-time checks.
   contextWindows: Record<string, number>;
 
+  // Model name -> ordered list of local alternates to try when no node can
+  // serve it at all (P67). Opt-in twice over: declared here AND the
+  // individual request must send X-Ollama-Mesh-Allow-Local-Degradation.
+  localDegradationChains: Record<string, string[]>;
+
   // Scheduled mesh.db backup (P49). LastBackupAt/LastBackupError are
   // read-only status from the server, never sent back on save.
   backupEnabled: boolean;

@@ -409,6 +409,10 @@ export const defaultSettings: Settings = {
 
   contextWindows: {},
 
+  localDegradationChains: {
+    'llama3.1:70b': ['llama3.1:8b'],
+  },
+
   backupEnabled: true,
   backupIntervalHours: 24,
   backupRetentionCount: 7,

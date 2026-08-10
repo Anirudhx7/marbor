@@ -404,6 +404,269 @@ func TestProxyQuantizationFallback_NoSubstitutionWhenPrimaryFits(t *testing.T) {
 	}
 }
 
+// TestLocalDegradation_OptInResolvesToHealthyAlt verifies the P67 end-to-end
+// opt-in path: the single node fails the requested (large) model but can
+// serve the declared local alternate (small) just fine. With the retry
+// budget exhausted for the primary model (RouteExcluding has nothing left to
+// try - only one node, already tried) and the opt-in header present, the
+// local degradation chain is walked before cloud, the alternate is served,
+// the substitution is surfaced via the existing fallback header, and no
+// cloud provider is ever contacted.
+func TestLocalDegradation_OptInResolvesToHealthyAlt(t *testing.T) {
+	var gotModel atomic.Value
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		model, _ := body["model"].(string)
+		gotModel.Store(model)
+		if model == "big-model" {
+			// Simulate a genuine upstream failure (not just a non-2xx status,
+			// which httputil.ReverseProxy would pass through untouched) by
+			// closing the connection before any response bytes are written -
+			// this is what actually triggers ErrorHandler/retry.
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				return
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				return
+			}
+			conn.Close()
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"small-model","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{
+		LocalDegradationChains: map[string][]string{"big-model": {"small-model"}},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
+	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	if want := "big-model -> small-model"; rec.Header().Get("X-Ollama-Mesh-Model-Fallback") != want {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want %q", rec.Header().Get("X-Ollama-Mesh-Model-Fallback"), want)
+	}
+	if got, _ := gotModel.Load().(string); got != "small-model" {
+		t.Errorf("backend last received model = %q, want small-model", got)
+	}
+}
+
+// TestLocalDegradation_NoOptInHeaderFallsToCloud verifies the header is a
+// hard gate: with the identical fleet and chain as
+// TestLocalDegradation_OptInResolvesToHealthyAlt, omitting the opt-in header
+// must never substitute - the request proceeds to cloud fallback (or, with
+// no cloud configured here, a clear upstream error) exactly as it would
+// without P67 at all.
+func TestLocalDegradation_NoOptInHeaderFallsToCloud(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		model, _ := body["model"].(string)
+		gotModel = model
+		if model == "big-model" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"model":"small-model","done":true}`))
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{
+		LocalDegradationChains: map[string][]string{"big-model": {"small-model"}},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
+	// No X-Ollama-Mesh-Allow-Local-Degradation header.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("status = 200, want a failure status - no opt-in header means no substitution and no cloud is configured")
+	}
+	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (no opt-in header)", got)
+	}
+	if gotModel != "big-model" {
+		t.Errorf("backend received model = %q, want big-model (no substitution attempted)", gotModel)
+	}
+}
+
+// TestLocalDegradation_ChainExhaustedFallsToCloud verifies that when the
+// fleet has no healthy node at all (the primary trigger site - WaitForNode
+// already gave up), a declared local degradation chain is consulted but
+// correctly finds nothing (every candidate is exhausted, same as the fleet
+// state the primary model saw) and the request falls through to the existing
+// 503 behavior rather than hanging or panicking.
+func TestLocalDegradation_ChainExhaustedFallsToCloud(t *testing.T) {
+	r := router.New(config.RoutingConfig{
+		LocalDegradationChains: map[string][]string{"big-model": {"small-model"}},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://localhost:1", GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = false // fleet-wide outage: no candidate, primary or alternate, can be routed
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
+	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (chain exhausted, no substitution)", got)
+	}
+}
+
+// TestLocalDegradation_CyclicChainDoesNotHang is a regression test: a
+// two-entry cyclic chain (a -> b, b -> a) combined with a single always-
+// failing node used to loop the retry loop indefinitely, because the
+// degradation branch had no hop limit and never excluded already-tried
+// nodes. Single-hop enforcement (degradedOnce) now bounds any request to at
+// most one substitution regardless of chain shape, so this must terminate
+// quickly with a failure status rather than hang.
+func TestLocalDegradation_CyclicChainDoesNotHang(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		conn.Close()
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{
+		LocalDegradationChains: map[string][]string{
+			"model-a": {"model-b"},
+			"model-b": {"model-a"},
+		},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"model-a","prompt":"hi"}`)))
+	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		h.ServeHTTP(rec, req)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("ServeHTTP did not return within 10s - cyclic degradation chain is looping")
+	}
+
+	if rec.Code == http.StatusOK {
+		t.Fatalf("status = 200, want a failure status; every node always fails, so no substitution can succeed")
+	}
+	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "model-a -> model-b" {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want exactly one hop (model-a -> model-b)", got)
+	}
+}
+
+// TestLocalDegradation_RespectsPerKeyAllowList is a regression test: the
+// per-key model allow-list was enforced only once, against the originally
+// requested model, before routing - local degradation could substitute a
+// model the key is not permitted to use. The substitution must now be
+// skipped when the alternate is outside the key's allow-list.
+func TestLocalDegradation_RespectsPerKeyAllowList(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
+		conn, _, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		conn.Close()
+	}))
+	defer upstream.Close()
+
+	r := router.New(config.RoutingConfig{
+		LocalDegradationChains: map[string][]string{"big-model": {"large-model"}},
+	}, []config.NodeConfig{
+		{Name: "gpu-0", URL: upstream.URL, GPUModel: "V100", Runtime: "ollama"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
+	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	// Simulate the auth middleware having already run: this key is only
+	// permitted to use "big-model", never "large-model".
+	req = req.WithContext(context.WithValue(req.Context(), auth.AllowedModelsContextKey, []string{"big-model"}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
+		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty - the only alternate is outside the key's allow-list", got)
+	}
+	if rec.Code == http.StatusOK {
+		t.Fatalf("status = 200, want a failure status; the only local alternate is not in the key's allow-list")
+	}
+}
+
 // TestAnthropicCompletionsTranslatedToMessages verifies that a
 // /v1/completions request routed to an Anthropic overflow provider is
 // translated to Anthropic's /v1/messages schema and actually proxied there
