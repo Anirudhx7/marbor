@@ -844,6 +844,12 @@ export function ModelAdvisor() {
               />
               <p className="text-xs text-muted-foreground font-medium mt-2">
                 {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
+                {activeNode.vram_fit_basis === 'combined' && (
+                  <span className="ml-1">&middot; combined across {activeNode.gpu_count} GPUs</span>
+                )}
+                {activeNode.vram_fit_basis === 'largest' && (
+                  <span className="ml-1">&middot; largest of {activeNode.gpu_count} GPUs ({activeNode.runtime || 'this runtime'} does not shard across GPUs)</span>
+                )}
               </p>
             </>
           ) : (activeNode.vram_used_bytes ?? 0) > 0 ? (

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
@@ -294,6 +295,16 @@ type catalogNodeEntry struct {
 	// the same caveat on the figure it displays, rather than showing a
 	// number that may silently not match what the container has.
 	DockerDeployed bool `json:"docker_deployed"`
+	// GPUCount is how many local GPUs this node's agent reports (0 when no
+	// per-device breakdown has ever been reported). VRAMFitBasis explains
+	// which capacity VRAMTotalBytes/fit verdicts above were sized against on
+	// a node with more than one: "combined" (summed across all GPUs, for a
+	// runtime that shards a model across them) or "largest" (single biggest
+	// GPU, for a runtime that pins a model to one device). Empty on a
+	// single-GPU (or GPU-unknown) node, where sizing is unchanged from
+	// VRAMTotalBytes alone - see nodeVRAMCapacity's doc comment.
+	GPUCount     int    `json:"gpu_count,omitempty"`
+	VRAMFitBasis string `json:"vram_fit_basis,omitempty"`
 	// Capabilities lists the node's effective Node Agent action capabilities
 	// (e.g. "models.pull", "runtime.restart") - empty/omitted when there is no
 	// agent, the agent hasn't reported yet, or the agent is disabled in
@@ -405,6 +416,51 @@ func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) strin
 	}
 }
 
+// nodeVRAMCapacity picks the VRAM capacity (MB) to size catalog fit against
+// for a node, and reports how many local GPUs it reflects. A node with only
+// one reported device (or no per-device breakdown at all - agentGPUs is
+// empty until an agent with the multi-GPU telemetry array reports in) keeps
+// today's single aggregate figure unchanged (basis "").
+//
+// For a node with more than one device, the correct capacity depends on
+// whether the target runtime can actually spread one model across all of
+// them:
+//   - Ollama and llama.cpp shard a model across every local GPU, so the
+//     model's real ceiling is the combined total (basis "combined").
+//   - vLLM, TGI, and MLX pin a model to a single device (no built-in
+//     multi-GPU sharding in the mesh's deployment model), so the real
+//     ceiling is whichever single card is biggest (basis "largest") - never
+//     the sum. Summing here would turn a genuine "won't fit on one card"
+//     into a false green, which is strictly worse than the false red it
+//     would otherwise show (R1: no dressing up an estimate as more certain,
+//     or more favorable, than it is).
+func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime string) (capacityMB int64, gpuCount int, basis string) {
+	gpuCount = len(agentGPUs)
+	if gpuCount < 2 {
+		return vramTotalMB, gpuCount, ""
+	}
+	if ggufOnlyRuntime(runtime) {
+		var sum int64
+		for _, g := range agentGPUs {
+			sum += g.VRAMTotalMB
+		}
+		if sum > 0 {
+			return sum, gpuCount, "combined"
+		}
+		return vramTotalMB, gpuCount, ""
+	}
+	var largest int64
+	for _, g := range agentGPUs {
+		if g.VRAMTotalMB > largest {
+			largest = g.VRAMTotalMB
+		}
+	}
+	if largest > 0 {
+		return largest, gpuCount, "largest"
+	}
+	return vramTotalMB, gpuCount, ""
+}
+
 // handleModelCatalog serves the curated model catalog with per-node fit status.
 // GET /admin/models/catalog (also /admin/v1/models/catalog)
 //
@@ -423,6 +479,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		nodeName := n.Name
 		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
+		agentGPUs := append([]nodeagent.GPUInfo(nil), n.AgentGPUs...)
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
 		for _, m := range n.LoadedModels {
@@ -443,11 +500,13 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			capabilities = agentCapabilities
 		}
 
+		capacityMB, gpuCount, vramFitBasis := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime)
+
 		var vramFreeBytes int64
 		var vramTotalBytes int64
 		vramSource := "unknown"
-		if vramTotalMB > 0 {
-			vramTotalBytes = vramTotalMB * 1024 * 1024
+		if capacityMB > 0 {
+			vramTotalBytes = capacityMB * 1024 * 1024
 			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
 			vramFreeBytes = vramTotalBytes - vramUsedBytes
 			if vramFreeBytes < 0 {
@@ -514,6 +573,8 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			DockerDeployed: dockerDeployed,
 			Capabilities:   capabilities,
 			Models:         models,
+			GPUCount:       gpuCount,
+			VRAMFitBasis:   vramFitBasis,
 		})
 	}
 
@@ -771,6 +832,8 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	diskFreeGB := float64(0)
 	diskTotalGB := float64(0)
 	agentPresent := false
+	gpuCount := 0
+	vramFitBasis := ""
 
 	nodes := s.router.Nodes()
 	var targetNode *router.NodeState
@@ -791,6 +854,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		nodeURL := targetNode.URL
 		nodeName := targetNode.Name
 		vramTotalMB := targetNode.VRAMTotalMB
+		agentGPUs := append([]nodeagent.GPUInfo(nil), targetNode.AgentGPUs...)
 		vramUsedMBFromPS := int64(0)
 		vramSource = targetNode.VRAMSource
 		for _, m := range targetNode.LoadedModels {
@@ -815,8 +879,11 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			dockerDeployed = true
 		}
 
-		if vramTotalMB > 0 {
-			vramTotalBytes = vramTotalMB * 1024 * 1024
+		capacityMB, gc, vfb := nodeVRAMCapacity(vramTotalMB, agentGPUs, runtime)
+		gpuCount = gc
+		vramFitBasis = vfb
+		if capacityMB > 0 {
+			vramTotalBytes = capacityMB * 1024 * 1024
 			vramUsedBytes := vramUsedMBFromPS * 1024 * 1024
 			vramFreeBytes = vramTotalBytes - vramUsedBytes
 			if vramFreeBytes < 0 {
@@ -955,6 +1022,8 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		"disk_total_gb":   diskTotalGB,
 		"disk_known":      agentPresent && diskTotalGB > 0,
 		"docker_deployed": dockerDeployed,
+		"gpu_count":       gpuCount,
+		"vram_fit_basis":  vramFitBasis,
 	})
 }
 

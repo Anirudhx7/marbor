@@ -810,14 +810,18 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       name: 'gpu-node-04',
       url: 'http://10.0.1.22:8080',
       runtime: 'llamacpp',
-      vram_free_bytes: 20 * 1024 * 1024 * 1024,
-      vram_total_bytes: 24 * 1024 * 1024 * 1024,
-      vram_used_bytes: 4 * 1024 * 1024 * 1024,
+      vram_free_bytes: 40 * 1024 * 1024 * 1024,
+      vram_total_bytes: 48 * 1024 * 1024 * 1024,
+      vram_used_bytes: 8 * 1024 * 1024 * 1024,
       vram_source: 'declared',
       disk_free_gb: 0,
       disk_total_gb: 0,
       disk_known: false,
       capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
+      // Two local GPUs - llama.cpp shards a model across both, so the fit
+      // verdict is sized against their combined 48GB, not one card's 24GB.
+      gpu_count: 2,
+      vram_fit_basis: 'combined',
       models: [],
     },
     {
