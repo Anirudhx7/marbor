@@ -49,6 +49,67 @@ function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   );
 }
 
+// NodeVramCard shows the active node's VRAM headroom. Extracted so it can be
+// rendered in both tabs (Favourites keeps its original position; Browse
+// moves it below the search/filter controls so HF Browse itself reads as
+// the primary surface - see P77).
+function NodeVramCard({ node }: { node: any }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+        <div>
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">GPU Node</span>
+          <h3 className="font-semibold text-foreground mt-0.5">{node.name}</h3>
+        </div>
+        <span className="text-xs text-muted-foreground self-start sm:self-auto">
+          VRAM source:{' '}
+          <span className={`px-1.5 py-0.5 rounded font-semibold ${
+            LIVE_VRAM_TOOL_SOURCES.has(node.vram_source)
+              ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+              : node.vram_source === 'inferred'
+              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              : node.vram_source === 'declared'
+              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+              : 'bg-secondary text-muted-foreground'
+          }`}>
+            {node.vram_source === 'declared' ? 'declared' : node.vram_source}
+          </span>
+        </span>
+      </div>
+      {node.vram_total_bytes > 0 ? (
+        <>
+          <VramBar
+            used={(node.vram_total_bytes - node.vram_free_bytes) / (1024 * 1024 * 1024)}
+            total={node.vram_total_bytes / (1024 * 1024 * 1024)}
+          />
+          <p className="text-xs text-muted-foreground font-medium mt-2">
+            {bytesToGB(node.vram_free_bytes)} free of {bytesToGB(node.vram_total_bytes)} VRAM
+            {node.vram_fit_basis === 'combined' && (
+              <span className="ml-1">&middot; combined across {node.gpu_count} GPUs</span>
+            )}
+            {node.vram_fit_basis === 'largest' && (
+              <span className="ml-1">&middot; largest of {node.gpu_count} GPUs ({node.runtime || 'this runtime'} does not shard across GPUs)</span>
+            )}
+          </p>
+        </>
+      ) : (node.vram_used_bytes ?? 0) > 0 ? (
+        <>
+          <div className="w-full bg-secondary rounded-full h-2 mt-1">
+            <div className="bg-amber-500 h-2 rounded-full w-full opacity-40" />
+          </div>
+          <p className="text-xs text-muted-foreground font-medium mt-2">
+            {bytesToGB(node.vram_used_bytes!)} in use &middot; total unknown
+          </p>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground font-medium">
+          VRAM totals unavailable - nvidia-smi reads the mesh host only.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ModelDetailPanel({
   model,
   nodeName,
@@ -526,6 +587,9 @@ export function ModelAdvisor() {
   const [runtimeOverride, setRuntimeOverride] = useState<string | null>(null);
   useEffect(() => { setRuntimeOverride(null); }, [selectedNode]);
   const browseRuntime = runtimeOverride ?? activeNode?.runtime ?? null;
+  // Mirrors ggufOnlyRuntime(runtime) in internal/admin/catalog.go - used only
+  // to phrase the "how to add models" copy, not to gate any request.
+  const browseRuntimeIsGGUF = browseRuntime == null || browseRuntime === '' || browseRuntime === 'ollama' || browseRuntime === 'llamacpp';
 
   // Track grid column count to insert panel at end of the correct row
   useEffect(() => {
@@ -827,63 +891,10 @@ export function ModelAdvisor() {
         </div>
       )}
 
-      {activeNode && (
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-            <div>
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">GPU Node</span>
-              <h3 className="font-semibold text-foreground mt-0.5">{activeNode.name}</h3>
-            </div>
-            <span className="text-xs text-muted-foreground self-start sm:self-auto">
-              VRAM source:{' '}
-              <span className={`px-1.5 py-0.5 rounded font-semibold ${
-                LIVE_VRAM_TOOL_SOURCES.has(activeNode.vram_source)
-                  ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                  : activeNode.vram_source === 'inferred'
-                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                  : activeNode.vram_source === 'declared'
-                  ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
-                  : 'bg-secondary text-muted-foreground'
-              }`}>
-                {activeNode.vram_source === 'declared' ? 'declared' : activeNode.vram_source}
-              </span>
-            </span>
-          </div>
-          {activeNode.vram_total_bytes > 0 ? (
-            <>
-              <VramBar
-                used={(activeNode.vram_total_bytes - activeNode.vram_free_bytes) / (1024 * 1024 * 1024)}
-                total={activeNode.vram_total_bytes / (1024 * 1024 * 1024)}
-              />
-              <p className="text-xs text-muted-foreground font-medium mt-2">
-                {bytesToGB(activeNode.vram_free_bytes)} free of {bytesToGB(activeNode.vram_total_bytes)} VRAM
-                {activeNode.vram_fit_basis === 'combined' && (
-                  <span className="ml-1">&middot; combined across {activeNode.gpu_count} GPUs</span>
-                )}
-                {activeNode.vram_fit_basis === 'largest' && (
-                  <span className="ml-1">&middot; largest of {activeNode.gpu_count} GPUs ({activeNode.runtime || 'this runtime'} does not shard across GPUs)</span>
-                )}
-              </p>
-            </>
-          ) : (activeNode.vram_used_bytes ?? 0) > 0 ? (
-            <>
-              <div className="w-full bg-secondary rounded-full h-2 mt-1">
-                <div className="bg-amber-500 h-2 rounded-full w-full opacity-40" />
-              </div>
-              <p className="text-xs text-muted-foreground font-medium mt-2">
-                {bytesToGB(activeNode.vram_used_bytes!)} in use &middot; total unknown
-              </p>
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground font-medium">
-              VRAM totals unavailable - nvidia-smi reads the mesh host only.
-            </p>
-          )}
-        </div>
-      )}
-
       {tab === 'favourites' ? (
-        favoriteModels.length === 0 ? (
+        <>
+          {activeNode && <NodeVramCard node={activeNode} />}
+          {favoriteModels.length === 0 ? (
           <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
             <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
             <p className="text-muted-foreground font-medium">No favourites yet. Star a model in Browse to save it here.</p>
@@ -918,14 +929,15 @@ export function ModelAdvisor() {
               )
             )}
           </div>
-        )
+        )}
+        </>
       ) : (
       <>
       {activeNode && (
         <>
           <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground leading-relaxed shadow-sm">
             <span className="font-semibold text-foreground block mb-1">How to add models to nodes:</span>
-            1. Search for any GGUF model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below.
+            1. Search Hugging Face for any model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below - results are already filtered to what {browseRuntimeIsGGUF ? 'this runtime (GGUF)' : `this runtime (${browseRuntime})`} can load.
             <br />
             2. Click <strong className="text-foreground">View Quantizations & Pull</strong> on a card to expand the detail panel inline.
             <br />
@@ -1017,6 +1029,8 @@ export function ModelAdvisor() {
               )}
             </div>
           </div>
+
+          {activeNode && <NodeVramCard node={activeNode} />}
 
           {searchError && (
             <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs font-semibold">
