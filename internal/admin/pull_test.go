@@ -254,6 +254,108 @@ func TestHandleNodePull_DiskHardBlock_GenuinelyFullDisk(t *testing.T) {
 	}
 }
 
+// TestHandleNodePull_RejectsOllamaLibraryTagOnIncompatibleRuntime is a
+// regression test for P70: a bare Ollama-library-format tag (e.g. every
+// compiled catalog tag) must be rejected up front on a node whose declared
+// runtime cannot possibly pull it, before any download starts - not left to
+// fail deep inside a cryptic huggingface-cli subprocess error.
+func TestHandleNodePull_RejectsOllamaLibraryTagOnIncompatibleRuntime(t *testing.T) {
+	reached := false
+	mockRuntime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockRuntime.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "vllm-0", URL: mockRuntime.URL, Runtime: "vllm"},
+	})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "vllm-0", `{"model":"llama3.2:3b"}`))
+
+	if w.Result().StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+	if reached {
+		t.Error("mock runtime server was reached - an incompatible tag/runtime pull must be rejected before dispatch")
+	}
+}
+
+// TestHandleNodePull_RejectsGGUFTagOnSafetensorsRuntime covers the second
+// P70 compatibility case: an "hf.co/..." GGUF reference (Ollama/llama.cpp's
+// own HF-pull convention) must be rejected on vLLM/TGI/MLX, which never load
+// GGUF.
+func TestHandleNodePull_RejectsGGUFTagOnSafetensorsRuntime(t *testing.T) {
+	reached := false
+	mockRuntime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockRuntime.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "mlx-0", URL: mockRuntime.URL, Runtime: "mlx"},
+	})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "mlx-0", `{"model":"hf.co/unsloth/Llama-3.2-3B-GGUF:Q4_K_M"}`))
+
+	if w.Result().StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+	if reached {
+		t.Error("mock runtime server was reached - a GGUF tag pull to an mlx node must be rejected before dispatch")
+	}
+}
+
+// TestHandleNodePull_AllowsCompatibleTagsAcrossRuntimes is the flip side of
+// the two rejection tests above: a tag/runtime pairing the mesh cannot
+// confidently call incompatible must still be allowed through to dispatch -
+// including a bare Ollama-library tag on an actual Ollama node, a GGUF tag on
+// llama.cpp, and an ambiguous bare "org/repo" HF id on every non-GGUF
+// runtime (never blocked - see classifyPullTagFormat's doc comment on why).
+func TestHandleNodePull_AllowsCompatibleTagsAcrossRuntimes(t *testing.T) {
+	cases := []struct {
+		name    string
+		runtime string
+		model   string
+	}{
+		{"ollama-library tag on ollama", "ollama", "llama3.2:3b"},
+		{"ollama-library tag on undeclared runtime", "", "llama3.2:3b"},
+		{"gguf-hf tag on llamacpp", "llamacpp", "hf.co/unsloth/Llama-3.2-3B-GGUF:Q4_K_M"},
+		{"hf-repo tag on vllm", "vllm", "meta-llama/Llama-3.1-8B-Instruct"},
+		{"hf-repo tag on mlx", "mlx", "mlx-community/Llama-3.1-8B-Instruct-4bit"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			reached := false
+			mockRuntime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reached = true
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"status":"success"}`))
+			}))
+			defer mockRuntime.Close()
+
+			s := newPullTestServer(t, []config.NodeConfig{
+				{Name: "node-0", URL: mockRuntime.URL, Runtime: c.runtime},
+			})
+
+			w := httptest.NewRecorder()
+			s.Handler().ServeHTTP(w, newPullRequest(t, s, "node-0", fmt.Sprintf(`{"model":%q}`, c.model)))
+
+			if w.Result().StatusCode != http.StatusAccepted {
+				t.Fatalf("expected 202 (compatible pull allowed through), got %d; body: %s", w.Result().StatusCode, w.Body.String())
+			}
+			waitForJob(t, s, "node-0", c.model)
+			if !reached {
+				t.Error("mock runtime server was never reached - a compatible pull must dispatch")
+			}
+		})
+	}
+}
+
 // TestHandleNodePull_DiskCheckSkippedWhenUnknown verifies the check never
 // blocks (or fabricates a pass) when disk telemetry is unavailable - no
 // agent, or an agent that hasn't reported disk stats (e.g. non-Linux host).

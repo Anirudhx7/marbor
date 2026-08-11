@@ -315,6 +315,96 @@ type catalogNodeEntry struct {
 	Models       []catalogModelFit `json:"models"`
 }
 
+// classifyPullTagFormat buckets a pull tag string by the download mechanism
+// it requires, so both the curated-catalog fit path and handleNodePull's
+// hard-block gate can tell a genuine format incompatibility apart from an
+// ordinary capacity verdict, without guessing at anything the tag string
+// alone can't prove:
+//
+//   - "ollama-library": a bare "name[:tag]" with no "/" - Ollama's own
+//     official-library shorthand (every compiled catalogModels variant tag
+//     is exactly this shape, e.g. "llama3.2:3b"). Only `ollama pull` resolves
+//     this. The node agent's own pull fallback for every other runtime
+//     (nodeagent/actions.go pullViaHFHub/pullViaTGI) shells out to
+//     huggingface-cli/text-generation-server with a Hugging Face "org/repo"
+//     id - a bare Ollama library name is not that, and llama.cpp has no
+//     other pull mechanism of its own either.
+//   - "gguf-hf": "hf.co/..." prefix, or a bare filename ending ".gguf" -
+//     Ollama/llama.cpp's convention for pulling a GGUF quant straight from a
+//     Hugging Face repo (ggufOnlyRuntime's own two runtimes). vLLM, TGI, and
+//     MLX never load GGUF.
+//   - "hf-repo": a bare "org/repo"[:revision] Hugging Face identifier - the
+//     shape handleModelRepo already generates for vLLM/TGI/MLX's own browse
+//     variants. Deliberately never flagged incompatible: it's ambiguous with
+//     an Ollama community-published model of the same shape
+//     (e.g. "someuser/somemodel"), and even once confirmed as a real HF repo,
+//     nothing in the bare string says whether it's plain-safetensors, an
+//     AWQ/GPTQ quant, or MLX-converted without fetching the repo's own
+//     metadata (which handleModelRepo does, but handleNodePull's tag-only
+//     hard-block gate never has) - R1 forbids fabricating that certainty.
+func classifyPullTagFormat(model string) string {
+	lower := strings.ToLower(model)
+	if strings.HasPrefix(lower, "hf.co/") || strings.HasSuffix(lower, ".gguf") {
+		return "gguf-hf"
+	}
+	if strings.Contains(model, "/") {
+		return "hf-repo"
+	}
+	return "ollama-library"
+}
+
+// pullFormatIncompatible reports whether format (see classifyPullTagFormat)
+// can never be loaded by runtime - the only two format buckets confident
+// enough to hard-block on. An empty/undeclared runtime is treated as Ollama,
+// matching ggufOnlyRuntime's existing default elsewhere in this file.
+//
+// Law 5 compatibility matrix, stated explicitly (nothing here silently
+// narrows to Ollama-vs-everything-else):
+//   - "ollama-library" is compatible with {ollama, ""} only - incompatible
+//     with vllm, tgi, llamacpp, and mlx.
+//   - "gguf-hf" is compatible with ggufOnlyRuntime's {"", ollama, llamacpp} -
+//     incompatible with vllm, tgi, and mlx.
+//   - "hf-repo" is never flagged incompatible by this function (see
+//     classifyPullTagFormat's doc comment on why that's deliberate, not an
+//     oversight).
+func pullFormatIncompatible(format, runtime string) bool {
+	switch format {
+	case "ollama-library":
+		return runtime != "" && runtime != "ollama"
+	case "gguf-hf":
+		return !ggufOnlyRuntime(runtime)
+	default:
+		return false
+	}
+}
+
+// pullFormatDescription renders a classifyPullTagFormat bucket as the
+// operator-facing phrase used in handleNodePull's rejection message.
+func pullFormatDescription(format string) string {
+	switch format {
+	case "gguf-hf":
+		return "a GGUF file/repo reference"
+	default:
+		return "an Ollama library tag"
+	}
+}
+
+// nodeRuntimeByName looks up a node's declared runtime by name, matching the
+// fail-closed-to-empty-string behavior every other by-name lookup in this
+// file uses (see nodeDiskState). Returns ok=false for an unknown node name.
+func nodeRuntimeByName(nodes []*router.NodeState, name string) (runtime string, ok bool) {
+	for _, n := range nodes {
+		if n.Name != name {
+			continue
+		}
+		n.RLock()
+		runtime = n.Runtime
+		n.RUnlock()
+		return runtime, true
+	}
+	return "", false
+}
+
 // classifyDiskFit reports whether a pull of sizeMB (download size, MiB) would
 // fit in diskFreeGB (decimal GB, from Node.DiskFreeGB) of free disk space.
 // Unlike VRAM fit, disk space is not a transient snapshot the mesh's own
@@ -554,14 +644,27 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			dockerDeployed = true
 		}
 
+		// Every compiled catalogModels tag is an Ollama-library-format string
+		// (see classifyPullTagFormat) - computed once per node, not per
+		// variant, since it depends only on nodeRuntime.
+		catalogIncompatible := pullFormatIncompatible("ollama-library", nodeRuntime)
+
 		models := make([]catalogModelFit, 0, len(catalogModels))
 		for _, cm := range catalogModels {
 			variants := make([]catalogVariantFit, 0, len(cm.Variants))
 			for _, v := range cm.Variants {
 				estBytes := v.VRAMEstMB * 1024 * 1024
+				fit := classifyFit(estBytes, vramTotalBytes, vramSource)
+				// "incompatible" overrides any capacity-based verdict: a
+				// capacity word (green/yellow/red) must never also carry a
+				// compatibility fact, and there is no VRAM amount that makes
+				// a format this runtime can't load fit anyway.
+				if catalogIncompatible {
+					fit = "incompatible"
+				}
 				variants = append(variants, catalogVariantFit{
 					ModelVariant: v,
-					Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
+					Fit:          fit,
 					DiskFit:      classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent),
 				})
 			}

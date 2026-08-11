@@ -549,6 +549,103 @@ func TestHandleModelCatalog_Capabilities(t *testing.T) {
 	}
 }
 
+func TestClassifyPullTagFormat(t *testing.T) {
+	cases := []struct {
+		model string
+		want  string
+	}{
+		{"llama3.2:3b", "ollama-library"},
+		{"qwen2.5-coder:32b", "ollama-library"},
+		{"nomic-embed-text", "ollama-library"},
+		{"hf.co/unsloth/Kimi-K2.5-GGUF:Q4_K_M", "gguf-hf"},
+		{"hf.co/unsloth/Kimi-K2.5-GGUF", "gguf-hf"},
+		{"some/repo/model.GGUF", "gguf-hf"},
+		{"meta-llama/Llama-3.1-8B-Instruct", "hf-repo"},
+		{"someuser/somemodel", "hf-repo"},
+	}
+	for _, c := range cases {
+		if got := classifyPullTagFormat(c.model); got != c.want {
+			t.Errorf("classifyPullTagFormat(%q) = %q, want %q", c.model, got, c.want)
+		}
+	}
+}
+
+func TestPullFormatIncompatible(t *testing.T) {
+	cases := []struct {
+		format  string
+		runtime string
+		want    bool
+	}{
+		{"ollama-library", "", false},
+		{"ollama-library", "ollama", false},
+		{"ollama-library", "llamacpp", true},
+		{"ollama-library", "vllm", true},
+		{"ollama-library", "tgi", true},
+		{"ollama-library", "mlx", true},
+		{"gguf-hf", "", false},
+		{"gguf-hf", "ollama", false},
+		{"gguf-hf", "llamacpp", false},
+		{"gguf-hf", "vllm", true},
+		{"gguf-hf", "tgi", true},
+		{"gguf-hf", "mlx", true},
+		{"hf-repo", "ollama", false},
+		{"hf-repo", "vllm", false},
+		{"hf-repo", "tgi", false},
+		{"hf-repo", "llamacpp", false},
+		{"hf-repo", "mlx", false},
+	}
+	for _, c := range cases {
+		if got := pullFormatIncompatible(c.format, c.runtime); got != c.want {
+			t.Errorf("pullFormatIncompatible(%q, %q) = %v, want %v", c.format, c.runtime, got, c.want)
+		}
+	}
+}
+
+// TestHandleModelCatalog_IncompatibleRuntime is a regression test for P70:
+// the compiled catalog's tags are all Ollama-library-format, so a node
+// running any other runtime must see "incompatible" (not a capacity-based
+// green/yellow/red) for every variant, regardless of how much VRAM it has.
+func TestHandleModelCatalog_IncompatibleRuntime(t *testing.T) {
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+
+	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 60000}, []config.NodeConfig{
+		{Name: "vllm-node", URL: ollama.URL, Runtime: "vllm"},
+	}, nil)
+	nodes := r.Nodes()
+	nodes[0].Lock()
+	nodes[0].Healthy = true
+	nodes[0].VRAMTotalMB = 80 * 1024 // 80 GB - plenty of capacity for every catalog model
+	nodes[0].VRAMSource = "declared"
+	nodes[0].Unlock()
+
+	s := NewServer(r, nil, config.Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp catalogResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(resp.Nodes))
+	}
+	for _, m := range resp.Nodes[0].Models {
+		for _, v := range m.Variants {
+			if v.Fit != "incompatible" {
+				t.Errorf("model %q variant %q fit = %q on a vllm node, want incompatible (ample VRAM must never mask a format mismatch)", m.Name, v.Tag, v.Fit)
+			}
+		}
+	}
+}
+
 func TestExtractQuantization(t *testing.T) {
 	cases := []struct {
 		filename string

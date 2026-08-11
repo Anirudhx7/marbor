@@ -5770,6 +5770,25 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reject a pull whose tag format this node's runtime can never load,
+	// before any bytes move - see catalog.go's classifyPullTagFormat/
+	// pullFormatIncompatible doc comments for the confident-only compatibility
+	// matrix across all 5 runtimes (P70). Without this, an "ollama-library"
+	// or "gguf-hf" tag pulled onto an incompatible runtime either fails deep
+	// into a multi-GB huggingface-cli download with a cryptic subprocess
+	// error, or - for a GGUF repo id stripped down to "org/repo" - downloads
+	// completely successfully and only turns out to be unloadable the first
+	// time something tries to use it.
+	if nodeRuntime, ok := nodeRuntimeByName(nodes, nodeName); ok {
+		format := classifyPullTagFormat(body.Model)
+		if pullFormatIncompatible(format, nodeRuntime) {
+			writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf(
+				"%q looks like %s, but node %q runs %q, which cannot load that format",
+				body.Model, pullFormatDescription(format), nodeName, nodeRuntime))
+			return
+		}
+	}
+
 	// Hard-block a pull that free disk cannot possibly satisfy - unlike VRAM
 	// fit (soft confirm, see P47), a disk overrun is a guaranteed failure
 	// (partial download, or worst case fills the node's disk and disrupts
