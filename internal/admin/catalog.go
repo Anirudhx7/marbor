@@ -1,11 +1,13 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -749,25 +751,86 @@ func ggufOnlyRuntime(runtime string) bool {
 	}
 }
 
-// hfSearchFilterParams returns the HF search query-string suffix (leading
-// "&") that narrows handleModelSearch's list-view results to repos a given
-// runtime can actually consume. GGUF runtimes use HF's "gguf" format filter
-// alone, as before. vLLM/TGI/MLX also need "&pipeline_tag=text-generation" -
-// verified live against HF's /api/models: the bare "safetensors"/"mlx" format
-// filters alone return mostly embeddings/vision/ASR repos (only ~1 in 10 of
-// the top-downloaded "safetensors" results was an actual LLM), while adding
-// pipeline_tag=text-generation cleanly narrows both to genuine LLM repos.
-func hfSearchFilterParams(runtime string) string {
+// hfSearchFilters returns the HF format filter tag (for the "filter=" param)
+// and the set of pipeline_tag values relevant to a given runtime's search.
+// GGUF runtimes use the "gguf" format filter alone with no pipeline_tag
+// restriction, as before (unaffected by this).
+//
+// vLLM/TGI/MLX need a format filter too - verified live against HF's
+// /api/models: the bare "safetensors"/"mlx" format filters alone return
+// mostly embeddings/vision-classification/ASR/time-series repos (only ~1 in
+// 10 of the top-downloaded "safetensors" results was an actual LLM). Adding
+// pipeline_tag=text-generation narrows that correctly, but a single
+// pipeline_tag excludes vision-language (VLM) repos - e.g.
+// llava-hf/llava-1.5-7b-hf and the entire mlx-community/llava-* catalog are
+// tagged pipeline_tag=image-text-to-text, not text-generation, and vLLM/MLX
+// both genuinely serve VLMs. HF's REST API has no OR syntax for pipeline_tag
+// (repeated params and comma-separated values both verified live to return
+// zero results, not a union) - handleModelSearch below issues one upstream
+// request per tag in the returned slice and merges them. "conversational"
+// (the older VLM/chat tag) was checked and is dead - zero live results - so
+// it's deliberately excluded rather than silently missing.
+func hfSearchFilters(runtime string) (formatFilter string, pipelineTags []string) {
 	if ggufOnlyRuntime(runtime) {
-		return "&filter=gguf"
+		return "gguf", nil
 	}
 	switch runtime {
 	case "vllm", "tgi":
-		return "&filter=safetensors&pipeline_tag=text-generation"
+		return "safetensors", []string{"text-generation", "image-text-to-text"}
 	case "mlx":
-		return "&filter=mlx&pipeline_tag=text-generation"
+		return "mlx", []string{"text-generation", "image-text-to-text"}
 	default:
-		return ""
+		return "", nil
+	}
+}
+
+// fetchHFModelList performs one GET against HF's /api/models and decodes the
+// result. Extracted so handleModelSearch can issue more than one request
+// (one per pipeline_tag) and merge them - see hfSearchFilters.
+func (s *Server) fetchHFModelList(ctx context.Context, targetURL string) ([]HFModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	if s.cfg.HuggingFace.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
+	}
+	resp, err := hfHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch from Hugging Face: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Hugging Face API returned status %d", resp.StatusCode)
+	}
+	var models []HFModelInfo
+	if err := json.NewDecoder(resp.Body).Decode(&models); err != nil {
+		return nil, fmt.Errorf("decode Hugging Face response: %w", err)
+	}
+	return models, nil
+}
+
+// sortHFModelsInPlace re-sorts a merged multi-request model list back into
+// the single sort order the caller asked for (each individual upstream
+// request is already sorted the same way, but merging N sorted lists needs
+// a re-sort, not a concatenation).
+func sortHFModelsInPlace(models []HFModelInfo, sortField, direction string) {
+	ascLess := func(i, j int) bool {
+		switch sortField {
+		case "likes":
+			return models[i].Likes < models[j].Likes
+		case "createdAt":
+			ti, _ := time.Parse(time.RFC3339, models[i].CreatedAt)
+			tj, _ := time.Parse(time.RFC3339, models[j].CreatedAt)
+			return ti.Before(tj)
+		default: // "downloads"
+			return models[i].Downloads < models[j].Downloads
+		}
+	}
+	if direction == "1" {
+		sort.SliceStable(models, func(i, j int) bool { return ascLess(i, j) })
+	} else {
+		sort.SliceStable(models, func(i, j int) bool { return ascLess(j, i) })
 	}
 }
 
@@ -840,38 +903,46 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		direction = "1"
 	}
 
-	targetURL := fmt.Sprintf("https://huggingface.co/api/models?sort=%s&direction=%s&limit=25", sortField, direction)
-	targetURL += hfSearchFilterParams(runtime)
+	baseURL := fmt.Sprintf("https://huggingface.co/api/models?sort=%s&direction=%s&limit=25", sortField, direction)
 	if query != "" {
-		targetURL += "&search=" + url.QueryEscape(query)
+		baseURL += "&search=" + url.QueryEscape(query)
 	}
 
-	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"create request: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	if s.cfg.HuggingFace.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
-	}
-
-	resp, err := hfHTTPClient.Do(req)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"fetch from Hugging Face: %s"}`, err.Error()), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		http.Error(w, fmt.Sprintf(`{"error":"Hugging Face API returned status %d"}`, resp.StatusCode), http.StatusBadGateway)
-		return
-	}
+	formatFilter, pipelineTags := hfSearchFilters(runtime)
 
 	var hfModels []HFModelInfo
-	if err := json.NewDecoder(resp.Body).Decode(&hfModels); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"decode Hugging Face response: %s"}`, err.Error()), http.StatusInternalServerError)
-		return
+	if len(pipelineTags) == 0 {
+		targetURL := baseURL
+		if formatFilter != "" {
+			targetURL += "&filter=" + formatFilter
+		}
+		models, err := s.fetchHFModelList(r.Context(), targetURL)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadGateway)
+			return
+		}
+		hfModels = models
+	} else {
+		seen := make(map[string]bool, len(pipelineTags)*25)
+		for _, pt := range pipelineTags {
+			targetURL := baseURL + "&filter=" + formatFilter + "&pipeline_tag=" + pt
+			models, err := s.fetchHFModelList(r.Context(), targetURL)
+			if err != nil {
+				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadGateway)
+				return
+			}
+			for _, m := range models {
+				if seen[m.ID] {
+					continue
+				}
+				seen[m.ID] = true
+				hfModels = append(hfModels, m)
+			}
+		}
+		sortHFModelsInPlace(hfModels, sortField, direction)
+		if len(hfModels) > 25 {
+			hfModels = hfModels[:25]
+		}
 	}
 
 	// Post-filter on fields the HF search API returns per-model but has no
