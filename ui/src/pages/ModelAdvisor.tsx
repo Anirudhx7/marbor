@@ -28,12 +28,6 @@ import { CustomDatePicker } from '../components/DateTimePicker';
 // the identical constant in GPUNodes.tsx for the full reasoning.
 const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent']);
 
-// Mirrors pullFormatIncompatible("ollama-library", runtime) in internal/admin/catalog.go -
-// the curated model catalog is entirely Ollama-library-format tags.
-function curatedCatalogIncompatible(runtime: string | null | undefined): boolean {
-  return !!runtime && runtime !== 'ollama';
-}
-
 function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   const styles = {
     green: 'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
@@ -881,13 +875,6 @@ export function ModelAdvisor() {
               <span className="text-muted-foreground font-medium">of {(sysInfo.ram_total_mb / 1024).toFixed(0)} GB RAM</span>
             </span>
           )}
-        </div>
-      )}
-
-      {activeNode && curatedCatalogIncompatible(activeNode.runtime) && (
-        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm font-medium">
-          This node runs {activeNode.runtime} - the curated model catalog is Ollama-format only.
-          Search Hugging Face below for {activeNode.runtime}-compatible models instead.
         </div>
       )}
 
