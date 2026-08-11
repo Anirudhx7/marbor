@@ -749,6 +749,28 @@ func ggufOnlyRuntime(runtime string) bool {
 	}
 }
 
+// hfSearchFilterParams returns the HF search query-string suffix (leading
+// "&") that narrows handleModelSearch's list-view results to repos a given
+// runtime can actually consume. GGUF runtimes use HF's "gguf" format filter
+// alone, as before. vLLM/TGI/MLX also need "&pipeline_tag=text-generation" -
+// verified live against HF's /api/models: the bare "safetensors"/"mlx" format
+// filters alone return mostly embeddings/vision/ASR repos (only ~1 in 10 of
+// the top-downloaded "safetensors" results was an actual LLM), while adding
+// pipeline_tag=text-generation cleanly narrows both to genuine LLM repos.
+func hfSearchFilterParams(runtime string) string {
+	if ggufOnlyRuntime(runtime) {
+		return "&filter=gguf"
+	}
+	switch runtime {
+	case "vllm", "tgi":
+		return "&filter=safetensors&pipeline_tag=text-generation"
+	case "mlx":
+		return "&filter=mlx&pipeline_tag=text-generation"
+	default:
+		return ""
+	}
+}
+
 // detectSafetensorsQuant labels a non-GGUF repo's quantization method from
 // its HF tags. Falls back to "FP16/BF16" for unquantized full-precision repos.
 // MLX repos are tagged "library:mlx" on HF and carry their own quant format
@@ -819,9 +841,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	targetURL := fmt.Sprintf("https://huggingface.co/api/models?sort=%s&direction=%s&limit=25", sortField, direction)
-	if ggufOnlyRuntime(runtime) {
-		targetURL += "&filter=gguf"
-	}
+	targetURL += hfSearchFilterParams(runtime)
 	if query != "" {
 		targetURL += "&search=" + url.QueryEscape(query)
 	}
