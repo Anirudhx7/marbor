@@ -270,7 +270,7 @@ function ModelDetailPanel({
             </span>
             {model.pipeline_tag && (
               <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
-                {model.pipeline_tag.replace('-', ' ')}
+                {model.pipeline_tag.replaceAll('-', ' ')}
               </span>
             )}
           </div>
@@ -529,7 +529,7 @@ function ModelCard({
         </span>
         {model.pipeline_tag && (
           <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary capitalize text-[10px]">
-            {model.pipeline_tag.replace('-', ' ')}
+            {model.pipeline_tag.replaceAll('-', ' ')}
           </span>
         )}
       </div>

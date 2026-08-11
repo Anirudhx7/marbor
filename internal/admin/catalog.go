@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
@@ -923,21 +924,50 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		hfModels = models
 	} else {
+		// Fetched concurrently, not sequentially - hfHTTPClient's 10s timeout
+		// would otherwise compound to ~20s worst case for a 2-tag runtime.
+		// Concurrency also means one tag's transient failure doesn't erase
+		// results the other tag already got - only fail the request if every
+		// tag failed (mirrors the "drop the bad row, don't fail the whole
+		// list" pattern already used for secret decrypt failures elsewhere in
+		// this codebase, applied here to a multi-fetch merge instead).
+		type fetchOutcome struct {
+			models []HFModelInfo
+			err    error
+		}
+		outcomes := make([]fetchOutcome, len(pipelineTags))
+		var wg sync.WaitGroup
+		for i, pt := range pipelineTags {
+			wg.Add(1)
+			go func(i int, pt string) {
+				defer wg.Done()
+				targetURL := baseURL + "&filter=" + formatFilter + "&pipeline_tag=" + pt
+				models, err := s.fetchHFModelList(r.Context(), targetURL)
+				outcomes[i] = fetchOutcome{models: models, err: err}
+			}(i, pt)
+		}
+		wg.Wait()
+
 		seen := make(map[string]bool, len(pipelineTags)*25)
-		for _, pt := range pipelineTags {
-			targetURL := baseURL + "&filter=" + formatFilter + "&pipeline_tag=" + pt
-			models, err := s.fetchHFModelList(r.Context(), targetURL)
-			if err != nil {
-				http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadGateway)
-				return
+		var lastErr error
+		successCount := 0
+		for _, o := range outcomes {
+			if o.err != nil {
+				lastErr = o.err
+				continue
 			}
-			for _, m := range models {
+			successCount++
+			for _, m := range o.models {
 				if seen[m.ID] {
 					continue
 				}
 				seen[m.ID] = true
 				hfModels = append(hfModels, m)
 			}
+		}
+		if successCount == 0 {
+			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, lastErr.Error()), http.StatusBadGateway)
+			return
 		}
 		sortHFModelsInPlace(hfModels, sortField, direction)
 		if len(hfModels) > 25 {
