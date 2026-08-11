@@ -348,6 +348,10 @@ func classifyPullTagFormat(model string) string {
 		return "gguf-hf"
 	}
 	if strings.Contains(model, "/") {
+		// Includes a namespaced Ollama community tag (e.g. "someuser/somemodel")
+		// misclassified as "hf-repo" - indistinguishable from a real HF repo id
+		// by shape alone. Errs safe (never blocked here), not fixed - see the
+		// "hf-repo" bucket's doc comment above for why.
 		return "hf-repo"
 	}
 	return "ollama-library"
