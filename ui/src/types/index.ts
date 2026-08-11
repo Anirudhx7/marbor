@@ -500,9 +500,13 @@ export interface CatalogModel {
   rank: number;
 }
 
-// A variant decorated with its per-node fit classification.
+// A variant decorated with its per-node fit classification. "incompatible" is
+// distinct from FitStatus's green/yellow/red/unknown - those are capacity
+// verdicts (does it fit in VRAM), while "incompatible" is a format fact (this
+// node's runtime can never load an Ollama-library-format tag at all,
+// regardless of capacity) - see catalog.go's pullFormatIncompatible.
 export interface CatalogVariantFit extends ModelVariant {
-  fit: FitStatus;
+  fit: FitStatus | 'incompatible';
   disk_fit: 'ok' | 'insufficient' | 'unknown';
 }
 
