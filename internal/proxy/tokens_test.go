@@ -50,6 +50,13 @@ func TestTokenCountAbortedReturnsUnknownSentinel(t *testing.T) {
 	}
 }
 
+func TestTokenCountLegacyEmbeddingsReturnsUnknownSentinel(t *testing.T) {
+	body := `{"embedding":[0.1,0.2,0.3]}`
+	if got := recorderWith(body).tokenCount(false); got != -1 {
+		t.Errorf("tokenCount = %d, want -1 (unavailable) for legacy /api/embeddings shape", got)
+	}
+}
+
 func TestTTFTMeasuresFirstWrite(t *testing.T) {
 	start := time.Now()
 	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder(), start: start}

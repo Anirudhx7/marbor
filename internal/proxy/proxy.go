@@ -999,13 +999,19 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 
 	outBody := body
+	// Ollama's legacy /api/embeddings request uses "prompt"; OpenAI's
+	// /v1/embeddings (translateCloudPath's target for this path) expects
+	// "input". Rewrite before the model-field rewrite below so both compose.
+	if r.URL.Path == "/api/embeddings" && len(outBody) > 0 {
+		outBody = rewritePromptToInput(outBody)
+	}
 	// loggedModel makes model rewriting visible: "<original> -> <cloud model>"
 	// in the request log when the cloud provider's default_model replaced the
 	// client's requested model, plain "<original>" otherwise.
 	loggedModel := modelName
 	cloudModel := ""
-	if cloud.DefaultModel != "" && len(body) > 0 {
-		outBody = rewriteModelField(body, cloud.DefaultModel)
+	if cloud.DefaultModel != "" && len(outBody) > 0 {
+		outBody = rewriteModelField(outBody, cloud.DefaultModel)
 		cloudModel = cloud.DefaultModel
 		loggedModel = modelName + " -> " + cloud.DefaultModel
 	}
@@ -1160,6 +1166,8 @@ func translateCloudPath(ollamaPath string) string {
 		return "/v1/completions"
 	case "/api/embeddings":
 		return "/v1/embeddings"
+	case "/api/embed":
+		return "/v1/embeddings"
 	default:
 		return ollamaPath
 	}
@@ -1175,6 +1183,30 @@ func rewriteModelField(body []byte, model string) []byte {
 		return body
 	}
 	m["model"] = b
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// rewritePromptToInput renames the legacy Ollama /api/embeddings request's
+// "prompt" field to "input" for outbound cloud requests, matching OpenAI's
+// /v1/embeddings request schema. No-op if "prompt" is absent or "input" is
+// already present.
+func rewritePromptToInput(body []byte) []byte {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
+	}
+	prompt, hasPrompt := m["prompt"]
+	if !hasPrompt {
+		return body
+	}
+	if _, hasInput := m["input"]; !hasInput {
+		m["input"] = prompt
+	}
+	delete(m, "prompt")
 	out, err := json.Marshal(m)
 	if err != nil {
 		return body
@@ -1227,6 +1259,9 @@ func (r *statusRecorder) ttft() time.Duration {
 // chunk carrying the real count was never sent by upstream, so this is a
 // genuinely unknown value, not a real zero-token response; callers must
 // skip cost/analytics accumulation for -1 rather than storing it as 0.
+// Also returns -1 for Ollama's legacy /api/embeddings response shape
+// ({"embedding":[...]}, no eval_count/prompt_eval_count/usage field) - that
+// endpoint genuinely reports no token count, so 0 would be a fake zero (R1).
 func (r *statusRecorder) tokenCount(aborted bool) int64 {
 	lines := bytes.Split(r.tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -1236,8 +1271,9 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 			continue
 		}
 		var t struct {
-			EvalCount       int64 `json:"eval_count"`
-			PromptEvalCount int64 `json:"prompt_eval_count"`
+			EvalCount       int64           `json:"eval_count"`
+			PromptEvalCount int64           `json:"prompt_eval_count"`
+			Embedding       json.RawMessage `json:"embedding"`
 			Usage           struct {
 				TotalTokens int64 `json:"total_tokens"`
 			} `json:"usage"`
@@ -1250,6 +1286,14 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 		}
 		if t.Usage.TotalTokens > 0 {
 			return t.Usage.TotalTokens
+		}
+		// Ollama's legacy singular /api/embeddings response is
+		// {"embedding":[...]} with no eval_count/prompt_eval_count/usage
+		// field at all - there is genuinely no token count available from
+		// this response shape, so this is unavailable (-1), not a real
+		// zero-token measurement (R1: never present a fake zero as real).
+		if t.Embedding != nil {
+			return -1
 		}
 	}
 	if aborted {

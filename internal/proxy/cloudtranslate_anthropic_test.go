@@ -300,3 +300,20 @@ func TestCloudFallbackAnthropicEmbeddingsUnsupported(t *testing.T) {
 		t.Fatalf("status = %d, want 501, body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestCloudFallbackAnthropicAPIEmbedUnsupported verifies /api/embed (the
+// newer plural Ollama embeddings endpoint) against an anthropic-only
+// provider also returns 501 - translateCloudPath now maps /api/embed to
+// /v1/embeddings just like /api/embeddings, so the existing Anthropic
+// embeddings-unsupported check catches it too.
+func TestCloudFallbackAnthropicAPIEmbedUnsupported(t *testing.T) {
+	h, _ := newAnthropicOnlyHandler(t, "http://localhost:1")
+	rec := httptest.NewRecorder()
+	body := bytes.NewReader([]byte(`{"model":"llama3","input":"hi"}`))
+	req := httptest.NewRequest("POST", "/api/embed", body)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501, body=%s", rec.Code, rec.Body.String())
+	}
+}
