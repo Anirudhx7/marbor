@@ -158,3 +158,92 @@ func TestMixedFleetAPIChatMisroutesVLLMModelToOllamaNode(t *testing.T) {
 		t.Error("request for a vLLM-served model reached the vLLM node via /api/chat - the Ollama-native path should never be able to reach a non-Ollama node")
 	}
 }
+
+// TestMixedFleetEmbeddingsDoesNotMisrouteToWrongModelNode reproduces the
+// req-af404f8a incident (P79, EXECUTION-QUEUE.md): before the P79 hard
+// eligibility filter, a request naming a model that only the (now-draining)
+// Ollama node has could still land on a healthy non-Ollama node whose
+// LoadedModels contains a completely different model - model presence was a
+// scoring bonus (isModelWarm/computeNodeScore), never a hard prerequisite, so
+// the vLLM node was selected anyway and returned a silent wrong-model 200.
+// After the fix (isEligibleForModel in placement.go), a non-Ollama node with
+// the wrong LoadedModels entry must never be selected for a request naming
+// another model - the correct outcome here is "no eligible node" (503), not
+// a misrouted 200.
+func TestMixedFleetEmbeddingsDoesNotMisrouteToWrongModelNode(t *testing.T) {
+	var hitOllama, hitVLLM bool
+	h, _, _ := newMixedFleetHandler(t, "nomic-embed-text", "other-embed-model",
+		func() { hitOllama = true },
+		func() { hitVLLM = true },
+	)
+
+	// Drain the Ollama node (the only node that actually has the requested
+	// model) - mirrors the live incident where the Ollama node became
+	// unavailable/draining while a differently-modeled vLLM node stayed healthy.
+	for _, n := range h.router.Nodes() {
+		if n.Name == "ollama-node" {
+			n.Lock()
+			n.Draining = true
+			n.Unlock()
+		}
+	}
+
+	body := bytes.NewReader([]byte(`{"model":"nomic-embed-text","input":"hello"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/embeddings", body)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if hitVLLM {
+		t.Error("req-af404f8a regression: a healthy non-Ollama node with a different LoadedModels entry received a request for \"nomic-embed-text\" - it must be ineligible, not just lower-scored")
+	}
+	if hitOllama {
+		t.Error("the draining Ollama node should not have received the request either")
+	}
+	if rec.Code == http.StatusOK {
+		t.Errorf("expected no eligible node (503), got 200 with body=%s", rec.Body.String())
+	}
+}
+
+// TestMixedFleetStickySessionDoesNotBypassModelEligibility verifies the
+// sticky-session shortcut in Route (P79 audit: "sticky routing was
+// specifically identified as another possible bypass") also honors the hard
+// eligibility filter - a session pinned to a non-Ollama node must not be
+// allowed to reuse that node for a model the node doesn't actually have.
+func TestMixedFleetStickySessionDoesNotBypassModelEligibility(t *testing.T) {
+	r := router.New(config.RoutingConfig{SessionAffinity: true}, []config.NodeConfig{
+		{Name: "ollama-node", URL: "http://ollama.invalid", Runtime: "ollama"},
+		{Name: "vllm-node", URL: "http://vllm.invalid", Runtime: "vllm"},
+	}, nil)
+
+	var vllmNode *router.NodeState
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		switch n.Name {
+		case "ollama-node":
+			n.LoadedModels = []router.ModelInfo{{Name: "nomic-embed-text"}}
+		case "vllm-node":
+			n.LoadedModels = []router.ModelInfo{{Name: "other-embed-model"}}
+			vllmNode = n
+		}
+		n.Unlock()
+	}
+	if vllmNode == nil {
+		t.Fatal("vllm-node not found")
+	}
+
+	// Directly route once for the vLLM node's own model with a session ID to
+	// establish a sticky-session entry pinned to vllmNode.
+	node, _ := r.Route("other-embed-model", "sess-1", "")
+	if node != vllmNode {
+		t.Fatalf("expected initial route to pin sticky session to vllm-node, got %v", node)
+	}
+
+	// Now route the SAME session for a model vllmNode does not have. The
+	// sticky shortcut must not return vllmNode just because it's the pinned
+	// node - it must fall through and re-evaluate eligibility.
+	node, _ = r.Route("nomic-embed-text", "sess-1", "")
+	if node == vllmNode {
+		t.Error("sticky-session path returned a node ineligible for the requested model - eligibility must be re-checked even for a pinned session")
+	}
+}

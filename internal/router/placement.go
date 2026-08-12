@@ -68,6 +68,25 @@ func (r *Router) isModelWarm(n *NodeState, modelName string) bool {
 	return false
 }
 
+// isEligibleForModel reports whether n may be a routing candidate for
+// modelName at all (P79 hard eligibility filter, Routing Hierarchy step 1).
+// Ollama is exempt: its runtime can load/pull a requested model on demand, so
+// absence from LoadedModels does not disqualify it (existing cold-start
+// behavior, unchanged). Every other runtime has no such on-demand load path
+// from the mesh's perspective, so a non-Ollama node must already report
+// modelName in LoadedModels - otherwise a healthy-but-wrong-model node could
+// silently serve output from a different model than the one requested (see
+// req-af404f8a, P79 filing in EXECUTION-QUEUE.md).
+func (r *Router) isEligibleForModel(n *NodeState, modelName string) bool {
+	if modelName == "" {
+		return true
+	}
+	if runtime := n.GetRuntime(); runtime == "" || runtime == "ollama" {
+		return true
+	}
+	return r.isModelWarm(n, modelName)
+}
+
 // sweepAffinity removes expired session-affinity entries. Called periodically
 // from Start to bound memory usage on long-running deployments.
 func (r *Router) sweepAffinity() {
@@ -425,7 +444,7 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 		isHealthy := n.Healthy
 		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy && !isDraining {
+		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) {
 			healthy = append(healthy, n)
 		}
 	}
@@ -441,7 +460,7 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	}
 	if sessionID != "" {
 		if node := r.stickyNode(sessionID); node != nil {
-			if runtimeFilter == "" || node.GetRuntime() == runtimeFilter {
+			if (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName) {
 				r.RecordTransition(modelName, time.Now())
 				warm := r.isModelWarm(node, modelName)
 				if !warm {
@@ -494,7 +513,7 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 		isHealthy := n.Healthy
 		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy && !isDraining {
+		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) {
 			healthy = append(healthy, n)
 		}
 	}
