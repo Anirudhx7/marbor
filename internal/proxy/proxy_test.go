@@ -98,6 +98,7 @@ func TestTranslateCloudPath(t *testing.T) {
 		{"/api/chat", "/v1/chat/completions"},
 		{"/api/generate", "/v1/completions"},
 		{"/api/embeddings", "/v1/embeddings"},
+		{"/api/embed", "/v1/embeddings"},
 		{"/api/tags", "/api/tags"},
 		{"/unknown/path", "/unknown/path"},
 	}
@@ -128,6 +129,44 @@ func TestRewriteModelField(t *testing.T) {
 	bad := []byte(`not-json`)
 	got := rewriteModelField(bad, "gpt-4o")
 	if !bytes.Equal(got, bad) {
+		t.Error("expected original bytes returned on bad JSON")
+	}
+}
+
+func TestRewritePromptToInput(t *testing.T) {
+	out := rewritePromptToInput([]byte(`{"model":"x","prompt":"hello"}`))
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("rewritePromptToInput output invalid JSON: %v", err)
+	}
+	if _, hasPrompt := m["prompt"]; hasPrompt {
+		t.Error("prompt field still present, want removed")
+	}
+	var input string
+	if err := json.Unmarshal(m["input"], &input); err != nil || input != "hello" {
+		t.Errorf("input = %v, err %v, want \"hello\"", m["input"], err)
+	}
+
+	// "input" already present: "prompt" is dropped, existing "input" kept as-is.
+	noop := rewritePromptToInput([]byte(`{"model":"x","prompt":"ignored","input":"kept"}`))
+	var m2 map[string]json.RawMessage
+	if err := json.Unmarshal(noop, &m2); err != nil {
+		t.Fatalf("rewritePromptToInput output invalid JSON: %v", err)
+	}
+	var input2 string
+	if err := json.Unmarshal(m2["input"], &input2); err != nil || input2 != "kept" {
+		t.Errorf("input = %v, want \"kept\" (existing input must not be overwritten)", m2["input"])
+	}
+
+	// "prompt" absent: body returned unchanged.
+	absent := []byte(`{"model":"x","input":"already-here"}`)
+	if got := rewritePromptToInput(absent); !bytes.Equal(got, absent) {
+		t.Error("expected original bytes returned when prompt is absent")
+	}
+
+	// bad JSON returns original.
+	bad := []byte(`not-json`)
+	if got := rewritePromptToInput(bad); !bytes.Equal(got, bad) {
 		t.Error("expected original bytes returned on bad JSON")
 	}
 }
