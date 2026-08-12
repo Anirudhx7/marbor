@@ -655,10 +655,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.admin != nil {
 		tokens := rec.tokenCount(aborted)
-		logTokens := tokens
-		if logTokens < 0 {
-			logTokens = 0
-		}
 		clientIP := r.RemoteAddr
 		if h.trustProxyHeaders {
 			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
@@ -673,7 +669,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if modelName != requestedModelName {
 			loggedModel = requestedModelName + " -> " + modelName
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, logTokens)
+		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, tokens)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
@@ -1217,14 +1213,23 @@ func rewritePromptToInput(body []byte) []byte {
 type statusRecorder struct {
 	http.ResponseWriter
 	statusCode  int
-	tail        []byte    // last tailMax bytes written, for token-count parsing
+	tail        []byte    // retained body for token-count parsing - see tailMax
+	sawNewline  bool      // true once a '\n' has appeared in the written body
 	start       time.Time // request start, for TTFT; zero value means TTFT is unavailable
 	firstByteAt time.Time // set on the first Write(); zero until then
 }
 
-// tailMax bounds the retained response tail. Token counts live in the final
-// JSON object (Ollama NDJSON) or final SSE chunk (OpenAI), so a small tail
-// is enough. Writes still pass straight through - streaming is not buffered.
+// tailMax bounds the retained response tail for line-oriented responses -
+// Ollama NDJSON (one JSON object per line) or OpenAI SSE ("data: " lines) -
+// where the token count lives in the final line, so a small tail is enough.
+//
+// A single-JSON-document response (e.g. /v1/embeddings, whose "usage" field
+// trails a large embedding array with no newline anywhere in the body) can't
+// be identified by "final line" at all, so Write does not truncate until it
+// has seen at least one '\n' - see sawNewline. Until then the buffer grows up
+// to maxRequestBodyBytes, matching the size the proxy already accepts on the
+// request side. Writes still pass straight through in both cases - streaming
+// to the client is never buffered (R2).
 const tailMax = 8192
 
 func (r *statusRecorder) Write(b []byte) (int, error) {
@@ -1233,9 +1238,18 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 		if r.firstByteAt.IsZero() {
 			r.firstByteAt = time.Now()
 		}
-		r.tail = append(r.tail, b[:n]...)
-		if len(r.tail) > tailMax {
-			r.tail = r.tail[len(r.tail)-tailMax:]
+		if !r.sawNewline && bytes.IndexByte(b[:n], '\n') >= 0 {
+			r.sawNewline = true
+		}
+		if !r.sawNewline {
+			if len(r.tail) < maxRequestBodyBytes {
+				r.tail = append(r.tail, b[:n]...)
+			}
+		} else {
+			r.tail = append(r.tail, b[:n]...)
+			if len(r.tail) > tailMax {
+				r.tail = r.tail[len(r.tail)-tailMax:]
+			}
 		}
 	}
 	return n, err
