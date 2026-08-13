@@ -55,34 +55,42 @@ func (s *Server) scheduler() *Scheduler { return s.schedulerPtr.Load() }
 // token-gated.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/status", requireToken(s.Token, s.handleStatus))
-	mux.HandleFunc("GET /metrics", requireToken(s.Token, s.handleMetrics))
-	mux.HandleFunc("POST /v1/models", requireToken(s.Token, s.handlePullModel))
-	mux.HandleFunc("GET /v1/models", requireToken(s.Token, s.handleListModels))
+	// Group 1 "Observe" - read-only, no state mutation, lowest tier.
+	mux.HandleFunc("GET /v1/status", requireScope(s.Token, tierReadonly, s.handleStatus))
+	mux.HandleFunc("GET /metrics", requireScope(s.Token, tierReadonly, s.handleMetrics))
+	// Group 2 "Operate" - the rest of the routes below all require
+	// tierOperator (P54: per-action token scoping). See
+	// .local/specs/node-agent-capabilities.md section 7 and
+	// internal/nodeagent/auth.go's tier documentation for why tierAdmin is
+	// reserved rather than used by anything here.
+	mux.HandleFunc("POST /v1/models", requireScope(s.Token, tierOperator, s.handlePullModel))
+	mux.HandleFunc("GET /v1/models", requireScope(s.Token, tierOperator, s.handleListModels))
 	// "{name...}" (not "{name}") deliberately - model names routinely
 	// contain "/" (e.g. "org/repo"), and the trailing "..." wildcard is what
 	// makes ServeMux capture the rest of the path, slashes included, instead
 	// of stopping at the first one.
-	mux.HandleFunc("DELETE /v1/models/{name...}", requireToken(s.Token, s.handleDeleteModel))
+	mux.HandleFunc("DELETE /v1/models/{name...}", requireScope(s.Token, tierOperator, s.handleDeleteModel))
 	// POST on the same "{name...}" path shape as the DELETE route above means
 	// "unload this model" (evict from VRAM, keep it on disk) - see
 	// handleUnloadModel's doc comment for why a literal "/unload" suffix
 	// isn't used (not expressible after a multi-segment wildcard).
-	mux.HandleFunc("POST /v1/models/{name...}", requireToken(s.Token, s.handleUnloadModel))
+	mux.HandleFunc("POST /v1/models/{name...}", requireScope(s.Token, tierOperator, s.handleUnloadModel))
 	// The "runtime" resource, capability "runtime.health_check" - an
 	// on-demand active liveness probe, distinct from GET /v1/status's
 	// Health.RuntimeReachable field (which only reflects the last poll
-	// cycle's passive reading). GET because this never mutates state.
-	mux.HandleFunc("GET /v1/runtime/health", requireToken(s.Token, s.handleHealthCheck))
+	// cycle's passive reading). GET because this never mutates state, but
+	// it's still an active probe (Group 2 diagnostics.health), not a passive
+	// read, so it requires tierOperator like the rest of this group.
+	mux.HandleFunc("GET /v1/runtime/health", requireScope(s.Token, tierOperator, s.handleHealthCheck))
 	// The "runtime" resource's lifecycle verbs (P43 Step 3, capabilities
 	// "runtime.start"/"runtime.stop"/"runtime.restart") - the agent builds
 	// the ControlDriver fresh per-request from the {driver, identifier,
 	// start_command} the mesh's Admin API supplies in the body; see
 	// control_actions.go.
-	mux.HandleFunc("POST /v1/runtime/start", requireToken(s.Token, s.handleRuntimeStart))
-	mux.HandleFunc("POST /v1/runtime/stop", requireToken(s.Token, s.handleRuntimeStop))
-	mux.HandleFunc("POST /v1/runtime/restart", requireToken(s.Token, s.handleRuntimeRestart))
-	mux.HandleFunc("POST /v1/runtime/logs", requireToken(s.Token, s.handleRuntimeLogs))
+	mux.HandleFunc("POST /v1/runtime/start", requireScope(s.Token, tierOperator, s.handleRuntimeStart))
+	mux.HandleFunc("POST /v1/runtime/stop", requireScope(s.Token, tierOperator, s.handleRuntimeStop))
+	mux.HandleFunc("POST /v1/runtime/restart", requireScope(s.Token, tierOperator, s.handleRuntimeRestart))
+	mux.HandleFunc("POST /v1/runtime/logs", requireScope(s.Token, tierOperator, s.handleRuntimeLogs))
 	// The "runtime" resource's disk-usage read, capability "runtime.disk" -
 	// same {driver, identifier} per-request injection as start/stop/restart/
 	// logs above, used to answer "how much disk does the runtime actually
@@ -90,7 +98,7 @@ func (s *Server) Handler() http.Handler {
 	// agent's own host filesystem can be backed by an entirely different,
 	// differently-sized volume/mount than wherever the container persists
 	// its model storage. See control_actions.go's handleRuntimeDisk.
-	mux.HandleFunc("POST /v1/runtime/disk", requireToken(s.Token, s.handleRuntimeDisk))
+	mux.HandleFunc("POST /v1/runtime/disk", requireScope(s.Token, tierOperator, s.handleRuntimeDisk))
 	return mux
 }
 
