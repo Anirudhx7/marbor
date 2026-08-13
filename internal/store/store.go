@@ -50,8 +50,8 @@ type Store interface {
 	AllNodes() ([]NodeRecord, error)
 	UpdateNodeURL(name string, url string) error
 
-	// Node overrides (vram, gpu_model)
-	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string) error
+	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C)
+	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
@@ -318,6 +318,14 @@ type NodeOverride struct {
 	VRAMTotalMB *int64  `json:"vram_total_mb,omitempty"`
 	GPUModel    *string `json:"gpu_model,omitempty"`
 	Runtime     *string `json:"runtime,omitempty"`
+	// GPUIndices is the operator-declared set of physical GPU indices this
+	// specific node/runtime instance actually uses (P75 Gap B/C) - host-scoped
+	// agent telemetry reports every physical GPU identically to every node
+	// sharing a Host, so a node pinned to one GPU (e.g. CUDA_VISIBLE_DEVICES)
+	// needs this to avoid being sized against hardware it cannot reach. nil
+	// means "nothing declared" (the default - unchanged host-level sizing);
+	// a non-nil empty slice explicitly clears a prior declaration.
+	GPUIndices *[]int `json:"gpu_indices,omitempty"`
 }
 
 // NodeAgentRecord is the per-node Node Agent configuration: whether the
@@ -638,25 +646,27 @@ type BenchmarkRun struct {
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
-func (NopStore) AppendRequest(_ RequestRecord) error                               { return nil }
-func (NopStore) LastRequests(_ int) ([]RequestRecord, error)                       { return nil, nil }
-func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                           { return nil }
-func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)                 { return nil, nil }
-func (NopStore) UpsertModelStat(_ ModelStat) error                                 { return nil }
-func (NopStore) AllModelStats() ([]ModelStat, error)                               { return nil, nil }
-func (NopStore) SetCounters(_ Counters) error                                      { return nil }
-func (NopStore) GetCounters() (Counters, error)                                    { return Counters{}, nil }
-func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error              { return nil }
-func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error)            { return nil, nil }
-func (NopStore) UpsertNode(_ NodeRecord) error                                     { return nil }
-func (NopStore) DeleteNode(_ string) error                                         { return nil }
-func (NopStore) AllNodes() ([]NodeRecord, error)                                   { return nil, nil }
-func (NopStore) UpdateNodeURL(_ string, _ string) error                            { return nil }
-func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string) error { return nil }
-func (NopStore) NodeOverrides() (map[string]NodeOverride, error)                   { return nil, nil }
-func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error                     { return nil }
-func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error)               { return nil, nil }
-func (NopStore) UpsertNodeAgent(_ NodeAgentRecord) error                           { return nil }
+func (NopStore) AppendRequest(_ RequestRecord) error                    { return nil }
+func (NopStore) LastRequests(_ int) ([]RequestRecord, error)            { return nil, nil }
+func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                { return nil }
+func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)      { return nil, nil }
+func (NopStore) UpsertModelStat(_ ModelStat) error                      { return nil }
+func (NopStore) AllModelStats() ([]ModelStat, error)                    { return nil, nil }
+func (NopStore) SetCounters(_ Counters) error                           { return nil }
+func (NopStore) GetCounters() (Counters, error)                         { return Counters{}, nil }
+func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error   { return nil }
+func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error) { return nil, nil }
+func (NopStore) UpsertNode(_ NodeRecord) error                          { return nil }
+func (NopStore) DeleteNode(_ string) error                              { return nil }
+func (NopStore) AllNodes() ([]NodeRecord, error)                        { return nil, nil }
+func (NopStore) UpdateNodeURL(_ string, _ string) error                 { return nil }
+func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int) error {
+	return nil
+}
+func (NopStore) NodeOverrides() (map[string]NodeOverride, error)     { return nil, nil }
+func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error       { return nil }
+func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error) { return nil, nil }
+func (NopStore) UpsertNodeAgent(_ NodeAgentRecord) error             { return nil }
 func (NopStore) GetNodeAgent(_ string) (NodeAgentRecord, bool, error) {
 	return NodeAgentRecord{}, false, nil
 }

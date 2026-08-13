@@ -420,11 +420,15 @@ type RequestLog struct {
 }
 
 type nodeResp struct {
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Host            string             `json:"host"`
-	Port            int                `json:"port"`
-	GPUModel        string             `json:"gpuModel"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	GPUModel string `json:"gpuModel"`
+	// GPUIndices is the operator-declared set of physical GPU indices this
+	// node/runtime instance actually uses (P75 Gap B/C) - empty/omitted means
+	// nothing declared, unchanged host-level sizing. See NodeState.DeclaredGPUIndices.
+	GPUIndices      []int              `json:"gpuIndices,omitempty"`
 	VRAMTotalMB     int64              `json:"vramTotalMB"`
 	VRAMUsedMB      int64              `json:"vramUsedMB"`
 	VRAMSource      string             `json:"vramSource"`
@@ -1319,6 +1323,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		Host:              host,
 		Port:              port,
 		GPUModel:          n.GPUModel,
+		GPUIndices:        n.DeclaredGPUIndices,
 		VRAMTotalMB:       n.VRAMTotalMB,
 		VRAMUsedMB:        n.VRAMUsedMB,
 		VRAMSource:        n.VRAMSource,
@@ -3280,14 +3285,14 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.st.UpdateNodeURL(name, *patch.URL)
 	}
-	if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil {
+	if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil {
 		if !s.router.PatchNode(name, patch) {
 			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 			return
 		}
-		_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime)
+		_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices)
 	}
-	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil))
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
 }
@@ -7316,6 +7321,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
 		agentGPUs := append([]nodeagent.GPUInfo(nil), n.AgentGPUs...)
+		declaredGPUIndices := append([]int(nil), n.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
 		agentGPUVendor := n.AgentGPUVendor
@@ -7331,7 +7337,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		var vramTotalBytes int64
 		vramSource := "unknown"
 
-		capacityMB, capacityUsedMB, _, _ := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime)
+		capacityMB, capacityUsedMB, _, _ := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime, declaredGPUIndices)
 		if capacityMB > 0 {
 			vramTotalBytes = capacityMB * 1024 * 1024
 			// Use nvidia-smi total minus what /api/ps says is loaded (or, on

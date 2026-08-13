@@ -184,6 +184,10 @@ func (s *sqliteStore) migrate() error {
 			vram_total_mb INTEGER
 		)`,
 
+		// gpu_indices (added via ALTER TABLE below, same as runtime) is the
+		// operator-declared physical GPU index list for this node (P75 Gap
+		// B/C), JSON-encoded (e.g. "[0,1]") - same JSON-in-TEXT convention as
+		// node_control.discovered_evidence. Empty string means "not declared".
 		`CREATE TABLE IF NOT EXISTS node_overrides (
 			name         TEXT PRIMARY KEY,
 			vram_total_mb INTEGER,
@@ -451,6 +455,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN allow_local_degradation INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
+		`ALTER TABLE node_overrides ADD COLUMN gpu_indices TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
 		// host groups multiple runtime_nodes rows that live on the same
 		// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one
@@ -1003,12 +1008,13 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // UpsertNodeOverride merges the given fields into any existing override row
 // for name, so a call that only sets one field (e.g. runtime) never clobbers
 // fields set by an earlier, separate PatchNode call (e.g. vram_total_mb).
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string) error {
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int) error {
 	var existingVRAM sql.NullInt64
 	var existingGPU, existingRuntime sql.NullString
+	var existingIndices string
 	_ = s.db.QueryRow(
-		`SELECT vram_total_mb, gpu_model, runtime FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime)
+		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices)
 
 	vram := existingVRAM
 	if vramTotalMB != nil {
@@ -1022,11 +1028,19 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 	if runtime != nil {
 		rt = sql.NullString{String: *runtime, Valid: true}
 	}
+	indices := existingIndices
+	if gpuIndices != nil {
+		b, err := json.Marshal(*gpuIndices)
+		if err != nil {
+			return fmt.Errorf("store: UpsertNodeOverride: marshal gpu_indices: %w", err)
+		}
+		indices = string(b)
+	}
 
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model, runtime)
-		 VALUES (?, ?, ?, ?)`,
-		name, vram, gpu, rt,
+		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices)
+		 VALUES (?, ?, ?, ?, ?)`,
+		name, vram, gpu, rt, indices,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -1036,7 +1050,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model, runtime FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -1048,7 +1062,8 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		var name string
 		var vram sql.NullInt64
 		var gpu, rt sql.NullString
-		if err := rows.Scan(&name, &vram, &gpu, &rt); err != nil {
+		var indicesJSON string
+		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -1060,6 +1075,16 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		}
 		if rt.Valid {
 			ov.Runtime = &rt.String
+		}
+		if indicesJSON != "" {
+			var idx []int
+			if err := json.Unmarshal([]byte(indicesJSON), &idx); err == nil {
+				ov.GPUIndices = &idx
+			}
+			// A malformed indices blob is dropped rather than failing the
+			// whole row (R1/R8 discipline: a bad reading becomes "unknown",
+			// not a fabricated or half-parsed value) - the node just falls
+			// back to undeclared (host-level) sizing until re-declared.
 		}
 		out[name] = ov
 	}

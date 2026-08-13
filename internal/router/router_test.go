@@ -931,6 +931,52 @@ func TestPatchNodeMetadata(t *testing.T) {
 	}
 }
 
+// TestPatchNodeGPUIndices verifies P75 Gap B/C's declared-GPU-scope wiring:
+// PatchNode applies NodePatch.GPUIndices to NodeState.DeclaredGPUIndices, a
+// nil patch field leaves an existing declaration untouched (no-op, matching
+// every other NodePatch field's semantics), and a non-nil empty slice
+// explicitly clears it.
+func TestPatchNodeGPUIndices(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+
+	indices := []int{0, 1}
+	if !r.PatchNode("gpu-0", NodePatch{GPUIndices: &indices}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	got := append([]int(nil), r.nodes[0].DeclaredGPUIndices...)
+	r.nodes[0].mu.RUnlock()
+	if len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Fatalf("DeclaredGPUIndices = %v, want [0 1]", got)
+	}
+
+	// A patch that omits GPUIndices (nil) must not clobber the declaration.
+	model := "NVIDIA RTX 4090"
+	if !r.PatchNode("gpu-0", NodePatch{GPUModel: &model}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	got = append([]int(nil), r.nodes[0].DeclaredGPUIndices...)
+	r.nodes[0].mu.RUnlock()
+	if len(got) != 2 {
+		t.Fatalf("DeclaredGPUIndices after unrelated patch = %v, want unchanged [0 1]", got)
+	}
+
+	// A non-nil empty slice explicitly clears it.
+	empty := []int{}
+	if !r.PatchNode("gpu-0", NodePatch{GPUIndices: &empty}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	got = r.nodes[0].DeclaredGPUIndices
+	r.nodes[0].mu.RUnlock()
+	if len(got) != 0 {
+		t.Fatalf("DeclaredGPUIndices after clear = %v, want empty", got)
+	}
+}
+
 func TestPatchNodeRuntime(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434", Runtime: "ollama"},

@@ -85,6 +85,11 @@ function NodeVramCard({ node }: { node: any }) {
               <span className="ml-1">&middot; largest of {node.gpu_count} GPUs ({node.runtime || 'this runtime'} does not shard across GPUs)</span>
             )}
           </p>
+          {node.gpu_count_unknown && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
+              GPU count unknown - no agent has confirmed a per-device reading, so this number may not reflect the full node.
+            </p>
+          )}
         </>
       ) : (node.vram_used_bytes ?? 0) > 0 ? (
         <>

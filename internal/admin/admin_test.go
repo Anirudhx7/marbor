@@ -720,6 +720,36 @@ func TestHandlePatchNode_SetsRuntime(t *testing.T) {
 	}
 }
 
+// TestHandlePatchNode_SetsGPUIndices verifies the P75 Gap B/C admin API
+// wiring: PATCH /admin/nodes/{name} accepts "gpu_indices" and applies it to
+// the live NodeState via router.PatchNode, mirroring TestHandlePatchNode_SetsRuntime.
+func TestHandlePatchNode_SetsGPUIndices(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Runtime: "vllm"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"gpu_indices":[0,1]}`))
+	req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/gpu-0", body)
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handlePatchNode(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(nodes))
+	}
+	nodes[0].RLock()
+	got := append([]int(nil), nodes[0].DeclaredGPUIndices...)
+	nodes[0].RUnlock()
+	if len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Errorf("DeclaredGPUIndices = %v, want [0 1]", got)
+	}
+}
+
 func TestCloudBudgetExceeded_DisabledByDefault(t *testing.T) {
 	s := newTestServer()
 	s.TrackCloudCostModel("testkey", "openai", "gpt-4o", 1000.0, 1000) // huge cost, caps still 0/disabled
