@@ -283,3 +283,37 @@ The bottleneck at high concurrency is almost always the upstream Ollama nodes or
 | Admin action trail | The separate `system_audit_log` table in `mesh.db` (who changed what in the dashboard/API). Independently retained (`audit_system_retention_days` setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log. |
 | Request log / analytics | Persisted to `request_log`, `hourly_buckets`, and `model_stats` tables in `mesh.db`, not purely in-memory. |
 | GPU telemetry | Live reads from `nvidia-smi` on local nodes, and via the optional Node Agent on remote GPU hosts. Not persisted. |
+
+---
+
+## Write-Path Capacity
+
+The three per-request SQLite writes above (audit log, request log, hourly/model stats) are async:
+each goes through a bounded 5000-slot buffered channel with drop-on-full, not the request
+goroutine (`internal/audit/audit.go`, `internal/admin/admin.go`). Under sustained load, this
+design absorbs a burst without adding request latency until a queue actually fills, at which
+point new entries for that table are dropped (and logged) rather than blocking requests.
+
+_Measured 2026-08-13 with `bench/loadtest` (see `bench/README.md`) against a single mesh process,
+a single `cmd/mocknode` backend (warm model, `LATENCY_MS=20`), on a Windows dev workstation - not
+production server hardware. Reproduced across two independent, isolated sweeps._
+
+| Metric | Result |
+|---|---|
+| No drops observed | Up to 300 req/s sustained, p50 latency ~330-380ms (flat, matching the mock backend's own fixed per-response time), zero request failures. |
+| Latency knee | ~400 req/s - p50 jumps from ~380ms (at 300 req/s) to ~1.7s, indicating request backlog starting to build. |
+| First observed queue-full drop | ~500 req/s sustained, reproduced in both isolated test runs (`async logger: queue full`, `audit logger: queue full`, `async logger: stats queue full` all fired within the same run). |
+| Node-count sensitivity | Not yet tested - this measurement used the single-node baseline only, which is the primary claim for the SQLite write path itself. A secondary multi-node run is still open (see `bench/README.md`). |
+
+**Important caveat on what this number does and doesn't isolate:** this test setup (one mesh
+process, one mock backend node) could not cleanly separate "the 5000-slot async queues filled up"
+from "the single backend node's own per-request service time became the bottleneck first." Both
+plausibly contribute at the ~400-500 req/s knee. Treat "~500 req/s" as *this setup's* observed
+ceiling, not a proven SQLite-write-path-alone limit - a cleaner isolation would need either a
+zero-latency synthetic write-only path or several concurrent mock nodes so no single backend's
+service time can be the constraint. That refinement is a reasonable follow-up, not required to
+have an honest number today.
+
+Re-run `bench/loadtest` after any change to `internal/audit`, `internal/admin`'s async
+queues, or `internal/store/sqlite.go`'s connection/pragma settings, or on real production
+hardware, since any of those can move this number.
