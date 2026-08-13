@@ -441,7 +441,7 @@ func nodeRuntimeByName(nodes []*router.NodeState, name string) (runtime string, 
 // it matters most. DiskTotalGB is only 0/absent when the agent has never
 // reported real disk stats at all.
 func classifyDiskFit(sizeMB int64, diskFreeGB, diskTotalGB float64, agentPresent bool) string {
-	if !agentPresent || diskTotalGB <= 0 {
+	if diskTelemetryUnknown(diskTotalGB, agentPresent) {
 		return "unknown"
 	}
 	neededBytes := float64(sizeMB) * 1024 * 1024
@@ -450,6 +450,15 @@ func classifyDiskFit(sizeMB int64, diskFreeGB, diskTotalGB float64, agentPresent
 		return "insufficient"
 	}
 	return "ok"
+}
+
+// diskTelemetryUnknown is the shared "do we have real disk telemetry for
+// this node" check used by both classifyDiskFit and classifyUnknownSizeDiskFit,
+// so the one definition of "unknown" (no agent, or an agent that has never
+// reported a real Statfs reading - diskTotalGB is only 0/absent in that case,
+// never for a genuinely full disk) can never drift between the two callers.
+func diskTelemetryUnknown(diskTotalGB float64, agentPresent bool) bool {
+	return !agentPresent || diskTotalGB <= 0
 }
 
 // unknownSizeMinFreeFraction and unknownSizeMinFreeGB are the conservative
@@ -481,7 +490,7 @@ const (
 // conservative floor above to the node's CURRENT free headroom, since there
 // is no needed-size figure to weigh it against.
 func classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB float64, agentPresent bool) string {
-	if !agentPresent || diskTotalGB <= 0 {
+	if diskTelemetryUnknown(diskTotalGB, agentPresent) {
 		return "unknown"
 	}
 	if diskFreeGB < unknownSizeMinFreeGB || diskFreeGB/diskTotalGB < unknownSizeMinFreeFraction {
