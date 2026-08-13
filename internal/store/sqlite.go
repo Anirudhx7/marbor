@@ -463,6 +463,10 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 		`ALTER TABLE node_overrides ADD COLUMN gpu_indices TEXT NOT NULL DEFAULT ''`,
+		// P64: per-node in-flight cap override. Nullable like vram_total_mb -
+		// NULL means "no override declared" (falls back to
+		// RoutingConfig.MaxInFlightPerNode), distinct from an explicit 0.
+		`ALTER TABLE node_overrides ADD COLUMN max_in_flight INTEGER`,
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
 		// host groups multiple runtime_nodes rows that live on the same
 		// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one
@@ -1019,13 +1023,14 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // UpsertNodeOverride merges the given fields into any existing override row
 // for name, so a call that only sets one field (e.g. runtime) never clobbers
 // fields set by an earlier, separate PatchNode call (e.g. vram_total_mb).
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int) error {
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int) error {
 	var existingVRAM sql.NullInt64
 	var existingGPU, existingRuntime sql.NullString
 	var existingIndices string
+	var existingMaxInFlight sql.NullInt64
 	_ = s.db.QueryRow(
-		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices)
+		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight)
 
 	vram := existingVRAM
 	if vramTotalMB != nil {
@@ -1047,11 +1052,15 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 		}
 		indices = string(b)
 	}
+	maxInFlightVal := existingMaxInFlight
+	if maxInFlight != nil {
+		maxInFlightVal = sql.NullInt64{Int64: int64(*maxInFlight), Valid: true}
+	}
 
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices)
-		 VALUES (?, ?, ?, ?, ?)`,
-		name, vram, gpu, rt, indices,
+		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		name, vram, gpu, rt, indices, maxInFlightVal,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -1061,7 +1070,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -1074,7 +1083,8 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		var vram sql.NullInt64
 		var gpu, rt sql.NullString
 		var indicesJSON string
-		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON); err != nil {
+		var maxInFlight sql.NullInt64
+		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -1086,6 +1096,10 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		}
 		if rt.Valid {
 			ov.Runtime = &rt.String
+		}
+		if maxInFlight.Valid {
+			v := int(maxInFlight.Int64)
+			ov.MaxInFlight = &v
 		}
 		if indicesJSON != "" {
 			var idx []int

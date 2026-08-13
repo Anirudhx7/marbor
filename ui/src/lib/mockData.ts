@@ -391,6 +391,7 @@ export const defaultSettings: Settings = {
   routingHealthFailureThreshold: 3,
   routingHealthSuccessThreshold: 2,
   routingOverflowSlaMs: 0,
+  routingMaxInFlightPerNode: 0,
   thermalWatchdogEnabled: false,
   thermalWatchdogMaxTempCelsius: 0,
   thermalWatchdogConsecutiveBreaches: 3,

@@ -282,6 +282,11 @@ type NodeConfig struct {
 	// needing its own. Empty defaults to the URL's hostname in
 	// Router.AddNode - most operators never need to set this explicitly.
 	Host string `yaml:"host,omitempty" json:"host,omitempty"`
+	// MaxInFlight overrides RoutingConfig.MaxInFlightPerNode for this specific
+	// node only (P64). 0 means "no override - use the global default." Like
+	// VRAMTotalMB, this is operator-declared and only takes effect via the
+	// node_overrides store path (PatchNode), not at initial node creation.
+	MaxInFlight int `yaml:"max_in_flight,omitempty" json:"max_in_flight,omitempty"`
 }
 
 type RoutingRule struct {
@@ -376,6 +381,17 @@ type RoutingConfig struct {
 	// waits for local capacity to free up. Default 0 (disabled): the full
 	// queue_timeout_ms applies as before.
 	OverflowSLAMs int `yaml:"overflow_sla_ms" json:"overflow_sla_ms"`
+	// MaxInFlightPerNode is a Tier-1 hard-constraint cap (P64): a node with
+	// ActiveConns >= this value is ineligible for routing (immediate
+	// shed/failover to the next candidate or cloud/503), never queued behind.
+	// This is distinct from QueueMaxDepth/QueueTimeoutMs, which only engage
+	// when NO eligible node exists cluster-wide - this caps a single node's
+	// concurrency regardless of whether other nodes are available. 0 (default)
+	// means uncapped - this is a new hard constraint, so it must never start
+	// rejecting traffic on upgrade without an operator explicitly setting it.
+	// A per-node override is available via NodeConfig.MaxInFlight /
+	// NodePatch.MaxInFlight (0 there means "use this global default").
+	MaxInFlightPerNode int `yaml:"max_in_flight_per_node" json:"max_in_flight_per_node"`
 	// ThermalWatchdog implements "Sustained Degradation Auto-Drain": reuses
 	// the already-polled NVIDIA temperature data to auto-drain a node (via
 	// the existing DrainNode path) after sustained thermal breach.

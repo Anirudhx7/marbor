@@ -87,6 +87,30 @@ func (r *Router) isEligibleForModel(n *NodeState, modelName string) bool {
 	return r.isModelWarm(n, modelName)
 }
 
+// isUnderCapacity reports whether n may be a routing candidate at all under
+// the per-node in-flight cap (P64 hard eligibility filter, Routing Hierarchy
+// step 1 "capacity limits"). A node at or over its effective cap is shed
+// immediately - never queued - so the existing RouteExcluding/retry/cloud-
+// fallback chain in proxy.go picks the next candidate instead.
+//
+// Effective cap resolution: NodeState.MaxInFlight (per-node override, set via
+// PatchNode/node_overrides) wins if > 0; otherwise Router.maxInFlightPerNode
+// (the global RoutingConfig.MaxInFlightPerNode default) applies. An effective
+// cap <= 0 means uncapped (no behavior change from pre-P64), matching how
+// QueueMaxDepth/QueueTimeoutMs treat 0 as "disabled" elsewhere in this package.
+func (r *Router) isUnderCapacity(n *NodeState) bool {
+	n.mu.RLock()
+	effectiveCap := n.MaxInFlight
+	n.mu.RUnlock()
+	if effectiveCap <= 0 {
+		effectiveCap = r.maxInFlightPerNode
+	}
+	if effectiveCap <= 0 {
+		return true
+	}
+	return atomic.LoadInt32(&n.ActiveConns) < int32(effectiveCap)
+}
+
 // sweepAffinity removes expired session-affinity entries. Called periodically
 // from Start to bound memory usage on long-running deployments.
 func (r *Router) sweepAffinity() {
@@ -444,7 +468,7 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 		isHealthy := n.Healthy
 		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) {
+		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) {
 			healthy = append(healthy, n)
 		}
 	}
@@ -460,7 +484,7 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	}
 	if sessionID != "" {
 		if node := r.stickyNode(sessionID); node != nil {
-			if (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName) {
+			if (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName) && r.isUnderCapacity(node) {
 				r.RecordTransition(modelName, time.Now())
 				warm := r.isModelWarm(node, modelName)
 				if !warm {
@@ -513,7 +537,7 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 		isHealthy := n.Healthy
 		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) {
+		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) {
 			healthy = append(healthy, n)
 		}
 	}

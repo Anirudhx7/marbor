@@ -430,7 +430,11 @@ type nodeResp struct {
 	// GPUIndices is the operator-declared set of physical GPU indices this
 	// node/runtime instance actually uses (P75 Gap B/C) - empty/omitted means
 	// nothing declared, unchanged host-level sizing. See NodeState.DeclaredGPUIndices.
-	GPUIndices      []int              `json:"gpuIndices,omitempty"`
+	GPUIndices []int `json:"gpuIndices,omitempty"`
+	// MaxInFlight is this node's declared per-node in-flight cap override
+	// (P64) - 0 means no override is declared (the global
+	// routing.max_in_flight_per_node default applies instead).
+	MaxInFlight     int                `json:"maxInFlight,omitempty"`
 	VRAMTotalMB     int64              `json:"vramTotalMB"`
 	VRAMUsedMB      int64              `json:"vramUsedMB"`
 	VRAMSource      string             `json:"vramSource"`
@@ -1326,6 +1330,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		Port:              port,
 		GPUModel:          n.GPUModel,
 		GPUIndices:        n.DeclaredGPUIndices,
+		MaxInFlight:       n.MaxInFlight,
 		VRAMTotalMB:       n.VRAMTotalMB,
 		VRAMUsedMB:        n.VRAMUsedMB,
 		VRAMSource:        n.VRAMSource,
@@ -3292,14 +3297,14 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = s.st.UpdateNodeURL(name, *patch.URL)
 	}
-	if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil {
+	if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil {
 		if !s.router.PatchNode(name, patch) {
 			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 			return
 		}
-		_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices)
+		_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight)
 	}
-	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil))
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v, MaxInFlightChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil, patch.MaxInFlight != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
 }
@@ -4758,6 +4763,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"routing_health_failure_threshold":              strconv.Itoa(incoming.Routing.HealthFailureThreshold),
 		"routing_health_success_threshold":              strconv.Itoa(incoming.Routing.HealthSuccessThreshold),
 		"routing_overflow_sla_ms":                       strconv.Itoa(incoming.Routing.OverflowSLAMs),
+		"routing_max_in_flight_per_node":                strconv.Itoa(incoming.Routing.MaxInFlightPerNode),
 		"routing_thermal_watchdog_enabled":              strconv.FormatBool(incoming.Routing.ThermalWatchdog.Enabled),
 		"routing_thermal_watchdog_max_temp_celsius":     strconv.FormatFloat(incoming.Routing.ThermalWatchdog.MaxTempCelsius, 'f', -1, 64),
 		"routing_thermal_watchdog_consecutive_breaches": strconv.Itoa(incoming.Routing.ThermalWatchdog.ConsecutiveBreaches),
