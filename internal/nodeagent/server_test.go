@@ -154,3 +154,73 @@ func TestServerFallsBackWithoutScheduler(t *testing.T) {
 		t.Error("expected a live LastUpdated even without a Scheduler wired up")
 	}
 }
+
+// TestServerRouteScopeGating is the P54 route-table regression: every
+// registered route is exercised with both a readonly-scoped and an
+// admin-scoped token. It only asserts on the scope GATE (401 for a bad
+// token, 403 for insufficient scope, "neither of those" for sufficient
+// scope) - not on what the underlying handler does with an empty/malformed
+// body, which existing per-handler tests elsewhere already cover using a
+// bare unprefixed token (itself proof that legacy, pre-P54 tokens keep
+// working exactly as before, since scopeOf falls back to tierAdmin for
+// them).
+func TestServerRouteScopeGating(t *testing.T) {
+	const readonlyToken = "readonly.Xk9fA1b2C3d4"
+	const adminToken = "admin.Xk9fA1b2C3d4"
+
+	routes := []struct {
+		method           string
+		path             string
+		requiresOperator bool // false = readonly-tier route, true = operator-tier (today's admin-scoped test token covers both since admin >= operator >= readonly)
+	}{
+		{http.MethodGet, "/v1/status", false},
+		{http.MethodGet, "/metrics", false},
+		{http.MethodPost, "/v1/models", true},
+		{http.MethodGet, "/v1/models", true},
+		{http.MethodDelete, "/v1/models/some-model", true},
+		{http.MethodPost, "/v1/models/some-model", true},
+		{http.MethodGet, "/v1/runtime/health", true},
+		{http.MethodPost, "/v1/runtime/start", true},
+		{http.MethodPost, "/v1/runtime/stop", true},
+		{http.MethodPost, "/v1/runtime/restart", true},
+		{http.MethodPost, "/v1/runtime/logs", true},
+		{http.MethodPost, "/v1/runtime/disk", true},
+	}
+
+	for _, tokenCase := range []struct {
+		name  string
+		token string
+	}{
+		{"readonly token", readonlyToken},
+		{"admin token", adminToken},
+	} {
+		func() {
+			srv := &Server{Token: tokenCase.token, Version: "v-test"}
+			ts := httptest.NewServer(srv.Handler())
+			defer ts.Close()
+
+			for _, rt := range routes {
+				t.Run(tokenCase.name+" "+rt.method+" "+rt.path, func(t *testing.T) {
+					req, _ := http.NewRequest(rt.method, ts.URL+rt.path, nil)
+					req.Header.Set("Authorization", "Bearer "+tokenCase.token)
+					resp, err := http.DefaultClient.Do(req)
+					if err != nil {
+						t.Fatalf("request: %v", err)
+					}
+					defer resp.Body.Close()
+
+					isReadonlyToken := tokenCase.token == readonlyToken
+					if isReadonlyToken && rt.requiresOperator {
+						if resp.StatusCode != http.StatusForbidden {
+							t.Errorf("status = %d, want 403 (readonly token on an operator-tier route)", resp.StatusCode)
+						}
+						return
+					}
+					if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+						t.Errorf("status = %d, want the scope gate to pass (whatever the handler itself returns next)", resp.StatusCode)
+					}
+				})
+			}
+		}()
+	}
+}
