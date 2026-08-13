@@ -16,6 +16,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -3282,6 +3283,17 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.Runtime != nil && !isValidRuntime(*patch.Runtime) {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", *patch.Runtime))
+		return
+	}
+	// This path bypasses config.Validate(), so the same range check applied
+	// there to routing.max_in_flight_per_node/node config at boot must be
+	// repeated here: negative silently reads as "uncapped" via
+	// isUnderCapacity's own <=0 fallback (opposite of an operator's intent to
+	// restrict a node), and a value above math.MaxInt32 wraps negative when
+	// cast to int32 for the ActiveConns comparison, silently making the node
+	// permanently unroutable.
+	if patch.MaxInFlight != nil && (*patch.MaxInFlight < 0 || *patch.MaxInFlight > math.MaxInt32) {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("max_in_flight must be between 0 (use the global default) and %d", math.MaxInt32))
 		return
 	}
 	if patch.URL != nil {

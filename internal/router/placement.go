@@ -88,16 +88,26 @@ func (r *Router) isEligibleForModel(n *NodeState, modelName string) bool {
 }
 
 // isUnderCapacity reports whether n may be a routing candidate at all under
-// the per-node in-flight cap (P64 hard eligibility filter, Routing Hierarchy
-// step 1 "capacity limits"). A node at or over its effective cap is shed
-// immediately - never queued - so the existing RouteExcluding/retry/cloud-
-// fallback chain in proxy.go picks the next candidate instead.
+// the per-node in-flight cap (P64 eligibility filter, Routing Hierarchy step 1
+// "capacity limits"). A node at or over its effective cap is excluded from
+// candidacy this call - never queued - so the existing RouteExcluding/retry/
+// cloud-fallback chain in proxy.go picks the next candidate instead.
 //
 // Effective cap resolution: NodeState.MaxInFlight (per-node override, set via
 // PatchNode/node_overrides) wins if > 0; otherwise Router.maxInFlightPerNode
 // (the global RoutingConfig.MaxInFlightPerNode default) applies. An effective
 // cap <= 0 means uncapped (no behavior change from pre-P64), matching how
 // QueueMaxDepth/QueueTimeoutMs treat 0 as "disabled" elsewhere in this package.
+//
+// NOT an atomic reservation: this reads ActiveConns at routing-decision time,
+// but the matching increment (IncrConn) only happens later in proxy.go once a
+// node is actually chosen - there is no reserve-then-commit step like
+// reserveColdStartBytes uses for VRAM. A burst of N concurrent requests that
+// all evaluate this check before any of their IncrConn calls land can all
+// select the same node, overshooting the cap by up to N. This is a best-
+// effort/approximate cap, not a hard atomic concurrency guarantee - closing
+// that gap would need per-node reservation accounting, deliberately out of
+// scope for P64 (see EXECUTION-QUEUE.md P64).
 func (r *Router) isUnderCapacity(n *NodeState) bool {
 	n.mu.RLock()
 	effectiveCap := n.MaxInFlight

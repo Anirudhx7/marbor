@@ -691,6 +691,58 @@ func TestHandlePatchNode_RejectsUnknownRuntime(t *testing.T) {
 	}
 }
 
+// TestHandlePatchNode_RejectsInvalidMaxInFlight verifies a negative or
+// int32-overflowing max_in_flight is rejected with 400 before it reaches
+// router.PatchNode or the store override - either value would otherwise be
+// read by isUnderCapacity as "uncapped" (negative) or "permanently over
+// capacity" (overflow wraps negative in the int32 cast), inverting the
+// operator's intent silently instead of erroring.
+func TestHandlePatchNode_RejectsInvalidMaxInFlight(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	for _, body := range []string{`{"max_in_flight":-1}`, `{"max_in_flight":2147483648}`} {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/gpu-0", bytes.NewReader([]byte(body)))
+		req.SetPathValue("name", "gpu-0")
+		rec := httptest.NewRecorder()
+		s.handlePatchNode(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body=%s: status = %d, want 400", body, rec.Code)
+		}
+	}
+}
+
+// TestHandlePatchNode_SetsMaxInFlight verifies a valid max_in_flight patch is
+// applied to the live node, mirroring TestHandlePatchNode_SetsRuntime.
+func TestHandlePatchNode_SetsMaxInFlight(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"max_in_flight":4}`))
+	req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/gpu-0", body)
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handlePatchNode(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(nodes))
+	}
+	nodes[0].RLock()
+	got := nodes[0].MaxInFlight
+	nodes[0].RUnlock()
+	if got != 4 {
+		t.Errorf("MaxInFlight = %d, want 4", got)
+	}
+}
+
 // TestHandlePatchNode_SetsRuntime verifies a valid runtime patch is applied
 // to the live node.
 func TestHandlePatchNode_SetsRuntime(t *testing.T) {

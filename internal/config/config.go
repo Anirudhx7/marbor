@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/url"
 	"runtime"
@@ -283,9 +284,10 @@ type NodeConfig struct {
 	// Router.AddNode - most operators never need to set this explicitly.
 	Host string `yaml:"host,omitempty" json:"host,omitempty"`
 	// MaxInFlight overrides RoutingConfig.MaxInFlightPerNode for this specific
-	// node only (P64). 0 means "no override - use the global default." Like
-	// VRAMTotalMB, this is operator-declared and only takes effect via the
-	// node_overrides store path (PatchNode), not at initial node creation.
+	// node only (P64). 0 means "no override - use the global default." Takes
+	// effect from either source: at initial node creation (New()/AddNode()
+	// read this field directly, same as VRAMTotalMB's VRAMTotalMBConfig) and
+	// live thereafter via the node_overrides store path (PatchNode).
 	MaxInFlight int `yaml:"max_in_flight,omitempty" json:"max_in_flight,omitempty"`
 }
 
@@ -517,6 +519,16 @@ func (c *Config) Validate() error {
 	if c.Routing.QueueTimeoutMs == 0 {
 		c.Routing.QueueTimeoutMs = 30000
 	}
+	// MaxInFlightPerNode: 0 is the valid "uncapped" default, not normalized to
+	// anything else. Negative is meaningless (would make isUnderCapacity read
+	// it as "uncapped" via its own <=0 fallback - the opposite of an
+	// operator's intent to restrict a node) and a value above math.MaxInt32
+	// would wrap negative when cast to int32 for the ActiveConns comparison
+	// in isUnderCapacity, silently making every node permanently unroutable.
+	// Reject both rather than let either produce inverted behavior.
+	if c.Routing.MaxInFlightPerNode < 0 || c.Routing.MaxInFlightPerNode > math.MaxInt32 {
+		return fmt.Errorf("routing.max_in_flight_per_node must be between 0 (uncapped) and %d", math.MaxInt32)
+	}
 	if c.Routing.HealthFailureThreshold == 0 {
 		c.Routing.HealthFailureThreshold = 3
 	}
@@ -599,6 +611,12 @@ func (c *Config) Validate() error {
 			// valid
 		default:
 			return fmt.Errorf("node %s: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", n.Name, c.Nodes[i].Runtime)
+		}
+		// Same reasoning as routing.max_in_flight_per_node above: negative or
+		// overflow-prone values invert isUnderCapacity's intent rather than
+		// producing a clear error.
+		if c.Nodes[i].MaxInFlight < 0 || c.Nodes[i].MaxInFlight > math.MaxInt32 {
+			return fmt.Errorf("node %s: max_in_flight must be between 0 (use the global default) and %d", n.Name, math.MaxInt32)
 		}
 	}
 	// Detect port collisions between proxy, admin, and metrics servers.
