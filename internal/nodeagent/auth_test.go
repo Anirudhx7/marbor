@@ -111,9 +111,12 @@ func TestRequireTokenNeverAuthenticatesEmptyExpected(t *testing.T) {
 }
 
 // TestScopeOf verifies token scope parsing (P54): recognized "<tier>."
-// prefixes parse to their tier, and anything else - including every
-// pre-P54 token, which is a bare random string with no "." at all - falls
-// back to tierAdmin (full scope), the deliberate backward-compat path.
+// prefixes parse to their tier; a token with no "." at all - every pre-P54
+// token, a bare random string - falls back to tierAdmin (full scope, the
+// deliberate backward-compat path); a token that DOES contain a "." but
+// whose prefix isn't a recognized tier name is a different, less-trusted
+// case and fails CLOSED to tierReadonly instead, since a real legacy token
+// can never contain "." at all.
 func TestScopeOf(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -124,7 +127,7 @@ func TestScopeOf(t *testing.T) {
 		{"operator prefix", "operator.Xk9fA1b2C3d4", tierOperator},
 		{"admin prefix", "admin.Xk9fA1b2C3d4", tierAdmin},
 		{"legacy token with no prefix at all falls back to admin", "Xk9fA1b2C3d4NoDotHere", tierAdmin},
-		{"unrecognized prefix word falls back to admin", "superuser.Xk9fA1b2C3d4", tierAdmin},
+		{"unrecognized prefix word with a dot fails closed to readonly", "superuser.Xk9fA1b2C3d4", tierReadonly},
 		{"empty token falls back to admin", "", tierAdmin},
 	}
 	for _, tc := range cases {
