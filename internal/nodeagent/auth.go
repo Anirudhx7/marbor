@@ -65,12 +65,21 @@ var tierNames = map[string]tier{
 // base64url alphabet the random suffix is drawn from, so splitting on the
 // first "." is unambiguous.
 //
-// A token with no recognized "<tier>." prefix - including every token
-// minted before this feature existed, which is a bare random string with no
-// prefix at all - parses as tierAdmin. This is the deliberate backward-compat
-// path: upgrading the agent binary to one that enforces scope must not lock
-// an already-enrolled node out of its own existing full-access token merely
-// because that token predates the scoping feature.
+// A token with NO "." at all - every token minted before this feature
+// existed, a bare random string with no prefix - parses as tierAdmin. This
+// is the deliberate backward-compat path: upgrading the agent binary to one
+// that enforces scope must not lock an already-enrolled node out of its own
+// existing full-access token merely because that token predates the scoping
+// feature.
+//
+// A token that DOES contain a "." but whose left segment isn't one of
+// tierNames is a different case and must NOT share that fallback: a real
+// legacy token can never contain "." (it's outside the base64url alphabet),
+// so anything reaching this branch is either corrupted or a name this
+// version doesn't recognize (e.g. a scope added elsewhere without updating
+// tierNames here) - failing open to tierAdmin there would hand out the
+// highest privilege tier for exactly the input that's least trustworthy.
+// This branch fails closed to tierReadonly instead.
 func scopeOf(token string) tier {
 	prefix, _, found := strings.Cut(token, ".")
 	if !found {
@@ -78,7 +87,7 @@ func scopeOf(token string) tier {
 	}
 	t, ok := tierNames[prefix]
 	if !ok {
-		return tierAdmin
+		return tierReadonly
 	}
 	return t
 }

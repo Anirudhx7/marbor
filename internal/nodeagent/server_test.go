@@ -169,9 +169,9 @@ func TestServerRouteScopeGating(t *testing.T) {
 	const adminToken = "admin.Xk9fA1b2C3d4"
 
 	routes := []struct {
-		method        string
-		path          string
-		requiresAdmin bool // false = readonly-tier route, true = operator-tier (today's admin-scoped test token covers both since admin >= operator >= readonly)
+		method           string
+		path             string
+		requiresOperator bool // false = readonly-tier route, true = operator-tier (today's admin-scoped test token covers both since admin >= operator >= readonly)
 	}{
 		{http.MethodGet, "/v1/status", false},
 		{http.MethodGet, "/metrics", false},
@@ -194,31 +194,33 @@ func TestServerRouteScopeGating(t *testing.T) {
 		{"readonly token", readonlyToken},
 		{"admin token", adminToken},
 	} {
-		srv := &Server{Token: tokenCase.token, Version: "v-test"}
-		ts := httptest.NewServer(srv.Handler())
-		defer ts.Close()
+		func() {
+			srv := &Server{Token: tokenCase.token, Version: "v-test"}
+			ts := httptest.NewServer(srv.Handler())
+			defer ts.Close()
 
-		for _, rt := range routes {
-			t.Run(tokenCase.name+" "+rt.method+" "+rt.path, func(t *testing.T) {
-				req, _ := http.NewRequest(rt.method, ts.URL+rt.path, nil)
-				req.Header.Set("Authorization", "Bearer "+tokenCase.token)
-				resp, err := http.DefaultClient.Do(req)
-				if err != nil {
-					t.Fatalf("request: %v", err)
-				}
-				defer resp.Body.Close()
-
-				isReadonlyToken := tokenCase.token == readonlyToken
-				if isReadonlyToken && rt.requiresAdmin {
-					if resp.StatusCode != http.StatusForbidden {
-						t.Errorf("status = %d, want 403 (readonly token on an operator-tier route)", resp.StatusCode)
+			for _, rt := range routes {
+				t.Run(tokenCase.name+" "+rt.method+" "+rt.path, func(t *testing.T) {
+					req, _ := http.NewRequest(rt.method, ts.URL+rt.path, nil)
+					req.Header.Set("Authorization", "Bearer "+tokenCase.token)
+					resp, err := http.DefaultClient.Do(req)
+					if err != nil {
+						t.Fatalf("request: %v", err)
 					}
-					return
-				}
-				if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-					t.Errorf("status = %d, want the scope gate to pass (whatever the handler itself returns next)", resp.StatusCode)
-				}
-			})
-		}
+					defer resp.Body.Close()
+
+					isReadonlyToken := tokenCase.token == readonlyToken
+					if isReadonlyToken && rt.requiresOperator {
+						if resp.StatusCode != http.StatusForbidden {
+							t.Errorf("status = %d, want 403 (readonly token on an operator-tier route)", resp.StatusCode)
+						}
+						return
+					}
+					if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+						t.Errorf("status = %d, want the scope gate to pass (whatever the handler itself returns next)", resp.StatusCode)
+					}
+				})
+			}
+		}()
 	}
 }
