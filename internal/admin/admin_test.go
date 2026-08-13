@@ -472,7 +472,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 	s := NewServer(r, nil, config.Config{}, st)
 
 	for i := 0; i < 10; i++ {
-		s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 12, 100)
+		s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100)
 	}
 
 	s.Shutdown()
@@ -487,7 +487,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 
 	// A LogRequest call after Shutdown must not panic (send on closed
 	// channel) even though the async logger has already exited.
-	s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 12, 100)
+	s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100)
 }
 
 // newScheduleTestServer builds an admin Server with one registered node
