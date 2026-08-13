@@ -346,8 +346,10 @@ capacity and inference-capacity claims separate.
    ```bash
    go build -o bench/loadtest ./bench/loadtest
    ```
-4. Run the sweep, pointing `--db` at the mesh's actual database file (default `mesh.db` in the
-   mesh's working directory, per the `--db` flag / `MESH_DB_PATH` env var in `main.go`):
+4. Run the sweep, pointing `--db` at the mesh's actual database file - the same path the mesh
+   itself was started with (its own `--db` flag or `MESH_DB_PATH` env var, default `mesh.db` in
+   its working directory; `bench/loadtest`'s own `--db` flag is a separate, read-only pointer to
+   that same file for passive size sampling, not a shared setting with the mesh process):
    ```bash
    ./bench/loadtest --url http://localhost:11434 --model llama3.2:3b \
      --api-key <your-key> --db mesh.db --rates 5,10,20,40,80,160 --step-duration 30s
@@ -373,3 +375,4 @@ capacity and inference-capacity claims separate.
 | `--step-duration` | `20s` | How long to sustain each rate before moving to the next |
 | `--endpoint` | `chat` | `generate` or `chat` |
 | `--generator-slack-pct` | `10` | Max allowed shortfall (%) between target and actual-sent RPS before a step is flagged generator-saturated |
+| `--max-inflight` | `1000` | Cap on concurrent in-flight requests - once hit, new requests wait for a slot instead of spawning unbounded goroutines/sockets, so a step the generator can't sustain shows up as a sent-RPS shortfall instead of exhausting the generator's own resources |
