@@ -57,6 +57,67 @@ func TestUpsertAndGetNodeAgent(t *testing.T) {
 	}
 }
 
+// TestUpsertAndGetNodeAgent_Scope is the P54 store-level round-trip: Scope
+// persists alongside Token and comes back unchanged through GetNodeAgent.
+func TestUpsertAndGetNodeAgent_Scope(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	rec := NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "operator.sk-agent-token", Scope: "operator"}
+	if err := st.UpsertNodeAgent(rec); err != nil {
+		t.Fatalf("UpsertNodeAgent: %v", err)
+	}
+
+	got, found, err := st.GetNodeAgent("gpu-1")
+	if err != nil {
+		t.Fatalf("GetNodeAgent: %v", err)
+	}
+	if !found {
+		t.Fatal("GetNodeAgent: found=false, want true")
+	}
+	if got.Scope != "operator" {
+		t.Fatalf("GetNodeAgent.Scope = %q, want %q", got.Scope, "operator")
+	}
+}
+
+// TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin verifies a row
+// inserted before the P54 scope column existed (the exact shape of an
+// existing installation's mesh.db before this migration ran) reads back as
+// "admin" - matching that row's actual token, which has no scope prefix and
+// so parses as tierAdmin via scopeOf's fallback (backward compatible).
+func TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	ss := st.(*sqliteStore)
+	// Deliberately omit the scope column, simulating a pre-P54 row (or the
+	// ALTER TABLE migration's default applying to a row written before it
+	// ran).
+	if _, err := ss.db.Exec(`INSERT INTO node_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
+		"legacy-node", 1, 9200, "legacy-plaintext-token"); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+
+	got, found, err := st.GetNodeAgent("legacy-node")
+	if err != nil {
+		t.Fatalf("GetNodeAgent: %v", err)
+	}
+	if !found {
+		t.Fatal("GetNodeAgent: found=false, want true")
+	}
+	if got.Scope != "admin" {
+		t.Fatalf("GetNodeAgent.Scope for a pre-P54 row = %q, want %q (column default)", got.Scope, "admin")
+	}
+}
+
 func TestGetNodeAgentNotFound(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)

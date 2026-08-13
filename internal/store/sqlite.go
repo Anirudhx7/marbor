@@ -202,12 +202,19 @@ func (s *sqliteStore) migrate() error {
 
 		// node_agent holds the per-node Node Agent configuration (opaque
 		// bearer token, port, enabled flag). Token is encrypted at rest
-		// (enc:v1: prefix, see secretbox.go) by every writer below.
+		// (enc:v1: prefix, see secretbox.go) by every writer below. scope
+		// (P54: per-action token scoping) is NOT a secret - it's a plaintext
+		// mirror of the tier embedded in token's own prefix, kept purely for
+		// admin API observability (see NodeAgentRecord.Scope's doc comment
+		// for why the agent never trusts this column for enforcement).
+		// Default 'admin' matches every pre-P54 row's actual (unprefixed,
+		// full-scope-by-fallback) token.
 		`CREATE TABLE IF NOT EXISTS node_agent (
 			name    TEXT PRIMARY KEY,
 			enabled INTEGER NOT NULL DEFAULT 0,
 			port    INTEGER NOT NULL DEFAULT 0,
-			token   TEXT NOT NULL DEFAULT ''
+			token   TEXT NOT NULL DEFAULT '',
+			scope   TEXT NOT NULL DEFAULT 'admin'
 		)`,
 
 		// node_control holds the per-node ControlDriver configuration (P43,
@@ -463,6 +470,10 @@ func (s *sqliteStore) migrate() error {
 		// each needing its own - see internal/router.AddNode for the
 		// default-from-URL-hostname fallback when this is left empty.
 		`ALTER TABLE runtime_nodes ADD COLUMN host TEXT`,
+		// P54: per-action Node Agent token scoping - see node_agent's table
+		// comment above for why 'admin' is the correct default for rows that
+		// predate this column.
+		`ALTER TABLE node_agent ADD COLUMN scope TEXT NOT NULL DEFAULT 'admin'`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -1154,9 +1165,13 @@ func (s *sqliteStore) UpsertNodeAgent(rec NodeAgentRecord) error {
 	if rec.Enabled {
 		enabled = 1
 	}
+	scope := rec.Scope
+	if scope == "" {
+		scope = "admin"
+	}
 	_, err = s.db.Exec(
-		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
-		rec.Name, enabled, rec.Port, enc,
+		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token, scope) VALUES (?, ?, ?, ?, ?)`,
+		rec.Name, enabled, rec.Port, enc, scope,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeAgent: %w", err)
@@ -1174,8 +1189,8 @@ func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
 	var enabled int
 	var encToken string
 	err := s.db.QueryRow(
-		`SELECT name, enabled, port, token FROM node_agent WHERE name = ?`, name,
-	).Scan(&rec.Name, &enabled, &rec.Port, &encToken)
+		`SELECT name, enabled, port, token, scope FROM node_agent WHERE name = ?`, name,
+	).Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope)
 	if err == sql.ErrNoRows {
 		return NodeAgentRecord{}, false, nil
 	}
@@ -1201,7 +1216,7 @@ func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
 // expected tokens), but dropping the row is the same defensive pattern
 // used everywhere else in this file for a corrupt secret.
 func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
-	rows, err := s.db.Query(`SELECT name, enabled, port, token FROM node_agent`)
+	rows, err := s.db.Query(`SELECT name, enabled, port, token, scope FROM node_agent`)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllNodeAgents: %w", err)
 	}
@@ -1212,7 +1227,7 @@ func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
 		var rec NodeAgentRecord
 		var enabled int
 		var encToken string
-		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken); err != nil {
+		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope); err != nil {
 			return nil, fmt.Errorf("store: AllNodeAgents scan: %w", err)
 		}
 		token, decErr := decryptSecret(s.secretKey, encToken)

@@ -1959,13 +1959,19 @@ func requestBaseURL(r *http.Request) string {
 
 // generateNodeAgentToken returns a 32-random-byte, base64url-encoded opaque
 // token (per .local/specs/node-agent.md section 5 - a distinct protocol
-// from the client-facing API-key mechanism, not a reuse of it).
-func generateNodeAgentToken() (string, error) {
+// from the client-facing API-key mechanism, not a reuse of it), prefixed
+// with "<scope>." (P54: per-action token scoping -
+// .local/specs/node-agent-capabilities.md section 7). The agent has no DB
+// access, only the bare token string it's configured with, so the scope
+// travels embedded in the token itself and is parsed agent-side by
+// nodeagent.scopeOf/TokenScope. scope must be one of nodeagent.ScopeReadonly/
+// ScopeOperator/ScopeAdmin.
+func generateNodeAgentToken(scope string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+	return scope + "." + base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // generateEnrollmentCode returns a short, URL-safe, single-use code used to
@@ -2009,7 +2015,7 @@ func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"node": name, "enabled": rec.Enabled, "port": rec.Port,
+		"node": name, "enabled": rec.Enabled, "port": rec.Port, "scope": rec.Scope,
 	})
 }
 
@@ -2037,7 +2043,7 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "port must be between 1 and 65535")
 		return
 	}
-	token, err := generateNodeAgentToken()
+	token, err := generateNodeAgentToken(nodeagent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
@@ -2047,7 +2053,7 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	// polled by the same single agent process (see SetNodeAgent's doc
 	// comment). Enabling from any one node's UI panel enables it for all of
 	// them.
-	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token}
+	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: nodeagent.ScopeAdmin}
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
@@ -2114,12 +2120,13 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node agent not enabled for %q", name))
 		return
 	}
-	token, err := generateNodeAgentToken()
+	token, err := generateNodeAgentToken(nodeagent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 	rec.Token = token
+	rec.Scope = nodeagent.ScopeAdmin
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
