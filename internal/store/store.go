@@ -50,8 +50,9 @@ type Store interface {
 	AllNodes() ([]NodeRecord, error)
 	UpdateNodeURL(name string, url string) error
 
-	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C)
-	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int) error
+	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C;
+	// max_in_flight - P64 per-node in-flight cap override)
+	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
@@ -326,6 +327,9 @@ type NodeOverride struct {
 	// means "nothing declared" (the default - unchanged host-level sizing);
 	// a non-nil empty slice explicitly clears a prior declaration.
 	GPUIndices *[]int `json:"gpu_indices,omitempty"`
+	// MaxInFlight is the operator-declared per-node in-flight cap override
+	// (P64) - nil means "nothing declared" (use RoutingConfig.MaxInFlightPerNode).
+	MaxInFlight *int `json:"max_in_flight,omitempty"`
 }
 
 // NodeAgentRecord is the per-node Node Agent configuration: whether the
@@ -670,7 +674,7 @@ func (NopStore) UpsertNode(_ NodeRecord) error                          { return
 func (NopStore) DeleteNode(_ string) error                              { return nil }
 func (NopStore) AllNodes() ([]NodeRecord, error)                        { return nil, nil }
 func (NopStore) UpdateNodeURL(_ string, _ string) error                 { return nil }
-func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int) error {
+func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int, _ *int) error {
 	return nil
 }
 func (NopStore) NodeOverrides() (map[string]NodeOverride, error)     { return nil, nil }

@@ -1150,9 +1150,10 @@ export function GPUNodes() {
   const [editGPUModel, setEditGPUModel] = useState('');
   const [editRuntime, setEditRuntime] = useState('');
   const [editGPUIndices, setEditGPUIndices] = useState('');
+  const [editMaxInFlight, setEditMaxInFlight] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] } | null>(null);
+  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | null>(null);
 
   const openEditModal = (node: GPUNode) => {
     setEditNode(node);
@@ -1163,18 +1164,26 @@ export function GPUNodes() {
     setEditGPUModel(node.gpuModel ?? '');
     setEditRuntime(node.runtime || 'ollama');
     setEditGPUIndices((node.gpuIndices ?? []).join(', '));
+    setEditMaxInFlight(node.maxInFlight && node.maxInFlight > 0 ? String(node.maxInFlight) : '');
     setEditError('');
   };
 
-  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] } | 'invalid' | null => {
+  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | 'invalid' | null => {
     if (!editNode) return null;
-    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] } = {};
+    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } = {};
     if (editVRAM.trim() !== '') {
       const v = parseFloat(editVRAM);
       if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative number (${editVRAMUnit})`); return 'invalid'; }
       patch.vram_total_mb = Math.round(editVRAMUnit === 'GB' ? v * 1024 : v);
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
+    const priorMaxInFlight = editNode.maxInFlight ?? 0;
+    const newMaxInFlight = editMaxInFlight.trim() === '' ? 0 : parseInt(editMaxInFlight, 10);
+    if (editMaxInFlight.trim() !== '' && (isNaN(newMaxInFlight) || newMaxInFlight < 0)) {
+      setEditError('Max in-flight must be a non-negative integer (0 = use global default)');
+      return 'invalid';
+    }
+    if (newMaxInFlight !== priorMaxInFlight) patch.max_in_flight = newMaxInFlight;
     if (editRuntime && editRuntime !== (editNode.runtime || 'ollama')) patch.runtime = editRuntime;
     const priorIndices = editNode.gpuIndices ?? [];
     let newIndices: number[] = [];
@@ -1200,11 +1209,11 @@ export function GPUNodes() {
     return patch;
   };
 
-  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] }) => {
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number }) => {
     if (!editNode) return;
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === editNode.name
-        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel, runtime: patch.runtime ?? n.runtime, gpuIndices: patch.gpu_indices ?? n.gpuIndices }
+        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel, runtime: patch.runtime ?? n.runtime, gpuIndices: patch.gpu_indices ?? n.gpuIndices, maxInFlight: patch.max_in_flight ?? n.maxInFlight }
         : n));
       setEditNode(null);
       return;
@@ -1585,6 +1594,22 @@ export function GPUNodes() {
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Only applied when no live GPU telemetry exists (nvidia-smi, ROCm, etc). When applied, it directly drives placement decisions and Model Advisor fit checks.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Max In-Flight Override
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={editMaxInFlight}
+              onChange={(e) => setEditMaxInFlight(e.target.value)}
+              placeholder="e.g., 4 (leave blank to use the global default)"
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              A node at or above this many in-flight requests is shed immediately (failover/cloud/503) instead of queued. Leave blank to use Settings &rarr; Routing's global Max In-Flight Per Node.
             </p>
           </div>
           {editError && (

@@ -70,6 +70,10 @@ export interface GPUNode {
   // in-flight requests, only stops routing new ones - this is what lets an
   // operator see when a draining node has actually finished flushing.
   activeConns: number;
+  // Operator-declared per-node in-flight cap override (P64) - 0/undefined
+  // means no override is declared, so the global
+  // routing.max_in_flight_per_node default applies instead.
+  maxInFlight?: number;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;
@@ -304,6 +308,7 @@ export interface Settings {
   routingHealthFailureThreshold: number;
   routingHealthSuccessThreshold: number;
   routingOverflowSlaMs: number;
+  routingMaxInFlightPerNode: number;
   thermalWatchdogEnabled: boolean;
   thermalWatchdogMaxTempCelsius: number;
   thermalWatchdogConsecutiveBreaches: number;

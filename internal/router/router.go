@@ -58,11 +58,16 @@ type NodeState struct {
 	// them (see SetNodeAgent/NodeAgentSetting, keyed by Host, not Name).
 	// Always non-empty in memory: defaulted to the URL's hostname in AddNode
 	// when config.NodeConfig.Host is unset, so it never needs a nil check.
-	Host          string
-	GPUModel      string
-	NvidiaIndex   int
-	LoadedModels  []ModelInfo
-	ActiveConns   int32
+	Host         string
+	GPUModel     string
+	NvidiaIndex  int
+	LoadedModels []ModelInfo
+	ActiveConns  int32
+	// MaxInFlight is this node's resolved per-node in-flight cap override
+	// (P64): 0 means "no override - use Router.maxInFlightPerNode". Set at
+	// construction from config.NodeConfig.MaxInFlight and updated live by
+	// PatchNode, same lifecycle as VRAMTotalMBConfig. Guarded by mu.
+	MaxInFlight   int
 	RequestsTotal int64 // atomic: lifetime requests routed to this node
 	ColdStarts    int64 // atomic
 	WarmHits      int64 // atomic
@@ -358,8 +363,13 @@ type Router struct {
 	queueDepth    int32 // atomic, current waiters in WaitForNode
 	queueMaxDepth int
 	queueTimeout  time.Duration
-	timezone      string // timezone location name (e.g. "UTC", "Asia/Kolkata", "Local")
-	warmupCfg     config.WarmupConfig
+	// maxInFlightPerNode is the global default in-flight cap (P64) - 0 means
+	// uncapped. Overridable per node via NodeState.MaxInFlight. Set once at
+	// construction (same as queueMaxDepth/overflowSLA); a live change requires
+	// a restart, consistent with the other RoutingConfig numeric knobs above.
+	maxInFlightPerNode int
+	timezone           string // timezone location name (e.g. "UTC", "Asia/Kolkata", "Local")
+	warmupCfg          config.WarmupConfig
 	// nodeWarmup holds per-node runtime warmup settings toggled via the admin API
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
@@ -478,6 +488,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			NvidiaIndex:       n.NvidiaIndex,
 			VRAMTotalMBConfig: n.VRAMTotalMB,
 			VRAMOverrides:     n.VRAMOverrides,
+			MaxInFlight:       n.MaxInFlight,
 			Healthy:           true,
 			FirstSeenAt:       time.Now(),
 			Runtime:           n.Runtime,
@@ -570,6 +581,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		notifyCh:                 make(chan struct{}),
 		queueMaxDepth:            queueMaxDepth,
 		queueTimeout:             queueTimeout,
+		maxInFlightPerNode:       cfg.MaxInFlightPerNode,
 		lastAccuracyLogAt:        time.Now(),
 		lastTimeOfDayPrewarmHour: -1,
 	}
@@ -1120,6 +1132,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		GPUModel:      n.GPUModel,
 		NvidiaIndex:   n.NvidiaIndex,
 		VRAMOverrides: n.VRAMOverrides,
+		MaxInFlight:   n.MaxInFlight,
 		Healthy:       true,
 		FirstSeenAt:   time.Now(),
 		Runtime:       n.Runtime,
@@ -1297,6 +1310,11 @@ type NodePatch struct {
 	// URL is handled separately from the other fields - see UpdateNodeURL -
 	// but is decoded here so a single PATCH body can carry it.
 	URL *string `json:"url"`
+	// MaxInFlight declares this node's per-node in-flight cap override (P64) -
+	// nil means "not present in this PATCH, no change"; a non-nil pointer to
+	// 0 explicitly clears any prior override back to "use the global default"
+	// (mirrors GPUIndices' non-nil-empty-slice-clears convention).
+	MaxInFlight *int `json:"max_in_flight"`
 }
 
 // UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
@@ -1344,6 +1362,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	vramOverrides := old.VRAMOverrides
 	vramTotalMBConfig := old.VRAMTotalMBConfig
 	declaredGPUIndices := old.DeclaredGPUIndices
+	maxInFlight := old.MaxInFlight
 	old.mu.Unlock()
 
 	node := &NodeState{
@@ -1354,6 +1373,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 		VRAMOverrides:      vramOverrides,
 		VRAMTotalMBConfig:  vramTotalMBConfig,
 		DeclaredGPUIndices: declaredGPUIndices,
+		MaxInFlight:        maxInFlight,
 		Healthy:            true,
 		FirstSeenAt:        time.Now(),
 		Runtime:            runtime,
@@ -1420,6 +1440,9 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 			}
 			if patch.GPUIndices != nil {
 				n.DeclaredGPUIndices = append([]int(nil), (*patch.GPUIndices)...)
+			}
+			if patch.MaxInFlight != nil {
+				n.MaxInFlight = *patch.MaxInFlight
 			}
 			n.mu.Unlock()
 			return true

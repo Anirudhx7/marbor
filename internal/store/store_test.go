@@ -359,7 +359,7 @@ func TestNodeOverrides(t *testing.T) {
 	gpu := "NVIDIA RTX 4090"
 	rt := "vllm"
 
-	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -383,6 +383,63 @@ func TestNodeOverrides(t *testing.T) {
 	if ov.GPUIndices != nil {
 		t.Errorf("GPUIndices = %v, want nil (never declared)", ov.GPUIndices)
 	}
+	if ov.MaxInFlight != nil {
+		t.Errorf("MaxInFlight = %v, want nil (never declared)", ov.MaxInFlight)
+	}
+}
+
+// TestNodeOverrides_MaxInFlight verifies the P64 per-node in-flight cap
+// override column: roundtrips through UpsertNodeOverride/NodeOverrides,
+// survives a merge update that only touches an unrelated field (gpu_model),
+// and distinguishes "never declared" (nil) from an explicit 0.
+func TestNodeOverrides_MaxInFlight(t *testing.T) {
+	s := openTestDB(t)
+
+	cap1 := 8
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap1); err != nil {
+		t.Fatalf("UpsertNodeOverride: %v", err)
+	}
+	ovs, err := s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides: %v", err)
+	}
+	ov, ok := ovs["node1"]
+	if !ok {
+		t.Fatal("node1 override not found")
+	}
+	if ov.MaxInFlight == nil || *ov.MaxInFlight != cap1 {
+		t.Fatalf("MaxInFlight = %v, want %d", ov.MaxInFlight, cap1)
+	}
+
+	// A merge update that only touches gpu_model must not clobber the
+	// previously-set max_in_flight (same merge discipline as vram_total_mb).
+	gpu := "NVIDIA RTX 4090"
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil); err != nil {
+		t.Fatalf("UpsertNodeOverride (merge): %v", err)
+	}
+	ovs, err = s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides: %v", err)
+	}
+	ov = ovs["node1"]
+	if ov.MaxInFlight == nil || *ov.MaxInFlight != cap1 {
+		t.Errorf("MaxInFlight after unrelated merge = %v, want preserved %d", ov.MaxInFlight, cap1)
+	}
+
+	// An explicit 0 (clearing back to "use global default") must round-trip
+	// as a non-nil pointer to 0, distinct from "never declared" (nil).
+	cap0 := 0
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap0); err != nil {
+		t.Fatalf("UpsertNodeOverride (clear): %v", err)
+	}
+	ovs, err = s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides: %v", err)
+	}
+	ov = ovs["node1"]
+	if ov.MaxInFlight == nil || *ov.MaxInFlight != 0 {
+		t.Errorf("MaxInFlight after explicit clear = %v, want non-nil 0", ov.MaxInFlight)
+	}
 }
 
 // TestNodeOverrides_GPUIndices verifies the P75 Gap B/C declared-GPU-scope
@@ -393,7 +450,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	s := openTestDB(t)
 
 	indices := []int{0, 1}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &indices); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &indices, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -412,7 +469,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	// A merge update touching only gpu_model must not clobber the earlier
 	// gpu_indices declaration - same discipline as vram_total_mb/runtime.
 	gpu := "NVIDIA RTX 4090"
-	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (merge): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -429,7 +486,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	// "nothing declared", so the round-tripped value only needs to be empty,
 	// not nil, to have the intended effect.
 	empty := []int{}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &empty); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &empty, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
