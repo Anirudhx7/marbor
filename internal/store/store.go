@@ -340,6 +340,16 @@ type NodeAgentRecord struct {
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
 	Token   string `json:"-"`
+	// Scope is the tier (nodeagent.ScopeReadonly/ScopeOperator/ScopeAdmin)
+	// embedded in Token's prefix (P54: per-action token scoping). Stored
+	// alongside Token purely for observability/API responses - the agent
+	// enforces scope by parsing its own configured Token directly
+	// (nodeagent.TokenScope), not by trusting this column, so a mismatch
+	// between the two is a display-staleness issue, never a security one.
+	// Defaults to "admin" for rows created before this field existed,
+	// matching those rows' actual (unprefixed, full-scope-by-fallback)
+	// tokens.
+	Scope string `json:"scope"`
 }
 
 // NodeControlRecord is the per-node ControlDriver configuration (P43) - how
