@@ -507,7 +507,7 @@ export async function setNodePrewarm(name: string, disabled: boolean) {
   if (!res.ok) throw new Error('Failed to toggle node prewarm');
 }
 
-export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string }) {
+export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] }) {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

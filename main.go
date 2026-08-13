@@ -456,7 +456,7 @@ func main() {
 	}
 	if overrides, err := st.NodeOverrides(); err == nil {
 		for name, ov := range overrides {
-			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime})
+			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices})
 		}
 	}
 	if drains, err := st.NodeDrainStates(); err == nil {

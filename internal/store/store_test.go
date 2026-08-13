@@ -359,7 +359,7 @@ func TestNodeOverrides(t *testing.T) {
 	gpu := "NVIDIA RTX 4090"
 	rt := "vllm"
 
-	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt); err != nil {
+	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -379,6 +379,66 @@ func TestNodeOverrides(t *testing.T) {
 	}
 	if ov.Runtime == nil || *ov.Runtime != rt {
 		t.Errorf("Runtime mismatch")
+	}
+	if ov.GPUIndices != nil {
+		t.Errorf("GPUIndices = %v, want nil (never declared)", ov.GPUIndices)
+	}
+}
+
+// TestNodeOverrides_GPUIndices verifies the P75 Gap B/C declared-GPU-scope
+// column: roundtrips through UpsertNodeOverride/NodeOverrides, survives a
+// merge update that only touches an unrelated field (gpu_model), and can be
+// explicitly cleared back to "nothing declared" with a non-nil empty slice.
+func TestNodeOverrides_GPUIndices(t *testing.T) {
+	s := openTestDB(t)
+
+	indices := []int{0, 1}
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &indices); err != nil {
+		t.Fatalf("UpsertNodeOverride: %v", err)
+	}
+
+	ovs, err := s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides: %v", err)
+	}
+	ov, ok := ovs["node1"]
+	if !ok {
+		t.Fatal("node1 override not found")
+	}
+	if ov.GPUIndices == nil || len(*ov.GPUIndices) != 2 || (*ov.GPUIndices)[0] != 0 || (*ov.GPUIndices)[1] != 1 {
+		t.Fatalf("GPUIndices = %v, want [0 1]", ov.GPUIndices)
+	}
+
+	// A merge update touching only gpu_model must not clobber the earlier
+	// gpu_indices declaration - same discipline as vram_total_mb/runtime.
+	gpu := "NVIDIA RTX 4090"
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil); err != nil {
+		t.Fatalf("UpsertNodeOverride (merge): %v", err)
+	}
+	ovs, err = s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides (after merge): %v", err)
+	}
+	ov = ovs["node1"]
+	if ov.GPUIndices == nil || len(*ov.GPUIndices) != 2 {
+		t.Fatalf("GPUIndices after unrelated merge = %v, want unchanged [0 1]", ov.GPUIndices)
+	}
+
+	// An explicit non-nil empty slice clears the declaration back to "no
+	// scoping applied" - scopeGPUsToDeclared treats any len==0 slice as
+	// "nothing declared", so the round-tripped value only needs to be empty,
+	// not nil, to have the intended effect.
+	empty := []int{}
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &empty); err != nil {
+		t.Fatalf("UpsertNodeOverride (clear): %v", err)
+	}
+	ovs, err = s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides (after clear): %v", err)
+	}
+	ov = ovs["node1"]
+	if ov.GPUIndices == nil || len(*ov.GPUIndices) != 0 {
+		t.Errorf("GPUIndices after clear = %v, want empty", ov.GPUIndices)
 	}
 }
 

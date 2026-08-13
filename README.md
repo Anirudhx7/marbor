@@ -417,7 +417,7 @@ Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API 
 | GET | `/health` | 200 OK when control plane is ready (unauthenticated, for LB health checks) |
 | POST | `/admin/nodes/{name}/drain` | Drain node for maintenance |
 | PATCH | `/admin/keys/{name}` | Mutate key rate limits, quotas, model allow-lists at runtime |
-| PATCH | `/admin/nodes/{name}` | Override `vram_total_mb`, `gpu_model` at runtime |
+| PATCH | `/admin/nodes/{name}` | Override `vram_total_mb`, `gpu_model`, `gpu_indices` at runtime |
 | POST | `/admin/v1/config/reload` | Hot-reload config without SIGHUP |
 
 ---

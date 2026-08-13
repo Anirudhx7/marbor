@@ -43,6 +43,12 @@ export interface GPUNode {
   name: string;
   host: string;
   gpuModel: string;
+  // Operator-declared physical GPU index list this node/runtime instance
+  // actually uses (P75 Gap B/C) - undefined/empty means nothing declared,
+  // unchanged host-level sizing. Two nodes sharing one host's agent
+  // telemetry but each pinned to a different GPU need this so the Model
+  // Advisor doesn't size each against the whole host's combined VRAM.
+  gpuIndices?: number[];
   port: number;
   vramTotalMB: number;
   vramUsedMB: number;
@@ -536,6 +542,12 @@ export interface CatalogNodeEntry {
   // only, for a runtime that pins a model to one GPU - vLLM, TGI, MLX).
   gpu_count?: number;
   vram_fit_basis?: 'combined' | 'largest';
+  // P75 Gap D: true when this node has no agent-confirmed per-device GPU
+  // reading at all (no agent, or vram_source=="declared" - a manually
+  // entered whole-node total with no per-device breakdown). Distinct from a
+  // confirmed single-GPU reading (gpu_count===1 with this false), which is a
+  // real measurement, not a guess.
+  gpu_count_unknown?: boolean;
 }
 
 export interface ModelCatalogResponse {

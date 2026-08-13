@@ -116,11 +116,19 @@ type NodeState struct {
 	// fallback when a node's runtime API can't report a real observed size
 	// (non-Ollama backends). Set once at construction; never mutated at
 	// runtime, so it is safe to read under RLock like any other field.
-	VRAMOverrides  map[string]int64
-	autoDetect     bool                    // true if config said runtime: auto; cleared after first detection
-	probe          runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
-	LastErrorAt    time.Time
-	SuccessHistory []bool
+	VRAMOverrides map[string]int64
+	// DeclaredGPUIndices is the operator-declared set of physical GPU indices
+	// this specific node/runtime instance actually uses (P75 Gap B/C) - see
+	// nodeVRAMCapacity's doc comment in internal/admin/catalog.go for why
+	// host-scoped agent telemetry (AgentGPUs below) alone cannot answer this.
+	// nil/empty means "nothing declared" - existing host-level sizing applies
+	// unchanged. Set via PatchNode/NodePatch.GPUIndices, persisted in
+	// store.NodeOverride.GPUIndices.
+	DeclaredGPUIndices []int
+	autoDetect         bool                    // true if config said runtime: auto; cleared after first detection
+	probe              runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
+	LastErrorAt        time.Time
+	SuccessHistory     []bool
 
 	// Node Agent-derived telemetry (see internal/nodeagent, .local/specs/node-agent.md).
 	// AgentPresent is true only after a successful poll of this node's agent
@@ -1281,6 +1289,11 @@ type NodePatch struct {
 	VRAMTotalMB *int64  `json:"vram_total_mb"`
 	GPUModel    *string `json:"gpu_model"`
 	Runtime     *string `json:"runtime"`
+	// GPUIndices declares which physical GPU indices this node/runtime
+	// instance actually uses (P75 Gap B/C) - nil means "not present in this
+	// PATCH, no change"; a non-nil pointer to an empty slice explicitly
+	// clears a prior declaration. See NodeState.DeclaredGPUIndices.
+	GPUIndices *[]int `json:"gpu_indices"`
 	// URL is handled separately from the other fields - see UpdateNodeURL -
 	// but is decoded here so a single PATCH body can carry it.
 	URL *string `json:"url"`
@@ -1330,18 +1343,20 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	nvidiaIndex := old.NvidiaIndex
 	vramOverrides := old.VRAMOverrides
 	vramTotalMBConfig := old.VRAMTotalMBConfig
+	declaredGPUIndices := old.DeclaredGPUIndices
 	old.mu.Unlock()
 
 	node := &NodeState{
-		Name:              name,
-		URL:               newURL,
-		GPUModel:          gpuModel,
-		NvidiaIndex:       nvidiaIndex,
-		VRAMOverrides:     vramOverrides,
-		VRAMTotalMBConfig: vramTotalMBConfig,
-		Healthy:           true,
-		FirstSeenAt:       time.Now(),
-		Runtime:           runtime,
+		Name:               name,
+		URL:                newURL,
+		GPUModel:           gpuModel,
+		NvidiaIndex:        nvidiaIndex,
+		VRAMOverrides:      vramOverrides,
+		VRAMTotalMBConfig:  vramTotalMBConfig,
+		DeclaredGPUIndices: declaredGPUIndices,
+		Healthy:            true,
+		FirstSeenAt:        time.Now(),
+		Runtime:            runtime,
 	}
 	if autoDetect {
 		node.autoDetect = true
@@ -1402,6 +1417,9 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 					// law: one process for the entire mesh).
 					n.probe = runtimepkg.NewProbe(*patch.Runtime, r.client)
 				}
+			}
+			if patch.GPUIndices != nil {
+				n.DeclaredGPUIndices = append([]int(nil), (*patch.GPUIndices)...)
 			}
 			n.mu.Unlock()
 			return true

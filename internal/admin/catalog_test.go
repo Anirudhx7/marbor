@@ -288,6 +288,63 @@ func TestHandleModelCatalog_Downloaded(t *testing.T) {
 	}
 }
 
+// TestHandleModelCatalog_GPUCountUnknown verifies P75 Gap D: a node with no
+// agent (or a "declared" whole-node VRAM total, i.e. no per-device reading)
+// must be flagged gpu_count_unknown, distinct from an agent-confirmed
+// reading (even a confirmed single-GPU one), which must not be flagged.
+func TestHandleModelCatalog_GPUCountUnknown(t *testing.T) {
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+
+	// newModelFitTestServer's fixture node has VRAMSource="nvidia" (a direct
+	// mesh-host nvidia-smi reading) and no agent - AgentPresent stays false,
+	// so this is the "no agent at all" case Gap D targets.
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	var resp catalogResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(resp.Nodes))
+	}
+	if !resp.Nodes[0].GPUCountUnknown {
+		t.Error("GPUCountUnknown = false for a no-agent node, want true")
+	}
+
+	// An agent-confirmed reading (even reporting exactly one device) must
+	// not be flagged - it's a real reading, not an inferred/declared guess.
+	nodes := s.router.Nodes()
+	nodes[0].Lock()
+	nodes[0].AgentPresent = true
+	nodes[0].AgentGPUs = []nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 8192}}
+	nodes[0].Unlock()
+
+	// A fresh response struct for this decode - gpu_count_unknown carries
+	// "omitempty", so a false value is simply absent from the JSON, and
+	// reusing the earlier `resp` (already Nodes[0].GPUCountUnknown==true from
+	// the first decode) would leave that stale true in place: encoding/json
+	// only overwrites fields present in the payload, it does not zero out a
+	// slice element it reuses from existing capacity for fields the new
+	// payload omits.
+	var resp2 catalogResponse
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	s.Handler().ServeHTTP(w, req)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp2.Nodes[0].GPUCountUnknown {
+		t.Error("GPUCountUnknown = true for an agent-confirmed reading, want false")
+	}
+}
+
 func TestHandleModelCatalog_V1Route(t *testing.T) {
 	ollama := mockOllamaServer(t)
 	defer ollama.Close()
@@ -342,28 +399,58 @@ func TestClassifyFit(t *testing.T) {
 
 func TestNodeVRAMCapacity(t *testing.T) {
 	cases := []struct {
-		name        string
-		vramTotalMB int64
-		agentGPUs   []nodeagent.GPUInfo
-		runtime     string
-		wantMB      int64
-		wantUsedMB  int64
-		wantCount   int
-		wantBasis   string
+		name            string
+		vramTotalMB     int64
+		agentGPUs       []nodeagent.GPUInfo
+		runtime         string
+		declaredIndices []int
+		wantMB          int64
+		wantUsedMB      int64
+		wantCount       int
+		wantBasis       string
 	}{
-		{"no agent GPUs falls back to aggregate", 24000, nil, "ollama", 24000, -1, 0, ""},
-		{"single agent GPU falls back to aggregate", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}}, "ollama", 24000, -1, 1, ""},
-		{"multi-GPU ollama sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 24000}}, "ollama", 48000, -1, 2, "combined"},
-		{"multi-GPU llamacpp sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "llamacpp", 24000, -1, 2, "combined"},
-		{"multi-GPU empty runtime treated as shardable (matches ggufOnlyRuntime)", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 12000}, {VRAMTotalMB: 12000}}, "", 24000, -1, 2, "combined"},
-		{"multi-GPU vllm uses largest device only, never the sum", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000, VRAMUsedMB: 6000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "vllm", 24000, 6000, 2, "largest"},
-		{"multi-GPU tgi uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 8000, VRAMUsedMB: 8000}, {VRAMTotalMB: 24000, VRAMUsedMB: 6000}}, "tgi", 24000, 6000, 2, "largest"},
-		{"multi-GPU mlx uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000, VRAMUsedMB: 4000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "mlx", 16000, 4000, 2, "largest"},
-		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []nodeagent.GPUInfo{{}, {}}, "ollama", 24000, -1, 2, ""},
+		{"no agent GPUs falls back to aggregate", 24000, nil, "ollama", nil, 24000, -1, 0, ""},
+		{"single agent GPU falls back to aggregate", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}}, "ollama", nil, 24000, -1, 1, ""},
+		{"multi-GPU ollama sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 24000}}, "ollama", nil, 48000, -1, 2, "combined"},
+		{"multi-GPU llamacpp sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "llamacpp", nil, 24000, -1, 2, "combined"},
+		{"multi-GPU empty runtime treated as shardable (matches ggufOnlyRuntime)", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 12000}, {VRAMTotalMB: 12000}}, "", nil, 24000, -1, 2, "combined"},
+		{"multi-GPU vllm uses largest device only, never the sum", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000, VRAMUsedMB: 6000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "vllm", nil, 24000, 6000, 2, "largest"},
+		{"multi-GPU tgi uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 8000, VRAMUsedMB: 8000}, {VRAMTotalMB: 24000, VRAMUsedMB: 6000}}, "tgi", nil, 24000, 6000, 2, "largest"},
+		{"multi-GPU mlx uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000, VRAMUsedMB: 4000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "mlx", nil, 16000, 4000, 2, "largest"},
+		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []nodeagent.GPUInfo{{}, {}}, "ollama", nil, 24000, -1, 2, ""},
+
+		// P75 Gap B: two host-scoped ollama nodes, each pinned to one of the
+		// host's two GPUs (index 0 and index 1 respectively) via a declared
+		// scope. Without scoping, ggufOnlyRuntime("ollama") would sum both
+		// physical GPUs for EACH node - double-counting one pool of VRAM.
+		// Declared to a single device, each must be sized against that
+		// device alone, never vramTotalMB (the whole host's aggregate).
+		{"Gap B: ollama node declared to GPU 0 only sizes against that device alone", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
+			"ollama", []int{0}, 24000, 5000, 1, ""},
+		{"Gap B: sibling node declared to GPU 1 only sizes against that device alone", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
+			"ollama", []int{1}, 24000, 9000, 1, ""},
+
+		// P75 Gap C: vLLM would default to "largest" (single-device) sizing
+		// for any undeclared multi-GPU set, even when tensor-parallel is
+		// actually configured. A declared multi-index scope is itself the
+		// operator's confirmation that this instance spans those GPUs, so it
+		// must switch to "combined", overriding the runtime-name heuristic.
+		{"Gap C: vllm declared to 2 GPUs (tensor-parallel) sums instead of largest-only", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}, {Index: 2, VRAMTotalMB: 24000}},
+			"vllm", []int{0, 1}, 48000, -1, 2, "combined"},
+
+		// A declaration that matches none of the currently-reported devices
+		// (stale/misconfigured) must not zero out sizing - falls back to the
+		// unscoped (undeclared) behavior for that runtime.
+		{"stale declaration matching no reported device falls back to unscoped", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}},
+			"ollama", []int{7}, 48000, -1, 2, "combined"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			gotMB, gotUsedMB, gotCount, gotBasis := nodeVRAMCapacity(c.vramTotalMB, c.agentGPUs, c.runtime)
+			gotMB, gotUsedMB, gotCount, gotBasis := nodeVRAMCapacity(c.vramTotalMB, c.agentGPUs, c.runtime, c.declaredIndices)
 			if gotMB != c.wantMB || gotUsedMB != c.wantUsedMB || gotCount != c.wantCount || gotBasis != c.wantBasis {
 				t.Errorf("nodeVRAMCapacity = (%d, %d, %d, %q), want (%d, %d, %d, %q)", gotMB, gotUsedMB, gotCount, gotBasis, c.wantMB, c.wantUsedMB, c.wantCount, c.wantBasis)
 			}

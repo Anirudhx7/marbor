@@ -133,6 +133,9 @@ export const mockGPUNodes: GPUNode[] = [
     name: 'gpu-node-03',
     host: '10.0.0.13',
     gpuModel: 'NVIDIA RTX 4090 24GB',
+    // P75 Gap B/C demo example: this node is declared to GPU 0 only (shares
+    // its host with another runtime pinned to a different GPU).
+    gpuIndices: [0],
     port: 8080,
     runtime: 'tgi',
     vramTotalMB: 24 * GB,
@@ -791,6 +794,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       disk_total_gb: 4000,
       disk_known: true,
       capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
+      // P75 Gap D: a "declared" whole-node total with no per-device
+      // breakdown - the demo's example of the disclosure banner.
+      gpu_count_unknown: true,
       models: [],
     },
     {
@@ -804,6 +810,7 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       disk_free_gb: 15,
       disk_total_gb: 2000,
       disk_known: true,
+      gpu_count_unknown: true,
       models: [],
     },
     {

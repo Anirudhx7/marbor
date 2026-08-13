@@ -1149,9 +1149,10 @@ export function GPUNodes() {
   const [editVRAMUnit, setEditVRAMUnit] = useState<'MB' | 'GB'>('MB');
   const [editGPUModel, setEditGPUModel] = useState('');
   const [editRuntime, setEditRuntime] = useState('');
+  const [editGPUIndices, setEditGPUIndices] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } | null>(null);
+  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] } | null>(null);
 
   const openEditModal = (node: GPUNode) => {
     setEditNode(node);
@@ -1161,12 +1162,13 @@ export function GPUNodes() {
     setEditVRAMUnit('MB');
     setEditGPUModel(node.gpuModel ?? '');
     setEditRuntime(node.runtime || 'ollama');
+    setEditGPUIndices((node.gpuIndices ?? []).join(', '));
     setEditError('');
   };
 
-  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } | 'invalid' | null => {
+  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] } | 'invalid' | null => {
     if (!editNode) return null;
-    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string } = {};
+    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] } = {};
     if (editVRAM.trim() !== '') {
       const v = parseFloat(editVRAM);
       if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative number (${editVRAMUnit})`); return 'invalid'; }
@@ -1174,6 +1176,20 @@ export function GPUNodes() {
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
     if (editRuntime && editRuntime !== (editNode.runtime || 'ollama')) patch.runtime = editRuntime;
+    const priorIndices = (editNode.gpuIndices ?? []).join(', ');
+    if (editGPUIndices.trim() !== priorIndices.trim()) {
+      if (editGPUIndices.trim() === '') {
+        patch.gpu_indices = [];
+      } else {
+        const parts = editGPUIndices.split(',').map(s => s.trim()).filter(s => s !== '');
+        const indices = parts.map(s => parseInt(s, 10));
+        if (indices.some(n => isNaN(n) || n < 0)) {
+          setEditError('GPU indices must be a comma-separated list of non-negative numbers (e.g. "0, 1")');
+          return 'invalid';
+        }
+        patch.gpu_indices = indices;
+      }
+    }
     const hostChanged = editHost.trim() !== '' && editHost.trim() !== (editNode.host ?? '');
     const portChanged = editPort.trim() !== '' && editPort.trim() !== String(editNode.port ?? '');
     if (hostChanged || portChanged) {
@@ -1186,11 +1202,11 @@ export function GPUNodes() {
     return patch;
   };
 
-  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string }) => {
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[] }) => {
     if (!editNode) return;
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === editNode.name
-        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel, runtime: patch.runtime ?? n.runtime }
+        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel, runtime: patch.runtime ?? n.runtime, gpuIndices: patch.gpu_indices ?? n.gpuIndices }
         : n));
       setEditNode(null);
       return;
@@ -1519,6 +1535,21 @@ export function GPUNodes() {
             />
             <p className="text-xs text-muted-foreground mt-1">
               Setting Auto-detect re-probes the node on the next health check.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Declared GPU Indices
+            </label>
+            <input
+              type="text"
+              value={editGPUIndices}
+              onChange={(e) => setEditGPUIndices(e.target.value)}
+              placeholder="e.g., 0, 1 (leave blank if undeclared)"
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Only needed when this node shares a physical host with another node (e.g. two runtimes on one box, each pinned to a different GPU via CUDA_VISIBLE_DEVICES). Declares which physical GPU indices this node actually uses, so the Model Advisor doesn't size it against the whole host's combined VRAM. Leave blank to keep host-level sizing.
             </p>
           </div>
           <div>
