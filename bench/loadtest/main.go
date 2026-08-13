@@ -1,7 +1,10 @@
 // bench/loadtest/main.go - SQLite write-path throughput sweep for ollama-mesh.
 //
 // Fires a sustained request rate at the mesh proxy for a fixed duration per
-// step, sweeping the rate upward across steps, and reports:
+// step (concurrent in-flight requests capped at --max-inflight, so a step
+// the generator can't sustain shows up as a sent-RPS shortfall rather than
+// spawning unbounded goroutines/sockets), sweeping the rate upward across
+// steps, and reports:
 //   - target vs. actual-sent vs. completed vs. failed RPS per step (so a
 //     generator that can't keep up with its own target is caught, not
 //     mistaken for a saturated mesh)
@@ -58,6 +61,7 @@ func main() {
 	stepDuration := flag.Duration("step-duration", 20*time.Second, "How long to sustain each rate before moving to the next")
 	endpoint := flag.String("endpoint", "chat", "API endpoint: generate or chat")
 	generatorSlackPct := flag.Float64("generator-slack-pct", 10, "Max allowed shortfall (%) between target and actual-sent RPS before a step is flagged generator-saturated")
+	maxInflight := flag.Int("max-inflight", 1000, "Cap on concurrent in-flight requests - once hit, new requests wait for a slot instead of spawning unbounded goroutines/sockets, so a step that can't keep up shows up honestly as a sent-RPS shortfall (GENERATOR-SATURATED) instead of exhausting the generator's own resources")
 	flag.Parse()
 
 	rates, err := parseRates(*ratesFlag)
@@ -93,7 +97,7 @@ func main() {
 
 	for _, rate := range rates {
 		walBefore, dbBefore := fileSizes(*dbPath)
-		result := runStep(client, *url, *model, *endpoint, *apiKey, rate, *stepDuration)
+		result := runStep(client, *url, *model, *endpoint, *apiKey, rate, *stepDuration, *maxInflight)
 		walAfter, dbAfter := fileSizes(*dbPath)
 
 		warnFlag := ""
@@ -172,11 +176,15 @@ type stepResult struct {
 	p50, p95, p99 float64
 }
 
-// runStep sustains target req/s for duration using a fixed worker pool that
-// self-throttles to the target rate, recording per-request latency and
-// send/complete/fail counts so a generator that can't keep up is visible in
-// the output rather than silently masquerading as mesh saturation.
-func runStep(client *http.Client, baseURL, model, ep, apiKey string, targetRate int, duration time.Duration) stepResult {
+// runStep sustains target req/s for duration, recording per-request latency
+// and send/complete/fail counts so a generator that can't keep up is visible
+// in the output rather than silently masquerading as mesh saturation.
+// Concurrent in-flight requests are capped at maxInflight via a semaphore -
+// once full, the send loop blocks waiting for a slot rather than spawning an
+// unbounded goroutine/socket per tick, so a step the generator can't sustain
+// shows up honestly as a sent-RPS shortfall instead of exhausting the
+// generator's own file descriptors/memory first.
+func runStep(client *http.Client, baseURL, model, ep, apiKey string, targetRate int, duration time.Duration, maxInflight int) stepResult {
 	var sent, done, failed int64
 	var latMu sync.Mutex
 	var latencies []float64
@@ -184,16 +192,19 @@ func runStep(client *http.Client, baseURL, model, ep, apiKey string, targetRate 
 	interval := time.Second / time.Duration(targetRate)
 	stop := time.Now().Add(duration)
 	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxInflight)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for time.Now().Before(stop) {
 		<-ticker.C
+		sem <- struct{}{}
 		atomic.AddInt64(&sent, 1)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() { <-sem }()
 			start := time.Now()
 			ok := fireRequest(client, baseURL, model, ep, apiKey)
 			ms := float64(time.Since(start).Milliseconds())
