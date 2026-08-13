@@ -617,11 +617,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// ErrorHandler already released this node's slot.
 		if !errHandled {
 			h.router.DecrConn(node)
-			status := rec.statusCode
-			if status == 0 {
-				status = 200
-			}
-			success := status < 500 && !aborted
+			success := rec.StatusCode() < 500 && !aborted
 			h.router.RecordRequestOutcome(node.Name, success)
 		}
 		break
@@ -669,7 +665,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if modelName != requestedModelName {
 			loggedModel = requestedModelName + " -> " + modelName
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, tokens)
+		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, rec.StatusCode(), latencyMs, tokens)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
@@ -1116,7 +1112,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 				clientIP = fwd2
 			}
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, logTokens)
+		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, rec.StatusCode(), latencyMs, logTokens)
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local mesh
@@ -1357,9 +1353,16 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-func (r *statusRecorder) Status() string {
+// StatusCode returns the real numeric HTTP status written to the client,
+// defaulting to 200 when WriteHeader was never called explicitly (matching
+// the standard library's own default-to-200 behavior).
+func (r *statusRecorder) StatusCode() int {
 	if r.statusCode == 0 {
-		return "200"
+		return 200
 	}
-	return fmt.Sprintf("%d", r.statusCode)
+	return r.statusCode
+}
+
+func (r *statusRecorder) Status() string {
+	return fmt.Sprintf("%d", r.StatusCode())
 }

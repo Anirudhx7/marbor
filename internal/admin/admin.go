@@ -290,14 +290,15 @@ func (s *Server) LoadFromStore() error {
 		logs := make([]RequestLog, 0, len(recs))
 		for _, rec := range recs {
 			logs = append(logs, RequestLog{
-				ID:      rec.ID,
-				ApiKey:  rec.KeyName,
-				Model:   rec.Model,
-				Node:    rec.NodeName,
-				Status:  strconv.Itoa(rec.StatusCode),
-				Latency: int(rec.LatencyMs),
-				Tokens:  rec.TokensUsed,
-				Time:    rec.TS,
+				ID:         rec.ID,
+				ApiKey:     rec.KeyName,
+				Model:      rec.Model,
+				Node:       rec.NodeName,
+				Status:     strconv.Itoa(rec.StatusCode),
+				HTTPStatus: rec.StatusCode,
+				Latency:    int(rec.LatencyMs),
+				Tokens:     rec.TokensUsed,
+				Time:       rec.TS,
 			})
 		}
 		s.mu.Lock()
@@ -413,6 +414,7 @@ type RequestLog struct {
 	Model        string    `json:"model"`
 	Node         string    `json:"routedTo"`
 	Status       string    `json:"status"`
+	HTTPStatus   int       `json:"httpStatus"`
 	Latency      int       `json:"latency"`
 	Tokens       int64     `json:"tokens"`
 	TokensPerSec float64   `json:"tokensPerSec"`
@@ -1591,12 +1593,10 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]entry, len(reqs))
 	for i, req := range reqs {
-		statusCode := 200
-		if req.Status != "" {
-			if code, err := strconv.Atoi(req.Status); err == nil {
-				statusCode = code
-			}
-		}
+		// req.HTTPStatus is the real numeric HTTP status the client received
+		// (see LogRequest) - req.Status is a separate semantic label ("warm",
+		// "loading", "error", "aborted", "cloud") used for cold/warm tracking
+		// and the /admin/requests/live badge, not a status code.
 		// Cloud nodes are stored as "cloud:<name>" (e.g. "cloud:openai").
 		isCloud := strings.HasPrefix(req.Node, "cloud:")
 		out[i] = entry{
@@ -1606,7 +1606,7 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 			SourceIP:  req.SourceIP,
 			Model:     req.Model,
 			Node:      req.Node,
-			Status:    statusCode,
+			Status:    req.HTTPStatus,
 			LatencyMs: req.Latency,
 			Cloud:     isCloud,
 		}
@@ -4853,7 +4853,13 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 	}
 }
 
-func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latencyMs int, tokens int64) {
+// LogRequest records a completed request. status is a semantic label
+// ("warm", "loading", "error", "aborted", "cloud") used for cold/warm
+// tracking and the live-requests dashboard badge - it is never parsed as a
+// number. httpStatus is the real numeric HTTP status the client received
+// (from statusRecorder.StatusCode() in proxy.go) and is what gets persisted
+// to the SQLite request_log and served from /admin/requests.
+func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -4878,6 +4884,7 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		Model:        model,
 		Node:         node,
 		Status:       status,
+		HTTPStatus:   httpStatus,
 		Latency:      latencyMs,
 		Tokens:       tokens,
 		TokensPerSec: tps,
@@ -4918,21 +4925,13 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		}
 	}
 
-	// Parse status code for the store record.
-	statusCode := 200
-	if status != "" && status != "200" {
-		if code, err := strconv.Atoi(status); err == nil {
-			statusCode = code
-		}
-	}
-
 	select {
 	case s.logChan <- store.RequestRecord{
 		ID:         id,
 		KeyName:    apiKey,
 		Model:      model,
 		NodeName:   node,
-		StatusCode: statusCode,
+		StatusCode: httpStatus,
 		LatencyMs:  int64(latencyMs),
 		TokensUsed: tokens,
 		TS:         now,
