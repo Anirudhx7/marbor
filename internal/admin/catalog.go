@@ -452,6 +452,44 @@ func classifyDiskFit(sizeMB int64, diskFreeGB, diskTotalGB float64, agentPresent
 	return "ok"
 }
 
+// unknownSizeMinFreeFraction and unknownSizeMinFreeGB are the conservative
+// disk-headroom floor applied by classifyUnknownSizeDiskFit (P73) - a pull
+// whose real download size cannot be established (findCatalogVariantSizeMB
+// returned ok=false: any tag outside the curated catalog) has no size to
+// compare against free space the way classifyDiskFit does, so it cannot use
+// the same size-vs-free-space test. Refusing to guess a size (R1) does not
+// mean refusing to apply any safety boundary at all - this is that boundary:
+// an explicit, honest policy decision ("this node's headroom is already too
+// thin to risk an unsized download"), never a fabricated size estimate.
+// Both a fraction and an absolute floor apply together so the check scales
+// sanely across disk sizes: 10% of a 20TB storage server is still a huge
+// margin, and 10% of a 50GB disk is only 5GB, too thin on its own without
+// the absolute floor beside it.
+const (
+	unknownSizeMinFreeFraction = 0.10
+	unknownSizeMinFreeGB       = 5.0
+)
+
+// classifyUnknownSizeDiskFit is the disk-safety decision for a pull whose
+// real download size is unknown (P73: previously such a pull skipped
+// handleNodePull's disk-fit gate entirely, letting an arbitrary-size
+// download proceed with zero pre-flight check). It mirrors classifyDiskFit's
+// telemetry-unknown handling exactly - "unknown" whenever the agent hasn't
+// reported real disk stats, never treated as a block - so a node without
+// disk telemetry behaves identically to how it always has for both known-
+// and unknown-size pulls. When telemetry IS available, it applies the
+// conservative floor above to the node's CURRENT free headroom, since there
+// is no needed-size figure to weigh it against.
+func classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB float64, agentPresent bool) string {
+	if !agentPresent || diskTotalGB <= 0 {
+		return "unknown"
+	}
+	if diskFreeGB < unknownSizeMinFreeGB || diskFreeGB/diskTotalGB < unknownSizeMinFreeFraction {
+		return "insufficient"
+	}
+	return "ok"
+}
+
 // findCatalogVariantSizeMB looks up the download size (MiB) of a curated
 // catalog variant by its pull tag, using the same tag/base-name matching
 // isDownloaded already uses. Returns ok=false for any tag not in the static
