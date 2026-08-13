@@ -168,6 +168,7 @@ Client Application (Agent / RAG / Copilot)
 | | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (Node Agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
+| | Per-node in-flight cap | Optional `max_in_flight_per_node` (global) with a per-node override. A node at/over its cap is excluded from routing - failover/cloud/503 - instead of queued, for operators who need overflow rather than piling onto a slow node. Best-effort (approximate under a concurrent request burst), not an atomic guarantee. |
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
 | | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-syncs state from `mesh.db` in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |

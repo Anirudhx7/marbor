@@ -318,6 +318,7 @@ export function SettingsPage() {
           routingHealthFailureThreshold: settingsData.routing?.health_failure_threshold ?? 3,
           routingHealthSuccessThreshold: settingsData.routing?.health_success_threshold ?? 2,
           routingOverflowSlaMs: settingsData.routing?.overflow_sla_ms ?? 0,
+          routingMaxInFlightPerNode: settingsData.routing?.max_in_flight_per_node ?? 0,
           thermalWatchdogEnabled: settingsData.routing?.thermal_watchdog?.enabled || false,
           thermalWatchdogMaxTempCelsius: settingsData.routing?.thermal_watchdog?.max_temp_celsius || 0,
           thermalWatchdogConsecutiveBreaches: settingsData.routing?.thermal_watchdog?.consecutive_breaches ?? 3,
@@ -388,6 +389,7 @@ export function SettingsPage() {
           health_failure_threshold: settings.routingHealthFailureThreshold,
           health_success_threshold: settings.routingHealthSuccessThreshold,
           overflow_sla_ms: settings.routingOverflowSlaMs,
+          max_in_flight_per_node: settings.routingMaxInFlightPerNode,
           local_degradation_chains: settings.localDegradationChains,
           thermal_watchdog: {
             enabled: settings.thermalWatchdogEnabled,
@@ -1306,6 +1308,10 @@ export function SettingsPage() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Cloud Overflow SLA (ms, 0 = disabled)</label>
               <input type="number" value={settings.routingOverflowSlaMs} onChange={(e) => setSettings({ ...settings, routingOverflowSlaMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Max In-Flight Per Node (0 = uncapped)</label>
+              <input type="number" value={settings.routingMaxInFlightPerNode} onChange={(e) => setSettings({ ...settings, routingMaxInFlightPerNode: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
             </div>
           </div>
 
