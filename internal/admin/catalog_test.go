@@ -447,6 +447,15 @@ func TestNodeVRAMCapacity(t *testing.T) {
 		{"stale declaration matching no reported device falls back to unscoped", 48000,
 			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}},
 			"ollama", []int{7}, 48000, -1, 2, "combined"},
+
+		// A declared multi-GPU scope whose devices transiently report zero
+		// VRAM (an agent telemetry glitch, not "nothing declared") must
+		// report unknown (capacityMB 0), never fall back to vramTotalMB - the
+		// whole HOST's aggregate would silently reintroduce the Gap B/C
+		// double-count this declared-scope fix exists to prevent.
+		{"Gap B/C: declared multi-GPU scope with zero-VRAM telemetry glitch reports unknown, not the host aggregate", 96000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 0}, {Index: 1, VRAMTotalMB: 0}, {Index: 2, VRAMTotalMB: 24000}, {Index: 3, VRAMTotalMB: 24000}},
+			"vllm", []int{0, 1}, 0, -1, 2, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -505,6 +514,33 @@ func TestFindCatalogVariantSizeMB(t *testing.T) {
 	}
 	if _, ok := findCatalogVariantSizeMB("some-uncurated-model:latest"); ok {
 		t.Error("findCatalogVariantSizeMB(uncurated model) = ok=true, want false")
+	}
+}
+
+// TestGPUCountUnknown covers the P75 Gap D disclosure helper directly,
+// including the case a code-review pass found missing: an agent that is
+// present and polling successfully but has not (yet) reported any GPU
+// devices must still be flagged unknown, not shown as a confirmed reading.
+func TestGPUCountUnknown(t *testing.T) {
+	cases := []struct {
+		name         string
+		agentPresent bool
+		vramSource   string
+		gpuCount     int
+		want         bool
+	}{
+		{"no agent at all", false, "nvidia", 1, true},
+		{"declared whole-node total, no per-device breakdown", true, "declared", 0, true},
+		{"agent present but zero GPU devices reported", true, "agent", 0, true},
+		{"agent-confirmed single GPU reading", true, "nvidia", 1, false},
+		{"agent-confirmed multi-GPU reading", true, "agent", 2, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := gpuCountUnknown(c.agentPresent, c.vramSource, c.gpuCount); got != c.want {
+				t.Errorf("gpuCountUnknown(%v, %q, %d) = %v, want %v", c.agentPresent, c.vramSource, c.gpuCount, got, c.want)
+			}
+		})
 	}
 }
 

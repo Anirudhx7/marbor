@@ -576,6 +576,13 @@ func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime 
 		if sum > 0 {
 			return sum, -1, gpuCount, "combined"
 		}
+		if applied {
+			// A declared scope's devices all report zero VRAM (a transient
+			// telemetry glitch, not "no breakdown available") - vramTotalMB is
+			// the whole HOST's aggregate, which would silently reintroduce
+			// Gap B/C's double-count; report unknown instead of the wrong total.
+			return 0, -1, gpuCount, ""
+		}
 		return vramTotalMB, -1, gpuCount, ""
 	}
 	largestIdx := -1
@@ -609,6 +616,17 @@ func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime 
 // unscoped set with applied=false, rather than reporting a hard zero -
 // same "no breakdown available" fallback nodeVRAMCapacity already uses for
 // agentGPUs itself.
+// gpuCountUnknown reports whether a node's GPU-count/capacity reading has no
+// agent-confirmed per-device backing at all (P75 Gap D) - true when there is
+// no agent, the total is an operator-declared whole-node figure with no
+// per-device breakdown, or an agent is present but reported zero devices
+// (e.g. before its first successful GPU-collector read). See
+// catalogNodeEntry.GPUCountUnknown's doc comment for why this must never be
+// conflated with a confirmed single-GPU reading.
+func gpuCountUnknown(agentPresent bool, vramSource string, gpuCount int) bool {
+	return !agentPresent || vramSource == "declared" || gpuCount == 0
+}
+
 func scopeGPUsToDeclared(agentGPUs []nodeagent.GPUInfo, declaredIndices []int) (scoped []nodeagent.GPUInfo, applied bool) {
 	if len(declaredIndices) == 0 {
 		return agentGPUs, false
@@ -761,7 +779,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			Models:          models,
 			GPUCount:        gpuCount,
 			VRAMFitBasis:    vramFitBasis,
-			GPUCountUnknown: !agentPresent || rawVramSource == "declared",
+			GPUCountUnknown: gpuCountUnknown(agentPresent, rawVramSource, gpuCount),
 		})
 	}
 
@@ -1139,6 +1157,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	agentPresent := false
 	gpuCount := 0
 	vramFitBasis := ""
+	rawVramSource := ""
 
 	nodes := s.router.Nodes()
 	var targetNode *router.NodeState
@@ -1163,6 +1182,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		declaredGPUIndices := append([]int(nil), targetNode.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		vramSource = targetNode.VRAMSource
+		rawVramSource = targetNode.VRAMSource
 		for _, m := range targetNode.LoadedModels {
 			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
 		}
@@ -1334,7 +1354,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		"docker_deployed":   dockerDeployed,
 		"gpu_count":         gpuCount,
 		"vram_fit_basis":    vramFitBasis,
-		"gpu_count_unknown": !agentPresent || vramSource == "declared",
+		"gpu_count_unknown": gpuCountUnknown(agentPresent, rawVramSource, gpuCount),
 	})
 }
 

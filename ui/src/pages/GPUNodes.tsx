@@ -1176,20 +1176,18 @@ export function GPUNodes() {
     }
     if (editGPUModel.trim() !== '') patch.gpu_model = editGPUModel.trim();
     if (editRuntime && editRuntime !== (editNode.runtime || 'ollama')) patch.runtime = editRuntime;
-    const priorIndices = (editNode.gpuIndices ?? []).join(', ');
-    if (editGPUIndices.trim() !== priorIndices.trim()) {
-      if (editGPUIndices.trim() === '') {
-        patch.gpu_indices = [];
-      } else {
-        const parts = editGPUIndices.split(',').map(s => s.trim()).filter(s => s !== '');
-        const indices = parts.map(s => parseInt(s, 10));
-        if (indices.some(n => isNaN(n) || n < 0)) {
-          setEditError('GPU indices must be a comma-separated list of non-negative numbers (e.g. "0, 1")');
-          return 'invalid';
-        }
-        patch.gpu_indices = indices;
+    const priorIndices = editNode.gpuIndices ?? [];
+    let newIndices: number[] = [];
+    if (editGPUIndices.trim() !== '') {
+      const parts = editGPUIndices.split(',').map(s => s.trim()).filter(s => s !== '');
+      newIndices = parts.map(s => parseInt(s, 10));
+      if (newIndices.some(n => isNaN(n) || n < 0)) {
+        setEditError('GPU indices must be a comma-separated list of non-negative numbers (e.g. "0, 1")');
+        return 'invalid';
       }
     }
+    const indicesChanged = newIndices.length !== priorIndices.length || newIndices.some((n, i) => n !== priorIndices[i]);
+    if (indicesChanged) patch.gpu_indices = newIndices;
     const hostChanged = editHost.trim() !== '' && editHost.trim() !== (editNode.host ?? '');
     const portChanged = editPort.trim() !== '' && editPort.trim() !== String(editNode.port ?? '');
     if (hostChanged || portChanged) {
