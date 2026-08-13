@@ -5798,40 +5798,51 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// fit (soft confirm, see P47), a disk overrun is a guaranteed failure
 	// (partial download, or worst case fills the node's disk and disrupts
 	// the OS/other running models), so there is no confirm-anyway override.
-	// Only covers models resolvable to a known size today (the curated
-	// catalog) - an unresolvable tag (arbitrary Ollama registry name, HF
-	// tag) skips the check entirely rather than guessing a size (R1); this
-	// is a known v1 scope limit, not silent - see P48 in EXECUTION-QUEUE.md.
-	if sizeMB, known := findCatalogVariantSizeMB(body.Model); known {
-		diskFreeGB, diskTotalGB, agentPresent := nodeDiskState(nodes, nodeName)
-		// For a Docker-controlled node, the host-level reading above can be
-		// wrong: Ollama's actual model storage may live on a separate,
-		// differently-sized container volume/mount, while this agent-reported
-		// figure only ever reflects the *host's* root filesystem. When an
-		// agent capable of reporting the container's own real disk stats is
-		// available, prefer that fresh, on-demand reading over the periodic
-		// (and for this case, potentially misleading) telemetry snapshot for
-		// this one safety-critical decision - this is exactly the gap that
-		// let a disk-full pull fail deep into a multi-GB transfer instead of
-		// being caught before it started.
-		if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
-			if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled && nodeHasAgentCapability(nodes, nodeName, "runtime.disk") {
-				if freeB, totalB, err := s.containerDiskStatsViaAgent(r.Context(), nodeURL, agentCfg, ctrl); err == nil && totalB > 0 {
-					diskFreeGB = float64(freeB) / (1024 * 1024 * 1024)
-					diskTotalGB = float64(totalB) / (1024 * 1024 * 1024)
-					agentPresent = true
-				}
-				// On error, silently keep the host-level reading already
-				// computed above - this extra safety check failing to run
-				// must never itself become a reason to block a pull outright.
+	// Disk state is fetched once and reused by whichever classification
+	// below applies (P73: previously this fetch, and the entire gate, lived
+	// only inside the known-size branch below, so any tag outside the
+	// curated catalog skipped the check entirely rather than falling back to
+	// a policy floor - see EXECUTION-QUEUE.md P73).
+	diskFreeGB, diskTotalGB, agentPresent := nodeDiskState(nodes, nodeName)
+	// For a Docker-controlled node, the host-level reading above can be
+	// wrong: Ollama's actual model storage may live on a separate,
+	// differently-sized container volume/mount, while this agent-reported
+	// figure only ever reflects the *host's* root filesystem. When an
+	// agent capable of reporting the container's own real disk stats is
+	// available, prefer that fresh, on-demand reading over the periodic
+	// (and for this case, potentially misleading) telemetry snapshot for
+	// this one safety-critical decision - this is exactly the gap that
+	// let a disk-full pull fail deep into a multi-GB transfer instead of
+	// being caught before it started.
+	if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
+		if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled && nodeHasAgentCapability(nodes, nodeName, "runtime.disk") {
+			if freeB, totalB, err := s.containerDiskStatsViaAgent(r.Context(), nodeURL, agentCfg, ctrl); err == nil && totalB > 0 {
+				diskFreeGB = float64(freeB) / (1024 * 1024 * 1024)
+				diskTotalGB = float64(totalB) / (1024 * 1024 * 1024)
+				agentPresent = true
 			}
+			// On error, silently keep the host-level reading already
+			// computed above - this extra safety check failing to run
+			// must never itself become a reason to block a pull outright.
 		}
+	}
+	if sizeMB, known := findCatalogVariantSizeMB(body.Model); known {
 		if classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent) == "insufficient" {
 			writeJSONError(w, http.StatusInsufficientStorage, fmt.Sprintf(
 				"insufficient disk space on node %q: %q needs ~%.1f GB, only %.1f GB free",
 				nodeName, body.Model, float64(sizeMB)/1024, diskFreeGB))
 			return
 		}
+	} else if classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent) == "insufficient" {
+		// body.Model isn't in the curated catalog, so its real download size
+		// is unknown (P73) - classifyDiskFit's size-vs-free-space test cannot
+		// run. Refuse rather than let an unsized download proceed against a
+		// node that is already low on headroom; see classifyUnknownSizeDiskFit's
+		// doc comment for why this is a policy floor and not a guessed size.
+		writeJSONError(w, http.StatusInsufficientStorage, fmt.Sprintf(
+			"refusing to pull %q on node %q: its download size is unknown (not in the curated catalog) and only %.1f GB of %.1f GB disk is free, below the safety margin required for an unsized pull - free up disk space or use a curated catalog model with a known size",
+			body.Model, nodeName, diskFreeGB, diskTotalGB))
+		return
 	}
 
 	s.sweepOldPullJobs()

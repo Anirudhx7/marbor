@@ -495,6 +495,42 @@ func TestClassifyDiskFit(t *testing.T) {
 	}
 }
 
+// TestClassifyUnknownSizeDiskFit covers the P73 fix: a pull with no known
+// download size (any tag outside the curated catalog) has its own
+// classification path, since classifyDiskFit's size-vs-free-space test has
+// nothing to compare against. It must mirror classifyDiskFit's
+// telemetry-unknown handling exactly, but apply a conservative headroom
+// floor (10% of total, 5GB absolute) instead of a size comparison when
+// telemetry is available.
+func TestClassifyUnknownSizeDiskFit(t *testing.T) {
+	cases := []struct {
+		name         string
+		diskFreeGB   float64
+		diskTotalGB  float64
+		agentPresent bool
+		want         string
+	}{
+		{"comfortable headroom", 500, 1000, true, "ok"},
+		{"exactly at the fraction floor (10%) with plenty of absolute GB", 100, 1000, true, "ok"},
+		{"just under the fraction floor", 99, 1000, true, "insufficient"},
+		{"exactly at the absolute floor on a tiny disk", 5, 40, true, "ok"},
+		{"under the absolute floor even though fraction would pass", 4, 20, true, "insufficient"},
+		{"no agent", 500, 1000, false, "unknown"},
+		{"agent present but never reported disk telemetry", 0, 0, true, "unknown"},
+		// Regression: a genuinely-full disk (real Statfs reading, DiskFreeGB=0
+		// legitimately) must hard-block, not skip as "unknown" - mirrors
+		// classifyDiskFit's own regression case.
+		{"disk genuinely full", 0, 500, true, "insufficient"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := classifyUnknownSizeDiskFit(c.diskFreeGB, c.diskTotalGB, c.agentPresent); got != c.want {
+				t.Errorf("classifyUnknownSizeDiskFit(%.4f, %.4f, %v) = %q, want %q", c.diskFreeGB, c.diskTotalGB, c.agentPresent, got, c.want)
+			}
+		})
+	}
+}
+
 func TestFindCatalogVariantSizeMB(t *testing.T) {
 	// llama3.2:1b has exactly one variant, tag == model name, SizeMB 1300.
 	if size, ok := findCatalogVariantSizeMB("llama3.2:1b"); !ok || size != 1300 {

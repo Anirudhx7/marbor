@@ -380,11 +380,52 @@ func TestHandleNodePull_DiskCheckSkippedWhenUnknown(t *testing.T) {
 	waitForJob(t, s, "gpu-0", "llama3.1:70b")
 }
 
-// TestHandleNodePull_DiskCheckSkippedForUnresolvableModel verifies a model
-// tag not in the static catalog (e.g. an HF tag, or an uncurated Ollama
-// registry name) skips the disk check entirely rather than guessing a size -
-// a known v1 scope limit (see EXECUTION-QUEUE.md P48), not a silent gap.
-func TestHandleNodePull_DiskCheckSkippedForUnresolvableModel(t *testing.T) {
+// TestHandleNodePull_UnresolvableModelHardBlockedOnThinHeadroom is a
+// regression test for P73: a model tag not in the static catalog (e.g. an HF
+// tag, or an uncurated Ollama registry name) has no known download size, so
+// classifyDiskFit's size-vs-free-space test cannot run - but that must no
+// longer mean the pull sails through unchecked. classifyUnknownSizeDiskFit's
+// conservative floor (10% of total, 5GB absolute minimum) still applies to
+// the node's current headroom. Before the P73 fix this exact case (1GB free
+// of 20GB - 5%, under both floors) returned 202 and dispatched the pull;
+// it must now be hard-blocked before dispatch, exactly like a known-size
+// disk overrun.
+func TestHandleNodePull_UnresolvableModelHardBlockedOnThinHeadroom(t *testing.T) {
+	reached := false
+	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer mockOllama.Close()
+
+	s := newPullTestServer(t, []config.NodeConfig{
+		{Name: "gpu-0", URL: mockOllama.URL},
+	})
+	nodes := s.router.Nodes()
+	nodes[0].Lock()
+	nodes[0].AgentPresent = true
+	nodes[0].DiskFreeGB = 1 // 1GB of 20GB (5%) - below both the fraction and absolute floor
+	nodes[0].DiskTotalGB = 20
+	nodes[0].Unlock()
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/someorg/somerepo:Q4_K_M"}`))
+
+	if w.Result().StatusCode != http.StatusInsufficientStorage {
+		t.Fatalf("expected 507 (unresolvable model, thin headroom must hard-block), got %d; body: %s", w.Result().StatusCode, w.Body.String())
+	}
+	if reached {
+		t.Error("mock Ollama server was reached - an unresolvable-size pull on thin headroom must be blocked before dispatch")
+	}
+}
+
+// TestHandleNodePull_UnresolvableModelAllowedWithHealthyHeadroom is the flip
+// side of the hard-block test above: an unresolvable-size tag must still be
+// allowed through when the node has comfortable free disk, proving the P73
+// fix is a genuine floor (blocks only when headroom is thin) and not a
+// blanket block on every non-catalog pull.
+func TestHandleNodePull_UnresolvableModelAllowedWithHealthyHeadroom(t *testing.T) {
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"success"}`))
@@ -397,15 +438,15 @@ func TestHandleNodePull_DiskCheckSkippedForUnresolvableModel(t *testing.T) {
 	nodes := s.router.Nodes()
 	nodes[0].Lock()
 	nodes[0].AgentPresent = true
-	nodes[0].DiskFreeGB = 1 // 1GB free - would fail the check if it ran
-	nodes[0].DiskTotalGB = 20
+	nodes[0].DiskFreeGB = 500 // 500GB of 1000GB (50%) - comfortably above both floors
+	nodes[0].DiskTotalGB = 1000
 	nodes[0].Unlock()
 
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, newPullRequest(t, s, "gpu-0", `{"model":"hf.co/someorg/somerepo:Q4_K_M"}`))
 
 	if w.Result().StatusCode != http.StatusAccepted {
-		t.Fatalf("expected 202 (unresolvable model tag, check skipped), got %d; body: %s", w.Result().StatusCode, w.Body.String())
+		t.Fatalf("expected 202 (unresolvable model, healthy headroom must dispatch), got %d; body: %s", w.Result().StatusCode, w.Body.String())
 	}
 	waitForJob(t, s, "gpu-0", "hf.co/someorg/somerepo:Q4_K_M")
 }
