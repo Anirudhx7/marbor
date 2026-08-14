@@ -32,7 +32,13 @@ const ProtocolVersion = 1
 // speculatively, since an agent claiming a capability it doesn't have would
 // be exactly the kind of fabrication R1 exists to prevent, just applied to
 // self-description instead of a measurement.
-var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk"}
+// "transport.tls" (P24) is unconditional, not gated on whether this
+// specific agent is currently running over HTTPS - it describes what this
+// binary is CAPABLE of (it has the TLS listener code and can be enrolled),
+// not current connection state. An agent can be capable and still be dialed
+// over plain http:// if the node hasn't been migrated yet (opt-in,
+// node-by-node - see .local/specs/node-agent-tls.md section 5).
+var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls"}
 
 // Telemetry is the canonical, versioned JSON payload served at
 // GET /v1/status - the Node Agent Protocol's root resource. GET /metrics

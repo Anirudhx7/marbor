@@ -60,6 +60,60 @@ func runSC(args ...string) (string, error) {
 	return buf.String(), err
 }
 
+// agentDataDir/agentCertPath/agentKeyPath are the Node Agent's TLS
+// certificate/key file locations on Windows (P24). %ProgramData% is always
+// set on every supported Windows version; falling back to a literal
+// C:\ProgramData only guards against the pathological case of it being
+// unset in the process environment, not an actual differently-located
+// ProgramData.
+func agentDataDir() string {
+	base := os.Getenv("ProgramData")
+	if base == "" {
+		base = `C:\ProgramData`
+	}
+	return base + `\ollama-mesh-agent`
+}
+
+func agentCertKeyPaths() (certPath, keyPath string) {
+	dir := agentDataDir()
+	return dir + `\agent.crt`, dir + `\agent.key`
+}
+
+// CertKeyPaths returns this platform's Node Agent TLS certificate/key file
+// paths - used by service_cmd.go's regen-cert subcommand and "agent service
+// status" to locate the files without duplicating the path constants there.
+func CertKeyPaths() (certPath, keyPath string) { return agentCertKeyPaths() }
+
+// restrictDirToSystemAdmins shells out to icacls (the same "native OS tool,
+// no new Go dependency" pattern as sc.exe/powershell.exe elsewhere in this
+// file) to restrict dir to SYSTEM and Administrators only, removing
+// inherited permissions first - the Windows-native ACL equivalent of the
+// 0600 POSIX perms Linux/macOS use for the same private key file (Anirudh's
+// 2026-08-14 decision: native ACLs, not DPAPI). Well-known SIDs (S-1-5-18
+// for SYSTEM, S-1-5-32-544 for Administrators) are used instead of the
+// localized account names "SYSTEM"/"Administrators", which icacls also
+// accepts but which differ on non-English Windows installs.
+func restrictDirToSystemAdmins(dir string) error {
+	out, err := restrictDirToSystemAdminsCommand(dir).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("icacls %s: %w: %s", dir, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// restrictDirToSystemAdminsCommand builds the icacls invocation
+// restrictDirToSystemAdmins runs, split out (same reasoning as
+// setServiceTokenEnvCommand above) so a test can assert on the built
+// command's Args without requiring an elevated Windows box to actually run
+// icacls.
+func restrictDirToSystemAdminsCommand(dir string) *exec.Cmd {
+	return exec.Command("icacls", dir,
+		"/inheritance:r",
+		"/grant:r", `*S-1-5-18:(OI)(CI)F`,
+		"/grant:r", `*S-1-5-32-544:(OI)(CI)F`,
+	)
+}
+
 // serviceRegistryPath is where sc.exe registers Name, in PowerShell's
 // registry-provider drive syntax; setting an Environment value here (read by
 // every Windows service host at process start) is how the token reaches the
@@ -115,6 +169,21 @@ func (windowsManager) Install(cfg Config) error {
 	if !isElevated() {
 		return fmt.Errorf("service: installing requires Administrator - re-run this command from an elevated (Run as Administrator) terminal")
 	}
+
+	// P24: idempotent - a re-install/upgrade never regenerates an existing
+	// cert (which would invalidate a fingerprint the mesh already pinned).
+	dataDir := agentDataDir()
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
+		return fmt.Errorf("service: creating %s: %w", dataDir, err)
+	}
+	if err := restrictDirToSystemAdmins(dataDir); err != nil {
+		return fmt.Errorf("service: restricting %s to SYSTEM/Administrators: %w", dataDir, err)
+	}
+	certPath, keyPath := agentCertKeyPaths()
+	if err := EnsureAgentCert(certPath, keyPath, false); err != nil {
+		return fmt.Errorf("service: %w", err)
+	}
+	cfg.CertPath, cfg.KeyPath = certPath, keyPath
 
 	binPath := windowsBinPath(cfg)
 
