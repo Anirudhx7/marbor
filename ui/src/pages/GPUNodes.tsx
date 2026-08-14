@@ -10,7 +10,7 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
 import type { NodeAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
@@ -220,6 +220,14 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border whitespace-nowrap"
                 >
                   PREWARM OFF
+                </span>
+              )}
+              {node.tlsFingerprintMismatch && (
+                <span
+                  title="The node's agent is presenting a certificate that doesn't match the pinned fingerprint - connections are refused (possible MITM or an unexpected cert rotation). Open Edit Node to review and re-confirm."
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/30 whitespace-nowrap"
+                >
+                  TLS MISMATCH
                 </span>
               )}
               {node.warmupErrors && Object.keys(node.warmupErrors).length > 0 && (
@@ -481,6 +489,9 @@ export function GPUNodes() {
     port: '11434',
     gpuModel: '',
     runtime: 'auto',
+    // P24: opt-in per node, defaults off - matches every pre-P24 node's
+    // plaintext behavior unchanged.
+    useHttps: false,
   });
   const [modelFit, setModelFit] = useState<ModelFitResponse | null>(null);
   const [modelFitError, setModelFitError] = useState<string | null>(null);
@@ -1006,6 +1017,7 @@ export function GPUNodes() {
         id: `gpu-node-${Math.random().toString(36).substring(2, 9)}`,
         name: newNode.name,
         host: newNode.host,
+        scheme: newNode.useHttps ? 'https' : 'http',
         gpuModel: newNode.gpuModel || 'Unknown GPU',
         port: parseInt(newNode.port, 10) || 11434,
         vramTotalMB: 24576,
@@ -1025,7 +1037,7 @@ export function GPUNodes() {
       setNodes(prev => [...prev, added]);
       setActionError(null);
       setIsAddModalOpen(false);
-      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto' });
+      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto', useHttps: false });
       return;
     }
 
@@ -1033,7 +1045,7 @@ export function GPUNodes() {
 
     const nodeData = {
       name: newNode.name,
-      url: `http://${newNode.host}:${newNode.port}`,
+      url: `${newNode.useHttps ? 'https' : 'http'}://${newNode.host}:${newNode.port}`,
       gpu_model: newNode.gpuModel,
       runtime: newNode.runtime,
     };
@@ -1043,7 +1055,7 @@ export function GPUNodes() {
       await loadNodes();
       setActionError(null);
       setIsAddModalOpen(false);
-      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto' });
+      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto', useHttps: false });
     } catch (err: any) {
       setActionError(err?.message || 'Failed to add node');
     }
@@ -1145,6 +1157,7 @@ export function GPUNodes() {
   const [editNode, setEditNode] = useState<GPUNode | null>(null);
   const [editHost, setEditHost] = useState('');
   const [editPort, setEditPort] = useState('');
+  const [editUseHttps, setEditUseHttps] = useState(false);
   const [editVRAM, setEditVRAM] = useState('');
   const [editVRAMUnit, setEditVRAMUnit] = useState<'MB' | 'GB'>('MB');
   const [editGPUModel, setEditGPUModel] = useState('');
@@ -1154,11 +1167,22 @@ export function GPUNodes() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | null>(null);
+  // P24: TLS fingerprint probe/pin state - probing only ever populates
+  // tlsProbedFingerprint for display; pinning happens exclusively via the
+  // "Confirm & Pin" click (patchNode), never automatically from a probe
+  // result.
+  const [tlsProbing, setTlsProbing] = useState(false);
+  const [tlsProbedFingerprint, setTlsProbedFingerprint] = useState<string | null>(null);
+  const [tlsProbeError, setTlsProbeError] = useState('');
+  const [tlsPinning, setTlsPinning] = useState(false);
+  const [pendingResetTLSPin, setPendingResetTLSPin] = useState(false);
+  const [tlsResetting, setTlsResetting] = useState(false);
 
   const openEditModal = (node: GPUNode) => {
     setEditNode(node);
     setEditHost(node.host ?? '');
     setEditPort(node.port ? String(node.port) : '');
+    setEditUseHttps(node.scheme === 'https');
     setEditVRAM(node.vramTotalMB > 0 ? String(node.vramTotalMB) : '');
     setEditVRAMUnit('MB');
     setEditGPUModel(node.gpuModel ?? '');
@@ -1166,6 +1190,8 @@ export function GPUNodes() {
     setEditGPUIndices((node.gpuIndices ?? []).join(', '));
     setEditMaxInFlight(node.maxInFlight && node.maxInFlight > 0 ? String(node.maxInFlight) : '');
     setEditError('');
+    setTlsProbedFingerprint(null);
+    setTlsProbeError('');
   };
 
   const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | 'invalid' | null => {
@@ -1199,21 +1225,33 @@ export function GPUNodes() {
     if (indicesChanged) patch.gpu_indices = newIndices;
     const hostChanged = editHost.trim() !== '' && editHost.trim() !== (editNode.host ?? '');
     const portChanged = editPort.trim() !== '' && editPort.trim() !== String(editNode.port ?? '');
-    if (hostChanged || portChanged) {
+    const schemeChanged = editUseHttps !== (editNode.scheme === 'https');
+    if (hostChanged || portChanged || schemeChanged) {
       const host = editHost.trim() || editNode.host;
       const port = editPort.trim() || String(editNode.port);
       if (!host || !port || isNaN(parseInt(port, 10))) { setEditError('Host and port must both be set'); return 'invalid'; }
-      patch.url = `http://${host}:${port}`;
+      patch.url = `${editUseHttps ? 'https' : 'http'}://${host}:${port}`;
     }
     if (Object.keys(patch).length === 0) return null;
     return patch;
   };
 
-  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number }) => {
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }) => {
     if (!editNode) return;
     if (demoMode) {
+      const scheme = patch.url ? (patch.url.startsWith('https://') ? 'https' as const : 'http' as const) : undefined;
       setNodes(prev => prev.map(n => n.name === editNode.name
-        ? { ...n, vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB, gpuModel: patch.gpu_model ?? n.gpuModel, runtime: patch.runtime ?? n.runtime, gpuIndices: patch.gpu_indices ?? n.gpuIndices, maxInFlight: patch.max_in_flight ?? n.maxInFlight }
+        ? {
+            ...n,
+            vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB,
+            gpuModel: patch.gpu_model ?? n.gpuModel,
+            runtime: patch.runtime ?? n.runtime,
+            gpuIndices: patch.gpu_indices ?? n.gpuIndices,
+            maxInFlight: patch.max_in_flight ?? n.maxInFlight,
+            scheme: scheme ?? n.scheme,
+            tlsFingerprint: patch.tls_fingerprint !== undefined ? (patch.tls_fingerprint || undefined) : n.tlsFingerprint,
+            tlsFingerprintMismatch: patch.tls_fingerprint !== undefined ? false : n.tlsFingerprintMismatch,
+          }
         : n));
       setEditNode(null);
       return;
@@ -1244,6 +1282,65 @@ export function GPUNodes() {
       return;
     }
     await applyPatch(patch);
+  };
+
+  // handleProbeTLS retrieves the node's currently-presented certificate
+  // fingerprint for display only (P24 spec section 2) - it never pins
+  // anything. Demo mode has no real node to dial, so it surfaces the
+  // already-known demo fingerprint (or a clearly-fake placeholder) instead
+  // of attempting a network call.
+  const handleProbeTLS = async () => {
+    if (!editNode) return;
+    setTlsProbeError('');
+    if (demoMode) {
+      setTlsProbedFingerprint(editNode.tlsFingerprint || 'SHA256:' + '00'.repeat(32));
+      return;
+    }
+    setTlsProbing(true);
+    try {
+      const result = await probeNodeTLS(editNode.name);
+      setTlsProbedFingerprint(result.fingerprint);
+    } catch (e: any) {
+      setTlsProbeError(e?.message || 'Failed to probe TLS certificate');
+    } finally {
+      setTlsProbing(false);
+    }
+  };
+
+  // handleConfirmAndPinTLS is the ONLY code path that ever pins a
+  // fingerprint - it only runs when the operator clicks "Confirm & Pin"
+  // after reviewing a probed value, never automatically from a probe
+  // result (P24 spec section 1/2).
+  const handleConfirmAndPinTLS = async () => {
+    if (!editNode || !tlsProbedFingerprint) return;
+    setTlsPinning(true);
+    setEditError('');
+    try {
+      await applyPatch({ tls_fingerprint: tlsProbedFingerprint });
+    } catch (e: any) {
+      setEditError(e?.message || 'Failed to pin TLS fingerprint');
+    } finally {
+      setTlsPinning(false);
+    }
+  };
+
+  // handleResetTLSPin clears an existing pin (R10: destructive - disrupts
+  // this node's established trust state - gated by the confirm modal below,
+  // same pattern as the Disable-Agent/runtime-action confirm modals in this
+  // file). Runs only from that modal's confirm click, never directly from
+  // the Reset button.
+  const handleResetTLSPin = async () => {
+    if (!editNode) return;
+    setTlsResetting(true);
+    setEditError('');
+    try {
+      await applyPatch({ tls_fingerprint: '' });
+      setPendingResetTLSPin(false);
+    } catch (e: any) {
+      setEditError(e?.message || 'Failed to reset TLS pin');
+    } finally {
+      setTlsResetting(false);
+    }
   };
 
   return (
@@ -1404,6 +1501,15 @@ export function GPUNodes() {
               placeholder="e.g., 10.0.1.15"
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
+            <label className="flex items-center gap-2 mt-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newNode.useHttps}
+                onChange={(e) => setNewNode({ ...newNode, useHttps: e.target.checked })}
+                className="rounded border-border bg-background text-primary focus:ring-primary/20"
+              />
+              <span className="text-xs text-muted-foreground">Use HTTPS (requires a TLS-capable Node Agent already installed on this host)</span>
+            </label>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1512,6 +1618,15 @@ export function GPUNodes() {
           <p className="text-xs text-muted-foreground -mt-2">
             Changing host or port re-points the mesh at a different address and resets this node's live health/warm state - you'll be asked to confirm.
           </p>
+          <label className="flex items-center gap-2 -mt-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editUseHttps}
+              onChange={(e) => setEditUseHttps(e.target.checked)}
+              className="rounded border-border bg-background text-primary focus:ring-primary/20"
+            />
+            <span className="text-xs text-muted-foreground">Use HTTPS (requires a TLS-capable Node Agent already installed on this host)</span>
+          </label>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               GPU Model Label
@@ -1612,6 +1727,72 @@ export function GPUNodes() {
               A node at or above this many in-flight requests is shed immediately (failover/cloud/503) instead of queued. Leave blank to use Settings &rarr; Routing's global Max In-Flight Per Node.
             </p>
           </div>
+          <div className="pt-2 border-t border-border">
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              TLS Certificate Fingerprint
+            </label>
+            {!editUseHttps ? (
+              <p className="text-xs text-muted-foreground">
+                Switch this node to HTTPS above to enable certificate pinning.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {editNode?.tlsFingerprintMismatch && (
+                  <p className="text-xs font-medium text-destructive">
+                    Mismatch: the node's agent is presenting a different certificate than what's pinned. Connections are being refused. If you rotated the certificate intentionally (e.g. after "agent service regen-cert"), probe below and re-confirm.
+                  </p>
+                )}
+                {editNode?.tlsFingerprint ? (
+                  <p className="text-xs text-muted-foreground font-mono break-all">
+                    Pinned: {editNode.tlsFingerprint}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Not pinned yet.</p>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleProbeTLS}
+                    disabled={tlsProbing}
+                    className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
+                  >
+                    {tlsProbing ? 'Probing...' : 'Probe Certificate'}
+                  </button>
+                  {editNode?.tlsFingerprint && (
+                    <button
+                      type="button"
+                      onClick={() => setPendingResetTLSPin(true)}
+                      className="px-3 py-1.5 bg-secondary hover:bg-destructive/10 hover:text-destructive disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
+                    >
+                      Reset Pin
+                    </button>
+                  )}
+                </div>
+                {tlsProbeError && (
+                  <p className="text-xs text-destructive">{tlsProbeError}</p>
+                )}
+                {tlsProbedFingerprint && (
+                  <div className="p-3 bg-secondary border border-border rounded-lg space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Node presented certificate fingerprint:
+                    </p>
+                    <p className="text-xs font-mono break-all text-foreground">{tlsProbedFingerprint}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Confirm this matches the fingerprint printed by <code>agent service status</code> on the node before pinning.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleConfirmAndPinTLS}
+                      disabled={tlsPinning}
+                      className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-medium rounded-lg transition-colors shadow-sm"
+                    >
+                      {tlsPinning ? 'Pinning...' : 'Confirm & Pin'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
           )}
@@ -1669,6 +1850,41 @@ export function GPUNodes() {
               className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {editSaving ? 'Saving...' : 'Confirm Change'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Reset TLS Pin Confirmation Modal (R10: destructive - disrupts an established trust state) */}
+      <Modal
+        isOpen={pendingResetTLSPin}
+        onClose={() => setPendingResetTLSPin(false)}
+        title="Reset TLS Pin"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Clear the pinned TLS certificate fingerprint for <span className="text-foreground font-semibold">{editNode?.name}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This node reverts to requiring re-enrollment: the mesh will refuse to connect over HTTPS again until you probe and confirm a fingerprint for it. Not reversible from here - you'll need to re-pin afterward. In-flight requests are not affected.
+          </p>
+          {editError && (
+            <p className="text-sm text-destructive">{editError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setPendingResetTLSPin(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleResetTLSPin}
+              disabled={tlsResetting}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {tlsResetting ? 'Resetting...' : 'Reset Pin'}
             </button>
           </div>
         </div>
