@@ -1355,6 +1355,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 
 	old.mu.Lock()
 	oldURL := old.URL
+	oldHost := old.Host
 	runtime := old.Runtime
 	autoDetect := old.autoDetect
 	gpuModel := old.GPUModel
@@ -1365,9 +1366,24 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	maxInFlight := old.MaxInFlight
 	old.mu.Unlock()
 
+	// newHost mirrors hostOrDefault's "explicit beats derived" convention,
+	// but on the derived side it must re-derive from newURL rather than
+	// reuse oldHost: by the time a live node reaches UpdateNodeURL, oldHost
+	// is never empty (New/AddNode already default it), so a plain
+	// hostOrDefault(oldHost, newURL) would always keep the stale
+	// old-URL-derived hostname. Comparing oldHost against what an
+	// undeclared Host would have resolved to for oldURL distinguishes "was
+	// this ever operator-declared" from "was this just derived" without
+	// needing a separate field on NodeState.
+	newHost := oldHost
+	if oldHost == hostOrDefault("", oldURL) {
+		newHost = hostOrDefault("", newURL)
+	}
+
 	node := &NodeState{
 		Name:               name,
 		URL:                newURL,
+		Host:               newHost,
 		GPUModel:           gpuModel,
 		NvidiaIndex:        nvidiaIndex,
 		VRAMOverrides:      vramOverrides,
