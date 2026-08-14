@@ -172,6 +172,38 @@ func TestHandlePatchNode_ClearsExistingFingerprint(t *testing.T) {
 	}
 }
 
+// TestHandlePatchNode_JSONNullIsNoOpNotClear verifies spec section 16's
+// amendment: a PATCH body containing tls_fingerprint: null (JSON null, not
+// an explicit empty string) must NOT clear an existing pin. Go's
+// encoding/json decodes both "field omitted" and "field explicitly null"
+// to the same nil *string, so a NodePatch.TLSFingerprint of nil is - and
+// must be treated as - "no change," exactly like every other NodePatch
+// pointer field (MaxInFlight, GPUIndices). Only a non-nil "" clears
+// (TestHandlePatchNode_ClearsExistingFingerprint above).
+func TestHandlePatchNode_JSONNullIsNoOpNotClear(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "https://gpu-0:9091"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("seed pin: status = %d, want 200", rec.Code)
+	}
+
+	rec := patchNodeRequest(t, s, "gpu-0", `{"tls_fingerprint":null}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	nodes[0].RLock()
+	fp := nodes[0].TLSFingerprint
+	nodes[0].RUnlock()
+	if fp != validFP1 {
+		t.Errorf("TLSFingerprint after tls_fingerprint:null = %q, want unchanged %q (null is a no-op, not a clear - see spec section 16)", fp, validFP1)
+	}
+}
+
 // TestHandlePatchNode_RejectsSiblingFingerprintConflict verifies section 15:
 // two NodeState entries sharing one physical Host (same hostname, different
 // ports - a multi-GPU-per-host box) must not be allowed to carry two
