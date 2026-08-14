@@ -507,7 +507,7 @@ export async function setNodePrewarm(name: string, disabled: boolean) {
   if (!res.ok) throw new Error('Failed to toggle node prewarm');
 }
 
-export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number }) {
+export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string | null }) {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -1334,6 +1334,20 @@ export interface NodeHealthCheckResult {
 export async function checkNodeHealth(name: string): Promise<NodeHealthCheckResult> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/health-check`, { headers: authHeaders() });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to run health check'); }
+  return res.json();
+}
+
+// probeNodeTLS retrieves the certificate fingerprint an https:// node
+// currently presents, WITHOUT pinning it (P24, spec section 2) - callers
+// must display the value for the operator to confirm out of band, then
+// call patchNode(name, { tls_fingerprint }) only on an explicit "Confirm &
+// Pin" click. Never call patchNode automatically from this result.
+export async function probeNodeTLS(name: string): Promise<{ fingerprint: string }> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/tls-probe`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to probe TLS certificate'); }
   return res.json();
 }
 

@@ -136,6 +136,10 @@ export const mockGPUNodes: GPUNode[] = [
     // P75 Gap B/C demo example: this node is declared to GPU 0 only (shares
     // its host with another runtime pinned to a different GPU).
     gpuIndices: [0],
+    // P24 demo example: this node has been migrated to HTTPS and has a
+    // pinned Node Agent certificate fingerprint - the healthy/normal case.
+    scheme: 'https',
+    tlsFingerprint: 'SHA256:' + 'a1b2c3d4e5f6'.repeat(6).slice(0, 64),
     port: 8080,
     runtime: 'tgi',
     vramTotalMB: 24 * GB,
@@ -181,6 +185,13 @@ export const mockGPUNodes: GPUNode[] = [
     name: 'gpu-node-04',
     host: '10.0.0.14',
     gpuModel: 'NVIDIA RTX 3090 24GB',
+    // P24 demo example: this node's agent presented a certificate that no
+    // longer matches its pinned fingerprint (e.g. after an unannounced
+    // "agent service regen-cert") - demonstrates the distinct TLS MISMATCH
+    // badge (NodeCard, GPUNodes.tsx) separately from generic unreachability.
+    scheme: 'https',
+    tlsFingerprint: 'SHA256:' + 'f0e1d2c3b4a5'.repeat(6).slice(0, 64),
+    tlsFingerprintMismatch: true,
     port: 8080,
     runtime: 'llamacpp',
     vramTotalMB: 24 * GB,
