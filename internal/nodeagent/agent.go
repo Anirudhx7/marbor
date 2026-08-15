@@ -51,6 +51,18 @@ func Run(args []string, version string) {
 		return
 	}
 
+	// runAgent's own flag.FlagSet only understands flags - a bare non-flag
+	// first argument (e.g. a typo'd "status" meant as "agent service
+	// status") is not an error to flag.Parse, which simply stops consuming
+	// at the first non-flag token and returns nil (same swallow-class bug
+	// as L27's "models bogus" case). Left unchecked, that silently ran the
+	// plain foreground agent instead of rejecting the unrecognized
+	// subcommand, surfacing a confusing "a token is required" error instead
+	// of pointing at the real mistake.
+	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
+		winexit.Fatalf("nodeagent: unknown agent subcommand %q (did you mean \"agent service %s\"?)", args[0], args[0])
+	}
+
 	if handled, err := runWindowsServiceIfService(func() { runAgent(args, version) }); handled {
 		if err != nil {
 			winexit.Fatalf("nodeagent: windows service execution failed: %v", err)
