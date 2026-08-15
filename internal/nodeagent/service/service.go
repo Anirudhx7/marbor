@@ -37,6 +37,18 @@ type Config struct {
 	// RefreshInterval is optional; the zero value omits --refresh-interval
 	// entirely and the agent falls back to its own built-in default.
 	RefreshInterval time.Duration
+	// CertPath/KeyPath are the agent's TLS certificate/key file paths (P24).
+	// Both empty means "run plaintext" (default, matches every pre-P24
+	// install unchanged). Set by each platform's Install right before
+	// calling args() below, after EnsureAgentCert has confirmed the files
+	// exist - never populated any other way, so a service definition never
+	// points at a cert/key pair that doesn't actually exist on disk. Not
+	// secret (unlike Token): the certificate is public and the private key
+	// file itself carries the real protection (0600 POSIX perms / Windows
+	// ACL), so passing these as plain command-line flags is safe, unlike
+	// Token which must never appear in a world-readable command line.
+	CertPath string
+	KeyPath  string
 }
 
 // args returns the "agent ..." argument list (excluding the binary path
@@ -60,6 +72,9 @@ func (c Config) args() []string {
 	a := []string{"agent", fmt.Sprintf("--port=%d", c.Port)}
 	if c.RefreshInterval > 0 {
 		a = append(a, fmt.Sprintf("--refresh-interval=%s", c.RefreshInterval))
+	}
+	if c.CertPath != "" && c.KeyPath != "" {
+		a = append(a, fmt.Sprintf("--cert=%s", c.CertPath), fmt.Sprintf("--key=%s", c.KeyPath))
 	}
 	return a
 }

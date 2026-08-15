@@ -3,6 +3,7 @@ package store_test
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -359,7 +360,7 @@ func TestNodeOverrides(t *testing.T) {
 	gpu := "NVIDIA RTX 4090"
 	rt := "vllm"
 
-	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -386,6 +387,9 @@ func TestNodeOverrides(t *testing.T) {
 	if ov.MaxInFlight != nil {
 		t.Errorf("MaxInFlight = %v, want nil (never declared)", ov.MaxInFlight)
 	}
+	if ov.TLSFingerprint != nil {
+		t.Errorf("TLSFingerprint = %v, want nil (never declared)", ov.TLSFingerprint)
+	}
 }
 
 // TestNodeOverrides_MaxInFlight verifies the P64 per-node in-flight cap
@@ -396,7 +400,7 @@ func TestNodeOverrides_MaxInFlight(t *testing.T) {
 	s := openTestDB(t)
 
 	cap1 := 8
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap1); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap1, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 	ovs, err := s.NodeOverrides()
@@ -414,7 +418,7 @@ func TestNodeOverrides_MaxInFlight(t *testing.T) {
 	// A merge update that only touches gpu_model must not clobber the
 	// previously-set max_in_flight (same merge discipline as vram_total_mb).
 	gpu := "NVIDIA RTX 4090"
-	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (merge): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -429,7 +433,7 @@ func TestNodeOverrides_MaxInFlight(t *testing.T) {
 	// An explicit 0 (clearing back to "use global default") must round-trip
 	// as a non-nil pointer to 0, distinct from "never declared" (nil).
 	cap0 := 0
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap0); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap0, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -450,7 +454,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	s := openTestDB(t)
 
 	indices := []int{0, 1}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &indices, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &indices, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -469,7 +473,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	// A merge update touching only gpu_model must not clobber the earlier
 	// gpu_indices declaration - same discipline as vram_total_mb/runtime.
 	gpu := "NVIDIA RTX 4090"
-	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (merge): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -486,7 +490,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	// "nothing declared", so the round-tripped value only needs to be empty,
 	// not nil, to have the intended effect.
 	empty := []int{}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &empty, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &empty, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -496,6 +500,153 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	ov = ovs["node1"]
 	if ov.GPUIndices == nil || len(*ov.GPUIndices) != 0 {
 		t.Errorf("GPUIndices after clear = %v, want empty", ov.GPUIndices)
+	}
+}
+
+// TestNodeOverrides_TLSFingerprint verifies the P24 tls_fingerprint column:
+// round-trips through UpsertNodeOverride/NodeOverrides, survives a merge
+// update that only touches an unrelated field, and can be explicitly cleared
+// with a non-nil empty string. See .local/specs/node-agent-tls.md section 3.
+func TestNodeOverrides_TLSFingerprint(t *testing.T) {
+	s := openTestDB(t)
+
+	fp := "SHA256:aa:bb:cc:dd"
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &fp); err != nil {
+		t.Fatalf("UpsertNodeOverride: %v", err)
+	}
+	ovs, err := s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides: %v", err)
+	}
+	ov, ok := ovs["node1"]
+	if !ok {
+		t.Fatal("node1 override not found")
+	}
+	if ov.TLSFingerprint == nil || *ov.TLSFingerprint != fp {
+		t.Fatalf("TLSFingerprint = %v, want %q", ov.TLSFingerprint, fp)
+	}
+
+	// A merge update touching only gpu_model must not clobber the previously
+	// pinned fingerprint - same merge discipline as every other override
+	// column, and the whole reason this column round-trips through a
+	// read-merge instead of a blanket overwrite.
+	gpu := "NVIDIA RTX 4090"
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil); err != nil {
+		t.Fatalf("UpsertNodeOverride (merge): %v", err)
+	}
+	ovs, err = s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides (after merge): %v", err)
+	}
+	ov = ovs["node1"]
+	if ov.TLSFingerprint == nil || *ov.TLSFingerprint != fp {
+		t.Errorf("TLSFingerprint after unrelated merge = %v, want preserved %q", ov.TLSFingerprint, fp)
+	}
+
+	// Explicit clear (non-nil empty string) resets the pin to nil/NULL - this
+	// is the "reset pin" path (spec section 2), distinct from "never declared".
+	empty := ""
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &empty); err != nil {
+		t.Fatalf("UpsertNodeOverride (clear): %v", err)
+	}
+	ovs, err = s.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides (after clear): %v", err)
+	}
+	ov = ovs["node1"]
+	if ov.TLSFingerprint != nil {
+		t.Errorf("TLSFingerprint after clear = %v, want nil", ov.TLSFingerprint)
+	}
+}
+
+// TestNodeOverrides_UpsertDoesNotClobberUnknownColumn is the regression test
+// for the P24/.local/core/P24-TLS-DESIGN.md section 10b downgrade-safety fix.
+// It directly proves UpsertNodeOverride's write primitive (INSERT ... ON
+// CONFLICT DO UPDATE SET, naming only the columns this function's Go
+// signature carries) never clobbers a column outside that list - unlike the
+// prior INSERT OR REPLACE shape, which deletes and reinserts the whole row
+// and would silently NULL any column the executing statement doesn't name.
+// Simulates "an older binary's compiled UpsertNodeOverride, which only knows
+// about max_in_flight and doesn't carry a tls_fingerprint param at all,
+// writes to a row a newer binary already pinned" via a raw SQL statement
+// against the same on-disk file (same technique as
+// TestOpenUpgradesPreCapRuntimeKeysSchema above), without needing an actual
+// second compiled binary.
+func TestNodeOverrides_UpsertDoesNotClobberUnknownColumn(t *testing.T) {
+	// Uses its own os.MkdirTemp instead of t.TempDir(): this test opens and
+	// closes three separate connections to one file (real Store x2, raw x1)
+	// to simulate an older binary's write, and on Windows the OS can be a
+	// beat slow to release the WAL-mode file handle after Close() returns -
+	// t.TempDir()'s cleanup treats that as a fatal test failure, which isn't
+	// what this test is checking. Best-effort removal (log, don't fail) is
+	// the correct behavior for a cleanup race that isn't the property under
+	// test.
+	dir, err := os.MkdirTemp("", "downgrade-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Logf("best-effort temp dir cleanup failed (non-fatal): %v", err)
+		}
+	})
+	path := filepath.Join(dir, "downgrade.db")
+
+	// Connection 1: seed the pinned fingerprint via the real Store, then
+	// close it fully before any other connection touches the file - strictly
+	// sequential connection lifecycles, same discipline as
+	// TestOpenUpgradesPreCapRuntimeKeysSchema above, so no two connections
+	// ever hold the file open at once (avoids platform-specific file-lock
+	// flakiness; this is a connection-lifecycle detail, not part of what the
+	// test proves).
+	s1, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	fp := "SHA256:11:22:33:44"
+	if err := s1.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &fp); err != nil {
+		t.Fatalf("seed UpsertNodeOverride: %v", err)
+	}
+	if err := s1.Close(); err != nil {
+		t.Fatalf("close s1: %v", err)
+	}
+
+	// Connection 2: simulate an older binary's UpsertNodeOverride - same
+	// read-merge-then-targeted-write shape, but its compiled Go signature
+	// never had a tls_fingerprint param to read or write in the first place,
+	// so its own generated SQL simply never names that column. Uses the same
+	// WAL/busy_timeout pragma DSN as store.Open (sqlite.go) - the DB file's
+	// journal_mode is already WAL from connection 1, and reopening without
+	// matching pragmas caused a Windows-only file-lock flake at cleanup.
+	raw, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	cap1 := 4
+	_, execErr := raw.Exec(
+		`INSERT INTO node_overrides (name, max_in_flight) VALUES (?, ?)
+		 ON CONFLICT(name) DO UPDATE SET max_in_flight = excluded.max_in_flight`,
+		"node1", cap1,
+	)
+	if closeErr := raw.Close(); closeErr != nil {
+		t.Fatalf("close raw db: %v", closeErr)
+	}
+	if execErr != nil {
+		t.Fatalf("simulated older-binary upsert: %v", execErr)
+	}
+
+	// Connection 3: reopen the real Store to read back the result.
+	s2 := openTestDBAt(t, path)
+	ovs, err := s2.NodeOverrides()
+	if err != nil {
+		t.Fatalf("NodeOverrides: %v", err)
+	}
+	ov := ovs["node1"]
+	if ov.TLSFingerprint == nil || *ov.TLSFingerprint != fp {
+		t.Fatalf("TLSFingerprint after older-binary-shaped write = %v, want preserved %q (this would be nil under the old INSERT OR REPLACE shape)", ov.TLSFingerprint, fp)
+	}
+	if ov.MaxInFlight == nil || *ov.MaxInFlight != cap1 {
+		t.Fatalf("MaxInFlight = %v, want %d", ov.MaxInFlight, cap1)
 	}
 }
 

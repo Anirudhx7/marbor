@@ -467,6 +467,12 @@ func (s *sqliteStore) migrate() error {
 		// NULL means "no override declared" (falls back to
 		// RoutingConfig.MaxInFlightPerNode), distinct from an explicit 0.
 		`ALTER TABLE node_overrides ADD COLUMN max_in_flight INTEGER`,
+		// P24: TOFU-pinned SHA-256 fingerprint of the node agent's TLS cert.
+		// Nullable - NULL means "no pin, this node is plaintext or not yet
+		// TLS-enrolled". Not secret material (secretbox.go does not apply):
+		// a cert fingerprint is public, and the private key never leaves the
+		// node's own disk. See .local/specs/node-agent-tls.md.
+		`ALTER TABLE node_overrides ADD COLUMN tls_fingerprint TEXT`,
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
 		// host groups multiple runtime_nodes rows that live on the same
 		// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one
@@ -1023,14 +1029,27 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // UpsertNodeOverride merges the given fields into any existing override row
 // for name, so a call that only sets one field (e.g. runtime) never clobbers
 // fields set by an earlier, separate PatchNode call (e.g. vram_total_mb).
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int) error {
+// UpsertNodeOverride writes the given node's override columns, read-merging
+// against the existing row first so a nil param preserves whatever was
+// already stored. Uses INSERT ... ON CONFLICT(name) DO UPDATE SET, not
+// INSERT OR REPLACE (P24, see .local/specs/node-agent-tls.md §3/§9 and
+// .local/core/P24-TLS-DESIGN.md §10b): REPLACE deletes and reinserts the
+// whole row, so any column this statement doesn't name reverts to its
+// column default - the exact mechanism by which an older binary's write
+// (naming only the columns its own compiled code knows about) would
+// silently NULL a newer column like tls_fingerprint on a mesh-binary
+// downgrade. DO UPDATE SET only ever touches the columns it explicitly
+// names; a column outside that list keeps its current stored value
+// regardless of what the calling binary knows about, which is what makes
+// a downgrade-then-write safe by construction going forward.
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string) error {
 	var existingVRAM sql.NullInt64
-	var existingGPU, existingRuntime sql.NullString
+	var existingGPU, existingRuntime, existingFingerprint sql.NullString
 	var existingIndices string
 	var existingMaxInFlight sql.NullInt64
 	_ = s.db.QueryRow(
-		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight)
+		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint)
 
 	vram := existingVRAM
 	if vramTotalMB != nil {
@@ -1056,11 +1075,26 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 	if maxInFlight != nil {
 		maxInFlightVal = sql.NullInt64{Int64: int64(*maxInFlight), Valid: true}
 	}
+	fingerprint := existingFingerprint
+	if tlsFingerprint != nil {
+		if *tlsFingerprint == "" {
+			fingerprint = sql.NullString{}
+		} else {
+			fingerprint = sql.NullString{String: *tlsFingerprint, Valid: true}
+		}
+	}
 
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		name, vram, gpu, rt, indices, maxInFlightVal,
+		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(name) DO UPDATE SET
+		   vram_total_mb = excluded.vram_total_mb,
+		   gpu_model = excluded.gpu_model,
+		   runtime = excluded.runtime,
+		   gpu_indices = excluded.gpu_indices,
+		   max_in_flight = excluded.max_in_flight,
+		   tls_fingerprint = excluded.tls_fingerprint`,
+		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -1070,7 +1104,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -1081,10 +1115,10 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	for rows.Next() {
 		var name string
 		var vram sql.NullInt64
-		var gpu, rt sql.NullString
+		var gpu, rt, fingerprint sql.NullString
 		var indicesJSON string
 		var maxInFlight sql.NullInt64
-		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight); err != nil {
+		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -1100,6 +1134,9 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		if maxInFlight.Valid {
 			v := int(maxInFlight.Int64)
 			ov.MaxInFlight = &v
+		}
+		if fingerprint.Valid {
+			ov.TLSFingerprint = &fingerprint.String
 		}
 		if indicesJSON != "" {
 			var idx []int

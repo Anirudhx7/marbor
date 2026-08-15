@@ -14,6 +14,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -108,9 +109,19 @@ func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*Node
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 
+	// r.client's Transport is the Router's single shared, TLS-pinning-aware
+	// Transport (see tls_dial.go, HTTPClientForNode) - an https:// agentURL
+	// here is verified against this host's pinned fingerprint exactly like
+	// every admin/eviction action-path client, no separate wiring needed
+	// (P24, .local/specs/node-agent-tls.md section 6).
 	resp, err := r.client.Do(req)
 	if err != nil {
+		// P24: distinguish a fingerprint mismatch from any other dial/network
+		// failure so the dashboard can surface it as its own status instead
+		// of generic "unreachable" (spec section 6).
+		mismatch := errors.Is(err, ErrTLSFingerprintMismatch)
 		for _, n := range members {
+			r.setAgentTLSMismatch(n, mismatch)
 			r.agentUnreachable(n)
 		}
 		return
@@ -118,6 +129,7 @@ func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*Node
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		for _, n := range members {
+			r.setAgentTLSMismatch(n, false)
 			r.agentUnreachable(n)
 		}
 		return
@@ -126,15 +138,26 @@ func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*Node
 	var t nodeagent.Telemetry
 	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
 		for _, n := range members {
+			r.setAgentTLSMismatch(n, false)
 			r.agentUnreachable(n)
 		}
 		return
 	}
 
 	for _, n := range members {
+		r.setAgentTLSMismatch(n, false)
 		r.applyAgentTelemetry(n, t)
 		r.agentReachable(n.Name)
 	}
+}
+
+// setAgentTLSMismatch updates n's AgentTLSMismatch flag under its own lock -
+// a one-line helper purely so every pollAgentHost branch above can set it
+// consistently without repeating the lock/unlock pair five times.
+func (r *Router) setAgentTLSMismatch(n *NodeState, mismatch bool) {
+	n.mu.Lock()
+	n.AgentTLSMismatch = mismatch
+	n.mu.Unlock()
 }
 
 // applyAgentTelemetry writes one member's share of a host-level Telemetry

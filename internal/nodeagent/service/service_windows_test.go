@@ -75,6 +75,48 @@ func TestSetServiceTokenEnvCommand_ArgsNeverContainToken(t *testing.T) {
 	}
 }
 
+// TestRestrictDirToSystemAdminsCommand_UsesWellKnownSIDs verifies the icacls
+// invocation removes inherited permissions and grants only the well-known
+// SYSTEM/Administrators SIDs (not the localized account names, which differ
+// on non-English Windows) full control - P24's approved native-ACL approach
+// for the Windows agent TLS key directory.
+func TestRestrictDirToSystemAdminsCommand_UsesWellKnownSIDs(t *testing.T) {
+	cmd := restrictDirToSystemAdminsCommand(`C:\ProgramData\ollama-mesh-agent`)
+
+	if cmd.Args[0] != "icacls" {
+		t.Fatalf("Args[0] = %q, want icacls", cmd.Args[0])
+	}
+	if cmd.Args[1] != `C:\ProgramData\ollama-mesh-agent` {
+		t.Errorf("Args[1] = %q, want the target directory", cmd.Args[1])
+	}
+	joined := strings.Join(cmd.Args, " ")
+	if !strings.Contains(joined, "/inheritance:r") {
+		t.Error("command must remove inherited permissions (/inheritance:r)")
+	}
+	if !strings.Contains(joined, "S-1-5-18") {
+		t.Error("command must grant the well-known SYSTEM SID (S-1-5-18)")
+	}
+	if !strings.Contains(joined, "S-1-5-32-544") {
+		t.Error("command must grant the well-known Administrators SID (S-1-5-32-544)")
+	}
+	if strings.Contains(joined, "Administrators:") || strings.Contains(joined, "SYSTEM:") {
+		t.Errorf("command must use well-known SIDs, not localized account names, got %q", joined)
+	}
+}
+
+// TestAgentCertKeyPaths_UnderProgramData verifies Windows cert/key paths
+// resolve under %ProgramData%\ollama-mesh-agent, matching the design's
+// per-platform table.
+func TestAgentCertKeyPaths_UnderProgramData(t *testing.T) {
+	certPath, keyPath := agentCertKeyPaths()
+	if !strings.HasSuffix(certPath, `ollama-mesh-agent\agent.crt`) {
+		t.Errorf("certPath = %q, want to end with ollama-mesh-agent\\agent.crt", certPath)
+	}
+	if !strings.HasSuffix(keyPath, `ollama-mesh-agent\agent.key`) {
+		t.Errorf("keyPath = %q, want to end with ollama-mesh-agent\\agent.key", keyPath)
+	}
+}
+
 func TestParseBinaryPathFromQC(t *testing.T) {
 	tests := []struct {
 		name string

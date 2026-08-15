@@ -24,6 +24,19 @@ const systemdUnitDir = "/etc/systemd/system"
 // both of which are readable by any local user.
 const tokenEnvFilePath = "/etc/ollama-mesh-agent.env"
 
+// agentCertPath/agentKeyPath are the Node Agent's TLS certificate/key file
+// locations on Linux (P24), mirroring tokenEnvFilePath's precedent exactly:
+// same directory, same 0600-secret-file treatment for the key.
+const (
+	agentCertPath = "/etc/ollama-mesh-agent.crt"
+	agentKeyPath  = "/etc/ollama-mesh-agent.key"
+)
+
+// CertKeyPaths returns this platform's Node Agent TLS certificate/key file
+// paths - used by service_cmd.go's regen-cert subcommand and "agent service
+// status" to locate the files without duplicating the path constants there.
+func CertKeyPaths() (certPath, keyPath string) { return agentCertPath, agentKeyPath }
+
 // New returns the systemd-backed Manager - the only Manager implementation
 // on linux.
 func New() (Manager, error) { return newSystemdManager(), nil }
@@ -124,6 +137,13 @@ func (systemdManager) Install(cfg Config) error {
 	if err := os.WriteFile(tokenEnvFilePath, []byte("TOKEN="+cfg.Token+"\n"), 0600); err != nil {
 		return fmt.Errorf("service: writing token env file: %w", err)
 	}
+
+	// P24: idempotent - a re-install/upgrade never regenerates an existing
+	// cert (which would invalidate a fingerprint the mesh already pinned).
+	if err := EnsureAgentCert(agentCertPath, agentKeyPath, false); err != nil {
+		return fmt.Errorf("service: %w", err)
+	}
+	cfg.CertPath, cfg.KeyPath = agentCertPath, agentKeyPath
 
 	content := systemdUnitContent(cfg)
 	if err := os.WriteFile(unitPath(), []byte(content), 0644); err != nil {

@@ -51,8 +51,9 @@ type Store interface {
 	UpdateNodeURL(name string, url string) error
 
 	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C;
-	// max_in_flight - P64 per-node in-flight cap override)
-	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int) error
+	// max_in_flight - P64 per-node in-flight cap override; tls_fingerprint -
+	// P24 TOFU-pinned node agent cert fingerprint)
+	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
@@ -330,6 +331,10 @@ type NodeOverride struct {
 	// MaxInFlight is the operator-declared per-node in-flight cap override
 	// (P64) - nil means "nothing declared" (use RoutingConfig.MaxInFlightPerNode).
 	MaxInFlight *int `json:"max_in_flight,omitempty"`
+	// TLSFingerprint is the TOFU-pinned SHA-256 fingerprint ("SHA256:...") of
+	// this node's agent TLS certificate (P24) - nil means "no pin, plaintext
+	// or not yet TLS-enrolled". See .local/specs/node-agent-tls.md.
+	TLSFingerprint *string `json:"tls_fingerprint,omitempty"`
 }
 
 // NodeAgentRecord is the per-node Node Agent configuration: whether the
@@ -674,7 +679,7 @@ func (NopStore) UpsertNode(_ NodeRecord) error                          { return
 func (NopStore) DeleteNode(_ string) error                              { return nil }
 func (NopStore) AllNodes() ([]NodeRecord, error)                        { return nil, nil }
 func (NopStore) UpdateNodeURL(_ string, _ string) error                 { return nil }
-func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int, _ *int) error {
+func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int, _ *int, _ *string) error {
 	return nil
 }
 func (NopStore) NodeOverrides() (map[string]NodeOverride, error)     { return nil, nil }

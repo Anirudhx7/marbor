@@ -34,6 +34,23 @@ const launchdPlistPath = "/Library/LaunchDaemons/" + launchdLabel + ".plist"
 // launchd itself doesn't capture output anywhere useful by default.
 const launchdLogPath = "/var/log/ollama-mesh-agent.log"
 
+// agentSupportDir/agentCertPath/agentKeyPath are the Node Agent's TLS
+// certificate/key file locations on macOS (P24), matching the design's
+// per-platform table: a dedicated Application Support directory (unlike
+// Linux's flat /etc files) since macOS has no equivalent single
+// world-readable-by-convention config directory for a launchd daemon to
+// drop files into.
+const (
+	agentSupportDir = "/Library/Application Support/ollama-mesh-agent"
+	agentCertPath   = agentSupportDir + "/agent.crt"
+	agentKeyPath    = agentSupportDir + "/agent.key"
+)
+
+// CertKeyPaths returns this platform's Node Agent TLS certificate/key file
+// paths - used by service_cmd.go's regen-cert subcommand and "agent service
+// status" to locate the files without duplicating the path constants there.
+func CertKeyPaths() (certPath, keyPath string) { return agentCertPath, agentKeyPath }
+
 type launchdManager struct{}
 
 func newLaunchdManager() Manager { return launchdManager{} }
@@ -101,6 +118,18 @@ func (launchdManager) Install(cfg Config) error {
 	if _, err := exec.LookPath("launchctl"); err != nil {
 		return fmt.Errorf("service: launchctl not found on PATH: %w", err)
 	}
+
+	// P24: idempotent - a re-install/upgrade never regenerates an existing
+	// cert (which would invalidate a fingerprint the mesh already pinned).
+	// MkdirAll first: unlike Linux's /etc, this directory doesn't already
+	// exist by default on a fresh macOS install.
+	if err := os.MkdirAll(agentSupportDir, 0755); err != nil {
+		return fmt.Errorf("service: creating %s: %w", agentSupportDir, err)
+	}
+	if err := EnsureAgentCert(agentCertPath, agentKeyPath, false); err != nil {
+		return fmt.Errorf("service: %w", err)
+	}
+	cfg.CertPath, cfg.KeyPath = agentCertPath, agentKeyPath
 
 	// 0600, not the more common 0644: this plist now carries the agent's
 	// bearer token in EnvironmentVariables, and launchd (running as root)
