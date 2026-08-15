@@ -560,6 +560,45 @@ func (c *Client) Nodes() ([]NodeResp, error) {
 	return out, nil
 }
 
+// ScoreComponent mirrors one term of router.RoutingDecision.Components - a
+// weighted factor contributing to a node's placement score.
+type ScoreComponent struct {
+	Name   string  `json:"name"`
+	Raw    float64 `json:"raw"`
+	Weight float64 `json:"weight"`
+	Value  float64 `json:"value"`
+}
+
+// RoutingDecision mirrors router.RoutingDecision - P41 per-request routing
+// explainability. Kept as a local DTO (not an import of internal/router)
+// following this package's existing convention of decoding Admin API JSON
+// into its own response types (see NodeResp) rather than depending on
+// internal packages.
+type RoutingDecision struct {
+	Node         string           `json:"node"`
+	Reason       string           `json:"reason"`
+	Detail       string           `json:"detail,omitempty"`
+	AffinityLost bool             `json:"affinityLost,omitempty"`
+	Score        float64          `json:"score,omitempty"`
+	Components   []ScoreComponent `json:"components,omitempty"`
+}
+
+// ExplainRequest calls GET /admin/v1/requests/{id}/explain, returning the
+// full routing explanation for one request id.
+func (c *Client) ExplainRequest(id string) (*RoutingDecision, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/v1/requests/"+urlPathEscape(id)+"/explain", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out RoutingDecision
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse explain response: %v", err)
+	}
+	return &out, nil
+}
+
 // SpillCounterRow mirrors one row of GET /admin/v1/spill - a per-key,
 // per-served_by request count. served_by is "local", a cloud provider's
 // name, or "blocked" (a local_only policy rejection).

@@ -37,7 +37,7 @@ func TestWaitForNodeImmediateRoute(t *testing.T) {
 	n.Healthy = true
 	n.mu.Unlock()
 
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	if node == nil {
 		t.Fatal("expected node, got nil")
 	}
@@ -79,7 +79,7 @@ func TestWaitForNodeUnblocksOnDecrConn(t *testing.T) {
 		n.Healthy = false
 		n.mu.Unlock()
 
-		result, _ = r.WaitForNode(context.Background(), "llama3.2", "", "")
+		result, _, _ = r.WaitForNode(context.Background(), "llama3.2", "", "")
 		close(done)
 	}()
 
@@ -125,7 +125,7 @@ func TestWaitForNodeTimeout(t *testing.T) {
 	n.mu.Unlock()
 
 	start := time.Now()
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	elapsed := time.Since(start)
 
 	if node != nil {
@@ -159,7 +159,7 @@ func TestWaitForNodeOverflowSLACapsWaitBelowQueueTimeout(t *testing.T) {
 	n.mu.Unlock()
 
 	start := time.Now()
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	elapsed := time.Since(start)
 
 	if node != nil {
@@ -189,7 +189,7 @@ func TestWaitForNodeOverflowSLADisabledByDefault(t *testing.T) {
 	n.mu.Unlock()
 
 	start := time.Now()
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	elapsed := time.Since(start)
 
 	if node != nil {
@@ -266,7 +266,7 @@ func TestWaitForNodeQueueFullRejectsImmediately(t *testing.T) {
 	defer atomic.StoreInt32(&r.queueDepth, 0)
 
 	start := time.Now()
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
 	elapsed := time.Since(start)
 
 	if node != nil {

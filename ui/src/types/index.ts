@@ -455,6 +455,29 @@ export interface RequestEntry {
   status: number;
   latency_ms: number;
   cloud: boolean;
+  // P41 routing explainability. routingReason is the short top-level
+  // explanation, always present when the feature has data for this row;
+  // the full breakdown is fetched lazily via GET
+  // /admin/requests/{id}/explain, not carried on the list entry.
+  routingReason?: string;
+}
+
+export interface ScoreComponent {
+  name: string;
+  raw: number;
+  weight: number;
+  value: number;
+}
+
+// RoutingDecision mirrors router.RoutingDecision (Go) - the P41 explain
+// endpoint's response shape.
+export interface RoutingDecision {
+  node: string;
+  reason: string;
+  detail?: string;
+  affinityLost?: boolean;
+  score?: number;
+  components?: ScoreComponent[];
 }
 
 export interface HourlyBucket {

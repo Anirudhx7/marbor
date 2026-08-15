@@ -14,15 +14,16 @@ import (
 
 // Entry is one audit log record. Matches store.AuditEntry field for field.
 type Entry struct {
-	Time       time.Time `json:"time"`
-	RequestID  string    `json:"request_id"`
-	KeyName    string    `json:"key_name"`
-	Model      string    `json:"model"`
-	Node       string    `json:"node"`
-	Status     string    `json:"status"`
-	LatencyMs  int       `json:"latency_ms"`
-	Cloud      bool      `json:"cloud"`
-	CloudModel string    `json:"cloud_model,omitempty"`
+	Time          time.Time `json:"time"`
+	RequestID     string    `json:"request_id"`
+	KeyName       string    `json:"key_name"`
+	Model         string    `json:"model"`
+	Node          string    `json:"node"`
+	Status        string    `json:"status"`
+	LatencyMs     int       `json:"latency_ms"`
+	Cloud         bool      `json:"cloud"`
+	CloudModel    string    `json:"cloud_model,omitempty"`
+	RoutingReason string    `json:"routing_reason,omitempty"`
 }
 
 // Logger writes audit entries to the store. Disabled (no-op) when enabled=false.
@@ -99,15 +100,16 @@ func (l *Logger) Log(e Entry) {
 		return
 	}
 	entry := store.AuditEntry{
-		Time:       e.Time,
-		RequestID:  e.RequestID,
-		KeyName:    e.KeyName,
-		Model:      e.Model,
-		Node:       e.Node,
-		Status:     e.Status,
-		LatencyMs:  e.LatencyMs,
-		Cloud:      e.Cloud,
-		CloudModel: e.CloudModel,
+		Time:          e.Time,
+		RequestID:     e.RequestID,
+		KeyName:       e.KeyName,
+		Model:         e.Model,
+		Node:          e.Node,
+		Status:        e.Status,
+		LatencyMs:     e.LatencyMs,
+		Cloud:         e.Cloud,
+		CloudModel:    e.CloudModel,
+		RoutingReason: e.RoutingReason,
 	}
 	select {
 	case l.writes <- entry:
@@ -149,15 +151,16 @@ func (l *Logger) Query(opts QueryOptions) ([]Entry, error) {
 	out := make([]Entry, 0, len(raw))
 	for _, e := range raw {
 		out = append(out, Entry{
-			Time:       e.Time,
-			RequestID:  e.RequestID,
-			KeyName:    e.KeyName,
-			Model:      e.Model,
-			Node:       e.Node,
-			Status:     e.Status,
-			LatencyMs:  e.LatencyMs,
-			Cloud:      e.Cloud,
-			CloudModel: e.CloudModel,
+			Time:          e.Time,
+			RequestID:     e.RequestID,
+			KeyName:       e.KeyName,
+			Model:         e.Model,
+			Node:          e.Node,
+			Status:        e.Status,
+			LatencyMs:     e.LatencyMs,
+			Cloud:         e.Cloud,
+			CloudModel:    e.CloudModel,
+			RoutingReason: e.RoutingReason,
 		})
 	}
 	return out, nil

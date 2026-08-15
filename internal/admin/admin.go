@@ -432,6 +432,15 @@ type RequestLog struct {
 	Tokens       int64     `json:"tokens"`
 	TokensPerSec float64   `json:"tokensPerSec"`
 	Time         time.Time `json:"time"`
+	// RoutingReason is the P41 top-level explanation (session_affinity |
+	// pinned_warm | score_based); empty for cloud-fallback requests, which
+	// have no router.RoutingDecision. RoutingDetail is the JSON-encoded
+	// router.RoutingDecision, kept off the /admin/requests list response
+	// (only RoutingReason is serialized there) and used internally by the
+	// /admin/v1/requests/{id}/explain handler for recent (in-memory-ring)
+	// requests without a round-trip to SQLite.
+	RoutingReason string `json:"routingReason,omitempty"`
+	RoutingDetail string `json:"-"`
 }
 
 type nodeResp struct {
@@ -1076,6 +1085,7 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/requests", s.cors(s.adminAuth(s.handleRequests)))
 	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
+	reg("GET /admin/requests/{id}/explain", s.cors(s.adminAuth(s.handleExplainRequest)))
 	reg("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
 	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
 	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
@@ -1621,15 +1631,16 @@ func (s *Server) handleLiveRequests(w http.ResponseWriter, r *http.Request) {
 // handleRequests returns the request log in RequestEntry format for the dashboard.
 func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 	type entry struct {
-		ID        string    `json:"id"`
-		Time      time.Time `json:"time"`
-		KeyName   string    `json:"key_name"`
-		SourceIP  string    `json:"source_ip"`
-		Model     string    `json:"model"`
-		Node      string    `json:"node"`
-		Status    int       `json:"status"`
-		LatencyMs int       `json:"latency_ms"`
-		Cloud     bool      `json:"cloud"`
+		ID            string    `json:"id"`
+		Time          time.Time `json:"time"`
+		KeyName       string    `json:"key_name"`
+		SourceIP      string    `json:"source_ip"`
+		Model         string    `json:"model"`
+		Node          string    `json:"node"`
+		Status        int       `json:"status"`
+		LatencyMs     int       `json:"latency_ms"`
+		Cloud         bool      `json:"cloud"`
+		RoutingReason string    `json:"routingReason,omitempty"`
 	}
 	s.mu.RLock()
 	reqs := make([]RequestLog, len(s.requests))
@@ -1645,15 +1656,16 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 		// Cloud nodes are stored as "cloud:<name>" (e.g. "cloud:openai").
 		isCloud := strings.HasPrefix(req.Node, "cloud:")
 		out[i] = entry{
-			ID:        req.ID,
-			Time:      req.Time,
-			KeyName:   req.ApiKey,
-			SourceIP:  req.SourceIP,
-			Model:     req.Model,
-			Node:      req.Node,
-			Status:    req.HTTPStatus,
-			LatencyMs: req.Latency,
-			Cloud:     isCloud,
+			ID:            req.ID,
+			Time:          req.Time,
+			KeyName:       req.ApiKey,
+			SourceIP:      req.SourceIP,
+			Model:         req.Model,
+			Node:          req.Node,
+			Status:        req.HTTPStatus,
+			LatencyMs:     req.Latency,
+			Cloud:         isCloud,
+			RoutingReason: req.RoutingReason,
 		}
 	}
 	// Reverse so newest entries come first.
@@ -1662,6 +1674,52 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
+}
+
+// GET /admin/requests/{id}/explain (also /admin/v1/requests/{id}/explain) -
+// P41 per-request routing explainability. Returns the full router.RoutingDecision
+// for one request, checking the bounded in-memory ring first (has the fuller
+// RoutingDetail with no SQLite round-trip) and falling back to the SQLite
+// request_log table for requests that have aged out of the ring but are
+// still within its 1000-row retention window. 404 if the id is unknown to
+// both, including requests that predate this feature (no decision stored).
+func (s *Server) handleExplainRequest(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSONError(w, http.StatusBadRequest, "request id required")
+		return
+	}
+
+	var detailJSON string
+	s.mu.RLock()
+	for _, req := range s.requests {
+		if req.ID == id {
+			detailJSON = req.RoutingDetail
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if detailJSON == "" {
+		if rec, ok, err := s.st.GetRequest(id); err == nil && ok {
+			detailJSON = rec.RoutingDetail
+		}
+	}
+
+	if detailJSON == "" {
+		writeJSONError(w, http.StatusNotFound, "no routing decision recorded for this request id")
+		return
+	}
+
+	var decision router.RoutingDecision
+	if err := json.Unmarshal([]byte(detailJSON), &decision); err != nil {
+		log.Printf("admin: handleExplainRequest: unmarshal stored decision for %s: %v", id, err)
+		writeJSONError(w, http.StatusInternalServerError, "stored routing decision is corrupt")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(decision)
 }
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
@@ -5070,7 +5128,19 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 // number. httpStatus is the real numeric HTTP status the client received
 // (from statusRecorder.StatusCode() in proxy.go) and is what gets persisted
 // to the SQLite request_log and served from /admin/requests.
-func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64) {
+//
+// requestID is the trace ID proxy.go already generates once per request
+// (the same one used for X-Request-ID and audit.Entry.RequestID) - it
+// becomes request_log.id, replacing a previously independently-minted id.
+// This has no external format coupling (verified during P41's
+// verify-before-build pass) and lets request_log rows be correlated with
+// audit_log/access-log entries for the same request, which the two
+// separately-minted ID spaces could not before.
+//
+// decision is the P41 routing explanation from the router for this
+// request's chosen node; nil for cloud-fallback requests, which have no
+// router.RoutingDecision.
+func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, decision *router.RoutingDecision) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -5080,26 +5150,41 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, httpSt
 		s.auth.AddKeyTokens(apiKey, tokens)
 	}
 	now := time.Now()
-	b := make([]byte, 4)
-	var id string
-	if _, err := rand.Read(b); err == nil {
-		id = "req-" + hex.EncodeToString(b)
-	} else {
-		id = fmt.Sprintf("req-%x", now.UnixNano())
+	id := requestID
+	if id == "" {
+		// Defensive fallback for any caller that doesn't have a trace ID
+		// (e.g. a direct test call) - never persist an empty primary key.
+		b := make([]byte, 4)
+		if _, err := rand.Read(b); err == nil {
+			id = "req-" + hex.EncodeToString(b)
+		} else {
+			id = fmt.Sprintf("req-%x", now.UnixNano())
+		}
+	}
+	var routingReason, routingDetail string
+	if decision != nil {
+		routingReason = decision.Reason
+		if detailJSON, err := json.Marshal(decision); err == nil {
+			routingDetail = string(detailJSON)
+		} else {
+			log.Printf("admin: LogRequest: marshal routing decision for %s: %v", id, err)
+		}
 	}
 	s.mu.Lock()
 	s.requests = append(s.requests, RequestLog{
-		ID:           id,
-		ApiKey:       apiKey,
-		SourceIP:     sourceIP,
-		Model:        model,
-		Node:         node,
-		Status:       status,
-		HTTPStatus:   httpStatus,
-		Latency:      latencyMs,
-		Tokens:       tokens,
-		TokensPerSec: tps,
-		Time:         now,
+		ID:            id,
+		ApiKey:        apiKey,
+		SourceIP:      sourceIP,
+		Model:         model,
+		Node:          node,
+		Status:        status,
+		HTTPStatus:    httpStatus,
+		Latency:       latencyMs,
+		Tokens:        tokens,
+		TokensPerSec:  tps,
+		Time:          now,
+		RoutingReason: routingReason,
+		RoutingDetail: routingDetail,
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
@@ -5138,14 +5223,16 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, httpSt
 
 	select {
 	case s.logChan <- store.RequestRecord{
-		ID:         id,
-		KeyName:    apiKey,
-		Model:      model,
-		NodeName:   node,
-		StatusCode: httpStatus,
-		LatencyMs:  int64(latencyMs),
-		TokensUsed: tokens,
-		TS:         now,
+		ID:            id,
+		KeyName:       apiKey,
+		Model:         model,
+		NodeName:      node,
+		StatusCode:    httpStatus,
+		LatencyMs:     int64(latencyMs),
+		TokensUsed:    tokens,
+		TS:            now,
+		RoutingReason: routingReason,
+		RoutingDetail: routingDetail,
 	}:
 	default:
 		// Prevent blocking the proxy path if SQLite writes are completely backed up.
