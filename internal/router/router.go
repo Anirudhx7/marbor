@@ -29,6 +29,29 @@ import (
 // AddNode (store/admin/Docker-discovered nodes) so every NodeState always
 // has a real, non-empty Host to key its Node Agent config by, even for a
 // node whose config.NodeConfig.Host was never explicitly set.
+// ResultingHost predicts the Host UpdateNodeURL would assign to a node
+// currently at currentHost/currentURL if its URL changed to newURL, without
+// mutating anything - exported so callers outside package router (e.g.
+// admin.go's pre-mutation TLS sibling-consistency validation) can predict the
+// resulting Host before a URL-changing mutation happens, instead of
+// independently reimplementing this derivation and risking drift from
+// UpdateNodeURL's actual behavior.
+//
+// Mirrors hostOrDefault's "explicit beats derived" convention, but on the
+// derived side it must re-derive from newURL rather than reuse currentHost:
+// by the time a live node reaches UpdateNodeURL, currentHost is never empty
+// (New/AddNode already default it), so a plain hostOrDefault(currentHost,
+// newURL) would always keep the stale current-URL-derived hostname.
+// Comparing currentHost against what an undeclared Host would have resolved
+// to for currentURL distinguishes "was this ever operator-declared" from
+// "was this just derived" without needing a separate field on NodeState.
+func ResultingHost(currentHost, currentURL, newURL string) string {
+	if currentHost == hostOrDefault("", currentURL) {
+		return hostOrDefault("", newURL)
+	}
+	return currentHost
+}
+
 func hostOrDefault(host, rawURL string) string {
 	if host != "" {
 		return host
@@ -1418,19 +1441,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	tlsFingerprint := old.TLSFingerprint
 	old.mu.Unlock()
 
-	// newHost mirrors hostOrDefault's "explicit beats derived" convention,
-	// but on the derived side it must re-derive from newURL rather than
-	// reuse oldHost: by the time a live node reaches UpdateNodeURL, oldHost
-	// is never empty (New/AddNode already default it), so a plain
-	// hostOrDefault(oldHost, newURL) would always keep the stale
-	// old-URL-derived hostname. Comparing oldHost against what an
-	// undeclared Host would have resolved to for oldURL distinguishes "was
-	// this ever operator-declared" from "was this just derived" without
-	// needing a separate field on NodeState.
-	newHost := oldHost
-	if oldHost == hostOrDefault("", oldURL) {
-		newHost = hostOrDefault("", newURL)
-	}
+	newHost := ResultingHost(oldHost, oldURL, newURL)
 
 	node := &NodeState{
 		Name:               name,

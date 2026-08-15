@@ -3442,17 +3442,33 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	// stays per-node-name exactly as the frozen spec's sections 3/4
 	// specify - this check does not redesign it to host-level storage, it
 	// only prevents siblings from drifting apart.
-	if patch.TLSFingerprint != nil && *patch.TLSFingerprint != "" {
+	//
+	// Gated on resultingFP/resultingHost (the state this patch would
+	// actually produce), not on the raw patch fields: a URL-only PATCH
+	// (patch.TLSFingerprint == nil) carries the node's EXISTING pin into
+	// whatever new host the URL points at, via UpdateNodeURL's
+	// TLSFingerprint carry-through - that resulting pin can conflict with a
+	// sibling on the destination host exactly as much as an explicit
+	// tls_fingerprint patch can, so it must be checked the same way. Gating
+	// on patch.TLSFingerprint alone (this function's original condition)
+	// missed that case entirely: a pinned node moved by URL alone onto a
+	// host with a different pinned sibling would pass validation, write the
+	// conflicting pair to storage, and only be caught afterward by
+	// dialTLSContext's ambiguity check (tls_dial.go) - which fails closed,
+	// but for BOTH siblings, since it cannot tell which pin is correct. This
+	// check exists to reject that mutation before it is ever persisted.
+	if resultingFP != "" {
+		resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 		for _, n := range nodes {
 			if n.Name == name {
 				continue
 			}
 			n.RLock()
-			sameHost := n.Host == host
+			sameHost := n.Host == resultingHost
 			siblingFP := n.TLSFingerprint
 			n.RUnlock()
-			if sameHost && siblingFP != "" && siblingFP != *patch.TLSFingerprint {
-				return fmt.Errorf("node %q shares its Node Agent host with node %q, which is already pinned to a different fingerprint - every node sharing one physical Node Agent must share the same pin (see .local/specs/node-agent-tls.md section 15)", name, n.Name)
+			if sameHost && siblingFP != "" && siblingFP != resultingFP {
+				return fmt.Errorf("node %q would share Node Agent host %q with node %q, which is already pinned to a different fingerprint - every node sharing one physical Node Agent must share the same pin (see .local/specs/node-agent-tls.md section 15)", name, resultingHost, n.Name)
 			}
 		}
 	}
