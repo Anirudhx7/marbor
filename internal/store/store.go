@@ -27,6 +27,10 @@ type Store interface {
 	// Request log
 	AppendRequest(r RequestRecord) error
 	LastRequests(n int) ([]RequestRecord, error)
+	// GetRequest looks up one request_log row by id (P41 explain endpoint
+	// fallback beyond the bounded in-memory ring). ok is false if no row
+	// with that id exists (already trimmed, or never persisted).
+	GetRequest(id string) (rec RequestRecord, ok bool, err error)
 
 	// Analytics. UpsertHourlyBucket/UpsertModelStat ACCUMULATE the passed
 	// counts into the existing row (callers pass a per-request delta), so
@@ -246,17 +250,23 @@ type Store interface {
 
 // RequestRecord mirrors a single request log entry.
 type RequestRecord struct {
-	ID         string    `json:"id"`
-	KeyName    string    `json:"key_name"`
-	Model      string    `json:"model"`
-	NodeName   string    `json:"node_name"`
-	StatusCode int       `json:"status_code"`
-	LatencyMs  int64     `json:"latency_ms"`
-	TokensUsed int64     `json:"tokens_used"`
-	CostUSD    float64   `json:"cost_usd"`
-	RoutedTo   string    `json:"routed_to"`
-	IsCloud    bool      `json:"is_cloud"`
-	TS         time.Time `json:"ts"`
+	ID         string  `json:"id"`
+	KeyName    string  `json:"key_name"`
+	Model      string  `json:"model"`
+	NodeName   string  `json:"node_name"`
+	StatusCode int     `json:"status_code"`
+	LatencyMs  int64   `json:"latency_ms"`
+	TokensUsed int64   `json:"tokens_used"`
+	CostUSD    float64 `json:"cost_usd"`
+	RoutedTo   string  `json:"routed_to"`
+	IsCloud    bool    `json:"is_cloud"`
+	// RoutingReason/RoutingDetail are P41 explainability fields - empty for
+	// rows predating this feature or for cloud-fallback requests, which have
+	// no router.RoutingDecision. RoutingDetail is the JSON-encoded score
+	// breakdown, not a human string.
+	RoutingReason string    `json:"routing_reason,omitempty"`
+	RoutingDetail string    `json:"routing_detail,omitempty"`
+	TS            time.Time `json:"ts"`
 }
 
 // HourlyBucket tracks request counts and costs for one UTC hour.
@@ -425,15 +435,16 @@ type SpillCounterRow struct {
 
 // AuditEntry is one structured audit log record persisted to SQLite.
 type AuditEntry struct {
-	Time       time.Time `json:"time"`
-	RequestID  string    `json:"request_id"`
-	KeyName    string    `json:"key_name"`
-	Model      string    `json:"model"`
-	Node       string    `json:"node"`
-	Status     string    `json:"status"`
-	LatencyMs  int       `json:"latency_ms"`
-	Cloud      bool      `json:"cloud"`
-	CloudModel string    `json:"cloud_model,omitempty"`
+	Time          time.Time `json:"time"`
+	RequestID     string    `json:"request_id"`
+	KeyName       string    `json:"key_name"`
+	Model         string    `json:"model"`
+	Node          string    `json:"node"`
+	Status        string    `json:"status"`
+	LatencyMs     int       `json:"latency_ms"`
+	Cloud         bool      `json:"cloud"`
+	CloudModel    string    `json:"cloud_model,omitempty"`
+	RoutingReason string    `json:"routing_reason,omitempty"`
 }
 
 // SystemAuditEntry is one administrative mutation event persisted to SQLite.
@@ -667,6 +678,7 @@ type NopStore struct{}
 
 func (NopStore) AppendRequest(_ RequestRecord) error                    { return nil }
 func (NopStore) LastRequests(_ int) ([]RequestRecord, error)            { return nil, nil }
+func (NopStore) GetRequest(_ string) (RequestRecord, bool, error)       { return RequestRecord{}, false, nil }
 func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                { return nil }
 func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)      { return nil, nil }
 func (NopStore) UpsertModelStat(_ ModelStat) error                      { return nil }

@@ -854,6 +854,48 @@ func TestQueryAuditLogSubstringFilters(t *testing.T) {
 	}
 }
 
+// TestAuditLogRoutingReasonRoundTrip verifies routing_reason survives a real
+// AppendAuditLog -> SQLite -> QueryAuditLog round trip (P41 code-review fix:
+// Requests.tsx reads the audit_log list, not request_log, so this field must
+// persist and query back through the actual audit_log column, not just live
+// on the in-memory struct).
+func TestAuditLogRoutingReasonRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+
+	entries := []store.AuditEntry{
+		{RequestID: "r1", Model: "llama3", Node: "gpu-node-01", Status: "200", Time: time.Now(), RoutingReason: "session_affinity"},
+		{RequestID: "r2", Model: "llama3", Node: "gpu-node-02", Status: "200", Time: time.Now(), RoutingReason: "score_based"},
+		{RequestID: "r3", Model: "llama3", Node: "gpu-node-03", Status: "200", Time: time.Now()}, // no decision (e.g. cloud fallback)
+	}
+	for _, e := range entries {
+		if err := s.AppendAuditLog(e); err != nil {
+			t.Fatalf("AppendAuditLog: %v", err)
+		}
+	}
+
+	got, err := s.QueryAuditLog(store.AuditQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("QueryAuditLog: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("QueryAuditLog: got %d rows, want 3", len(got))
+	}
+
+	byID := make(map[string]string, len(got))
+	for _, e := range got {
+		byID[e.RequestID] = e.RoutingReason
+	}
+	if byID["r1"] != "session_affinity" {
+		t.Errorf("r1 routing_reason = %q, want session_affinity", byID["r1"])
+	}
+	if byID["r2"] != "score_based" {
+		t.Errorf("r2 routing_reason = %q, want score_based", byID["r2"])
+	}
+	if byID["r3"] != "" {
+		t.Errorf("r3 routing_reason = %q, want empty (no decision recorded)", byID["r3"])
+	}
+}
+
 // TestPruneAuditLog verifies time-based retention: rows older than the
 // window are deleted, recent rows survive, and retentionDays <= 0 is a
 // no-op (the admin's explicit "keep forever" choice), not "delete all".

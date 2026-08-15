@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision } from '../types';
 
 const BASE = '/admin';
 
@@ -708,6 +708,7 @@ interface AuditLogEntry {
   latency_ms: number;
   cloud: boolean;
   cloud_model?: string;
+  routing_reason?: string;
 }
 
 // fetchAuditLog queries the server-side filterable /admin/audit endpoint
@@ -737,7 +738,18 @@ export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<Requ
     status: Number(e.status) || 0,
     latency_ms: e.latency_ms,
     cloud: e.cloud,
+    routingReason: e.routing_reason || undefined,
   }));
+}
+
+// fetchRequestExplain queries GET /admin/requests/{id}/explain (P41) - the
+// full routing decision for one request, fetched lazily (not part of the
+// audit-log list payload) since it carries the full score breakdown. Throws
+// on 404 (no decision recorded for this id, e.g. it predates this feature).
+export async function fetchRequestExplain(id: string): Promise<RoutingDecision> {
+  const res = await apiFetch(`${BASE}/requests/${encodeURIComponent(id)}/explain`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(res.status === 404 ? 'No routing decision recorded for this request' : 'Failed to fetch routing explanation');
+  return res.json();
 }
 
 export async function updateSettings(data: Record<string, unknown>) {

@@ -1,13 +1,84 @@
-import { useState, useEffect, useMemo, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, Fragment, type InputHTMLAttributes, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, ChevronDown, ChevronRight } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
-import { RequestEntry } from '../types';
-import { fetchAuditLog, fetchNodes, fetchKeys } from '../lib/api';
+import { RequestEntry, RoutingDecision } from '../types';
+import { fetchAuditLog, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { filterMockRequests, mockGPUNodes, mockAPIKeys } from '../lib/mockData';
+import { filterMockRequests, mockGPUNodes, mockAPIKeys, mockExplainForRequest } from '../lib/mockData';
 import { formatRelativeTime } from '../lib/time';
+
+const REASON_LABELS: Record<string, string> = {
+  session_affinity: 'Session affinity',
+  pinned_warm: 'Pinned + warm',
+  score_based: 'Score-based',
+};
+
+function ReasonBadge({ reason }: { reason?: string }) {
+  if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
+  return (
+    <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-foreground/80">
+      {REASON_LABELS[reason] ?? reason}
+    </span>
+  );
+}
+
+// ExplainPanel renders the P41 routing-decision breakdown for one request,
+// lazily fetched (or looked up from static mock data in demo mode) on first
+// expand. State is one of: undefined (not yet fetched), 'loading', 'error',
+// or the resolved RoutingDecision.
+function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | 'error' | undefined }) {
+  if (state === 'loading' || state === undefined) {
+    return <div className="text-sm text-muted-foreground">Loading routing explanation...</div>;
+  }
+  if (state === 'error') {
+    return <div className="text-sm text-muted-foreground">No routing decision recorded for this request.</div>;
+  }
+  return (
+    <div className="space-y-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-muted-foreground">Reason:</span>
+        <ReasonBadge reason={state.reason} />
+        {state.affinityLost && (
+          <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            affinity lost
+          </span>
+        )}
+      </div>
+      {state.detail && <div className="text-muted-foreground text-xs">{state.detail}</div>}
+      {state.components && state.components.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="text-xs font-mono">
+            <thead>
+              <tr className="text-muted-foreground">
+                <th className="text-left pr-4 py-1">Component</th>
+                <th className="text-right pr-4 py-1">Raw</th>
+                <th className="text-right pr-4 py-1">Weight</th>
+                <th className="text-right py-1">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.components.map((c) => (
+                <tr key={c.name}>
+                  <td className="pr-4 py-0.5">{c.name}</td>
+                  <td className="text-right pr-4 py-0.5">{c.raw.toFixed(2)}</td>
+                  <td className="text-right pr-4 py-0.5">{c.weight}</td>
+                  <td className="text-right py-0.5">{c.value.toFixed(2)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-border font-semibold">
+                <td className="pr-4 py-0.5">Score</td>
+                <td colSpan={2} />
+                <td className="text-right py-0.5">{state.score?.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status: number }) {
   let cls = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded ';
@@ -88,6 +159,30 @@ export function Requests() {
   const [entries, setEntries] = useState<RequestEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // P41 routing explainability: which row (if any) has its breakdown
+  // expanded, and a per-id cache of the fetched/looked-up decision so
+  // re-expanding a row already viewed this session doesn't re-fetch.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [explainData, setExplainData] = useState<Record<string, RoutingDecision | 'loading' | 'error'>>({});
+
+  function toggleExplain(id: string) {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(id);
+    if (explainData[id]) return;
+    setExplainData((prev) => ({ ...prev, [id]: 'loading' }));
+    if (isDemoMode) {
+      const decision = mockExplainForRequest(id);
+      setExplainData((prev) => ({ ...prev, [id]: decision ?? 'error' }));
+      return;
+    }
+    fetchRequestExplain(id)
+      .then((decision) => setExplainData((prev) => ({ ...prev, [id]: decision })))
+      .catch(() => setExplainData((prev) => ({ ...prev, [id]: 'error' })));
+  }
 
   // Raw text inputs (debounced before becoming active filters).
   const [modelInput, setModelInput] = useState('');
@@ -381,6 +476,7 @@ export function Requests() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Node</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Why</th>
                 </tr>
               </thead>
               <tbody>
@@ -388,7 +484,7 @@ export function Requests() {
                   [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-16 text-center text-muted-foreground text-sm">
+                    <td colSpan={8} className="px-4 py-16 text-center text-muted-foreground text-sm">
                       {hasActiveFilter
                         ? 'No requests match your filter.'
                         : 'No requests yet. Send a request through the proxy to see it here.'}
@@ -396,8 +492,8 @@ export function Requests() {
                   </tr>
                 ) : (
                   filtered.map((entry) => (
+                    <Fragment key={entry.id}>
                     <tr
-                      key={entry.id}
                       className="border-b border-border last:border-0 hover:bg-secondary/50 transition-colors"
                     >
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
@@ -442,7 +538,25 @@ export function Requests() {
                       <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
                         {entry.latency_ms} ms
                       </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleExplain(entry.id)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {expandedId === entry.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                          <ReasonBadge reason={entry.routingReason} />
+                        </button>
+                      </td>
                     </tr>
+                    {expandedId === entry.id && (
+                      <tr className="border-b border-border last:border-0 bg-secondary/20">
+                        <td colSpan={8} className="px-4 py-3">
+                          <ExplainPanel state={explainData[entry.id]} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))
                 )}
               </tbody>
@@ -528,6 +642,20 @@ export function Requests() {
                   </div>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => toggleExplain(entry.id)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1 border-t border-border/60 w-full"
+              >
+                {expandedId === entry.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                <span>Why this node?</span>
+                <ReasonBadge reason={entry.routingReason} />
+              </button>
+              {expandedId === entry.id && (
+                <div className="pt-2">
+                  <ExplainPanel state={explainData[entry.id]} />
+                </div>
+              )}
             </div>
           ))
         )}
