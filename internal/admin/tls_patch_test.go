@@ -339,6 +339,133 @@ func mustPortForTest(t *testing.T, rawURL string) int {
 	return port
 }
 
+// TestHandlePatchNode_RejectsURLOnlyMoveOntoConflictingSiblingHost verifies
+// the fix for the gap the explicit-fingerprint sibling test above does not
+// cover: a URL-only PATCH (no tls_fingerprint field at all) that moves an
+// already-pinned node onto a host where a different pinned sibling already
+// lives must be rejected before mutation, exactly like an explicit
+// conflicting tls_fingerprint patch would be. Before the fix, validateTLSPatch
+// only ran the sibling check when the patch itself set tls_fingerprint, so
+// this URL-only move slipped through, silently carrying gpu-0's existing
+// fingerprint onto shared-host and producing two NodeState entries sharing a
+// Host with two different pinned fingerprints - the exact state section 15
+// exists to prevent.
+func TestHandlePatchNode_RejectsURLOnlyMoveOntoConflictingSiblingHost(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "https://solo-host:9091"},
+		{Name: "gpu-1", URL: "https://shared-host:11435"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("pin gpu-0: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := patchNodeRequest(t, s, "gpu-1", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP2)); rec.Code != http.StatusOK {
+		t.Fatalf("pin gpu-1: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// URL-only move: no tls_fingerprint field in this request at all.
+	rec := patchNodeRequest(t, s, "gpu-0", `{"url":"https://shared-host:11434"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("URL-only move onto conflicting sibling host: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	var gpu0 *router.NodeState
+	for _, n := range nodes {
+		if n.Name == "gpu-0" {
+			gpu0 = n
+		}
+	}
+	if gpu0 == nil {
+		t.Fatal("gpu-0 not found after rejected patch")
+	}
+	gpu0.RLock()
+	url, host, fp := gpu0.URL, gpu0.Host, gpu0.TLSFingerprint
+	gpu0.RUnlock()
+	if url != "https://solo-host:9091" || host != "solo-host" || fp != validFP1 {
+		t.Errorf("gpu-0 state after rejected move: URL=%q Host=%q TLSFingerprint=%q, want URL=https://solo-host:9091 Host=solo-host TLSFingerprint=%q (unchanged)", url, host, fp, validFP1)
+	}
+}
+
+// TestHandlePatchNode_AllowsURLOnlyMoveOntoIdenticalSiblingFingerprint
+// verifies the fix does not over-reject: moving a pinned node by URL alone
+// onto a host whose sibling already carries the SAME fingerprint is allowed,
+// since it does not create a conflict.
+func TestHandlePatchNode_AllowsURLOnlyMoveOntoIdenticalSiblingFingerprint(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "https://solo-host:9091"},
+		{Name: "gpu-1", URL: "https://shared-host:11435"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("pin gpu-0: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if rec := patchNodeRequest(t, s, "gpu-1", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("pin gpu-1 (same fingerprint): status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec := patchNodeRequest(t, s, "gpu-0", `{"url":"https://shared-host:11434"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("URL-only move onto identical-fingerprint sibling host: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	var gpu0 *router.NodeState
+	for _, n := range nodes {
+		if n.Name == "gpu-0" {
+			gpu0 = n
+		}
+	}
+	if gpu0 == nil {
+		t.Fatal("gpu-0 not found after patch")
+	}
+	gpu0.RLock()
+	url, host, fp := gpu0.URL, gpu0.Host, gpu0.TLSFingerprint
+	gpu0.RUnlock()
+	if url != "https://shared-host:11434" || host != "shared-host" || fp != validFP1 {
+		t.Errorf("gpu-0 state after allowed move: URL=%q Host=%q TLSFingerprint=%q, want URL=https://shared-host:11434 Host=shared-host TLSFingerprint=%q", url, host, fp, validFP1)
+	}
+}
+
+// TestHandlePatchNode_AllowsURLOnlyMoveOntoHostWithNoPinnedSibling verifies
+// the fix does not over-reject: moving a pinned node by URL alone onto a
+// host with no existing pinned sibling (or no sibling at all) is allowed.
+func TestHandlePatchNode_AllowsURLOnlyMoveOntoHostWithNoPinnedSibling(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "https://solo-host:9091"},
+		{Name: "gpu-1", URL: "https://empty-host:11435"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("pin gpu-0: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec := patchNodeRequest(t, s, "gpu-0", `{"url":"https://empty-host:11434"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("URL-only move onto host with no pinned sibling: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	var gpu0 *router.NodeState
+	for _, n := range nodes {
+		if n.Name == "gpu-0" {
+			gpu0 = n
+		}
+	}
+	if gpu0 == nil {
+		t.Fatal("gpu-0 not found after patch")
+	}
+	gpu0.RLock()
+	url, fp := gpu0.URL, gpu0.TLSFingerprint
+	gpu0.RUnlock()
+	if url != "https://empty-host:11434" || fp != validFP1 {
+		t.Errorf("gpu-0 state after allowed move: URL=%q TLSFingerprint=%q, want URL=https://empty-host:11434 TLSFingerprint=%q", url, fp, validFP1)
+	}
+}
+
 // TestHandleNodeTLSProbe_RejectsNonHTTPSNode verifies the probe refuses to
 // run against a plain http:// node rather than attempting a TLS handshake
 // that could never succeed.
