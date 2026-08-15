@@ -888,12 +888,16 @@ export function GPUNodes() {
     }
   };
 
-  const copyAgentCommand = (text: string, which: 'unix' | 'windows') => {
+  const copyText = (text: string) => {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text).catch(() => legacyCopyText(text));
     } else {
       legacyCopyText(text);
     }
+  };
+
+  const copyAgentCommand = (text: string, which: 'unix' | 'windows') => {
+    copyText(text);
     setAgentCopiedWhich(which);
     setTimeout(() => setAgentCopiedWhich(null), 2000);
   };
@@ -1177,6 +1181,15 @@ export function GPUNodes() {
   const [tlsPinning, setTlsPinning] = useState(false);
   const [pendingResetTLSPin, setPendingResetTLSPin] = useState(false);
   const [tlsResetting, setTlsResetting] = useState(false);
+  const [tlsExpectedFingerprint, setTlsExpectedFingerprint] = useState('');
+  const [tlsStatusCmdCopied, setTlsStatusCmdCopied] = useState(false);
+  // Normalized for comparison only - a pasted value differing merely in case
+  // or wrapped whitespace/newlines (common with terminal copy) must not read
+  // as a mismatch; the fingerprint pinned is always tlsProbedFingerprint
+  // verbatim (handleConfirmAndPinTLS), never the typed value.
+  const normalizeFingerprint = (fp: string) => fp.replace(/\s+/g, '').toLowerCase();
+  const tlsExpectedFingerprintNormalized = normalizeFingerprint(tlsExpectedFingerprint);
+  const tlsProbedFingerprintNormalized = normalizeFingerprint(tlsProbedFingerprint || '');
 
   const openEditModal = (node: GPUNode) => {
     setEditNode(node);
@@ -1192,6 +1205,7 @@ export function GPUNodes() {
     setEditError('');
     setTlsProbedFingerprint(null);
     setTlsProbeError('');
+    setTlsExpectedFingerprint('');
   };
 
   const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | 'invalid' | null => {
@@ -1292,6 +1306,7 @@ export function GPUNodes() {
   const handleProbeTLS = async () => {
     if (!editNode) return;
     setTlsProbeError('');
+    setTlsExpectedFingerprint('');
     if (demoMode) {
       setTlsProbedFingerprint(editNode.tlsFingerprint || 'SHA256:' + '00'.repeat(32));
       return;
@@ -1780,10 +1795,39 @@ export function GPUNodes() {
                     <p className="text-xs text-muted-foreground">
                       Confirm this matches the fingerprint printed by <code>agent service status</code> on the node before pinning.
                     </p>
+                    <div className="flex items-center gap-1.5">
+                      <code className="text-xs font-mono text-muted-foreground bg-background/50 px-1.5 py-0.5 rounded">ollama-mesh agent service status</code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          copyText('ollama-mesh agent service status');
+                          setTlsStatusCmdCopied(true);
+                          setTimeout(() => setTlsStatusCmdCopied(false), 2000);
+                        }}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        title="Copy command"
+                      >
+                        {tlsStatusCmdCopied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={tlsExpectedFingerprint}
+                      onChange={(e) => setTlsExpectedFingerprint(e.target.value)}
+                      placeholder="Optional: paste the fingerprint printed on the node to verify"
+                      className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs font-mono text-foreground placeholder:text-muted-foreground placeholder:font-sans"
+                    />
+                    {tlsExpectedFingerprintNormalized !== '' && (
+                      tlsExpectedFingerprintNormalized === tlsProbedFingerprintNormalized ? (
+                        <p className="text-xs font-medium text-green-600 dark:text-green-500">Matches - safe to pin.</p>
+                      ) : (
+                        <p className="text-xs font-medium text-destructive">Doesn't match the probed fingerprint - do not pin. Re-check the node.</p>
+                      )
+                    )}
                     <button
                       type="button"
                       onClick={handleConfirmAndPinTLS}
-                      disabled={tlsPinning}
+                      disabled={tlsPinning || (tlsExpectedFingerprintNormalized !== '' && tlsExpectedFingerprintNormalized !== tlsProbedFingerprintNormalized)}
                       className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-medium rounded-lg transition-colors shadow-sm"
                     >
                       {tlsPinning ? 'Pinning...' : 'Confirm & Pin'}
