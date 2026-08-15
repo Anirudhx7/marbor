@@ -205,8 +205,11 @@ func (r *Router) RestoreAffinity() (int, error) {
 
 // stickyNode returns the pinned node for sessionID if it is still healthy and
 // within the TTL window, refreshing the TTL on success. Returns nil to signal
-// "fall through to normal routing."
-func (r *Router) stickyNode(sessionID string) *NodeState {
+// "fall through to normal routing." The second return value reports whether
+// an affinity entry existed for sessionID at all (regardless of whether it
+// turned out valid) - used by Route to distinguish "no affinity requested"
+// from "affinity requested but expired/unhealthy" for RoutingDecision.
+func (r *Router) stickyNode(sessionID string) (*NodeState, bool) {
 	r.affinityMu.RLock()
 	entry, ok := r.affinity[sessionID]
 	var lastSeenNano int64
@@ -219,8 +222,11 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 		nodeURL = entry.nodeURL
 	}
 	r.affinityMu.RUnlock()
-	if !ok || time.Since(time.Unix(0, lastSeenNano)) >= r.affinityTTL {
-		return nil
+	if !ok {
+		return nil, false
+	}
+	if time.Since(time.Unix(0, lastSeenNano)) >= r.affinityTTL {
+		return nil, true
 	}
 
 	r.mu.RLock()
@@ -239,7 +245,7 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 			delete(r.affinity, sessionID)
 		}
 		r.affinityMu.Unlock()
-		return nil
+		return nil, true
 	}
 	sticky.mu.RLock()
 	healthy := sticky.Healthy
@@ -251,7 +257,7 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 			delete(r.affinity, sessionID)
 		}
 		r.affinityMu.Unlock()
-		return nil
+		return nil, true
 	}
 
 	r.affinityMu.RLock()
@@ -259,7 +265,7 @@ func (r *Router) stickyNode(sessionID string) *NodeState {
 		e.lastSeen.Store(time.Now().UnixNano())
 	}
 	r.affinityMu.RUnlock()
-	return sticky
+	return sticky, true
 }
 
 // staticVRAMReservation reports whether runtime statically pre-allocates
@@ -274,12 +280,20 @@ func staticVRAMReservation(runtime string) bool {
 	return runtime == "vllm"
 }
 
-// computeNodeScore calculates a multi-factor score for a node.
+// scoreComponents calculates the multi-factor score breakdown for a node,
+// term by term, in the exact order and arithmetic computeNodeScore has
+// always used:
 // score = (warm_model_resident * 50) + (free_vram_headroom * 20) +
 //
 //	(inverse_queue_depth * 15) + (node_health_score * 10) +
-//	(recent_success_rate * 5)
-func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
+//	(recent_success_rate * 5), then cooldown and stale-telemetry
+//	penalties applied in sequence, each floored at 0.
+//
+// This is the single source of truth for the scoring arithmetic -
+// computeNodeScore sums the returned Values rather than recomputing the
+// score, so a caller building a RoutingDecision from this breakdown is
+// guaranteed to see the exact number the router used to pick the winner.
+func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 
@@ -352,15 +366,31 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 		success = sum / float64(len(n.SuccessHistory))
 	}
 
-	score := (warm * 50.0) + (freeVRAM * 20.0) + (invQueue * 15.0) + (health * 10.0) + (success * 5.0)
-
-	// Cooldown penalty: reduce node score by 50 points if in 60s cooldown
-	if !n.LastErrorAt.IsZero() && time.Since(n.LastErrorAt) < 60*time.Second {
-		score -= 50.0
-		if score < 0 {
-			score = 0
-		}
+	components := []ScoreComponent{
+		{Name: "warm_model_resident", Raw: warm, Weight: 50.0, Value: warm * 50.0},
+		{Name: "free_vram_headroom", Raw: freeVRAM, Weight: 20.0, Value: freeVRAM * 20.0},
+		{Name: "inverse_queue_depth", Raw: invQueue, Weight: 15.0, Value: invQueue * 15.0},
+		{Name: "node_health", Raw: health, Weight: 10.0, Value: health * 10.0},
+		{Name: "success_rate", Raw: success, Weight: 5.0, Value: success * 5.0},
 	}
+	running := sumComponents(components)
+
+	// Cooldown penalty: reduce node score by 50 points if in 60s cooldown,
+	// floored at 0. Value records the actual delta applied, which is less
+	// than -50 if the floor already cut it short.
+	cooldownTriggered := !n.LastErrorAt.IsZero() && time.Since(n.LastErrorAt) < 60*time.Second
+	cooldownValue := 0.0
+	if cooldownTriggered {
+		next := running - 50.0
+		if next < 0 {
+			next = 0
+		}
+		cooldownValue = next - running
+		running = next
+	}
+	components = append(components, ScoreComponent{
+		Name: "cooldown_penalty", Raw: boolToFloat(cooldownTriggered), Weight: -50.0, Value: cooldownValue,
+	})
 
 	// Stale-telemetry penalty: markFailure only flips Healthy false after
 	// healthFailureThreshold CONSECUTIVE poll failures (health.go), so a node
@@ -370,17 +400,38 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 	// cadence would have refreshed it by, apply the same -50 penalty as the
 	// error cooldown above rather than trusting a snapshot that's actually
 	// gone stale. See .local/audit-fixes-2026-08-03.md #3.
+	staleTriggered := false
 	if !n.LastPollAt.IsZero() && r.interval > 0 {
 		staleAfter := time.Duration(r.healthFailureThreshold) * r.interval
-		if time.Since(n.LastPollAt) > staleAfter {
-			score -= 50.0
-			if score < 0 {
-				score = 0
-			}
-		}
+		staleTriggered = time.Since(n.LastPollAt) > staleAfter
 	}
+	staleValue := 0.0
+	if staleTriggered {
+		next := running - 50.0
+		if next < 0 {
+			next = 0
+		}
+		staleValue = next - running
+		running = next
+	}
+	components = append(components, ScoreComponent{
+		Name: "stale_telemetry_penalty", Raw: boolToFloat(staleTriggered), Weight: -50.0, Value: staleValue,
+	})
 
-	return score
+	return components
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1.0
+	}
+	return 0.0
+}
+
+// computeNodeScore calculates a multi-factor score for a node. See
+// scoreComponents for the term-by-term breakdown this sums.
+func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
+	return sumComponents(r.scoreComponents(n, model))
 }
 
 // findBestByScore finds the best node from the given slice based on weighted score,
@@ -396,19 +447,22 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 // so a concurrent call scoring the same node saw stale headroom for the
 // entire scoring pass, not just the time after this candidate became the
 // leader. See .local/audit-fixes-2026-08-03.md #2.
-func (r *Router) findBestByScore(nodes []*NodeState, modelName string) *NodeState {
+func (r *Router) findBestByScore(nodes []*NodeState, modelName string) (*NodeState, []ScoreComponent) {
 	var bestNode *NodeState
 	var bestScore float64 = -999.0
+	var bestComponents []ScoreComponent
 	var reservedFor *NodeState // node currently holding this loop's provisional reservation, if any
 
 	for _, n := range nodes {
-		score := r.computeNodeScore(n, modelName)
+		components := r.scoreComponents(n, modelName)
+		score := sumComponents(components)
 		isNewBest := bestNode == nil || score > bestScore || (score == bestScore && n.Name < bestNode.Name)
 		if !isNewBest {
 			continue
 		}
 		bestNode = n
 		bestScore = score
+		bestComponents = components
 
 		if reservedFor != nil && reservedFor != n {
 			r.clearWarmReservation(reservedFor.Name, modelName)
@@ -419,14 +473,14 @@ func (r *Router) findBestByScore(nodes []*NodeState, modelName string) *NodeStat
 			reservedFor = n
 		}
 	}
-	return bestNode
+	return bestNode, bestComponents
 }
 
 // selectBestNode runs scoring and handles pinned models.
 // If the model is pinned and warm on any healthy candidate, it is selected immediately.
-func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*NodeState, bool) {
+func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*NodeState, bool, *RoutingDecision) {
 	if len(candidates) == 0 {
-		return nil, false
+		return nil, false, nil
 	}
 
 	// 1. Check pinned & warm nodes first
@@ -438,16 +492,21 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 			}
 		}
 		if len(pinnedAndWarm) > 0 {
-			bestNode := r.findBestByScore(pinnedAndWarm, modelName)
+			bestNode, _ := r.findBestByScore(pinnedAndWarm, modelName)
 			metrics.CacheHit()
-			return bestNode, true
+			decision := &RoutingDecision{Reason: ReasonPinnedWarm}
+			if bestNode != nil {
+				decision.Node = bestNode.Name
+				decision.Detail = "pinned+warm on node " + bestNode.Name
+			}
+			return bestNode, true, decision
 		}
 	}
 
 	// 2. Score all candidates
-	bestNode := r.findBestByScore(candidates, modelName)
+	bestNode, components := r.findBestByScore(candidates, modelName)
 	if bestNode == nil {
-		return nil, false
+		return nil, false, nil
 	}
 	warm := r.isModelWarm(bestNode, modelName)
 	if warm {
@@ -459,11 +518,18 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 		// candidate is the leader as the loop proceeds, not just at the
 		// end) - no separate reserve call needed here.
 	}
-	return bestNode, warm
+	decision := &RoutingDecision{
+		Node:       bestNode.Name,
+		Reason:     ReasonScoreBased,
+		Detail:     "score_based on node " + bestNode.Name,
+		Score:      sumComponents(components),
+		Components: components,
+	}
+	return bestNode, warm, decision
 }
 
 // routeInternal is the core weighted selection logic that Route delegates to.
-func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, bool) {
+func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
@@ -487,13 +553,20 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 
 // Route picks the best healthy node for modelName using weighted placement scoring.
 // If sessionID is non-empty and a valid affinity entry exists for it, the
-// previously-used node is preferred (sticky session).
-func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, bool) {
+// previously-used node is preferred (sticky session). The returned
+// RoutingDecision explains why the node was picked (P41); AffinityLost is
+// set when a session had an affinity entry that existed but did not
+// validate (expired, target unhealthy/draining/ineligible), so the eventual
+// score_based/pinned_warm decision doesn't silently look like a request that
+// never had affinity at all.
+func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
 	if !r.sessionAffinity {
 		sessionID = ""
 	}
+	affinityLost := false
 	if sessionID != "" {
-		if node := r.stickyNode(sessionID); node != nil {
+		node, hadEntry := r.stickyNode(sessionID)
+		if node != nil {
 			if (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName) && r.isUnderCapacity(node) {
 				r.RecordTransition(modelName, time.Now())
 				warm := r.isModelWarm(node, modelName)
@@ -503,15 +576,23 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 					// entirely, so it needs its own reservation write (P51).
 					r.reserveColdStartBytes(node.URL, node.Name, modelName)
 				}
-				return node, warm
+				decision := &RoutingDecision{
+					Node:   node.Name,
+					Reason: ReasonSessionAffinity,
+					Detail: "sticky to node " + node.Name,
+				}
+				return node, warm, decision
 			}
 			r.affinityMu.Lock()
 			delete(r.affinity, sessionID)
 			r.affinityMu.Unlock()
+			affinityLost = true
+		} else if hadEntry {
+			affinityLost = true
 		}
 	}
 
-	node, warm := r.routeInternal(modelName, runtimeFilter)
+	node, warm, decision := r.routeInternal(modelName, runtimeFilter)
 	if node != nil {
 		r.RecordTransition(modelName, time.Now())
 		if sessionID != "" {
@@ -523,13 +604,21 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 			}
 			r.affinityMu.Unlock()
 		}
+		if decision != nil && affinityLost {
+			decision.AffinityLost = true
+			decision.Detail += " (session affinity existed but target node unhealthy/draining/expired)"
+		}
 	}
-	return node, warm
+	return node, warm, decision
 }
 
 // RouteExcluding picks the best healthy node for modelName using weighted placement scoring,
-// excluding any node whose URL appears in the exclude map.
-func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[string]bool) (*NodeState, bool) {
+// excluding any node whose URL appears in the exclude map. It never reads or
+// writes session affinity, so it carries no AffinityLost signal - callers
+// retrying after a failure annotate that context onto the returned
+// RoutingDecision.Detail themselves (the router stays ignorant of retry
+// semantics by design).
+func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[string]bool) (*NodeState, bool, *RoutingDecision) {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)

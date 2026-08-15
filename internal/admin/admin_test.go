@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ollama-mesh/ollama-mesh/internal/audit"
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
@@ -472,7 +474,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 	s := NewServer(r, nil, config.Config{}, st)
 
 	for i := 0; i < 10; i++ {
-		s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100)
+		s.LogRequest(fmt.Sprintf("req-%d", i), "key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100, nil)
 	}
 
 	s.Shutdown()
@@ -487,7 +489,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 
 	// A LogRequest call after Shutdown must not panic (send on closed
 	// channel) even though the async logger has already exited.
-	s.LogRequest("key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100)
+	s.LogRequest("req-after-shutdown", "key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100, nil)
 }
 
 // newScheduleTestServer builds an admin Server with one registered node
@@ -1152,5 +1154,146 @@ func TestHandleModelConfigCapabilities(t *testing.T) {
 	}
 	if !contains(caps["mlx"], "temperature") {
 		t.Errorf("mlx capabilities missing base OpenAI-compat field temperature: %v", caps["mlx"])
+	}
+}
+
+// TestHandleExplainRequest covers P41's explain endpoint: 200 with the full
+// RoutingDecision for a logged request, the routingReason surfacing on the
+// list endpoint too, and 404 for an unknown id.
+func TestHandleExplainRequest(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	decision := &router.RoutingDecision{
+		Node:   "node-a",
+		Reason: router.ReasonScoreBased,
+		Detail: "score_based on node node-a",
+		Score:  42.5,
+		Components: []router.ScoreComponent{
+			{Name: "warm_model_resident", Raw: 0, Weight: 50, Value: 0},
+			{Name: "free_vram_headroom", Raw: 1, Weight: 20, Value: 20},
+		},
+	}
+	s.LogRequest("req-explain-1", "key1", "127.0.0.1", "llama3", "node-a", "warm", 200, 12, 100, decision)
+
+	doGet := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("200 with full breakdown", func(t *testing.T) {
+		rec := doGet("/admin/requests/req-explain-1/explain")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+		}
+		var got router.RoutingDecision
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if got.Reason != router.ReasonScoreBased || got.Node != "node-a" || got.Score != 42.5 {
+			t.Errorf("got %+v, want reason=score_based node=node-a score=42.5", got)
+		}
+		if len(got.Components) != 2 {
+			t.Errorf("got %d components, want 2", len(got.Components))
+		}
+	})
+
+	t.Run("admin/v1 alias also works", func(t *testing.T) {
+		rec := doGet("/admin/v1/requests/req-explain-1/explain")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("404 for unknown id", func(t *testing.T) {
+		rec := doGet("/admin/requests/does-not-exist/explain")
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want 404, body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("list endpoint carries routingReason", func(t *testing.T) {
+		rec := doGet("/admin/requests")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var entries []map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &entries); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		found := false
+		for _, e := range entries {
+			if e["id"] == "req-explain-1" {
+				found = true
+				if e["routingReason"] != router.ReasonScoreBased {
+					t.Errorf("routingReason = %v, want %q", e["routingReason"], router.ReasonScoreBased)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("logged request not found in /admin/requests list")
+		}
+	})
+}
+
+// TestHandleAuditRoutingReason verifies routing_reason survives the real
+// production path: audit.Logger.Log -> async write -> SQLite audit_log ->
+// QueryAuditLog -> handleAudit's JSON response (P41 code-review fix: this is
+// the endpoint Requests.tsx actually reads for its list, not /admin/requests).
+func TestHandleAuditRoutingReason(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "audit.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, nil, config.Config{}, st)
+
+	al := audit.New(st, true)
+	s.SetAuditLogger(al)
+
+	al.Log(audit.Entry{
+		Time:          time.Now().UTC(),
+		RequestID:     "req-audit-1",
+		KeyName:       "key1",
+		Model:         "llama3",
+		Node:          "node-a",
+		Status:        "200",
+		LatencyMs:     12,
+		Cloud:         false,
+		RoutingReason: router.ReasonSessionAffinity,
+	})
+	al.Close() // synchronizes: guarantees the async write above landed in SQLite
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Entries []map[string]any `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	found := false
+	for _, e := range resp.Entries {
+		if e["request_id"] == "req-audit-1" {
+			found = true
+			if e["routing_reason"] != router.ReasonSessionAffinity {
+				t.Errorf("routing_reason = %v, want %q", e["routing_reason"], router.ReasonSessionAffinity)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("logged entry not found in /admin/audit response")
 	}
 }

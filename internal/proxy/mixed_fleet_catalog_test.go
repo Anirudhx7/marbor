@@ -234,7 +234,7 @@ func TestMixedFleetStickySessionDoesNotBypassModelEligibility(t *testing.T) {
 
 	// Directly route once for the vLLM node's own model with a session ID to
 	// establish a sticky-session entry pinned to vllmNode.
-	node, _ := r.Route("other-embed-model", "sess-1", "")
+	node, _, _ := r.Route("other-embed-model", "sess-1", "")
 	if node != vllmNode {
 		t.Fatalf("expected initial route to pin sticky session to vllm-node, got %v", node)
 	}
@@ -242,7 +242,7 @@ func TestMixedFleetStickySessionDoesNotBypassModelEligibility(t *testing.T) {
 	// Now route the SAME session for a model vllmNode does not have. The
 	// sticky shortcut must not return vllmNode just because it's the pinned
 	// node - it must fall through and re-evaluate eligibility.
-	node, _ = r.Route("nomic-embed-text", "sess-1", "")
+	node, _, _ = r.Route("nomic-embed-text", "sess-1", "")
 	if node == vllmNode {
 		t.Error("sticky-session path returned a node ineligible for the requested model - eligibility must be re-checked even for a pinned session")
 	}

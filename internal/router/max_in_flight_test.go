@@ -41,7 +41,7 @@ func TestMaxInFlightCapExcludesNodeAtCapacity(t *testing.T) {
 	atomic.StoreInt32(&busyNode.ActiveConns, 2) // at cap (>=2)
 
 	for i := 0; i < 10; i++ {
-		node, _ := r.Route("", "", "")
+		node, _, _ := r.Route("", "", "")
 		if node == nil {
 			t.Fatal("expected a node to be selected")
 		}
@@ -68,7 +68,7 @@ func TestMaxInFlightCapZeroMeansUncapped(t *testing.T) {
 	}
 	atomic.StoreInt32(&n.ActiveConns, 1000) // absurdly high, should not matter
 
-	node, _ := r.Route("", "", "")
+	node, _, _ := r.Route("", "", "")
 	if node != n {
 		t.Fatalf("expected the only node to remain eligible when no cap is configured, got %v", node)
 	}
@@ -100,7 +100,7 @@ func TestMaxInFlightPerNodeOverrideBeatsGlobalDefault(t *testing.T) {
 	atomic.StoreInt32(&tightNode.ActiveConns, 2)
 
 	for i := 0; i < 10; i++ {
-		node, _ := r.Route("", "", "")
+		node, _, _ := r.Route("", "", "")
 		if node == tightNode {
 			t.Fatalf("tight-node's per-node override (2) must apply even though the global default (10) would still allow it")
 		}
@@ -134,14 +134,14 @@ func TestMaxInFlightStickySessionDoesNotBypassCap(t *testing.T) {
 	}
 
 	// Establish a sticky-session pin to pinned-node while it's still under cap.
-	node, _ := r.Route("", "sess-1", "")
+	node, _, _ := r.Route("", "sess-1", "")
 	if node != pinnedNode {
 		t.Fatalf("expected initial route to pin sticky session to pinned-node, got %v", node)
 	}
 
 	// Push pinned-node to its cap, then route the same session again.
 	atomic.StoreInt32(&pinnedNode.ActiveConns, 1)
-	node, _ = r.Route("", "sess-1", "")
+	node, _, _ = r.Route("", "sess-1", "")
 	if node == pinnedNode {
 		t.Error("sticky-session path returned a node at its in-flight cap - capacity must be re-checked even for a pinned session")
 	}
@@ -168,7 +168,7 @@ func TestMaxInFlightRouteExcludingFallsThroughWhenOnlyAlternateOverCap(t *testin
 	}
 	atomic.StoreInt32(&overCapNode.ActiveConns, 1) // at cap
 
-	node, ok := r.RouteExcluding("", "", map[string]bool{"http://tried.invalid": true})
+	node, ok, _ := r.RouteExcluding("", "", map[string]bool{"http://tried.invalid": true})
 	if node != nil || ok {
 		t.Fatalf("expected no eligible alternate (only candidate is over cap), got node=%v ok=%v", node, ok)
 	}
