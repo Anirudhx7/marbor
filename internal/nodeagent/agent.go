@@ -79,8 +79,8 @@ func runAgent(args []string, version string) {
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
 	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the TOKEN env var instead)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
-	certFlag := fs.String("cert", "", "TLS certificate file path (P24); if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
-	keyFlag := fs.String("key", "", "TLS private key file path (P24), paired with --cert")
+	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
+	keyFlag := fs.String("key", "", "TLS private key file path, paired with --cert")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "ollama-mesh agent - Node Agent: node-local execution point for the mesh\n\n")
 		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent --port=<port>   (runs in the foreground; set the TOKEN env var)\n")

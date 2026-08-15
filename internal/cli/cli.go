@@ -268,7 +268,7 @@ Commands:
   whoami                                     show the CLI's saved identity (live-verified)
   nodes                                      list nodes known to the mesh
   nodes confirm-tls <node> --fingerprint=SHA256:...
-                                              pin a Node Agent's TLS certificate fingerprint (P24 headless enrollment)
+                                              pin a Node Agent's TLS certificate fingerprint (headless enrollment)
   models [action] ...                        fleet-wide list, or pull/delete/unload/list on one node
   runtime <action> <node> [flags]            start/stop/restart/logs/drain/undrain/health on one node
   node control probe <node>                  show a node's control-driver status (configured + discovered)
