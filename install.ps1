@@ -113,6 +113,52 @@ $VersionOutput = & $BinPath -version 2>$null
 $NewVersion = ($VersionOutput -split '\s+')[-1]
 Write-Host "Installed ollama-mesh $NewVersion to $BinPath"
 
+# Unlike Linux (/usr/local/bin is already on PATH) and macOS, there's no
+# Windows equivalent default-PATH directory under Program Files - without
+# this, every command this script (and "agent service status"/"uninstall"
+# it tells the operator to run afterward) prints as a bare "ollama-mesh ..."
+# would fail with "not recognized" in any shell, exactly the class of bug
+# this closes. Machine scope needs elevation; fall back to User scope
+# (still PATH-effective for this account, no admin required) otherwise -
+# both scopes are additive with the built-in PATH, never overwritten.
+$currentPrincipalForPath = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$IsElevated = $currentPrincipalForPath.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$PathScope = if ($IsElevated) { "Machine" } else { "User" }
+$ExistingPath = [Environment]::GetEnvironmentVariable("Path", $PathScope)
+if (-not $ExistingPath) { $ExistingPath = "" }
+$PathEntries = $ExistingPath -split ";" | Where-Object { $_ -ne "" }
+if (-not ($PathEntries -contains $InstallDir)) {
+    # Join only non-empty entries - if $ExistingPath was blank (common: a
+    # fresh account has no User-scope Path at all), a naive
+    # "$ExistingPath;$InstallDir" leaves a leading empty segment, which
+    # cmd.exe/PowerShell resolve as "search the current directory first" -
+    # a PATH-injection footgun, and exactly the common case this branch hits.
+    $NewPath = (@($PathEntries) + $InstallDir) -join ";"
+    try {
+        [Environment]::SetEnvironmentVariable("Path", $NewPath, $PathScope)
+        Write-Host "Added $InstallDir to your $PathScope PATH - open a NEW terminal window for the 'ollama-mesh' command to be recognized there."
+    } catch {
+        Write-Host "Could not add $InstallDir to PATH automatically ($_) - add it manually, or always run '$BinPath' by full path."
+    }
+    # Broadcast WM_SETTINGCHANGE so already-open Explorer/shells notice the
+    # change - best-effort only (a locked-down/AV-restricted host may not be
+    # able to compile the inline P/Invoke); the registry write above already
+    # succeeded regardless, so a failure here must not be reported as a PATH
+    # update failure - the "open a new terminal" note above already covers
+    # the case where no broadcast reaches an already-open window.
+    try {
+        Add-Type -Namespace Win32 -Name NativeMethods -MemberDefinition @"
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+"@ -ErrorAction Stop
+        $result = [UIntPtr]::Zero
+        [Win32.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, "Environment", 2, 5000, [ref]$result) | Out-Null
+    } catch {
+        # Silent - purely an optimization for already-open windows, not the PATH update itself.
+    }
+    $env:Path = $env:Path.TrimEnd(";") + ";" + $InstallDir
+}
+
 if ($Role -eq "agent") {
     if (-not $Token -and -not $Enroll) {
         Write-Error "ROLE=agent requires TOKEN=<token> or ENROLL=<code> MESH=<url>."
@@ -124,8 +170,7 @@ if ($Role -eq "agent") {
         exit 1
     }
 
-    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-    if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    if (-not $IsElevated) {
         Write-Error "Installing the Node Agent service requires an elevated (Run as Administrator) PowerShell session."
         exit 1
     }
