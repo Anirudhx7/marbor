@@ -1816,10 +1816,10 @@ export function GPUNodes() {
                     <p className="text-xs text-muted-foreground">
                       Run this on the node and confirm it matches before pinning:
                     </p>
-                    <code className="block font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
-                      ollama-mesh agent service status
-                    </code>
-                    <div className="flex justify-end">
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 min-w-0 font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                        ollama-mesh agent service status
+                      </code>
                       <button
                         type="button"
                         onClick={() => {
@@ -1827,7 +1827,7 @@ export function GPUNodes() {
                           setTlsStatusCmdCopied(true);
                           setTimeout(() => setTlsStatusCmdCopied(false), 2000);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
                       >
                         <Copy className="w-3.5 h-3.5" />
                         {tlsStatusCmdCopied ? 'Copied!' : 'Copy'}
