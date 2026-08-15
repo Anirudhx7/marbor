@@ -27,6 +27,10 @@ type Store interface {
 	// Request log
 	AppendRequest(r RequestRecord) error
 	LastRequests(n int) ([]RequestRecord, error)
+	// GetRequest looks up one request_log row by id (P41 explain endpoint
+	// fallback beyond the bounded in-memory ring). ok is false if no row
+	// with that id exists (already trimmed, or never persisted).
+	GetRequest(id string) (rec RequestRecord, ok bool, err error)
 
 	// Analytics. UpsertHourlyBucket/UpsertModelStat ACCUMULATE the passed
 	// counts into the existing row (callers pass a per-request delta), so
@@ -50,8 +54,10 @@ type Store interface {
 	AllNodes() ([]NodeRecord, error)
 	UpdateNodeURL(name string, url string) error
 
-	// Node overrides (vram, gpu_model)
-	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string) error
+	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C;
+	// max_in_flight - P64 per-node in-flight cap override; tls_fingerprint -
+	// P24 TOFU-pinned node agent cert fingerprint)
+	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
@@ -244,17 +250,23 @@ type Store interface {
 
 // RequestRecord mirrors a single request log entry.
 type RequestRecord struct {
-	ID         string    `json:"id"`
-	KeyName    string    `json:"key_name"`
-	Model      string    `json:"model"`
-	NodeName   string    `json:"node_name"`
-	StatusCode int       `json:"status_code"`
-	LatencyMs  int64     `json:"latency_ms"`
-	TokensUsed int64     `json:"tokens_used"`
-	CostUSD    float64   `json:"cost_usd"`
-	RoutedTo   string    `json:"routed_to"`
-	IsCloud    bool      `json:"is_cloud"`
-	TS         time.Time `json:"ts"`
+	ID         string  `json:"id"`
+	KeyName    string  `json:"key_name"`
+	Model      string  `json:"model"`
+	NodeName   string  `json:"node_name"`
+	StatusCode int     `json:"status_code"`
+	LatencyMs  int64   `json:"latency_ms"`
+	TokensUsed int64   `json:"tokens_used"`
+	CostUSD    float64 `json:"cost_usd"`
+	RoutedTo   string  `json:"routed_to"`
+	IsCloud    bool    `json:"is_cloud"`
+	// RoutingReason/RoutingDetail are P41 explainability fields - empty for
+	// rows predating this feature or for cloud-fallback requests, which have
+	// no router.RoutingDecision. RoutingDetail is the JSON-encoded score
+	// breakdown, not a human string.
+	RoutingReason string    `json:"routing_reason,omitempty"`
+	RoutingDetail string    `json:"routing_detail,omitempty"`
+	TS            time.Time `json:"ts"`
 }
 
 // HourlyBucket tracks request counts and costs for one UTC hour.
@@ -318,6 +330,21 @@ type NodeOverride struct {
 	VRAMTotalMB *int64  `json:"vram_total_mb,omitempty"`
 	GPUModel    *string `json:"gpu_model,omitempty"`
 	Runtime     *string `json:"runtime,omitempty"`
+	// GPUIndices is the operator-declared set of physical GPU indices this
+	// specific node/runtime instance actually uses (P75 Gap B/C) - host-scoped
+	// agent telemetry reports every physical GPU identically to every node
+	// sharing a Host, so a node pinned to one GPU (e.g. CUDA_VISIBLE_DEVICES)
+	// needs this to avoid being sized against hardware it cannot reach. nil
+	// means "nothing declared" (the default - unchanged host-level sizing);
+	// a non-nil empty slice explicitly clears a prior declaration.
+	GPUIndices *[]int `json:"gpu_indices,omitempty"`
+	// MaxInFlight is the operator-declared per-node in-flight cap override
+	// (P64) - nil means "nothing declared" (use RoutingConfig.MaxInFlightPerNode).
+	MaxInFlight *int `json:"max_in_flight,omitempty"`
+	// TLSFingerprint is the TOFU-pinned SHA-256 fingerprint ("SHA256:...") of
+	// this node's agent TLS certificate (P24) - nil means "no pin, plaintext
+	// or not yet TLS-enrolled". See .local/specs/node-agent-tls.md.
+	TLSFingerprint *string `json:"tls_fingerprint,omitempty"`
 }
 
 // NodeAgentRecord is the per-node Node Agent configuration: whether the
@@ -332,6 +359,16 @@ type NodeAgentRecord struct {
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
 	Token   string `json:"-"`
+	// Scope is the tier (nodeagent.ScopeReadonly/ScopeOperator/ScopeAdmin)
+	// embedded in Token's prefix (P54: per-action token scoping). Stored
+	// alongside Token purely for observability/API responses - the agent
+	// enforces scope by parsing its own configured Token directly
+	// (nodeagent.TokenScope), not by trusting this column, so a mismatch
+	// between the two is a display-staleness issue, never a security one.
+	// Defaults to "admin" for rows created before this field existed,
+	// matching those rows' actual (unprefixed, full-scope-by-fallback)
+	// tokens.
+	Scope string `json:"scope"`
 }
 
 // NodeControlRecord is the per-node ControlDriver configuration (P43) - how
@@ -398,15 +435,16 @@ type SpillCounterRow struct {
 
 // AuditEntry is one structured audit log record persisted to SQLite.
 type AuditEntry struct {
-	Time       time.Time `json:"time"`
-	RequestID  string    `json:"request_id"`
-	KeyName    string    `json:"key_name"`
-	Model      string    `json:"model"`
-	Node       string    `json:"node"`
-	Status     string    `json:"status"`
-	LatencyMs  int       `json:"latency_ms"`
-	Cloud      bool      `json:"cloud"`
-	CloudModel string    `json:"cloud_model,omitempty"`
+	Time          time.Time `json:"time"`
+	RequestID     string    `json:"request_id"`
+	KeyName       string    `json:"key_name"`
+	Model         string    `json:"model"`
+	Node          string    `json:"node"`
+	Status        string    `json:"status"`
+	LatencyMs     int       `json:"latency_ms"`
+	Cloud         bool      `json:"cloud"`
+	CloudModel    string    `json:"cloud_model,omitempty"`
+	RoutingReason string    `json:"routing_reason,omitempty"`
 }
 
 // SystemAuditEntry is one administrative mutation event persisted to SQLite.
@@ -638,25 +676,28 @@ type BenchmarkRun struct {
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
-func (NopStore) AppendRequest(_ RequestRecord) error                               { return nil }
-func (NopStore) LastRequests(_ int) ([]RequestRecord, error)                       { return nil, nil }
-func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                           { return nil }
-func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)                 { return nil, nil }
-func (NopStore) UpsertModelStat(_ ModelStat) error                                 { return nil }
-func (NopStore) AllModelStats() ([]ModelStat, error)                               { return nil, nil }
-func (NopStore) SetCounters(_ Counters) error                                      { return nil }
-func (NopStore) GetCounters() (Counters, error)                                    { return Counters{}, nil }
-func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error              { return nil }
-func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error)            { return nil, nil }
-func (NopStore) UpsertNode(_ NodeRecord) error                                     { return nil }
-func (NopStore) DeleteNode(_ string) error                                         { return nil }
-func (NopStore) AllNodes() ([]NodeRecord, error)                                   { return nil, nil }
-func (NopStore) UpdateNodeURL(_ string, _ string) error                            { return nil }
-func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string) error { return nil }
-func (NopStore) NodeOverrides() (map[string]NodeOverride, error)                   { return nil, nil }
-func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error                     { return nil }
-func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error)               { return nil, nil }
-func (NopStore) UpsertNodeAgent(_ NodeAgentRecord) error                           { return nil }
+func (NopStore) AppendRequest(_ RequestRecord) error                    { return nil }
+func (NopStore) LastRequests(_ int) ([]RequestRecord, error)            { return nil, nil }
+func (NopStore) GetRequest(_ string) (RequestRecord, bool, error)       { return RequestRecord{}, false, nil }
+func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                { return nil }
+func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)      { return nil, nil }
+func (NopStore) UpsertModelStat(_ ModelStat) error                      { return nil }
+func (NopStore) AllModelStats() ([]ModelStat, error)                    { return nil, nil }
+func (NopStore) SetCounters(_ Counters) error                           { return nil }
+func (NopStore) GetCounters() (Counters, error)                         { return Counters{}, nil }
+func (NopStore) SaveKeyCounters(_ string, _ KeyCounterSnapshot) error   { return nil }
+func (NopStore) AllKeyCounters() (map[string]KeyCounterSnapshot, error) { return nil, nil }
+func (NopStore) UpsertNode(_ NodeRecord) error                          { return nil }
+func (NopStore) DeleteNode(_ string) error                              { return nil }
+func (NopStore) AllNodes() ([]NodeRecord, error)                        { return nil, nil }
+func (NopStore) UpdateNodeURL(_ string, _ string) error                 { return nil }
+func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int, _ *int, _ *string) error {
+	return nil
+}
+func (NopStore) NodeOverrides() (map[string]NodeOverride, error)     { return nil, nil }
+func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error       { return nil }
+func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error) { return nil, nil }
+func (NopStore) UpsertNodeAgent(_ NodeAgentRecord) error             { return nil }
 func (NopStore) GetNodeAgent(_ string) (NodeAgentRecord, bool, error) {
 	return NodeAgentRecord{}, false, nil
 }

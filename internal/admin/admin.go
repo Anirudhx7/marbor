@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"database/sql"
 	"embed"
 	"encoding/base64"
@@ -16,6 +17,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -199,6 +201,17 @@ type Server struct {
 	restoreCh      chan<- string             // nil until SetRestoreChannel is called (main.go only, in a real run)
 	enrollMu       sync.Mutex                // guards enrollCodes
 	enrollCodes    map[string]enrollmentCode // one-time code -> record; ephemeral, never persisted (P50)
+	// nodePatchMu serializes handlePatchNode's entire validate-then-mutate
+	// transaction (validateTLSPatch through the final PatchNode/
+	// UpdateNodeURL call). Without it, two concurrent PATCH requests to
+	// DIFFERENT node names can each read a pre-mutation node-list snapshot,
+	// both pass validateTLSPatch's sibling-consistency check against that
+	// stale snapshot, and then both mutate - jointly producing two nodes on
+	// one Host with different pinned TLS fingerprints, the exact state P24
+	// section 15 exists to prevent. This does not touch mu (r.router's own
+	// node-list lock already protects individual reads/writes; this mutex
+	// only prevents two full PATCH transactions from interleaving).
+	nodePatchMu sync.Mutex
 }
 
 // enrollmentCode is a short-lived, single-use credential exchanged by a Node
@@ -290,14 +303,15 @@ func (s *Server) LoadFromStore() error {
 		logs := make([]RequestLog, 0, len(recs))
 		for _, rec := range recs {
 			logs = append(logs, RequestLog{
-				ID:      rec.ID,
-				ApiKey:  rec.KeyName,
-				Model:   rec.Model,
-				Node:    rec.NodeName,
-				Status:  strconv.Itoa(rec.StatusCode),
-				Latency: int(rec.LatencyMs),
-				Tokens:  rec.TokensUsed,
-				Time:    rec.TS,
+				ID:         rec.ID,
+				ApiKey:     rec.KeyName,
+				Model:      rec.Model,
+				Node:       rec.NodeName,
+				Status:     strconv.Itoa(rec.StatusCode),
+				HTTPStatus: rec.StatusCode,
+				Latency:    int(rec.LatencyMs),
+				Tokens:     rec.TokensUsed,
+				Time:       rec.TS,
 			})
 		}
 		s.mu.Lock()
@@ -413,30 +427,64 @@ type RequestLog struct {
 	Model        string    `json:"model"`
 	Node         string    `json:"routedTo"`
 	Status       string    `json:"status"`
+	HTTPStatus   int       `json:"httpStatus"`
 	Latency      int       `json:"latency"`
 	Tokens       int64     `json:"tokens"`
 	TokensPerSec float64   `json:"tokensPerSec"`
 	Time         time.Time `json:"time"`
+	// RoutingReason is the P41 top-level explanation (session_affinity |
+	// pinned_warm | score_based); empty for cloud-fallback requests, which
+	// have no router.RoutingDecision. RoutingDetail is the JSON-encoded
+	// router.RoutingDecision, kept off the /admin/requests list response
+	// (only RoutingReason is serialized there) and used internally by the
+	// /admin/v1/requests/{id}/explain handler for recent (in-memory-ring)
+	// requests without a round-trip to SQLite.
+	RoutingReason string `json:"routingReason,omitempty"`
+	RoutingDetail string `json:"-"`
 }
 
 type nodeResp struct {
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Host            string             `json:"host"`
-	Port            int                `json:"port"`
-	GPUModel        string             `json:"gpuModel"`
-	VRAMTotalMB     int64              `json:"vramTotalMB"`
-	VRAMUsedMB      int64              `json:"vramUsedMB"`
-	VRAMSource      string             `json:"vramSource"`
-	PowerDrawW      float64            `json:"powerDrawW"`
-	Temperature     *float64           `json:"temperature"`
-	Runtime         string             `json:"runtime"`
-	Health          string             `json:"health"`
-	Draining        bool               `json:"draining"`
-	DrainedReason   string             `json:"drainedReason,omitempty"`
-	PrewarmDisabled bool               `json:"prewarmDisabled"`
-	Uptime          string             `json:"uptime"`
-	LoadedModels    []router.ModelInfo `json:"loadedModels"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	// Scheme is this node's URL scheme ("http" or "https") - the UI needs
+	// this to know whether TLS pinning is even applicable, and to correctly
+	// pre-populate a scheme toggle when editing (P24; not present before
+	// this - Host/Port alone don't carry it).
+	Scheme   string `json:"scheme"`
+	GPUModel string `json:"gpuModel"`
+	// GPUIndices is the operator-declared set of physical GPU indices this
+	// node/runtime instance actually uses (P75 Gap B/C) - empty/omitted means
+	// nothing declared, unchanged host-level sizing. See NodeState.DeclaredGPUIndices.
+	GPUIndices []int `json:"gpuIndices,omitempty"`
+	// MaxInFlight is this node's declared per-node in-flight cap override
+	// (P64) - 0 means no override is declared (the global
+	// routing.max_in_flight_per_node default applies instead).
+	MaxInFlight int `json:"maxInFlight,omitempty"`
+	// TLSFingerprint is this node's TOFU-pinned Node Agent cert fingerprint
+	// (P24) - empty/omitted means no pin (plaintext or not yet TLS-enrolled).
+	// See .local/specs/node-agent-tls.md.
+	TLSFingerprint string `json:"tlsFingerprint,omitempty"`
+	// TLSFingerprintMismatch is true when the most recent agent poll failed
+	// specifically because the presented certificate didn't match the
+	// pinned fingerprint (P24 section 6) - distinct from generic
+	// unreachability, so the UI can show its own status instead of
+	// "unreachable" (which would send an operator debugging network
+	// connectivity when the real cause is a stale pin).
+	TLSFingerprintMismatch bool               `json:"tlsFingerprintMismatch,omitempty"`
+	VRAMTotalMB            int64              `json:"vramTotalMB"`
+	VRAMUsedMB             int64              `json:"vramUsedMB"`
+	VRAMSource             string             `json:"vramSource"`
+	PowerDrawW             float64            `json:"powerDrawW"`
+	Temperature            *float64           `json:"temperature"`
+	Runtime                string             `json:"runtime"`
+	Health                 string             `json:"health"`
+	Draining               bool               `json:"draining"`
+	DrainedReason          string             `json:"drainedReason,omitempty"`
+	PrewarmDisabled        bool               `json:"prewarmDisabled"`
+	Uptime                 string             `json:"uptime"`
+	LoadedModels           []router.ModelInfo `json:"loadedModels"`
 	// WarmupErrors is the last warmup-ping failure per model (model -> error
 	// string) - populated only for models that failed to warm; a model that
 	// warmed successfully or was never attempted has no entry. Lets the UI
@@ -1037,6 +1085,7 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/requests", s.cors(s.adminAuth(s.handleRequests)))
 	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
+	reg("GET /admin/requests/{id}/explain", s.cors(s.adminAuth(s.handleExplainRequest)))
 	reg("GET /admin/metrics/summary", s.cors(s.adminAuth(s.handleSummary)))
 	reg("GET /admin/metrics/savings", s.cors(s.adminAuth(s.handleSavings)))
 	reg("GET /admin/cloud/providers", s.cors(s.adminAuth(s.handleCloudProviders)))
@@ -1055,6 +1104,10 @@ func (s *Server) Handler() http.Handler {
 	// DELETE /v1/models/{name...} route (server.go).
 	reg("DELETE /admin/nodes/{name}/models/{model...}", s.cors(s.adminAuth(s.handleNodeDeleteModel)))
 	reg("GET /admin/nodes/{name}/health-check", s.cors(s.adminAuth(s.handleNodeHealthCheck)))
+	// P24: TLS enrollment probe - fetches the node's presented cert
+	// fingerprint for operator confirmation, never pins it. See
+	// .local/specs/node-agent-tls.md section 2.
+	reg("POST /admin/nodes/{name}/tls-probe", s.cors(s.adminAuth(s.handleNodeTLSProbe)))
 	reg("GET /admin/nodes/{name}/pull/progress", s.cors(s.adminAuth(s.handlePullProgress)))
 	reg("GET /admin/pulls", s.cors(s.adminAuth(s.handleListActivePulls)))
 	reg("DELETE /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleCancelPull)))
@@ -1289,9 +1342,13 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 	host := ""
 	port := 0
+	scheme := "http"
 	if u, err := url.Parse(n.URL); err == nil {
 		host = u.Hostname()
 		port, _ = strconv.Atoi(u.Port())
+		if u.Scheme != "" {
+			scheme = u.Scheme
+		}
 	}
 	health := "healthy"
 	if !n.Healthy {
@@ -1314,52 +1371,57 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 	}
 
 	return nodeResp{
-		ID:                id,
-		Name:              n.Name,
-		Host:              host,
-		Port:              port,
-		GPUModel:          n.GPUModel,
-		VRAMTotalMB:       n.VRAMTotalMB,
-		VRAMUsedMB:        n.VRAMUsedMB,
-		VRAMSource:        n.VRAMSource,
-		PowerDrawW:        n.PowerDrawW,
-		Temperature:       n.Temperature,
-		Runtime:           n.Runtime,
-		Health:            health,
-		Draining:          n.Draining,
-		DrainedReason:     n.DrainedReason,
-		PrewarmDisabled:   n.PrewarmDisabled,
-		Uptime:            n.Uptime,
-		LoadedModels:      safeModelInfoSlice(n.LoadedModels),
-		WarmupErrors:      safeStringMap(n.WarmupErrors),
-		UnloadErrors:      safeStringMap(n.UnloadErrors),
-		WarmupState:       warmupState,
-		ActiveConns:       atomic.LoadInt32(&n.ActiveConns),
-		HealthHistory:     hist,
-		PendingPrewarmMB:  s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
-		AgentPresent:      n.AgentPresent,
-		AgentVersion:      n.AgentVersion,
-		FanPercent:        n.FanPercent,
-		CPUPercent:        n.CPUPercent,
-		RAMUsedMB:         n.RAMUsedMB,
-		DiskFreeGB:        n.DiskFreeGB,
-		AgentCapabilities: n.AgentCapabilities,
-		AgentPlatform:     n.AgentPlatform,
-		AgentArchitecture: n.AgentArchitecture,
-		AgentGPUVendor:    n.AgentGPUVendor,
-		AgentRuntime:      n.AgentRuntime,
-		AgentNodeID:       n.AgentNodeID,
-		AgentGPUCount:     n.AgentGPUCount,
-		AgentGPUs:         toAgentGPUDevices(n.AgentGPUs),
-		DriverVersion:     n.DriverVersion,
-		CUDAVersion:       n.CUDAVersion,
-		RAMTotalMB:        n.RAMTotalMB,
-		DiskTotalGB:       n.DiskTotalGB,
-		Hostname:          n.Hostname,
-		UptimeSeconds:     n.UptimeSeconds,
-		BootTime:          n.BootTime,
-		RuntimeVersion:    n.RuntimeVersion,
-		RuntimeStatus:     n.RuntimeStatus,
+		ID:                     id,
+		Name:                   n.Name,
+		Host:                   host,
+		Port:                   port,
+		Scheme:                 scheme,
+		GPUModel:               n.GPUModel,
+		GPUIndices:             n.DeclaredGPUIndices,
+		MaxInFlight:            n.MaxInFlight,
+		TLSFingerprint:         n.TLSFingerprint,
+		TLSFingerprintMismatch: n.AgentTLSMismatch,
+		VRAMTotalMB:            n.VRAMTotalMB,
+		VRAMUsedMB:             n.VRAMUsedMB,
+		VRAMSource:             n.VRAMSource,
+		PowerDrawW:             n.PowerDrawW,
+		Temperature:            n.Temperature,
+		Runtime:                n.Runtime,
+		Health:                 health,
+		Draining:               n.Draining,
+		DrainedReason:          n.DrainedReason,
+		PrewarmDisabled:        n.PrewarmDisabled,
+		Uptime:                 n.Uptime,
+		LoadedModels:           safeModelInfoSlice(n.LoadedModels),
+		WarmupErrors:           safeStringMap(n.WarmupErrors),
+		UnloadErrors:           safeStringMap(n.UnloadErrors),
+		WarmupState:            warmupState,
+		ActiveConns:            atomic.LoadInt32(&n.ActiveConns),
+		HealthHistory:          hist,
+		PendingPrewarmMB:       s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+		AgentPresent:           n.AgentPresent,
+		AgentVersion:           n.AgentVersion,
+		FanPercent:             n.FanPercent,
+		CPUPercent:             n.CPUPercent,
+		RAMUsedMB:              n.RAMUsedMB,
+		DiskFreeGB:             n.DiskFreeGB,
+		AgentCapabilities:      n.AgentCapabilities,
+		AgentPlatform:          n.AgentPlatform,
+		AgentArchitecture:      n.AgentArchitecture,
+		AgentGPUVendor:         n.AgentGPUVendor,
+		AgentRuntime:           n.AgentRuntime,
+		AgentNodeID:            n.AgentNodeID,
+		AgentGPUCount:          n.AgentGPUCount,
+		AgentGPUs:              toAgentGPUDevices(n.AgentGPUs),
+		DriverVersion:          n.DriverVersion,
+		CUDAVersion:            n.CUDAVersion,
+		RAMTotalMB:             n.RAMTotalMB,
+		DiskTotalGB:            n.DiskTotalGB,
+		Hostname:               n.Hostname,
+		UptimeSeconds:          n.UptimeSeconds,
+		BootTime:               n.BootTime,
+		RuntimeVersion:         n.RuntimeVersion,
+		RuntimeStatus:          n.RuntimeStatus,
 	}
 }
 
@@ -1569,15 +1631,16 @@ func (s *Server) handleLiveRequests(w http.ResponseWriter, r *http.Request) {
 // handleRequests returns the request log in RequestEntry format for the dashboard.
 func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 	type entry struct {
-		ID        string    `json:"id"`
-		Time      time.Time `json:"time"`
-		KeyName   string    `json:"key_name"`
-		SourceIP  string    `json:"source_ip"`
-		Model     string    `json:"model"`
-		Node      string    `json:"node"`
-		Status    int       `json:"status"`
-		LatencyMs int       `json:"latency_ms"`
-		Cloud     bool      `json:"cloud"`
+		ID            string    `json:"id"`
+		Time          time.Time `json:"time"`
+		KeyName       string    `json:"key_name"`
+		SourceIP      string    `json:"source_ip"`
+		Model         string    `json:"model"`
+		Node          string    `json:"node"`
+		Status        int       `json:"status"`
+		LatencyMs     int       `json:"latency_ms"`
+		Cloud         bool      `json:"cloud"`
+		RoutingReason string    `json:"routingReason,omitempty"`
 	}
 	s.mu.RLock()
 	reqs := make([]RequestLog, len(s.requests))
@@ -1586,24 +1649,23 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]entry, len(reqs))
 	for i, req := range reqs {
-		statusCode := 200
-		if req.Status != "" {
-			if code, err := strconv.Atoi(req.Status); err == nil {
-				statusCode = code
-			}
-		}
+		// req.HTTPStatus is the real numeric HTTP status the client received
+		// (see LogRequest) - req.Status is a separate semantic label ("warm",
+		// "loading", "error", "aborted", "cloud") used for cold/warm tracking
+		// and the /admin/requests/live badge, not a status code.
 		// Cloud nodes are stored as "cloud:<name>" (e.g. "cloud:openai").
 		isCloud := strings.HasPrefix(req.Node, "cloud:")
 		out[i] = entry{
-			ID:        req.ID,
-			Time:      req.Time,
-			KeyName:   req.ApiKey,
-			SourceIP:  req.SourceIP,
-			Model:     req.Model,
-			Node:      req.Node,
-			Status:    statusCode,
-			LatencyMs: req.Latency,
-			Cloud:     isCloud,
+			ID:            req.ID,
+			Time:          req.Time,
+			KeyName:       req.ApiKey,
+			SourceIP:      req.SourceIP,
+			Model:         req.Model,
+			Node:          req.Node,
+			Status:        req.HTTPStatus,
+			LatencyMs:     req.Latency,
+			Cloud:         isCloud,
+			RoutingReason: req.RoutingReason,
 		}
 	}
 	// Reverse so newest entries come first.
@@ -1612,6 +1674,52 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
+}
+
+// GET /admin/requests/{id}/explain (also /admin/v1/requests/{id}/explain) -
+// P41 per-request routing explainability. Returns the full router.RoutingDecision
+// for one request, checking the bounded in-memory ring first (has the fuller
+// RoutingDetail with no SQLite round-trip) and falling back to the SQLite
+// request_log table for requests that have aged out of the ring but are
+// still within its 1000-row retention window. 404 if the id is unknown to
+// both, including requests that predate this feature (no decision stored).
+func (s *Server) handleExplainRequest(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSONError(w, http.StatusBadRequest, "request id required")
+		return
+	}
+
+	var detailJSON string
+	s.mu.RLock()
+	for _, req := range s.requests {
+		if req.ID == id {
+			detailJSON = req.RoutingDetail
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if detailJSON == "" {
+		if rec, ok, err := s.st.GetRequest(id); err == nil && ok {
+			detailJSON = rec.RoutingDetail
+		}
+	}
+
+	if detailJSON == "" {
+		writeJSONError(w, http.StatusNotFound, "no routing decision recorded for this request id")
+		return
+	}
+
+	var decision router.RoutingDecision
+	if err := json.Unmarshal([]byte(detailJSON), &decision); err != nil {
+		log.Printf("admin: handleExplainRequest: unmarshal stored decision for %s: %v", id, err)
+		writeJSONError(w, http.StatusInternalServerError, "stored routing decision is corrupt")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(decision)
 }
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
@@ -1954,13 +2062,19 @@ func requestBaseURL(r *http.Request) string {
 
 // generateNodeAgentToken returns a 32-random-byte, base64url-encoded opaque
 // token (per .local/specs/node-agent.md section 5 - a distinct protocol
-// from the client-facing API-key mechanism, not a reuse of it).
-func generateNodeAgentToken() (string, error) {
+// from the client-facing API-key mechanism, not a reuse of it), prefixed
+// with "<scope>." (P54: per-action token scoping -
+// .local/specs/node-agent-capabilities.md section 7). The agent has no DB
+// access, only the bare token string it's configured with, so the scope
+// travels embedded in the token itself and is parsed agent-side by
+// nodeagent.scopeOf/TokenScope. scope must be one of nodeagent.ScopeReadonly/
+// ScopeOperator/ScopeAdmin.
+func generateNodeAgentToken(scope string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+	return scope + "." + base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 // generateEnrollmentCode returns a short, URL-safe, single-use code used to
@@ -2004,7 +2118,7 @@ func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"node": name, "enabled": rec.Enabled, "port": rec.Port,
+		"node": name, "enabled": rec.Enabled, "port": rec.Port, "scope": rec.Scope,
 	})
 }
 
@@ -2032,7 +2146,7 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "port must be between 1 and 65535")
 		return
 	}
-	token, err := generateNodeAgentToken()
+	token, err := generateNodeAgentToken(nodeagent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
@@ -2042,7 +2156,7 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	// polled by the same single agent process (see SetNodeAgent's doc
 	// comment). Enabling from any one node's UI panel enables it for all of
 	// them.
-	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token}
+	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: nodeagent.ScopeAdmin}
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
@@ -2109,12 +2223,13 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node agent not enabled for %q", name))
 		return
 	}
-	token, err := generateNodeAgentToken()
+	token, err := generateNodeAgentToken(nodeagent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 	rec.Token = token
+	rec.Scope = nodeagent.ScopeAdmin
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
@@ -2346,8 +2461,7 @@ func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agen
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: nodeRuntimeActionTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(nodeRuntimeActionTimeout).Do(req)
 	if err != nil {
 		return fmt.Errorf("agent runtime %s failed: %w", action, err)
 	}
@@ -2465,8 +2579,7 @@ func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentC
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: nodeRuntimeActionTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(nodeRuntimeActionTimeout).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("agent runtime logs failed: %w", err)
 	}
@@ -3267,29 +3380,189 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", *patch.Runtime))
 		return
 	}
-	if patch.URL != nil {
-		if err := s.router.UpdateNodeURL(name, *patch.URL); err != nil {
-			status := http.StatusConflict
-			if strings.Contains(err.Error(), "not found") {
-				status = http.StatusNotFound
-			} else if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "must be http") || strings.Contains(err.Error(), "link-local") {
-				status = http.StatusBadRequest
+	// This path bypasses config.Validate(), so the same range check applied
+	// there to routing.max_in_flight_per_node/node config at boot must be
+	// repeated here: negative silently reads as "uncapped" via
+	// isUnderCapacity's own <=0 fallback (opposite of an operator's intent to
+	// restrict a node), and a value above math.MaxInt32 wraps negative when
+	// cast to int32 for the ActiveConns comparison, silently making the node
+	// permanently unroutable.
+	if patch.MaxInFlight != nil && (*patch.MaxInFlight < 0 || *patch.MaxInFlight > math.MaxInt32) {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("max_in_flight must be between 0 (use the global default) and %d", math.MaxInt32))
+		return
+	}
+	if patch.TLSFingerprint != nil && *patch.TLSFingerprint != "" && !isValidTLSFingerprint(*patch.TLSFingerprint) {
+		writeJSONError(w, http.StatusBadRequest, "tls_fingerprint must be empty (to clear the pin) or in the form SHA256:<64 hex characters>")
+		return
+	}
+	// The entire validate-then-mutate transaction below runs under
+	// nodePatchMu: two concurrent PATCH requests to DIFFERENT node names can
+	// otherwise each read a pre-mutation node-list snapshot inside
+	// validateTLSPatch, both pass its sibling-consistency check against that
+	// now-stale snapshot, and then both mutate - jointly producing two nodes
+	// on one Host with different pinned TLS fingerprints (P24 section 15's
+	// invariant, reopened via a race instead of a single request). Holding
+	// one mutex across validation and every mutation this handler performs
+	// (UpdateNodeURL, PatchNode, and their store-persistence calls) makes
+	// the whole transaction atomic with respect to other PATCH requests,
+	// without changing any of the per-error status/message logic below.
+	locked := func() bool {
+		s.nodePatchMu.Lock()
+		defer s.nodePatchMu.Unlock()
+
+		// P24: no-downgrade and section 15 sibling-consistency checks. Must run
+		// before any mutation below (UpdateNodeURL/PatchNode) so a rejected
+		// patch never partially applies. See .local/specs/node-agent-tls.md
+		// sections 5/7/15.
+		if patch.TLSFingerprint != nil || patch.URL != nil {
+			if err := s.validateTLSPatch(name, patch); err != nil {
+				status := http.StatusConflict
+				if strings.Contains(err.Error(), "not found") {
+					status = http.StatusNotFound
+				}
+				writeJSONError(w, status, err.Error())
+				return false
 			}
-			writeJSONError(w, status, err.Error())
-			return
 		}
-		_ = s.st.UpdateNodeURL(name, *patch.URL)
-	}
-	if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil {
-		if !s.router.PatchNode(name, patch) {
-			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
-			return
+		if patch.URL != nil {
+			if err := s.router.UpdateNodeURL(name, *patch.URL); err != nil {
+				status := http.StatusConflict
+				if strings.Contains(err.Error(), "not found") {
+					status = http.StatusNotFound
+				} else if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "must be http") || strings.Contains(err.Error(), "link-local") {
+					status = http.StatusBadRequest
+				}
+				writeJSONError(w, status, err.Error())
+				return false
+			}
+			_ = s.st.UpdateNodeURL(name, *patch.URL)
 		}
-		_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime)
+		if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil || patch.TLSFingerprint != nil {
+			if !s.router.PatchNode(name, patch) {
+				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+				return false
+			}
+			_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint)
+		}
+		return true
+	}()
+	if !locked {
+		return
 	}
-	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil))
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v, MaxInFlightChanged: %v, TLSFingerprintChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil, patch.MaxInFlight != nil, patch.TLSFingerprint != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
+}
+
+// isValidTLSFingerprint reports whether s is a well-formed pinned Node
+// Agent cert fingerprint: "SHA256:" followed by exactly 64 hex characters
+// (a SHA-256 digest), matching router.CertFingerprintSHA256's exact output
+// format (no byte-separator colons). Callers must check for the "clear the
+// pin" empty-string case separately - this only validates a non-empty value.
+func isValidTLSFingerprint(s string) bool {
+	const prefix = "SHA256:"
+	if !strings.HasPrefix(s, prefix) {
+		return false
+	}
+	hexPart := s[len(prefix):]
+	if len(hexPart) != 64 {
+		return false
+	}
+	for _, c := range hexPart {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// validateTLSPatch enforces P24's no-downgrade rule (section 7) and section
+// 15's multi-GPU-per-host sibling-consistency invariant, computed against
+// the RESULTING state a patch would produce (current node state merged with
+// whichever of URL/TLSFingerprint this patch actually sets), before any
+// mutation happens. Returns an error whose message contains "not found" if
+// name does not exist (handlePatchNode maps that to 404, matching every
+// other not-found path in this handler).
+func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
+	nodes := s.router.Nodes()
+	var target *router.NodeState
+	for _, n := range nodes {
+		if n.Name == name {
+			target = n
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("node %q not found", name)
+	}
+
+	target.RLock()
+	currentURL := target.URL
+	currentFP := target.TLSFingerprint
+	host := target.Host
+	target.RUnlock()
+
+	resultingURL := currentURL
+	if patch.URL != nil {
+		resultingURL = *patch.URL
+	}
+	resultingScheme := ""
+	if u, err := url.Parse(resultingURL); err == nil {
+		resultingScheme = u.Scheme
+	}
+	resultingFP := currentFP
+	if patch.TLSFingerprint != nil {
+		resultingFP = *patch.TLSFingerprint
+	}
+
+	// No-downgrade (section 7): once a fingerprint is pinned, the mesh must
+	// never end up treating that node as plaintext without an explicit
+	// clear (tls_fingerprint: null/"") in the very same request that also
+	// changes the URL.
+	if resultingFP != "" && resultingScheme != "https" {
+		return fmt.Errorf("node %q would have a pinned TLS fingerprint but a non-https:// URL - clear the pin (tls_fingerprint: null) before switching to a non-https:// URL, or keep the URL https://", name)
+	}
+
+	// Section 15: multi-GPU-per-host sibling consistency. Every NodeState
+	// sharing this node's Host talks to the exact same physical Node Agent
+	// process/certificate, so they may only ever agree on one pinned
+	// fingerprint (or none) - never disagree. Identical pins across siblings
+	// are fine and expected; this rejects only a genuine conflict. Storage
+	// stays per-node-name exactly as the frozen spec's sections 3/4
+	// specify - this check does not redesign it to host-level storage, it
+	// only prevents siblings from drifting apart.
+	//
+	// Gated on resultingFP/resultingHost (the state this patch would
+	// actually produce), not on the raw patch fields: a URL-only PATCH
+	// (patch.TLSFingerprint == nil) carries the node's EXISTING pin into
+	// whatever new host the URL points at, via UpdateNodeURL's
+	// TLSFingerprint carry-through - that resulting pin can conflict with a
+	// sibling on the destination host exactly as much as an explicit
+	// tls_fingerprint patch can, so it must be checked the same way. Gating
+	// on patch.TLSFingerprint alone (this function's original condition)
+	// missed that case entirely: a pinned node moved by URL alone onto a
+	// host with a different pinned sibling would pass validation, write the
+	// conflicting pair to storage, and only be caught afterward by
+	// dialTLSContext's ambiguity check (tls_dial.go) - which fails closed,
+	// but for BOTH siblings, since it cannot tell which pin is correct. This
+	// check exists to reject that mutation before it is ever persisted.
+	if resultingFP != "" {
+		resultingHost := router.ResultingHost(host, currentURL, resultingURL)
+		for _, n := range nodes {
+			if n.Name == name {
+				continue
+			}
+			n.RLock()
+			sameHost := n.Host == resultingHost
+			siblingFP := n.TLSFingerprint
+			n.RUnlock()
+			if sameHost && siblingFP != "" && siblingFP != resultingFP {
+				return fmt.Errorf("node %q would share Node Agent host %q with node %q, which is already pinned to a different fingerprint - every node sharing one physical Node Agent must share the same pin (see .local/specs/node-agent-tls.md section 15)", name, resultingHost, n.Name)
+			}
+		}
+	}
+
+	return nil
 }
 
 // handleGetModelConfig returns the configured default parameter profile for
@@ -4746,6 +5019,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"routing_health_failure_threshold":              strconv.Itoa(incoming.Routing.HealthFailureThreshold),
 		"routing_health_success_threshold":              strconv.Itoa(incoming.Routing.HealthSuccessThreshold),
 		"routing_overflow_sla_ms":                       strconv.Itoa(incoming.Routing.OverflowSLAMs),
+		"routing_max_in_flight_per_node":                strconv.Itoa(incoming.Routing.MaxInFlightPerNode),
 		"routing_thermal_watchdog_enabled":              strconv.FormatBool(incoming.Routing.ThermalWatchdog.Enabled),
 		"routing_thermal_watchdog_max_temp_celsius":     strconv.FormatFloat(incoming.Routing.ThermalWatchdog.MaxTempCelsius, 'f', -1, 64),
 		"routing_thermal_watchdog_consecutive_breaches": strconv.Itoa(incoming.Routing.ThermalWatchdog.ConsecutiveBreaches),
@@ -4848,7 +5122,25 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 	}
 }
 
-func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latencyMs int, tokens int64) {
+// LogRequest records a completed request. status is a semantic label
+// ("warm", "loading", "error", "aborted", "cloud") used for cold/warm
+// tracking and the live-requests dashboard badge - it is never parsed as a
+// number. httpStatus is the real numeric HTTP status the client received
+// (from statusRecorder.StatusCode() in proxy.go) and is what gets persisted
+// to the SQLite request_log and served from /admin/requests.
+//
+// requestID is the trace ID proxy.go already generates once per request
+// (the same one used for X-Request-ID and audit.Entry.RequestID) - it
+// becomes request_log.id, replacing a previously independently-minted id.
+// This has no external format coupling (verified during P41's
+// verify-before-build pass) and lets request_log rows be correlated with
+// audit_log/access-log entries for the same request, which the two
+// separately-minted ID spaces could not before.
+//
+// decision is the P41 routing explanation from the router for this
+// request's chosen node; nil for cloud-fallback requests, which have no
+// router.RoutingDecision.
+func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, decision *router.RoutingDecision) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -4858,25 +5150,41 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		s.auth.AddKeyTokens(apiKey, tokens)
 	}
 	now := time.Now()
-	b := make([]byte, 4)
-	var id string
-	if _, err := rand.Read(b); err == nil {
-		id = "req-" + hex.EncodeToString(b)
-	} else {
-		id = fmt.Sprintf("req-%x", now.UnixNano())
+	id := requestID
+	if id == "" {
+		// Defensive fallback for any caller that doesn't have a trace ID
+		// (e.g. a direct test call) - never persist an empty primary key.
+		b := make([]byte, 4)
+		if _, err := rand.Read(b); err == nil {
+			id = "req-" + hex.EncodeToString(b)
+		} else {
+			id = fmt.Sprintf("req-%x", now.UnixNano())
+		}
+	}
+	var routingReason, routingDetail string
+	if decision != nil {
+		routingReason = decision.Reason
+		if detailJSON, err := json.Marshal(decision); err == nil {
+			routingDetail = string(detailJSON)
+		} else {
+			log.Printf("admin: LogRequest: marshal routing decision for %s: %v", id, err)
+		}
 	}
 	s.mu.Lock()
 	s.requests = append(s.requests, RequestLog{
-		ID:           id,
-		ApiKey:       apiKey,
-		SourceIP:     sourceIP,
-		Model:        model,
-		Node:         node,
-		Status:       status,
-		Latency:      latencyMs,
-		Tokens:       tokens,
-		TokensPerSec: tps,
-		Time:         now,
+		ID:            id,
+		ApiKey:        apiKey,
+		SourceIP:      sourceIP,
+		Model:         model,
+		Node:          node,
+		Status:        status,
+		HTTPStatus:    httpStatus,
+		Latency:       latencyMs,
+		Tokens:        tokens,
+		TokensPerSec:  tps,
+		Time:          now,
+		RoutingReason: routingReason,
+		RoutingDetail: routingDetail,
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
@@ -4913,24 +5221,18 @@ func (s *Server) LogRequest(apiKey, sourceIP, model, node, status string, latenc
 		}
 	}
 
-	// Parse status code for the store record.
-	statusCode := 200
-	if status != "" && status != "200" {
-		if code, err := strconv.Atoi(status); err == nil {
-			statusCode = code
-		}
-	}
-
 	select {
 	case s.logChan <- store.RequestRecord{
-		ID:         id,
-		KeyName:    apiKey,
-		Model:      model,
-		NodeName:   node,
-		StatusCode: statusCode,
-		LatencyMs:  int64(latencyMs),
-		TokensUsed: tokens,
-		TS:         now,
+		ID:            id,
+		KeyName:       apiKey,
+		Model:         model,
+		NodeName:      node,
+		StatusCode:    httpStatus,
+		LatencyMs:     int64(latencyMs),
+		TokensUsed:    tokens,
+		TS:            now,
+		RoutingReason: routingReason,
+		RoutingDetail: routingDetail,
 	}:
 	default:
 		// Prevent blocking the proxy path if SQLite writes are completely backed up.
@@ -5793,40 +6095,51 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// fit (soft confirm, see P47), a disk overrun is a guaranteed failure
 	// (partial download, or worst case fills the node's disk and disrupts
 	// the OS/other running models), so there is no confirm-anyway override.
-	// Only covers models resolvable to a known size today (the curated
-	// catalog) - an unresolvable tag (arbitrary Ollama registry name, HF
-	// tag) skips the check entirely rather than guessing a size (R1); this
-	// is a known v1 scope limit, not silent - see P48 in EXECUTION-QUEUE.md.
-	if sizeMB, known := findCatalogVariantSizeMB(body.Model); known {
-		diskFreeGB, diskTotalGB, agentPresent := nodeDiskState(nodes, nodeName)
-		// For a Docker-controlled node, the host-level reading above can be
-		// wrong: Ollama's actual model storage may live on a separate,
-		// differently-sized container volume/mount, while this agent-reported
-		// figure only ever reflects the *host's* root filesystem. When an
-		// agent capable of reporting the container's own real disk stats is
-		// available, prefer that fresh, on-demand reading over the periodic
-		// (and for this case, potentially misleading) telemetry snapshot for
-		// this one safety-critical decision - this is exactly the gap that
-		// let a disk-full pull fail deep into a multi-GB transfer instead of
-		// being caught before it started.
-		if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
-			if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled && nodeHasAgentCapability(nodes, nodeName, "runtime.disk") {
-				if freeB, totalB, err := s.containerDiskStatsViaAgent(r.Context(), nodeURL, agentCfg, ctrl); err == nil && totalB > 0 {
-					diskFreeGB = float64(freeB) / (1024 * 1024 * 1024)
-					diskTotalGB = float64(totalB) / (1024 * 1024 * 1024)
-					agentPresent = true
-				}
-				// On error, silently keep the host-level reading already
-				// computed above - this extra safety check failing to run
-				// must never itself become a reason to block a pull outright.
+	// Disk state is fetched once and reused by whichever classification
+	// below applies (P73: previously this fetch, and the entire gate, lived
+	// only inside the known-size branch below, so any tag outside the
+	// curated catalog skipped the check entirely rather than falling back to
+	// a policy floor - see EXECUTION-QUEUE.md P73).
+	diskFreeGB, diskTotalGB, agentPresent := nodeDiskState(nodes, nodeName)
+	// For a Docker-controlled node, the host-level reading above can be
+	// wrong: Ollama's actual model storage may live on a separate,
+	// differently-sized container volume/mount, while this agent-reported
+	// figure only ever reflects the *host's* root filesystem. When an
+	// agent capable of reporting the container's own real disk stats is
+	// available, prefer that fresh, on-demand reading over the periodic
+	// (and for this case, potentially misleading) telemetry snapshot for
+	// this one safety-critical decision - this is exactly the gap that
+	// let a disk-full pull fail deep into a multi-GB transfer instead of
+	// being caught before it started.
+	if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
+		if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled && nodeHasAgentCapability(nodes, nodeName, "runtime.disk") {
+			if freeB, totalB, err := s.containerDiskStatsViaAgent(r.Context(), nodeURL, agentCfg, ctrl); err == nil && totalB > 0 {
+				diskFreeGB = float64(freeB) / (1024 * 1024 * 1024)
+				diskTotalGB = float64(totalB) / (1024 * 1024 * 1024)
+				agentPresent = true
 			}
+			// On error, silently keep the host-level reading already
+			// computed above - this extra safety check failing to run
+			// must never itself become a reason to block a pull outright.
 		}
+	}
+	if sizeMB, known := findCatalogVariantSizeMB(body.Model); known {
 		if classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent) == "insufficient" {
 			writeJSONError(w, http.StatusInsufficientStorage, fmt.Sprintf(
 				"insufficient disk space on node %q: %q needs ~%.1f GB, only %.1f GB free",
 				nodeName, body.Model, float64(sizeMB)/1024, diskFreeGB))
 			return
 		}
+	} else if classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent) == "insufficient" {
+		// body.Model isn't in the curated catalog, so its real download size
+		// is unknown (P73) - classifyDiskFit's size-vs-free-space test cannot
+		// run. Refuse rather than let an unsized download proceed against a
+		// node that is already low on headroom; see classifyUnknownSizeDiskFit's
+		// doc comment for why this is a policy floor and not a guessed size.
+		writeJSONError(w, http.StatusInsufficientStorage, fmt.Sprintf(
+			"refusing to pull %q on node %q: its download size is unknown (not in the curated catalog) and only %.1f GB of %.1f GB disk is free, below the safety margin required for an unsized pull - free up disk space or use a curated catalog model with a known size",
+			body.Model, nodeName, diskFreeGB, diskTotalGB))
+		return
 	}
 
 	s.sweepOldPullJobs()
@@ -6302,8 +6615,7 @@ func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCf
 	}
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: nodeModelsListTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(nodeModelsListTimeout).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("agent list models failed: %w", err)
 	}
@@ -6398,8 +6710,7 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: nodePullTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(nodePullTimeout).Do(req)
 	if err != nil {
 		return fmt.Errorf("agent pull failed: %w", err)
 	}
@@ -6445,8 +6756,7 @@ func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(10 * time.Second).Do(req)
 	if err != nil {
 		return 0, 0, fmt.Errorf("agent disk stats failed: %w", err)
 	}
@@ -6569,8 +6879,7 @@ func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentC
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: nodeDeleteModelTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(nodeDeleteModelTimeout).Do(req)
 	if err != nil {
 		return fmt.Errorf("agent delete model failed: %w", err)
 	}
@@ -6613,6 +6922,81 @@ func escapeModelPathSegments(model string) string {
 // hitting "check now" wants a fast answer, not something that can hang as
 // long as a model transfer.
 var nodeHealthCheckTimeout = 15 * time.Second
+
+// nodeTLSProbeTimeout bounds the one-off TLS-handshake-only probe dial used
+// by handleNodeTLSProbe. Short: this is a single local-network TCP+TLS
+// handshake, not a transfer.
+var nodeTLSProbeTimeout = 10 * time.Second
+
+// handleNodeTLSProbe performs the P24 enrollment probe (spec section 2,
+// step 2-3): dials the node's own configured URL with a TLS-handshake-only
+// connection - no bearer token sent, no certificate validated against any
+// CA or existing pin - and reports the presented leaf certificate's SHA-256
+// fingerprint for the operator to compare against what "agent service
+// status" prints on the node itself. This never pins anything; pinning only
+// happens via a subsequent PATCH /admin/nodes/{name} with tls_fingerprint
+// set to the value the operator confirmed here.
+func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+
+	var nodeURL string
+	found := false
+	for _, n := range s.router.Nodes() {
+		if n.Name == name {
+			n.RLock()
+			nodeURL = n.URL
+			n.RUnlock()
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+
+	u, err := url.Parse(nodeURL)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q's URL is not https:// - set it to https:// before probing for a certificate fingerprint", name))
+		return
+	}
+	port := u.Port()
+	if port == "" {
+		port = "443"
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), nodeTLSProbeTimeout)
+	defer cancel()
+
+	dialer := &net.Dialer{}
+	rawConn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(u.Hostname(), port))
+	if err != nil {
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("could not reach %s: %v", nodeURL, err))
+		return
+	}
+	defer rawConn.Close()
+
+	// InsecureSkipVerify and no VerifyPeerCertificate deliberately: this
+	// probe's entire purpose is TOFU - see whatever cert is presented,
+	// unconditionally, then hand it to the operator for out-of-band
+	// confirmation. It never decides trust itself.
+	tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: u.Hostname()})
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("TLS handshake with %s failed: %v", nodeURL, err))
+		return
+	}
+	defer tlsConn.Close()
+
+	certs := tlsConn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("node %q presented no TLS certificate", name))
+		return
+	}
+
+	fingerprint := router.CertFingerprintSHA256(certs[0].Raw)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"fingerprint": fingerprint})
+}
 
 // nodeHealthCheckResult is this admin API's JSON response for an on-demand
 // health check - relayed verbatim from the agent's own healthCheckResult
@@ -6701,8 +7085,7 @@ func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentC
 	}
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: nodeHealthCheckTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(nodeHealthCheckTimeout).Do(req)
 	if err != nil {
 		return nodeHealthCheckResult{}, fmt.Errorf("agent health check failed: %w", err)
 	}
@@ -6757,8 +7140,7 @@ func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentC
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentCfg.Token)
 
-	client := &http.Client{Timeout: nodeUnloadModelTimeout}
-	resp, err := client.Do(req)
+	resp, err := s.router.HTTPClientForNode(nodeUnloadModelTimeout).Do(req)
 	if err != nil {
 		return fmt.Errorf("agent unload model failed: %w", err)
 	}
@@ -7316,6 +7698,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
 		agentGPUs := append([]nodeagent.GPUInfo(nil), n.AgentGPUs...)
+		declaredGPUIndices := append([]int(nil), n.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
 		agentGPUVendor := n.AgentGPUVendor
@@ -7331,7 +7714,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		var vramTotalBytes int64
 		vramSource := "unknown"
 
-		capacityMB, capacityUsedMB, _, _ := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime)
+		capacityMB, capacityUsedMB, _, _ := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime, declaredGPUIndices)
 		if capacityMB > 0 {
 			vramTotalBytes = capacityMB * 1024 * 1024
 			// Use nvidia-smi total minus what /api/ps says is loaded (or, on

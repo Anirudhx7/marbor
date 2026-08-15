@@ -42,7 +42,17 @@ export interface GPUNode {
   id: string;
   name: string;
   host: string;
+  // URL scheme this node is configured with ("http" or "https") - not
+  // itself a security signal, but needed to know whether TLS pinning even
+  // applies and to correctly pre-populate a scheme toggle when editing (P24).
+  scheme?: 'http' | 'https';
   gpuModel: string;
+  // Operator-declared physical GPU index list this node/runtime instance
+  // actually uses (P75 Gap B/C) - undefined/empty means nothing declared,
+  // unchanged host-level sizing. Two nodes sharing one host's agent
+  // telemetry but each pinned to a different GPU need this so the Model
+  // Advisor doesn't size each against the whole host's combined VRAM.
+  gpuIndices?: number[];
   port: number;
   vramTotalMB: number;
   vramUsedMB: number;
@@ -64,6 +74,19 @@ export interface GPUNode {
   // in-flight requests, only stops routing new ones - this is what lets an
   // operator see when a draining node has actually finished flushing.
   activeConns: number;
+  // Operator-declared per-node in-flight cap override (P64) - 0/undefined
+  // means no override is declared, so the global
+  // routing.max_in_flight_per_node default applies instead.
+  maxInFlight?: number;
+  // TOFU-pinned Node Agent TLS certificate fingerprint (P24) - undefined/
+  // empty means no pin (plaintext or not yet TLS-enrolled). See
+  // .local/specs/node-agent-tls.md.
+  tlsFingerprint?: string;
+  // True when the most recent agent poll failed specifically because the
+  // presented certificate didn't match tlsFingerprint - distinct from
+  // generic unreachability, so the dashboard can show its own status
+  // instead of "unreachable" (spec section 6).
+  tlsFingerprintMismatch?: boolean;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;
@@ -298,6 +321,7 @@ export interface Settings {
   routingHealthFailureThreshold: number;
   routingHealthSuccessThreshold: number;
   routingOverflowSlaMs: number;
+  routingMaxInFlightPerNode: number;
   thermalWatchdogEnabled: boolean;
   thermalWatchdogMaxTempCelsius: number;
   thermalWatchdogConsecutiveBreaches: number;
@@ -431,6 +455,29 @@ export interface RequestEntry {
   status: number;
   latency_ms: number;
   cloud: boolean;
+  // P41 routing explainability. routingReason is the short top-level
+  // explanation, always present when the feature has data for this row;
+  // the full breakdown is fetched lazily via GET
+  // /admin/requests/{id}/explain, not carried on the list entry.
+  routingReason?: string;
+}
+
+export interface ScoreComponent {
+  name: string;
+  raw: number;
+  weight: number;
+  value: number;
+}
+
+// RoutingDecision mirrors router.RoutingDecision (Go) - the P41 explain
+// endpoint's response shape.
+export interface RoutingDecision {
+  node: string;
+  reason: string;
+  detail?: string;
+  affinityLost?: boolean;
+  score?: number;
+  components?: ScoreComponent[];
 }
 
 export interface HourlyBucket {
@@ -536,6 +583,12 @@ export interface CatalogNodeEntry {
   // only, for a runtime that pins a model to one GPU - vLLM, TGI, MLX).
   gpu_count?: number;
   vram_fit_basis?: 'combined' | 'largest';
+  // P75 Gap D: true when this node has no agent-confirmed per-device GPU
+  // reading at all (no agent, or vram_source=="declared" - a manually
+  // entered whole-node total with no per-device breakdown). Distinct from a
+  // confirmed single-GPU reading (gpu_count===1 with this false), which is a
+  // real measurement, not a guess.
+  gpu_count_unknown?: boolean;
 }
 
 export interface ModelCatalogResponse {

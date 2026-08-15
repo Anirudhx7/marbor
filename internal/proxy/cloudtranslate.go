@@ -230,6 +230,14 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 		return io.NopCloser(strings.NewReader(errLine))
 	}
 
+	// Embeddings responses have no choices/streaming shape at all - Ollama's
+	// native /api/embeddings and /api/embed are each a single flat object,
+	// not NDJSON lines. Detect and translate before the chat/generate
+	// choices parsing below.
+	if line, ok := translateEmbeddingResponse(raw, origPath, clientModel); ok {
+		return io.NopCloser(bytes.NewReader(line))
+	}
+
 	var resp struct {
 		Choices []struct {
 			Message struct {
@@ -279,6 +287,9 @@ func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string
 	raw, err := io.ReadAll(src)
 	if err != nil {
 		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
+	}
+	if line, ok := translateEmbeddingResponse(raw, origPath, clientModel); ok {
+		return io.NopCloser(bytes.NewReader(line))
 	}
 	var resp struct {
 		Choices []struct {
@@ -374,4 +385,70 @@ func buildGenerateNDJSON(model, response string, done bool, evalCount, promptEva
 	}
 	b, _ := json.Marshal(line)
 	return b
+}
+
+// openAIEmbeddingResponse matches the OpenAI /v1/embeddings response shape:
+// {"data":[{"embedding":[...],"index":0},...],"usage":{"total_tokens":N}}.
+// No "choices" key - that's what distinguishes it from chat/completions.
+type openAIEmbeddingResponse struct {
+	Data []struct {
+		Embedding []float64 `json:"embedding"`
+		Index     int       `json:"index"`
+	} `json:"data"`
+	Usage struct {
+		TotalTokens int64 `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// ollamaEmbeddingLine is Ollama's native legacy /api/embeddings shape: a
+// single flat object, no "done"/"model" framing. PromptEvalCount is set only
+// when the cloud provider actually reported usage - never fabricated.
+type ollamaEmbeddingLine struct {
+	Embedding       []float64 `json:"embedding"`
+	PromptEvalCount int64     `json:"prompt_eval_count,omitempty"`
+}
+
+// ollamaEmbedLine is Ollama's native plural /api/embed shape: embeddings is
+// an array of arrays even for a single input, matching real Ollama.
+type ollamaEmbedLine struct {
+	Model           string      `json:"model"`
+	Embeddings      [][]float64 `json:"embeddings"`
+	PromptEvalCount int64       `json:"prompt_eval_count,omitempty"`
+}
+
+func buildEmbeddingJSON(embedding []float64, promptEvalCount int64) []byte {
+	b, _ := json.Marshal(ollamaEmbeddingLine{Embedding: embedding, PromptEvalCount: promptEvalCount})
+	return b
+}
+
+func buildEmbedJSON(clientModel string, embeddings [][]float64, promptEvalCount int64) []byte {
+	b, _ := json.Marshal(ollamaEmbedLine{Model: clientModel, Embeddings: embeddings, PromptEvalCount: promptEvalCount})
+	return b
+}
+
+// translateEmbeddingResponse detects an OpenAI embeddings response shape
+// (no "choices" key) for origPath "/api/embeddings" or "/api/embed" and
+// translates it to the matching Ollama-native shape. Returns nil, false if
+// raw doesn't parse as this shape or origPath isn't an embeddings path, so
+// callers fall through to their existing chat/generate parsing unchanged.
+func translateEmbeddingResponse(raw []byte, origPath, clientModel string) ([]byte, bool) {
+	if origPath != "/api/embeddings" && origPath != "/api/embed" {
+		return nil, false
+	}
+	var emb openAIEmbeddingResponse
+	if err := json.Unmarshal(raw, &emb); err != nil || len(emb.Data) == 0 {
+		return nil, false
+	}
+	if origPath == "/api/embeddings" {
+		return buildEmbeddingJSON(emb.Data[0].Embedding, emb.Usage.TotalTokens), true
+	}
+	// /api/embed: place each embedding at its reported Index, not loop
+	// position - correctness must not depend on provider response order.
+	embeddings := make([][]float64, len(emb.Data))
+	for _, d := range emb.Data {
+		if d.Index >= 0 && d.Index < len(embeddings) {
+			embeddings[d.Index] = d.Embedding
+		}
+	}
+	return buildEmbedJSON(clientModel, embeddings, emb.Usage.TotalTokens), true
 }

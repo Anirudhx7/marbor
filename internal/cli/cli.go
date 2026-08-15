@@ -267,6 +267,8 @@ Commands:
   logout                                     remove the saved session
   whoami                                     show the CLI's saved identity (live-verified)
   nodes                                      list nodes known to the mesh
+  nodes confirm-tls <node> --fingerprint=SHA256:...
+                                              pin a Node Agent's TLS certificate fingerprint (P24 headless enrollment)
   models [action] ...                        fleet-wide list, or pull/delete/unload/list on one node
   runtime <action> <node> [flags]            start/stop/restart/logs/drain/undrain/health on one node
   node control probe <node>                  show a node's control-driver status (configured + discovered)
@@ -276,6 +278,7 @@ Commands:
   key set-allow-local-degradation <name> <true|false>
                                               let (or forbid) one API key receive a local alternate model
   spill                                       show per-key, per-provider local-vs-cloud request counts
+  requests explain <request-id>              show why the router picked the node it did for one request
 
 Run "ollama-mesh <command> --help" for the full list of actions and flags for
 that command.
@@ -338,6 +341,29 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		return runWhoami(flags, stdout, stderr)
 	case "nodes":
+		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+			switch rest[0] {
+			case "confirm-tls":
+				fs, flags := newFlagSet("nodes confirm-tls", stderr)
+				fingerprint := fs.String("fingerprint", "", "SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see \"agent service status\" on the node), in the form SHA256:<64 hex characters>")
+				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+				if ok, code := parseFlags(fs, flagArgs, nil, stdout); !ok {
+					return code
+				}
+				if len(positional) != 1 {
+					fmt.Fprintln(stderr, "usage: ollama-mesh nodes confirm-tls <node-name> --fingerprint=SHA256:... [flags]")
+					return ExitUserError
+				}
+				if *fingerprint == "" {
+					fmt.Fprintln(stderr, "error: --fingerprint is required (the value must come from you, not be silently accepted from the wire)")
+					return ExitUserError
+				}
+				return runNodesConfirmTLS(flags, positional[0], *fingerprint, stdout, stderr)
+			default:
+				fmt.Fprintf(stderr, "unknown nodes action %q (want confirm-tls)\n\n", rest[0])
+				return ExitUserError
+			}
+		}
 		fs, flags := newFlagSet("nodes", stderr)
 		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
 			return code
@@ -556,6 +582,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return code
 		}
 		return runSpill(flags, stdout, stderr)
+	case "requests":
+		if len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
+			printRequestsUsage(stdout)
+			return ExitOK
+		}
+		if len(rest) < 1 || rest[0] != "explain" {
+			printRequestsUsage(stderr)
+			return ExitUserError
+		}
+		fs, flags := newFlagSet("requests explain", stderr)
+		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
+		if ok, code := parseFlags(fs, flagArgs, printRequestsUsage, stdout); !ok {
+			return code
+		}
+		if len(positional) != 1 {
+			fmt.Fprintln(stderr, "usage: ollama-mesh requests explain <request-id> [flags]")
+			return ExitUserError
+		}
+		return runRequestsExplain(flags, positional[0], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command %q\n\n", cmd)
 		fmt.Fprint(stderr, usage)

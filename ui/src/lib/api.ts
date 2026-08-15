@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision } from '../types';
 
 const BASE = '/admin';
 
@@ -408,10 +408,10 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
 
 export async function fetchNodes(): Promise<GPUNode[]> {
   if (DEMO) return demoDelay([
-    { id: 'gpu-node-01', name: 'gpu-node-01', host: '10.0.0.11', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 14336, vramSource: 'nvidia', powerDrawW: 280, cpuPercent: 18, temperature: 52, health: 'healthy',  runtime: 'ollama', draining: false, activeConns: 2, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: '12d 6h', loadedModels: [{ name: 'deepseek-r1:8b', sizeVram: 8192 }, { name: 'qwen2.5:7b', sizeVram: 6144 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-02', name: 'gpu-node-02', host: '10.0.0.12', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 0,     vramSource: 'nvidia', powerDrawW: 210, cpuPercent: 4,  temperature: 44, health: 'healthy',  runtime: 'ollama', draining: false, activeConns: 0, prewarmDisabled: false, pendingPrewarmMB: 6144, uptime: '12d 6h', loadedModels: [],                                                                                                    healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-03', name: 'gpu-node-03', host: '10.0.0.13', gpuModel: 'NVIDIA RTX 4090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 9216, vramSource: 'nvidia', powerDrawW: 195, cpuPercent: 22, temperature: 61, health: 'healthy',  runtime: 'ollama', draining: false, activeConns: 1, prewarmDisabled: true,  pendingPrewarmMB: 0,    uptime: '5d 3h',  loadedModels: [{ name: 'qwen2.5-coder:14b', sizeVram: 9216 }],                                                          healthHistory: [1,1,1,1,1,1,0,1,1,1] },
-    { id: 'gpu-node-04', name: 'gpu-node-04', host: '10.0.0.14', gpuModel: 'NVIDIA RTX 3090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 0,   cpuPercent: 0,  temperature: null, health: 'down', runtime: 'ollama', draining: false, activeConns: 0, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: 'N/A',    loadedModels: [],                                                                                                    healthHistory: [1,1,0,0,0,1,0,0,0,0] },
+    { id: 'gpu-node-01', name: 'gpu-node-01', host: '10.0.0.11', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 14336, vramSource: 'nvidia', powerDrawW: 280, cpuPercent: 18, temperature: 52, health: 'healthy',  runtime: 'ollama', draining: false, activeConns: 2, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: '12d 6h', loadedModels: [{ name: 'deepseek-r1:8b', sizeVram: 8192 }, { name: 'qwen2.5:7b', sizeVram: 6144 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-node-02', name: 'gpu-node-02', host: '10.0.0.12', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 0,     vramSource: 'nvidia', powerDrawW: 210, cpuPercent: 4,  temperature: 44, health: 'healthy',  runtime: 'ollama', draining: false, activeConns: 0, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 6144, uptime: '12d 6h', loadedModels: [],                                                                                                    healthHistory: [1,1,1,1,1,1,1,1,1,1] },
+    { id: 'gpu-node-03', name: 'gpu-node-03', host: '10.0.0.13', gpuModel: 'NVIDIA RTX 4090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 9216, vramSource: 'nvidia', powerDrawW: 195, cpuPercent: 22, temperature: 61, health: 'healthy',  runtime: 'ollama', draining: false, activeConns: 1, maxInFlight: 4, prewarmDisabled: true,  pendingPrewarmMB: 0,    uptime: '5d 3h',  loadedModels: [{ name: 'qwen2.5-coder:14b', sizeVram: 9216 }],                                                          healthHistory: [1,1,1,1,1,1,0,1,1,1] },
+    { id: 'gpu-node-04', name: 'gpu-node-04', host: '10.0.0.14', gpuModel: 'NVIDIA RTX 3090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 0,   cpuPercent: 0,  temperature: null, health: 'down', runtime: 'ollama', draining: false, activeConns: 0, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: 'N/A',    loadedModels: [],                                                                                                    healthHistory: [1,1,0,0,0,1,0,0,0,0] },
   ]);
   const res = await apiFetch(`${BASE}/nodes`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch nodes');
@@ -507,7 +507,7 @@ export async function setNodePrewarm(name: string, disabled: boolean) {
   if (!res.ok) throw new Error('Failed to toggle node prewarm');
 }
 
-export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string }) {
+export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string | null }) {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -708,6 +708,7 @@ interface AuditLogEntry {
   latency_ms: number;
   cloud: boolean;
   cloud_model?: string;
+  routing_reason?: string;
 }
 
 // fetchAuditLog queries the server-side filterable /admin/audit endpoint
@@ -737,7 +738,18 @@ export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<Requ
     status: Number(e.status) || 0,
     latency_ms: e.latency_ms,
     cloud: e.cloud,
+    routingReason: e.routing_reason || undefined,
   }));
+}
+
+// fetchRequestExplain queries GET /admin/requests/{id}/explain (P41) - the
+// full routing decision for one request, fetched lazily (not part of the
+// audit-log list payload) since it carries the full score breakdown. Throws
+// on 404 (no decision recorded for this id, e.g. it predates this feature).
+export async function fetchRequestExplain(id: string): Promise<RoutingDecision> {
+  const res = await apiFetch(`${BASE}/requests/${encodeURIComponent(id)}/explain`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(res.status === 404 ? 'No routing decision recorded for this request' : 'Failed to fetch routing explanation');
+  return res.json();
 }
 
 export async function updateSettings(data: Record<string, unknown>) {
@@ -1334,6 +1346,20 @@ export interface NodeHealthCheckResult {
 export async function checkNodeHealth(name: string): Promise<NodeHealthCheckResult> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/health-check`, { headers: authHeaders() });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to run health check'); }
+  return res.json();
+}
+
+// probeNodeTLS retrieves the certificate fingerprint an https:// node
+// currently presents, WITHOUT pinning it (P24, spec section 2) - callers
+// must display the value for the operator to confirm out of band, then
+// call patchNode(name, { tls_fingerprint }) only on an explicit "Confirm &
+// Pin" click. Never call patchNode automatically from this result.
+export async function probeNodeTLS(name: string): Promise<{ fingerprint: string }> {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/tls-probe`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to probe TLS certificate'); }
   return res.json();
 }
 

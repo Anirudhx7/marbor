@@ -130,17 +130,19 @@ func (s *sqliteStore) migrate() error {
 
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS request_log (
-			id          TEXT PRIMARY KEY,
-			key_name    TEXT,
-			model       TEXT,
-			node_name   TEXT,
-			status_code INTEGER,
-			latency_ms  INTEGER,
-			tokens_used INTEGER,
-			cost_usd    REAL,
-			routed_to   TEXT,
-			is_cloud    INTEGER,
-			ts          INTEGER
+			id             TEXT PRIMARY KEY,
+			key_name       TEXT,
+			model          TEXT,
+			node_name      TEXT,
+			status_code    INTEGER,
+			latency_ms     INTEGER,
+			tokens_used    INTEGER,
+			cost_usd       REAL,
+			routed_to      TEXT,
+			is_cloud       INTEGER,
+			ts             INTEGER,
+			routing_reason TEXT,
+			routing_detail TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS request_log_ts ON request_log(ts DESC)`,
 
@@ -184,6 +186,10 @@ func (s *sqliteStore) migrate() error {
 			vram_total_mb INTEGER
 		)`,
 
+		// gpu_indices (added via ALTER TABLE below, same as runtime) is the
+		// operator-declared physical GPU index list for this node (P75 Gap
+		// B/C), JSON-encoded (e.g. "[0,1]") - same JSON-in-TEXT convention as
+		// node_control.discovered_evidence. Empty string means "not declared".
 		`CREATE TABLE IF NOT EXISTS node_overrides (
 			name         TEXT PRIMARY KEY,
 			vram_total_mb INTEGER,
@@ -198,12 +204,19 @@ func (s *sqliteStore) migrate() error {
 
 		// node_agent holds the per-node Node Agent configuration (opaque
 		// bearer token, port, enabled flag). Token is encrypted at rest
-		// (enc:v1: prefix, see secretbox.go) by every writer below.
+		// (enc:v1: prefix, see secretbox.go) by every writer below. scope
+		// (P54: per-action token scoping) is NOT a secret - it's a plaintext
+		// mirror of the tier embedded in token's own prefix, kept purely for
+		// admin API observability (see NodeAgentRecord.Scope's doc comment
+		// for why the agent never trusts this column for enforcement).
+		// Default 'admin' matches every pre-P54 row's actual (unprefixed,
+		// full-scope-by-fallback) token.
 		`CREATE TABLE IF NOT EXISTS node_agent (
 			name    TEXT PRIMARY KEY,
 			enabled INTEGER NOT NULL DEFAULT 0,
 			port    INTEGER NOT NULL DEFAULT 0,
-			token   TEXT NOT NULL DEFAULT ''
+			token   TEXT NOT NULL DEFAULT '',
+			scope   TEXT NOT NULL DEFAULT 'admin'
 		)`,
 
 		// node_control holds the per-node ControlDriver configuration (P43,
@@ -246,16 +259,17 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS audit_log (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			ts          TEXT NOT NULL,
-			request_id  TEXT NOT NULL,
-			key_name    TEXT NOT NULL,
-			model       TEXT NOT NULL,
-			node        TEXT NOT NULL,
-			status      TEXT NOT NULL,
-			latency_ms  INTEGER NOT NULL,
-			cloud       INTEGER NOT NULL DEFAULT 0,
-			cloud_model TEXT NOT NULL DEFAULT ''
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			ts             TEXT NOT NULL,
+			request_id     TEXT NOT NULL,
+			key_name       TEXT NOT NULL,
+			model          TEXT NOT NULL,
+			node           TEXT NOT NULL,
+			status         TEXT NOT NULL,
+			latency_ms     INTEGER NOT NULL,
+			cloud          INTEGER NOT NULL DEFAULT 0,
+			cloud_model    TEXT NOT NULL DEFAULT '',
+			routing_reason TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts DESC)`,
 		// Composite index backing QueryAuditLog's filterable columns (key_name
@@ -451,6 +465,17 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN allow_local_degradation INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
+		`ALTER TABLE node_overrides ADD COLUMN gpu_indices TEXT NOT NULL DEFAULT ''`,
+		// P64: per-node in-flight cap override. Nullable like vram_total_mb -
+		// NULL means "no override declared" (falls back to
+		// RoutingConfig.MaxInFlightPerNode), distinct from an explicit 0.
+		`ALTER TABLE node_overrides ADD COLUMN max_in_flight INTEGER`,
+		// P24: TOFU-pinned SHA-256 fingerprint of the node agent's TLS cert.
+		// Nullable - NULL means "no pin, this node is plaintext or not yet
+		// TLS-enrolled". Not secret material (secretbox.go does not apply):
+		// a cert fingerprint is public, and the private key never leaves the
+		// node's own disk. See .local/specs/node-agent-tls.md.
+		`ALTER TABLE node_overrides ADD COLUMN tls_fingerprint TEXT`,
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
 		// host groups multiple runtime_nodes rows that live on the same
 		// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one
@@ -458,6 +483,20 @@ func (s *sqliteStore) migrate() error {
 		// each needing its own - see internal/router.AddNode for the
 		// default-from-URL-hostname fallback when this is left empty.
 		`ALTER TABLE runtime_nodes ADD COLUMN host TEXT`,
+		// P54: per-action Node Agent token scoping - see node_agent's table
+		// comment above for why 'admin' is the correct default for rows that
+		// predate this column.
+		`ALTER TABLE node_agent ADD COLUMN scope TEXT NOT NULL DEFAULT 'admin'`,
+		// P41: per-request routing explainability. routing_reason is the short
+		// top-level Reason (session_affinity | pinned_warm | score_based);
+		// routing_detail is the JSON-encoded score breakdown (nil for
+		// cloud-fallback requests, which have no router.RoutingDecision).
+		`ALTER TABLE request_log ADD COLUMN routing_reason TEXT`,
+		`ALTER TABLE request_log ADD COLUMN routing_detail TEXT`,
+		// P41 fix (code review): the Requests page's list view reads
+		// audit_log via QueryAuditLog, not request_log - routing_reason must
+		// live here too or the reason badge never populates in production.
+		`ALTER TABLE audit_log ADD COLUMN routing_reason TEXT NOT NULL DEFAULT ''`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -666,9 +705,9 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO request_log
-			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(),
+			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail,
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendRequest: %w", err)
@@ -685,7 +724,7 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 
 func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail
 		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
 	)
 	if err != nil {
@@ -698,14 +737,17 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		var r RequestRecord
 		var isCloud int
 		var ts int64
+		var reason, detail sql.NullString
 		if err := rows.Scan(
 			&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts,
+			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail,
 		); err != nil {
 			return nil, fmt.Errorf("store: LastRequests scan: %w", err)
 		}
 		r.IsCloud = isCloud != 0
 		r.TS = time.Unix(ts, 0).UTC()
+		r.RoutingReason = reason.String
+		r.RoutingDetail = detail.String
 		recs = append(recs, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -716,6 +758,34 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		recs[i], recs[j] = recs[j], recs[i]
 	}
 	return recs, nil
+}
+
+// GetRequest looks up one request_log row by id - the P41 explain endpoint's
+// fallback for a request that has aged out of the bounded in-memory ring but
+// is still within the SQLite table's 1000-row retention window.
+func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
+	var r RequestRecord
+	var isCloud int
+	var ts int64
+	var reason, detail sql.NullString
+	err := s.db.QueryRow(
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail
+		 FROM request_log WHERE id = ?`, id,
+	).Scan(
+		&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
+		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail,
+	)
+	if err == sql.ErrNoRows {
+		return RequestRecord{}, false, nil
+	}
+	if err != nil {
+		return RequestRecord{}, false, fmt.Errorf("store: GetRequest: %w", err)
+	}
+	r.IsCloud = isCloud != 0
+	r.TS = time.Unix(ts, 0).UTC()
+	r.RoutingReason = reason.String
+	r.RoutingDetail = detail.String
+	return r, true, nil
 }
 
 // --- Analytics ---
@@ -1003,12 +1073,27 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // UpsertNodeOverride merges the given fields into any existing override row
 // for name, so a call that only sets one field (e.g. runtime) never clobbers
 // fields set by an earlier, separate PatchNode call (e.g. vram_total_mb).
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string) error {
+// UpsertNodeOverride writes the given node's override columns, read-merging
+// against the existing row first so a nil param preserves whatever was
+// already stored. Uses INSERT ... ON CONFLICT(name) DO UPDATE SET, not
+// INSERT OR REPLACE (P24, see .local/specs/node-agent-tls.md §3/§9 and
+// .local/core/P24-TLS-DESIGN.md §10b): REPLACE deletes and reinserts the
+// whole row, so any column this statement doesn't name reverts to its
+// column default - the exact mechanism by which an older binary's write
+// (naming only the columns its own compiled code knows about) would
+// silently NULL a newer column like tls_fingerprint on a mesh-binary
+// downgrade. DO UPDATE SET only ever touches the columns it explicitly
+// names; a column outside that list keeps its current stored value
+// regardless of what the calling binary knows about, which is what makes
+// a downgrade-then-write safe by construction going forward.
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string) error {
 	var existingVRAM sql.NullInt64
-	var existingGPU, existingRuntime sql.NullString
+	var existingGPU, existingRuntime, existingFingerprint sql.NullString
+	var existingIndices string
+	var existingMaxInFlight sql.NullInt64
 	_ = s.db.QueryRow(
-		`SELECT vram_total_mb, gpu_model, runtime FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime)
+		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint)
 
 	vram := existingVRAM
 	if vramTotalMB != nil {
@@ -1022,11 +1107,38 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 	if runtime != nil {
 		rt = sql.NullString{String: *runtime, Valid: true}
 	}
+	indices := existingIndices
+	if gpuIndices != nil {
+		b, err := json.Marshal(*gpuIndices)
+		if err != nil {
+			return fmt.Errorf("store: UpsertNodeOverride: marshal gpu_indices: %w", err)
+		}
+		indices = string(b)
+	}
+	maxInFlightVal := existingMaxInFlight
+	if maxInFlight != nil {
+		maxInFlightVal = sql.NullInt64{Int64: int64(*maxInFlight), Valid: true}
+	}
+	fingerprint := existingFingerprint
+	if tlsFingerprint != nil {
+		if *tlsFingerprint == "" {
+			fingerprint = sql.NullString{}
+		} else {
+			fingerprint = sql.NullString{String: *tlsFingerprint, Valid: true}
+		}
+	}
 
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO node_overrides (name, vram_total_mb, gpu_model, runtime)
-		 VALUES (?, ?, ?, ?)`,
-		name, vram, gpu, rt,
+		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(name) DO UPDATE SET
+		   vram_total_mb = excluded.vram_total_mb,
+		   gpu_model = excluded.gpu_model,
+		   runtime = excluded.runtime,
+		   gpu_indices = excluded.gpu_indices,
+		   max_in_flight = excluded.max_in_flight,
+		   tls_fingerprint = excluded.tls_fingerprint`,
+		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -1036,7 +1148,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model, runtime FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -1047,8 +1159,10 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	for rows.Next() {
 		var name string
 		var vram sql.NullInt64
-		var gpu, rt sql.NullString
-		if err := rows.Scan(&name, &vram, &gpu, &rt); err != nil {
+		var gpu, rt, fingerprint sql.NullString
+		var indicesJSON string
+		var maxInFlight sql.NullInt64
+		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -1060,6 +1174,23 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		}
 		if rt.Valid {
 			ov.Runtime = &rt.String
+		}
+		if maxInFlight.Valid {
+			v := int(maxInFlight.Int64)
+			ov.MaxInFlight = &v
+		}
+		if fingerprint.Valid {
+			ov.TLSFingerprint = &fingerprint.String
+		}
+		if indicesJSON != "" {
+			var idx []int
+			if err := json.Unmarshal([]byte(indicesJSON), &idx); err == nil {
+				ov.GPUIndices = &idx
+			}
+			// A malformed indices blob is dropped rather than failing the
+			// whole row (R1/R8 discipline: a bad reading becomes "unknown",
+			// not a fabricated or half-parsed value) - the node just falls
+			// back to undeclared (host-level) sizing until re-declared.
 		}
 		out[name] = ov
 	}
@@ -1129,9 +1260,13 @@ func (s *sqliteStore) UpsertNodeAgent(rec NodeAgentRecord) error {
 	if rec.Enabled {
 		enabled = 1
 	}
+	scope := rec.Scope
+	if scope == "" {
+		scope = "admin"
+	}
 	_, err = s.db.Exec(
-		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
-		rec.Name, enabled, rec.Port, enc,
+		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token, scope) VALUES (?, ?, ?, ?, ?)`,
+		rec.Name, enabled, rec.Port, enc, scope,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeAgent: %w", err)
@@ -1149,8 +1284,8 @@ func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
 	var enabled int
 	var encToken string
 	err := s.db.QueryRow(
-		`SELECT name, enabled, port, token FROM node_agent WHERE name = ?`, name,
-	).Scan(&rec.Name, &enabled, &rec.Port, &encToken)
+		`SELECT name, enabled, port, token, scope FROM node_agent WHERE name = ?`, name,
+	).Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope)
 	if err == sql.ErrNoRows {
 		return NodeAgentRecord{}, false, nil
 	}
@@ -1176,7 +1311,7 @@ func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
 // expected tokens), but dropping the row is the same defensive pattern
 // used everywhere else in this file for a corrupt secret.
 func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
-	rows, err := s.db.Query(`SELECT name, enabled, port, token FROM node_agent`)
+	rows, err := s.db.Query(`SELECT name, enabled, port, token, scope FROM node_agent`)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllNodeAgents: %w", err)
 	}
@@ -1187,7 +1322,7 @@ func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
 		var rec NodeAgentRecord
 		var enabled int
 		var encToken string
-		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken); err != nil {
+		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope); err != nil {
 			return nil, fmt.Errorf("store: AllNodeAgents scan: %w", err)
 		}
 		token, decErr := decryptSecret(s.secretKey, encToken)
@@ -1549,10 +1684,10 @@ func (s *sqliteStore) AppendAuditLog(e AuditEntry) error {
 		cloud = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.Time.UTC().Format(time.RFC3339Nano), e.RequestID, e.KeyName, e.Model,
-		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel,
+		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel, e.RoutingReason,
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendAuditLog: %w", err)
@@ -1583,7 +1718,7 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		opts.Limit = 100
 	}
 
-	query := `SELECT ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model
+	query := `SELECT ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason
 	          FROM audit_log WHERE 1=1`
 	args := []interface{}{}
 
@@ -1638,7 +1773,7 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		var tsStr string
 		var cloud int
 		if err := rows.Scan(&tsStr, &e.RequestID, &e.KeyName, &e.Model,
-			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel); err != nil {
+			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel, &e.RoutingReason); err != nil {
 			return nil, fmt.Errorf("store: QueryAuditLog scan: %w", err)
 		}
 		e.Time, _ = time.Parse(time.RFC3339Nano, tsStr)

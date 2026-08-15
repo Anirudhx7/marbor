@@ -290,3 +290,89 @@ every 20 s) for clean warm numbers.
 | `--n` | `10` | Number of requests |
 | `--api-key` | _(empty)_ | Bearer key (required for ollama-mesh, omit for direct Ollama) |
 | `--endpoint` | `generate` | `generate` or `chat` |
+
+---
+
+# SQLite write-path load sweep (`bench/loadtest`)
+
+**What this measures:** ollama-mesh's SQLite write path (`audit_log`, `request_log`,
+`hourly_buckets`/`model_stats`) is already fully async - all three writes go through
+bounded (5000-slot) buffered channels with drop-on-full, not the request goroutine
+(`internal/audit/audit.go`, `internal/admin/admin.go`'s `logChan`/`statsChan`). Nobody has
+measured what request rate that async design can actually absorb before it starts dropping
+entries, or how the SQLite WAL file grows under sustained write pressure. `bench/loadtest`
+sweeps request rate against the real mesh + real SQLite store and reports a latency/file-growth
+curve - it does **not** compute a single "ceiling" number for you.
+
+**Honesty caveat - what this tool measures vs. doesn't:** unlike `bench/ttft`, mock nodes
+(`cmd/mocknode`) are appropriate here, since the target is write-path throughput to SQLite, not
+inference latency fidelity - unlike the TTFT benchmark, mocked GPU latency doesn't invalidate
+this measurement. What it does NOT give you is an inference-capacity number; keep write-path
+capacity and inference-capacity claims separate.
+
+**How to read the results - do not invent a threshold:**
+- The tool prints a table of target/sent/completed/failed RPS and p50/p95/p99 latency per swept
+  rate, plus `.db`/`-wal` file size deltas per step.
+- It never issues `PRAGMA wal_checkpoint` during a run - that pragma actively forces a
+  checkpoint rather than passively reading state, which would perturb the exact WAL-growth
+  behavior under test. File sizes are the only signal used.
+- **The real ceiling is not in this table.** Watch the mesh's own log output (stdout or wherever
+  it's redirected) during the run for the queue-full drop lines:
+  - `audit logger: queue full, dropped audit entry for request ...`
+  - `async logger: queue full, dropped request log ...`
+  - `async logger: stats queue full, dropped hourly/model-stat update for ...`
+
+  The first swept rate at which any of these appears is the actual operational limit -
+  report that rate, not a rounded-up guess.
+- **If no drop line appears across the whole sweep**, that's a real, reportable result:
+  write it up as *"no drop ceiling observed up to N req/s"*, where N is the highest rate
+  tested - never present the highest tested rate as if it were a proven ceiling.
+- **Check the `GENERATOR-SATURATED` flag** on every row before trusting it. If the tool's own
+  sent RPS falls more than `--generator-slack-pct` (default 10%) short of the target RPS for a
+  step, that step's numbers reflect the load generator's own limits, not the mesh's - don't cite
+  a saturated-generator step as evidence of a mesh ceiling.
+
+## Setup
+
+1. Start one or more `cmd/mocknode` instances with a low `LATENCY_MS` and the target model in
+   `WARM_MODELS` (so every request is warm - this test is not measuring cold-load time):
+   ```bash
+   RUNTIME=ollama NODE_NAME=loadtest-node PORT=21434 LATENCY_MS=20 \
+     WARM_MODELS=llama3.2:3b ALL_MODELS=llama3.2:3b go run ./cmd/mocknode
+   ```
+2. Register that node with the mesh (dashboard's GPU Nodes page, or `POST /admin/nodes` -
+   same auth as `bench/preflight.sh` uses, session login via `/admin/login`).
+3. Build the tool:
+   ```bash
+   go build -o bench/loadtest ./bench/loadtest
+   ```
+4. Run the sweep, pointing `--db` at the mesh's actual database file - the same path the mesh
+   itself was started with (its own `--db` flag or `MESH_DB_PATH` env var, default `mesh.db` in
+   its working directory; `bench/loadtest`'s own `--db` flag is a separate, read-only pointer to
+   that same file for passive size sampling, not a shared setting with the mesh process):
+   ```bash
+   ./bench/loadtest --url http://localhost:11434 --model llama3.2:3b \
+     --api-key <your-key> --db mesh.db --rates 5,10,20,40,80,160 --step-duration 30s
+   ```
+5. **Establish the single-node baseline first** - one mesh process, one mock backend. P53 is
+   about the SQLite write path itself, which doesn't necessarily scale with inference node count,
+   so treating "N nodes" as the primary axis would mislabel what's being measured. Only after the
+   single-node baseline is recorded, optionally repeat with more registered mock nodes (e.g. 20)
+   as a **secondary** check for whether concurrent request sources from more nodes changes the
+   write-path ceiling - report that separately, not folded into the primary claim.
+6. Re-run once to confirm the drop point (or lack of one) is reproducible before writing a number
+   into `docs/PRODUCTION.md`.
+
+## Flags reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--url` | `http://localhost:11434` | Base URL of the mesh proxy |
+| `--model` | `llama3.2:3b` | Model to request (must be warm on the target node) |
+| `--api-key` | _(empty)_ | Bearer API key for the mesh |
+| `--db` | `mesh.db` | Path to the mesh's SQLite database, for passive `.db`/`-wal` size sampling |
+| `--rates` | `5,10,20,40,80` | Comma-separated ascending list of target req/s to sweep |
+| `--step-duration` | `20s` | How long to sustain each rate before moving to the next |
+| `--endpoint` | `chat` | `generate` or `chat` |
+| `--generator-slack-pct` | `10` | Max allowed shortfall (%) between target and actual-sent RPS before a step is flagged generator-saturated |
+| `--max-inflight` | `1000` | Cap on concurrent in-flight requests - once hit, new requests wait for a slot instead of spawning unbounded goroutines/sockets, so a step the generator can't sustain shows up as a sent-RPS shortfall instead of exhausting the generator's own resources |

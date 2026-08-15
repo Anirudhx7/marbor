@@ -288,6 +288,63 @@ func TestHandleModelCatalog_Downloaded(t *testing.T) {
 	}
 }
 
+// TestHandleModelCatalog_GPUCountUnknown verifies P75 Gap D: a node with no
+// agent (or a "declared" whole-node VRAM total, i.e. no per-device reading)
+// must be flagged gpu_count_unknown, distinct from an agent-confirmed
+// reading (even a confirmed single-GPU one), which must not be flagged.
+func TestHandleModelCatalog_GPUCountUnknown(t *testing.T) {
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+
+	// newModelFitTestServer's fixture node has VRAMSource="nvidia" (a direct
+	// mesh-host nvidia-smi reading) and no agent - AgentPresent stays false,
+	// so this is the "no agent at all" case Gap D targets.
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	var resp catalogResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(resp.Nodes))
+	}
+	if !resp.Nodes[0].GPUCountUnknown {
+		t.Error("GPUCountUnknown = false for a no-agent node, want true")
+	}
+
+	// An agent-confirmed reading (even reporting exactly one device) must
+	// not be flagged - it's a real reading, not an inferred/declared guess.
+	nodes := s.router.Nodes()
+	nodes[0].Lock()
+	nodes[0].AgentPresent = true
+	nodes[0].AgentGPUs = []nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 8192}}
+	nodes[0].Unlock()
+
+	// A fresh response struct for this decode - gpu_count_unknown carries
+	// "omitempty", so a false value is simply absent from the JSON, and
+	// reusing the earlier `resp` (already Nodes[0].GPUCountUnknown==true from
+	// the first decode) would leave that stale true in place: encoding/json
+	// only overwrites fields present in the payload, it does not zero out a
+	// slice element it reuses from existing capacity for fields the new
+	// payload omits.
+	var resp2 catalogResponse
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/admin/models/catalog", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	s.Handler().ServeHTTP(w, req)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp2.Nodes[0].GPUCountUnknown {
+		t.Error("GPUCountUnknown = true for an agent-confirmed reading, want false")
+	}
+}
+
 func TestHandleModelCatalog_V1Route(t *testing.T) {
 	ollama := mockOllamaServer(t)
 	defer ollama.Close()
@@ -342,28 +399,67 @@ func TestClassifyFit(t *testing.T) {
 
 func TestNodeVRAMCapacity(t *testing.T) {
 	cases := []struct {
-		name        string
-		vramTotalMB int64
-		agentGPUs   []nodeagent.GPUInfo
-		runtime     string
-		wantMB      int64
-		wantUsedMB  int64
-		wantCount   int
-		wantBasis   string
+		name            string
+		vramTotalMB     int64
+		agentGPUs       []nodeagent.GPUInfo
+		runtime         string
+		declaredIndices []int
+		wantMB          int64
+		wantUsedMB      int64
+		wantCount       int
+		wantBasis       string
 	}{
-		{"no agent GPUs falls back to aggregate", 24000, nil, "ollama", 24000, -1, 0, ""},
-		{"single agent GPU falls back to aggregate", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}}, "ollama", 24000, -1, 1, ""},
-		{"multi-GPU ollama sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 24000}}, "ollama", 48000, -1, 2, "combined"},
-		{"multi-GPU llamacpp sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "llamacpp", 24000, -1, 2, "combined"},
-		{"multi-GPU empty runtime treated as shardable (matches ggufOnlyRuntime)", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 12000}, {VRAMTotalMB: 12000}}, "", 24000, -1, 2, "combined"},
-		{"multi-GPU vllm uses largest device only, never the sum", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000, VRAMUsedMB: 6000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "vllm", 24000, 6000, 2, "largest"},
-		{"multi-GPU tgi uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 8000, VRAMUsedMB: 8000}, {VRAMTotalMB: 24000, VRAMUsedMB: 6000}}, "tgi", 24000, 6000, 2, "largest"},
-		{"multi-GPU mlx uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000, VRAMUsedMB: 4000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "mlx", 16000, 4000, 2, "largest"},
-		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []nodeagent.GPUInfo{{}, {}}, "ollama", 24000, -1, 2, ""},
+		{"no agent GPUs falls back to aggregate", 24000, nil, "ollama", nil, 24000, -1, 0, ""},
+		{"single agent GPU falls back to aggregate", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}}, "ollama", nil, 24000, -1, 1, ""},
+		{"multi-GPU ollama sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 24000}}, "ollama", nil, 48000, -1, 2, "combined"},
+		{"multi-GPU llamacpp sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "llamacpp", nil, 24000, -1, 2, "combined"},
+		{"multi-GPU empty runtime treated as shardable (matches ggufOnlyRuntime)", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 12000}, {VRAMTotalMB: 12000}}, "", nil, 24000, -1, 2, "combined"},
+		{"multi-GPU vllm uses largest device only, never the sum", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000, VRAMUsedMB: 6000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "vllm", nil, 24000, 6000, 2, "largest"},
+		{"multi-GPU tgi uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 8000, VRAMUsedMB: 8000}, {VRAMTotalMB: 24000, VRAMUsedMB: 6000}}, "tgi", nil, 24000, 6000, 2, "largest"},
+		{"multi-GPU mlx uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000, VRAMUsedMB: 4000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "mlx", nil, 16000, 4000, 2, "largest"},
+		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []nodeagent.GPUInfo{{}, {}}, "ollama", nil, 24000, -1, 2, ""},
+
+		// P75 Gap B: two host-scoped ollama nodes, each pinned to one of the
+		// host's two GPUs (index 0 and index 1 respectively) via a declared
+		// scope. Without scoping, ggufOnlyRuntime("ollama") would sum both
+		// physical GPUs for EACH node - double-counting one pool of VRAM.
+		// Declared to a single device, each must be sized against that
+		// device alone, never vramTotalMB (the whole host's aggregate).
+		{"Gap B: ollama node declared to GPU 0 only sizes against that device alone", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
+			"ollama", []int{0}, 24000, 5000, 1, ""},
+		{"Gap B: sibling node declared to GPU 1 only sizes against that device alone", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
+			"ollama", []int{1}, 24000, 9000, 1, ""},
+
+		// P75 Gap C: vLLM would default to "largest" (single-device) sizing
+		// for any undeclared multi-GPU set, even when tensor-parallel is
+		// actually configured. A declared multi-index scope is itself the
+		// operator's confirmation that this instance spans those GPUs, so it
+		// must switch to "combined", overriding the runtime-name heuristic.
+		{"Gap C: vllm declared to 2 GPUs (tensor-parallel) sums instead of largest-only", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}, {Index: 2, VRAMTotalMB: 24000}},
+			"vllm", []int{0, 1}, 48000, -1, 2, "combined"},
+
+		// A declaration that matches none of the currently-reported devices
+		// (stale/misconfigured) must not zero out sizing - falls back to the
+		// unscoped (undeclared) behavior for that runtime.
+		{"stale declaration matching no reported device falls back to unscoped", 48000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}},
+			"ollama", []int{7}, 48000, -1, 2, "combined"},
+
+		// A declared multi-GPU scope whose devices transiently report zero
+		// VRAM (an agent telemetry glitch, not "nothing declared") must
+		// report unknown (capacityMB 0), never fall back to vramTotalMB - the
+		// whole HOST's aggregate would silently reintroduce the Gap B/C
+		// double-count this declared-scope fix exists to prevent.
+		{"Gap B/C: declared multi-GPU scope with zero-VRAM telemetry glitch reports unknown, not the host aggregate", 96000,
+			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 0}, {Index: 1, VRAMTotalMB: 0}, {Index: 2, VRAMTotalMB: 24000}, {Index: 3, VRAMTotalMB: 24000}},
+			"vllm", []int{0, 1}, 0, -1, 2, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			gotMB, gotUsedMB, gotCount, gotBasis := nodeVRAMCapacity(c.vramTotalMB, c.agentGPUs, c.runtime)
+			gotMB, gotUsedMB, gotCount, gotBasis := nodeVRAMCapacity(c.vramTotalMB, c.agentGPUs, c.runtime, c.declaredIndices)
 			if gotMB != c.wantMB || gotUsedMB != c.wantUsedMB || gotCount != c.wantCount || gotBasis != c.wantBasis {
 				t.Errorf("nodeVRAMCapacity = (%d, %d, %d, %q), want (%d, %d, %d, %q)", gotMB, gotUsedMB, gotCount, gotBasis, c.wantMB, c.wantUsedMB, c.wantCount, c.wantBasis)
 			}
@@ -399,6 +495,42 @@ func TestClassifyDiskFit(t *testing.T) {
 	}
 }
 
+// TestClassifyUnknownSizeDiskFit covers the P73 fix: a pull with no known
+// download size (any tag outside the curated catalog) has its own
+// classification path, since classifyDiskFit's size-vs-free-space test has
+// nothing to compare against. It must mirror classifyDiskFit's
+// telemetry-unknown handling exactly, but apply a conservative headroom
+// floor (10% of total, 5GB absolute) instead of a size comparison when
+// telemetry is available.
+func TestClassifyUnknownSizeDiskFit(t *testing.T) {
+	cases := []struct {
+		name         string
+		diskFreeGB   float64
+		diskTotalGB  float64
+		agentPresent bool
+		want         string
+	}{
+		{"comfortable headroom", 500, 1000, true, "ok"},
+		{"exactly at the fraction floor (10%) with plenty of absolute GB", 100, 1000, true, "ok"},
+		{"just under the fraction floor", 99, 1000, true, "insufficient"},
+		{"exactly at the absolute floor on a tiny disk", 5, 40, true, "ok"},
+		{"under the absolute floor even though fraction would pass", 4, 20, true, "insufficient"},
+		{"no agent", 500, 1000, false, "unknown"},
+		{"agent present but never reported disk telemetry", 0, 0, true, "unknown"},
+		// Regression: a genuinely-full disk (real Statfs reading, DiskFreeGB=0
+		// legitimately) must hard-block, not skip as "unknown" - mirrors
+		// classifyDiskFit's own regression case.
+		{"disk genuinely full", 0, 500, true, "insufficient"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := classifyUnknownSizeDiskFit(c.diskFreeGB, c.diskTotalGB, c.agentPresent); got != c.want {
+				t.Errorf("classifyUnknownSizeDiskFit(%.4f, %.4f, %v) = %q, want %q", c.diskFreeGB, c.diskTotalGB, c.agentPresent, got, c.want)
+			}
+		})
+	}
+}
+
 func TestFindCatalogVariantSizeMB(t *testing.T) {
 	// llama3.2:1b has exactly one variant, tag == model name, SizeMB 1300.
 	if size, ok := findCatalogVariantSizeMB("llama3.2:1b"); !ok || size != 1300 {
@@ -418,6 +550,33 @@ func TestFindCatalogVariantSizeMB(t *testing.T) {
 	}
 	if _, ok := findCatalogVariantSizeMB("some-uncurated-model:latest"); ok {
 		t.Error("findCatalogVariantSizeMB(uncurated model) = ok=true, want false")
+	}
+}
+
+// TestGPUCountUnknown covers the P75 Gap D disclosure helper directly,
+// including the case a code-review pass found missing: an agent that is
+// present and polling successfully but has not (yet) reported any GPU
+// devices must still be flagged unknown, not shown as a confirmed reading.
+func TestGPUCountUnknown(t *testing.T) {
+	cases := []struct {
+		name         string
+		agentPresent bool
+		vramSource   string
+		gpuCount     int
+		want         bool
+	}{
+		{"no agent at all", false, "nvidia", 1, true},
+		{"declared whole-node total, no per-device breakdown", true, "declared", 0, true},
+		{"agent present but zero GPU devices reported", true, "agent", 0, true},
+		{"agent-confirmed single GPU reading", true, "nvidia", 1, false},
+		{"agent-confirmed multi-GPU reading", true, "agent", 2, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := gpuCountUnknown(c.agentPresent, c.vramSource, c.gpuCount); got != c.want {
+				t.Errorf("gpuCountUnknown(%v, %q, %d) = %v, want %v", c.agentPresent, c.vramSource, c.gpuCount, got, c.want)
+			}
+		})
 	}
 }
 

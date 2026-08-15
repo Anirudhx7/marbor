@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 )
 
@@ -206,6 +207,47 @@ func TestAuditRetentionDaysValidate(t *testing.T) {
 	cfg = Config{Audit: AuditConfig{SystemAuditRetentionDays: -1}}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() with SystemAuditRetentionDays=-1 should have failed")
+	}
+}
+
+func TestMaxInFlightValidate(t *testing.T) {
+	cfg := Config{Routing: RoutingConfig{MaxInFlightPerNode: 0}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with MaxInFlightPerNode=0: %v", err)
+	}
+
+	cfg = Config{Routing: RoutingConfig{MaxInFlightPerNode: 8}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with MaxInFlightPerNode=8: %v", err)
+	}
+	if cfg.Routing.MaxInFlightPerNode != 8 {
+		t.Fatalf("MaxInFlightPerNode=8 must be preserved, got %d", cfg.Routing.MaxInFlightPerNode)
+	}
+
+	cfg = Config{Routing: RoutingConfig{MaxInFlightPerNode: -1}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() with MaxInFlightPerNode=-1 should have failed")
+	}
+
+	cfg = Config{Routing: RoutingConfig{MaxInFlightPerNode: math.MaxInt32 + 1}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() with MaxInFlightPerNode > math.MaxInt32 should have failed (would wrap negative in isUnderCapacity's int32 cast)")
+	}
+
+	// Per-node override goes through the same range check inside the node loop.
+	cfg = Config{Nodes: []NodeConfig{{Name: "n1", URL: "http://n1.invalid", MaxInFlight: -1}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() with node MaxInFlight=-1 should have failed")
+	}
+
+	cfg = Config{Nodes: []NodeConfig{{Name: "n1", URL: "http://n1.invalid", MaxInFlight: math.MaxInt32 + 1}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() with node MaxInFlight > math.MaxInt32 should have failed")
+	}
+
+	cfg = Config{Nodes: []NodeConfig{{Name: "n1", URL: "http://n1.invalid", MaxInFlight: 4}}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with node MaxInFlight=4: %v", err)
 	}
 }
 

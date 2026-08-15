@@ -308,6 +308,14 @@ type catalogNodeEntry struct {
 	// VRAMTotalBytes alone - see nodeVRAMCapacity's doc comment.
 	GPUCount     int    `json:"gpu_count,omitempty"`
 	VRAMFitBasis string `json:"vram_fit_basis,omitempty"`
+	// GPUCountUnknown is true when this node has no agent-confirmed
+	// per-device GPU reading at all (no agent, or VRAMSource=="declared" -
+	// a manually-entered whole-node total with no per-device breakdown) -
+	// P75 Gap D. Without this, such a node's GPUCount==0 looks identical, at
+	// the same apparent confidence, to a confirmed single-GPU node - R1
+	// requires disclosing "unknown" rather than implying a reading that was
+	// never taken.
+	GPUCountUnknown bool `json:"gpu_count_unknown,omitempty"`
 	// Capabilities lists the node's effective Node Agent action capabilities
 	// (e.g. "models.pull", "runtime.restart") - empty/omitted when there is no
 	// agent, the agent hasn't reported yet, or the agent is disabled in
@@ -433,12 +441,59 @@ func nodeRuntimeByName(nodes []*router.NodeState, name string) (runtime string, 
 // it matters most. DiskTotalGB is only 0/absent when the agent has never
 // reported real disk stats at all.
 func classifyDiskFit(sizeMB int64, diskFreeGB, diskTotalGB float64, agentPresent bool) string {
-	if !agentPresent || diskTotalGB <= 0 {
+	if diskTelemetryUnknown(diskTotalGB, agentPresent) {
 		return "unknown"
 	}
 	neededBytes := float64(sizeMB) * 1024 * 1024
 	freeBytes := diskFreeGB * 1e9
 	if neededBytes > freeBytes {
+		return "insufficient"
+	}
+	return "ok"
+}
+
+// diskTelemetryUnknown is the shared "do we have real disk telemetry for
+// this node" check used by both classifyDiskFit and classifyUnknownSizeDiskFit,
+// so the one definition of "unknown" (no agent, or an agent that has never
+// reported a real Statfs reading - diskTotalGB is only 0/absent in that case,
+// never for a genuinely full disk) can never drift between the two callers.
+func diskTelemetryUnknown(diskTotalGB float64, agentPresent bool) bool {
+	return !agentPresent || diskTotalGB <= 0
+}
+
+// unknownSizeMinFreeFraction and unknownSizeMinFreeGB are the conservative
+// disk-headroom floor applied by classifyUnknownSizeDiskFit (P73) - a pull
+// whose real download size cannot be established (findCatalogVariantSizeMB
+// returned ok=false: any tag outside the curated catalog) has no size to
+// compare against free space the way classifyDiskFit does, so it cannot use
+// the same size-vs-free-space test. Refusing to guess a size (R1) does not
+// mean refusing to apply any safety boundary at all - this is that boundary:
+// an explicit, honest policy decision ("this node's headroom is already too
+// thin to risk an unsized download"), never a fabricated size estimate.
+// Both a fraction and an absolute floor apply together so the check scales
+// sanely across disk sizes: 10% of a 20TB storage server is still a huge
+// margin, and 10% of a 50GB disk is only 5GB, too thin on its own without
+// the absolute floor beside it.
+const (
+	unknownSizeMinFreeFraction = 0.10
+	unknownSizeMinFreeGB       = 5.0
+)
+
+// classifyUnknownSizeDiskFit is the disk-safety decision for a pull whose
+// real download size is unknown (P73: previously such a pull skipped
+// handleNodePull's disk-fit gate entirely, letting an arbitrary-size
+// download proceed with zero pre-flight check). It mirrors classifyDiskFit's
+// telemetry-unknown handling exactly - "unknown" whenever the agent hasn't
+// reported real disk stats, never treated as a block - so a node without
+// disk telemetry behaves identically to how it always has for both known-
+// and unknown-size pulls. When telemetry IS available, it applies the
+// conservative floor above to the node's CURRENT free headroom, since there
+// is no needed-size figure to weigh it against.
+func classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB float64, agentPresent bool) string {
+	if diskTelemetryUnknown(diskTotalGB, agentPresent) {
+		return "unknown"
+	}
+	if diskFreeGB < unknownSizeMinFreeGB || diskFreeGB/diskTotalGB < unknownSizeMinFreeFraction {
 		return "insufficient"
 	}
 	return "ok"
@@ -538,33 +593,105 @@ func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) strin
 //     pairing a single device's capacity with every other GPU's usage too
 //     would make free VRAM read artificially low (or clamp to zero) even
 //     when the biggest card itself has room.
-func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime string) (capacityMB int64, usedMB int64, gpuCount int, basis string) {
-	gpuCount = len(agentGPUs)
+//
+// declaredIndices (P75 Gap B/C) is the operator-declared set of physical GPU
+// indices this specific node/runtime instance actually uses - see
+// scopeGPUsToDeclared's doc comment for why host-scoped agentGPUs alone
+// cannot answer that question, and how a declaration also settles the
+// combined-vs-largest basis for runtimes ggufOnlyRuntime would otherwise
+// default to "largest" (Gap C: a declared multi-GPU scope on e.g. vLLM is
+// itself evidence of a configured tensor-parallel deployment).
+func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime string, declaredIndices []int) (capacityMB int64, usedMB int64, gpuCount int, basis string) {
+	scoped, applied := scopeGPUsToDeclared(agentGPUs, declaredIndices)
+	gpuCount = len(scoped)
 	if gpuCount < 2 {
+		if applied && gpuCount == 1 {
+			// A declared scope narrowed a multi-GPU host down to exactly one
+			// GPU this node actually uses - vramTotalMB is the whole HOST's
+			// aggregate (from agent telemetry), which would silently
+			// reintroduce Gap B's double-count; the single scoped device's
+			// own reading is the only correct capacity/used pair here.
+			return scoped[0].VRAMTotalMB, scoped[0].VRAMUsedMB, gpuCount, ""
+		}
 		return vramTotalMB, -1, gpuCount, ""
 	}
-	if ggufOnlyRuntime(runtime) {
+	if applied || ggufOnlyRuntime(runtime) {
 		var sum int64
-		for _, g := range agentGPUs {
+		for _, g := range scoped {
 			sum += g.VRAMTotalMB
 		}
 		if sum > 0 {
 			return sum, -1, gpuCount, "combined"
 		}
+		if applied {
+			// A declared scope's devices all report zero VRAM (a transient
+			// telemetry glitch, not "no breakdown available") - vramTotalMB is
+			// the whole HOST's aggregate, which would silently reintroduce
+			// Gap B/C's double-count; report unknown instead of the wrong total.
+			return 0, -1, gpuCount, ""
+		}
 		return vramTotalMB, -1, gpuCount, ""
 	}
 	largestIdx := -1
 	var largest int64
-	for i, g := range agentGPUs {
+	for i, g := range scoped {
 		if g.VRAMTotalMB > largest {
 			largest = g.VRAMTotalMB
 			largestIdx = i
 		}
 	}
 	if largest > 0 {
-		return largest, agentGPUs[largestIdx].VRAMUsedMB, gpuCount, "largest"
+		return largest, scoped[largestIdx].VRAMUsedMB, gpuCount, "largest"
 	}
 	return vramTotalMB, -1, gpuCount, ""
+}
+
+// scopeGPUsToDeclared restricts agentGPUs to the operator-declared subset of
+// physical GPU indices this specific node/runtime instance actually uses
+// (P75 Gap B/C). Host-scoped agent telemetry (pollAgentHost in
+// internal/router/agent_poll.go) reports every physical GPU on a Host
+// identically to every node sharing it - two separate runtime processes each
+// pinned to a different GPU (e.g. via CUDA_VISIBLE_DEVICES) still both see
+// the full agentGPUs array, so without a declared scope, nodeVRAMCapacity
+// would size each of them against hardware it cannot actually reach
+// (double-counting one physical VRAM pool across two node entries).
+//
+// declaredIndices empty (the default - nothing declared) is a no-op: returns
+// agentGPUs unchanged and applied=false, preserving existing behavior for
+// every node that hasn't opted in. A declaration that matches none of the
+// currently-reported devices (stale or misconfigured) also falls back to the
+// unscoped set with applied=false, rather than reporting a hard zero -
+// same "no breakdown available" fallback nodeVRAMCapacity already uses for
+// agentGPUs itself.
+// gpuCountUnknown reports whether a node's GPU-count/capacity reading has no
+// agent-confirmed per-device backing at all (P75 Gap D) - true when there is
+// no agent, the total is an operator-declared whole-node figure with no
+// per-device breakdown, or an agent is present but reported zero devices
+// (e.g. before its first successful GPU-collector read). See
+// catalogNodeEntry.GPUCountUnknown's doc comment for why this must never be
+// conflated with a confirmed single-GPU reading.
+func gpuCountUnknown(agentPresent bool, vramSource string, gpuCount int) bool {
+	return !agentPresent || vramSource == "declared" || gpuCount == 0
+}
+
+func scopeGPUsToDeclared(agentGPUs []nodeagent.GPUInfo, declaredIndices []int) (scoped []nodeagent.GPUInfo, applied bool) {
+	if len(declaredIndices) == 0 {
+		return agentGPUs, false
+	}
+	want := make(map[int]bool, len(declaredIndices))
+	for _, idx := range declaredIndices {
+		want[idx] = true
+	}
+	out := make([]nodeagent.GPUInfo, 0, len(agentGPUs))
+	for _, g := range agentGPUs {
+		if want[g.Index] {
+			out = append(out, g)
+		}
+	}
+	if len(out) == 0 {
+		return agentGPUs, false
+	}
+	return out, true
 }
 
 // handleModelCatalog serves the curated model catalog with per-node fit status.
@@ -586,6 +713,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
 		agentGPUs := append([]nodeagent.GPUInfo(nil), n.AgentGPUs...)
+		declaredGPUIndices := append([]int(nil), n.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
 		for _, m := range n.LoadedModels {
@@ -606,7 +734,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			capabilities = agentCapabilities
 		}
 
-		capacityMB, capacityUsedMB, gpuCount, vramFitBasis := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime)
+		capacityMB, capacityUsedMB, gpuCount, vramFitBasis := nodeVRAMCapacity(vramTotalMB, agentGPUs, nodeRuntime, declaredGPUIndices)
 
 		var vramFreeBytes int64
 		var vramTotalBytes int64
@@ -683,21 +811,22 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		}
 
 		nodeEntries = append(nodeEntries, catalogNodeEntry{
-			Name:           nodeName,
-			URL:            nodeURL,
-			Runtime:        nodeRuntime,
-			VRAMFreeBytes:  vramFreeBytes,
-			VRAMTotalBytes: vramTotalBytes,
-			VRAMUsedBytes:  vramUsedMBFromPS * 1024 * 1024,
-			VRAMSource:     vramSource,
-			DiskFreeGB:     diskFreeGB,
-			DiskTotalGB:    diskTotalGB,
-			DiskKnown:      agentPresent && diskTotalGB > 0,
-			DockerDeployed: dockerDeployed,
-			Capabilities:   capabilities,
-			Models:         models,
-			GPUCount:       gpuCount,
-			VRAMFitBasis:   vramFitBasis,
+			Name:            nodeName,
+			URL:             nodeURL,
+			Runtime:         nodeRuntime,
+			VRAMFreeBytes:   vramFreeBytes,
+			VRAMTotalBytes:  vramTotalBytes,
+			VRAMUsedBytes:   vramUsedMBFromPS * 1024 * 1024,
+			VRAMSource:      vramSource,
+			DiskFreeGB:      diskFreeGB,
+			DiskTotalGB:     diskTotalGB,
+			DiskKnown:       agentPresent && diskTotalGB > 0,
+			DockerDeployed:  dockerDeployed,
+			Capabilities:    capabilities,
+			Models:          models,
+			GPUCount:        gpuCount,
+			VRAMFitBasis:    vramFitBasis,
+			GPUCountUnknown: gpuCountUnknown(agentPresent, rawVramSource, gpuCount),
 		})
 	}
 
@@ -1075,6 +1204,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	agentPresent := false
 	gpuCount := 0
 	vramFitBasis := ""
+	rawVramSource := ""
 
 	nodes := s.router.Nodes()
 	var targetNode *router.NodeState
@@ -1096,8 +1226,10 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		nodeName := targetNode.Name
 		vramTotalMB := targetNode.VRAMTotalMB
 		agentGPUs := append([]nodeagent.GPUInfo(nil), targetNode.AgentGPUs...)
+		declaredGPUIndices := append([]int(nil), targetNode.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		vramSource = targetNode.VRAMSource
+		rawVramSource = targetNode.VRAMSource
 		for _, m := range targetNode.LoadedModels {
 			vramUsedMBFromPS += m.SizeVRAM / (1024 * 1024)
 		}
@@ -1120,7 +1252,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			dockerDeployed = true
 		}
 
-		capacityMB, capacityUsedMB, gc, vfb := nodeVRAMCapacity(vramTotalMB, agentGPUs, runtime)
+		capacityMB, capacityUsedMB, gc, vfb := nodeVRAMCapacity(vramTotalMB, agentGPUs, runtime, declaredGPUIndices)
 		gpuCount = gc
 		vramFitBasis = vfb
 		if capacityMB > 0 {
@@ -1257,18 +1389,19 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":              repo.ID,
-		"downloads":       repo.Downloads,
-		"likes":           repo.Likes,
-		"tags":            repo.Tags,
-		"last_modified":   repo.LastModified,
-		"variants":        variants,
-		"disk_free_gb":    diskFreeGB,
-		"disk_total_gb":   diskTotalGB,
-		"disk_known":      agentPresent && diskTotalGB > 0,
-		"docker_deployed": dockerDeployed,
-		"gpu_count":       gpuCount,
-		"vram_fit_basis":  vramFitBasis,
+		"id":                repo.ID,
+		"downloads":         repo.Downloads,
+		"likes":             repo.Likes,
+		"tags":              repo.Tags,
+		"last_modified":     repo.LastModified,
+		"variants":          variants,
+		"disk_free_gb":      diskFreeGB,
+		"disk_total_gb":     diskTotalGB,
+		"disk_known":        agentPresent && diskTotalGB > 0,
+		"docker_deployed":   dockerDeployed,
+		"gpu_count":         gpuCount,
+		"vram_fit_basis":    vramFitBasis,
+		"gpu_count_unknown": gpuCountUnknown(agentPresent, rawVramSource, gpuCount),
 	})
 }
 

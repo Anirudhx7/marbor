@@ -22,12 +22,12 @@ import (
 // dispatch in main.go.
 func runServiceCommand(args []string, version string) {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Println("Usage: ollama-mesh agent service {install|uninstall|start|stop|status} [flags]")
+		fmt.Println("Usage: ollama-mesh agent service {install|uninstall|start|stop|status|regen-cert} [flags]")
 		fmt.Println(`Run "ollama-mesh agent service <subcommand> --help" for flags specific to that subcommand.`)
 		return
 	}
 	if len(args) == 0 {
-		winexit.Fatal("nodeagent: usage: ollama-mesh agent service {install|uninstall|start|stop|status}")
+		winexit.Fatal("nodeagent: usage: ollama-mesh agent service {install|uninstall|start|stop|status|regen-cert}")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
@@ -41,8 +41,10 @@ func runServiceCommand(args []string, version string) {
 		runServiceControl(rest, "stop")
 	case "status":
 		runServiceStatus(rest)
+	case "regen-cert":
+		runServiceRegenCert(rest)
 	default:
-		winexit.Fatalf("nodeagent: unknown service subcommand %q (want install, uninstall, start, stop, or status)", sub)
+		winexit.Fatalf("nodeagent: unknown service subcommand %q (want install, uninstall, start, stop, status, or regen-cert)", sub)
 	}
 }
 
@@ -258,4 +260,63 @@ func runServiceStatus(args []string) {
 		winexit.Fatalf("nodeagent: service status failed: %v", err)
 	}
 	fmt.Println(status)
+
+	// P24: print the TLS certificate's fingerprint if one exists, so the
+	// operator can compare it against what the mesh's tls-probe endpoint
+	// shows before confirming a pin (spec section 1 step 3). Silent (not a
+	// fatal error) when no cert exists yet - most nodes are plaintext and
+	// this is a status display, not a requirement.
+	certPath, _ := service.CertKeyPaths()
+	if fingerprint, err := service.AgentCertFingerprint(certPath); err == nil {
+		fmt.Printf("TLS certificate fingerprint: %s\n", fingerprint)
+	}
+}
+
+// runServiceRegenCert forcibly regenerates the installed service's TLS
+// certificate/key (P24, spec section 4 - suspected key compromise or
+// planned operator-driven rotation, never automatic). This deliberately
+// invalidates whatever fingerprint the mesh currently has pinned for this
+// node: the operator must re-run the mesh-side confirm-and-pin flow
+// afterward (spec sections 1/2/6) - regenerating here does not, and must
+// not, notify or update the mesh itself.
+func runServiceRegenCert(args []string) {
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			fmt.Println("Usage: ollama-mesh agent service regen-cert")
+			fmt.Println("\nForcibly regenerates the installed Node Agent's TLS certificate and key,")
+			fmt.Println("then restarts the service so the new certificate takes effect. This")
+			fmt.Println("invalidates any fingerprint the mesh has pinned for this node - re-run the")
+			fmt.Println("mesh's confirm-and-pin flow afterward. Takes no flags.")
+			return
+		}
+	}
+	if len(args) > 0 {
+		winexit.Fatalf("nodeagent: agent service regen-cert takes no arguments (got %q)", args[0])
+	}
+
+	certPath, keyPath := service.CertKeyPaths()
+	if err := service.EnsureAgentCert(certPath, keyPath, true); err != nil {
+		winexit.Fatalf("nodeagent: regenerating TLS certificate failed: %v", err)
+	}
+
+	mgr, err := service.New()
+	if err != nil {
+		winexit.Fatalf("nodeagent: %v", err)
+	}
+	// Ignore Stop's error (matches the install/uninstall precedent elsewhere
+	// in this file) - the service may not currently be running, which isn't
+	// itself a failure of this command.
+	_ = mgr.Stop()
+	if err := mgr.Start(); err != nil {
+		winexit.Fatalf("nodeagent: regenerated the TLS certificate but restarting the service failed: %v", err)
+	}
+
+	fingerprint, err := service.AgentCertFingerprint(certPath)
+	if err != nil {
+		// The regeneration and restart already succeeded; failing to read
+		// back the fingerprint for display is not itself a command failure.
+		log.Printf("ollama-mesh agent service (%s) TLS certificate regenerated and service restarted, but could not read back the new fingerprint: %v", service.Name, err)
+		return
+	}
+	log.Printf("ollama-mesh agent service (%s) TLS certificate regenerated (new fingerprint: %s) and service restarted. Re-confirm and re-pin this node from the mesh admin UI/CLI.", service.Name, fingerprint)
 }

@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow } from '../types';
+import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision } from '../types';
 import type { SystemInfo } from './api';
 
 const GB = 1024;
@@ -133,6 +133,13 @@ export const mockGPUNodes: GPUNode[] = [
     name: 'gpu-node-03',
     host: '10.0.0.13',
     gpuModel: 'NVIDIA RTX 4090 24GB',
+    // P75 Gap B/C demo example: this node is declared to GPU 0 only (shares
+    // its host with another runtime pinned to a different GPU).
+    gpuIndices: [0],
+    // P24 demo example: this node has been migrated to HTTPS and has a
+    // pinned Node Agent certificate fingerprint - the healthy/normal case.
+    scheme: 'https',
+    tlsFingerprint: 'SHA256:' + 'a1b2c3d4e5f6'.repeat(6).slice(0, 64),
     port: 8080,
     runtime: 'tgi',
     vramTotalMB: 24 * GB,
@@ -178,6 +185,13 @@ export const mockGPUNodes: GPUNode[] = [
     name: 'gpu-node-04',
     host: '10.0.0.14',
     gpuModel: 'NVIDIA RTX 3090 24GB',
+    // P24 demo example: this node's agent presented a certificate that no
+    // longer matches its pinned fingerprint (e.g. after an unannounced
+    // "agent service regen-cert") - demonstrates the distinct TLS MISMATCH
+    // badge (NodeCard, GPUNodes.tsx) separately from generic unreachability.
+    scheme: 'https',
+    tlsFingerprint: 'SHA256:' + 'f0e1d2c3b4a5'.repeat(6).slice(0, 64),
+    tlsFingerprintMismatch: true,
     port: 8080,
     runtime: 'llamacpp',
     vramTotalMB: 24 * GB,
@@ -388,6 +402,7 @@ export const defaultSettings: Settings = {
   routingHealthFailureThreshold: 3,
   routingHealthSuccessThreshold: 2,
   routingOverflowSlaMs: 0,
+  routingMaxInFlightPerNode: 0,
   thermalWatchdogEnabled: false,
   thermalWatchdogMaxTempCelsius: 0,
   thermalWatchdogConsecutiveBreaches: 3,
@@ -530,12 +545,12 @@ const mins = (n: number) => new Date(now - n * 60000).toISOString();
 const secs = (n: number) => new Date(now - n * 1000).toISOString();
 
 export const mockRequests: RequestEntry[] = [
-  { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Engineering Team',  model: 'deepseek-r1:7b',  node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false },
-  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.3:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false },
-  { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false },
+  { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Engineering Team',  model: 'deepseek-r1:7b',  node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false, routingReason: 'score_based' },
+  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.3:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false, routingReason: 'session_affinity' },
+  { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false, routingReason: 'pinned_warm' },
   { id: 'req-d4e5f6a1b2c3', time: secs(51),  key_name: 'Engineering Team',  model: 'gpt-4o',           node: '',            status: 200, latency_ms: 312,  cloud: true  },
   { id: 'req-e5f6a1b2c3d4', time: mins(1),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 29,   cloud: false },
-  { id: 'req-f6a1b2c3d4e5', time: mins(2),   key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-03', status: 200, latency_ms: 67,   cloud: false },
+  { id: 'req-f6a1b2c3d4e5', time: mins(2),   key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-03', status: 200, latency_ms: 67,   cloud: false, routingReason: 'score_based' },
   { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.3:70b',    node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false },
   { id: 'req-b8c9d0e1f2a7', time: mins(5),   key_name: 'Support Bot',       model: 'deepseek-r1:7b',  node: 'gpu-node-02', status: 200, latency_ms: 55,   cloud: false },
   { id: 'req-c9d0e1f2a7b8', time: mins(6),   key_name: 'Engineering Team',  model: 'claude-sonnet-4', node: '',            status: 200, latency_ms: 521,  cloud: true  },
@@ -580,6 +595,61 @@ export function filterMockRequests(filters: MockRequestFilters): RequestEntry[] 
     if (untilMs !== null && new Date(e.time).getTime() >= untilMs) return false;
     return true;
   });
+}
+
+// mockRoutingDecisions is the P41 demo-parity data for the Requests page's
+// per-row "explain" panel, keyed by request id. Component values are chosen
+// to sum exactly to score, matching the real invariant the live endpoint
+// guarantees (sum(components) === score).
+const mockRoutingDecisions: Record<string, RoutingDecision> = {
+  'req-a1b2c3d4e5f6': {
+    node: 'gpu-node-01',
+    reason: 'score_based',
+    detail: 'score_based on node gpu-node-01',
+    score: 78.5,
+    components: [
+      { name: 'warm_model_resident', raw: 1, weight: 50, value: 50 },
+      { name: 'free_vram_headroom', raw: 0.4, weight: 20, value: 8 },
+      { name: 'inverse_queue_depth', raw: 1, weight: 15, value: 15 },
+      { name: 'node_health', raw: 1, weight: 10, value: 10 },
+      { name: 'success_rate', raw: 1, weight: 5, value: 5 },
+      { name: 'cooldown_penalty', raw: 0, weight: -50, value: 0 },
+      { name: 'stale_telemetry_penalty', raw: 0, weight: -50, value: -9.5 },
+    ],
+  },
+  'req-b2c3d4e5f6a1': {
+    node: 'gpu-node-02',
+    reason: 'session_affinity',
+    detail: 'sticky to node gpu-node-02',
+  },
+  'req-c3d4e5f6a1b2': {
+    node: 'gpu-node-02',
+    reason: 'pinned_warm',
+    detail: 'pinned+warm on node gpu-node-02',
+  },
+  'req-f6a1b2c3d4e5': {
+    node: 'gpu-node-03',
+    reason: 'score_based',
+    detail: 'score_based on node gpu-node-03 (session affinity existed but target node unhealthy/draining/expired) (retry attempt 2 after node gpu-node-01 failed)',
+    affinityLost: true,
+    score: 62,
+    components: [
+      { name: 'warm_model_resident', raw: 1, weight: 50, value: 50 },
+      { name: 'free_vram_headroom', raw: 0.3, weight: 20, value: 6 },
+      { name: 'inverse_queue_depth', raw: 0.2, weight: 15, value: 3 },
+      { name: 'node_health', raw: 0.2, weight: 10, value: 2 },
+      { name: 'success_rate', raw: 0.2, weight: 5, value: 1 },
+      { name: 'cooldown_penalty', raw: 0, weight: -50, value: 0 },
+      { name: 'stale_telemetry_penalty', raw: 0, weight: -50, value: 0 },
+    ],
+  },
+};
+
+// mockExplainForRequest simulates GET /admin/requests/{id}/explain for the
+// static demo build - returns undefined for any request without a canned
+// decision (mirrors the live 404 for requests predating this feature).
+export function mockExplainForRequest(id: string): RoutingDecision | undefined {
+  return mockRoutingDecisions[id];
 }
 
 function makeHourKey(hoursAgo: number): string {
@@ -791,6 +861,9 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       disk_total_gb: 4000,
       disk_known: true,
       capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
+      // P75 Gap D: a "declared" whole-node total with no per-device
+      // breakdown - the demo's example of the disclosure banner.
+      gpu_count_unknown: true,
       models: [],
     },
     {
@@ -804,6 +877,7 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       disk_free_gb: 15,
       disk_total_gb: 2000,
       disk_known: true,
+      gpu_count_unknown: true,
       models: [],
     },
     {

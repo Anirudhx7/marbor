@@ -141,6 +141,7 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Routing.HealthFailureThreshold = store.GetIntSetting(st, "routing_health_failure_threshold", cfg.Routing.HealthFailureThreshold)
 	cfg.Routing.HealthSuccessThreshold = store.GetIntSetting(st, "routing_health_success_threshold", cfg.Routing.HealthSuccessThreshold)
 	cfg.Routing.OverflowSLAMs = store.GetIntSetting(st, "routing_overflow_sla_ms", cfg.Routing.OverflowSLAMs)
+	cfg.Routing.MaxInFlightPerNode = store.GetIntSetting(st, "routing_max_in_flight_per_node", cfg.Routing.MaxInFlightPerNode)
 	cfg.Routing.ThermalWatchdog.Enabled = store.GetBoolSetting(st, "routing_thermal_watchdog_enabled", cfg.Routing.ThermalWatchdog.Enabled)
 	cfg.Routing.ThermalWatchdog.MaxTempCelsius = store.GetFloatSetting(st, "routing_thermal_watchdog_max_temp_celsius", cfg.Routing.ThermalWatchdog.MaxTempCelsius)
 	cfg.Routing.ThermalWatchdog.ConsecutiveBreaches = store.GetIntSetting(st, "routing_thermal_watchdog_consecutive_breaches", cfg.Routing.ThermalWatchdog.ConsecutiveBreaches)
@@ -456,7 +457,7 @@ func main() {
 	}
 	if overrides, err := st.NodeOverrides(); err == nil {
 		for name, ov := range overrides {
-			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime})
+			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint})
 		}
 	}
 	if drains, err := st.NodeDrainStates(); err == nil {

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -28,6 +29,29 @@ import (
 // AddNode (store/admin/Docker-discovered nodes) so every NodeState always
 // has a real, non-empty Host to key its Node Agent config by, even for a
 // node whose config.NodeConfig.Host was never explicitly set.
+// ResultingHost predicts the Host UpdateNodeURL would assign to a node
+// currently at currentHost/currentURL if its URL changed to newURL, without
+// mutating anything - exported so callers outside package router (e.g.
+// admin.go's pre-mutation TLS sibling-consistency validation) can predict the
+// resulting Host before a URL-changing mutation happens, instead of
+// independently reimplementing this derivation and risking drift from
+// UpdateNodeURL's actual behavior.
+//
+// Mirrors hostOrDefault's "explicit beats derived" convention, but on the
+// derived side it must re-derive from newURL rather than reuse currentHost:
+// by the time a live node reaches UpdateNodeURL, currentHost is never empty
+// (New/AddNode already default it), so a plain hostOrDefault(currentHost,
+// newURL) would always keep the stale current-URL-derived hostname.
+// Comparing currentHost against what an undeclared Host would have resolved
+// to for currentURL distinguishes "was this ever operator-declared" from
+// "was this just derived" without needing a separate field on NodeState.
+func ResultingHost(currentHost, currentURL, newURL string) string {
+	if currentHost == hostOrDefault("", currentURL) {
+		return hostOrDefault("", newURL)
+	}
+	return currentHost
+}
+
 func hostOrDefault(host, rawURL string) string {
 	if host != "" {
 		return host
@@ -58,19 +82,33 @@ type NodeState struct {
 	// them (see SetNodeAgent/NodeAgentSetting, keyed by Host, not Name).
 	// Always non-empty in memory: defaulted to the URL's hostname in AddNode
 	// when config.NodeConfig.Host is unset, so it never needs a nil check.
-	Host          string
-	GPUModel      string
-	NvidiaIndex   int
-	LoadedModels  []ModelInfo
-	ActiveConns   int32
-	RequestsTotal int64 // atomic: lifetime requests routed to this node
-	ColdStarts    int64 // atomic
-	WarmHits      int64 // atomic
-	TokensTotal   int64 // atomic
-	LatencySumMs  int64 // atomic
-	LatencyCount  int64 // atomic
-	Healthy       bool
-	Draining      bool
+	Host         string
+	GPUModel     string
+	NvidiaIndex  int
+	LoadedModels []ModelInfo
+	ActiveConns  int32
+	// MaxInFlight is this node's resolved per-node in-flight cap override
+	// (P64): 0 means "no override - use Router.maxInFlightPerNode". Set at
+	// construction from config.NodeConfig.MaxInFlight and updated live by
+	// PatchNode, same lifecycle as VRAMTotalMBConfig. Guarded by mu.
+	MaxInFlight int
+	// TLSFingerprint is this node's TOFU-pinned SHA-256 fingerprint
+	// ("SHA256:...") of its Node Agent's TLS certificate (P24): empty means
+	// "no pin - plaintext or not yet TLS-enrolled". Set at construction from
+	// config/store NodeOverride and updated live by PatchNode, same
+	// lifecycle as MaxInFlight. Guarded by mu. See
+	// .local/specs/node-agent-tls.md, especially section 15 for the
+	// multi-GPU-per-host (shared Host) caveat this field does not itself
+	// resolve - see dialTLSContext in tls_dial.go.
+	TLSFingerprint string
+	RequestsTotal  int64 // atomic: lifetime requests routed to this node
+	ColdStarts     int64 // atomic
+	WarmHits       int64 // atomic
+	TokensTotal    int64 // atomic
+	LatencySumMs   int64 // atomic
+	LatencyCount   int64 // atomic
+	Healthy        bool
+	Draining       bool
 	// DrainedReason records why Draining was set (e.g. "manual", "thermal") -
 	// persisted and restored alongside Draining, surfaced to operators in the
 	// UI so they can tell an admin-initiated drain from a watchdog-triggered
@@ -116,11 +154,19 @@ type NodeState struct {
 	// fallback when a node's runtime API can't report a real observed size
 	// (non-Ollama backends). Set once at construction; never mutated at
 	// runtime, so it is safe to read under RLock like any other field.
-	VRAMOverrides  map[string]int64
-	autoDetect     bool                    // true if config said runtime: auto; cleared after first detection
-	probe          runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
-	LastErrorAt    time.Time
-	SuccessHistory []bool
+	VRAMOverrides map[string]int64
+	// DeclaredGPUIndices is the operator-declared set of physical GPU indices
+	// this specific node/runtime instance actually uses (P75 Gap B/C) - see
+	// nodeVRAMCapacity's doc comment in internal/admin/catalog.go for why
+	// host-scoped agent telemetry (AgentGPUs below) alone cannot answer this.
+	// nil/empty means "nothing declared" - existing host-level sizing applies
+	// unchanged. Set via PatchNode/NodePatch.GPUIndices, persisted in
+	// store.NodeOverride.GPUIndices.
+	DeclaredGPUIndices []int
+	autoDetect         bool                    // true if config said runtime: auto; cleared after first detection
+	probe              runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
+	LastErrorAt        time.Time
+	SuccessHistory     []bool
 
 	// Node Agent-derived telemetry (see internal/nodeagent, .local/specs/node-agent.md).
 	// AgentPresent is true only after a successful poll of this node's agent
@@ -228,6 +274,16 @@ type NodeState struct {
 	// (fan/RAM/disk/GPU/runtime status) the way clearAgentTelemetry used to
 	// on the very first failure. Reset to 0 on the next successful poll.
 	AgentFailures int
+	// AgentTLSMismatch is true when the most recent agent poll failed
+	// specifically because the presented certificate didn't match this
+	// host's pinned fingerprint (P24, see tls_dial.go's
+	// ErrTLSFingerprintMismatch and agent_poll.go's pollAgentHost) - a
+	// distinct condition from a generic network/timeout failure
+	// (AgentFailures alone), surfaced to the dashboard as its own status so
+	// an operator doesn't mistake a stale pin for ordinary unreachability.
+	// Cleared to false on the next successful poll or any poll failure that
+	// isn't itself a fingerprint mismatch.
+	AgentTLSMismatch bool
 
 	mu sync.RWMutex
 }
@@ -273,11 +329,18 @@ type affinityEntry struct {
 }
 
 type Router struct {
-	nodes          []*NodeState
-	strategy       string
-	fallback       string
-	interval       time.Duration
-	client         *http.Client
+	nodes    []*NodeState
+	strategy string
+	fallback string
+	interval time.Duration
+	client   *http.Client
+	// tlsTransport is the single shared http.Transport backing client and
+	// every HTTPClientForNode(...) client (P24) - its DialTLSContext
+	// (tls_dial.go) is the one place TLS fingerprint pinning is enforced,
+	// for both the poll path and every admin/eviction action-path call site.
+	// Built once in New(), never mutated after - safe to read without a
+	// lock. See .local/specs/node-agent-tls.md section 6.
+	tlsTransport   *http.Transport
 	mu             sync.RWMutex
 	roundRobin     uint32
 	rules          []config.RoutingRule
@@ -350,8 +413,13 @@ type Router struct {
 	queueDepth    int32 // atomic, current waiters in WaitForNode
 	queueMaxDepth int
 	queueTimeout  time.Duration
-	timezone      string // timezone location name (e.g. "UTC", "Asia/Kolkata", "Local")
-	warmupCfg     config.WarmupConfig
+	// maxInFlightPerNode is the global default in-flight cap (P64) - 0 means
+	// uncapped. Overridable per node via NodeState.MaxInFlight. Set once at
+	// construction (same as queueMaxDepth/overflowSLA); a live change requires
+	// a restart, consistent with the other RoutingConfig numeric knobs above.
+	maxInFlightPerNode int
+	timezone           string // timezone location name (e.g. "UTC", "Asia/Kolkata", "Local")
+	warmupCfg          config.WarmupConfig
 	// nodeWarmup holds per-node runtime warmup settings toggled via the admin API
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
@@ -459,7 +527,20 @@ func sortCloudsByPriority(clouds []config.CloudProvider) {
 }
 
 func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config.CloudProvider) *Router {
-	client := &http.Client{Timeout: 5 * time.Second}
+	// rr is assigned the real *Router immediately after it's constructed
+	// below (once, at the end of this function) - the transport is built
+	// first (client is needed while constructing per-node runtime probes,
+	// further down) so DialTLSContext closes over rr by reference instead
+	// of requiring the Router to already exist. By the time any real dial
+	// happens, New() has returned and rr is set. See tls_dial.go and
+	// .local/specs/node-agent-tls.md section 6.
+	var rr *Router
+	transport := &http.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return rr.dialTLSContext(ctx, network, addr)
+		},
+	}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
 	nodes := make([]*NodeState, len(nodesCfg))
 	for i, n := range nodesCfg {
 		ns := &NodeState{
@@ -470,6 +551,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			NvidiaIndex:       n.NvidiaIndex,
 			VRAMTotalMBConfig: n.VRAMTotalMB,
 			VRAMOverrides:     n.VRAMOverrides,
+			MaxInFlight:       n.MaxInFlight,
 			Healthy:           true,
 			FirstSeenAt:       time.Now(),
 			Runtime:           n.Runtime,
@@ -525,12 +607,13 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	if thermalWatchdog.Enabled && thermalWatchdog.ConsecutiveBreaches <= 0 {
 		thermalWatchdog.ConsecutiveBreaches = 3
 	}
-	return &Router{
+	r := &Router{
 		nodes:                    nodes,
 		strategy:                 cfg.Strategy,
 		fallback:                 cfg.Fallback,
 		interval:                 time.Duration(cfg.PollIntervalMs) * time.Millisecond,
 		client:                   client,
+		tlsTransport:             transport,
 		rules:                    cfg.Rules,
 		clouds:                   cloudsCopy,
 		discoveredURLs:           make(map[string]struct{}),
@@ -562,9 +645,12 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		notifyCh:                 make(chan struct{}),
 		queueMaxDepth:            queueMaxDepth,
 		queueTimeout:             queueTimeout,
+		maxInFlightPerNode:       cfg.MaxInFlightPerNode,
 		lastAccuracyLogAt:        time.Now(),
 		lastTimeOfDayPrewarmHour: -1,
 	}
+	rr = r
+	return r
 }
 
 func (r *Router) SetWarmupConfig(cfg config.WarmupConfig) {
@@ -1112,6 +1198,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		GPUModel:      n.GPUModel,
 		NvidiaIndex:   n.NvidiaIndex,
 		VRAMOverrides: n.VRAMOverrides,
+		MaxInFlight:   n.MaxInFlight,
 		Healthy:       true,
 		FirstSeenAt:   time.Now(),
 		Runtime:       n.Runtime,
@@ -1281,9 +1368,27 @@ type NodePatch struct {
 	VRAMTotalMB *int64  `json:"vram_total_mb"`
 	GPUModel    *string `json:"gpu_model"`
 	Runtime     *string `json:"runtime"`
+	// GPUIndices declares which physical GPU indices this node/runtime
+	// instance actually uses (P75 Gap B/C) - nil means "not present in this
+	// PATCH, no change"; a non-nil pointer to an empty slice explicitly
+	// clears a prior declaration. See NodeState.DeclaredGPUIndices.
+	GPUIndices *[]int `json:"gpu_indices"`
 	// URL is handled separately from the other fields - see UpdateNodeURL -
 	// but is decoded here so a single PATCH body can carry it.
 	URL *string `json:"url"`
+	// MaxInFlight declares this node's per-node in-flight cap override (P64) -
+	// nil means "not present in this PATCH, no change"; a non-nil pointer to
+	// 0 explicitly clears any prior override back to "use the global default"
+	// (mirrors GPUIndices' non-nil-empty-slice-clears convention).
+	MaxInFlight *int `json:"max_in_flight"`
+	// TLSFingerprint declares this node's TOFU-pinned Node Agent cert
+	// fingerprint (P24) - nil means "not present in this PATCH, no change";
+	// a non-nil pointer to "" explicitly clears a prior pin (reset flow,
+	// see .local/specs/node-agent-tls.md section 2/5). No-downgrade
+	// enforcement (rejecting a patch that would leave this set alongside an
+	// http:// URL) and the section 15 sibling-consistency guard both live in
+	// admin.go's handlePatchNode, not here - PatchNode itself only merges.
+	TLSFingerprint *string `json:"tls_fingerprint"`
 }
 
 // UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
@@ -1324,24 +1429,34 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 
 	old.mu.Lock()
 	oldURL := old.URL
+	oldHost := old.Host
 	runtime := old.Runtime
 	autoDetect := old.autoDetect
 	gpuModel := old.GPUModel
 	nvidiaIndex := old.NvidiaIndex
 	vramOverrides := old.VRAMOverrides
 	vramTotalMBConfig := old.VRAMTotalMBConfig
+	declaredGPUIndices := old.DeclaredGPUIndices
+	maxInFlight := old.MaxInFlight
+	tlsFingerprint := old.TLSFingerprint
 	old.mu.Unlock()
 
+	newHost := ResultingHost(oldHost, oldURL, newURL)
+
 	node := &NodeState{
-		Name:              name,
-		URL:               newURL,
-		GPUModel:          gpuModel,
-		NvidiaIndex:       nvidiaIndex,
-		VRAMOverrides:     vramOverrides,
-		VRAMTotalMBConfig: vramTotalMBConfig,
-		Healthy:           true,
-		FirstSeenAt:       time.Now(),
-		Runtime:           runtime,
+		Name:               name,
+		URL:                newURL,
+		Host:               newHost,
+		GPUModel:           gpuModel,
+		NvidiaIndex:        nvidiaIndex,
+		VRAMOverrides:      vramOverrides,
+		VRAMTotalMBConfig:  vramTotalMBConfig,
+		DeclaredGPUIndices: declaredGPUIndices,
+		MaxInFlight:        maxInFlight,
+		TLSFingerprint:     tlsFingerprint,
+		Healthy:            true,
+		FirstSeenAt:        time.Now(),
+		Runtime:            runtime,
 	}
 	if autoDetect {
 		node.autoDetect = true
@@ -1402,6 +1517,15 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 					// law: one process for the entire mesh).
 					n.probe = runtimepkg.NewProbe(*patch.Runtime, r.client)
 				}
+			}
+			if patch.GPUIndices != nil {
+				n.DeclaredGPUIndices = append([]int(nil), (*patch.GPUIndices)...)
+			}
+			if patch.MaxInFlight != nil {
+				n.MaxInFlight = *patch.MaxInFlight
+			}
+			if patch.TLSFingerprint != nil {
+				n.TLSFingerprint = *patch.TLSFingerprint
 			}
 			n.mu.Unlock()
 			return true

@@ -530,6 +530,21 @@ type NodeResp struct {
 	RequestsTotal int64             `json:"requestsTotal"`
 }
 
+// PatchNodeTLSFingerprint calls PATCH /admin/v1/nodes/{name} with
+// tls_fingerprint (P24 headless enrollment confirmation, spec section 11) -
+// matches router.NodePatch's snake_case JSON tag. fingerprint must be
+// supplied by the caller (ultimately the operator, via the CLI's
+// --fingerprint flag) - this method never probes or infers a value itself.
+func (c *Client) PatchNodeTLSFingerprint(name, fingerprint string) error {
+	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name),
+		map[string]string{"tls_fingerprint": fingerprint})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // Nodes calls GET /admin/v1/nodes (session-authed).
 func (c *Client) Nodes() ([]NodeResp, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/v1/nodes", true)
@@ -543,6 +558,45 @@ func (c *Client) Nodes() ([]NodeResp, error) {
 		return nil, serverErrorf("could not parse /admin/v1/nodes response: %v", err)
 	}
 	return out, nil
+}
+
+// ScoreComponent mirrors one term of router.RoutingDecision.Components - a
+// weighted factor contributing to a node's placement score.
+type ScoreComponent struct {
+	Name   string  `json:"name"`
+	Raw    float64 `json:"raw"`
+	Weight float64 `json:"weight"`
+	Value  float64 `json:"value"`
+}
+
+// RoutingDecision mirrors router.RoutingDecision - P41 per-request routing
+// explainability. Kept as a local DTO (not an import of internal/router)
+// following this package's existing convention of decoding Admin API JSON
+// into its own response types (see NodeResp) rather than depending on
+// internal packages.
+type RoutingDecision struct {
+	Node         string           `json:"node"`
+	Reason       string           `json:"reason"`
+	Detail       string           `json:"detail,omitempty"`
+	AffinityLost bool             `json:"affinityLost,omitempty"`
+	Score        float64          `json:"score,omitempty"`
+	Components   []ScoreComponent `json:"components,omitempty"`
+}
+
+// ExplainRequest calls GET /admin/v1/requests/{id}/explain, returning the
+// full routing explanation for one request id.
+func (c *Client) ExplainRequest(id string) (*RoutingDecision, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/v1/requests/"+urlPathEscape(id)+"/explain", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out RoutingDecision
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse explain response: %v", err)
+	}
+	return &out, nil
 }
 
 // SpillCounterRow mirrors one row of GET /admin/v1/spill - a per-key,

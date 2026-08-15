@@ -388,7 +388,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// This eliminates the previous discard-and-fall-through behavior where a valid
 	// Ollama node could be available but the request still hit 503 because a
 	// non-Ollama node was returned and silently discarded (#3).
-	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
+	node, warm, decision := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
 
 	// degradedOnce enforces the documented single-hop invariant across both
 	// trigger sites in this method: a request may substitute at most once,
@@ -404,12 +404,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// than cloud for a privacy-motivated operator. Tried before
 		// localOnlyBlocked since a successful substitution never leaves local
 		// nodes and so never needs to be blocked.
-		if altNode, alt, altWarm, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
+		if altNode, alt, altWarm, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
 			body = applyLocalDegradation(w, body, modelName, alt)
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			modelName = alt
 			node = altNode
 			warm = altWarm
+			decision = altDecision
 			degradedOnce = true
 		}
 	}
@@ -505,6 +506,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		aborted bool
 	)
 
+	// retryCount/lastFailedNode are read-only context for the P41
+	// explainability Detail annotation applied after the loop - the router
+	// itself stays ignorant of retry semantics (see RouteExcluding's doc
+	// comment); this is purely a proxy-layer string annotation.
+	retryCount := 0
+	lastFailedNode := ""
+
 	for attempt := 0; ; attempt++ {
 		proxy := buildLocalProxy(targetURL, body, r, transport, requestID)
 
@@ -512,6 +520,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// needed. Using a pointer-to-pointer lets the closure write through to
 		// a variable in this stack frame without heap allocation overhead.
 		var nextNode *router.NodeState
+		var nextDecision *router.RoutingDecision
 		var retryErr error
 		// errHandled is set when ErrorHandler fired and already released this
 		// node's connection slot, so the post-loop DecrConn must not run again
@@ -537,10 +546,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if attempt < maxRetries {
-				alt, _ := h.router.RouteExcluding(modelName, runtimeFilter, tried)
+				alt, _, altDecision := h.router.RouteExcluding(modelName, runtimeFilter, tried)
 				if alt != nil {
 					metrics.Retry(node.Name)
+					lastFailedNode = node.Name
+					retryCount++
 					nextNode = alt
+					nextDecision = altDecision
 					retryErr = e
 					return
 				}
@@ -553,11 +565,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// bounds a cyclic operator config to one substitution instead of
 			// looping the retry loop indefinitely).
 			if !degradedOnce {
-				if altNode, altModel, _, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
+				if altNode, altModel, _, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
 					body = applyLocalDegradation(rw, body, modelName, altModel)
 					origReq.Body = io.NopCloser(bytes.NewReader(body))
 					modelName = altModel
+					lastFailedNode = node.Name
+					retryCount++
 					nextNode = altNode
+					nextDecision = altDecision
 					retryErr = e
 					degradedOnce = true
 					return
@@ -602,6 +617,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if nextNode != nil {
 			// Switch to the alternate node and retry.
 			node = nextNode
+			decision = nextDecision
 			h.router.IncrConn(node)
 			targetURL, err = url.Parse(node.URL)
 			if err != nil {
@@ -617,14 +633,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// ErrorHandler already released this node's slot.
 		if !errHandled {
 			h.router.DecrConn(node)
-			status := rec.statusCode
-			if status == 0 {
-				status = 200
-			}
-			success := status < 500 && !aborted
+			success := rec.StatusCode() < 500 && !aborted
 			h.router.RecordRequestOutcome(node.Name, success)
 		}
 		break
+	}
+
+	// P41: annotate the routing explanation with retry context the router
+	// itself never sees - purely a proxy-layer string addition, no change to
+	// Reason/Score/Components.
+	if decision != nil && retryCount > 0 {
+		decision.Detail = fmt.Sprintf("%s (retry attempt %d after node %s failed)", decision.Detail, retryCount+1, lastFailedNode)
 	}
 
 	duration := time.Since(start).Seconds()
@@ -655,10 +674,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.admin != nil {
 		tokens := rec.tokenCount(aborted)
-		logTokens := tokens
-		if logTokens < 0 {
-			logTokens = 0
-		}
 		clientIP := r.RemoteAddr
 		if h.trustProxyHeaders {
 			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
@@ -673,7 +688,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if modelName != requestedModelName {
 			loggedModel = requestedModelName + " -> " + modelName
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, latencyMs, logTokens)
+		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.StatusCode(), latencyMs, tokens, decision)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
@@ -688,15 +703,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if aborted {
 			auditStatus = "aborted"
 		}
+		routingReason := ""
+		if decision != nil {
+			routingReason = decision.Reason
+		}
 		h.audit.Log(audit.Entry{
-			Time:      time.Now(),
-			RequestID: requestID,
-			KeyName:   keyName,
-			Model:     requestedModelName,
-			Node:      node.Name,
-			Status:    auditStatus,
-			LatencyMs: latencyMs,
-			Cloud:     false,
+			Time:          time.Now(),
+			RequestID:     requestID,
+			KeyName:       keyName,
+			Model:         requestedModelName,
+			Node:          node.Name,
+			Status:        auditStatus,
+			LatencyMs:     latencyMs,
+			Cloud:         false,
+			RoutingReason: routingReason,
 		})
 	}
 	h.access.Log(AccessLogEntry{
@@ -739,19 +759,19 @@ func applyLocalDegradation(w http.ResponseWriter, body []byte, from, alt string)
 // walks one level of one chain per call. Returns ok=false if allowDegradation
 // is false, no chain is declared for modelName, or every eligible candidate
 // is currently unavailable.
-func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allowDegradation bool, allowedModels []string) (node *router.NodeState, alt string, warm bool, ok bool) {
+func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allowDegradation bool, allowedModels []string) (node *router.NodeState, alt string, warm bool, decision *router.RoutingDecision, ok bool) {
 	if !allowDegradation {
-		return nil, "", false, false
+		return nil, "", false, nil, false
 	}
 	for _, candidate := range h.router.LocalDegradationChainFor(modelName) {
 		if len(allowedModels) > 0 && !slices.Contains(allowedModels, candidate) {
 			continue
 		}
-		if n, w := h.router.RouteExcluding(candidate, runtimeFilter, nil); n != nil {
-			return n, candidate, w, true
+		if n, w, d := h.router.RouteExcluding(candidate, runtimeFilter, nil); n != nil {
+			return n, candidate, w, d, true
 		}
 	}
-	return nil, "", false, false
+	return nil, "", false, nil, false
 }
 
 // errCloudHandled is a sentinel used inside the ErrorHandler closure to signal
@@ -999,13 +1019,19 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 
 	outBody := body
+	// Ollama's legacy /api/embeddings request uses "prompt"; OpenAI's
+	// /v1/embeddings (translateCloudPath's target for this path) expects
+	// "input". Rewrite before the model-field rewrite below so both compose.
+	if r.URL.Path == "/api/embeddings" && len(outBody) > 0 {
+		outBody = rewritePromptToInput(outBody)
+	}
 	// loggedModel makes model rewriting visible: "<original> -> <cloud model>"
 	// in the request log when the cloud provider's default_model replaced the
 	// client's requested model, plain "<original>" otherwise.
 	loggedModel := modelName
 	cloudModel := ""
-	if cloud.DefaultModel != "" && len(body) > 0 {
-		outBody = rewriteModelField(body, cloud.DefaultModel)
+	if cloud.DefaultModel != "" && len(outBody) > 0 {
+		outBody = rewriteModelField(outBody, cloud.DefaultModel)
 		cloudModel = cloud.DefaultModel
 		loggedModel = modelName + " -> " + cloud.DefaultModel
 	}
@@ -1114,7 +1140,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 				clientIP = fwd2
 			}
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, latencyMs, logTokens)
+		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.StatusCode(), latencyMs, logTokens, nil)
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local mesh
@@ -1160,6 +1186,8 @@ func translateCloudPath(ollamaPath string) string {
 		return "/v1/completions"
 	case "/api/embeddings":
 		return "/v1/embeddings"
+	case "/api/embed":
+		return "/v1/embeddings"
 	default:
 		return ollamaPath
 	}
@@ -1182,17 +1210,50 @@ func rewriteModelField(body []byte, model string) []byte {
 	return out
 }
 
+// rewritePromptToInput renames the legacy Ollama /api/embeddings request's
+// "prompt" field to "input" for outbound cloud requests, matching OpenAI's
+// /v1/embeddings request schema. No-op if "prompt" is absent or "input" is
+// already present.
+func rewritePromptToInput(body []byte) []byte {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
+	}
+	prompt, hasPrompt := m["prompt"]
+	if !hasPrompt {
+		return body
+	}
+	if _, hasInput := m["input"]; !hasInput {
+		m["input"] = prompt
+	}
+	delete(m, "prompt")
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 type statusRecorder struct {
 	http.ResponseWriter
 	statusCode  int
-	tail        []byte    // last tailMax bytes written, for token-count parsing
+	tail        []byte    // retained body for token-count parsing - see tailMax
+	sawNewline  bool      // true once a '\n' has appeared in the written body
 	start       time.Time // request start, for TTFT; zero value means TTFT is unavailable
 	firstByteAt time.Time // set on the first Write(); zero until then
 }
 
-// tailMax bounds the retained response tail. Token counts live in the final
-// JSON object (Ollama NDJSON) or final SSE chunk (OpenAI), so a small tail
-// is enough. Writes still pass straight through - streaming is not buffered.
+// tailMax bounds the retained response tail for line-oriented responses -
+// Ollama NDJSON (one JSON object per line) or OpenAI SSE ("data: " lines) -
+// where the token count lives in the final line, so a small tail is enough.
+//
+// A single-JSON-document response (e.g. /v1/embeddings, whose "usage" field
+// trails a large embedding array with no newline anywhere in the body) can't
+// be identified by "final line" at all, so Write does not truncate until it
+// has seen at least one '\n' - see sawNewline. Until then the buffer grows up
+// to maxRequestBodyBytes, matching the size the proxy already accepts on the
+// request side. Writes still pass straight through in both cases - streaming
+// to the client is never buffered (R2).
 const tailMax = 8192
 
 func (r *statusRecorder) Write(b []byte) (int, error) {
@@ -1201,9 +1262,18 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 		if r.firstByteAt.IsZero() {
 			r.firstByteAt = time.Now()
 		}
-		r.tail = append(r.tail, b[:n]...)
-		if len(r.tail) > tailMax {
-			r.tail = r.tail[len(r.tail)-tailMax:]
+		if !r.sawNewline && bytes.IndexByte(b[:n], '\n') >= 0 {
+			r.sawNewline = true
+		}
+		if !r.sawNewline {
+			if len(r.tail) < maxRequestBodyBytes {
+				r.tail = append(r.tail, b[:n]...)
+			}
+		} else {
+			r.tail = append(r.tail, b[:n]...)
+			if len(r.tail) > tailMax {
+				r.tail = r.tail[len(r.tail)-tailMax:]
+			}
 		}
 	}
 	return n, err
@@ -1227,6 +1297,9 @@ func (r *statusRecorder) ttft() time.Duration {
 // chunk carrying the real count was never sent by upstream, so this is a
 // genuinely unknown value, not a real zero-token response; callers must
 // skip cost/analytics accumulation for -1 rather than storing it as 0.
+// Also returns -1 for Ollama's legacy /api/embeddings response shape
+// ({"embedding":[...]}, no eval_count/prompt_eval_count/usage field) - that
+// endpoint genuinely reports no token count, so 0 would be a fake zero (R1).
 func (r *statusRecorder) tokenCount(aborted bool) int64 {
 	lines := bytes.Split(r.tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -1236,8 +1309,9 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 			continue
 		}
 		var t struct {
-			EvalCount       int64 `json:"eval_count"`
-			PromptEvalCount int64 `json:"prompt_eval_count"`
+			EvalCount       int64           `json:"eval_count"`
+			PromptEvalCount int64           `json:"prompt_eval_count"`
+			Embedding       json.RawMessage `json:"embedding"`
 			Usage           struct {
 				TotalTokens int64 `json:"total_tokens"`
 			} `json:"usage"`
@@ -1250,6 +1324,14 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 		}
 		if t.Usage.TotalTokens > 0 {
 			return t.Usage.TotalTokens
+		}
+		// Ollama's legacy singular /api/embeddings response is
+		// {"embedding":[...]} with no eval_count/prompt_eval_count/usage
+		// field at all - there is genuinely no token count available from
+		// this response shape, so this is unavailable (-1), not a real
+		// zero-token measurement (R1: never present a fake zero as real).
+		if t.Embedding != nil {
+			return -1
 		}
 	}
 	if aborted {
@@ -1299,9 +1381,16 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-func (r *statusRecorder) Status() string {
+// StatusCode returns the real numeric HTTP status written to the client,
+// defaulting to 200 when WriteHeader was never called explicitly (matching
+// the standard library's own default-to-200 behavior).
+func (r *statusRecorder) StatusCode() int {
 	if r.statusCode == 0 {
-		return "200"
+		return 200
 	}
-	return fmt.Sprintf("%d", r.statusCode)
+	return r.statusCode
+}
+
+func (r *statusRecorder) Status() string {
+	return fmt.Sprintf("%d", r.StatusCode())
 }
