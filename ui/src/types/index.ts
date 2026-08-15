@@ -42,6 +42,10 @@ export interface GPUNode {
   id: string;
   name: string;
   host: string;
+  // URL scheme this node is configured with ("http" or "https") - not
+  // itself a security signal, but needed to know whether TLS pinning even
+  // applies and to correctly pre-populate a scheme toggle when editing (P24).
+  scheme?: 'http' | 'https';
   gpuModel: string;
   // Operator-declared physical GPU index list this node/runtime instance
   // actually uses (P75 Gap B/C) - undefined/empty means nothing declared,
@@ -74,6 +78,15 @@ export interface GPUNode {
   // means no override is declared, so the global
   // routing.max_in_flight_per_node default applies instead.
   maxInFlight?: number;
+  // TOFU-pinned Node Agent TLS certificate fingerprint (P24) - undefined/
+  // empty means no pin (plaintext or not yet TLS-enrolled). See
+  // .local/specs/node-agent-tls.md.
+  tlsFingerprint?: string;
+  // True when the most recent agent poll failed specifically because the
+  // presented certificate didn't match tlsFingerprint - distinct from
+  // generic unreachability, so the dashboard can show its own status
+  // instead of "unreachable" (spec section 6).
+  tlsFingerprintMismatch?: boolean;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;

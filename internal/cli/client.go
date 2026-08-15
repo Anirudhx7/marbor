@@ -530,6 +530,21 @@ type NodeResp struct {
 	RequestsTotal int64             `json:"requestsTotal"`
 }
 
+// PatchNodeTLSFingerprint calls PATCH /admin/v1/nodes/{name} with
+// tls_fingerprint (P24 headless enrollment confirmation, spec section 11) -
+// matches router.NodePatch's snake_case JSON tag. fingerprint must be
+// supplied by the caller (ultimately the operator, via the CLI's
+// --fingerprint flag) - this method never probes or infers a value itself.
+func (c *Client) PatchNodeTLSFingerprint(name, fingerprint string) error {
+	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name),
+		map[string]string{"tls_fingerprint": fingerprint})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // Nodes calls GET /admin/v1/nodes (session-authed).
 func (c *Client) Nodes() ([]NodeResp, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/v1/nodes", true)

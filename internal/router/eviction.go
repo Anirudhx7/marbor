@@ -360,8 +360,11 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg No
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 
-	client := &http.Client{Timeout: nodeAgentUnloadTimeout}
-	resp, err := client.Do(req)
+	// HTTPClientForNode (tls_dial.go), not a bare &http.Client{} - this call
+	// site must go through the same TLS-pinning-aware Transport as the poll
+	// path and every admin action-path client (P24, no partially-secured
+	// agent where telemetry is HTTPS and unload stays plaintext).
+	resp, err := r.HTTPClientForNode(nodeAgentUnloadTimeout).Do(req)
 	if err != nil {
 		return fmt.Errorf("agent unload model failed: %w", err)
 	}
