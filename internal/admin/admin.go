@@ -201,6 +201,17 @@ type Server struct {
 	restoreCh      chan<- string             // nil until SetRestoreChannel is called (main.go only, in a real run)
 	enrollMu       sync.Mutex                // guards enrollCodes
 	enrollCodes    map[string]enrollmentCode // one-time code -> record; ephemeral, never persisted (P50)
+	// nodePatchMu serializes handlePatchNode's entire validate-then-mutate
+	// transaction (validateTLSPatch through the final PatchNode/
+	// UpdateNodeURL call). Without it, two concurrent PATCH requests to
+	// DIFFERENT node names can each read a pre-mutation node-list snapshot,
+	// both pass validateTLSPatch's sibling-consistency check against that
+	// stale snapshot, and then both mutate - jointly producing two nodes on
+	// one Host with different pinned TLS fingerprints, the exact state P24
+	// section 15 exists to prevent. This does not touch mu (r.router's own
+	// node-list lock already protects individual reads/writes; this mutex
+	// only prevents two full PATCH transactions from interleaving).
+	nodePatchMu sync.Mutex
 }
 
 // enrollmentCode is a short-lived, single-use credential exchanged by a Node
@@ -3326,39 +3337,59 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "tls_fingerprint must be empty (to clear the pin) or in the form SHA256:<64 hex characters>")
 		return
 	}
-	// P24: no-downgrade and section 15 sibling-consistency checks. Must run
-	// before any mutation below (UpdateNodeURL/PatchNode) so a rejected
-	// patch never partially applies. See .local/specs/node-agent-tls.md
-	// sections 5/7/15.
-	if patch.TLSFingerprint != nil || patch.URL != nil {
-		if err := s.validateTLSPatch(name, patch); err != nil {
-			status := http.StatusConflict
-			if strings.Contains(err.Error(), "not found") {
-				status = http.StatusNotFound
+	// The entire validate-then-mutate transaction below runs under
+	// nodePatchMu: two concurrent PATCH requests to DIFFERENT node names can
+	// otherwise each read a pre-mutation node-list snapshot inside
+	// validateTLSPatch, both pass its sibling-consistency check against that
+	// now-stale snapshot, and then both mutate - jointly producing two nodes
+	// on one Host with different pinned TLS fingerprints (P24 section 15's
+	// invariant, reopened via a race instead of a single request). Holding
+	// one mutex across validation and every mutation this handler performs
+	// (UpdateNodeURL, PatchNode, and their store-persistence calls) makes
+	// the whole transaction atomic with respect to other PATCH requests,
+	// without changing any of the per-error status/message logic below.
+	locked := func() bool {
+		s.nodePatchMu.Lock()
+		defer s.nodePatchMu.Unlock()
+
+		// P24: no-downgrade and section 15 sibling-consistency checks. Must run
+		// before any mutation below (UpdateNodeURL/PatchNode) so a rejected
+		// patch never partially applies. See .local/specs/node-agent-tls.md
+		// sections 5/7/15.
+		if patch.TLSFingerprint != nil || patch.URL != nil {
+			if err := s.validateTLSPatch(name, patch); err != nil {
+				status := http.StatusConflict
+				if strings.Contains(err.Error(), "not found") {
+					status = http.StatusNotFound
+				}
+				writeJSONError(w, status, err.Error())
+				return false
 			}
-			writeJSONError(w, status, err.Error())
-			return
 		}
-	}
-	if patch.URL != nil {
-		if err := s.router.UpdateNodeURL(name, *patch.URL); err != nil {
-			status := http.StatusConflict
-			if strings.Contains(err.Error(), "not found") {
-				status = http.StatusNotFound
-			} else if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "must be http") || strings.Contains(err.Error(), "link-local") {
-				status = http.StatusBadRequest
+		if patch.URL != nil {
+			if err := s.router.UpdateNodeURL(name, *patch.URL); err != nil {
+				status := http.StatusConflict
+				if strings.Contains(err.Error(), "not found") {
+					status = http.StatusNotFound
+				} else if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "must be http") || strings.Contains(err.Error(), "link-local") {
+					status = http.StatusBadRequest
+				}
+				writeJSONError(w, status, err.Error())
+				return false
 			}
-			writeJSONError(w, status, err.Error())
-			return
+			_ = s.st.UpdateNodeURL(name, *patch.URL)
 		}
-		_ = s.st.UpdateNodeURL(name, *patch.URL)
-	}
-	if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil || patch.TLSFingerprint != nil {
-		if !s.router.PatchNode(name, patch) {
-			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
-			return
+		if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil || patch.TLSFingerprint != nil {
+			if !s.router.PatchNode(name, patch) {
+				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+				return false
+			}
+			_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint)
 		}
-		_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint)
+		return true
+	}()
+	if !locked {
+		return
 	}
 	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v, MaxInFlightChanged: %v, TLSFingerprintChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil, patch.MaxInFlight != nil, patch.TLSFingerprint != nil))
 	// Return the updated node.

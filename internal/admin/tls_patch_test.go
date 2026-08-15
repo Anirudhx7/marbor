@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
@@ -463,6 +464,101 @@ func TestHandlePatchNode_AllowsURLOnlyMoveOntoHostWithNoPinnedSibling(t *testing
 	gpu0.RUnlock()
 	if url != "https://empty-host:11434" || fp != validFP1 {
 		t.Errorf("gpu-0 state after allowed move: URL=%q TLSFingerprint=%q, want URL=https://empty-host:11434 TLSFingerprint=%q", url, fp, validFP1)
+	}
+}
+
+// TestHandlePatchNode_ConcurrentPatchesCannotProduceConflictingSiblingPins is
+// the regression test for the TOCTOU gap the review found in
+// handlePatchNode's nodePatchMu fix: two concurrent PATCH requests to
+// DIFFERENT node names, each individually valid against a point-in-time
+// snapshot, must not be able to jointly land on host-A with two different
+// non-empty pinned fingerprints.
+//
+// gpu-A starts pinned to FP1 on host-A; gpu-D is host-A's unpinned sibling
+// (present so a stale-snapshot sibling check has something to miss). Two
+// goroutines then race:
+//   - move gpu-C onto host-A, explicitly pinning FP1 (matches gpu-A's
+//     CURRENT pin, so it is valid if it runs first, or if it runs after
+//     gpu-A is still at FP1)
+//   - rotate gpu-A's own pin from FP1 to FP2
+//
+// Whichever of the two actually acquires nodePatchMu first fully completes
+// (validate AND mutate) before the other's validateTLSPatch runs at all, so
+// the second one's validation necessarily observes the first one's already-
+// applied result. That guarantees exactly one of the two succeeds and the
+// other is rejected with 409 - regardless of which one wins the race - and
+// host-A can never end up with two disagreeing pinned fingerprints. Before
+// the nodePatchMu fix, both goroutines could read a node-list snapshot
+// before either mutated, both validate successfully against that shared
+// stale snapshot, and both then apply - landing gpu-A at FP2 and gpu-C at
+// FP1 on the same host simultaneously.
+//
+// A `ready` channel closed only after both goroutines are blocked on it is
+// the ordering control (not a sleep): it guarantees both PATCH calls are
+// in flight and genuinely contending for nodePatchMu, rather than the test
+// merely running them one after another by construction.
+func TestHandlePatchNode_ConcurrentPatchesCannotProduceConflictingSiblingPins(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-A", URL: "https://host-A:9091"},
+		{Name: "gpu-D", URL: "https://host-A:9092"},
+		{Name: "gpu-C", URL: "https://host-C:9093"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	if rec := patchNodeRequest(t, s, "gpu-A", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("seed gpu-A pin: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	ready := make(chan struct{})
+	var wg sync.WaitGroup
+	var recA, recC *httptest.ResponseRecorder
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-ready
+		recC = patchNodeRequest(t, s, "gpu-C", fmt.Sprintf(`{"url":"https://host-A:9093","tls_fingerprint":%q}`, validFP1))
+	}()
+	go func() {
+		defer wg.Done()
+		<-ready
+		recA = patchNodeRequest(t, s, "gpu-A", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP2))
+	}()
+	close(ready)
+	wg.Wait()
+
+	successes, conflicts := 0, 0
+	for _, rec := range []*httptest.ResponseRecorder{recA, recC} {
+		switch rec.Code {
+		case http.StatusOK:
+			successes++
+		case http.StatusConflict:
+			conflicts++
+		default:
+			t.Errorf("unexpected status %d, body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("got %d success(es) and %d conflict(s), want exactly 1 of each (recA.Code=%d body=%s; recC.Code=%d body=%s)",
+			successes, conflicts, recA.Code, recA.Body.String(), recC.Code, recC.Body.String())
+	}
+
+	// The core invariant: no two nodes sharing a Host may end up with two
+	// different non-empty pinned fingerprints, regardless of which goroutine
+	// won the race above.
+	nodes := r.Nodes()
+	pinsByHost := make(map[string]string)
+	for _, n := range nodes {
+		n.RLock()
+		host, fp := n.Host, n.TLSFingerprint
+		n.RUnlock()
+		if fp == "" {
+			continue
+		}
+		if existing, ok := pinsByHost[host]; ok && existing != fp {
+			t.Fatalf("host %q has conflicting pinned fingerprints %q and %q after concurrent PATCHes", host, existing, fp)
+		}
+		pinsByHost[host] = fp
 	}
 }
 
