@@ -1250,24 +1250,39 @@ export function GPUNodes() {
     return patch;
   };
 
-  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }) => {
+  // mergeNodePatch applies a patch's fields onto a node the same way the
+  // backend would, so the modal (which holds its own editNode snapshot, not
+  // a live reference into `nodes`) can reflect a save without needing to
+  // close and reopen.
+  const mergeNodePatch = (n: GPUNode, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }): GPUNode => {
+    const scheme = patch.url ? (patch.url.startsWith('https://') ? 'https' as const : 'http' as const) : undefined;
+    return {
+      ...n,
+      vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB,
+      gpuModel: patch.gpu_model ?? n.gpuModel,
+      runtime: patch.runtime ?? n.runtime,
+      gpuIndices: patch.gpu_indices ?? n.gpuIndices,
+      maxInFlight: patch.max_in_flight ?? n.maxInFlight,
+      scheme: scheme ?? n.scheme,
+      tlsFingerprint: patch.tls_fingerprint !== undefined ? (patch.tls_fingerprint || undefined) : n.tlsFingerprint,
+      tlsFingerprintMismatch: patch.tls_fingerprint !== undefined ? false : n.tlsFingerprintMismatch,
+    };
+  };
+
+  // closeOnSuccess defaults to true for the main "Save Changes" submit. The
+  // TLS probe/pin and reset actions pass false - they're inline actions
+  // inside the still-open modal, not a form submit, so closing on success
+  // would yank the operator out mid-workflow (they still may want to probe,
+  // paste-verify, or reset again).
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }, closeOnSuccess = true) => {
     if (!editNode) return;
     if (demoMode) {
-      const scheme = patch.url ? (patch.url.startsWith('https://') ? 'https' as const : 'http' as const) : undefined;
-      setNodes(prev => prev.map(n => n.name === editNode.name
-        ? {
-            ...n,
-            vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB,
-            gpuModel: patch.gpu_model ?? n.gpuModel,
-            runtime: patch.runtime ?? n.runtime,
-            gpuIndices: patch.gpu_indices ?? n.gpuIndices,
-            maxInFlight: patch.max_in_flight ?? n.maxInFlight,
-            scheme: scheme ?? n.scheme,
-            tlsFingerprint: patch.tls_fingerprint !== undefined ? (patch.tls_fingerprint || undefined) : n.tlsFingerprint,
-            tlsFingerprintMismatch: patch.tls_fingerprint !== undefined ? false : n.tlsFingerprintMismatch,
-          }
-        : n));
-      setEditNode(null);
+      setNodes(prev => prev.map(n => n.name === editNode.name ? mergeNodePatch(n, patch) : n));
+      if (closeOnSuccess) {
+        setEditNode(null);
+      } else {
+        setEditNode(prev => prev ? mergeNodePatch(prev, patch) : prev);
+      }
       return;
     }
 
@@ -1277,7 +1292,11 @@ export function GPUNodes() {
     try {
       await patchNode(editNode.name, patch);
       await loadNodes();
-      setEditNode(null);
+      if (closeOnSuccess) {
+        setEditNode(null);
+      } else {
+        setEditNode(prev => prev ? mergeNodePatch(prev, patch) : prev);
+      }
     } catch (e: any) {
       setEditError(e?.message || 'Failed to save changes');
     } finally {
@@ -1331,7 +1350,9 @@ export function GPUNodes() {
     setTlsPinning(true);
     setEditError('');
     try {
-      await applyPatch({ tls_fingerprint: tlsProbedFingerprint });
+      await applyPatch({ tls_fingerprint: tlsProbedFingerprint }, false);
+      setTlsProbedFingerprint(null);
+      setTlsExpectedFingerprint('');
     } catch (e: any) {
       setEditError(e?.message || 'Failed to pin TLS fingerprint');
     } finally {
@@ -1349,7 +1370,7 @@ export function GPUNodes() {
     setTlsResetting(true);
     setEditError('');
     try {
-      await applyPatch({ tls_fingerprint: '' });
+      await applyPatch({ tls_fingerprint: '' }, false);
       setPendingResetTLSPin(false);
     } catch (e: any) {
       setEditError(e?.message || 'Failed to reset TLS pin');
@@ -1793,10 +1814,12 @@ export function GPUNodes() {
                     </p>
                     <p className="text-xs font-mono break-all text-foreground">{tlsProbedFingerprint}</p>
                     <p className="text-xs text-muted-foreground">
-                      Confirm this matches the fingerprint printed by <code>agent service status</code> on the node before pinning.
+                      Run this on the node and confirm it matches before pinning:
                     </p>
-                    <div className="flex items-center gap-1.5">
-                      <code className="text-xs font-mono text-muted-foreground bg-background/50 px-1.5 py-0.5 rounded">ollama-mesh agent service status</code>
+                    <code className="block font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                      ollama-mesh agent service status
+                    </code>
+                    <div className="flex justify-end">
                       <button
                         type="button"
                         onClick={() => {
@@ -1804,10 +1827,10 @@ export function GPUNodes() {
                           setTlsStatusCmdCopied(true);
                           setTimeout(() => setTlsStatusCmdCopied(false), 2000);
                         }}
-                        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        title="Copy command"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
                       >
-                        {tlsStatusCmdCopied ? 'Copied' : 'Copy'}
+                        <Copy className="w-3.5 h-3.5" />
+                        {tlsStatusCmdCopied ? 'Copied!' : 'Copy'}
                       </button>
                     </div>
                     <input
