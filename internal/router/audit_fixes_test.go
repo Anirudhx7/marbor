@@ -47,7 +47,7 @@ func TestWaitForNodeRuntimeFilter(t *testing.T) {
 	}
 
 	// Request with runtimeFilter="ollama" must NOT return the vllm node.
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "ollama")
+	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "ollama")
 	if node == nil {
 		t.Fatal("expected an ollama node, got nil")
 	}
@@ -85,7 +85,7 @@ func TestWaitForNodeRuntimeFilterNoMatch(t *testing.T) {
 	n.mu.Unlock()
 
 	// Requesting "ollama" filter - no matching node, must time out and return nil.
-	node, _ := r.WaitForNode(context.Background(), "llama3.2", "", "ollama")
+	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "ollama")
 	if node != nil {
 		t.Errorf("expected nil when no ollama node available, got %+v", node)
 	}
@@ -262,7 +262,7 @@ func TestRouteExcludingFallbackSingleLock(t *testing.T) {
 
 	// Exclude n1; RouteExcluding must return n2 (fallback path, single lock).
 	exclude := map[string]bool{"http://localhost:11434": true}
-	node, _ := r.RouteExcluding("llama3.2", "", exclude)
+	node, _, _ := r.RouteExcluding("llama3.2", "", exclude)
 	if node == nil {
 		t.Fatal("expected n2, got nil")
 	}

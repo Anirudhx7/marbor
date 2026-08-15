@@ -388,7 +388,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// This eliminates the previous discard-and-fall-through behavior where a valid
 	// Ollama node could be available but the request still hit 503 because a
 	// non-Ollama node was returned and silently discarded (#3).
-	node, warm := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
+	node, warm, decision := h.router.WaitForNode(r.Context(), modelName, sessionID, runtimeFilter)
 
 	// degradedOnce enforces the documented single-hop invariant across both
 	// trigger sites in this method: a request may substitute at most once,
@@ -404,12 +404,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// than cloud for a privacy-motivated operator. Tried before
 		// localOnlyBlocked since a successful substitution never leaves local
 		// nodes and so never needs to be blocked.
-		if altNode, alt, altWarm, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
+		if altNode, alt, altWarm, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
 			body = applyLocalDegradation(w, body, modelName, alt)
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			modelName = alt
 			node = altNode
 			warm = altWarm
+			decision = altDecision
 			degradedOnce = true
 		}
 	}
@@ -505,6 +506,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		aborted bool
 	)
 
+	// retryCount/lastFailedNode are read-only context for the P41
+	// explainability Detail annotation applied after the loop - the router
+	// itself stays ignorant of retry semantics (see RouteExcluding's doc
+	// comment); this is purely a proxy-layer string annotation.
+	retryCount := 0
+	lastFailedNode := ""
+
 	for attempt := 0; ; attempt++ {
 		proxy := buildLocalProxy(targetURL, body, r, transport, requestID)
 
@@ -512,6 +520,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// needed. Using a pointer-to-pointer lets the closure write through to
 		// a variable in this stack frame without heap allocation overhead.
 		var nextNode *router.NodeState
+		var nextDecision *router.RoutingDecision
 		var retryErr error
 		// errHandled is set when ErrorHandler fired and already released this
 		// node's connection slot, so the post-loop DecrConn must not run again
@@ -537,10 +546,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if attempt < maxRetries {
-				alt, _ := h.router.RouteExcluding(modelName, runtimeFilter, tried)
+				alt, _, altDecision := h.router.RouteExcluding(modelName, runtimeFilter, tried)
 				if alt != nil {
 					metrics.Retry(node.Name)
+					lastFailedNode = node.Name
+					retryCount++
 					nextNode = alt
+					nextDecision = altDecision
 					retryErr = e
 					return
 				}
@@ -553,11 +565,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// bounds a cyclic operator config to one substitution instead of
 			// looping the retry loop indefinitely).
 			if !degradedOnce {
-				if altNode, altModel, _, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
+				if altNode, altModel, _, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
 					body = applyLocalDegradation(rw, body, modelName, altModel)
 					origReq.Body = io.NopCloser(bytes.NewReader(body))
 					modelName = altModel
+					lastFailedNode = node.Name
+					retryCount++
 					nextNode = altNode
+					nextDecision = altDecision
 					retryErr = e
 					degradedOnce = true
 					return
@@ -602,6 +617,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if nextNode != nil {
 			// Switch to the alternate node and retry.
 			node = nextNode
+			decision = nextDecision
 			h.router.IncrConn(node)
 			targetURL, err = url.Parse(node.URL)
 			if err != nil {
@@ -621,6 +637,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.router.RecordRequestOutcome(node.Name, success)
 		}
 		break
+	}
+
+	// P41: annotate the routing explanation with retry context the router
+	// itself never sees - purely a proxy-layer string addition, no change to
+	// Reason/Score/Components.
+	if decision != nil && retryCount > 0 {
+		decision.Detail = fmt.Sprintf("%s (retry attempt %d after node %s failed)", decision.Detail, retryCount+1, lastFailedNode)
 	}
 
 	duration := time.Since(start).Seconds()
@@ -665,7 +688,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if modelName != requestedModelName {
 			loggedModel = requestedModelName + " -> " + modelName
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, node.Name, status, rec.StatusCode(), latencyMs, tokens)
+		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.StatusCode(), latencyMs, tokens, decision)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
@@ -680,15 +703,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if aborted {
 			auditStatus = "aborted"
 		}
+		routingReason := ""
+		if decision != nil {
+			routingReason = decision.Reason
+		}
 		h.audit.Log(audit.Entry{
-			Time:      time.Now(),
-			RequestID: requestID,
-			KeyName:   keyName,
-			Model:     requestedModelName,
-			Node:      node.Name,
-			Status:    auditStatus,
-			LatencyMs: latencyMs,
-			Cloud:     false,
+			Time:          time.Now(),
+			RequestID:     requestID,
+			KeyName:       keyName,
+			Model:         requestedModelName,
+			Node:          node.Name,
+			Status:        auditStatus,
+			LatencyMs:     latencyMs,
+			Cloud:         false,
+			RoutingReason: routingReason,
 		})
 	}
 	h.access.Log(AccessLogEntry{
@@ -731,19 +759,19 @@ func applyLocalDegradation(w http.ResponseWriter, body []byte, from, alt string)
 // walks one level of one chain per call. Returns ok=false if allowDegradation
 // is false, no chain is declared for modelName, or every eligible candidate
 // is currently unavailable.
-func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allowDegradation bool, allowedModels []string) (node *router.NodeState, alt string, warm bool, ok bool) {
+func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allowDegradation bool, allowedModels []string) (node *router.NodeState, alt string, warm bool, decision *router.RoutingDecision, ok bool) {
 	if !allowDegradation {
-		return nil, "", false, false
+		return nil, "", false, nil, false
 	}
 	for _, candidate := range h.router.LocalDegradationChainFor(modelName) {
 		if len(allowedModels) > 0 && !slices.Contains(allowedModels, candidate) {
 			continue
 		}
-		if n, w := h.router.RouteExcluding(candidate, runtimeFilter, nil); n != nil {
-			return n, candidate, w, true
+		if n, w, d := h.router.RouteExcluding(candidate, runtimeFilter, nil); n != nil {
+			return n, candidate, w, d, true
 		}
 	}
-	return nil, "", false, false
+	return nil, "", false, nil, false
 }
 
 // errCloudHandled is a sentinel used inside the ErrorHandler closure to signal
@@ -1112,7 +1140,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 				clientIP = fwd2
 			}
 		}
-		h.admin.LogRequest(keyName, clientIP, loggedModel, nodeName, status, rec.StatusCode(), latencyMs, logTokens)
+		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.StatusCode(), latencyMs, logTokens, nil)
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local mesh

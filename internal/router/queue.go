@@ -45,24 +45,24 @@ func (r *Router) DecrConn(node *NodeState) {
 //
 // If the queue is already at queueMaxDepth, returns nil immediately without queuing
 // to prevent unbounded memory growth under sustained overload.
-func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeFilter string) (*NodeState, bool) {
+func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
 	// Fast path: immediate route.
-	if node, warm := r.Route(modelName, sessionID, runtimeFilter); node != nil {
-		return node, warm
+	if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+		return node, warm, decision
 	}
 
 	// Queue disabled (timeout or depth == 0): fall through immediately.
 	// config.Validate() sets the production defaults; callers that bypass
 	// Validate() (unit tests, zero-config New()) get no queue.
 	if r.queueTimeout <= 0 || r.queueMaxDepth <= 0 {
-		return nil, false
+		return nil, false, nil
 	}
 
 	// Claim a queue slot atomically. Reject if already at capacity.
 	depth := atomic.AddInt32(&r.queueDepth, 1)
 	if int(depth) > r.queueMaxDepth {
 		atomic.AddInt32(&r.queueDepth, -1)
-		return nil, false
+		return nil, false, nil
 	}
 	metrics.QueueDepth(float64(depth))
 	defer func() {
@@ -94,17 +94,17 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeF
 
 		select {
 		case <-ctx.Done():
-			return nil, false
+			return nil, false, nil
 		case <-timer.C:
 			metrics.QueueTimeout()
-			return nil, false
+			return nil, false, nil
 		case <-ch:
-			if node, warm := r.Route(modelName, sessionID, runtimeFilter); node != nil {
-				return node, warm
+			if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+				return node, warm, decision
 			}
 		case <-retryTick.C:
-			if node, warm := r.Route(modelName, sessionID, runtimeFilter); node != nil {
-				return node, warm
+			if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+				return node, warm, decision
 			}
 		}
 	}

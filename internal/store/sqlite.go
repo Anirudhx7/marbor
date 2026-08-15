@@ -130,17 +130,19 @@ func (s *sqliteStore) migrate() error {
 
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS request_log (
-			id          TEXT PRIMARY KEY,
-			key_name    TEXT,
-			model       TEXT,
-			node_name   TEXT,
-			status_code INTEGER,
-			latency_ms  INTEGER,
-			tokens_used INTEGER,
-			cost_usd    REAL,
-			routed_to   TEXT,
-			is_cloud    INTEGER,
-			ts          INTEGER
+			id             TEXT PRIMARY KEY,
+			key_name       TEXT,
+			model          TEXT,
+			node_name      TEXT,
+			status_code    INTEGER,
+			latency_ms     INTEGER,
+			tokens_used    INTEGER,
+			cost_usd       REAL,
+			routed_to      TEXT,
+			is_cloud       INTEGER,
+			ts             INTEGER,
+			routing_reason TEXT,
+			routing_detail TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS request_log_ts ON request_log(ts DESC)`,
 
@@ -257,16 +259,17 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS audit_log (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			ts          TEXT NOT NULL,
-			request_id  TEXT NOT NULL,
-			key_name    TEXT NOT NULL,
-			model       TEXT NOT NULL,
-			node        TEXT NOT NULL,
-			status      TEXT NOT NULL,
-			latency_ms  INTEGER NOT NULL,
-			cloud       INTEGER NOT NULL DEFAULT 0,
-			cloud_model TEXT NOT NULL DEFAULT ''
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			ts             TEXT NOT NULL,
+			request_id     TEXT NOT NULL,
+			key_name       TEXT NOT NULL,
+			model          TEXT NOT NULL,
+			node           TEXT NOT NULL,
+			status         TEXT NOT NULL,
+			latency_ms     INTEGER NOT NULL,
+			cloud          INTEGER NOT NULL DEFAULT 0,
+			cloud_model    TEXT NOT NULL DEFAULT '',
+			routing_reason TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts DESC)`,
 		// Composite index backing QueryAuditLog's filterable columns (key_name
@@ -484,6 +487,16 @@ func (s *sqliteStore) migrate() error {
 		// comment above for why 'admin' is the correct default for rows that
 		// predate this column.
 		`ALTER TABLE node_agent ADD COLUMN scope TEXT NOT NULL DEFAULT 'admin'`,
+		// P41: per-request routing explainability. routing_reason is the short
+		// top-level Reason (session_affinity | pinned_warm | score_based);
+		// routing_detail is the JSON-encoded score breakdown (nil for
+		// cloud-fallback requests, which have no router.RoutingDecision).
+		`ALTER TABLE request_log ADD COLUMN routing_reason TEXT`,
+		`ALTER TABLE request_log ADD COLUMN routing_detail TEXT`,
+		// P41 fix (code review): the Requests page's list view reads
+		// audit_log via QueryAuditLog, not request_log - routing_reason must
+		// live here too or the reason badge never populates in production.
+		`ALTER TABLE audit_log ADD COLUMN routing_reason TEXT NOT NULL DEFAULT ''`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -692,9 +705,9 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO request_log
-			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(),
+			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail,
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendRequest: %w", err)
@@ -711,7 +724,7 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 
 func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail
 		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
 	)
 	if err != nil {
@@ -724,14 +737,17 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		var r RequestRecord
 		var isCloud int
 		var ts int64
+		var reason, detail sql.NullString
 		if err := rows.Scan(
 			&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts,
+			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail,
 		); err != nil {
 			return nil, fmt.Errorf("store: LastRequests scan: %w", err)
 		}
 		r.IsCloud = isCloud != 0
 		r.TS = time.Unix(ts, 0).UTC()
+		r.RoutingReason = reason.String
+		r.RoutingDetail = detail.String
 		recs = append(recs, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -742,6 +758,34 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		recs[i], recs[j] = recs[j], recs[i]
 	}
 	return recs, nil
+}
+
+// GetRequest looks up one request_log row by id - the P41 explain endpoint's
+// fallback for a request that has aged out of the bounded in-memory ring but
+// is still within the SQLite table's 1000-row retention window.
+func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
+	var r RequestRecord
+	var isCloud int
+	var ts int64
+	var reason, detail sql.NullString
+	err := s.db.QueryRow(
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail
+		 FROM request_log WHERE id = ?`, id,
+	).Scan(
+		&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
+		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail,
+	)
+	if err == sql.ErrNoRows {
+		return RequestRecord{}, false, nil
+	}
+	if err != nil {
+		return RequestRecord{}, false, fmt.Errorf("store: GetRequest: %w", err)
+	}
+	r.IsCloud = isCloud != 0
+	r.TS = time.Unix(ts, 0).UTC()
+	r.RoutingReason = reason.String
+	r.RoutingDetail = detail.String
+	return r, true, nil
 }
 
 // --- Analytics ---
@@ -1640,10 +1684,10 @@ func (s *sqliteStore) AppendAuditLog(e AuditEntry) error {
 		cloud = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.Time.UTC().Format(time.RFC3339Nano), e.RequestID, e.KeyName, e.Model,
-		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel,
+		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel, e.RoutingReason,
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendAuditLog: %w", err)
@@ -1674,7 +1718,7 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		opts.Limit = 100
 	}
 
-	query := `SELECT ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model
+	query := `SELECT ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason
 	          FROM audit_log WHERE 1=1`
 	args := []interface{}{}
 
@@ -1729,7 +1773,7 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		var tsStr string
 		var cloud int
 		if err := rows.Scan(&tsStr, &e.RequestID, &e.KeyName, &e.Model,
-			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel); err != nil {
+			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel, &e.RoutingReason); err != nil {
 			return nil, fmt.Errorf("store: QueryAuditLog scan: %w", err)
 		}
 		e.Time, _ = time.Parse(time.RFC3339Nano, tsStr)
