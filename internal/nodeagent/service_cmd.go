@@ -266,9 +266,16 @@ func runServiceStatus(args []string) {
 	// shows before confirming a pin (spec section 1 step 3). Silent (not a
 	// fatal error) when no cert exists yet - most nodes are plaintext and
 	// this is a status display, not a requirement.
-	certPath, _ := service.CertKeyPaths()
-	if fingerprint, err := service.AgentCertFingerprint(certPath); err == nil {
-		fmt.Printf("TLS certificate fingerprint: %s\n", fingerprint)
+	//
+	// Skipped when the service isn't installed: Uninstall never deletes the
+	// cert/key files (they're left in place so a future re-install keeps the
+	// same pinned fingerprint), so printing one here would show a fingerprint
+	// for a service that status just reported as absent.
+	if status != "not installed" {
+		certPath, _ := service.CertKeyPaths()
+		if fingerprint, err := service.AgentCertFingerprint(certPath); err == nil {
+			fmt.Printf("TLS certificate fingerprint: %s\n", fingerprint)
+		}
 	}
 }
 
