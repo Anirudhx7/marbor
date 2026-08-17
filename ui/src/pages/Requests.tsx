@@ -25,10 +25,17 @@ const REASON_LABELS: Record<string, string> = {
 // stays as a hover bonus for desktop mouse users. .no-scrollbar (index.css)
 // keeps the row height uniform regardless of whether a given cell's content
 // happens to overflow.
-function ScrollableValue({ value, className }: { value: string; className: string }) {
+//
+// The outer div is a plain, unstyled scroll viewport - it's deliberately kept
+// free of background/padding classes. valueClassName (badge background,
+// padding, rounded corners, color) goes on the inner inline-block span
+// instead, which sizes to its own text rather than stretching to fill the
+// cell: a `bg-primary/10` pill on the outer (full-cell-width) div would
+// otherwise paint the entire column, not just the text it's meant to badge.
+function ScrollableValue({ value, valueClassName }: { value: string; valueClassName: string }) {
   return (
-    <div className={`${className} overflow-x-auto whitespace-nowrap no-scrollbar`} title={value}>
-      {value}
+    <div className="overflow-x-auto whitespace-nowrap no-scrollbar" title={value}>
+      <span className={`inline-block ${valueClassName}`}>{value}</span>
     </div>
   );
 }
@@ -548,13 +555,13 @@ export function Requests() {
                         {formatRelativeTime(entry.time)}
                       </td>
                       <td className="px-4 py-3 max-w-0">
-                        <ScrollableValue value={entry.id} className="font-mono text-xs text-foreground" />
+                        <ScrollableValue value={entry.id} valueClassName="font-mono text-xs text-foreground" />
                       </td>
                       <td className="px-4 py-3 max-w-0">
                         {entry.key_name ? (
                           <ScrollableValue
                             value={entry.key_name}
-                            className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded"
+                            valueClassName="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded"
                           />
                         ) : entry.source_ip ? (
                           <span className="block truncate font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
@@ -565,7 +572,7 @@ export function Requests() {
                         )}
                       </td>
                       <td className="px-4 py-3 max-w-0">
-                        <ScrollableValue value={entry.model} className="font-mono text-xs text-foreground" />
+                        <ScrollableValue value={entry.model} valueClassName="font-mono text-xs text-foreground" />
                       </td>
                       <td className="px-4 py-3 max-w-0">
                         {entry.cloud ? (
