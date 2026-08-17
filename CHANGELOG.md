@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`ollama-mesh uninstall` - a real subcommand instead of a bare word that silently started the mesh server.** Removes the mesh's own systemd service (Linux, if `install.sh SERVICE=1` was used) or nohup-tracked background process if present, and uninstalls the Node Agent service on this host if one is installed - one command covers both roles that can be running on a machine. `--purge` additionally removes the installed binary. `mesh.db` is never touched; remove it yourself if you also want the database gone.
+
+### Fixed
+- **Any unrecognized command (including `uninstall`, which was never a binary subcommand) used to silently fall through to starting the full mesh server instead of erroring.** A typo or a missing subcommand could accidentally boot a production mesh process. Unrecognized bare words now print an "unknown command" error with usage and exit 1; dash-prefixed server flags (`-db`, `-seed-node`, ...) are unaffected.
+- **`ollama-mesh agent service status` no longer prints a stale TLS certificate fingerprint after the service has been uninstalled.** `Uninstall` never deletes the cert/key files it created (so a future re-install keeps the same pinned fingerprint), so the fingerprint was still being printed for a service `status` had just reported as "not installed."
+
 ## [0.19.0] - 2026-08-15
 
 ### Added
