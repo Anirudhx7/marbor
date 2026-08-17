@@ -466,7 +466,17 @@ export function Requests() {
       <div className="hidden md:block">
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col className="w-[90px]" />
+                <col className="w-[16%]" />
+                <col className="w-[14%]" />
+                <col className="w-[22%]" />
+                <col className="w-[11%]" />
+                <col className="w-[80px]" />
+                <col className="w-[90px]" />
+                <col className="w-[120px]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
@@ -499,37 +509,47 @@ export function Requests() {
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {formatRelativeTime(entry.time)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 max-w-0">
                         <span
-                          className="font-mono text-xs text-foreground"
+                          className="block truncate font-mono text-xs text-foreground"
                           title={entry.id}
                         >
                           {entry.id}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 max-w-0">
                         {entry.key_name ? (
-                          <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                          <span
+                            className="block truncate font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded"
+                            title={entry.key_name}
+                          >
                             {entry.key_name}
                           </span>
                         ) : entry.source_ip ? (
-                          <span className="font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
+                          <span className="block truncate font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
                             {entry.source_ip}
                           </span>
                         ) : (
                           <span className="text-muted-foreground/40 text-xs">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-foreground">{entry.model}</span>
+                      <td className="px-4 py-3 max-w-0">
+                        <span className="block truncate font-mono text-xs text-foreground" title={entry.model}>
+                          {entry.model}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 max-w-0">
                         {entry.cloud ? (
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                          <span
+                            className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                            title={`cloud:${entry.node.replace('cloud:', '')}`}
+                          >
                             cloud:{entry.node.replace('cloud:', '')}
                           </span>
                         ) : (
-                          <span className="text-foreground">{entry.node || '-'}</span>
+                          <span className="block truncate text-foreground" title={entry.node || '-'}>
+                            {entry.node || '-'}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3">
