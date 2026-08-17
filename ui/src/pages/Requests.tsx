@@ -15,6 +15,60 @@ const REASON_LABELS: Record<string, string> = {
   score_based: 'Score-based',
 };
 
+function copyText(text: string) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(() => legacyCopyText(text));
+  } else {
+    legacyCopyText(text);
+  }
+}
+
+// Same fallback approach as GPUNodes.tsx/APIKeys.tsx's copy helpers - works on
+// plain HTTP, must run synchronously inside a user-gesture handler.
+function legacyCopyText(text: string) {
+  const el = document.createElement('textarea');
+  el.value = text;
+  el.setAttribute('readonly', '');
+  el.style.cssText = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px';
+  document.body.appendChild(el);
+  el.focus();
+  el.select();
+  el.setSelectionRange(0, text.length);
+  try {
+    document.execCommand('copy');
+  } catch (_) {
+    // Last resort: nothing we can do silently
+  }
+  document.body.removeChild(el);
+}
+
+// CopyableTruncated backs every cell that can legitimately hold a value
+// longer than its column (request IDs, key names, model paths) - it truncates
+// with an ellipsis and a native title tooltip like a plain span would, but
+// clicking copies the full value with an inline "Copied!" confirmation. The
+// hover tooltip alone isn't enough here: touch devices have no hover, and
+// this app's mobile dashboard is a shipped, actively-used surface, not a
+// secondary one - and an operator's actual need for a long request ID or
+// model path is almost always to paste it into a search or terminal, not
+// just glance at it, which a tooltip alone can't do.
+function CopyableTruncated({ value, className }: { value: string; className: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        copyText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      title={value}
+      className={`${className} block w-full truncate text-left cursor-pointer hover:underline decoration-dotted underline-offset-2`}
+    >
+      {copied ? 'Copied!' : value}
+    </button>
+  );
+}
+
 function ReasonBadge({ reason }: { reason?: string }) {
   if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
   return (
@@ -530,21 +584,14 @@ export function Requests() {
                         {formatRelativeTime(entry.time)}
                       </td>
                       <td className="px-4 py-3 max-w-0">
-                        <span
-                          className="block truncate font-mono text-xs text-foreground"
-                          title={entry.id}
-                        >
-                          {entry.id}
-                        </span>
+                        <CopyableTruncated value={entry.id} className="font-mono text-xs text-foreground" />
                       </td>
                       <td className="px-4 py-3 max-w-0">
                         {entry.key_name ? (
-                          <span
-                            className="block truncate font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded"
-                            title={entry.key_name}
-                          >
-                            {entry.key_name}
-                          </span>
+                          <CopyableTruncated
+                            value={entry.key_name}
+                            className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded"
+                          />
                         ) : entry.source_ip ? (
                           <span className="block truncate font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
                             {entry.source_ip}
@@ -554,9 +601,7 @@ export function Requests() {
                         )}
                       </td>
                       <td className="px-4 py-3 max-w-0">
-                        <span className="block truncate font-mono text-xs text-foreground" title={entry.model}>
-                          {entry.model}
-                        </span>
+                        <CopyableTruncated value={entry.model} className="font-mono text-xs text-foreground" />
                       </td>
                       <td className="px-4 py-3 max-w-0">
                         {entry.cloud ? (
