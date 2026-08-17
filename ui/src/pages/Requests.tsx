@@ -473,12 +473,20 @@ export function Requests() {
               changes), and pixel widths - unlike the % widths this replaced -
               don't balloon on a wide viewport (App.tsx caps content at
               1600px; % columns turned into hundreds of px of dead padding
-              around 15-char values there). The table intentionally has no
-              w-full: table-fixed columns count as SUM=~1085px here, with the
-              rest resting as gutter inside the card is preferable to every
-              column stretching to fill an ultrawide window.
+              around 15-char values there).
+
+              The table also gets an EXPLICIT width equal to the sum of the
+              colgroup below (1085px), not just "no w-full" - a table-fixed
+              table with width left to resolve on its own can still get
+              stretched to fill its container in some layout contexts (table
+              width:auto does not reliably mean shrink-to-content across
+              browsers/containers), which silently reintroduces the exact
+              padding-bloat bug this fixed-width scheme exists to prevent. An
+              explicit width removes that ambiguity outright: this table is
+              1085px, full stop, everywhere. Recompute the col widths and
+              this number together if the columns ever change.
             */}
-            <table className="text-sm table-fixed">
+            <table className="text-sm table-fixed w-[1085px]">
               <colgroup>
                 <col className="w-[90px]" />
                 <col className="w-[170px]" />
