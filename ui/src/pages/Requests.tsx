@@ -464,7 +464,17 @@ export function Requests() {
 
       {/* Table (md and up) */}
       <div className="hidden md:block">
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
+        {/*
+          w-fit is load-bearing: the table below has an explicit w-[1085px]
+          (see its comment), but this card div is a plain block element that
+          would otherwise stretch to its parent's full width regardless of
+          how narrow the table itself renders - leaving a big empty bordered
+          rectangle to the right of the table on any viewport wider than
+          ~1085px+padding. w-fit makes the card hug the table's actual
+          rendered width instead, so leftover space is plain page background
+          outside the card, not a dead zone inside it.
+        */}
+        <div className="bg-card border border-border rounded-lg overflow-hidden w-fit max-w-full">
           <div className="overflow-x-auto">
             {/*
               Fixed pixel column widths (not %) on purpose: this table polls
