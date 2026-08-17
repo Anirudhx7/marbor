@@ -211,10 +211,21 @@ func resolveCommand(args []string) string {
 		return "bench"
 	case "agent":
 		return "agent"
+	case "uninstall":
+		return "uninstall"
 	case "version", "status", "login", "logout", "whoami", "nodes", "models", "runtime", "node":
 		return "cli"
 	default:
-		return "server"
+		// Dash-prefixed tokens are server flags (-db, -seed-node, ...) and
+		// must keep falling through to "server". A bare word that isn't a
+		// known subcommand is almost always a typo or a missing subcommand
+		// (e.g. "uninstall", which has never been a binary subcommand - see
+		// uninstall.sh) - silently starting the full mesh server in that case
+		// is a dangerous footgun, not a reasonable default.
+		if strings.HasPrefix(args[0], "-") {
+			return "server"
+		}
+		return "unknown"
 	}
 }
 
@@ -231,6 +242,7 @@ var helpTableRows = [][2]string{
 	{"ollama-mesh [flags]", "run the mesh server (default)"},
 	{"ollama-mesh agent [flags]", "run the Node Agent (node-local execution point for the mesh)"},
 	{"ollama-mesh bench [flags]", "warm-vs-cold first-token latency benchmark"},
+	{"ollama-mesh uninstall [--purge]", "remove the mesh's and/or Node Agent's service registration from this host"},
 	{"ollama-mesh version", "print version"},
 	{"ollama-mesh status", "print mesh health/status summary"},
 	{"ollama-mesh login", "authenticate once and save the session locally (recommended)"},
@@ -281,6 +293,13 @@ func main() {
 	case "agent":
 		nodeagent.Run(os.Args[2:], Version)
 		return
+	case "uninstall":
+		runUninstall(os.Args[2:])
+		return
+	case "unknown":
+		fmt.Fprintf(os.Stderr, "ollama-mesh: unknown command %q\n\n", os.Args[1])
+		printTopLevelHelp()
+		os.Exit(1)
 	case "cli":
 		cli.Version = Version
 		os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))

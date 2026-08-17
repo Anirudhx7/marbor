@@ -195,6 +195,31 @@ func runServiceUninstall(args []string) {
 	log.Printf("ollama-mesh agent service (%s) uninstalled.", service.Name)
 }
 
+// UninstallAgentServiceIfInstalled is the programmatic equivalent of "agent
+// service uninstall", for the top-level "ollama-mesh uninstall" subcommand
+// (main.go) to call directly without going through CLI flag parsing. Returns
+// installed=false and a nil error when no agent service is registered on this
+// host - that is the expected, non-error case for a host that only ever ran
+// the mesh, not the Node Agent, so the caller can report "nothing to do"
+// instead of a failure.
+func UninstallAgentServiceIfInstalled(purge bool) (installed bool, err error) {
+	mgr, err := service.New()
+	if err != nil {
+		return false, err
+	}
+	status, err := mgr.Status()
+	if err != nil {
+		return false, err
+	}
+	if status == "not installed" {
+		return false, nil
+	}
+	if err := mgr.Uninstall(purge); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
 func runServiceControl(args []string, action string) {
 	// action never had its own flag.FlagSet, so it never recognized -h/--help
 	// at all - args was silently ignored entirely, meaning "agent service

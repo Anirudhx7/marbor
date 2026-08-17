@@ -29,7 +29,9 @@ func TestResolveCommand(t *testing.T) {
 		{"root -version flag falls through to server", []string{"-version"}, "server"},
 		{"root -db flag falls through to server", []string{"-db", "mesh.db"}, "server"},
 		{"root -seed-node flag falls through to server", []string{"-seed-node", "name=a,url=http://x"}, "server"},
-		{"unknown token falls through to server", []string{"bogus"}, "server"},
+		{"unknown token errors instead of starting the server", []string{"bogus"}, "unknown"},
+		{"uninstall subcommand", []string{"uninstall"}, "uninstall"},
+		{"uninstall subcommand with --purge", []string{"uninstall", "--purge"}, "uninstall"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
