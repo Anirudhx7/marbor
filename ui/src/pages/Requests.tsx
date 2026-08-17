@@ -466,16 +466,28 @@ export function Requests() {
       <div className="hidden md:block">
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm table-fixed">
+            {/*
+              Fixed pixel column widths (not %) on purpose: this table polls
+              every 3s, so widths must be stable across refreshes rather than
+              content-fitted (auto layout would jitter as row content
+              changes), and pixel widths - unlike the % widths this replaced -
+              don't balloon on a wide viewport (App.tsx caps content at
+              1600px; % columns turned into hundreds of px of dead padding
+              around 15-char values there). The table intentionally has no
+              w-full: table-fixed columns count as SUM=~1085px here, with the
+              rest resting as gutter inside the card is preferable to every
+              column stretching to fill an ultrawide window.
+            */}
+            <table className="text-sm table-fixed">
               <colgroup>
                 <col className="w-[90px]" />
-                <col className="w-[16%]" />
-                <col className="w-[14%]" />
-                <col className="w-[22%]" />
-                <col className="w-[11%]" />
-                <col className="w-[80px]" />
+                <col className="w-[170px]" />
+                <col className="w-[160px]" />
+                <col className="w-[200px]" />
+                <col className="w-[140px]" />
+                <col className="w-[75px]" />
                 <col className="w-[90px]" />
-                <col className="w-[120px]" />
+                <col className="w-[160px]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
