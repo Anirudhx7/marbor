@@ -464,48 +464,38 @@ export function Requests() {
 
       {/* Table (md and up) */}
       <div className="hidden md:block">
-        {/*
-          w-fit is load-bearing: the table below has an explicit w-[1085px]
-          (see its comment), but this card div is a plain block element that
-          would otherwise stretch to its parent's full width regardless of
-          how narrow the table itself renders - leaving a big empty bordered
-          rectangle to the right of the table on any viewport wider than
-          ~1085px+padding. w-fit makes the card hug the table's actual
-          rendered width instead, so leftover space is plain page background
-          outside the card, not a dead zone inside it.
-        */}
-        <div className="bg-card border border-border rounded-lg overflow-hidden w-fit max-w-full">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             {/*
-              Fixed pixel column widths (not %) on purpose: this table polls
-              every 3s, so widths must be stable across refreshes rather than
-              content-fitted (auto layout would jitter as row content
-              changes), and pixel widths - unlike the % widths this replaced -
-              don't balloon on a wide viewport (App.tsx caps content at
-              1600px; % columns turned into hundreds of px of dead padding
-              around 15-char values there).
-
-              The table also gets an EXPLICIT width equal to the sum of the
-              colgroup below (1085px), not just "no w-full" - a table-fixed
-              table with width left to resolve on its own can still get
-              stretched to fill its container in some layout contexts (table
-              width:auto does not reliably mean shrink-to-content across
-              browsers/containers), which silently reintroduces the exact
-              padding-bloat bug this fixed-width scheme exists to prevent. An
-              explicit width removes that ambiguity outright: this table is
-              1085px, full stop, everywhere. Recompute the col widths and
-              this number together if the columns ever change.
+              table-fixed with colgroup percentages, deliberately proportional
+              (not a fixed px table width) - the table fills its card exactly
+              like every other card on this page, it just distributes that
+              width using ratios calibrated to realistic content instead of
+              splitting it arbitrarily. The two things previously tried and
+              reverted here (a table narrower than its card, and the card
+              shrunk to w-fit around it) both "fixed" the padding by leaving a
+              dead, obviously-unstyled gap next to the table instead - worse
+              UX than generous cell padding, not better. The percentages
+              below are exactly the pixel ratios from the prior fixed-width
+              attempt (90/170/160/200/140/75/90/160, sum 1085) so on a normal
+              ~1085px-equivalent card they render close to that calibration;
+              on this app's widest card (App.tsx's max-w-[1600px]) columns
+              get proportionally roomier (~1.4x), which reads as a table that
+              fills its space, not one with a wasted column or a wasted void.
+              table-fixed + % (not table-layout:auto/content-fit) still keeps
+              widths stable across this page's 3s poll, since percentages
+              depend only on container width, never on row content.
             */}
-            <table className="text-sm table-fixed w-[1085px]">
+            <table className="w-full text-sm table-fixed">
               <colgroup>
-                <col className="w-[90px]" />
-                <col className="w-[170px]" />
-                <col className="w-[160px]" />
-                <col className="w-[200px]" />
-                <col className="w-[140px]" />
-                <col className="w-[75px]" />
-                <col className="w-[90px]" />
-                <col className="w-[160px]" />
+                <col className="w-[8%]" />
+                <col className="w-[16%]" />
+                <col className="w-[15%]" />
+                <col className="w-[18%]" />
+                <col className="w-[13%]" />
+                <col className="w-[7%]" />
+                <col className="w-[8%]" />
+                <col className="w-[15%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
