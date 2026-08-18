@@ -1986,6 +1986,17 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx, auto)", cfg.Runtime))
 		return
 	}
+	// Determine create-vs-update BEFORE calling AddNode, which now upserts
+	// by name in place (see Router.AddNode) rather than always appending -
+	// this is purely for an honest response status, the router behavior is
+	// identical either way.
+	isUpdate := false
+	for _, existing := range s.router.Nodes() {
+		if existing.Name == cfg.Name {
+			isUpdate = true
+			break
+		}
+	}
 	s.router.AddNode(cfg)
 	var vramPtr *int64
 	if cfg.VRAMTotalMB != 0 {
@@ -1999,8 +2010,16 @@ func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
 		Runtime:     cfg.Runtime,
 		VRAMTotalMB: vramPtr,
 	})
-	s.logSystemChange(r, "add_node", cfg.Name, fmt.Sprintf("URL: %s, Runtime: %s, VRAM: %dMB", cfg.URL, cfg.Runtime, cfg.VRAMTotalMB))
-	w.WriteHeader(http.StatusCreated)
+	action := "add_node"
+	if isUpdate {
+		action = "update_node"
+	}
+	s.logSystemChange(r, action, cfg.Name, fmt.Sprintf("URL: %s, Runtime: %s, VRAM: %dMB", cfg.URL, cfg.Runtime, cfg.VRAMTotalMB))
+	if isUpdate {
+		w.WriteHeader(http.StatusOK)
+	} else {
+		w.WriteHeader(http.StatusCreated)
+	}
 }
 
 func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {

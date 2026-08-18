@@ -838,6 +838,78 @@ func TestAddNode_AllowsDistinctURLs(t *testing.T) {
 	}
 }
 
+// TestAddNode_UpsertsByNameInsteadOfDuplicating is the regression test for
+// the confirmed "double-click Add Node" / re-run-registration bug: POST
+// /admin/nodes (-> Router.AddNode) with a name that already exists must
+// update that node's config in place, never append a second live NodeState.
+// Sequence: add gpu-01, add it again (identical name+url) twice more, then
+// simulate a mesh restart (fresh Router built from what would be the
+// single surviving DB row) and add gpu-01 one more time. At every step
+// there must be exactly one live node named gpu-01, and re-adding must
+// reuse the SAME *NodeState pointer (proof it upserted in place rather than
+// replacing/duplicating).
+func TestAddNode_UpsertsByNameInsteadOfDuplicating(t *testing.T) {
+	r := New(config.RoutingConfig{}, nil, nil)
+
+	cfg := config.NodeConfig{Name: "gpu-01", URL: "http://192.168.1.50:11434"}
+
+	r.AddNode(cfg)
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("after first AddNode: got %d nodes, want 1", len(nodes))
+	}
+	firstPtr := nodes[0]
+
+	// Re-add twice more with identical name+url.
+	r.AddNode(cfg)
+	r.AddNode(cfg)
+	nodes = r.Nodes()
+	if len(nodes) != 1 {
+		names := make([]string, len(nodes))
+		for i, n := range nodes {
+			names[i] = n.Name
+		}
+		t.Fatalf("after repeated identical AddNode: got %d nodes, want 1: %v", len(nodes), names)
+	}
+	if nodes[0] != firstPtr {
+		t.Errorf("re-adding the same name replaced the NodeState pointer instead of upserting in place")
+	}
+
+	// Simulate a mesh restart: the DB (sqliteStore.UpsertNode is INSERT OR
+	// REPLACE keyed by name, see internal/store/sqlite.go) would hold exactly
+	// one row for "gpu-01" regardless of how many times it was re-added
+	// above, so rehydration builds a fresh Router from a single-node slice -
+	// mirroring main.go's boot path (main.go:503).
+	r2 := New(config.RoutingConfig{}, []config.NodeConfig{cfg}, nil)
+	r2.AddNode(cfg)
+	nodes2 := r2.Nodes()
+	if len(nodes2) != 1 {
+		t.Fatalf("after simulated restart + re-add: got %d nodes, want 1", len(nodes2))
+	}
+}
+
+// TestAddNode_UpsertReplacesURL is the deliberate-upsert positive case:
+// re-adding an existing name with a DIFFERENT url must update that node's
+// url in place (matching sqliteStore.UpsertNode's unconditional REPLACE
+// semantics), not reject the change and not create a second node.
+func TestAddNode_UpsertReplacesURL(t *testing.T) {
+	r := New(config.RoutingConfig{}, nil, nil)
+
+	r.AddNode(config.NodeConfig{Name: "gpu-01", URL: "http://192.168.1.50:11434"})
+	r.AddNode(config.NodeConfig{Name: "gpu-01", URL: "http://192.168.1.51:11434"})
+
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes after same-name/different-url AddNode, want 1", len(nodes))
+	}
+	if nodes[0].Name != "gpu-01" {
+		t.Fatalf("unexpected node name %q", nodes[0].Name)
+	}
+	if nodes[0].URL != "http://192.168.1.51:11434" {
+		t.Errorf("URL = %q, want upserted URL %q", nodes[0].URL, "http://192.168.1.51:11434")
+	}
+}
+
 func TestDrainNodeNotFound(t *testing.T) {
 	r := New(config.RoutingConfig{}, nil, nil)
 	if r.DrainNode("nonexistent", "manual") {
