@@ -1,0 +1,9 @@
+Usage of whoami:
+  -json
+    	output machine-readable JSON instead of a human table
+  -password string
+    	admin password, used to log in (env MESH_PASSWORD)
+  -server string
+    	Admin API base URL (default "http://localhost:8080")
+  -username string
+    	admin username, used to log in (env MESH_USERNAME)
