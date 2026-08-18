@@ -230,6 +230,25 @@ func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Res
 	return resp, nil
 }
 
+// Logout calls POST /logout to end the current session server-side. It uses
+// the role-agnostic "/logout" route (sessionAuth, any valid session) rather
+// than the admin-only "/admin/logout", since a CLI session may belong to any
+// authenticated role, not just admin - "/admin/v1/logout" does not exist as
+// a registered route (only "/admin/logout" and "/logout" do; see admin.go's
+// mux registration), so this is the closest real endpoint that identifies
+// and invalidates the bearer token's session the way logout needs.
+// Deliberately just another doRequestBody call, classified the same as
+// every other mutating call - the caller (runLogout) is what treats any
+// error here as a soft, non-fatal warning, not this method.
+func (c *Client) Logout() error {
+	resp, err := c.doRequestBody(http.MethodPost, "/logout", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // RuntimeAction calls POST /admin/nodes/{name}/runtime/{action} (action is
 // "start", "stop", or "restart") - the CLI's first mutating command,
 // mirroring the Admin API's own dispatch-to-agent contract exactly (no

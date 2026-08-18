@@ -1,4 +1,4 @@
-.PHONY: all build ui backend clean test dev demo demo-build demo-down demo-db bench smoke
+.PHONY: all build ui backend clean test dev demo demo-build demo-down demo-db bench smoke man docs
 
 all: ui backend
 
@@ -53,6 +53,11 @@ smoke: ## Gate the demo path: build, run, assert auth/routing/streaming/admin/me
 bench: ## Warm-vs-cold first-token latency benchmark. Pass BENCH_ARGS to override flags.
 	## Example: make bench BENCH_ARGS="-endpoint http://localhost:11434 -model llama3 -runs 5"
 	go run ./cmd/bench $(BENCH_ARGS)
+
+man: ## Regenerate man pages (docs/man/*.1) + docs/cli.md + README CLI table from the CLI registry
+	go run ./cmd/gen-docs
+
+docs: man ## Alias for `make man` - CI's drift check runs the same generator and diffs the result
 
 clean:
 	rm -f ollama-mesh

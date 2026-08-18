@@ -75,6 +75,51 @@ else
   echo "No binary found at $BIN_PATH (already removed, or INSTALL_DIR differs from install)."
 fi
 
+# 3b. Remove man pages installed by install.sh (docs/man/*.1, fetched from
+# the release into /usr/local/share/man/man1 - see install.sh's
+# install_man_pages). Same write-permission/sudo fallback as the binary
+# above; a missing man dir or missing pages is not an error, just a no-op.
+#
+# install_man_pages (Fix 4/5 of the P83+ CLI hardening code review) drops a
+# local marker file, .ollama-mesh-installed-manifest, listing exactly which
+# filenames IT placed in MAN_DIR - uninstall.sh has no source tree and no
+# release manifest of its own, so that marker is the only place this exact
+# list is ever recorded. Prefer it when present (removes exactly what a
+# Fix-4-or-later install created); the wildcard below survives only as a
+# fallback for an install that predates this fix and never wrote a marker.
+MAN_DIR="/usr/local/share/man/man1"
+MAN_MANIFEST="$MAN_DIR/.ollama-mesh-installed-manifest"
+if [ -f "$MAN_MANIFEST" ]; then
+  MAN_PAGES_TO_REMOVE="$(cat "$MAN_MANIFEST" 2>/dev/null || true)"
+  if [ -n "$MAN_PAGES_TO_REMOVE" ]; then
+    if [ -w "$MAN_DIR" ]; then
+      for page in $MAN_PAGES_TO_REMOVE; do
+        rm -f "$MAN_DIR/$page"
+      done
+      rm -f "$MAN_MANIFEST"
+      echo "Removed man pages listed in $MAN_MANIFEST"
+    elif command -v sudo >/dev/null 2>&1; then
+      for page in $MAN_PAGES_TO_REMOVE; do
+        sudo rm -f "$MAN_DIR/$page"
+      done
+      sudo rm -f "$MAN_MANIFEST"
+      echo "Removed man pages listed in $MAN_MANIFEST"
+    else
+      echo "  [!] Cannot remove man pages in $MAN_DIR (no write permission, no sudo). Remove them manually."
+    fi
+  fi
+elif ls "$MAN_DIR"/ollama-mesh*.1 >/dev/null 2>&1; then
+  if [ -w "$MAN_DIR" ]; then
+    rm -f "$MAN_DIR"/ollama-mesh*.1
+    echo "Removed man pages: $MAN_DIR/ollama-mesh*.1"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo rm -f "$MAN_DIR"/ollama-mesh*.1
+    echo "Removed man pages: $MAN_DIR/ollama-mesh*.1"
+  else
+    echo "  [!] Cannot remove man pages in $MAN_DIR (no write permission, no sudo). Remove them manually."
+  fi
+fi
+
 # 4. mesh.db holds real state (nodes, API keys, warm-state history) - ask
 # before deleting, and default to keeping it when not on a terminal.
 ask_keep() {
