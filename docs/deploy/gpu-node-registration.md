@@ -76,10 +76,10 @@ pipeline without Ansible, a language other than YAML, etc.) - the loop above rem
 correct as a reference for exactly what the playbook does under the hood, and as a
 no-Ansible fallback.
 
-- Playbook: `ansible/playbooks/register-gpus.yml`
-- Example inventory: `ansible/inventory.example.yml`
-- Full variable reference and prerequisites: `ansible/README.md`
+- Playbook: [`ansible/playbooks/register-gpus.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/register-gpus.yml)
+- Example inventory: [`ansible/inventory.example.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/inventory.example.yml)
+- Full variable reference and prerequisites: [`ansible/README.md`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/README.md)
 
 This playbook registers runtime endpoints only - it does not install or enroll Node
-Agents. See `ansible/playbooks/install-node-agent.yml` (and
-[Node Agent enrollment](node-agent-enrollment.md)) for that separate step.
+Agents. See [`ansible/playbooks/install-node-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-node-agent.yml)
+and [Node Agent enrollment](node-agent-enrollment.md) for that separate step.
