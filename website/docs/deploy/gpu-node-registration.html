@@ -6,17 +6,17 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Automated fleet enrollment (Ansible or any script) · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Automated fleet enrollment (Ansible or any script)." />
+<title>GPU node registration (Ansible or any script) · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: GPU node registration (Ansible or any script)." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="Automated fleet enrollment (Ansible or any script) · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: Automated fleet enrollment (Ansible or any script)." />
+<meta property="og:title" content="GPU node registration (Ansible or any script) · ollama-mesh docs" />
+<meta property="og:description" content="ollama-mesh documentation: GPU node registration (Ansible or any script)." />
 <meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="ollama-mesh admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Automated fleet enrollment (Ansible or any script) · ollama-mesh docs" />
+<meta name="twitter:title" content="GPU node registration (Ansible or any script) · ollama-mesh docs" />
 <meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
@@ -326,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link active" href="../../docs/deploy/fleet-enrollment.html">Fleet enrollment (Ansible)</a>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link active" href="../../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -335,10 +335,11 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   </aside>
 
   <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>deploy</span><span class="sep">/</span><span class="current">Automated fleet enrollment (Ansible or any script)</span></div>
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>deploy</span><span class="sep">/</span><span class="current">GPU node registration (Ansible or any script)</span></div>
     <article class="doc-content">
-      <h1 id="automated-fleet-enrollment-ansible-or-any-script">Automated fleet enrollment (Ansible or any script)<a class="anchor" href="#automated-fleet-enrollment-ansible-or-any-script" aria-label="Link to section">#</a></h1>
-<p>Enroll many GPU nodes at once without clicking through the dashboard per node. Every step below is a plain REST call against the Admin API - the GPU Nodes dashboard page is a thin wrapper over the same endpoints, so anything the UI can do, a script with an authenticated admin session can do identically.</p>
+      <h1 id="gpu-node-registration-ansible-or-any-script">GPU node registration (Ansible or any script)<a class="anchor" href="#gpu-node-registration-ansible-or-any-script" aria-label="Link to section">#</a></h1>
+<p>Register many GPU nodes' runtime endpoints with the mesh at once, without clicking through the dashboard per node. Every step below is a plain REST call against the Admin API - the GPU Nodes dashboard page is a thin wrapper over the same endpoint, so anything the UI can do, a script with an authenticated admin session can do identically.</p>
+<p>This covers registering a node's runtime endpoint only. Once a node is registered, see <a href="node-agent-enrollment.html">Node Agent enrollment</a> for the separate step of installing its Node Agent.</p>
 <h2 id="authenticating-a-script">Authenticating a script<a class="anchor" href="#authenticating-a-script" aria-label="Link to section">#</a></h2>
 <p>There is no separate long-lived "admin API key" for these routes - they use the same session-based admin auth as the dashboard and CLI. <code>POST /admin/login</code> with an admin user's username/password returns the session as an <code>HttpOnly</code> cookie (the token itself is not present in the JSON response body), valid for 30 days or until logout. The simplest reliable way to script this is a curl cookie jar, which the routes below also accept as <code>Authorization: Bearer &lt;token&gt;</code> if you prefer to extract the token value from the cookie yourself.</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>MESH=https://mesh.example.com
@@ -353,31 +354,14 @@ curl -sf -c &quot;$COOKIES&quot; -X POST &quot;$MESH/admin/login&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{&quot;username&quot;:&quot;admin&quot;,&quot;password&quot;:&quot;&lt;your admin password&gt;&quot;}' &gt; /dev/null"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Every subsequent call in this guide reuses <code>-b "$COOKIES"</code>.</p>
-<h2 id="how-enrollment-actually-works">How enrollment actually works<a class="anchor" href="#how-enrollment-actually-works" aria-label="Link to section">#</a></h2>
-<p>Each node gets its own unique agent token, minted server-side and bound to that node's host - it is never a shared fleet-wide secret. A token copied to a different machine will not authenticate there; the mesh checks it against the specific host it was generated for. Tokens can be rotated or revoked at any time without touching other nodes.</p>
-<p>The install command the API hands back does <strong>not</strong> embed the real permanent token directly. It embeds a short-lived, single-use enrollment code instead (<code>ENROLL=</code>), which the agent exchanges for the real token via <code>POST /admin/agent/enroll</code> at install time - so the permanent bearer token never sits in shell history, SSH logs, or chat. (<code>install.sh</code> also accepts a raw <code>TOKEN=</code> as a legacy/manual fallback, but <code>ENROLL=</code> is what the API generates and what you should script against.)</p>
-<p>Provisioning a node is two sequential calls:</p>
-<ol><li><code>POST /admin/nodes</code> - registers the node (<code>{"name", "url"}</code>; other fields like</li></ol>
-<p>   <code>runtime</code> are optional, defaulting to <code>ollama</code>). Returns <code>201 Created</code> with an    empty body.</p>
-<ol><li><code>POST /admin/nodes/{name}/agent</code> - enables the Node Agent for that node and</li></ol>
-<p>   returns a ready-to-run install command with the enrollment code embedded:</p>
-<div class="code-wrap"><pre class="code" data-lang="json"><code>{
-  "node": "gpu01",
-  "enabled": true,
-  "port": 11434,
-  "token": "admin.&lt;opaque-permanent-token&gt;",
-  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh",
-  "install_command_windows": "..."
-}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
-  &quot;node&quot;: &quot;gpu01&quot;,
-  &quot;enabled&quot;: true,
-  &quot;port&quot;: 11434,
-  &quot;token&quot;: &quot;admin.&lt;opaque-permanent-token&gt;&quot;,
-  &quot;install_command&quot;: &quot;curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh&quot;,
-  &quot;install_command_windows&quot;: &quot;...&quot;
-}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Run the returned <code>install_command</code> on the target host (via Ansible, SSH, whatever you use) and the agent exchanges the code for its real token and registers itself. There is currently no single "create and enroll in one call" endpoint - it's two calls, not one. A first-party Ansible playbook now wraps both calls (see below) - the underlying API already supports full automation today either way.</p>
-<h2 id="scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes<a class="anchor" href="#scripted-enrollment-for-n-nodes" aria-label="Link to section">#</a></h2>
+<h2 id="registering-a-node">Registering a node<a class="anchor" href="#registering-a-node" aria-label="Link to section">#</a></h2>
+<p><code>POST /admin/nodes</code> - registers the node (<code>{"name", "url"}</code>; other fields like <code>runtime</code> are optional, defaulting to <code>ollama</code>). This endpoint upserts by name: a repeat call with the same name updates that node's config in place (<code>200 OK</code>) instead of creating a duplicate; the first call returns <code>201 Created</code>. Safe to re-run.</p>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"gpu01","url":"http://gpu01:11434"}'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MESH/admin/nodes&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;name&quot;:&quot;gpu01&quot;,&quot;url&quot;:&quot;http://gpu01:11434&quot;}'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<h2 id="scripted-registration-for-n-nodes">Scripted registration for N nodes<a class="anchor" href="#scripted-registration-for-n-nodes" aria-label="Link to section">#</a></h2>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>MESH=https://mesh.example.com
 COOKIES=$(mktemp)
 
@@ -386,18 +370,9 @@ curl -sf -c "$COOKIES" -X POST "$MESH/admin/login" \
   -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null
 
 for host in gpu01 gpu02 gpu03; do
-  # 1. Register the node
   curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$host\",\"url\":\"http://$host:11434\"}"
-
-  # 2. Enable the agent, capture the install command
-  INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes/$host/agent" \
-    -H "Content-Type: application/json" \
-    -d '{"port":11434}' | jq -r '.install_command')
-
-  # 3. Run it on the target host (SSH shown here; swap for your Ansible task)
-  ssh "$host" "$INSTALL_CMD"
 done</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="MESH=https://mesh.example.com
 COOKIES=$(mktemp)
 
@@ -406,121 +381,25 @@ curl -sf -c &quot;$COOKIES&quot; -X POST &quot;$MESH/admin/login&quot; \
   -d '{&quot;username&quot;:&quot;admin&quot;,&quot;password&quot;:&quot;&lt;your admin password&gt;&quot;}' &gt; /dev/null
 
 for host in gpu01 gpu02 gpu03; do
-  # 1. Register the node
   curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MESH/admin/nodes&quot; \
     -H &quot;Content-Type: application/json&quot; \
     -d &quot;{\&quot;name\&quot;:\&quot;$host\&quot;,\&quot;url\&quot;:\&quot;http://$host:11434\&quot;}&quot;
-
-  # 2. Enable the agent, capture the install command
-  INSTALL_CMD=$(curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MESH/admin/nodes/$host/agent&quot; \
-    -H &quot;Content-Type: application/json&quot; \
-    -d '{&quot;port&quot;:11434}' | jq -r '.install_command')
-
-  # 3. Run it on the target host (SSH shown here; swap for your Ansible task)
-  ssh &quot;$host&quot; &quot;$INSTALL_CMD&quot;
 done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>Once every node is registered, install their Node Agents - see <a href="node-agent-enrollment.html">Node Agent enrollment</a>.</p>
 <h2 id="recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook<a class="anchor" href="#recommended-path-the-first-party-ansible-playbook" aria-label="Link to section">#</a></h2>
-<p>A first-party Ansible playbook now exists at <code>ansible/playbooks/register-gpus.yml</code> (see <code>ansible/README.md</code>). It automates the exact sequence in this document - login once, register each node, decide whether the Node Agent needs (re-)enrolling, install it, and poll until healthy - across an arbitrary list of GPU hosts declared in a simple vars file (<code>ansible/inventory.example.yml</code>). It ships as source in this repo only; it is not published to Ansible Galaxy or any external registry. Use it instead of hand-rolling the loop below unless you have a reason to script this yourself (CI pipeline without Ansible, a language other than YAML, etc.) - the sketch below remains correct as a reference for exactly what the playbook does under the hood, and as a no-Ansible fallback.</p>
-<h2 id="ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)<a class="anchor" href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback" aria-label="Link to section">#</a></h2>
-<p>Before the first-party playbook existed, the pattern was: log in once, then wrap the two API calls with <code>uri</code> and hand the returned command to the target host:</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code>- name: Log in and capture session cookie
-  uri:
-    url: "https://mesh.example.com/admin/login"
-    method: POST
-    body_format: json
-    body:
-      username: admin
-      password: "{{ mesh_admin_password }}"
-    status_code: 200
-  register: mesh_login
-  delegate_to: localhost
-  run_once: true
-
-- name: Register node with mesh
-  uri:
-    url: "https://mesh.example.com/admin/nodes"
-    method: POST
-    headers:
-      Cookie: "{{ mesh_login.set_cookie }}"
-    body_format: json
-    body:
-      name: "{{ inventory_hostname }}"
-      url: "http://{{ inventory_hostname }}:11434"
-    status_code: 201
-  delegate_to: localhost
-
-- name: Enable agent and capture install command
-  uri:
-    url: "https://mesh.example.com/admin/nodes/{{ inventory_hostname }}/agent"
-    method: POST
-    headers:
-      Cookie: "{{ mesh_login.set_cookie }}"
-    body_format: json
-    body:
-      port: 11434
-    return_content: true
-  register: agent_response
-  delegate_to: localhost
-
-- name: Install agent on GPU node
-  shell: "{{ (agent_response.content | from_json).install_command }}"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="- name: Log in and capture session cookie
-  uri:
-    url: &quot;https://mesh.example.com/admin/login&quot;
-    method: POST
-    body_format: json
-    body:
-      username: admin
-      password: &quot;{{ mesh_admin_password }}&quot;
-    status_code: 200
-  register: mesh_login
-  delegate_to: localhost
-  run_once: true
-
-- name: Register node with mesh
-  uri:
-    url: &quot;https://mesh.example.com/admin/nodes&quot;
-    method: POST
-    headers:
-      Cookie: &quot;{{ mesh_login.set_cookie }}&quot;
-    body_format: json
-    body:
-      name: &quot;{{ inventory_hostname }}&quot;
-      url: &quot;http://{{ inventory_hostname }}:11434&quot;
-    status_code: 201
-  delegate_to: localhost
-
-- name: Enable agent and capture install command
-  uri:
-    url: &quot;https://mesh.example.com/admin/nodes/{{ inventory_hostname }}/agent&quot;
-    method: POST
-    headers:
-      Cookie: &quot;{{ mesh_login.set_cookie }}&quot;
-    body_format: json
-    body:
-      port: 11434
-    return_content: true
-  register: agent_response
-  delegate_to: localhost
-
-- name: Install agent on GPU node
-  shell: &quot;{{ (agent_response.content | from_json).install_command }}&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Run this play against a <code>gpu_nodes</code> inventory group and every host gets its own enrollment code from the same run - no manual UI step, no shared secret.</p>
-<h2 id="rotation-and-revocation">Rotation and revocation<a class="anchor" href="#rotation-and-revocation" aria-label="Link to section">#</a></h2>
-<ul><li><code>POST /admin/nodes/{name}/agent/regenerate</code> mints a new token (and a new install</li></ul>
-<p>  command with a fresh enrollment code) for one node - requires restarting the agent   process on that host with the new credential.</p>
-<ul><li><code>DELETE /admin/nodes/{name}/agent</code> disables the agent for a node and revokes its</li></ul>
-<p>  token immediately.</p>
-<p>Both are scoped to a single node (or, more precisely, to the physical host it shares with any other node entries on the same machine) and never affect any other host's token.</p>
+<p>A first-party Ansible playbook automates the sequence above - login once, register each node, poll until its runtime endpoint reports healthy - across an arbitrary list of GPU hosts declared in a simple vars file. It ships as source in this repo only; it is not published to Ansible Galaxy or any external registry. Use it instead of hand-rolling the loop above unless you have a reason to script this yourself (CI pipeline without Ansible, a language other than YAML, etc.) - the loop above remains correct as a reference for exactly what the playbook does under the hood, and as a no-Ansible fallback.</p>
+<ul><li>Playbook: <code>ansible/playbooks/register-gpus.yml</code></li><li>Example inventory: <code>ansible/inventory.example.yml</code></li><li>Full variable reference and prerequisites: <code>ansible/README.md</code></li></ul>
+<p>This playbook registers runtime endpoints only - it does not install or enroll Node Agents. See <code>ansible/playbooks/install-node-agent.yml</code> (and <a href="node-agent-enrollment.html">Node Agent enrollment</a>) for that separate step.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/deploy/fleet-enrollment.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/deploy/gpu-node-registration.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#authenticating-a-script">Authenticating a script</a></li><li class="lvl-2"><a href="#how-enrollment-actually-works">How enrollment actually works</a></li><li class="lvl-2"><a href="#scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes</a></li><li class="lvl-2"><a href="#recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook</a></li><li class="lvl-2"><a href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)</a></li><li class="lvl-2"><a href="#rotation-and-revocation">Rotation and revocation</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#authenticating-a-script">Authenticating a script</a></li><li class="lvl-2"><a href="#registering-a-node">Registering a node</a></li><li class="lvl-2"><a href="#scripted-registration-for-n-nodes">Scripted registration for N nodes</a></li><li class="lvl-2"><a href="#recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook</a></li></ul>
   </aside>
 </div>
 

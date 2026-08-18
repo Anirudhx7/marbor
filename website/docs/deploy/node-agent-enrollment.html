@@ -6,17 +6,17 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Backup &amp; Restore · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Backup &amp; Restore." />
-<link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+<title>Node Agent enrollment (Ansible or any script) · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: Node Agent enrollment (Ansible or any script)." />
+<link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="Backup &amp; Restore · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: Backup &amp; Restore." />
+<meta property="og:title" content="Node Agent enrollment (Ansible or any script) · ollama-mesh docs" />
+<meta property="og:description" content="ollama-mesh documentation: Node Agent enrollment (Ansible or any script)." />
 <meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="ollama-mesh admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Backup &amp; Restore · ollama-mesh docs" />
+<meta name="twitter:title" content="Node Agent enrollment (Ansible or any script) · ollama-mesh docs" />
 <meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
@@ -294,13 +294,13 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
-        <a class="link" href="../index.html#features">Features</a>
-        <a class="link" href="../index.html#how">How it works</a>
-        <a class="link" href="../index.html#compare">Compare</a>
-        <a class="link active" href="../docs/index.html">Docs</a>
+        <a class="link" href="../../index.html#features">Features</a>
+        <a class="link" href="../../index.html#how">How it works</a>
+        <a class="link" href="../../index.html#compare">Compare</a>
+        <a class="link active" href="../../docs/index.html">Docs</a>
         <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
         <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
@@ -317,89 +317,162 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
-    <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
+    <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
     <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link active" href="../docs/backup.html">Backup & Restore</a>
+      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link" href="../../docs/backup.html">Backup & Restore</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link active" href="../../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
-      <a class="doc-nav-link" href="../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../docs/integrations/open-webui.html">Open WebUI</a>
+      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../../docs/integrations/open-webui.html">Open WebUI</a>
     </div>
   </aside>
 
   <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Backup &amp; Restore</span></div>
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>deploy</span><span class="sep">/</span><span class="current">Node Agent enrollment (Ansible or any script)</span></div>
     <article class="doc-content">
-      <h1 id="backup-restore">Backup &amp; Restore<a class="anchor" href="#backup-restore" aria-label="Link to section">#</a></h1>
-<p>ollama-mesh is DB-first: <code>mesh.db</code> (SQLite) holds nodes, API keys, routing rules, warm-state history, encrypted secrets, and every setting. Losing it means reconfiguring the mesh from scratch. This page covers taking backups and restoring one, both built into the dashboard's Settings &gt; Backup &amp; Restore card.</p>
-<hr/>
-<h2 id="taking-backups">Taking backups<a class="anchor" href="#taking-backups" aria-label="Link to section">#</a></h2>
-<ul><li><strong>Download Backup Now</strong> - takes an on-demand, point-in-time-consistent copy of <code>mesh.db</code> (via</li></ul>
-<p>  SQLite's <code>VACUUM INTO</code>, safe to run while the mesh keeps serving requests) and downloads it   straight to your browser as <code>mesh-backup-&lt;UTC timestamp&gt;.db</code>.</p>
-<ul><li><strong>Scheduled Backup</strong> - enable it, then set:</li><li><strong>Interval (hours)</strong> - how often a backup runs.</li><li><strong>Retention (backups kept)</strong> - how many scheduled backup files to keep; older ones are</li></ul>
-<p>    deleted automatically after each successful run. Manually-downloaded backups (via the button     above) are never touched by retention pruning - only the scheduler's own files count.</p>
-<ul><li><strong>Target Directory</strong> - where scheduled backups are written on the machine running the mesh</li></ul>
-<p>    process. In Docker, this defaults to <code>/backups</code>, a <em>separate</em> named volume from the one     holding <code>mesh.db</code> (see <code>docker-compose.yml</code>) - so deleting the container, or even     <code>docker volume rm</code>-ing the data volume, doesn't take the backups down with it. On bare metal /     systemd, it defaults to a <code>backups/</code> directory next to <code>mesh.db</code> unless you set <code>MESH_BACKUP_DIR</code>     or change it in Settings.</p>
-<p>The last scheduled-run outcome (timestamp of the last success, or the last error) is shown on the same Settings card - a failed scheduled backup (bad path, full disk, permissions) is never silently swallowed; it's retried on the next check and the error stays visible until a run succeeds.</p>
-<hr/>
-<h2 id="restoring-a-backup">Restoring a backup<a class="anchor" href="#restoring-a-backup" aria-label="Link to section">#</a></h2>
-<p>The Settings &gt; Backup &amp; Restore card lists every scheduled backup file already sitting in the target directory in a dropdown - pick one and click <strong>Restore</strong> next to it. Behind that click:</p>
-<ol><li>The mesh validates the file (<code>PRAGMA quick_check</code>) before touching anything - a corrupt or</li></ol>
-<p>   unrelated file is rejected here, before the live database is ever at risk.</p>
-<ol><li>It gracefully drains in-flight requests (the same shutdown path a <code>SIGTERM</code> uses).</li><li>It stages the full copy alongside the live <code>mesh.db</code> first, and only swaps it in via an atomic</li></ol>
-<p>   rename once the copy is proven complete - a failure mid-copy leaves the <em>live</em> database    untouched, never truncated or half-written.</p>
-<ol><li>It exits the process on purpose, with a non-zero status.</li></ol>
-<p><strong>That last step is why this requires your deployment to actually restart the process on exit</strong> - the mesh does not restart itself; it relies on whatever already supervises it:</p>
-<div class="table-scroll"><table>
-<thead><tr><th>Deployment</th><th>Requirement</th><th>Status in this repo</th></tr></thead>
-<tbody><tr><td>Docker / Docker Compose</td><td>a <code>restart</code> policy</td><td><code>docker-compose.yml</code> ships with <code>restart: unless-stopped</code></td></tr>
-<tr><td>systemd</td><td><code>Restart=on-failure</code> (or <code>always</code>)</td><td>already in the example unit in <a href="PRODUCTION.html"><code>PRODUCTION.md</code></a></td></tr>
-<tr><td>Kubernetes</td><td>default <code>restartPolicy</code></td><td><code>Always</code> by default for a Deployment - nothing extra needed</td></tr>
-<tr><td>A bare <code>./ollama-mesh</code> with no supervisor</td><td>none available</td><td><strong>will not come back on its own</strong> - see below</td></tr></tbody>
-</table></div>
-<p>If you're running the binary directly with nothing supervising it (no systemd unit, no Docker, no Kubernetes), a one-click restore will stop the mesh and it will stay stopped until you start it again by hand. Either run it under one of the supervised setups above, or use the fully manual procedure below instead, where you control every step yourself.</p>
-<h3 id="restoring-from-a-file-that-isnt-already-on-the-server">Restoring from a file that isn't already on the server<a class="anchor" href="#restoring-from-a-file-that-isnt-already-on-the-server" aria-label="Link to section">#</a></h3>
-<p>Next to the dropdown is a <strong>+</strong> button - it opens your browser's normal file picker (works the same in Chrome, Firefox, Safari, and Edge, on Linux, Windows, and macOS) so you can attach any <code>.db</code> file from your own machine, not just files the scheduler already produced on the server. Pick a file and it uploads to the mesh, which validates it's a genuine SQLite database (<code>PRAGMA quick_check</code> - the identical check every other backup path already goes through) and saves it into the same target directory as scheduled/manual backups, under the standard <code>mesh-backup-&lt;timestamp&gt;.db</code> name. It then appears in the dropdown like any other backup and can be restored the same way. A spinner replaces the <strong>+</strong> icon while the upload is in flight; an invalid file (wrong format, corrupt, not a mesh.db backup at all) is rejected with an error and never touches the target directory.</p>
-<h3 id="fully-manual-alternative">Fully manual alternative<a class="anchor" href="#fully-manual-alternative" aria-label="Link to section">#</a></h3>
-<p>Restore doesn't have to go through the dashboard. Stopping the mesh, swapping the file, and starting it again works identically and isn't restricted to files in the scheduled backup directory - <strong>any</strong> <code>.db</code> file that was itself produced by a backup of this mesh (scheduled, manual download, or a straight file copy taken while the process was stopped) can be restored from, regardless of where it currently lives.</p>
-<p><strong>Bare metal / systemd:</strong></p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo systemctl stop ollama-mesh
-sudo cp /path/to/mesh-backup-20260730-140000.db /opt/ollama-mesh/mesh.db
-sudo systemctl start ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo systemctl stop ollama-mesh
-sudo cp /path/to/mesh-backup-20260730-140000.db /opt/ollama-mesh/mesh.db
-sudo systemctl start ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Replace <code>/opt/ollama-mesh/mesh.db</code> with whatever path you actually run with (<code>--db</code> flag or <code>MESH_DB_PATH</code>) - not necessarily this exact path.</p>
-<p><strong>Docker / Docker Compose:</strong></p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
-docker cp ./mesh-backup-20260730-140000.db ollama-mesh:/data/mesh.db
-docker compose start ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop ollama-mesh
-docker cp ./mesh-backup-20260730-140000.db ollama-mesh:/data/mesh.db
-docker compose start ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>If the file is already inside the container (e.g. a scheduled backup under <code>/backups</code>), copy it inside instead of using <code>docker cp</code>:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
-docker compose run --rm --entrypoint sh ollama-mesh -c "cp /backups/mesh-backup-20260730-140000.db /data/mesh.db"
-docker compose start ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop ollama-mesh
-docker compose run --rm --entrypoint sh ollama-mesh -c &quot;cp /backups/mesh-backup-20260730-140000.db /data/mesh.db&quot;
-docker compose start ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Either way, the container must be <strong>stopped</strong> first, since SQLite's WAL sidecar files (<code>mesh.db-wal</code>, <code>mesh.db-shm</code>) would otherwise still be attached to the old database.</p>
-<p><strong>Kubernetes:</strong> scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a temporary debug pod with the same PVC mounted, or <code>kubectl cp</code> into that pod), then scale back to 1.</p>
+      <h1 id="node-agent-enrollment-ansible-or-any-script">Node Agent enrollment (Ansible or any script)<a class="anchor" href="#node-agent-enrollment-ansible-or-any-script" aria-label="Link to section">#</a></h1>
+<p>Enroll and install the Node Agent on many already-registered GPU nodes at once, without clicking through the dashboard per node. Every step below is a plain REST call against the Admin API - the GPU Nodes dashboard page is a thin wrapper over the same endpoints, so anything the UI can do, a script with an authenticated admin session can do identically.</p>
+<p>A node must already be registered before its agent can be enrolled - see <a href="gpu-node-registration.html">GPU node registration</a> for that separate, first step.</p>
+<h2 id="authenticating-a-script">Authenticating a script<a class="anchor" href="#authenticating-a-script" aria-label="Link to section">#</a></h2>
+<p>Same session-cookie auth as node registration - see <a href="gpu-node-registration.html#authenticating-a-script">GPU node registration's "Authenticating a script"</a> section. Every call below reuses that same cookie jar.</p>
+<h2 id="how-enrollment-actually-works">How enrollment actually works<a class="anchor" href="#how-enrollment-actually-works" aria-label="Link to section">#</a></h2>
+<p>Each node gets its own unique agent token, minted server-side and bound to that node's host - it is never a shared fleet-wide secret. A token copied to a different machine will not authenticate there; the mesh checks it against the specific host it was generated for. Tokens can be rotated or revoked at any time without touching other nodes.</p>
+<p>The install command the API hands back does <strong>not</strong> embed the real permanent token directly. It embeds a short-lived, single-use enrollment code instead (<code>ENROLL=</code>), which the agent exchanges for the real token via <code>POST /admin/agent/enroll</code> at install time - so the permanent bearer token never sits in shell history, SSH logs, or chat. (<code>install.sh</code> also accepts a raw <code>TOKEN=</code> as a legacy/manual fallback, but <code>ENROLL=</code> is what the API generates and what you should script against.)</p>
+<p><code>POST /admin/nodes/{name}/agent</code> - enables the Node Agent for an already-registered node and returns a ready-to-run install command with the enrollment code embedded:</p>
+<div class="code-wrap"><pre class="code" data-lang="json"><code>{
+  "node": "gpu01",
+  "enabled": true,
+  "port": 11434,
+  "token": "admin.&lt;opaque-permanent-token&gt;",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh",
+  "install_command_windows": "..."
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
+  &quot;node&quot;: &quot;gpu01&quot;,
+  &quot;enabled&quot;: true,
+  &quot;port&quot;: 11434,
+  &quot;token&quot;: &quot;admin.&lt;opaque-permanent-token&gt;&quot;,
+  &quot;install_command&quot;: &quot;curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh&quot;,
+  &quot;install_command_windows&quot;: &quot;...&quot;
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>Run the returned <code>install_command</code> on the target host (via Ansible, SSH, whatever you use) and the agent exchanges the code for its real token and registers itself.</p>
+<p><strong>This endpoint is not safe to call blindly on every run.</strong> It unconditionally mints a fresh token, overwrites the persisted <code>node_agent</code> record, and pushes the new token to the live router - a repeat call against an already-healthy node rotates its credential out from under it and could interrupt a live connection for no reason. Check <code>GET /admin/nodes</code> first and only call this for a node that isn't already reporting <code>agentPresent: true</code> and <code>health: "healthy"</code>.</p>
+<h2 id="scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes<a class="anchor" href="#scripted-enrollment-for-n-nodes" aria-label="Link to section">#</a></h2>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>MESH=https://mesh.example.com
+COOKIES=$(mktemp)
+
+curl -sf -c "$COOKIES" -X POST "$MESH/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null
+
+for host in gpu01 gpu02 gpu03; do
+  # Enable the agent, capture the install command
+  INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes/$host/agent" \
+    -H "Content-Type: application/json" \
+    -d '{"port":11434}' | jq -r '.install_command')
+
+  # Run it on the target host (SSH shown here; swap for your Ansible task)
+  ssh "$host" "$INSTALL_CMD"
+done</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="MESH=https://mesh.example.com
+COOKIES=$(mktemp)
+
+curl -sf -c &quot;$COOKIES&quot; -X POST &quot;$MESH/admin/login&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;username&quot;:&quot;admin&quot;,&quot;password&quot;:&quot;&lt;your admin password&gt;&quot;}' &gt; /dev/null
+
+for host in gpu01 gpu02 gpu03; do
+  # Enable the agent, capture the install command
+  INSTALL_CMD=$(curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MESH/admin/nodes/$host/agent&quot; \
+    -H &quot;Content-Type: application/json&quot; \
+    -d '{&quot;port&quot;:11434}' | jq -r '.install_command')
+
+  # Run it on the target host (SSH shown here; swap for your Ansible task)
+  ssh &quot;$host&quot; &quot;$INSTALL_CMD&quot;
+done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<h2 id="recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook<a class="anchor" href="#recommended-path-the-first-party-ansible-playbook" aria-label="Link to section">#</a></h2>
+<p>A first-party Ansible playbook automates the sequence above - login once, check which nodes already have a healthy agent (skipping those), enable and install the rest, then poll until each is healthy - across an arbitrary list of already- registered GPU hosts declared in a simple vars file. It ships as source in this repo only; it is not published to Ansible Galaxy or any external registry.</p>
+<ul><li>Playbook: <code>ansible/playbooks/install-node-agent.yml</code></li><li>Example inventory: <code>ansible/inventory-agents.example.yml</code></li><li>Full variable reference, the re-enrollment idempotency policy, and prerequisites:</li></ul>
+<p>  <code>ansible/README.md</code></p>
+<p>This playbook enrolls/installs agents only - it does not register a node's runtime endpoint. Run <code>ansible/playbooks/register-gpus.yml</code> first for any node not yet registered - see <a href="gpu-node-registration.html">GPU node registration</a>.</p>
+<h2 id="ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)<a class="anchor" href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback" aria-label="Link to section">#</a></h2>
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code>- name: Log in and capture session cookie
+  uri:
+    url: "https://mesh.example.com/admin/login"
+    method: POST
+    body_format: json
+    body:
+      username: admin
+      password: "{{ mesh_admin_password }}"
+    status_code: 200
+  register: mesh_login
+  delegate_to: localhost
+  run_once: true
+
+- name: Enable agent and capture install command
+  uri:
+    url: "https://mesh.example.com/admin/nodes/{{ inventory_hostname }}/agent"
+    method: POST
+    headers:
+      Cookie: "{{ mesh_login.set_cookie }}"
+    body_format: json
+    body:
+      port: 11434
+    return_content: true
+  register: agent_response
+  delegate_to: localhost
+
+- name: Install agent on GPU node
+  shell: "{{ (agent_response.content | from_json).install_command }}"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="- name: Log in and capture session cookie
+  uri:
+    url: &quot;https://mesh.example.com/admin/login&quot;
+    method: POST
+    body_format: json
+    body:
+      username: admin
+      password: &quot;{{ mesh_admin_password }}&quot;
+    status_code: 200
+  register: mesh_login
+  delegate_to: localhost
+  run_once: true
+
+- name: Enable agent and capture install command
+  uri:
+    url: &quot;https://mesh.example.com/admin/nodes/{{ inventory_hostname }}/agent&quot;
+    method: POST
+    headers:
+      Cookie: &quot;{{ mesh_login.set_cookie }}&quot;
+    body_format: json
+    body:
+      port: 11434
+    return_content: true
+  register: agent_response
+  delegate_to: localhost
+
+- name: Install agent on GPU node
+  shell: &quot;{{ (agent_response.content | from_json).install_command }}&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>Run this play against a <code>gpu_nodes</code> inventory group and every host gets its own enrollment code from the same run - no manual UI step, no shared secret.</p>
+<h2 id="rotation-and-revocation">Rotation and revocation<a class="anchor" href="#rotation-and-revocation" aria-label="Link to section">#</a></h2>
+<ul><li><code>POST /admin/nodes/{name}/agent/regenerate</code> mints a new token (and a new install</li></ul>
+<p>  command with a fresh enrollment code) for one node - requires restarting the agent   process on that host with the new credential.</p>
+<ul><li><code>DELETE /admin/nodes/{name}/agent</code> disables the agent for a node and revokes its</li></ul>
+<p>  token immediately.</p>
+<p>Both are scoped to a single node (or, more precisely, to the physical host it shares with any other node entries on the same machine) and never affect any other host's token.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/backup.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/deploy/node-agent-enrollment.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#taking-backups">Taking backups</a></li><li class="lvl-2"><a href="#restoring-a-backup">Restoring a backup</a></li><li class="lvl-3"><a href="#restoring-from-a-file-that-isnt-already-on-the-server">Restoring from a file that isn't already on the server</a></li><li class="lvl-3"><a href="#fully-manual-alternative">Fully manual alternative</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#authenticating-a-script">Authenticating a script</a></li><li class="lvl-2"><a href="#how-enrollment-actually-works">How enrollment actually works</a></li><li class="lvl-2"><a href="#scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes</a></li><li class="lvl-2"><a href="#recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook</a></li><li class="lvl-2"><a href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)</a></li><li class="lvl-2"><a href="#rotation-and-revocation">Rotation and revocation</a></li></ul>
   </aside>
 </div>
 

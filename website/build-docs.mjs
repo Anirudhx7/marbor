@@ -166,7 +166,8 @@ const DOC_GROUPS = [
   { title: "Deployment", items: [
     { slug: "PRODUCTION", label: "Production" },
     { slug: "deploy/aws-ec2", label: "AWS EC2" },
-    { slug: "deploy/fleet-enrollment", label: "Fleet enrollment (Ansible)" },
+    { slug: "deploy/gpu-node-registration", label: "GPU node registration" },
+    { slug: "deploy/node-agent-enrollment", label: "Node Agent enrollment" },
   ]},
   { title: "Integrations", items: [
     { slug: "integrations/continue", label: "Continue" },
