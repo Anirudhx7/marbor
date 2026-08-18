@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Fleet enrollment deployment guide** (`docs/deploy/fleet-enrollment.md`) - documents the existing scriptable Admin API workflow (`POST /admin/nodes` + `POST /admin/nodes/{name}/agent`) for enrolling many GPU nodes at once via Ansible or any script, including a worked Ansible play. No new API surface - this documents automation the Admin API already supported.
+
 ## [0.19.1] - 2026-08-18
 
 ### Added
