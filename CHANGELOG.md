@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-08-18
+
 ### Added
 - **`internal/cli` is now driven by a single command registry instead of a hand-rolled `switch` statement (P83).** One data-driven tree (`internal/cli/registry.go`/`registry_tree.go`) is now the single source of truth for every command's name, flags, positional arity, and help text - the dispatcher, `--help` output, man pages, `docs/cli.md`, the README table, and shell completions all read the same declaration, so they cannot drift out of sync with each other the way the old scattered `switch`/const-string/hardcoded-map/hardcoded-whitelist combination already had. Adds root/group/leaf `--help` (previously 6 of 12 command groups dumped raw, context-free Go flag defaults) and "did you mean" suggestions for typo'd commands and subcommands.
 - **`ollama-mesh completion bash|zsh|fish`** - shell completion scripts generated from the same command registry, covering every command and flag. No network calls, no auth required.
