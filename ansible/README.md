@@ -2,17 +2,37 @@
 
 Automates GPU node registration and Node Agent installation against an
 ollama-mesh Admin API. This does exactly what a human does by hand on the
-dashboard's **GPU Nodes** page - it wraps the same two Admin API calls
-(`POST /admin/nodes` then `POST /admin/nodes/{name}/agent`) plus running the
+dashboard's **GPU Nodes** page - it wraps the same Admin API calls
+(`POST /admin/nodes`, `POST /admin/nodes/{name}/agent`) plus running the
 resulting install command on each GPU host. See
-`docs/deploy/fleet-enrollment.md` for the full HTTP contract this automates,
-including a no-Ansible curl/uri walkthrough if you'd rather script it
-yourself or just understand what's happening under the hood.
+`docs/deploy/gpu-node-registration.md` and `docs/deploy/node-agent-enrollment.md`
+for the full HTTP contract this automates, including a no-Ansible curl/uri
+walkthrough if you'd rather script it yourself or just understand what's
+happening under the hood.
 
 This is source committed to the ollama-mesh repo for operators to copy and
 run - it is **not** published to Ansible Galaxy or any external registry,
 and is not intended to be. Copy the `ansible/` directory (or clone the repo)
 and run it locally against your own fleet.
+
+## Two playbooks, two independent operations
+
+Registering a node's runtime endpoint and enrolling its Node Agent are
+deliberately kept as **separate playbooks**, not one combined script:
+
+| Playbook | Does | Inventory |
+|---|---|---|
+| [`playbooks/register-gpus.yml`](playbooks/register-gpus.yml) | Registers each node's runtime endpoint with the mesh (`POST /admin/nodes`) | [`inventory.example.yml`](inventory.example.yml) |
+| [`playbooks/install-node-agent.yml`](playbooks/install-node-agent.yml) | Enrolls and installs the Node Agent on an already-registered node (`POST /admin/nodes/{name}/agent` + install) | [`inventory-agents.example.yml`](inventory-agents.example.yml) |
+
+Each is independently idempotent - re-running `register-gpus.yml` never
+touches agent enrollment, and re-running `install-node-agent.yml` never
+re-registers a node's endpoint. Run `register-gpus.yml` first for a new
+node (the agent playbook fails fast, naming the host, if you point it at a
+name the mesh doesn't recognize yet); after that, run either one on its own
+whenever you only need to change that one thing - e.g. reinstall/rotate an
+agent without touching the node's registration, or re-point a node's runtime
+URL without disturbing its already-healthy agent.
 
 ## Prerequisites
 
@@ -22,30 +42,40 @@ and run it locally against your own fleet.
   matching this project's zero-external-dependency ethos.
 - Network access from wherever you run the playbook to the mesh's Admin API
   (`mesh_url`, e.g. `https://mesh.example.com`).
-- SSH access from wherever you run the playbook to every GPU host in your
-  node list, with a user that can run the install command (the Node Agent
-  installer registers a system service - see `install.sh`/`install.ps1` -
-  so that user typically needs `sudo`/Administrator rights, or you configure
-  `become: true` yourself). This playbook does not set `ansible_user`,
-  `ansible_ssh_private_key_file`, or `become` for you - configure those the
-  normal Ansible way (an `ansible.cfg`, `group_vars`, or `-e` on the command
-  line) for the hosts you list under `gpu_nodes`.
+- SSH access from wherever you run `install-node-agent.yml` to every GPU
+  host in your agent inventory, with a user that can run the install command
+  (the Node Agent installer registers a system service - see
+  `install.sh`/`install.ps1` - so that user typically needs
+  `sudo`/Administrator rights, or you configure `become: true` yourself).
+  Neither playbook sets `ansible_user`, `ansible_ssh_private_key_file`, or
+  `become` for you - configure those the normal Ansible way (an
+  `ansible.cfg`, `group_vars`, or `-e` on the command line).
+  `register-gpus.yml` never connects to the GPU hosts over SSH at all - it
+  only talks to the mesh's Admin API.
 - An ollama-mesh admin account's username and password. There is no
   separate static "admin API key" for these routes (see
-  `docs/deploy/fleet-enrollment.md`).
+  `docs/deploy/gpu-node-registration.md`).
 
 ## Files
 
-- `inventory.example.yml` - example node list (`gpu_nodes:`). Copy it,
-  rename it, and edit the hosts/ports/runtimes for your fleet. This is a
-  plain vars file, not a classic Ansible host inventory - the playbook loops
-  over the list and reaches each GPU host via `delegate_to`, so the hosts
-  don't need a pre-existing inventory entry.
-- `playbooks/register-gpus.yml` - the playbook. Runs entirely from
-  `localhost` for the API calls, and delegates only the install step to each
-  GPU host.
+- [`inventory.example.yml`](inventory.example.yml) - example `gpu_nodes:`
+  list for `register-gpus.yml`.
+- [`inventory-agents.example.yml`](inventory-agents.example.yml) - example
+  `agent_nodes:` list for `install-node-agent.yml`.
+- [`playbooks/register-gpus.yml`](playbooks/register-gpus.yml) - registers
+  runtime endpoints. Runs entirely from `localhost`; never touches the GPU
+  hosts over SSH.
+- [`playbooks/install-node-agent.yml`](playbooks/install-node-agent.yml) -
+  enrolls and installs Node Agents. Runs the API calls from `localhost` and
+  delegates only the install step to each GPU host.
+
+Both are plain vars files, not classic Ansible host inventories - each
+playbook loops over its list and reaches GPU hosts via `delegate_to`, so the
+hosts don't need a pre-existing inventory entry.
 
 ## Running it
+
+Register nodes:
 
 ```bash
 cp ansible/inventory.example.yml my-fleet.yml
@@ -53,6 +83,20 @@ cp ansible/inventory.example.yml my-fleet.yml
 
 ansible-playbook ansible/playbooks/register-gpus.yml \
   -e @my-fleet.yml \
+  -e mesh_url=https://mesh.example.com \
+  -e mesh_admin_username=admin \
+  --ask-vault-pass \
+  -e @secrets.vault.yml
+```
+
+Then enroll their Node Agents:
+
+```bash
+cp ansible/inventory-agents.example.yml my-agent-fleet.yml
+# edit my-agent-fleet.yml: same nodes, by the exact name they registered as
+
+ansible-playbook ansible/playbooks/install-node-agent.yml \
+  -e @my-agent-fleet.yml \
   -e mesh_url=https://mesh.example.com \
   -e mesh_admin_username=admin \
   --ask-vault-pass \
@@ -71,7 +115,7 @@ use `ansible-vault encrypt secrets.vault.yml` (or `--extra-vars` typed
 interactively / injected by your CI secret store) so the password never sits
 in plaintext on disk.
 
-## What each node in `gpu_nodes` needs
+## What each `gpu_nodes` entry needs (`register-gpus.yml`)
 
 | Field   | Required? | Default |
 |---------|-----------|---------|
@@ -93,7 +137,18 @@ playbook **requires an explicit `port` for `vllm`, `tgi`, `llamacpp`, and
 the Admin API's own `POST /admin/nodes` behavior and matches Ollama's own
 standard port.
 
-## What the playbook does, per node
+## What each `agent_nodes` entry needs (`install-node-agent.yml`)
+
+| Field  | Required? |
+|--------|-----------|
+| `name` | **Yes** - must exactly match a node already registered with the mesh. Nothing is generated here (unlike `gpu_nodes` above) - a guessed name would silently target the wrong node. |
+| `host` | Yes - IP or hostname, used as the SSH target for installing the agent. |
+| `port` | Yes - the node's listening port, sent to `POST /admin/nodes/{name}/agent`. Must match the port the node was registered with. |
+
+There's no `runtime` field here - agent enrollment doesn't need to know the
+node's runtime, only its name, host, and port.
+
+## What `register-gpus.yml` does, per node
 
 1. Logs in once (`POST /admin/login`), reusing the session cookie for every
    node in the run.
@@ -104,23 +159,36 @@ standard port.
    `internal/router/router.go` `AddNode`, `internal/admin/admin.go:1954`
    `handleAddNode` - repeat calls with the same name update in place and
    return `200`, first call returns `201`).
-4. Fetches current fleet status (`GET /admin/nodes`) to decide whether the
-   Node Agent needs (re-)enrolling - see **Agent re-enrollment policy**
-   below.
-5. If needed, enables the Node Agent (`POST /admin/nodes/{name}/agent`) and
-   captures the returned `install_command`.
-6. Runs `install_command` on the GPU host itself over SSH (`delegate_to`).
-7. Polls `GET /admin/nodes/{name}` (10 attempts, 5 seconds apart by default -
+4. Polls `GET /admin/nodes/{name}` (10 attempts, 5 seconds apart by default -
    tune with `-e poll_retries=... -e poll_delay=...`) until the node reports
-   `health: "healthy"` and `agentPresent: true`, or gives up and names the
-   host in the final failure message.
-8. Records a per-node result fact used by the summary.
+   `health: "healthy"`, or gives up and names the host in the final failure
+   message.
+5. Records a per-node result fact used by the summary.
 
-At the end, the playbook prints a plain-text summary line per node (name,
-host:port, runtime, whether the agent was (re-)enrolled this run, and final
-status), then fails the whole play (non-zero exit) if any node never came
-up healthy - so this is safe to wire into CI/cron without silently
-succeeding on a partial fleet.
+At the end, prints a plain-text summary line per node (name, host:port,
+runtime, final status), then fails the play (non-zero exit) if any node
+never came up healthy.
+
+## What `install-node-agent.yml` does, per node
+
+1. Logs in once (`POST /admin/login`), reusing the session cookie for every
+   node in the run.
+2. Fetches the current fleet (`GET /admin/nodes`) and fails fast, naming any
+   host whose `name` isn't a registered mesh node yet.
+3. Decides whether the Node Agent needs (re-)enrolling - see **Agent
+   re-enrollment policy** below.
+4. If needed, enables the Node Agent (`POST /admin/nodes/{name}/agent`) and
+   captures the returned `install_command`.
+5. Runs `install_command` on the GPU host itself over SSH (`delegate_to`).
+6. Polls `GET /admin/nodes/{name}` until the node reports `health: "healthy"`
+   and `agentPresent: true`, or gives up and names the host in the final
+   failure message.
+7. Records a per-node result fact used by the summary.
+
+At the end, prints a plain-text summary line per node (name, host:port,
+whether the agent was (re-)enrolled this run, final status), then fails the
+play (non-zero exit) if any node's agent never came up healthy - so this is
+safe to wire into CI/cron without silently succeeding on a partial fleet.
 
 ## Agent re-enrollment policy (read this before re-running against a live fleet)
 
@@ -136,19 +204,19 @@ it repeatedly against an already-healthy node would rotate its credential
 out from under it and could interrupt a live polling/agent connection for
 no reason - there's no benefit and a real (if small) disruption cost.
 
-So this playbook checks `GET /admin/nodes` first and **only calls
+So `install-node-agent.yml` checks `GET /admin/nodes` first and **only calls
 `POST /admin/nodes/{name}/agent` for a node that is not already reporting
 `agentPresent: true` and `health: "healthy"`**. Re-running the playbook
-against a fully healthy fleet re-confirms registration (which is genuinely
-idempotent) and skips agent enrollment/install entirely for every node that
-doesn't need it. If you deliberately want to force a token rotation for a
-specific node, use `POST /admin/nodes/{name}/agent/regenerate` directly (see
-`docs/deploy/fleet-enrollment.md`) rather than re-running this playbook.
+against a fully healthy fleet skips agent enrollment/install entirely for
+every node that doesn't need it. If you deliberately want to force a token
+rotation for a specific node, use `POST /admin/nodes/{name}/agent/regenerate`
+directly (see `docs/deploy/node-agent-enrollment.md`) rather than re-running
+this playbook.
 
 ## Field name reference (Admin API JSON)
 
-`GET /admin/nodes` returns an array of node objects; the fields this
-playbook relies on (verified against `internal/admin/admin.go`
+`GET /admin/nodes` returns an array of node objects; the fields these
+playbooks rely on (verified against `internal/admin/admin.go`
 `nodeStateToResp`) are:
 
 - `name` (string)
@@ -159,10 +227,14 @@ playbook relies on (verified against `internal/admin/admin.go`
 ## Not in scope
 
 - Provisioning the GPU host's OS, drivers, or the runtime itself (Ollama,
-  vLLM, etc.) - that's Ansible/Terraform territory upstream of this
-  playbook, per this project's standing architecture position. This
-  playbook assumes the runtime is already installed and reachable at
-  `host:port` before it runs.
-- Publishing this role to Ansible Galaxy or any external registry. There is
-  no `galaxy.yml` here and none should be added - distribution of this
-  automation is explicitly out of scope for this repo right now.
+  vLLM, etc.) - that's Ansible/Terraform territory upstream of these
+  playbooks, per this project's standing architecture position.
+  `register-gpus.yml` assumes the runtime is already installed and
+  reachable at `host:port` before it runs.
+- Windows GPU hosts. `install-node-agent.yml` connects over SSH and runs a
+  POSIX shell install command - Windows agent installation needs the
+  Admin API's `install_command_windows` run manually, or a WinRM-based
+  playbook this repo doesn't provide.
+- Publishing either playbook to Ansible Galaxy or any external registry.
+  There is no `galaxy.yml` here and none should be added - distribution of
+  this automation is explicitly out of scope for this repo right now.

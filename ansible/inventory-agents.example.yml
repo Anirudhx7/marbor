@@ -1,0 +1,41 @@
+# Example node list for ansible/playbooks/install-node-agent.yml.
+#
+# Copy this file (e.g. to my-agent-inventory.yml, gitignored or kept private)
+# and edit the agent_nodes list to match your fleet. Same "plain vars file,
+# not a classic Ansible inventory" shape as ansible/inventory.example.yml -
+# the playbook loops over this list and reaches each host by IP/hostname via
+# `delegate_to`, so no pre-existing inventory entry is required for the GPU
+# hosts themselves.
+#
+# Different from inventory.example.yml (register-gpus.yml) in one important
+# way: every field here is REQUIRED, nothing is generated or defaulted.
+# register-gpus.yml can invent a node name and default a port because it's
+# creating a new node; this playbook is targeting an EXISTING node by exact
+# name, so a generated/guessed name would silently target the wrong node (or
+# fail the "already registered" check with a confusing error). There's also
+# no `runtime` field - agent enrollment doesn't need to know the node's
+# runtime, only its name, host, and port.
+#
+# Field reference:
+#   name   required - must exactly match a node already registered with the
+#          mesh (via register-gpus.yml or the dashboard's "Add Node"). The
+#          playbook fails fast, naming the host, if a name isn't found among
+#          the mesh's current nodes.
+#   host   required - IP or hostname of the GPU node. Used as the SSH target
+#          for installing the Node Agent.
+#   port   required - the node's listening port, sent to
+#          POST /admin/nodes/{name}/agent (must match the port the node was
+#          registered with).
+
+agent_nodes:
+  - name: inference-gpu-a
+    host: 10.10.10.21
+    port: 11434
+
+  - name: gpu-node-02
+    host: 10.10.10.22
+    port: 11434
+
+  - name: gpu-node-03
+    host: 10.10.10.23
+    port: 8000

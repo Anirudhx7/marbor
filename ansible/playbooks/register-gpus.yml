@@ -1,9 +1,13 @@
 ---
-# Registers N GPU nodes with an ollama-mesh Admin API and installs the Node
-# Agent on each one. This automates exactly the two admin API calls a human
-# makes by hand via the dashboard's GPU Nodes page (POST /admin/nodes, then
-# POST /admin/nodes/{name}/agent) - see docs/deploy/fleet-enrollment.md for
-# the underlying HTTP contract this playbook wraps.
+# Registers N GPU nodes' runtime endpoints with an ollama-mesh Admin API.
+# This automates exactly the API call a human makes by hand on the
+# dashboard's GPU Nodes page when clicking "Add Node" (POST /admin/nodes) -
+# see docs/deploy/gpu-node-registration.md for the underlying HTTP contract
+# this playbook wraps.
+#
+# This playbook does NOT install or enroll the Node Agent - that's a
+# separate, independently-idempotent operation. See
+# ansible/playbooks/install-node-agent.yml.
 #
 # Usage:
 #   ansible-playbook ansible/playbooks/register-gpus.yml \
@@ -13,10 +17,9 @@
 #     --ask-vault-pass \
 #     -e @secrets.vault.yml
 #
-# See ansible/README.md for the full variable reference and required SSH
-# access assumptions for the GPU hosts.
+# See ansible/README.md for the full variable reference.
 
-- name: Register GPU nodes with ollama-mesh and install Node Agents
+- name: Register GPU node runtime endpoints with ollama-mesh
   hosts: localhost
   connection: local
   gather_facts: false
@@ -109,63 +112,7 @@
         label: "{{ node.name }} ({{ node.host }})"
       register: register_results
 
-    - name: Fetch current fleet status (used to decide agent re-enrollment)
-      ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/nodes"
-        method: GET
-        headers:
-          Cookie: "{{ mesh_login.set_cookie }}"
-        status_code: 200
-        return_content: true
-      register: fleet_status
-
-    - name: Determine which nodes already have a healthy agent
-      ansible.builtin.set_fact:
-        already_enrolled_names: "{{ fleet_status.json
-          | selectattr('agentPresent', 'equalto', true)
-          | selectattr('health', 'equalto', 'healthy')
-          | map(attribute='name') | list }}"
-
-    # Idempotency policy for agent (re-)enrollment:
-    #
-    # POST /admin/nodes/{name}/agent is NOT safe to call on an already-healthy
-    # node. It unconditionally mints a fresh token, overwrites the persisted
-    # node_agent record, and pushes the new token to the live router
-    # (internal/admin/admin.go handleEnableNodeAgent) - a repeat call rotates
-    # credentials out from under a running agent and would knock a healthy
-    # connection offline for no reason. So: only call it for a node that is
-    # NOT already reporting agentPresent=true AND health="healthy" via
-    # GET /admin/nodes. Re-running this playbook against a fully healthy
-    # fleet therefore only re-confirms registration (safe/idempotent) and
-    # skips agent enrollment entirely.
-    - name: Enable Node Agent and capture install command (only where needed)
-      ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/nodes/{{ node.name }}/agent"
-        method: POST
-        headers:
-          Cookie: "{{ mesh_login.set_cookie }}"
-        body_format: json
-        body:
-          port: "{{ node.port }}"
-        status_code: 200
-        return_content: true
-      loop: "{{ resolved_nodes }}"
-      loop_control:
-        loop_var: node
-        label: "{{ node.name }} ({{ node.host }})"
-      when: node.name not in already_enrolled_names
-      register: agent_enable_results
-
-    - name: Install/update Node Agent on each newly-enrolled GPU host
-      ansible.builtin.shell: "{{ (item.content | from_json).install_command }}"
-      loop: "{{ agent_enable_results.results | rejectattr('skipped', 'defined') | list }}"
-      loop_control:
-        label: "{{ item.node.name }} ({{ item.node.host }})"
-      delegate_to: "{{ item.node.host }}"
-      when: not item.skipped | default(false)
-      register: install_results
-
-    - name: Wait for each node to report healthy with agent present
+    - name: Wait for each node's runtime endpoint to report healthy
       ansible.builtin.uri:
         url: "{{ mesh_url }}/admin/nodes/{{ node.name }}"
         method: GET
@@ -174,9 +121,7 @@
         status_code: 200
         return_content: true
       register: node_poll
-      until: >-
-        (node_poll.json.health | default('down')) == 'healthy' and
-        (node_poll.json.agentPresent | default(false)) | bool
+      until: (node_poll.json.health | default('down')) == 'healthy'
       retries: "{{ poll_retries }}"
       delay: "{{ poll_delay }}"
       loop: "{{ resolved_nodes }}"
@@ -196,7 +141,6 @@
           'host': presult.node.host,
           'port': presult.node.port,
           'runtime': presult.node.runtime,
-          'agent_enrolled_this_run': presult.node.name not in already_enrolled_names,
           'status': ('failed' if presult.failed | default(false) else 'healthy')
           } ] }}"
       loop: "{{ poll_results.results }}"
@@ -204,12 +148,11 @@
         loop_var: presult
         label: "{{ presult.node.name }}"
 
-    - name: Fleet enrollment summary
+    - name: Registration summary
       ansible.builtin.debug:
         msg: >-
           {{ item.status | upper }} - {{ item.name }}
-          ({{ item.host }}:{{ item.port }}, runtime={{ item.runtime }}),
-          agent re-enrolled this run: {{ item.agent_enrolled_this_run }}
+          ({{ item.host }}:{{ item.port }}, runtime={{ item.runtime }})
       loop: "{{ node_results }}"
       loop_control:
         label: "{{ item.name }}"
@@ -217,8 +160,7 @@
     - name: Fail the play if any node did not come up healthy
       ansible.builtin.fail:
         msg: >-
-          Fleet enrollment incomplete. Nodes that did not report healthy +
-          agent present within {{ poll_retries }} attempts
-          ({{ poll_retries | int * poll_delay | int }}s):
+          Registration incomplete. Nodes that did not report healthy within
+          {{ poll_retries }} attempts ({{ (poll_retries | int) * (poll_delay | int) }}s):
           {{ node_results | selectattr('status', 'equalto', 'failed') | map(attribute='name') | list }}
       when: node_results | selectattr('status', 'equalto', 'failed') | list | length > 0
