@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/fleet-enrollment.html">Fleet enrollment (Ansible)</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -406,6 +417,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

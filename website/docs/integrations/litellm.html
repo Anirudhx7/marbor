@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/fleet-enrollment.html">Fleet enrollment (Ansible)</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -336,29 +347,34 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <hr/>
 <h2 id="option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh">Option A - Upstream Gateway Setup (LiteLLM &amp;rarr; ollama-mesh)<a class="anchor" href="#option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh" aria-label="Link to section">#</a></h2>
 <p>This is the recommended setup when you want to use LiteLLM's enterprise controls (such as SSO, virtual keys, and multi-cloud routing) while leveraging ollama-mesh's warm-first GPU load balancing and local VRAM scheduling.</p>
-<pre class="code"><code>Applications ────&gt; LiteLLM (Gateway) ────&gt; ollama-mesh (Scheduler) ────&gt; GPU Nodes</code></pre>
+<div class="code-wrap"><pre class="code"><code>Applications ────&gt; LiteLLM (Gateway) ────&gt; ollama-mesh (Scheduler) ────&gt; GPU Nodes</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Applications ────&gt; LiteLLM (Gateway) ────&gt; ollama-mesh (Scheduler) ────&gt; GPU Nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <h3 id="litellm-configuration">LiteLLM Configuration<a class="anchor" href="#litellm-configuration" aria-label="Link to section">#</a></h3>
 <p>Add ollama-mesh as a custom provider in LiteLLM's <code>config.yaml</code> using the OpenAI-compatible endpoint:</p>
-<pre class="code" data-lang="yaml"><code>model_list:
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code>model_list:
   - model_name: llama3.2
     litellm_params:
       model: openai/llama3.2
       api_base: http://&lt;mesh-host&gt;:11434/v1
-      api_key: sk-mesh-your-api-key # Key generated from the ollama-mesh dashboard</code></pre>
+      api_key: sk-mesh-your-api-key # Key generated from the ollama-mesh dashboard</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="model_list:
+  - model_name: llama3.2
+    litellm_params:
+      model: openai/llama3.2
+      api_base: http://&lt;mesh-host&gt;:11434/v1
+      api_key: sk-mesh-your-api-key # Key generated from the ollama-mesh dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Replace:</p>
 <ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP address of the machine running ollama-mesh.</li><li><code>sk-mesh-your-api-key</code> with the API key created in the ollama-mesh dashboard.</li><li><code>llama3.2</code> with whatever model names are loaded on your local GPU nodes.</li></ul>
 <hr/>
 <h2 id="option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm">Option B - Cloud Fallback Gateway Setup (ollama-mesh &amp;rarr; LiteLLM)<a class="anchor" href="#option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm" aria-label="Link to section">#</a></h2>
 <p>If you already use LiteLLM to centralize your company's cloud LLM provider credentials (OpenAI, Anthropic, Groq, etc.), you can configure ollama-mesh to use LiteLLM as its single cloud fallback endpoint when local GPU nodes are saturated or offline.</p>
 <p>This is managed dynamically through the admin dashboard interface and stored in the SQLite database.</p>
-<pre class="code"><code>Applications ────&gt; ollama-mesh ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs</code></pre>
+<div class="code-wrap"><pre class="code"><code>Applications ────&gt; ollama-mesh ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Applications ────&gt; ollama-mesh ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <h3 id="admin-dashboard-configuration">Admin Dashboard Configuration<a class="anchor" href="#admin-dashboard-configuration" aria-label="Link to section">#</a></h3>
 <ol><li>Open the ollama-mesh dashboard and navigate to the <strong>Settings</strong> page.</li><li>Scroll to the <strong>Integrations &amp; Cost</strong> section.</li><li>Under <strong>LiteLLM Integration</strong>:</li><li>Toggle <strong>Enable LiteLLM</strong> to active.</li><li>Enter your <strong>LiteLLM Endpoint URL</strong> (e.g., <code>http://&lt;litellm-host&gt;:4000/v1</code>).</li><li>Enter the <strong>API Key</strong> (LiteLLM virtual or master key, sent as <code>Authorization: Bearer &lt;key&gt;</code> to the LiteLLM proxy).</li><li>Click <strong>Save Settings</strong> to persist the configuration to the SQLite store.</li></ol>
 <blockquote>[!IMPORTANT] Enabling <strong>LiteLLM Integration</strong> automatically disables and deactivates the native <strong>Cloud Providers</strong> config block on the settings page. You will see a banner indicating: <code>"Managed by LiteLLM while enabled - this list is inactive"</code>. All cloud fallback/overflow routing will be managed exclusively by the LiteLLM proxy.</blockquote>
 <hr/>
 <h2 id="docker-compose-setup">Docker Compose Setup<a class="anchor" href="#docker-compose-setup" aria-label="Link to section">#</a></h2>
 <p>If running both gateways on the same host, use a shared Docker network and service names for hostnames:</p>
-<pre class="code" data-lang="yaml"><code># docker-compose.yml
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code># docker-compose.yml
 services:
   ollama-mesh:
     image: ghcr.io/anirudhx7/ollama-mesh:latest
@@ -387,7 +403,36 @@ networks:
     driver: bridge
 
 volumes:
-  mesh-data:</code></pre>
+  mesh-data:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml
+services:
+  ollama-mesh:
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    ports:
+      - &quot;11434:11434&quot;
+      - &quot;8080:8080&quot;
+    volumes:
+      - mesh-data:/root
+    networks:
+      - shared-network
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - &quot;4000:4000&quot;
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: [ &quot;--config&quot;, &quot;/app/config.yaml&quot; ]
+    depends_on:
+      - ollama-mesh
+    networks:
+      - shared-network
+
+networks:
+  shared-network:
+    driver: bridge
+
+volumes:
+  mesh-data:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Your <code>litellm-config.yaml</code> can then reference <code>http://ollama-mesh:11434/v1</code> as the <code>api_base</code>, and ollama-mesh's settings can use <code>http://litellm:4000/v1</code> as the <code>url</code>.</p>
 <hr/>
 <h2 id="model-discovery">Model Discovery<a class="anchor" href="#model-discovery" aria-label="Link to section">#</a></h2>
@@ -438,6 +483,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

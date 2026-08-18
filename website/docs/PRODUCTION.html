@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link active" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link active" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/fleet-enrollment.html">Fleet enrollment (Ansible)</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -339,7 +350,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <hr/>
 <h2 id="systemd">systemd<a class="anchor" href="#systemd" aria-label="Link to section">#</a></h2>
 <p>Create <code>/etc/systemd/system/ollama-mesh.service</code>:</p>
-<pre class="code" data-lang="ini"><code>[Unit]
+<div class="code-wrap"><pre class="code" data-lang="ini"><code>[Unit]
 Description=ollama-mesh LLM control plane
 After=network.target
 Wants=network.target
@@ -364,19 +375,50 @@ ProtectSystem=strict
 ReadWritePaths=/opt/ollama-mesh
 
 [Install]
-WantedBy=multi-user.target</code></pre>
-<pre class="code" data-lang="bash"><code>sudo useradd -r -s /sbin/nologin ollama-mesh
+WantedBy=multi-user.target</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="[Unit]
+Description=ollama-mesh LLM control plane
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=ollama-mesh
+Group=ollama-mesh
+WorkingDirectory=/opt/ollama-mesh
+ExecStart=/opt/ollama-mesh/ollama-mesh --db /opt/ollama-mesh/mesh.db
+Restart=on-failure
+RestartSec=5
+
+# Graceful shutdown: SIGTERM triggers a 15-second drain before exit.
+# The unit will wait up to TimeoutStopSec before sending SIGKILL.
+TimeoutStopSec=30
+
+# Harden the service
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/ollama-mesh
+
+[Install]
+WantedBy=multi-user.target"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo useradd -r -s /sbin/nologin ollama-mesh
 sudo mkdir -p /opt/ollama-mesh
 sudo cp ollama-mesh /opt/ollama-mesh/
 sudo chown -R ollama-mesh:ollama-mesh /opt/ollama-mesh
 sudo systemctl daemon-reload
 sudo systemctl enable --now ollama-mesh
-sudo journalctl -u ollama-mesh -f</code></pre>
+sudo journalctl -u ollama-mesh -f</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo useradd -r -s /sbin/nologin ollama-mesh
+sudo mkdir -p /opt/ollama-mesh
+sudo cp ollama-mesh /opt/ollama-mesh/
+sudo chown -R ollama-mesh:ollama-mesh /opt/ollama-mesh
+sudo systemctl daemon-reload
+sudo systemctl enable --now ollama-mesh
+sudo journalctl -u ollama-mesh -f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>First boot creates <code>/opt/ollama-mesh/mesh.db</code> blank-slate. Log in at <code>http://&lt;host&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login) and add your nodes/API keys from the dashboard - or run <code>install.sh</code>'s network-discovery wizard beforehand to seed nodes automatically.</p>
 <hr/>
 <h2 id="docker-compose">Docker Compose<a class="anchor" href="#docker-compose" aria-label="Link to section">#</a></h2>
 <p>The repo ships a working <code>docker-compose.yml</code>. It mounts <strong>two</strong> named volumes:</p>
-<pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
 services:
   ollama-mesh:
     image: ghcr.io/anirudhx7/ollama-mesh:latest
@@ -394,13 +436,31 @@ services:
 
 volumes:
   mesh-data:
-  mesh-backups:</code></pre>
+  mesh-backups:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml (reference - already in repo)
+services:
+  ollama-mesh:
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    ports:
+      - &quot;11434:11434&quot;
+      - &quot;8080:8080&quot;
+      - &quot;9090:9090&quot;
+    volumes:
+      - mesh-data:/data       # persists mesh.db across restarts
+      - mesh-backups:/backups # scheduled backups (Settings &gt; Backup &amp; Restore)
+    environment:
+      - MESH_DB_PATH=/data/mesh.db
+      - MESH_BACKUP_DIR=/backups
+    restart: unless-stopped
+
+volumes:
+  mesh-data:
+  mesh-backups:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>The <code>mesh-data</code> volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate <code>mesh.db</code> inside the volume - configure it via the dashboard at <code>http://localhost:8080</code> (<code>admin</code>/<code>admin</code>, forced password change on first login).</p>
 <p><code>mesh-backups</code> is a <strong>separate</strong> volume from <code>mesh-data</code>, on purpose: enable scheduled backups from the dashboard's Settings &gt; Backup &amp; Restore card (interval + retention count are configurable there), and a <code>docker volume rm mesh-data</code> or <code>docker-compose down -v</code> that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point <code>mesh-backups</code> at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as <code>mesh-data</code>. A manual "Download Backup Now" button on the same Settings card streams an on-demand copy straight to your browser at any time. The same card also lists scheduled backups and can restore one with a click - which stops and restarts the mesh process, so it requires <code>restart: unless-stopped</code> (already set above) or an equivalent supervisor. See <a href="backup.html"><code>backup.md</code></a> for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under <code>/backups</code> - any <code>.db</code> file works, on Docker or bare metal alike).</p>
 <hr/>
 <h2 id="kubernetes">Kubernetes<a class="anchor" href="#kubernetes" aria-label="Link to section">#</a></h2>
 <p>Minimal manifest. Adjust resource limits and image tag for your cluster. There is no ConfigMap - <code>mesh.db</code> lives on the PVC below, and nodes/keys/routing are set via the dashboard or <code>/admin/v1/...</code> REST API after the pod is up. GitOps-style operators can drive that same REST API from a post-deploy Job instead of hand-editing a file.</p>
-<pre class="code" data-lang="yaml"><code>apiVersion: apps/v1
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code>apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ollama-mesh
@@ -471,12 +531,83 @@ spec:
       targetPort: 8080
     - name: metrics
       port: 9090
-      targetPort: 9090</code></pre>
+      targetPort: 9090</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-mesh
+  namespace: ai-infra
+spec:
+  replicas: 1        # single instance - mesh.db on the PVC is not a shared datastore
+  selector:
+    matchLabels:
+      app: ollama-mesh
+  template:
+    metadata:
+      labels:
+        app: ollama-mesh
+      annotations:
+        prometheus.io/scrape: &quot;true&quot;
+        prometheus.io/port: &quot;9090&quot;
+        prometheus.io/path: &quot;/metrics&quot;
+    spec:
+      containers:
+        - name: ollama-mesh
+          image: ghcr.io/anirudhx7/ollama-mesh:latest
+          args: [&quot;--db&quot;, &quot;/data/mesh.db&quot;]
+          ports:
+            - containerPort: 11434   # endpoint
+            - containerPort: 8080    # admin
+            - containerPort: 9090    # metrics
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 11434
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 11434
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: &quot;64Mi&quot;
+              cpu: &quot;50m&quot;
+            limits:
+              memory: &quot;256Mi&quot;
+              cpu: &quot;500m&quot;
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ollama-mesh-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-mesh
+  namespace: ai-infra
+spec:
+  selector:
+    app: ollama-mesh
+  ports:
+    - name: proxy
+      port: 11434
+      targetPort: 11434
+    - name: admin
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Note: the Kubernetes deployment above runs a single replica because <code>mesh.db</code> (SQLite) is the sole datastore and is not shared across instances. Running multiple replicas would split state across separate, inconsistent databases.</p>
 <hr/>
 <h2 id="nginx-tls-termination">nginx TLS Termination<a class="anchor" href="#nginx-tls-termination" aria-label="Link to section">#</a></h2>
 <p>ollama-mesh does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:</p>
-<pre class="code" data-lang="nginx"><code>upstream ollama_mesh_proxy {
+<div class="code-wrap"><pre class="code" data-lang="nginx"><code>upstream ollama_mesh_proxy {
     server 127.0.0.1:11434;
 }
 
@@ -523,13 +654,61 @@ server {
         proxy_pass http://ollama_mesh_admin;
         proxy_set_header Host $host;
     }
-}</code></pre>
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="upstream ollama_mesh_proxy {
+    server 127.0.0.1:11434;
+}
+
+upstream ollama_mesh_admin {
+    server 127.0.0.1:8080;
+}
+
+# Control plane endpoint - clients point OPENAI_BASE_URL here
+server {
+    listen 443 ssl http2;
+    server_name llm.example.com;
+
+    ssl_certificate     /etc/ssl/certs/llm.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/llm.example.com.key;
+
+    location / {
+        proxy_pass         http://ollama_mesh_proxy;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   Connection &quot;&quot;;
+
+        # Streaming: disable buffering so tokens reach clients immediately
+        proxy_buffering    off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+
+# Admin dashboard - restrict to internal network
+server {
+    listen 443 ssl http2;
+    server_name llm-admin.example.com;
+
+    ssl_certificate     /etc/ssl/certs/llm-admin.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/llm-admin.example.com.key;
+
+    # Restrict to your VPN/office CIDR
+    allow 10.0.0.0/8;
+    deny  all;
+
+    location / {
+        proxy_pass http://ollama_mesh_admin;
+        proxy_set_header Host $host;
+    }
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p><code>proxy_buffering off</code> is required. Buffering the endpoint port will break streaming responses.</p>
 <hr/>
 <h2 id="health-check">Health Check<a class="anchor" href="#health-check" aria-label="Link to section">#</a></h2>
 <p><code>GET /health</code> on the endpoint port (11434) returns HTTP 200 when the process is up and ready to accept connections. It requires no authentication. Use it for load balancer health checks, container liveness/readiness probes, and uptime monitors.</p>
-<pre class="code" data-lang="bash"><code>curl http://localhost:11434/health
-# 200 OK</code></pre>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/health
+# 200 OK</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/health
+# 200 OK"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="graceful-shutdown">Graceful Shutdown<a class="anchor" href="#graceful-shutdown" aria-label="Link to section">#</a></h2>
 <p>On SIGTERM, ollama-mesh starts a 15-second graceful shutdown:</p>
@@ -556,6 +735,19 @@ server {
 <tr><td>Request log / analytics</td><td>Persisted to <code>request_log</code>, <code>hourly_buckets</code>, and <code>model_stats</code> tables in <code>mesh.db</code>, not purely in-memory.</td></tr>
 <tr><td>GPU telemetry</td><td>Live reads from <code>nvidia-smi</code> on local nodes, and via the optional Node Agent on remote GPU hosts. Not persisted.</td></tr></tbody>
 </table></div>
+<hr/>
+<h2 id="write-path-capacity">Write-Path Capacity<a class="anchor" href="#write-path-capacity" aria-label="Link to section">#</a></h2>
+<p>The three per-request SQLite writes above (audit log, request log, hourly/model stats) are async: each goes through a bounded 5000-slot buffered channel with drop-on-full, not the request goroutine (<code>internal/audit/audit.go</code>, <code>internal/admin/admin.go</code>). Under sustained load, this design absorbs a burst without adding request latency until a queue actually fills, at which point new entries for that table are dropped (and logged) rather than blocking requests.</p>
+<p>_Measured 2026-08-13 with <code>bench/loadtest</code> (see <code>bench/README.md</code>) against a single mesh process, a single <code>cmd/mocknode</code> backend (warm model, <code>LATENCY_MS=20</code>), on a Windows dev workstation - not production server hardware. Reproduced across two independent, isolated sweeps._</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Metric</th><th>Result</th></tr></thead>
+<tbody><tr><td>No drops observed</td><td>Up to 300 req/s sustained, p50 latency ~330-380ms (flat, matching the mock backend's own fixed per-response time), zero request failures.</td></tr>
+<tr><td>Latency knee</td><td>~400 req/s - p50 jumps from ~380ms (at 300 req/s) to ~1.7s, indicating request backlog starting to build.</td></tr>
+<tr><td>First observed queue-full drop</td><td>~500 req/s sustained, reproduced in both isolated test runs (<code>async logger: queue full</code>, <code>audit logger: queue full</code>, <code>async logger: stats queue full</code> all fired within the same run).</td></tr>
+<tr><td>Node-count sensitivity</td><td>Not yet tested - this measurement used the single-node baseline only, which is the primary claim for the SQLite write path itself. A secondary multi-node run is still open (see <code>bench/README.md</code>).</td></tr></tbody>
+</table></div>
+<p><strong>Important caveat on what this number does and doesn't isolate:</strong> this test setup (one mesh process, one mock backend node) could not cleanly separate "the 5000-slot async queues filled up" from "the single backend node's own per-request service time became the bottleneck first." Both plausibly contribute at the ~400-500 req/s knee. Treat "~500 req/s" as <em>this setup's</em> observed ceiling, not a proven SQLite-write-path-alone limit - a cleaner isolation would need either a zero-latency synthetic write-only path or several concurrent mock nodes so no single backend's service time can be the constraint. That refinement is a reasonable follow-up, not required to have an honest number today.</p>
+<p>Re-run <code>bench/loadtest</code> after any change to <code>internal/audit</code>, <code>internal/admin</code>'s async queues, or <code>internal/store/sqlite.go</code>'s connection/pragma settings, or on real production hardware, since any of those can move this number.</p>
 
       <div class="doc-foot-edit">
         <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/PRODUCTION.md" target="_blank" rel="noopener">View on GitHub →</a>
@@ -565,7 +757,7 @@ server {
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#ports">Ports</a></li><li class="lvl-2"><a href="#systemd">systemd</a></li><li class="lvl-2"><a href="#docker-compose">Docker Compose</a></li><li class="lvl-2"><a href="#kubernetes">Kubernetes</a></li><li class="lvl-2"><a href="#nginx-tls-termination">nginx TLS Termination</a></li><li class="lvl-2"><a href="#health-check">Health Check</a></li><li class="lvl-2"><a href="#graceful-shutdown">Graceful Shutdown</a></li><li class="lvl-2"><a href="#resource-sizing">Resource Sizing</a></li><li class="lvl-2"><a href="#durability-notes">Durability Notes</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#ports">Ports</a></li><li class="lvl-2"><a href="#systemd">systemd</a></li><li class="lvl-2"><a href="#docker-compose">Docker Compose</a></li><li class="lvl-2"><a href="#kubernetes">Kubernetes</a></li><li class="lvl-2"><a href="#nginx-tls-termination">nginx TLS Termination</a></li><li class="lvl-2"><a href="#health-check">Health Check</a></li><li class="lvl-2"><a href="#graceful-shutdown">Graceful Shutdown</a></li><li class="lvl-2"><a href="#resource-sizing">Resource Sizing</a></li><li class="lvl-2"><a href="#durability-notes">Durability Notes</a></li><li class="lvl-2"><a href="#write-path-capacity">Write-Path Capacity</a></li></ul>
   </aside>
 </div>
 
@@ -583,6 +775,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});
