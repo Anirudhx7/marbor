@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/fleet-enrollment.html">Fleet enrollment (Ansible)</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -346,14 +357,16 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <hr/>
 <h2 id="before-configuring-open-webui-verify-connectivity">Before configuring Open WebUI: verify connectivity<a class="anchor" href="#before-configuring-open-webui-verify-connectivity" aria-label="Link to section">#</a></h2>
 <p>Do this first. If it fails, fix connectivity before touching the Open WebUI UI - a broken connection looks identical to a misconfigured one from inside Open WebUI's settings screen.</p>
-<pre class="code" data-lang="bash"><code>curl http://&lt;mesh-host&gt;:11434/v1/models \
-  -H "Authorization: Bearer sk-mesh-..."</code></pre>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://&lt;mesh-host&gt;:11434/v1/models \
+  -H "Authorization: Bearer sk-mesh-..."</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://&lt;mesh-host&gt;:11434/v1/models \
+  -H &quot;Authorization: Bearer sk-mesh-...&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>This is the same request Open WebUI makes to verify an OpenAI-compatible provider (<code>GET /v1/models</code>). If it returns JSON listing your models, Open WebUI will be able to discover them too. If it fails, see <a href="#troubleshooting">Troubleshooting</a> below.</p>
 <hr/>
 <h2 id="networking-pitfalls">Networking pitfalls<a class="anchor" href="#networking-pitfalls" aria-label="Link to section">#</a></h2>
 <p><strong>localhost vs LAN IP</strong> - <code>localhost</code> means the same machine only. If Open WebUI and ollama-mesh run on different machines, use the LAN IP or hostname of the machine running ollama-mesh.</p>
-<pre class="code"><code>Same machine:      http://localhost:11434
-Different machine:  http://192.168.1.7:11434</code></pre>
+<div class="code-wrap"><pre class="code"><code>Same machine:      http://localhost:11434
+Different machine:  http://192.168.1.7:11434</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Same machine:      http://localhost:11434
+Different machine:  http://192.168.1.7:11434"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p><strong>Docker networking</strong> - if Open WebUI runs inside a Docker container, <code>localhost</code> refers to the container itself, not the Docker host. Use <code>host.docker.internal</code> (Docker Desktop) or the Docker host's LAN IP instead. If both ollama-mesh and Open WebUI run as containers in the same Compose file, use the mesh's service name (see the Compose example below).</p>
 <p><strong>HTTP vs HTTPS</strong> - unless you've configured a reverse proxy (Nginx, Traefik, Caddy) in front of it, ollama-mesh serves plain HTTP. Don't use <code>https://</code> unless you've explicitly set up TLS.</p>
 <hr/>
@@ -362,7 +375,7 @@ Different machine:  http://192.168.1.7:11434</code></pre>
 <hr/>
 <h2 id="quick-start-docker-compose">Quick start: Docker Compose<a class="anchor" href="#quick-start-docker-compose" aria-label="Link to section">#</a></h2>
 <p>The most common deployment - both services in one Compose file:</p>
-<pre class="code" data-lang="yaml"><code>services:
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code>services:
   ollama-mesh:
     image: ghcr.io/anirudhx7/ollama-mesh:latest
     ports:
@@ -385,20 +398,52 @@ Different machine:  http://192.168.1.7:11434</code></pre>
 
 volumes:
   open-webui:
-  mesh-data:</code></pre>
+  mesh-data:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="services:
+  ollama-mesh:
+    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    ports:
+      - &quot;11434:11434&quot;
+      - &quot;8080:8080&quot;
+    volumes:
+      - mesh-data:/root   # persists mesh.db - add nodes/keys once via the dashboard
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - &quot;3000:8080&quot;
+    environment:
+      OPENAI_API_BASE_URL: &quot;http://ollama-mesh:11434/v1&quot;
+      OPENAI_API_KEY: &quot;sk-mesh-abc123&quot;
+    volumes:
+      - open-webui:/app/backend/data
+    depends_on:
+      - ollama-mesh
+
+volumes:
+  open-webui:
+  mesh-data:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <h2 id="quick-start-docker-run">Quick start: docker run<a class="anchor" href="#quick-start-docker-run" aria-label="Link to section">#</a></h2>
-<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
   -e OPENAI_API_BASE_URL="http://&lt;mesh-host&gt;:11434/v1" \
   -e OPENAI_API_KEY="sk-mesh-abc123" \
   -v open-webui:/app/backend/data \
   --name open-webui \
-  ghcr.io/open-webui/open-webui:main</code></pre>
+  ghcr.io/open-webui/open-webui:main</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker run -d -p 3000:8080 \
+  -e OPENAI_API_BASE_URL=&quot;http://&lt;mesh-host&gt;:11434/v1&quot; \
+  -e OPENAI_API_KEY=&quot;sk-mesh-abc123&quot; \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  ghcr.io/open-webui/open-webui:main"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Ollama-native, no-auth variant:</p>
-<pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker run -d -p 3000:8080 \
   -e OLLAMA_BASE_URL="http://&lt;mesh-host&gt;:11434" \
   -v open-webui:/app/backend/data \
   --name open-webui \
-  ghcr.io/open-webui/open-webui:main</code></pre>
+  ghcr.io/open-webui/open-webui:main</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker run -d -p 3000:8080 \
+  -e OLLAMA_BASE_URL=&quot;http://&lt;mesh-host&gt;:11434&quot; \
+  -v open-webui:/app/backend/data \
+  --name open-webui \
+  ghcr.io/open-webui/open-webui:main"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <blockquote><code>OLLAMA_BASE_URL</code> and <code>OPENAI_API_BASE_URL</code> are <code>ConfigVar</code> variables in Open WebUI - their values are persisted to the internal database on first launch. If you change them after the first run, set <code>ENABLE_PERSISTENT_CONFIG=False</code> to force Open WebUI to always read from the environment.</blockquote>
 <h2 id="manual-configuration-existing-open-webui-installation">Manual configuration (existing Open WebUI installation)<a class="anchor" href="#manual-configuration-existing-open-webui-installation" aria-label="Link to section">#</a></h2>
 <p>Menu locations shift between releases, so configure by value rather than by following exact click paths:</p>
@@ -416,7 +461,7 @@ volumes:
 <h2 id="troubleshooting">Troubleshooting<a class="anchor" href="#troubleshooting" aria-label="Link to section">#</a></h2>
 <p><strong>Connection refused</strong></p>
 <p>Test connectivity from the same machine running Open WebUI:</p>
-<pre class="code" data-lang="bash"><code>curl http://&lt;mesh-host&gt;:11434/v1/models</code></pre>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://&lt;mesh-host&gt;:11434/v1/models</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://&lt;mesh-host&gt;:11434/v1/models"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>If this fails, in order, check:</p>
 <ul><li>the mesh process is running</li><li>port 11434 is listening</li><li>you're using the correct IP address (see <a href="#networking-pitfalls">Networking pitfalls</a> above)</li><li>firewall rules aren't blocking the port</li><li>Docker networking - <code>localhost</code> inside a container isn't the host</li></ul>
 <p><strong>Models not appearing in the dropdown</strong></p>
@@ -454,6 +499,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

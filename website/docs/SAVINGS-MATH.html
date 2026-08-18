@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/fleet-enrollment.html">Fleet enrollment (Ansible)</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -340,14 +351,14 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>When a request is served by a local Ollama node, ollama-mesh parses the real token count from the upstream response:</p>
 <ul><li><strong>Ollama NDJSON responses:</strong> <code>eval_count</code> (completion tokens) + <code>prompt_eval_count</code> (input tokens) from the final streamed object</li><li><strong>OpenAI-compatible SSE responses:</strong> <code>usage.total_tokens</code> from the terminal <code>[DONE]</code>-adjacent chunk</li></ul>
 <p>Savings for each locally-served request:</p>
-<pre class="code"><code>saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k</code></pre>
+<div class="code-wrap"><pre class="code"><code>saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>The <code>reference_cost_per_1k</code> is operator-configured and represents the blended cloud rate the organization would otherwise pay. Default: <strong>$0.002/1K tokens</strong> (deliberately conservative - adjust to match your actual cloud provider rate).</p>
 <h3 id="cloud-overflow-spend">Cloud Overflow Spend<a class="anchor" href="#cloud-overflow-spend" aria-label="Link to section">#</a></h3>
 <p>When a request overflows to a configured cloud provider (OpenAI, Anthropic), spend is computed from the real token count parsed from the provider's response:</p>
-<pre class="code"><code>spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens</code></pre>
+<div class="code-wrap"><pre class="code"><code>spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p><code>cost_per_1k_tokens</code> is set per cloud provider on the dashboard's <strong>Settings &gt; Cloud Providers</strong> page. Local requests are always $0 spend.</p>
 <h3 id="net-savings">Net Savings<a class="anchor" href="#net-savings" aria-label="Link to section">#</a></h3>
-<pre class="code"><code>net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)</code></pre>
+<div class="code-wrap"><pre class="code"><code>net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>This is the number displayed on the dashboard savings widget. It represents the actual dollar amount the organization avoided paying to cloud providers by serving traffic locally.</p>
 <hr/>
 <h2 id="enterprise-workload-projections">Enterprise Workload Projections<a class="anchor" href="#enterprise-workload-projections" aria-label="Link to section">#</a></h2>
@@ -404,7 +415,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h2 id="hardware-roi-calculator">Hardware ROI Calculator<a class="anchor" href="#hardware-roi-calculator" aria-label="Link to section">#</a></h2>
 <h3 id="break-even-analysis">Break-Even Analysis<a class="anchor" href="#break-even-analysis" aria-label="Link to section">#</a></h3>
 <p>The break-even point is when cumulative cloud savings equal the upfront GPU hardware investment:</p>
-<pre class="code"><code>break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)</code></pre>
+<div class="code-wrap"><pre class="code"><code>break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Monthly hardware opex = amortized purchase price (3yr) + power + rack/cooling. At $0.015/1K (Claude Sonnet 4 output-heavy workloads):</p>
 <div class="table-scroll"><table>
 <thead><tr><th>GPU Configuration</th><th>Hardware Cost</th><th>Monthly Opex (amort+power)</th><th>Monthly Cloud Equivalent</th><th>Break-Even</th></tr></thead>
@@ -483,6 +494,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

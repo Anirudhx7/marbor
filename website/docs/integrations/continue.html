@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/fleet-enrollment.html">Fleet enrollment (Ansible)</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -334,7 +345,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <hr/>
 <h2 id="configuration">Configuration<a class="anchor" href="#configuration" aria-label="Link to section">#</a></h2>
 <p>Open <code>~/.continue/config.json</code> (or use the Continue settings UI) and add an Ollama provider pointed at your mesh:</p>
-<pre class="code" data-lang="json"><code>{
+<div class="code-wrap"><pre class="code" data-lang="json"><code>{
   "models": [
     {
       "title": "Ollama Mesh - llama3.2",
@@ -359,13 +370,38 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
       }
     }
   }
-}</code></pre>
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
+  &quot;models&quot;: [
+    {
+      &quot;title&quot;: &quot;Ollama Mesh - llama3.2&quot;,
+      &quot;provider&quot;: &quot;ollama&quot;,
+      &quot;model&quot;: &quot;llama3.2&quot;,
+      &quot;apiBase&quot;: &quot;http://&lt;mesh-host&gt;:11434&quot;,
+      &quot;requestOptions&quot;: {
+        &quot;headers&quot;: {
+          &quot;Authorization&quot;: &quot;Bearer sk-your-api-key&quot;
+        }
+      }
+    }
+  ],
+  &quot;tabAutocompleteModel&quot;: {
+    &quot;title&quot;: &quot;Ollama Mesh - qwen2.5-coder:1.5b&quot;,
+    &quot;provider&quot;: &quot;ollama&quot;,
+    &quot;model&quot;: &quot;qwen2.5-coder:1.5b&quot;,
+    &quot;apiBase&quot;: &quot;http://&lt;mesh-host&gt;:11434&quot;,
+    &quot;requestOptions&quot;: {
+      &quot;headers&quot;: {
+        &quot;Authorization&quot;: &quot;Bearer sk-your-api-key&quot;
+      }
+    }
+  }
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Replace:</p>
 <ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP where ollama-mesh runs (e.g. <code>192.168.1.50</code> or <code>localhost</code>)</li><li><code>sk-your-api-key</code> with a key from the admin dashboard</li><li>Model names with whatever models you have loaded on your nodes</li></ul>
 <hr/>
 <h2 id="openai-compatible-alternative">OpenAI-compatible alternative<a class="anchor" href="#openai-compatible-alternative" aria-label="Link to section">#</a></h2>
 <p>If you prefer the OpenAI provider (useful when using cloud fallback models):</p>
-<pre class="code" data-lang="json"><code>{
+<div class="code-wrap"><pre class="code" data-lang="json"><code>{
   "models": [
     {
       "title": "Ollama Mesh",
@@ -375,7 +411,17 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
       "apiKey": "sk-your-api-key"
     }
   ]
-}</code></pre>
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
+  &quot;models&quot;: [
+    {
+      &quot;title&quot;: &quot;Ollama Mesh&quot;,
+      &quot;provider&quot;: &quot;openai&quot;,
+      &quot;model&quot;: &quot;llama3.2&quot;,
+      &quot;apiBase&quot;: &quot;http://&lt;mesh-host&gt;:11434/v1&quot;,
+      &quot;apiKey&quot;: &quot;sk-your-api-key&quot;
+    }
+  ]
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>The <code>/v1</code> path accepts OpenAI-format requests. The mesh routes them the same way as Ollama-native requests.</p>
 <hr/>
 <h2 id="verification">Verification<a class="anchor" href="#verification" aria-label="Link to section">#</a></h2>
@@ -384,7 +430,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <hr/>
 <h2 id="multi-model-setup">Multi-model setup<a class="anchor" href="#multi-model-setup" aria-label="Link to section">#</a></h2>
 <p>Add one entry per model you want to use. All entries can share the same <code>apiBase</code> and key:</p>
-<pre class="code" data-lang="json"><code>{
+<div class="code-wrap"><pre class="code" data-lang="json"><code>{
   "models": [
     {
       "title": "llama3.2 (8B)",
@@ -408,7 +454,31 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
       "requestOptions": { "headers": { "Authorization": "Bearer sk-your-api-key" } }
     }
   ]
-}</code></pre>
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
+  &quot;models&quot;: [
+    {
+      &quot;title&quot;: &quot;llama3.2 (8B)&quot;,
+      &quot;provider&quot;: &quot;ollama&quot;,
+      &quot;model&quot;: &quot;llama3.2&quot;,
+      &quot;apiBase&quot;: &quot;http://192.168.1.50:11434&quot;,
+      &quot;requestOptions&quot;: { &quot;headers&quot;: { &quot;Authorization&quot;: &quot;Bearer sk-your-api-key&quot; } }
+    },
+    {
+      &quot;title&quot;: &quot;deepseek-coder-v2&quot;,
+      &quot;provider&quot;: &quot;ollama&quot;,
+      &quot;model&quot;: &quot;deepseek-coder-v2&quot;,
+      &quot;apiBase&quot;: &quot;http://192.168.1.50:11434&quot;,
+      &quot;requestOptions&quot;: { &quot;headers&quot;: { &quot;Authorization&quot;: &quot;Bearer sk-your-api-key&quot; } }
+    },
+    {
+      &quot;title&quot;: &quot;mistral-nemo (cloud fallback)&quot;,
+      &quot;provider&quot;: &quot;ollama&quot;,
+      &quot;model&quot;: &quot;mistral-nemo&quot;,
+      &quot;apiBase&quot;: &quot;http://192.168.1.50:11434&quot;,
+      &quot;requestOptions&quot;: { &quot;headers&quot;: { &quot;Authorization&quot;: &quot;Bearer sk-your-api-key&quot; } }
+    }
+  ]
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>The third entry will route to a cloud provider automatically if <code>mistral-nemo</code> is not loaded on any GPU node and you have cost-aware cloud overflow configured.</p>
 <hr/>
 <h2 id="per-developer-api-keys">Per-developer API keys<a class="anchor" href="#per-developer-api-keys" aria-label="Link to section">#</a></h2>
@@ -440,6 +510,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

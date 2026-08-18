@@ -6,17 +6,17 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Who is ollama-mesh for? · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Who is ollama-mesh for?." />
+<title>ollama-mesh CLI Reference · ollama-mesh docs</title>
+<meta name="description" content="ollama-mesh documentation: ollama-mesh CLI Reference." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="Who is ollama-mesh for? · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: Who is ollama-mesh for?." />
+<meta property="og:title" content="ollama-mesh CLI Reference · ollama-mesh docs" />
+<meta property="og:description" content="ollama-mesh documentation: ollama-mesh CLI Reference." />
 <meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="ollama-mesh admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Who is ollama-mesh for? · ollama-mesh docs" />
+<meta name="twitter:title" content="ollama-mesh CLI Reference · ollama-mesh docs" />
 <meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
@@ -322,7 +322,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link active" href="../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
@@ -335,60 +335,139 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   </aside>
 
   <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Who is ollama-mesh for?</span></div>
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">ollama-mesh CLI Reference</span></div>
     <article class="doc-content">
-      <h1 id="who-is-ollama-mesh-for">Who is ollama-mesh for?<a class="anchor" href="#who-is-ollama-mesh-for" aria-label="Link to section">#</a></h1>
-<p>The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a Node Agent for remote telemetry, model operations, and node-side maintenance.</p>
-<p>You point your apps at ollama-mesh instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible <code>/v1</code> endpoints), so existing clients work unchanged.</p>
-<p>Where the Node Agent is installed on remote GPU hosts, ollama-mesh can surface richer live telemetry, perform node-side operations, and support maintenance workflows without changing the client-side API. Where it isn't installed, the core router still works and falls back to the best available telemetry.</p>
-<hr/>
-<h2 id="the-three-problems-it-solves">The three problems it solves<a class="anchor" href="#the-three-problems-it-solves" aria-label="Link to section">#</a></h2>
-<h3 id="1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app<a class="anchor" href="#1-ollama-is-busy-kills-your-app" aria-label="Link to section">#</a></h3>
-<p>Ollama has no queue management and no failover. When your GPU is saturated or the box is down, requests fail or hang. ollama-mesh routes those requests to a cost-aware cloud overflow target (like OpenAI or Anthropic) automatically -- your client never sees an error, and you only pay for cloud when local can't serve.</p>
-<p><strong>Who feels this:</strong> anyone running an app, agent, or team workload against a single Ollama box.</p>
-<h3 id="2-cold-starts-waste-30-seconds-per-model-load">2. Cold starts waste 30 seconds per model load<a class="anchor" href="#2-cold-starts-waste-30-seconds-per-model-load" aria-label="Link to section">#</a></h3>
-<p>With multiple Ollama nodes, a naive load balancer (nginx round-robin) sends requests to nodes that don't have the model loaded, triggering a cold load from disk every time. ollama-mesh polls <code>/api/ps</code> on every node and routes to the one that already has the model warm in VRAM.</p>
-<p><strong>Who feels this:</strong> homelabs and teams with 2+ GPU boxes serving more models than fit on one card.</p>
-<h3 id="3-no-visibility-no-control">3. No visibility, no control<a class="anchor" href="#3-no-visibility-no-control" aria-label="Link to section">#</a></h3>
-<p>Vanilla Ollama has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. ollama-mesh adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, audit logging, and a Node Agent for remote telemetry, operations, and maintenance.</p>
-<p><strong>Who feels this:</strong> the platform engineer told "make AI work for the whole team" with on-prem GPUs and an OpenAI bill to justify.</p>
-<hr/>
-<h2 id="audience-in-order-of-fit">Audience, in order of fit<a class="anchor" href="#audience-in-order-of-fit" aria-label="Link to section">#</a></h2>
-<ol><li><strong>Self-hosters running one Ollama box + apps that hit it.</strong> You get cost-aware cloud overflow, API keys, and a dashboard. Start here - one node plus one cloud key is a complete setup.</li><li><strong>Platform engineers at 50-500 person companies.</strong> On-prem GPUs, team access control, cost visibility, Prometheus/Grafana integration for the existing monitoring stack.</li><li><strong>Multi-GPU homelabs.</strong> Warm-first routing across nodes is built exactly for you.</li></ol>
-<p><strong>Who should NOT use this:</strong> a single user chatting with one Ollama box occasionally. You have no concurrency problem and no bill to cut - you don't need an orchestration or scheduling layer.</p>
-<hr/>
-<h2 id="the-architecture-trade-offs-ollama-mesh-vs-plain-ollama-nginx">The Architecture Trade-offs: ollama-mesh vs. Plain Ollama + nginx<a class="anchor" href="#the-architecture-trade-offs-ollama-mesh-vs-plain-ollama-nginx" aria-label="Link to section">#</a></h2>
-<p>Platform teams often attempt to orchestrate local GPU nodes using generic network load balancers (like nginx or HAProxy). The table below details why a generic proxy falls short compared to a hardware-aware scheduling layer.</p>
-<div class="table-scroll"><table>
-<thead><tr><th>Feature</th><th>Plain Ollama + nginx</th><th>ollama-mesh</th></tr></thead>
-<tbody><tr><td><strong>Routing Intelligence</strong></td><td>Round-robin or least-connections (model-blind; causes constant cold-starts)</td><td><strong>Hardware-aware (routes to the node that already has the model warm in VRAM)</strong></td></tr>
-<tr><td><strong>Failover Strategy</strong></td><td>Static failover or raw connection drop</td><td><strong>Cost-aware cloud overflow (retains 100% uptime with cloud fallback only when forced)</strong></td></tr>
-<tr><td><strong>Availability</strong></td><td>Manual setup (complex nginx configurations and scripts)</td><td><strong>Single-instance control plane; run behind your own TCP load balancer for redundancy</strong></td></tr>
-<tr><td><strong>Multi-Model VRAM Placement</strong></td><td>Handled manually per host</td><td><strong>Dynamic VRAM-fit placement based on active node capacity</strong></td></tr>
-<tr><td><strong>Enterprise Controls</strong></td><td>No native auth, quotas, or rate limiting</td><td><strong>Per-key auth, token-bucket rate limits, and monthly hard quotas</strong></td></tr>
-<tr><td><strong>Financial Visibility</strong></td><td>None (separate billing auditing required)</td><td><strong>Real-time savings dashboard tracked by actual token counts</strong></td></tr>
-<tr><td><strong>Deployment Footprint</strong></td><td>External load balancers, configs, and scripts</td><td><strong>Single static Go binary; zero external dependencies</strong></td></tr></tbody>
-</table></div>
-<hr/>
-<h2 id="where-does-litellm-fit">Where does LiteLLM fit?<a class="anchor" href="#where-does-litellm-fit" aria-label="Link to section">#</a></h2>
-<p>LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting. </p>
-<p>Rather than a competitor, <strong>ollama-mesh operates as a complementary layer beneath LiteLLM</strong>. </p>
-<p>When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while <strong>ollama-mesh slots in directly below it as the physical scheduling and GPU orchestration layer</strong>. </p>
-<p>This stack offers the best of both worlds:</p>
-<ol><li><strong>LiteLLM (Gateway)</strong>: Manages developer authentication, user quotas, and application-level routing.</li><li><strong>ollama-mesh (Scheduler)</strong>: Interacts directly with local GPU nodes, tracking <code>/api/ps</code> model warm-residency, managing queue depths, and executing cost-aware cloud overflow.</li></ol>
-<hr/>
-<h2 id="honest-limitations-current-state">Honest limitations (current state)<a class="anchor" href="#honest-limitations-current-state" aria-label="Link to section">#</a></h2>
-<ul><li>GPU metrics (VRAM/temperature/power) for the local node come from <code>nvidia-smi</code> on the mesh host directly. Remote nodes get real GPU telemetry only if the optional Node Agent is installed on them (opt-in, not auto-deployed) - without it, remote GPU metrics fall back to operator-declared <code>vram_total_mb</code> or show "-". Warm-model detection works for all nodes regardless (it uses Ollama's own <code>/api/ps</code>).</li><li>Analytics and the request log are in-memory and reset on restart. Prometheus metrics persist, and the audit log persists to the <code>audit_log</code> table in <code>mesh.db</code> with configurable retention.</li><li>Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "-", never an estimate.</li></ul>
+      <h1 id="ollama-mesh-cli-reference">ollama-mesh CLI Reference<a class="anchor" href="#ollama-mesh-cli-reference" aria-label="Link to section">#</a></h1>
+<p>Generated from the CLI command registry (<code>internal/cli</code>) by <code>cmd/gen-docs</code> - do not edit by hand; run <code>make docs</code> after changing the registry.</p>
+<h2 id="global-flags">Global flags<a class="anchor" href="#global-flags" aria-label="Link to section">#</a></h2>
+<p>Every command accepts these in addition to any flags listed under it:</p>
+<ul><li><code>--server</code> - Admin API base URL (default "http://localhost:8080", env MESH_SERVER)</li><li><code>--json</code> - output machine-readable JSON instead of a human table</li><li><code>--username</code> - admin username, used to log in (env MESH_USERNAME)</li><li><code>--password</code> - admin password, used to log in (env MESH_PASSWORD)</li></ul>
+<h2 id="exit-status">Exit status<a class="anchor" href="#exit-status" aria-label="Link to section">#</a></h2>
+<ul><li><code>0</code> - success</li><li><code>1</code> - user error (bad arguments, unknown command, validation failure)</li><li><code>2</code> - server error (the Admin API is unreachable or returned an unexpected error)</li><li><code>3</code> - reserved for future partial-success reporting (batch operations); unused today</li><li><code>4</code> - authentication error (missing, invalid, or expired credentials)</li></ul>
+<h2 id="environment">Environment<a class="anchor" href="#environment" aria-label="Link to section">#</a></h2>
+<ul><li><code>MESH_SERVER</code> - Admin API base URL, used when <code>--server</code> is not given</li><li><code>MESH_USERNAME</code> - admin username, used when <code>--username</code> is not given</li><li><code>MESH_PASSWORD</code> - admin password, used when <code>--password</code> is not given</li></ul>
+<h2 id="files">Files<a class="anchor" href="#files" aria-label="Link to section">#</a></h2>
+<p>The session saved by <code>ollama-mesh login</code> (mode <code>0600</code>), under the OS user config dir - e.g. <code>~/.config/ollama-mesh/session</code> on Linux, <code>~/Library/Application Support/ollama-mesh/session</code> on macOS, <code>%AppData%\ollama-mesh\session</code> on Windows.</p>
+<h2 id="commands">Commands<a class="anchor" href="#commands" aria-label="Link to section">#</a></h2>
+<h3 id="version"><code>version</code><a class="anchor" href="#version" aria-label="Link to section">#</a></h3>
+<p>print CLI and (if reachable) server version</p>
+<h3 id="status"><code>status</code><a class="anchor" href="#status" aria-label="Link to section">#</a></h3>
+<p>print mesh health/status summary</p>
+<h3 id="login"><code>login</code><a class="anchor" href="#login" aria-label="Link to section">#</a></h3>
+<p>authenticate once and save the session locally (recommended)</p>
+<p>Authenticates once and saves the resulting session to a local file (0600, under the OS user config dir) so other commands can omit --username/ --password afterward. Run without --username/--password in a terminal to be prompted interactively (password input is not echoed).</p>
+<h3 id="logout"><code>logout</code><a class="anchor" href="#logout" aria-label="Link to section">#</a></h3>
+<p>remove the saved session</p>
+<h3 id="whoami"><code>whoami</code><a class="anchor" href="#whoami" aria-label="Link to section">#</a></h3>
+<p>show the CLI's saved identity (live-verified)</p>
+<h3 id="nodes"><code>nodes</code><a class="anchor" href="#nodes" aria-label="Link to section">#</a></h3>
+<p>list nodes known to the mesh</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<h4 id="confirm-tls-node"><code>confirm-tls &lt;node&gt;</code><a class="anchor" href="#confirm-tls-node" aria-label="Link to section">#</a></h4>
+<p>pin a Node Agent's TLS certificate fingerprint (headless enrollment)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--fingerprint string</code> - SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see "agent service status" on the node), in the form SHA256:&lt;64 hex characters&gt; (required)</li></ul>
+<h3 id="models"><code>models</code><a class="anchor" href="#models" aria-label="Link to section">#</a></h3>
+<p>fleet-wide list, or pull/delete/unload/list on one node</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<h4 id="pull-node-model"><code>pull &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#pull-node-model" aria-label="Link to section">#</a></h4>
+<p>start pulling a model onto a node (async - does not wait for completion)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="delete-node-model"><code>delete &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#delete-node-model" aria-label="Link to section">#</a></h4>
+<p>delete a model from a node's local storage</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="unload-node-model"><code>unload &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#unload-node-model" aria-label="Link to section">#</a></h4>
+<p>unload a model from a node's warm state</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="list-node"><code>list &lt;node&gt;</code><a class="anchor" href="#list-node" aria-label="Link to section">#</a></h4>
+<p>list models present on a node's local storage (per-node, not the fleet-wide aggregate above)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h3 id="runtime"><code>runtime</code><a class="anchor" href="#runtime" aria-label="Link to section">#</a></h3>
+<p>start/stop/restart/logs/drain/undrain/health on one node</p>
+<p>"start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.</p>
+<p>"logs" is a point-in-time snapshot, not a live tail. A node whose control driver has no real log source (e.g. a bare PID-file process with no supervisor) returns a clear "not supported" error.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<h4 id="start-node"><code>start &lt;node&gt;</code><a class="anchor" href="#start-node" aria-label="Link to section">#</a></h4>
+<p>start the node's inference runtime process</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="stop-node"><code>stop &lt;node&gt;</code><a class="anchor" href="#stop-node" aria-label="Link to section">#</a></h4>
+<p>stop the node's inference runtime process</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="restart-node"><code>restart &lt;node&gt;</code><a class="anchor" href="#restart-node" aria-label="Link to section">#</a></h4>
+<p>restart the node's inference runtime process</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="logs-node"><code>logs &lt;node&gt;</code><a class="anchor" href="#logs-node" aria-label="Link to section">#</a></h4>
+<p>fetch recent log lines from the node's runtime process</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--lines int</code> - number of log lines to fetch (0 = server default)</li></ul>
+<h4 id="drain-node"><code>drain &lt;node&gt;</code><a class="anchor" href="#drain-node" aria-label="Link to section">#</a></h4>
+<p>mark the node draining (stop routing new requests to it)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--reason string</code> - reason recorded for the drain (default "manual")</li></ul>
+<h4 id="undrain-node"><code>undrain &lt;node&gt;</code><a class="anchor" href="#undrain-node" aria-label="Link to section">#</a></h4>
+<p>reverse "runtime drain"</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="health-node"><code>health &lt;node&gt;</code><a class="anchor" href="#health-node" aria-label="Link to section">#</a></h4>
+<p>run an on-demand active liveness probe on the node</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h3 id="node"><code>node</code><a class="anchor" href="#node" aria-label="Link to section">#</a></h3>
+<p>node control driver operations</p>
+<h4 id="control"><code>control</code><a class="anchor" href="#control" aria-label="Link to section">#</a></h4>
+<p>show or accept a node's control driver</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h5 id="probe-node"><code>probe &lt;node&gt;</code><a class="anchor" href="#probe-node" aria-label="Link to section">#</a></h5>
+<p>show a node's control-driver status (configured + discovered)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h5 id="accept-node"><code>accept &lt;node&gt;</code><a class="anchor" href="#accept-node" aria-label="Link to section">#</a></h5>
+<p>accept a control driver + identifier for a node</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--driver string</code> - control driver: systemd, docker, process, launchd, or windows_service (required)</li><li><code>--identifier string</code> - driver-specific identifier (unit name, container name, PID file path, plist label, service name) (required)</li><li><code>--start-command string</code> - launch command for the process driver's Start action (only meaningful when --driver=process)</li></ul>
+<h3 id="key"><code>key</code><a class="anchor" href="#key" aria-label="Link to section">#</a></h3>
+<p>per-API-key local/cloud routing overrides</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="set-local-only-name-truefalse"><code>set-local-only &lt;name&gt; &lt;true|false&gt;</code><a class="anchor" href="#set-local-only-name-truefalse" aria-label="Link to section">#</a></h4>
+<p>block (or re-allow) cloud fallback for one API key</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="set-allow-local-degradation-name-truefalse"><code>set-allow-local-degradation &lt;name&gt; &lt;true|false&gt;</code><a class="anchor" href="#set-allow-local-degradation-name-truefalse" aria-label="Link to section">#</a></h4>
+<p>let (or forbid) one API key receive a local alternate model</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h3 id="spill"><code>spill</code><a class="anchor" href="#spill" aria-label="Link to section">#</a></h3>
+<p>show per-key, per-provider local-vs-cloud request counts</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<h3 id="requests"><code>requests</code><a class="anchor" href="#requests" aria-label="Link to section">#</a></h3>
+<p>inspect routing decisions for past requests</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h4 id="explain-request-id"><code>explain &lt;request-id&gt;</code><a class="anchor" href="#explain-request-id" aria-label="Link to section">#</a></h4>
+<p>show why the router picked the node it did for one request</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<h3 id="completion-shell"><code>completion &lt;shell&gt;</code><a class="anchor" href="#completion-shell" aria-label="Link to section">#</a></h3>
+<p>_Hidden from <code>--help</code> output, but fully reachable._</p>
+<p>generate a shell completion script (bash, zsh, or fish)</p>
+<p>Generates a static completion script for the requested shell by walking the current command tree. The script never contacts the mesh or requires credentials, so it keeps working even when the mesh is unreachable or the operator isn't logged in.</p>
+<p>Examples:</p>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>source &lt;(ollama-mesh completion bash)
+ollama-mesh completion zsh &gt; "${fpath[1]}/_ollama-mesh"
+ollama-mesh completion fish &gt; ~/.config/fish/completions/ollama-mesh.fish</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="source &lt;(ollama-mesh completion bash)
+ollama-mesh completion zsh &gt; &quot;${fpath[1]}/_ollama-mesh&quot;
+ollama-mesh completion fish &gt; ~/.config/fish/completions/ollama-mesh.fish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/USE-CASES.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/cli.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#the-three-problems-it-solves">The three problems it solves</a></li><li class="lvl-3"><a href="#1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app</a></li><li class="lvl-3"><a href="#2-cold-starts-waste-30-seconds-per-model-load">2. Cold starts waste 30 seconds per model load</a></li><li class="lvl-3"><a href="#3-no-visibility-no-control">3. No visibility, no control</a></li><li class="lvl-2"><a href="#audience-in-order-of-fit">Audience, in order of fit</a></li><li class="lvl-2"><a href="#the-architecture-trade-offs-ollama-mesh-vs-plain-ollama-nginx">The Architecture Trade-offs: ollama-mesh vs. Plain Ollama + nginx</a></li><li class="lvl-2"><a href="#where-does-litellm-fit">Where does LiteLLM fit?</a></li><li class="lvl-2"><a href="#honest-limitations-current-state">Honest limitations (current state)</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#global-flags">Global flags</a></li><li class="lvl-2"><a href="#exit-status">Exit status</a></li><li class="lvl-2"><a href="#environment">Environment</a></li><li class="lvl-2"><a href="#files">Files</a></li><li class="lvl-2"><a href="#commands">Commands</a></li><li class="lvl-3"><a href="#version">`version`</a></li><li class="lvl-3"><a href="#status">`status`</a></li><li class="lvl-3"><a href="#login">`login`</a></li><li class="lvl-3"><a href="#logout">`logout`</a></li><li class="lvl-3"><a href="#whoami">`whoami`</a></li><li class="lvl-3"><a href="#nodes">`nodes`</a></li><li class="lvl-3"><a href="#models">`models`</a></li><li class="lvl-3"><a href="#runtime">`runtime`</a></li><li class="lvl-3"><a href="#node">`node`</a></li><li class="lvl-3"><a href="#key">`key`</a></li><li class="lvl-3"><a href="#spill">`spill`</a></li><li class="lvl-3"><a href="#requests">`requests`</a></li><li class="lvl-3"><a href="#completion-shell">`completion &lt;shell&gt;`</a></li></ul>
   </aside>
 </div>
 

@@ -1,9 +1,30 @@
 # Automated fleet enrollment (Ansible or any script)
 
 Enroll many GPU nodes at once without clicking through the dashboard per node. Every
-step below is a plain bearer-auth REST call against the Admin API - the GPU Nodes
-dashboard page is a thin wrapper over the same two endpoints, so anything the UI can
-do, a script holding an admin API key can do identically.
+step below is a plain REST call against the Admin API - the GPU Nodes dashboard page
+is a thin wrapper over the same endpoints, so anything the UI can do, a script with
+an authenticated admin session can do identically.
+
+## Authenticating a script
+
+There is no separate long-lived "admin API key" for these routes - they use the same
+session-based admin auth as the dashboard and CLI. `POST /admin/login` with an admin
+user's username/password returns the session as an `HttpOnly` cookie (the token
+itself is not present in the JSON response body), valid for 30 days or until logout.
+The simplest reliable way to script this is a curl cookie jar, which the routes below
+also accept as `Authorization: Bearer <token>` if you prefer to extract the token
+value from the cookie yourself.
+
+```bash
+MESH=https://mesh.example.com
+COOKIES=$(mktemp)
+
+curl -sf -c "$COOKIES" -X POST "$MESH/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<your admin password>"}' > /dev/null
+```
+
+Every subsequent call in this guide reuses `-b "$COOKIES"`.
 
 ## How enrollment actually works
 
@@ -13,44 +34,56 @@ machine will not authenticate there; the mesh checks it against the specific hos
 was generated for. Tokens can be rotated or revoked at any time without touching
 other nodes.
 
+The install command the API hands back does **not** embed the real permanent token
+directly. It embeds a short-lived, single-use enrollment code instead (`ENROLL=`),
+which the agent exchanges for the real token via `POST /admin/agent/enroll` at
+install time - so the permanent bearer token never sits in shell history, SSH logs,
+or chat. (`install.sh` also accepts a raw `TOKEN=` as a legacy/manual fallback, but
+`ENROLL=` is what the API generates and what you should script against.)
+
 Provisioning a node is two sequential calls:
 
-1. `POST /admin/nodes` - registers the node (name, URL, port).
+1. `POST /admin/nodes` - registers the node (`{"name", "url"}`; other fields like
+   `runtime` are optional, defaulting to `ollama`). Returns `201 Created` with an
+   empty body.
 2. `POST /admin/nodes/{name}/agent` - enables the Node Agent for that node and
-   returns a fresh, host-bound token plus a ready-to-run install command:
+   returns a ready-to-run install command with the enrollment code embedded:
 
 ```json
 {
-  "install_command": "curl -fsSL https://.../install.sh | ROLE=agent MESH=https://mesh.example.com TOKEN=<token> sh",
+  "node": "gpu01",
+  "enabled": true,
+  "port": 11434,
+  "token": "admin.<opaque-permanent-token>",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=<short-lived-code> PORT=11434 sh",
   "install_command_windows": "..."
 }
 ```
 
-Run that returned command on the target host (via Ansible, SSH, whatever you use)
-and the agent registers itself. There is currently no single "create and enroll in
-one call" endpoint - it's two calls, not one - and no first-party Ansible role yet.
-Both are on the roadmap as convenience work, not blockers: the underlying API
-already supports full automation today.
+Run the returned `install_command` on the target host (via Ansible, SSH, whatever
+you use) and the agent exchanges the code for its real token and registers itself.
+There is currently no single "create and enroll in one call" endpoint - it's two
+calls, not one - and no first-party Ansible role yet. Both are convenience gaps, not
+blockers: the underlying API already supports full automation today.
 
 ## Scripted enrollment for N nodes
 
-Example using `curl` + `jq` in a loop - adapt the same two calls into an Ansible
-play, a Python script, or whatever your provisioning tooling already is:
-
 ```bash
 MESH=https://mesh.example.com
-ADMIN_KEY=<your admin API key>
+COOKIES=$(mktemp)
+
+curl -sf -c "$COOKIES" -X POST "$MESH/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<your admin password>"}' > /dev/null
 
 for host in gpu01 gpu02 gpu03; do
   # 1. Register the node
-  curl -sf -X POST "$MESH/admin/nodes" \
-    -H "Authorization: Bearer $ADMIN_KEY" \
+  curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$host\",\"url\":\"http://$host:11434\"}"
 
-  # 2. Enable the agent, capture the install command + token
-  INSTALL_CMD=$(curl -sf -X POST "$MESH/admin/nodes/$host/agent" \
-    -H "Authorization: Bearer $ADMIN_KEY" \
+  # 2. Enable the agent, capture the install command
+  INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes/$host/agent" \
     -H "Content-Type: application/json" \
     -d '{"port":11434}' | jq -r '.install_command')
 
@@ -61,20 +94,34 @@ done
 
 ## Ansible sketch
 
-No first-party role exists yet, so wrap the same two API calls with `uri`, then hand
-the returned command to the target host:
+No first-party role exists yet, so log in once, then wrap the two API calls with
+`uri` and hand the returned command to the target host:
 
 ```yaml
+- name: Log in and capture session cookie
+  uri:
+    url: "https://mesh.example.com/admin/login"
+    method: POST
+    body_format: json
+    body:
+      username: admin
+      password: "{{ mesh_admin_password }}"
+    status_code: 200
+  register: mesh_login
+  delegate_to: localhost
+  run_once: true
+
 - name: Register node with mesh
   uri:
     url: "https://mesh.example.com/admin/nodes"
     method: POST
     headers:
-      Authorization: "Bearer {{ mesh_admin_key }}"
+      Cookie: "{{ mesh_login.set_cookie }}"
     body_format: json
     body:
       name: "{{ inventory_hostname }}"
       url: "http://{{ inventory_hostname }}:11434"
+    status_code: 201
   delegate_to: localhost
 
 - name: Enable agent and capture install command
@@ -82,7 +129,7 @@ the returned command to the target host:
     url: "https://mesh.example.com/admin/nodes/{{ inventory_hostname }}/agent"
     method: POST
     headers:
-      Authorization: "Bearer {{ mesh_admin_key }}"
+      Cookie: "{{ mesh_login.set_cookie }}"
     body_format: json
     body:
       port: 11434
@@ -95,12 +142,16 @@ the returned command to the target host:
 ```
 
 Run this play against a `gpu_nodes` inventory group and every host gets its own
-token from the same run - no manual UI step, no shared secret.
+enrollment code from the same run - no manual UI step, no shared secret.
 
 ## Rotation and revocation
 
-- `POST /admin/nodes/{name}/agent/regenerate` mints a new token for one node
-  (requires restarting the agent process on that host with the new token).
-- Disabling the agent for a node revokes its token immediately.
+- `POST /admin/nodes/{name}/agent/regenerate` mints a new token (and a new install
+  command with a fresh enrollment code) for one node - requires restarting the agent
+  process on that host with the new credential.
+- `DELETE /admin/nodes/{name}/agent` disables the agent for a node and revokes its
+  token immediately.
 
-Both are scoped to a single node and never affect any other node's token.
+Both are scoped to a single node (or, more precisely, to the physical host it shares
+with any other node entries on the same machine) and never affect any other host's
+token.
