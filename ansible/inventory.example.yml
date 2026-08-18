@@ -1,0 +1,40 @@
+# Example node list for ansible/playbooks/register-gpus.yml.
+#
+# Copy this file (e.g. to inventory.yml, gitignored or kept private) and edit
+# the gpu_nodes list to match your fleet. This is a plain vars file, not a
+# classic Ansible inventory (INI/YAML host groups) - the playbook loops over
+# this list and reaches each host by IP/hostname via `delegate_to`, so no
+# pre-existing inventory entry is required for the GPU hosts themselves.
+#
+# Field reference:
+#   name      optional - unique node name registered with the mesh. If
+#             omitted, the playbook generates "gpu-node-01", "gpu-node-02",
+#             ... from the node's position in this list. Explicit name always
+#             wins.
+#   host      required - IP or hostname of the GPU node. Used both as the
+#             mesh-facing node URL (http://<host>:<port>) and as the SSH
+#             target for installing the Node Agent.
+#   port      optional for runtime "ollama" (defaults to 11434, matching both
+#             the Ollama convention and this project's own proxy default -
+#             see internal/config/config.go). REQUIRED for every other
+#             runtime (vllm, tgi, llamacpp, mlx): there is no canonical
+#             default port for these in the ollama-mesh codebase today (only
+#             an illustrative code comment mentions vLLM commonly using
+#             :8000 - that is not an enforced default anywhere, so this
+#             playbook will not guess it for you). See ansible/README.md.
+#   runtime   optional - one of ollama, vllm, tgi, llamacpp, mlx, auto.
+#             Defaults to "ollama", matching POST /admin/nodes' own default.
+
+gpu_nodes:
+  - name: inference-gpu-a   # optional - generated as gpu-node-01 if omitted
+    host: 10.10.10.21
+    port: 11434              # optional for ollama - shown explicitly here
+    runtime: ollama           # optional - defaults to ollama
+
+  - host: 10.10.10.22         # name omitted -> generated as gpu-node-02
+    port: 11434
+    runtime: ollama
+
+  - host: 10.10.10.23         # name omitted -> generated as gpu-node-03
+    port: 8000                # required: vllm has no coded default port
+    runtime: vllm

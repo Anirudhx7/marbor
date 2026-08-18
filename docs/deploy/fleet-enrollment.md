@@ -63,8 +63,8 @@ Provisioning a node is two sequential calls:
 Run the returned `install_command` on the target host (via Ansible, SSH, whatever
 you use) and the agent exchanges the code for its real token and registers itself.
 There is currently no single "create and enroll in one call" endpoint - it's two
-calls, not one - and no first-party Ansible role yet. Both are convenience gaps, not
-blockers: the underlying API already supports full automation today.
+calls, not one. A first-party Ansible playbook now wraps both calls (see below) -
+the underlying API already supports full automation today either way.
 
 ## Scripted enrollment for N nodes
 
@@ -92,10 +92,25 @@ for host in gpu01 gpu02 gpu03; do
 done
 ```
 
-## Ansible sketch
+## Recommended path: the first-party Ansible playbook
 
-No first-party role exists yet, so log in once, then wrap the two API calls with
-`uri` and hand the returned command to the target host:
+A first-party Ansible playbook now exists at `ansible/playbooks/register-gpus.yml`
+(see `ansible/README.md`). It automates the exact sequence in this document -
+login once, register each node, decide whether the Node Agent needs
+(re-)enrolling, install it, and poll until healthy - across an arbitrary list
+of GPU hosts declared in a simple vars file (`ansible/inventory.example.yml`).
+It ships as source in this repo only; it is not published to Ansible Galaxy
+or any external registry. Use it instead of hand-rolling the loop below
+unless you have a reason to script this yourself (CI pipeline without
+Ansible, a language other than YAML, etc.) - the sketch below remains
+correct as a reference for exactly what the playbook does under the hood,
+and as a no-Ansible fallback.
+
+## Ansible sketch (how it works under the hood / no-Ansible fallback)
+
+Before the first-party playbook existed, the pattern was: log in once, then
+wrap the two API calls with `uri` and hand the returned command to the
+target host:
 
 ```yaml
 - name: Log in and capture session cookie
