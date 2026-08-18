@@ -9,6 +9,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - **Fleet enrollment deployment guide** (`docs/deploy/fleet-enrollment.md`) - documents the existing scriptable Admin API workflow (`POST /admin/nodes` + `POST /admin/nodes/{name}/agent`) for enrolling many GPU nodes at once via Ansible or any script, including a worked Ansible play. No new API surface - this documents automation the Admin API already supported.
 
+### Fixed
+- **`POST /admin/nodes` (Add Node) silently doubled a node's live capacity when re-registering an existing node name.** SQLite's `UpsertNode` was always idempotent by name (`INSERT OR REPLACE`), but `Router.AddNode`'s duplicate-URL guard only ever compared a new node's URL against *other* names' URLs - it never checked whether the name itself already existed - so re-adding the same `{name, url}` appended a second, independently-polled `*NodeState` to the router's live pool while the database still (correctly) held one row. Reachable via a plain double-click of "Add Node" in the UI, and would become a routine operation once fleet registration is automated (e.g. a re-run Ansible playbook). The DB-vs-router mismatch self-healed on the next mesh restart, but live routing weight/capacity was silently wrong until then. `Router.AddNode` now upserts by name: re-registering an existing name updates that node's config in place (URL included, matching the DB layer's existing unconditional-replace behavior) instead of appending a duplicate. `POST /admin/nodes` now returns `200 OK` for an update and `201 Created` only for a genuine new node. Fixing this also surfaced and closed a latent data race: a node's URL was previously assumed immutable after creation and read unguarded during health polling; polling now snapshots the URL under the node's own lock, since an upsert can now change it from a concurrent request.
+
 ## [0.19.1] - 2026-08-18
 
 ### Added

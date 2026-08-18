@@ -111,13 +111,20 @@ func (r *Router) pollNode(n *NodeState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// If auto-detect is pending, probe the node now to determine its runtime.
-	// Use n.mu to guard the read, then r.client (Router-level, read-only after New).
+	// n.URL is read repeatedly through this function. It used to be safe to
+	// read unguarded because it was set once at construction and never
+	// mutated again - but Router.AddNode's upsert-by-name path (see its doc
+	// comment) can now rewrite an existing, live NodeState's URL from a
+	// concurrent goroutine (a fresh POST /admin/nodes for the same name
+	// while a poll cycle for that same node is in flight). Snapshot it once
+	// under n.mu, same pattern ProbeNodeOnDemand already uses, so the rest
+	// of this poll operates on one consistent URL instead of racing.
 	n.mu.RLock()
+	nodeURL := n.URL
 	needsDetect := n.autoDetect && n.Runtime == "auto"
 	n.mu.RUnlock()
 	if needsDetect {
-		detected, reached := runtimepkg.DetectRuntime(ctx, n.URL, r.client)
+		detected, reached := runtimepkg.DetectRuntime(ctx, nodeURL, r.client)
 		if !reached {
 			// Node was never actually contacted (transport-level failure) -
 			// leave autoDetect pending so the next poll interval retries,
@@ -151,7 +158,7 @@ func (r *Router) pollNode(n *NodeState) {
 		return
 	}
 
-	result, err := probe.Probe(ctx, n.URL)
+	result, err := probe.Probe(ctx, nodeURL)
 	if err != nil {
 		r.markFailure(n)
 		return
@@ -170,7 +177,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// every /api/ps poll cycle and cause measurable CPU overhead.
 	var gpu GPUStats
 	hasGPU := false
-	if isLocalNode(n.URL) {
+	if isLocalNode(nodeURL) {
 		r.nvidiaMu.RLock()
 		gpu, hasGPU = r.nvidiaCache[n.NvidiaIndex]
 		r.nvidiaMu.RUnlock()
@@ -241,7 +248,6 @@ func (r *Router) pollNode(n *NodeState) {
 		n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
 	}
 	nodeName := n.Name
-	nodeURL := n.URL
 	nowHealthy := n.Healthy
 	n.mu.Unlock()
 	for _, m := range models {

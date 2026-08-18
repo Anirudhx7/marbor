@@ -1158,6 +1158,22 @@ func (r *Router) Start(ctx context.Context) {
 	}
 }
 
+// AddNode registers a node with the router, or - if a node with the same
+// Name is already live - upserts its config in place. This mirrors
+// sqliteStore.UpsertNode's INSERT OR REPLACE-by-name semantics exactly: the
+// DB layer has always treated a repeat POST /admin/nodes for an existing
+// name as "replace this row's config," never as "add a second row." Before
+// this fix, the in-memory router disagreed - it silently appended a SECOND
+// live *NodeState for the same name (independently polled, doubling that
+// node's perceived capacity/routing weight) while the DB still correctly
+// held one row, an inconsistency that self-healed only on the next mesh
+// restart (DB rehydration produces one node). Reachable today via a plain
+// double-click of "Add Node" in the UI, and would become a routine
+// operation once fleet registration is automated (e.g. a re-run Ansible
+// playbook). Upsert is done by mutating the EXISTING *NodeState in place
+// (never replacing the pointer), so telemetry/health/warm-residency/session-
+// affinity tracked against this node's identity survive the upsert for free
+// - there is no separate "preserve vs. reset" step to get wrong.
 func (r *Router) AddNode(n config.NodeConfig) {
 	// Defense-in-depth: reject invalid or link-local/metadata node URLs even when
 	// they arrive from the store overlay or Docker discovery, which bypass
@@ -1178,10 +1194,15 @@ func (r *Router) AddNode(n config.NodeConfig) {
 	// Comparison is normalized (case-insensitive scheme/host, trailing-slash
 	// agnostic) so cosmetic differences don't defeat the check. First-seen wins;
 	// the duplicate is logged loudly and dropped rather than silently added.
+	//
+	// While walking r.nodes for that check, also look for an existing node
+	// with the SAME name - if found, this call is an upsert, not a fresh add.
 	normURL := config.NormalizeNodeURL(n.URL)
 	r.mu.RLock()
+	var existingByName *NodeState
 	for _, existing := range r.nodes {
 		if existing.Name == n.Name {
+			existingByName = existing
 			continue
 		}
 		if config.NormalizeNodeURL(existing.URL) == normURL {
@@ -1191,6 +1212,39 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		}
 	}
 	r.mu.RUnlock()
+
+	if existingByName != nil {
+		// Upsert-by-name: update config fields on the SAME NodeState rather
+		// than appending a new one. Deliberately unconditional on the URL
+		// changing too - the DB's INSERT OR REPLACE already replaces the URL
+		// on a same-name POST with zero protection, so matching that is the
+		// correct minimal fix, not a new restriction.
+		existingByName.mu.Lock()
+		existingByName.URL = n.URL
+		existingByName.Host = hostOrDefault(n.Host, n.URL)
+		existingByName.GPUModel = n.GPUModel
+		existingByName.NvidiaIndex = n.NvidiaIndex
+		existingByName.VRAMOverrides = n.VRAMOverrides
+		existingByName.MaxInFlight = n.MaxInFlight
+		existingByName.Runtime = n.Runtime
+		if n.Runtime == "auto" {
+			existingByName.autoDetect = true
+			existingByName.probe = nil // re-armed; pollNode probes on next cycle
+		} else {
+			existingByName.autoDetect = false
+			existingByName.probe = runtimepkg.NewProbe(n.Runtime, r.client)
+		}
+		existingByName.mu.Unlock()
+		// Refresh immediately against the (possibly new) URL/runtime, same as
+		// a fresh AddNode. pollNode is a single one-shot probe - it is not a
+		// persistent per-node loop (recurring polling comes from pollAll on
+		// Router.Start's ticker, which re-reads r.nodes every cycle) - so
+		// calling it again here cannot leak a goroutine or race a prior
+		// invocation for this node past its own single pass.
+		go r.pollNode(existingByName)
+		return
+	}
+
 	node := &NodeState{
 		Name:          n.Name,
 		URL:           n.URL,
