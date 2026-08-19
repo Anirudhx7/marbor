@@ -190,7 +190,8 @@ func runStep(client *http.Client, baseURL, model, ep, apiKey string, targetRate 
 	var latencies []float64
 
 	interval := time.Second / time.Duration(targetRate)
-	stop := time.Now().Add(duration)
+	start := time.Now()
+	stop := start.Add(duration)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, maxInflight)
 
@@ -220,7 +221,10 @@ func runStep(client *http.Client, baseURL, model, ep, apiKey string, targetRate 
 	}
 	wg.Wait()
 
-	secs := duration.Seconds()
+	// Divide by actual elapsed wall-clock, not the nominal step duration -
+	// the send loop can overrun when it blocks on the maxInflight semaphore,
+	// which would otherwise inflate the reported rates.
+	secs := time.Since(start).Seconds()
 	result := stepResult{
 		sentPerSec: float64(atomic.LoadInt64(&sent)) / secs,
 		donePerSec: float64(atomic.LoadInt64(&done)) / secs,
