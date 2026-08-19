@@ -217,6 +217,10 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("model %q not found on node %q - pull it first", body.Model, body.Node))
 		return
 	}
+	if s.cfg.Proxy.Port <= 0 {
+		writeJSONError(w, http.StatusServiceUnavailable, "proxy port is not configured - benchmark requires the mesh proxy to be running")
+		return
+	}
 
 	s.sweepOldBenchmarkJobs()
 
