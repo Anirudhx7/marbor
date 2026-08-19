@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -244,6 +245,22 @@ func buildDemoConfig(node1URL, node2URL string, apiKey string) config.Config {
 // Traffic generator
 // ----------------------------------------------------------------------------
 
+// waitForProxyReady polls the proxy's base URL until it responds (any status
+// counts - we only care that the listener is accepting connections) or the
+// deadline elapses.
+func waitForProxyReady(client *http.Client, proxyURL string, deadline time.Duration) {
+	start := time.Now()
+	for time.Since(start) < deadline {
+		resp, err := client.Get(proxyURL + "/")
+		if err == nil {
+			resp.Body.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	log.Println("demo: proxy readiness poll timed out, proceeding anyway")
+}
+
 // sendDemoTraffic sends 30 requests through the proxy to populate the dashboard.
 // 20 warm requests (llama3:8b - the warm model on both nodes)
 // 5 cold requests (mistral:7b - not warm, routes via fallback)
@@ -289,14 +306,18 @@ func sendDemoTraffic(proxyURL, apiKey string) {
 		for {
 			_, err := resp.Body.Read(buf)
 			if err != nil {
+				if err != io.EOF {
+					log.Printf("demo traffic: %s %s: truncated stream: %v", endpoint, model, err)
+				}
 				break
 			}
 		}
 		resp.Body.Close()
 	}
 
-	// Wait for proxy to be ready.
-	time.Sleep(500 * time.Millisecond)
+	// Wait for the proxy to be ready by polling it instead of a fixed sleep -
+	// the HTTP server is started in a separate goroutine with no readiness signal.
+	waitForProxyReady(client, proxyURL, 5*time.Second)
 
 	log.Println("demo: sending 30 requests through proxy...")
 
