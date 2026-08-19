@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -109,7 +110,13 @@ func main() {
 	}
 
 	sort.Slice(warmSamples, func(i, j int) bool { return warmSamples[i] < warmSamples[j] })
-	warmMedian := warmSamples[(len(warmSamples)-1)/2]
+	var warmMedian time.Duration
+	mid := len(warmSamples) / 2
+	if len(warmSamples)%2 == 1 {
+		warmMedian = warmSamples[mid]
+	} else {
+		warmMedian = (warmSamples[mid-1] + warmSamples[mid]) / 2
+	}
 	speedup := float64(coldFirst) / float64(warmMedian)
 
 	fmt.Println("─────────────────────────────────────────")
@@ -145,11 +152,12 @@ func evict(client *http.Client, endpoint, model, apiKey string) error {
 	if err != nil {
 		return err
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("evict HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
+	io.Copy(io.Discard, resp.Body)
 	return nil
 }
 
@@ -191,6 +199,7 @@ func doGenerate(client *http.Client, endpoint string, body map[string]any, apiKe
 	}
 
 	var firstRecorded bool
+	var lastParseErr error
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		var chunk struct {
@@ -198,6 +207,11 @@ func doGenerate(client *http.Client, endpoint string, body map[string]any, apiKe
 			Done     bool   `json:"done"`
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &chunk); err != nil {
+			line := scanner.Text()
+			if len(line) > 200 {
+				line = line[:200] + "..."
+			}
+			lastParseErr = fmt.Errorf("%w (line: %s)", err, line)
 			continue
 		}
 		if !firstRecorded && chunk.Response != "" {
@@ -213,6 +227,9 @@ func doGenerate(client *http.Client, endpoint string, body map[string]any, apiKe
 		return firstToken, total, err
 	}
 	if !firstRecorded {
+		if lastParseErr != nil {
+			return 0, total, fmt.Errorf("no tokens received (model may have failed to load): last parse error: %v", lastParseErr)
+		}
 		return 0, total, fmt.Errorf("no tokens received (model may have failed to load)")
 	}
 	return firstToken, total, nil
