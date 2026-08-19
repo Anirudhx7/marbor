@@ -213,18 +213,30 @@ func resolveCommand(args []string) string {
 		return "agent"
 	case "uninstall":
 		return "uninstall"
-	case "version", "status", "login", "logout", "whoami", "nodes", "models", "runtime", "node":
-		return "cli"
 	default:
 		// Dash-prefixed tokens are server flags (-db, -seed-node, ...) and
-		// must keep falling through to "server". A bare word that isn't a
-		// known subcommand is almost always a typo or a missing subcommand
-		// (e.g. "uninstall", which has never been a binary subcommand - see
-		// uninstall.sh) - silently starting the full mesh server in that case
-		// is a dangerous footgun, not a reasonable default.
+		// must keep falling through to "server". Checked BEFORE
+		// cli.TopLevelCommandNames() below (which triggers
+		// sync.OnceValue(buildRoot), constructing and finalizing the whole
+		// ~20-node CLI registry tree) so that the overwhelmingly common case
+		// - an ordinary server invocation like "ollama-mesh -db ... -seed-node
+		// ..." - never pays for building a tree it has no use for, just to
+		// conclude "this is the server". Every other branch's outcome is
+		// unchanged; only its cost, and its position relative to this dash
+		// check, changed.
 		if strings.HasPrefix(args[0], "-") {
 			return "server"
 		}
+		for _, name := range cli.TopLevelCommandNames() {
+			if args[0] == name {
+				return "cli"
+			}
+		}
+		// A bare word that isn't a known subcommand is almost always a typo
+		// or a missing subcommand (e.g. "uninstall", which has never been a
+		// binary subcommand - see uninstall.sh) - silently starting the full
+		// mesh server in that case is a dangerous footgun, not a reasonable
+		// default.
 		return "unknown"
 	}
 }
@@ -233,42 +245,72 @@ func resolveCommand(args []string) string {
 // binary - one command table covering the server, the Node Agent, the
 // benchmark tool, and the Admin API CLI, rather than separate help systems
 // per subcommand family.
-// helpTableRows renders as a two-column, tab-aligned list via
+// helpTableRows hand-lists only the 4 genuinely-non-CLI entrypoints (server
+// default, agent, bench, uninstall) - these are separate binaries/entrypoints
+// dispatched in resolveCommand before internal/cli's registry is ever
+// consulted, so they have no home in that registry and this is the one
+// legitimate source of truth for them. Every OTHER row (version, status,
+// login, key, spill, requests, ... - the real Admin API CLI commands) comes
+// from cli.HelpRows() at print time instead of being hand-duplicated here -
+// see finding #12 of the P83+ CLI hardening review: the previous hand-listed
+// subset went stale (missing key/spill/requests/completion) the moment the
+// registry grew past it. Renders as a two-column, tab-aligned list via
 // text/tabwriter rather than a hand-spaced string literal - alignment is
 // then correct regardless of any row's length, instead of silently drifting
 // out of alignment the moment one row's length changes (as happened here
-// before this fix).
+// before an earlier fix), and both blocks share one tabwriter instance so
+// their columns stay aligned with each other too.
 var helpTableRows = [][2]string{
 	{"ollama-mesh [flags]", "run the mesh server (default)"},
 	{"ollama-mesh agent [flags]", "run the Node Agent (node-local execution point for the mesh)"},
 	{"ollama-mesh bench [flags]", "warm-vs-cold first-token latency benchmark"},
 	{"ollama-mesh uninstall [--purge]", "remove the mesh's and/or Node Agent's service registration from this host"},
-	{"ollama-mesh version", "print version"},
-	{"ollama-mesh status", "print mesh health/status summary"},
-	{"ollama-mesh login", "authenticate once and save the session locally (recommended)"},
-	{"ollama-mesh logout", "remove the saved session"},
-	{"ollama-mesh whoami", "show the CLI's saved identity (live-verified)"},
-	{"ollama-mesh nodes", "list nodes known to the mesh"},
-	{"ollama-mesh models [action] ...", "fleet-wide list, or pull/delete/unload/list on one node"},
-	{"ollama-mesh runtime <action> ...", "start/stop/restart/logs/drain/undrain/health on one node"},
-	{"ollama-mesh node control ...", "node enrollment probe/accept"},
 }
 
-func printTopLevelHelp() {
-	fmt.Fprintf(os.Stderr, "ollama-mesh %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\nUsage:\n", Version)
-	tw := tabwriter.NewWriter(os.Stderr, 0, 4, 2, ' ', 0)
+func printTopLevelHelp(w io.Writer) {
+	fmt.Fprintf(w, "ollama-mesh %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\nUsage:\n", Version)
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	for _, r := range helpTableRows {
 		fmt.Fprintf(tw, "  %s\t%s\n", r[0], r[1])
 	}
+	for _, r := range cli.HelpRows() {
+		fmt.Fprintf(tw, "  ollama-mesh %s\t%s\n", r[0], r[1])
+	}
 	tw.Flush()
-	fmt.Fprint(os.Stderr, `
+	fmt.Fprint(w, `
 Run "ollama-mesh <command> --help" for the full list of actions and flags for
 that command.
 
 Server flags:
 `)
+	// Route flag.PrintDefaults() through w too (temporarily redirecting
+	// flag.CommandLine's output) rather than leaving it hardcoded to
+	// os.Stderr, so a caller passing a bytes.Buffer (e.g. a test) sees the
+	// server flags in the same place a real terminal would - restored
+	// immediately after so this never leaks into unrelated flag.Usage calls.
+	prevOutput := flag.CommandLine.Output()
+	flag.CommandLine.SetOutput(w)
 	flag.PrintDefaults()
-	fmt.Fprint(os.Stderr, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (admin/admin on first run).\n")
+	flag.CommandLine.SetOutput(prevOutput)
+	fmt.Fprint(w, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (admin/admin on first run).\n")
+}
+
+// printUnknownCommand reports tok (os.Args[1]) as an unrecognized top-level
+// command, offering a "did you mean" suggestion when cli.SuggestTopLevel
+// finds a plausible candidate - the exact typo-correction mechanism
+// internal/cli's own dispatcher already applies to in-CLI actions
+// (reportUnknownToken in internal/cli/dispatch.go), now also covering the
+// most common typo case of all: a mistyped top-level word (e.g. "whoam"
+// instead of "whoami"). Phrasing mirrors dispatch.go's "unknown command
+// %q"/"Did you mean %q?" lines byte-for-byte so the UX is identical whether
+// the typo is top-level or inside the CLI.
+func printUnknownCommand(w io.Writer, tok string) {
+	fmt.Fprintf(w, "ollama-mesh: unknown command %q\n", tok)
+	if s := cli.SuggestTopLevel(tok); len(s) > 0 {
+		fmt.Fprintf(w, "Did you mean %q?\n", s[0])
+	}
+	fmt.Fprintln(w)
+	printTopLevelHelp(w)
 }
 
 func main() {
@@ -279,13 +321,13 @@ func main() {
 		seedNodes     stringSliceFlag
 	)
 	flag.Var(&seedNodes, "seed-node", `add a node directly to the database and exit, format: "name=...,url=...,runtime=..." (repeatable)`)
-	flag.Usage = printTopLevelHelp
+	flag.Usage = func() { printTopLevelHelp(os.Stderr) }
 
 	// Subcommand dispatch: check before flag.Parse() so each subcommand
 	// owns its own flag set and does not pollute the main flag namespace.
 	switch resolveCommand(os.Args[1:]) {
 	case "help":
-		printTopLevelHelp()
+		printTopLevelHelp(os.Stderr)
 		return
 	case "bench":
 		bench.Run(os.Args[2:])
@@ -297,8 +339,7 @@ func main() {
 		runUninstall(os.Args[2:])
 		return
 	case "unknown":
-		fmt.Fprintf(os.Stderr, "ollama-mesh: unknown command %q\n\n", os.Args[1])
-		printTopLevelHelp()
+		printUnknownCommand(os.Stderr, os.Args[1])
 		os.Exit(1)
 	case "cli":
 		cli.Version = Version

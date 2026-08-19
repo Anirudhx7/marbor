@@ -49,6 +49,13 @@ func runNodesConfirmTLS(flags *globalFlags, name, fingerprint string, stdout, st
 	if err := client.PatchNodeTLSFingerprint(name, fingerprint); err != nil {
 		return reportError(err, stderr)
 	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"ok": true, "node": name, "tls_fingerprint": fingerprint,
+	}); handled {
+		return code
+	}
+
 	fmt.Fprintf(stdout, "node %q TLS fingerprint pinned: %s\n", name, fingerprint)
 	return ExitOK
 }

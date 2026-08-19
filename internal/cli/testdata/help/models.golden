@@ -1,0 +1,15 @@
+Usage: ollama-mesh models [action] [args] [flags]
+
+Actions:
+  pull <node> <model>    start pulling a model onto a node (async - does not wait for completion)
+  delete <node> <model>  delete a model from a node's local storage
+  unload <node> <model>  unload a model from a node's warm state
+  list <node>            list models present on a node's local storage (per-node, not the fleet-wide aggregate above)
+
+Flags:
+  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --json             output machine-readable JSON instead of a human table
+  --username string  admin username, used to log in (env MESH_USERNAME)
+  --password string  admin password, used to log in (env MESH_PASSWORD)
+
+requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).

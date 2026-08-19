@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,6 +45,29 @@ func TestRun_NodesConfirmTLS(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "gpu-0") || !strings.Contains(stdout.String(), testValidFingerprint) {
 		t.Errorf("expected confirmation mentioning node name and fingerprint, got %q", stdout.String())
+	}
+}
+
+func TestRun_NodesConfirmTLS_JSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"name":"gpu-0","tlsFingerprint":"` + testValidFingerprint + `"}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "confirm-tls", "gpu-0", "--fingerprint=" + testValidFingerprint, "--server", srv.URL, "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("--json output did not parse as JSON: %v (%s)", err, stdout.String())
+	}
+	if out["node"] != "gpu-0" || out["tls_fingerprint"] != testValidFingerprint || out["ok"] != true {
+		t.Errorf("unexpected JSON output: %+v", out)
 	}
 }
 

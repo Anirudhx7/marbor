@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -331,7 +342,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>Set <code>OPENAI_BASE_URL</code> (or the equivalent in your client) to <code>http://your-mesh-host:11434</code> and set the API key to your <code>sk-mesh-...</code> key.</p>
 <hr/>
 <h2 id="python---openai-sdk">Python - openai SDK<a class="anchor" href="#python---openai-sdk" aria-label="Link to section">#</a></h2>
-<pre class="code" data-lang="python"><code>from openai import OpenAI
+<div class="code-wrap"><pre class="code" data-lang="python"><code>from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:11434/v1",
@@ -343,9 +354,21 @@ response = client.chat.completions.create(
     messages=[{"role": "user", "content": "What is 2 + 2?"}],
     stream=False,
 )
-print(response.choices[0].message.content)</code></pre>
+print(response.choices[0].message.content)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="from openai import OpenAI
+
+client = OpenAI(
+    base_url=&quot;http://localhost:11434/v1&quot;,
+    api_key=&quot;sk-mesh-abc123&quot;,   # your ollama-mesh key, not an OpenAI key
+)
+
+response = client.chat.completions.create(
+    model=&quot;llama3.2:8b&quot;,
+    messages=[{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;What is 2 + 2?&quot;}],
+    stream=False,
+)
+print(response.choices[0].message.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Streaming:</p>
-<pre class="code" data-lang="python"><code>with client.chat.completions.create(
+<div class="code-wrap"><pre class="code" data-lang="python"><code>with client.chat.completions.create(
     model="llama3.2:8b",
     messages=[{"role": "user", "content": "Write a haiku about distributed systems."}],
     stream=True,
@@ -353,16 +376,27 @@ print(response.choices[0].message.content)</code></pre>
     for chunk in stream:
         delta = chunk.choices[0].delta.content
         if delta:
-            print(delta, end="", flush=True)</code></pre>
+            print(delta, end="", flush=True)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="with client.chat.completions.create(
+    model=&quot;llama3.2:8b&quot;,
+    messages=[{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Write a haiku about distributed systems.&quot;}],
+    stream=True,
+) as stream:
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            print(delta, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Environment variable approach (recommended for scripts and agents):</p>
-<pre class="code" data-lang="bash"><code>export OPENAI_BASE_URL="http://localhost:11434/v1"
-export OPENAI_API_KEY="sk-mesh-abc123"</code></pre>
-<pre class="code" data-lang="python"><code># No base_url/api_key needed - SDK reads from environment
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>export OPENAI_BASE_URL="http://localhost:11434/v1"
+export OPENAI_API_KEY="sk-mesh-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="export OPENAI_BASE_URL=&quot;http://localhost:11434/v1&quot;
+export OPENAI_API_KEY=&quot;sk-mesh-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><pre class="code" data-lang="python"><code># No base_url/api_key needed - SDK reads from environment
 from openai import OpenAI
-client = OpenAI()</code></pre>
+client = OpenAI()</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# No base_url/api_key needed - SDK reads from environment
+from openai import OpenAI
+client = OpenAI()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="nodejs---openai-sdk">Node.js - openai SDK<a class="anchor" href="#nodejs---openai-sdk" aria-label="Link to section">#</a></h2>
-<pre class="code" data-lang="typescript"><code>import OpenAI from "openai";
+<div class="code-wrap"><pre class="code" data-lang="typescript"><code>import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "http://localhost:11434/v1",
@@ -374,9 +408,21 @@ const response = await client.chat.completions.create({
   messages: [{ role: "user", content: "Explain warm-first routing in one sentence." }],
 });
 
-console.log(response.choices[0].message.content);</code></pre>
+console.log(response.choices[0].message.content);</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="import OpenAI from &quot;openai&quot;;
+
+const client = new OpenAI({
+  baseURL: &quot;http://localhost:11434/v1&quot;,
+  apiKey: &quot;sk-mesh-abc123&quot;,
+});
+
+const response = await client.chat.completions.create({
+  model: &quot;llama3.2:8b&quot;,
+  messages: [{ role: &quot;user&quot;, content: &quot;Explain warm-first routing in one sentence.&quot; }],
+});
+
+console.log(response.choices[0].message.content);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Streaming:</p>
-<pre class="code" data-lang="typescript"><code>const stream = await client.chat.completions.create({
+<div class="code-wrap"><pre class="code" data-lang="typescript"><code>const stream = await client.chat.completions.create({
   model: "llama3.2:8b",
   messages: [{ role: "user", content: "List three uses of a load balancer." }],
   stream: true,
@@ -384,51 +430,87 @@ console.log(response.choices[0].message.content);</code></pre>
 
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
-}</code></pre>
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="const stream = await client.chat.completions.create({
+  model: &quot;llama3.2:8b&quot;,
+  messages: [{ role: &quot;user&quot;, content: &quot;List three uses of a load balancer.&quot; }],
+  stream: true,
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? &quot;&quot;);
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="curl---openai-compatible-endpoint">curl - OpenAI-compatible endpoint<a class="anchor" href="#curl---openai-compatible-endpoint" aria-label="Link to section">#</a></h2>
-<pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-mesh-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "messages": [{"role": "user", "content": "Hello"}]
-  }'</code></pre>
+  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
+  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;model&quot;: &quot;llama3.2:8b&quot;,
+    &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Hello&quot;}]
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Streaming (<code>stream: true</code>):</p>
-<pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-mesh-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "messages": [{"role": "user", "content": "Count to 5"}],
     "stream": true
-  }'</code></pre>
+  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
+  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;model&quot;: &quot;llama3.2:8b&quot;,
+    &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Count to 5&quot;}],
+    &quot;stream&quot;: true
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>List available models (aggregated from all nodes):</p>
-<pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/models \
-  -H "Authorization: Bearer sk-mesh-abc123"</code></pre>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/models \
+  -H "Authorization: Bearer sk-mesh-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/models \
+  -H &quot;Authorization: Bearer sk-mesh-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="curl---native-ollama-endpoint">curl - Native Ollama endpoint<a class="anchor" href="#curl---native-ollama-endpoint" aria-label="Link to section">#</a></h2>
 <p>ollama-mesh also accepts the native Ollama <code>/api/chat</code> format:</p>
-<pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/chat \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/chat \
   -H "Authorization: Bearer sk-mesh-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "messages": [{"role": "user", "content": "Hello from the Ollama API"}],
     "stream": false
-  }'</code></pre>
+  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/chat \
+  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;model&quot;: &quot;llama3.2:8b&quot;,
+    &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Hello from the Ollama API&quot;}],
+    &quot;stream&quot;: false
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Generate endpoint:</p>
-<pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/generate \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/generate \
   -H "Authorization: Bearer sk-mesh-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "prompt": "The capital of France is",
     "stream": false
-  }'</code></pre>
+  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/generate \
+  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{
+    &quot;model&quot;: &quot;llama3.2:8b&quot;,
+    &quot;prompt&quot;: &quot;The capital of France is&quot;,
+    &quot;stream&quot;: false
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="langchain-python">LangChain (Python)<a class="anchor" href="#langchain-python" aria-label="Link to section">#</a></h2>
-<pre class="code" data-lang="python"><code>from langchain_openai import ChatOpenAI
+<div class="code-wrap"><pre class="code" data-lang="python"><code>from langchain_openai import ChatOpenAI
 
 llm = ChatOpenAI(
     base_url="http://localhost:11434/v1",
@@ -438,10 +520,21 @@ llm = ChatOpenAI(
 )
 
 response = llm.invoke("What is warm-first routing?")
-print(response.content)</code></pre>
+print(response.content)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    base_url=&quot;http://localhost:11434/v1&quot;,
+    api_key=&quot;sk-mesh-abc123&quot;,
+    model=&quot;llama3.2:8b&quot;,
+    temperature=0,
+)
+
+response = llm.invoke(&quot;What is warm-first routing?&quot;)
+print(response.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>With streaming:</p>
-<pre class="code" data-lang="python"><code>for chunk in llm.stream("Explain cloud overflow in plain English."):
-    print(chunk.content, end="", flush=True)</code></pre>
+<div class="code-wrap"><pre class="code" data-lang="python"><code>for chunk in llm.stream("Explain cloud overflow in plain English."):
+    print(chunk.content, end="", flush=True)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="for chunk in llm.stream(&quot;Explain cloud overflow in plain English.&quot;):
+    print(chunk.content, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="notes">Notes<a class="anchor" href="#notes" aria-label="Link to section">#</a></h2>
 <ul><li>Your <code>sk-mesh-...</code> key never leaves the mesh. The client <code>Authorization</code> header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured <code>api_key</code> when a request overflows to cloud. Provider credentials live only in the database (encrypted).</li><li>If your key has a <code>models:</code> allow-list configured, requests for any other model return <code>403 Forbidden</code>.</li><li>Rate limit headers (<code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>) are present on every response and follow the same conventions as the OpenAI API.</li><li><code>GET /v1/models</code> returns the union of models loaded or downloaded across all healthy nodes.</li></ul>
@@ -472,6 +565,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

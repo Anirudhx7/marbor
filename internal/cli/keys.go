@@ -9,15 +9,10 @@ import (
 // set-allow-local-degradation ship here (P66, P67) - broader key
 // add/list/patch/revoke CLI parity is a separate, pre-existing gap this item
 // does not widen.
-func printKeyUsage(w io.Writer) {
-	fmt.Fprint(w, "Usage: ollama-mesh key <action> [args] [flags]\n\nActions:\n")
-	renderTable(w, "  ", [][2]string{
-		{"set-local-only <name> <true|false>", "block (or re-allow) cloud fallback for one API key"},
-		{"set-allow-local-degradation <name> <true|false>", "let (or forbid) one API key receive a local alternate model"},
-	})
-	fmt.Fprint(w, "\nFlags:\n")
-	renderTable(w, "  ", authFlagsRows)
-}
+//
+// This is a thin wrapper over the registry-backed writeHelp (help.go) - see
+// the P83+ CLI hardening plan, migration step 4.
+func printKeyUsage(w io.Writer) { writeHelp(w, findCommand(root(), "key")) }
 
 // runKeySetLocalOnly implements `mesh key set-local-only <name> <true|false>`
 // - PATCH /admin/v1/keys/{name} with local_only.
@@ -40,6 +35,13 @@ func runKeySetLocalOnly(flags *globalFlags, name, value string, stdout, stderr i
 	if err := client.PatchKeyLocalOnly(name, localOnly); err != nil {
 		return reportError(err, stderr)
 	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"ok": true, "key": name, "local_only": localOnly,
+	}); handled {
+		return code
+	}
+
 	fmt.Fprintf(stdout, "key %q local_only=%v\n", name, localOnly)
 	return ExitOK
 }
@@ -66,6 +68,13 @@ func runKeySetAllowLocalDegradation(flags *globalFlags, name, value string, stdo
 	if err := client.PatchKeyAllowLocalDegradation(name, allow); err != nil {
 		return reportError(err, stderr)
 	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"ok": true, "key": name, "allow_local_degradation": allow,
+	}); handled {
+		return code
+	}
+
 	fmt.Fprintf(stdout, "key %q allow_local_degradation=%v\n", name, allow)
 	return ExitOK
 }

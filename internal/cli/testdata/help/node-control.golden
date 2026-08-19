@@ -1,0 +1,11 @@
+Usage: ollama-mesh node control [action] [args] [flags]
+
+Actions:
+  probe <node>   show a node's control-driver status (configured + discovered)
+  accept <node>  accept a control driver + identifier for a node
+
+Flags:
+  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --json             output machine-readable JSON instead of a human table
+  --username string  admin username, used to log in (env MESH_USERNAME)
+  --password string  admin password, used to log in (env MESH_PASSWORD)
