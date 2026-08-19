@@ -51,7 +51,7 @@ func TestHandleNodeRuntimeAction_DispatchesToAgentWhenConfigured(t *testing.T) {
 	// nodeAgents is keyed by the node's shared Host now, not its Name - see
 	// router.SetNodeAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -107,7 +107,7 @@ func TestHandleNodeRuntimeAction_WorksWhileRuntimeUnhealthy(t *testing.T) {
 	// nodeAgents is keyed by the node's shared Host now, not its Name - see
 	// router.SetNodeAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -175,7 +175,7 @@ func TestHandleNodeRuntimeAction_UnconfiguredNodeReturns422(t *testing.T) {
 	// nodeAgents is keyed by the node's shared Host now, not its Name - see
 	// router.SetNodeAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -235,7 +235,7 @@ func TestHandleNodeRuntimeLogs_DispatchesToAgentWhenConfigured(t *testing.T) {
 	// nodeAgents is keyed by the node's shared Host now, not its Name - see
 	// router.SetNodeAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -317,7 +317,7 @@ func TestHandleNodeRuntimeLogs_UnconfiguredNodeReturns422(t *testing.T) {
 	// nodeAgents is keyed by the node's shared Host now, not its Name - see
 	// router.SetNodeAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -363,7 +363,7 @@ func TestHandleNodeRuntimeLogs_AgentErrorPassthrough(t *testing.T) {
 	// nodeAgents is keyed by the node's shared Host now, not its Name - see
 	// router.SetNodeAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -411,7 +411,7 @@ func TestHandleNodeRuntimeAction_AgentErrorPassthrough(t *testing.T) {
 	// nodeAgents is keyed by the node's shared Host now, not its Name - see
 	// router.SetNodeAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()

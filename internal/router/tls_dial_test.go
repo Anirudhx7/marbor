@@ -118,7 +118,7 @@ func TestHTTPClientForNode_PinnedFingerprintMatch(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, port, "")
+	r.SetNodeAgent("127.0.0.1", true, port, "", "http")
 
 	fp := certFingerprint(t, srv)
 	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &fp}) {
@@ -146,7 +146,7 @@ func TestHTTPClientForNode_PinnedFingerprintMismatch(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, port, "")
+	r.SetNodeAgent("127.0.0.1", true, port, "", "http")
 
 	wrongFP := "SHA256:" + hex.EncodeToString(sha256.New().Sum(nil))
 	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &wrongFP}) {
@@ -185,7 +185,7 @@ func TestHTTPClientForNode_AmbiguousSiblingFingerprints(t *testing.T) {
 		{Name: "gpu-0", URL: "http://127.0.0.1:1", Host: "127.0.0.1"},
 		{Name: "gpu-1", URL: "http://127.0.0.1:2", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, port, "")
+	r.SetNodeAgent("127.0.0.1", true, port, "", "http")
 
 	fp := certFingerprint(t, srv)
 	otherFP := "SHA256:" + hex.EncodeToString(sha256.New().Sum(nil))
@@ -216,7 +216,7 @@ func TestHTTPClientForNode_UnpinnedNodeAgentFailsClosed(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, port, "")
+	r.SetNodeAgent("127.0.0.1", true, port, "", "http")
 
 	client := r.HTTPClientForNode(5 * time.Second)
 	_, err := client.Get(srv.URL + "/api/ps")
