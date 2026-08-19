@@ -18,18 +18,18 @@ const (
 )
 
 // nonRegistryRows are real subcommands of the ollama-mesh binary that are
-// NOT part of internal/cli's Command registry - "agent" and "bench" select
-// an entirely different mode of the binary (Node Agent / benchmark tool,
-// see main.go), and "uninstall" is handled by uninstall.go, not
-// internal/cli. They still belong in the README's CLI table for a human
-// reading "what can this binary do", so they're prepended by hand rather
-// than derived - this is the one place gen-docs doesn't come purely from
-// the registry, and it's the reason: these three deliberately live outside
-// it.
+// NOT part of internal/cli's Command registry - "bench" selects an entirely
+// different mode of the binary (see main.go), and "uninstall" is handled by
+// uninstall.go, not internal/cli. They still belong in the README's CLI
+// table for a human reading "what can this binary do", so they're
+// prepended by hand rather than derived - this is the one place gen-docs
+// doesn't come purely from the registry, and it's the reason: these
+// deliberately live outside it. The Node Agent is a separate binary
+// (cmd/ollama-mesh-agent) as of the control-plane/agent split - it is not,
+// and must never again be, a subcommand of this table.
 var nonRegistryRows = [][2]string{
-	{"ollama-mesh agent", "Run a Node Agent (node-local execution point for the mesh)"},
 	{"ollama-mesh bench", "Benchmark warm-vs-cold first-token latency against a running mesh"},
-	{"ollama-mesh uninstall [--purge]", "Remove the mesh's and/or Node Agent's service registration from this host"},
+	{"ollama-mesh uninstall [--purge]", "Remove the mesh's own service registration from this host"},
 }
 
 func generateReadmeTable(root *cli.Command) error {

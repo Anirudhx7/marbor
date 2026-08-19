@@ -21,13 +21,16 @@
 #   FORCE_PROBE=1  re-run the network discovery wizard even if mesh.db
 #              already exists (by default it only runs on a fresh DB).
 #
-#   ROLE=agent  install the Node Agent instead of the control plane: downloads
-#              the same binary, then registers+starts it as a persistent OS
-#              service (systemd on Linux, launchd on macOS - see
-#              install.ps1 for Windows) via "ollama-mesh agent service
-#              install", the binary's own self-registration subcommand
-#              (internal/nodeagent/service - no separate service-file logic
-#              duplicated in this script for the agent role). Requires either:
+#   ROLE=agent  install the Node Agent: downloads the dedicated
+#              ollama-mesh-agent binary (a separate artifact from the
+#              control-plane ollama-mesh binary - a GPU host running this
+#              role never has a control-plane-capable executable on disk),
+#              then registers+starts it as a persistent OS service (systemd
+#              on Linux, launchd on macOS - see install.ps1 for Windows) via
+#              "ollama-mesh-agent service install", the binary's own
+#              self-registration subcommand (internal/nodeagent/service - no
+#              separate service-file logic duplicated in this script for the
+#              agent role). Credentials:
 #                ENROLL=<code> MESH=<url>  (default, shown by the mesh admin
 #                  UI's "Node Agent" panel) - a short-lived, single-use code
 #                  the binary itself exchanges for the real token by calling
@@ -35,18 +38,25 @@
 #                  appears in this command / your shell history (P50).
 #                TOKEN=<token>  (legacy/manual path) - the real permanent
 #                  token directly, no exchange, no MESH needed.
+#              One of TOKEN or ENROLL+MESH is required - there is no
+#              existing-installation upgrade path (no prior Ollama Mesh
+#              deployments exist to preserve).
 #              PORT=<port> optionally overrides the default (9200).
 #              Example: curl ... | ROLE=agent MESH=http://mesh-host:8080 ENROLL=xxxxx PORT=9200 sh
 #
 # Uninstall: https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh
-# Uninstall a Node Agent: ollama-mesh agent service uninstall (on the node, not this script)
+# Uninstall a Node Agent: ollama-mesh-agent service uninstall (on the node, not this script)
 
 set -e
 
 REPO="Anirudhx7/ollama-mesh"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-BIN_NAME="ollama-mesh"
 ROLE="${ROLE:-mesh}"
+if [ "$ROLE" = "agent" ]; then
+  BIN_NAME="ollama-mesh-agent"
+else
+  BIN_NAME="ollama-mesh"
+fi
 
 START_DAEMON=false
 if [ "$START" = "1" ]; then
@@ -255,12 +265,14 @@ install_man_pages() {
   rm -rf "$MAN_TMP_DIR"
   return 0
 }
-( install_man_pages ) || echo "  [!] Skipped man page install (non-fatal - 'man ollama-mesh' won't work, everything else does)."
+if [ "$ROLE" != "agent" ]; then
+  ( install_man_pages ) || echo "  [!] Skipped man page install (non-fatal - 'man ollama-mesh' won't work, everything else does)."
+fi
 
 # Node Agent role: register+start as a persistent OS service and stop here -
 # none of the control-plane logic below (node discovery wizard, mesh's own
 # systemd unit, dashboard) applies to a node running only the agent. The
-# binary's own "agent service install" subcommand owns the actual
+# binary's own "service install" subcommand owns the actual
 # systemd/launchd registration (internal/nodeagent/service) - this script's
 # job for this role is just "download the right binary, then hand off to it."
 if [ "$ROLE" = "agent" ]; then
@@ -285,13 +297,13 @@ if [ "$ROLE" = "agent" ]; then
   # its own word. TOKEN is deliberately NOT passed as --token here (that
   # would put the real bearer token in this process's argv, visible via
   # `ps`/Task Manager for the life of the install) - it's already in this
-  # shell's environment (TOKEN=... sh), and the binary's own "agent service
+  # shell's environment (TOKEN=... sh), and the binary's own "service
   # install" subcommand already falls back to the TOKEN env var when
   # --token isn't given, so it's just inherited below.
   if [ -n "$TOKEN" ]; then
-    set -- agent service install --port="$AGENT_PORT"
+    set -- service install --port="$AGENT_PORT"
   else
-    set -- agent service install --port="$AGENT_PORT" --enroll="$ENROLL" --mesh="$MESH"
+    set -- service install --port="$AGENT_PORT" --enroll="$ENROLL" --mesh="$MESH"
   fi
   if [ "$(id -u)" = "0" ]; then
     "$BIN_PATH" "$@"
@@ -306,10 +318,9 @@ if [ "$ROLE" = "agent" ]; then
   fi
 
   echo ""
-  echo "Node Agent installed and running on port $AGENT_PORT - the mesh will start"
-  echo "polling it on its next poll cycle."
-  echo "  Status:    ollama-mesh agent service status"
-  echo "  Uninstall: ollama-mesh agent service uninstall"
+  echo "Node Agent installed and running - the mesh will start polling it on its next poll cycle."
+  echo "  Status:    ollama-mesh-agent service status"
+  echo "  Uninstall: ollama-mesh-agent service uninstall"
   exit 0
 fi
 

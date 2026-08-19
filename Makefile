@@ -9,6 +9,7 @@ ui:
 
 backend:
 	go build -o ollama-mesh .
+	go build -o ollama-mesh-agent ./cmd/ollama-mesh-agent
 
 build: ui backend
 
@@ -60,6 +61,6 @@ man: ## Regenerate man pages (docs/man/*.1) + docs/cli.md + README CLI table fro
 docs: man ## Alias for `make man` - CI's drift check runs the same generator and diffs the result
 
 clean:
-	rm -f ollama-mesh
+	rm -f ollama-mesh ollama-mesh-agent
 	rm -rf internal/admin/web/dist
 	rm -rf ui/node_modules

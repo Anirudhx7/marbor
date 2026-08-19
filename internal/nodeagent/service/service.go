@@ -51,11 +51,15 @@ type Config struct {
 	KeyPath  string
 }
 
-// args returns the "agent ..." argument list (excluding the binary path
-// itself, and deliberately excluding --token) that each platform
-// implementation embeds into its service definition (systemd ExecStart,
-// launchd ProgramArguments, sc.exe binPath). Centralized here so all three
-// platforms build the exact same command line from the same Config fields.
+// args returns the flag argument list (excluding the binary path itself, and
+// deliberately excluding --token) that each platform implementation embeds
+// into its service definition (systemd ExecStart, launchd ProgramArguments,
+// sc.exe binPath). Centralized here so all three platforms build the exact
+// same command line from the same Config fields.
+//
+// No leading "agent" subcommand token: BinaryPath is always the dedicated
+// ollama-mesh-agent binary (cmd/ollama-mesh-agent), which is itself the
+// agent - there is no dispatcher inside it to route a subcommand through.
 //
 // Token is intentionally NOT included here: a service definition's command
 // line is world-readable on every platform (systemd unit files/launchd
@@ -69,7 +73,7 @@ type Config struct {
 // environment as a fallback to --token (see nodeagent.Run), so no agent-side
 // change was needed to support this.
 func (c Config) args() []string {
-	a := []string{"agent", fmt.Sprintf("--port=%d", c.Port)}
+	a := []string{fmt.Sprintf("--port=%d", c.Port)}
 	if c.RefreshInterval > 0 {
 		a = append(a, fmt.Sprintf("--refresh-interval=%s", c.RefreshInterval))
 	}

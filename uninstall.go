@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 )
 
 // meshSystemdUnitPath mirrors uninstall.sh's UNIT_PATH exactly - the mesh's
@@ -30,10 +28,11 @@ const meshSystemdUnitPath = "/etc/systemd/system/ollama-mesh.service"
 const meshPidfile = "ollama-mesh.pid"
 
 // runUninstall implements "ollama-mesh uninstall": the Go-native counterpart
-// to uninstall.sh, extended to also remove the Node Agent service if one is
-// installed on this same host (uninstall.sh deliberately does not - see its
-// own header comment - because it has no access to the agent service
-// package's Manager; this binary does). Never touches mesh.db - matches
+// to uninstall.sh. Only ever touches this host's mesh service/process - a
+// Node Agent service (if any) is removed via "ollama-mesh-agent service
+// uninstall" on its own host instead (post control-plane/Node-Agent binary
+// split, ollama-mesh no longer imports internal/nodeagent at all, so it has
+// no Manager to drive even if it wanted to). Never touches mesh.db - matches
 // uninstall.sh's default of always asking before deleting real state, and
 // this subcommand has no interactive prompt to ask with, so the safe default
 // is "never" rather than guessing.
@@ -41,8 +40,9 @@ func runUninstall(args []string) {
 	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
 	purge := fs.Bool("purge", false, "also delete the installed binary (default: only removes service registrations)")
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "ollama-mesh uninstall - remove the mesh's own service registration (if any) and the\nNode Agent's service registration (if any) from this host\n\n")
+		fmt.Fprintf(w, "ollama-mesh uninstall - remove the mesh's own service registration (if any) from this host\n\n")
 		fmt.Fprintf(w, "Usage:\n  ollama-mesh uninstall [--purge]\n\n")
+		fmt.Fprintf(w, "To remove a Node Agent, run \"ollama-mesh-agent service uninstall\" on the agent's own host instead.\n")
 		fmt.Fprintf(w, "Never deletes mesh.db - remove it yourself if you also want the database gone.\n")
 		fmt.Fprintf(w, "Run from the same directory the mesh was started from, so a nohup-mode\n%s is found.\n\nFlags:\n", meshPidfile)
 		fs.SetOutput(w)
@@ -86,14 +86,6 @@ func runUninstall(args []string) {
 		didSomething = true
 	}
 
-	agentUninstalled, err := nodeagent.UninstallAgentServiceIfInstalled(*purge)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  [!] Node Agent service uninstall failed: %v\n", err)
-	} else if agentUninstalled {
-		fmt.Println("Removed the Node Agent service.")
-		didSomething = true
-	}
-
 	if *purge {
 		if binPath, err := os.Executable(); err == nil {
 			if err := os.Remove(binPath); err != nil {
@@ -108,7 +100,7 @@ func runUninstall(args []string) {
 	if didSomething {
 		fmt.Println("ollama-mesh has been uninstalled from this host.")
 	} else {
-		fmt.Println("Nothing to uninstall on this host: no mesh service, no background mesh process, and no Node Agent service were found.")
+		fmt.Println("Nothing to uninstall on this host: no mesh service and no background mesh process were found.")
 	}
 	fmt.Println("mesh.db was left untouched - remove it yourself if you also want the database gone.")
 }

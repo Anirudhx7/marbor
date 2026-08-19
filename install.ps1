@@ -16,11 +16,17 @@
 #   $env:ROLE="agent"; $env:TOKEN="<token from the mesh admin UI>"
 #   irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex
 #
-# ROLE=agent registers+starts the Node Agent as a native Windows Service via
-# the binary's own "ollama-mesh agent service install" subcommand
-# (internal/nodeagent/service) - this script's job for that role is just
-# "download the right binary, then hand off to it," the same split
-# install.sh uses for Linux/macOS.
+# One of TOKEN or ENROLL+MESH is required for ROLE=agent - there is no
+# existing-installation upgrade path (no prior Ollama Mesh deployments exist
+# to preserve).
+#
+# ROLE=agent downloads the dedicated ollama-mesh-agent.exe (a separate
+# artifact from the control-plane ollama-mesh.exe - a GPU host running this
+# role never has a control-plane-capable executable on disk) and
+# registers+starts it as a native Windows Service via the binary's own
+# "service install" subcommand (internal/nodeagent/service) - this script's
+# job for that role is just "download the right binary, then hand off to
+# it," the same split install.sh uses for Linux/macOS.
 #
 # This script does not yet port install.sh's network-discovery wizard for
 # the control-plane role on Windows - that's a separate, larger piece of
@@ -49,8 +55,8 @@ function Wait-ForExit {
 try {
 
 $Repo = "Anirudhx7/ollama-mesh"
-$BinName = "ollama-mesh.exe"
 $Role = if ($env:ROLE) { $env:ROLE } else { "mesh" }
+$BinName = if ($Role -eq "agent") { "ollama-mesh-agent.exe" } else { "ollama-mesh.exe" }
 $Token = $env:TOKEN
 $Enroll = $env:ENROLL
 $Mesh = $env:MESH
@@ -72,7 +78,7 @@ if ($isArm64) {
 }
 $Arch = "amd64"
 
-$BinaryAsset = "ollama-mesh-windows-$Arch.exe"
+$BinaryAsset = if ($Role -eq "agent") { "ollama-mesh-agent-windows-$Arch.exe" } else { "ollama-mesh-windows-$Arch.exe" }
 $Url = "https://github.com/$Repo/releases/latest/download/$BinaryAsset"
 $BinPath = Join-Path $InstallDir $BinName
 $ServiceName = "ollama-mesh-agent"
@@ -183,11 +189,11 @@ if ($Role -eq "agent") {
         # Manager/`Get-Process -IncludeUserName`/WMI for the life of the
         # install). $env:TOKEN is already set in this process's environment
         # and is inherited by the child process automatically; the binary's
-        # own "agent service install" subcommand already falls back to the
+        # own "service install" subcommand already falls back to the
         # TOKEN env var when --token isn't given.
-        & $BinPath agent service install --port=$Port
+        & $BinPath service install --port=$Port
     } else {
-        & $BinPath agent service install --port=$Port --enroll=$Enroll --mesh=$Mesh
+        & $BinPath service install --port=$Port --enroll=$Enroll --mesh=$Mesh
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Node Agent service install failed (exit code $LASTEXITCODE)."
@@ -195,9 +201,9 @@ if ($Role -eq "agent") {
     }
 
     Write-Host ""
-    Write-Host "Node Agent installed and running on port $Port - the mesh will start polling it on its next poll cycle."
-    Write-Host "  Status:    ollama-mesh agent service status"
-    Write-Host "  Uninstall: ollama-mesh agent service uninstall"
+    Write-Host "Node Agent installed and running - the mesh will start polling it on its next poll cycle."
+    Write-Host "  Status:    ollama-mesh-agent service status"
+    Write-Host "  Uninstall: ollama-mesh-agent service uninstall"
     exit 0
 }
 

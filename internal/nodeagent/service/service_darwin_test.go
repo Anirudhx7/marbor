@@ -21,7 +21,6 @@ func TestLaunchdPlistContent(t *testing.T) {
 
 	wantElements := []string{
 		"<string>/usr/local/bin/ollama-mesh</string>",
-		"<string>agent</string>",
 		"<string>--port=9200</string>",
 		"<key>Label</key>",
 		"<string>com.ollamamesh.agent</string>",
@@ -40,7 +39,7 @@ func TestLaunchdPlistContent(t *testing.T) {
 
 	// ProgramArguments must be a real argv array - each argument its own
 	// XML element, not shell-joined into a single string.
-	if strings.Contains(plist, "<string>agent --port=9200 --token=sekret</string>") {
+	if strings.Contains(plist, "<string>--port=9200 --token=sekret</string>") {
 		t.Errorf("ProgramArguments must not be a single shell-joined string")
 	}
 	// The token must never appear inside ProgramArguments (argv is visible

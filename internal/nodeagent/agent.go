@@ -34,14 +34,12 @@ func warnIfTokenFlagUsed(w io.Writer, tokenFlag string) {
 	fmt.Fprintln(w, "warning: --token is deprecated and will be removed in the next major release. Use the TOKEN environment variable or the ENROLL flow instead.")
 }
 
-// Run is the "ollama-mesh agent" subcommand entry point (called from main.go
-// the same way "ollama-mesh bench" dispatches to internal/bench.Run) - same
-// binary, same cross-compile targets as the mesh itself, per the build spec.
-// version is the mesh binary's own build version (main.Version), reported
-// back as agent_version so the dashboard can tell which agent build a node
-// is running.
+// Run is the ollama-mesh-agent binary's entire entry point (called from
+// cmd/ollama-mesh-agent/main.go). version is the agent's own build version,
+// reported back as agent_version so the dashboard can tell which agent build
+// a node is running.
 //
-// "ollama-mesh agent service ..." is dispatched here, before flag.Parse, the
+// "ollama-mesh-agent service ..." is dispatched here, before flag.Parse, the
 // same way main.go's own subcommand dispatch (e.g. "bench") checks os.Args
 // before parsing its own flag set - each subcommand owns its own flags
 // without polluting a shared namespace. See service_cmd.go.
@@ -60,7 +58,7 @@ func Run(args []string, version string) {
 	// subcommand, surfacing a confusing "a token is required" error instead
 	// of pointing at the real mistake.
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
-		winexit.Fatalf("nodeagent: unknown agent subcommand %q (did you mean \"agent service %s\"?)", args[0], args[0])
+		winexit.Fatalf("nodeagent: unknown agent subcommand %q (did you mean \"service %s\"?)", args[0], args[0])
 	}
 
 	if handled, err := runWindowsServiceIfService(func() { runAgent(args, version) }); handled {

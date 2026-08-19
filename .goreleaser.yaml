@@ -25,6 +25,27 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w -X main.Version={{.Version}}
+  # Node Agent: a separate artifact so a GPU/node-agent host installs a
+  # binary with no control-plane startup path at all - see the "Control
+  # Plane / Node Agent Binary Separation" work item. Same version, same
+  # release, same OS/arch matrix as the ollama-mesh build above; only the
+  # entry point (cmd/ollama-mesh-agent) differs.
+  - id: ollama-mesh-agent
+    main: ./cmd/ollama-mesh-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
 
 # Raw binaries (not tarballs) so the README one-liner works:
 # curl -Lo ollama-mesh .../releases/latest/download/ollama-mesh-linux-amd64
@@ -33,6 +54,10 @@ archives:
     ids: [ollama-mesh]
     formats: ['binary']
     name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
+  - id: ollama-mesh-agent
+    ids: [ollama-mesh-agent]
+    formats: ['binary']
+    name_template: 'ollama-mesh-agent-{{ .Os }}-{{ .Arch }}'
 
 checksum:
   name_template: 'checksums.txt'

@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +22,7 @@ func TestResolveCommand(t *testing.T) {
 	}{
 		{"no args starts server", []string{}, "server"},
 		{"bench subcommand", []string{"bench"}, "bench"},
-		{"agent subcommand", []string{"agent"}, "agent"},
+		{"agent subcommand is removed, not dispatched", []string{"agent"}, "agent-removed"},
 		{"cli version subcommand", []string{"version"}, "cli"},
 		{"cli status subcommand", []string{"status"}, "cli"},
 		{"cli login subcommand", []string{"login"}, "cli"},
@@ -152,9 +155,12 @@ func TestPrintTopLevelHelp_SourcesFromRegistry(t *testing.T) {
 		t.Errorf("--help output contains hidden command %q - Hidden is not being respected\n--- output ---\n%s", "completion", out)
 	}
 
-	// The 4 genuinely-non-CLI entrypoints must still be present and are not
-	// part of the registry at all.
-	for _, name := range []string{"agent", "bench", "uninstall"} {
+	// The genuinely-non-CLI entrypoints must still be present and are not
+	// part of the registry at all. "agent" is deliberately excluded here -
+	// the Node Agent is a separate binary now (cmd/ollama-mesh-agent), not a
+	// subcommand of this one; see TestResolveCommand's "agent" case and
+	// TestAgentSubcommand_RedirectsToDedicatedBinary below.
+	for _, name := range []string{"bench", "uninstall"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("--help output missing non-CLI entrypoint %q\n--- output ---\n%s", name, out)
 		}
@@ -170,6 +176,25 @@ func TestPrintTopLevelHelp_SourcesFromRegistry(t *testing.T) {
 func TestResolveCommand_HiddenCommandsReachable(t *testing.T) {
 	if got := resolveCommand([]string{"completion", "bash"}); got != "cli" {
 		t.Errorf(`resolveCommand([]string{"completion", "bash"}) = %q, want "cli" (Hidden must not mean unreachable)`, got)
+	}
+}
+
+// TestAgentSubcommand_RedirectsToDedicatedBinary proves "ollama-mesh agent
+// ..." fails clearly (per the control-plane/Node Agent binary split) rather
+// than silently doing something else, and that the message actually names
+// the replacement binary.
+func TestAgentSubcommand_RedirectsToDedicatedBinary(t *testing.T) {
+	if got := resolveCommand([]string{"agent", "service", "install", "--port=9200"}); got != "agent-removed" {
+		t.Errorf(`resolveCommand([]string{"agent", ...}) = %q, want "agent-removed"`, got)
+	}
+
+	var buf bytes.Buffer
+	printAgentRemovedNotice(&buf)
+	out := buf.String()
+	for _, want := range []string{"ollama-mesh-agent", "service install"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("printAgentRemovedNotice() output missing %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -199,5 +224,101 @@ func TestPrintUnknownCommand_SuggestsTopLevelTypo(t *testing.T) {
 	}
 	if !strings.Contains(out2, `unknown command "zzznotacommand"`) {
 		t.Errorf(`printUnknownCommand(_, "zzznotacommand") missing the base "unknown command" message\n--- output ---\n%s`, out2)
+	}
+}
+
+// controlPlaneOnlyPackages are the packages that give a binary the capability
+// to start the Mesh control plane (admin API, router, SQLite store, proxy,
+// auth middleware) or the Admin API CLI. cmd/ollama-mesh-agent must never
+// depend on any of them - see TestAgentBinary_HasNoControlPlaneCapability.
+var controlPlaneOnlyPackages = []string{
+	"github.com/ollama-mesh/ollama-mesh/internal/admin",
+	"github.com/ollama-mesh/ollama-mesh/internal/router",
+	"github.com/ollama-mesh/ollama-mesh/internal/store",
+	"github.com/ollama-mesh/ollama-mesh/internal/proxy",
+	"github.com/ollama-mesh/ollama-mesh/internal/auth",
+	"github.com/ollama-mesh/ollama-mesh/internal/cli",
+}
+
+// goListDeps runs "go list -deps" for importPath and returns the set of
+// import paths in its build graph, so a test can assert on the actual
+// compiled dependency graph rather than trusting that nobody added a new
+// import later. This is the real proof for the control-plane/Node-Agent
+// binary split's acceptance criterion: it fails the moment anyone imports a
+// forbidden package, not just when someone remembers to update a hand-typed
+// list of what's supposedly true.
+func goListDeps(t *testing.T, importPath string) map[string]bool {
+	t.Helper()
+	out, err := exec.Command("go", "list", "-deps", importPath).Output()
+	if err != nil {
+		t.Fatalf("go list -deps %s: %v", importPath, err)
+	}
+	deps := make(map[string]bool)
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			deps[line] = true
+		}
+	}
+	return deps
+}
+
+// TestAgentBinary_HasNoControlPlaneCapability is the primary acceptance
+// criterion for the control-plane/Node-Agent binary split: a GPU/node-agent
+// host running only cmd/ollama-mesh-agent must have no code path capable of
+// starting the Mesh control plane, opening mesh.db, or serving the admin
+// API - proven here by showing the capability isn't even compiled into the
+// binary, not merely unreachable at runtime.
+func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
+	deps := goListDeps(t, "./cmd/ollama-mesh-agent")
+	for _, forbidden := range controlPlaneOnlyPackages {
+		if deps[forbidden] {
+			t.Errorf("cmd/ollama-mesh-agent depends on %s - the agent binary must never be capable of starting the Mesh control plane", forbidden)
+		}
+	}
+}
+
+// TestServerBinary_DoesNotDependOnAgentRuntime is the reverse direction: the
+// split should leave ollama-mesh with no half-agent architecture either.
+//
+// This deliberately does NOT assert "ollama-mesh must not import package
+// internal/nodeagent at all" via go list -deps - that's unsatisfiable and
+// would be the wrong target. internal/admin genuinely needs nodeagent's
+// frozen R9 wire types (nodeagent.GPUInfo/GPUBlock) and its auth-scope
+// constants (nodeagent.ScopeAdmin/...) - pre-existing, required, unrelated
+// to this split. Go's dependency graph is package-granular, not
+// symbol-granular: because agent.go/service_cmd.go (the actual runtime/
+// service-install logic) live in that SAME package as those wire types,
+// any consumer of the wire types transitively pulls in
+// internal/nodeagent/service too, with no way to prune it short of
+// splitting nodeagent's protocol types into their own leaf package - a
+// real refactor of internal/nodeagent, which is explicitly out of scope
+// here (this is an entry-point/artifact/installation change, not a
+// protocol reorganization).
+//
+// What's actually provable, and what the acceptance criterion is really
+// about, is that no source file built into the ollama-mesh binary calls the
+// agent's startup entry points - proven at the source level (not just
+// "unreachable at runtime") since a call site is a stronger, more durable
+// signal than a package-level import that Go's model can't help but retain
+// anyway.
+func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
+	rootGoFiles, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("globbing root .go files: %v", err)
+	}
+	forbiddenCalls := []string{"nodeagent.Run(", "service.New()"}
+	for _, path := range rootGoFiles {
+		if strings.HasSuffix(path, "_test.go") {
+			continue // this file itself references these strings in comments/assertions above.
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		for _, forbidden := range forbiddenCalls {
+			if strings.Contains(string(data), forbidden) {
+				t.Errorf("%s calls %s - the Node Agent runtime/service-manager entry point is cmd/ollama-mesh-agent's job now, not ollama-mesh's", path, forbidden)
+			}
+		}
 	}
 }
