@@ -2057,7 +2057,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // the GPU node to download the binary (if not already present) AND register
 // it as a persistent, auto-restarting OS service - install.sh/install.ps1's
 // ROLE=agent path (see .local/specs/node-agent.md section 12), which
-// downloads the binary then hands off to its own "ollama-mesh agent service
+// downloads the binary then hands off to its own "ollama-mesh-agent service
 // install" self-registration subcommand (internal/nodeagent/service). unix
 // covers Linux/macOS; windows is the PowerShell equivalent for Windows
 // nodes, since a POSIX sh script can't run there. Safe to re-run for an

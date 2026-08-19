@@ -1818,12 +1818,12 @@ export function GPUNodes() {
                     </p>
                     <div className="flex items-center gap-2">
                       <code className="flex-1 min-w-0 font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
-                        ollama-mesh agent service status
+                        ollama-mesh-agent service status
                       </code>
                       <button
                         type="button"
                         onClick={() => {
-                          copyText('ollama-mesh agent service status');
+                          copyText('ollama-mesh-agent service status');
                           setTlsStatusCmdCopied(true);
                           setTimeout(() => setTlsStatusCmdCopied(false), 2000);
                         }}
