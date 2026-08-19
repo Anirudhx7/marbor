@@ -350,7 +350,11 @@ func (r *Router) nodeHasAgentCapability(n *NodeState, capability string) bool {
 // admin (the reverse dependency direction would be a cycle); only the
 // agent-vs-direct decision above is shared, per the reliability requirement.
 func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg NodeAgentConfig, model string) error {
-	actionURL, err := buildAgentUnloadURL(nodeURL, cfg.Port, model)
+	scheme := cfg.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	actionURL, err := buildAgentUnloadURL(nodeURL, cfg.Port, scheme, model)
 	if err != nil {
 		return err
 	}
@@ -393,12 +397,14 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg No
 const nodeAgentUnloadTimeout = 30 * time.Second
 
 // buildAgentUnloadURL derives the agent's POST /v1/models/{name} URL from the
-// node's own URL (same host) and the configured agent port, via url.Parse per
-// R5 - never arithmetic port derivation. model is percent-escaped per
-// "/"-delimited segment so a name containing "/" (e.g. "org/repo") lands on
-// the agent side as multiple path segments, matching its "{name...}"
-// wildcard route. Mirrors admin.go's buildAgentUnloadURL.
-func buildAgentUnloadURL(nodeURL string, port int, model string) (string, error) {
+// node's own URL (same host, via url.Parse per R5 - never arithmetic port
+// derivation), the configured agent port, and the agent's OWN scheme
+// (independent of nodeURL's scheme - see store.NodeAgentRecord.Scheme's doc
+// comment). model is percent-escaped per "/"-delimited segment so a name
+// containing "/" (e.g. "org/repo") lands on the agent side as multiple path
+// segments, matching its "{name...}" wildcard route. Mirrors admin.go's
+// buildAgentUnloadURL.
+func buildAgentUnloadURL(nodeURL string, port int, scheme string, model string) (string, error) {
 	u, err := url.Parse(nodeURL)
 	if err != nil {
 		return "", fmt.Errorf("parse node URL: %w", err)
@@ -406,7 +412,6 @@ func buildAgentUnloadURL(nodeURL string, port int, model string) (string, error)
 	if u.Hostname() == "" {
 		return "", fmt.Errorf("node URL %q has no host", nodeURL)
 	}
-	scheme := u.Scheme
 	if scheme == "" {
 		scheme = "http"
 	}

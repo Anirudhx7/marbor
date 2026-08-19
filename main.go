@@ -556,7 +556,7 @@ func main() {
 			if host, ok := r.NodeHost(a.Name); ok {
 				key = host
 			}
-			r.SetNodeAgent(key, true, a.Port, a.Token)
+			r.SetNodeAgent(key, true, a.Port, a.Token, a.Scheme)
 		}
 	} else {
 		log.Printf("WARNING: could not load node agents from store: %v", err)

@@ -1169,12 +1169,17 @@ export interface NodeAgentStatus {
   node: string;
   enabled: boolean;
   port: number;
+  // scheme is the Agent's OWN transport scheme ("http" | "https") -
+  // independent of this node's runtime URL scheme. Absent/undefined on a
+  // disabled agent.
+  scheme?: 'http' | 'https';
 }
 
 export interface NodeAgentEnableResult {
   node: string;
   enabled: boolean;
   port: number;
+  scheme: 'http' | 'https';
   token: string;
   install_command: string; // Linux/macOS one-liner (install.sh, ROLE=agent)
   install_command_windows: string; // Windows PowerShell one-liner (install.ps1, ROLE=agent)
@@ -1186,11 +1191,11 @@ export async function getNodeAgent(name: string): Promise<NodeAgentStatus> {
   return res.json();
 }
 
-export async function enableNodeAgent(name: string, port: number): Promise<NodeAgentEnableResult> {
+export async function enableNodeAgent(name: string, port: number, scheme: 'http' | 'https' = 'http'): Promise<NodeAgentEnableResult> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ port }),
+    body: JSON.stringify({ port, scheme }),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to enable node agent'); }
   return res.json();

@@ -702,7 +702,7 @@ func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 		{Name: "gpu-0", URL: mockOllama.URL},
 	}, nil)
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()

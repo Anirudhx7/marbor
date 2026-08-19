@@ -49,7 +49,7 @@ func TestPollAgentHost_TLSMismatchSetsAgentTLSMismatch(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, agentPort, "")
+	r.SetNodeAgent("127.0.0.1", true, agentPort, "", "https")
 
 	wrongFP := "SHA256:" + strings.Repeat("0", 64)
 	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &wrongFP}) {
@@ -84,7 +84,7 @@ func TestPollAgentHost_SuccessClearsAgentTLSMismatch(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, agentPort, "")
+	r.SetNodeAgent("127.0.0.1", true, agentPort, "", "https")
 
 	wrongFP := "SHA256:" + strings.Repeat("0", 64)
 	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &wrongFP}) {
@@ -152,8 +152,8 @@ func TestMixedTLSAndPlaintextFleet_BothPollCorrectly(t *testing.T) {
 		{Name: "gpu-tls", URL: "https://127.0.0.1:1", Host: "127.0.0.1"},
 		{Name: "gpu-plain", URL: "http://localhost:1", Host: "localhost"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, tlsAgentPort, "")
-	r.SetNodeAgent("localhost", true, plainAgentPort, "")
+	r.SetNodeAgent("127.0.0.1", true, tlsAgentPort, "", "https")
+	r.SetNodeAgent("localhost", true, plainAgentPort, "", "http")
 
 	fp := certFingerprint(t, tlsAgentSrv)
 	if !r.PatchNode("gpu-tls", NodePatch{TLSFingerprint: &fp}) {
@@ -184,6 +184,64 @@ func TestMixedTLSAndPlaintextFleet_BothPollCorrectly(t *testing.T) {
 	_, _ = tlsPsSrv, plainPsSrv
 }
 
+// TestAgentSchemeIndependentOfRuntimeURL is the priority regression test for
+// the bug this fix addresses: enabling https:// for a node's Node Agent must
+// never change, or depend on, the node's runtime URL scheme. The runtime here
+// stays a plain http:// server the whole test (as most real runtimes -
+// Ollama, vLLM, etc. - are); only the Agent is configured for https://. Both
+// must poll successfully at the same time, and node.URL must be byte-for-byte
+// unchanged by the Agent's TLS pinning/poll cycle.
+func TestAgentSchemeIndependentOfRuntimeURL(t *testing.T) {
+	psSrv := nodePSServer() // plain http runtime - never upgraded to TLS
+	defer psSrv.Close()
+	agentSrv := agentTLSTelemetryServer() // Agent, independently https
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	const runtimeURL = "http://127.0.0.1:1"
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: runtimeURL, Host: "127.0.0.1"},
+	}, nil)
+	r.SetNodeAgent("127.0.0.1", true, agentPort, "", "https")
+
+	fp := certFingerprint(t, agentSrv)
+	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &fp}) {
+		t.Fatal("PatchNode returned false")
+	}
+
+	r.nodes[0].mu.RLock()
+	urlAfterPin := r.nodes[0].URL
+	r.nodes[0].mu.RUnlock()
+	if urlAfterPin != runtimeURL {
+		t.Fatalf("node.URL after pinning the Agent's fingerprint = %q, want unchanged %q - pinning the Agent's certificate must never touch the runtime URL", urlAfterPin, runtimeURL)
+	}
+
+	// Poll the runtime health path directly against psSrv (pollNode normally
+	// reads node.URL, which here is the placeholder http://127.0.0.1:1 - psSrv
+	// is a separate real listener standing in for "the runtime is reachable
+	// over plain http", proven independently of the agent poll below).
+	pollResp, err := http.Get(psSrv.URL + "/api/ps")
+	if err != nil {
+		t.Fatalf("runtime (plain http) unreachable: %v", err)
+	}
+	pollResp.Body.Close()
+
+	r.pollAgentHosts()
+
+	r.nodes[0].mu.RLock()
+	agentPresent, agentMismatch, urlAfterPoll := r.nodes[0].AgentPresent, r.nodes[0].AgentTLSMismatch, r.nodes[0].URL
+	r.nodes[0].mu.RUnlock()
+	if !agentPresent {
+		t.Error("AgentPresent = false, want true - the https:// Agent poll should have succeeded")
+	}
+	if agentMismatch {
+		t.Error("AgentTLSMismatch = true, want false with the correct pin")
+	}
+	if urlAfterPoll != runtimeURL {
+		t.Errorf("node.URL after an Agent poll cycle = %q, want unchanged %q - polling the Agent must never mutate the runtime URL", urlAfterPoll, runtimeURL)
+	}
+}
+
 // TestPollAgentHost_GenericFailureDoesNotSetTLSMismatch verifies a plain
 // unreachable-node failure (nothing listening on the agent port, and the
 // node isn't even https://) never gets misreported as a TLS mismatch - the
@@ -197,7 +255,7 @@ func TestPollAgentHost_GenericFailureDoesNotSetTLSMismatch(t *testing.T) {
 	}, nil)
 	// Port 1 is not a real listening agent - SetNodeAgent enables polling
 	// against it, which will fail as an ordinary connection error.
-	r.SetNodeAgent("127.0.0.1", true, 1, "")
+	r.SetNodeAgent("127.0.0.1", true, 1, "", "http")
 
 	r.pollAgentHosts()
 
