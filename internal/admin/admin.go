@@ -4755,7 +4755,10 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
 		return
 	}
-	// Persist the patch changes to SQLite
+	// Persist the patch changes to SQLite. Note: keyRecord stays nil (a
+	// deliberate no-op, not an error) when running with no store attached
+	// (NewServer's NopStore fallback, e.g. cmd/demo) - the in-memory
+	// auth.PatchKey above still applies in that mode.
 	var keyRecord *store.KeyRecord
 	keys, err := s.st.AllKeys()
 	if err == nil {

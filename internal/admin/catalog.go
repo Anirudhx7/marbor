@@ -1151,7 +1151,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	repoID := r.URL.Query().Get("id")
 	if repoID == "" {
-		http.Error(w, `{"error":"missing id parameter"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "missing id parameter")
 		return
 	}
 
