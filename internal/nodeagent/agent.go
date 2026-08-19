@@ -80,11 +80,11 @@ func runAgent(args []string, version string) {
 	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
 	keyFlag := fs.String("key", "", "TLS private key file path, paired with --cert")
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "ollama-mesh agent - Node Agent: node-local execution point for the mesh\n\n")
-		fmt.Fprintf(w, "Usage:\n  ollama-mesh agent --port=<port>   (runs in the foreground; set the TOKEN env var)\n")
-		fmt.Fprintf(w, "  ollama-mesh agent service install --port=<port>\n")
+		fmt.Fprintf(w, "ollama-mesh-agent - Node Agent: node-local execution point for the mesh\n\n")
+		fmt.Fprintf(w, "Usage:\n  ollama-mesh-agent --port=<port>   (runs in the foreground; set the TOKEN env var)\n")
+		fmt.Fprintf(w, "  ollama-mesh-agent service install --port=<port>\n")
 		fmt.Fprintf(w, "                                                     (installs as a persistent OS service)\n")
-		fmt.Fprintf(w, "  ollama-mesh agent service {uninstall|start|stop|status}\n\nFlags:\n")
+		fmt.Fprintf(w, "  ollama-mesh-agent service {uninstall|start|stop|status}\n\nFlags:\n")
 		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
@@ -147,14 +147,14 @@ func runAgent(args []string, version string) {
 	// exactly like neither being set, since the listener can't serve HTTPS
 	// with only one of a cert/key pair anyway.
 	if *certFlag != "" && *keyFlag != "" {
-		log.Printf("ollama-mesh agent %s listening on %s over HTTPS (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
+		log.Printf("ollama-mesh-agent %s listening on %s over HTTPS (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 		if err := http.ListenAndServeTLS(addr, *certFlag, *keyFlag, srv.Handler()); err != nil {
 			winexit.Fatalf("nodeagent: %v", err)
 		}
 		return
 	}
 
-	log.Printf("ollama-mesh agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
+	log.Printf("ollama-mesh-agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		winexit.Fatalf("nodeagent: %v", err)
 	}
