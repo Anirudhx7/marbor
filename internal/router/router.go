@@ -715,6 +715,11 @@ type NodeAgentConfig struct {
 	Enabled bool
 	Port    int
 	Token   string `json:"-"`
+	// Scheme is the agent's own transport scheme ("http" or "https"),
+	// independent of the node's runtime URL scheme - see
+	// store.NodeAgentRecord.Scheme's doc comment. Always "http" or "https";
+	// SetNodeAgent defaults it to "http" if passed empty.
+	Scheme string
 }
 
 // SetNodeAgent sets the per-HOST Node Agent poll config (admin-toggled,
@@ -722,7 +727,7 @@ type NodeAgentConfig struct {
 // the host from the map entirely so pollAgentHost's "no agent configured"
 // branch runs on the next poll, clearing any previously-reported agent
 // fields for every node on that host.
-func (r *Router) SetNodeAgent(host string, enabled bool, port int, token string) {
+func (r *Router) SetNodeAgent(host string, enabled bool, port int, token string, scheme string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.nodeAgents == nil {
@@ -732,7 +737,10 @@ func (r *Router) SetNodeAgent(host string, enabled bool, port int, token string)
 		delete(r.nodeAgents, host)
 		return
 	}
-	r.nodeAgents[host] = NodeAgentConfig{Enabled: true, Port: port, Token: token}
+	if scheme == "" {
+		scheme = "http"
+	}
+	r.nodeAgents[host] = NodeAgentConfig{Enabled: true, Port: port, Token: token, Scheme: scheme}
 }
 
 // NodeAgentSetting returns the agent config for the HOST that name's node
@@ -747,6 +755,18 @@ func (r *Router) NodeAgentSetting(name string) (NodeAgentConfig, bool) {
 	if !ok {
 		return NodeAgentConfig{}, false
 	}
+	cfg, ok := r.nodeAgents[host]
+	return cfg, ok
+}
+
+// NodeAgentSettingByHost returns the agent config for a bare host string
+// directly (no node-name resolution) - for callers like validateTLSPatch
+// that must check the config for a node's RESULTING host (post-patch),
+// which a name-based lookup cannot express since name still resolves to the
+// node's CURRENT (pre-mutation) host.
+func (r *Router) NodeAgentSettingByHost(host string) (NodeAgentConfig, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	cfg, ok := r.nodeAgents[host]
 	return cfg, ok
 }

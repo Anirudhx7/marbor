@@ -40,6 +40,7 @@ func TestHandlePatchNode_SetsTLSFingerprint(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1))
@@ -80,13 +81,24 @@ func TestHandlePatchNode_RejectsInvalidTLSFingerprintFormat(t *testing.T) {
 	}
 }
 
-// TestHandlePatchNode_RejectsNoDowngrade verifies section 7: once a node has
-// a pinned fingerprint, a patch that would leave it with a non-https:// URL
-// must be rejected, not silently accepted.
-func TestHandlePatchNode_RejectsNoDowngrade(t *testing.T) {
+// TestHandlePatchNode_URLSchemeAloneDoesNotAffectAgentPin verifies the core
+// behavior this fix's decoupling was built for: section 7's no-downgrade
+// rule is keyed off the Node Agent's OWN scheme for the resulting host, not
+// the node's runtime URL scheme. Before this fix, the pinned fingerprint was
+// (incorrectly) tied to the runtime URL's own https-ness, so flipping the
+// URL to http:// while pinned was rejected as a "downgrade" - even though
+// the pinned certificate belongs to the Agent, which is unaffected by the
+// runtime URL at all. Since the Agent here stays configured for https:// on
+// this same host throughout, changing the runtime URL's scheme alone must be
+// allowed and must not touch the existing pin. (A move to a host whose Agent
+// is NOT https-configured is still rejected - see
+// TestHandlePatchNode_RejectsURLOnlyMoveOntoConflictingSiblingHost and
+// TestHandlePatchNode_PinGatingIgnoresCurrentHostAgentScheme.)
+func TestHandlePatchNode_URLSchemeAloneDoesNotAffectAgentPin(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -94,16 +106,19 @@ func TestHandlePatchNode_RejectsNoDowngrade(t *testing.T) {
 	}
 
 	rec := patchNodeRequest(t, s, "gpu-0", `{"url":"http://gpu-0:9091"}`)
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("downgrade attempt: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("runtime-URL-only scheme change (Agent stays https-configured): status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
 
 	nodes := r.Nodes()
 	nodes[0].RLock()
 	url, fp := nodes[0].URL, nodes[0].TLSFingerprint
 	nodes[0].RUnlock()
-	if url != "https://gpu-0:9091" || fp != validFP1 {
-		t.Errorf("node state after rejected downgrade: URL=%q TLSFingerprint=%q, want unchanged", url, fp)
+	if url != "http://gpu-0:9091" {
+		t.Errorf("URL = %q, want http://gpu-0:9091 (runtime URL scheme change must be honored)", url)
+	}
+	if fp != validFP1 {
+		t.Errorf("TLSFingerprint = %q, want unchanged %q - the Agent's pin must survive a runtime-URL-only scheme change", fp, validFP1)
 	}
 }
 
@@ -116,6 +131,7 @@ func TestHandlePatchNode_AllowsDowngradeWhenClearingFingerprintInSameRequest(t *
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -152,6 +168,7 @@ func TestHandlePatchNode_ClearsExistingFingerprint(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -184,6 +201,7 @@ func TestHandlePatchNode_JSONNullIsNoOpNotClear(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -214,6 +232,7 @@ func TestHandlePatchNode_RejectsSiblingFingerprintConflict(t *testing.T) {
 		{Name: "gpu-0", URL: "https://shared-host:11434"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
+	r.SetNodeAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	// Confirm the fixture actually produces siblings before asserting on the
@@ -256,6 +275,7 @@ func TestHandlePatchNode_AllowsIdenticalSiblingFingerprint(t *testing.T) {
 		{Name: "gpu-0", URL: "https://shared-host:11434"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
+	r.SetNodeAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -290,6 +310,7 @@ func TestHandleNodeTLSProbe_WithoutPin(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: srv.URL},
 	}, nil)
+	r.SetNodeAgent("127.0.0.1", true, mustPortForTest(t, srv.URL), "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/tls-probe", nil)
@@ -340,7 +361,7 @@ func TestHandleNodeTLSProbe_NeverSendsBearerToken(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: srv.URL},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, mustPortForTest(t, srv.URL), "super-secret-agent-token")
+	r.SetNodeAgent("127.0.0.1", true, mustPortForTest(t, srv.URL), "super-secret-agent-token", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/tls-probe", nil)
@@ -388,6 +409,8 @@ func TestHandlePatchNode_RejectsURLOnlyMoveOntoConflictingSiblingHost(t *testing
 		{Name: "gpu-0", URL: "https://solo-host:9091"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
+	r.SetNodeAgent("solo-host", true, 9200, "", "https")
+	r.SetNodeAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -430,6 +453,8 @@ func TestHandlePatchNode_AllowsURLOnlyMoveOntoIdenticalSiblingFingerprint(t *tes
 		{Name: "gpu-0", URL: "https://solo-host:9091"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
+	r.SetNodeAgent("solo-host", true, 9200, "", "https")
+	r.SetNodeAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -470,6 +495,8 @@ func TestHandlePatchNode_AllowsURLOnlyMoveOntoHostWithNoPinnedSibling(t *testing
 		{Name: "gpu-0", URL: "https://solo-host:9091"},
 		{Name: "gpu-1", URL: "https://empty-host:11435"},
 	}, nil)
+	r.SetNodeAgent("solo-host", true, 9200, "", "https")
+	r.SetNodeAgent("empty-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -535,6 +562,8 @@ func TestHandlePatchNode_ConcurrentPatchesCannotProduceConflictingSiblingPins(t 
 		{Name: "gpu-D", URL: "https://host-A:9092"},
 		{Name: "gpu-C", URL: "https://host-C:9093"},
 	}, nil)
+	r.SetNodeAgent("host-A", true, 9200, "", "https")
+	r.SetNodeAgent("host-C", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-A", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -594,6 +623,65 @@ func TestHandlePatchNode_ConcurrentPatchesCannotProduceConflictingSiblingPins(t 
 	}
 }
 
+// TestHandlePatchNode_PinGatingUsesResultingHostAgentScheme is the regression
+// test for a bug caught and fixed during this same change: the Agent-scheme
+// gate on pinning must be evaluated against the PATCH's RESULTING host, never
+// the node's CURRENT (pre-patch) host - a URL-only move can land a node on a
+// completely different host with a different (or no) Agent configured, and a
+// name-based lookup only ever resolves to the node's stale, current host.
+// gpu-0 starts on old-host, which has NO Agent configured at all; a single
+// request both moves it to new-host (Agent configured for https) AND pins a
+// fingerprint. This must succeed - if the check incorrectly used old-host
+// (has no Agent), it would wrongly reject; if it correctly uses new-host
+// (Agent scheme https), it succeeds.
+func TestHandlePatchNode_PinGatingUsesResultingHostAgentScheme(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://old-host:9091"},
+	}, nil)
+	r.SetNodeAgent("new-host", true, 9200, "", "https")
+	s := NewServer(r, nil, config.Config{})
+
+	rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"url":"https://new-host:9091","tls_fingerprint":%q}`, validFP1))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("move+pin onto a host with a correctly-configured https Agent: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	nodes[0].RLock()
+	url, host, fp := nodes[0].URL, nodes[0].Host, nodes[0].TLSFingerprint
+	nodes[0].RUnlock()
+	if url != "https://new-host:9091" || host != "new-host" || fp != validFP1 {
+		t.Errorf("gpu-0 state after move+pin: URL=%q Host=%q TLSFingerprint=%q, want URL=https://new-host:9091 Host=new-host TLSFingerprint=%q", url, host, fp, validFP1)
+	}
+}
+
+// TestHandlePatchNode_PinGatingIgnoresCurrentHostAgentScheme is the inverse
+// of the test above: gpu-0 starts on a host that DOES have an https Agent
+// configured, but the patch moves it to a DIFFERENT host with NO Agent
+// configured at all. The pin must be rejected - proving the gate is keyed
+// off the resulting host, not (incorrectly) satisfied by the node's stale
+// current host just because a name-based lookup would have found it there.
+func TestHandlePatchNode_PinGatingIgnoresCurrentHostAgentScheme(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "https://configured-host:9091"},
+	}, nil)
+	r.SetNodeAgent("configured-host", true, 9200, "", "https")
+	s := NewServer(r, nil, config.Config{})
+
+	rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"url":"https://unconfigured-host:9091","tls_fingerprint":%q}`, validFP1))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("move+pin onto a host with no Agent configured: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	nodes[0].RLock()
+	url, host, fp := nodes[0].URL, nodes[0].Host, nodes[0].TLSFingerprint
+	nodes[0].RUnlock()
+	if url != "https://configured-host:9091" || host != "configured-host" || fp != "" {
+		t.Errorf("gpu-0 state after rejected move+pin: URL=%q Host=%q TLSFingerprint=%q, want unchanged URL=https://configured-host:9091 Host=configured-host TLSFingerprint=\"\"", url, host, fp)
+	}
+}
+
 // TestHandleNodeTLSProbe_RejectsNonHTTPSNode verifies the probe refuses to
 // run against a plain http:// node rather than attempting a TLS handshake
 // that could never succeed.
@@ -610,5 +698,136 @@ func TestHandleNodeTLSProbe_RejectsNonHTTPSNode(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestHandleEnableNodeAgent_RejectsSchemeDowngradeWhilePinned verifies P24's
+// no-downgrade rule (section 7) at its actual enforcement point now that a
+// pinned fingerprint describes the Agent's own scheme, not the runtime's:
+// reconfiguring the Agent from https back to http while a fingerprint is
+// still pinned for that host must be rejected (409), not silently accepted
+// and left stranding an orphaned pin the next poll would fail closed on.
+func TestHandleEnableNodeAgent_RejectsSchemeDowngradeWhilePinned(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	s := NewServer(r, nil, config.Config{})
+
+	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("seed pin: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9200,"scheme":"http"}`))
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handleEnableNodeAgent(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("agent scheme downgrade while pinned: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	nodes[0].RLock()
+	fp := nodes[0].TLSFingerprint
+	nodes[0].RUnlock()
+	if fp != validFP1 {
+		t.Errorf("TLSFingerprint = %q, want %q unchanged after rejected downgrade", fp, validFP1)
+	}
+}
+
+// TestHandleEnableNodeAgent_ReconfigureOmittingSchemeKeepsExisting verifies
+// the adversarial-review fix: a reconfigure call (e.g. rotating the port)
+// that omits "scheme" entirely must NOT silently reset an existing https
+// Agent back to http - it must keep the persisted scheme unless the caller
+// explicitly says otherwise.
+func TestHandleEnableNodeAgent_ReconfigureOmittingSchemeKeepsExisting(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	// Enable with https explicitly.
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9200,"scheme":"https"}`))
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handleEnableNodeAgent(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("initial enable: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Reconfigure (e.g. rotate port) WITHOUT a "scheme" field at all.
+	req2 := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9201}`))
+	req2.SetPathValue("name", "gpu-0")
+	rec2 := httptest.NewRecorder()
+	s.handleEnableNodeAgent(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("reconfigure: status = %d, want 200, body=%s", rec2.Code, rec2.Body.String())
+	}
+
+	var resp struct {
+		Scheme string `json:"scheme"`
+	}
+	if err := json.Unmarshal(rec2.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Scheme != "https" {
+		t.Errorf("scheme after omitted-scheme reconfigure = %q, want %q (must not silently downgrade)", resp.Scheme, "https")
+	}
+
+	cfg, ok := r.NodeAgentSetting("gpu-0")
+	if !ok || cfg.Scheme != "https" {
+		t.Errorf("router NodeAgentConfig.Scheme = %q (ok=%v), want %q", cfg.Scheme, ok, "https")
+	}
+}
+
+// TestHandleDisableNodeAgent_ClearsPinnedFingerprint verifies the
+// adversarial-review fix: disabling the Node Agent entirely must clear any
+// pinned TLS fingerprint on that host's nodes, not leave a stale/inert pin
+// that shows as "protected" while nothing ever verifies it again.
+func TestHandleDisableNodeAgent_ClearsPinnedFingerprint(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	s := NewServer(r, nil, config.Config{})
+
+	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
+		t.Fatalf("seed pin: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/nodes/gpu-0/agent", nil)
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handleDisableNodeAgent(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("disable: status = %d, want 204, body=%s", rec.Code, rec.Body.String())
+	}
+
+	nodes := r.Nodes()
+	nodes[0].RLock()
+	fp := nodes[0].TLSFingerprint
+	nodes[0].RUnlock()
+	if fp != "" {
+		t.Errorf("TLSFingerprint after Agent disable = %q, want cleared (\"\")", fp)
+	}
+}
+
+// TestHandleEnableNodeAgent_AllowsSchemeDowngradeWhenNoPin verifies the
+// downgrade guard only fires when a fingerprint is actually pinned - a node
+// with an Agent enabled but never pinned (or already cleared) can freely
+// move between http and https.
+func TestHandleEnableNodeAgent_AllowsSchemeDowngradeWhenNoPin(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
+	}, nil)
+	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	s := NewServer(r, nil, config.Config{})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9200,"scheme":"http"}`))
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handleEnableNodeAgent(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("agent scheme downgrade with no pin: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
 }

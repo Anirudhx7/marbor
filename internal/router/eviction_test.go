@@ -209,7 +209,7 @@ func TestUnloadModelsScheduledDispatchesToAgentWhenCapable(t *testing.T) {
 	// so it matches the key SetNodeAgent is called with below (nodeAgents is
 	// keyed by Host, not Name - see SetNodeAgent's doc comment).
 	r := &Router{nodes: []*NodeState{{Name: "n1", URL: nodeSrv.URL, Host: "n1", Healthy: true}}}
-	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token")
+	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token", "http")
 	r.nodes[0].AgentCapabilities = []string{"models.unload"}
 
 	r.UnloadModels(context.Background(), "n1", []string{"org/repo"})
@@ -247,7 +247,7 @@ func TestUnloadModelsScheduledAgentDownNodeSkipped(t *testing.T) {
 	fmt.Sscanf(strings.TrimPrefix(agentSrv.URL, "http://127.0.0.1:"), "%d", &agentPort)
 
 	r := &Router{nodes: []*NodeState{{Name: "n1", URL: "http://localhost:11434", Host: "n1", Healthy: false}}}
-	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token")
+	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token", "http")
 	r.nodes[0].AgentCapabilities = []string{"models.unload"}
 
 	r.UnloadModels(context.Background(), "n1", []string{"some-model"})
@@ -276,7 +276,7 @@ func TestUnloadModelsScheduledNoAgentCapabilityUsesDirectPath(t *testing.T) {
 	defer nodeSrv.Close()
 
 	r := &Router{nodes: []*NodeState{{Name: "n1", URL: nodeSrv.URL, Host: "n1", Healthy: true}}}
-	r.SetNodeAgent("n1", true, 9999, "agent-secret-token")
+	r.SetNodeAgent("n1", true, 9999, "agent-secret-token", "http")
 	r.nodes[0].AgentCapabilities = []string{"status", "models.pull"} // no "models.unload"
 
 	r.UnloadModels(context.Background(), "n1", []string{"llama3"})
@@ -299,7 +299,7 @@ func TestBuildAgentUnloadURL_EscapesReservedCharacters(t *testing.T) {
 		"org/my repo":  "http://localhost:9911/v1/models/org/my%20repo",
 	}
 	for model, want := range cases {
-		got, err := buildAgentUnloadURL("http://localhost:11434", 9911, model)
+		got, err := buildAgentUnloadURL("http://localhost:11434", 9911, "http", model)
 		if err != nil {
 			t.Fatalf("buildAgentUnloadURL(%q): %v", model, err)
 		}

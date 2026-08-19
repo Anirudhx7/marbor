@@ -648,9 +648,9 @@ func TestHandleModelCatalog_Capabilities(t *testing.T) {
 	}, nil)
 
 	enabledHost, _ := r.NodeHost("agent-enabled")
-	r.SetNodeAgent(enabledHost, true, 9999, "token-a")
+	r.SetNodeAgent(enabledHost, true, 9999, "token-a", "http")
 	disabledHost, _ := r.NodeHost("agent-disabled")
-	r.SetNodeAgent(disabledHost, false, 9999, "token-b")
+	r.SetNodeAgent(disabledHost, false, 9999, "token-b", "http")
 
 	for _, n := range r.Nodes() {
 		n.Lock()

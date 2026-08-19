@@ -369,6 +369,14 @@ type NodeAgentRecord struct {
 	// matching those rows' actual (unprefixed, full-scope-by-fallback)
 	// tokens.
 	Scope string `json:"scope"`
+	// Scheme is the Node Agent's OWN transport scheme ("http" or "https") -
+	// independent of the node's runtime URL (NodeState.URL/runtime_nodes.url)
+	// scheme. Before this field existed, every Node Agent URL builder
+	// derived its scheme from the runtime URL instead, so enabling HTTPS for
+	// the agent silently switched the runtime endpoint to https:// too and
+	// broke runtimes (Ollama, vLLM, etc.) that only serve plain HTTP. Always
+	// "http" or "https"; defaults to "http" for rows predating this field.
+	Scheme string `json:"scheme"`
 }
 
 // NodeControlRecord is the per-node ControlDriver configuration (P43) - how

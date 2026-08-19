@@ -83,12 +83,16 @@ func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*Node
 		return
 	}
 
-	// Host is a bare hostname (NodeState.Host), but the scheme (http/https)
-	// isn't tracked at the host level - derive it from any one member's own
-	// URL, same source buildAgentURL used per-node before this change.
-	members[0].RLock()
-	scheme := schemeOf(members[0].URL)
-	members[0].RUnlock()
+	// scheme is the agent's OWN transport scheme (cfg.Scheme) - independent
+	// of any member's runtime URL scheme. Node Agent URL construction used
+	// to derive this from the runtime URL instead, which meant enabling
+	// HTTPS for the agent also silently switched the runtime endpoint to
+	// https:// and broke runtimes that only serve plain HTTP. See
+	// store.NodeAgentRecord.Scheme's doc comment.
+	scheme := cfg.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
 
 	agentURL, err := buildAgentURL(host, cfg.Port, scheme)
 	if err != nil {
@@ -359,17 +363,6 @@ func portOf(rawURL string) int {
 		return 0
 	}
 	return port
-}
-
-// schemeOf returns rawURL's scheme, defaulting to "http" - used to derive a
-// host's agent URL scheme from one of its member nodes' own URLs, since
-// scheme isn't tracked at the host level itself.
-func schemeOf(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil || u.Scheme == "" {
-		return "http"
-	}
-	return u.Scheme
 }
 
 // agentUnreachable records a failed agent poll and, once AgentFailures

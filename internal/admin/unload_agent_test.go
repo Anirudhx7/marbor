@@ -40,7 +40,7 @@ func newAgentUnloadTestServer(t *testing.T, mockAgent *httptest.Server) *Server 
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -207,7 +207,7 @@ func TestBuildAgentUnloadURL_EscapesReservedCharacters(t *testing.T) {
 		"org/my repo":  "http://localhost:9911/v1/models/org/my%20repo",
 	}
 	for model, want := range cases {
-		got, err := buildAgentUnloadURL("http://localhost:11434", 9911, model)
+		got, err := buildAgentUnloadURL("http://localhost:11434", 9911, "http", model)
 		if err != nil {
 			t.Fatalf("buildAgentUnloadURL(%q): %v", model, err)
 		}

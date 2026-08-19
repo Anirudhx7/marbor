@@ -508,6 +508,11 @@ export function GPUNodes() {
   const [agentNode, setAgentNode] = useState<GPUNode | null>(null);
   const [agentStatus, setAgentStatus] = useState<NodeAgentStatus | null>(null);
   const [agentPort, setAgentPort] = useState('11435');
+  // agentUseHttps is the Node Agent's OWN transport scheme toggle -
+  // independent of a node's runtime URL scheme (editUseHttps below, which
+  // governs the Ollama/vLLM/etc. endpoint). Enabling this does not touch
+  // the node's runtime URL at all.
+  const [agentUseHttps, setAgentUseHttps] = useState(false);
   const [agentInstallCommand, setAgentInstallCommand] = useState<{ unix: string; windows: string } | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
@@ -589,8 +594,9 @@ export function GPUNodes() {
     setLogsError(null);
     setLogsLines(null);
     if (demoMode) {
-      setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435 });
+      setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435, scheme: 'http' });
       setAgentPort('11435');
+      setAgentUseHttps(false);
       setControlStatus({
         node: node.name,
         configured: true,
@@ -604,6 +610,7 @@ export function GPUNodes() {
       const status = await getNodeAgent(node.name);
       setAgentStatus(status);
       setAgentPort(String(status.port || 11435));
+      setAgentUseHttps(status.scheme === 'https');
     } catch (e: any) {
       setAgentStatus({ node: node.name, enabled: false, port: 0 });
       setAgentError(e?.message || 'Failed to fetch node agent status');
@@ -760,10 +767,11 @@ export function GPUNodes() {
     }
     setAgentBusy(true);
     setAgentError(null);
+    const scheme: 'http' | 'https' = agentUseHttps ? 'https' : 'http';
     if (demoMode) {
       const enrollCode = `demo-${Math.random().toString(36).slice(2, 10)}`;
       const meshUrl = window.location.origin;
-      setAgentStatus({ node: agentNode.name, enabled: true, port });
+      setAgentStatus({ node: agentNode.name, enabled: true, port, scheme });
       setAgentInstallCommand({
         unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
         windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
@@ -787,8 +795,8 @@ export function GPUNodes() {
       return;
     }
     try {
-      const res = await enableNodeAgent(agentNode.name, port);
-      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port });
+      const res = await enableNodeAgent(agentNode.name, port, scheme);
+      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port, scheme: res.scheme });
       setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
       await loadNodes();
     } catch (e: any) {
@@ -816,7 +824,7 @@ export function GPUNodes() {
     try {
       const res = await regenerateNodeAgentToken(agentNode.name);
       setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
-      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port });
+      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port, scheme: res.scheme });
     } catch (e: any) {
       setAgentError(e?.message || 'Failed to regenerate node agent token');
     } finally {
@@ -1183,6 +1191,11 @@ export function GPUNodes() {
   const [tlsResetting, setTlsResetting] = useState(false);
   const [tlsExpectedFingerprint, setTlsExpectedFingerprint] = useState('');
   const [tlsStatusCmdCopied, setTlsStatusCmdCopied] = useState(false);
+  // editAgentScheme mirrors this node's Node Agent's OWN scheme (fetched
+  // fresh whenever the modal opens) - TLS fingerprint pinning gates on this,
+  // NOT editUseHttps (which only controls the runtime URL's scheme and is
+  // otherwise unrelated to the Agent's transport).
+  const [editAgentScheme, setEditAgentScheme] = useState<'http' | 'https' | null>(null);
   // Normalized for comparison only - a pasted value differing merely in case
   // or wrapped whitespace/newlines (common with terminal copy) must not read
   // as a mismatch; the fingerprint pinned is always tlsProbedFingerprint
@@ -1206,6 +1219,14 @@ export function GPUNodes() {
     setTlsProbedFingerprint(null);
     setTlsProbeError('');
     setTlsExpectedFingerprint('');
+    setEditAgentScheme(null);
+    if (demoMode) {
+      setEditAgentScheme(node.agentPresent ? 'http' : null);
+    } else {
+      getNodeAgent(node.name)
+        .then(status => setEditAgentScheme(status.enabled ? (status.scheme || 'http') : null))
+        .catch(() => setEditAgentScheme(null));
+    }
   };
 
   const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | 'invalid' | null => {
@@ -1544,7 +1565,7 @@ export function GPUNodes() {
                 onChange={(e) => setNewNode({ ...newNode, useHttps: e.target.checked })}
                 className="rounded border-border bg-background text-primary focus:ring-primary/20"
               />
-              <span className="text-xs text-muted-foreground">Use HTTPS (requires a TLS-capable Node Agent already installed on this host)</span>
+              <span className="text-xs text-muted-foreground">Use HTTPS for this node's inference runtime endpoint (only if the runtime itself - Ollama, vLLM, etc. - serves TLS on this port; most don't by default). This is separate from the Node Agent's own HTTPS setting, which is configured after adding the node.</span>
             </label>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1661,7 +1682,7 @@ export function GPUNodes() {
               onChange={(e) => setEditUseHttps(e.target.checked)}
               className="rounded border-border bg-background text-primary focus:ring-primary/20"
             />
-            <span className="text-xs text-muted-foreground">Use HTTPS (requires a TLS-capable Node Agent already installed on this host)</span>
+            <span className="text-xs text-muted-foreground">Use HTTPS for this node's inference runtime endpoint (only if the runtime itself - Ollama, vLLM, etc. - serves TLS on this port; most don't by default). This is separate from the Node Agent's own HTTPS setting in the Agent panel.</span>
           </label>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
@@ -1767,9 +1788,11 @@ export function GPUNodes() {
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               TLS Certificate Fingerprint
             </label>
-            {!editUseHttps ? (
+            {editAgentScheme !== 'https' ? (
               <p className="text-xs text-muted-foreground">
-                Switch this node to HTTPS above to enable certificate pinning.
+                Enable HTTPS for this node's Node Agent (in the Agent panel, not the runtime URL
+                above) to enable certificate pinning. Pinning secures the mesh-to-Agent connection
+                only - it is unrelated to this node's runtime URL/scheme.
               </p>
             ) : (
               <div className="space-y-2">
@@ -2183,6 +2206,24 @@ export function GPUNodes() {
                   Port the agent process listens on for the mesh to poll (default 11435).
                 </p>
               </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="agent-use-https"
+                  type="checkbox"
+                  checked={agentUseHttps}
+                  onChange={(e) => setAgentUseHttps(e.target.checked)}
+                  className="h-4 w-4 rounded border-border"
+                />
+                <label htmlFor="agent-use-https" className="text-sm text-foreground">
+                  Use HTTPS for the Agent connection
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground -mt-2">
+                Encrypts the mesh's connection to this node's Agent only - this node's inference
+                runtime endpoint is unaffected and keeps its own URL/scheme. After enabling, open
+                Edit Node and use "Probe &amp; Pin" to verify and pin the Agent's certificate
+                fingerprint (required - an unpinned Agent connection will be rejected).
+              </p>
               <div className="flex justify-end pt-2">
                 <button
                   onClick={handleEnableAgent}
@@ -2198,7 +2239,7 @@ export function GPUNodes() {
           {agentStatus && agentStatus.enabled && (
             <div className="space-y-3">
               <p className="text-sm text-foreground">
-                Enabled on port <span className="font-mono">{agentStatus.port}</span>.
+                Enabled on port <span className="font-mono">{agentStatus.port}</span> ({agentStatus.scheme === 'https' ? 'HTTPS' : 'HTTP'}).
               </p>
               {agentNode?.agentPresent && (
                 <div className="text-xs text-muted-foreground space-y-1 bg-secondary/40 rounded-lg p-3">

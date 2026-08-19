@@ -65,7 +65,7 @@ func TestUpdateNodeURLReDerivesImplicitHost(t *testing.T) {
 		t.Fatalf("Host after UpdateNodeURL = %q, want localhost (re-derived from new URL)", got)
 	}
 
-	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "")
+	r.SetNodeAgent(r.nodes[0].Host, true, agentPort, "", "http")
 	r.pollAgentHosts()
 
 	r.nodes[0].mu.RLock()
@@ -96,7 +96,7 @@ func TestUpdateNodeURLPreservesExplicitHost(t *testing.T) {
 		t.Fatalf("initial Host = %q, want localhost (explicit override)", got)
 	}
 
-	r.SetNodeAgent("localhost", true, agentPort, "")
+	r.SetNodeAgent("localhost", true, agentPort, "", "http")
 
 	if err := r.UpdateNodeURL("gpu-0", psSrv2.URL); err != nil {
 		t.Fatalf("UpdateNodeURL: %v", err)
