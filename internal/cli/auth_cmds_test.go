@@ -358,6 +358,100 @@ func TestRun_Logout_RemovesSessionAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRun_Logout_CallsServerLogoutAndDeletesSession(t *testing.T) {
+	withTempConfigDir(t)
+
+	var gotMethod, gotPath, gotAuth string
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	if err := saveSession(savedSession{Server: srv.URL, Token: "tok"}); err != nil {
+		t.Fatalf("saveSession: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"logout", "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if calls != 1 {
+		t.Fatalf("expected exactly one server call, got %d", calls)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/logout" {
+		t.Errorf("expected POST /logout, got %s %s", gotMethod, gotPath)
+	}
+	if gotAuth != "Bearer tok" {
+		t.Errorf("expected Bearer tok, got %q", gotAuth)
+	}
+	if s, _ := loadSession(); s != nil {
+		t.Fatalf("expected local session to be removed, got %+v", s)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("--json output did not parse: %v (%s)", err, stdout.String())
+	}
+	if out["ok"] != true || out["server_logout"] != true {
+		t.Errorf("unexpected JSON output: %+v", out)
+	}
+}
+
+func TestRun_Logout_ServerCallFails_StillDeletesSessionAndExitsOK(t *testing.T) {
+	withTempConfigDir(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer srv.Close()
+
+	if err := saveSession(savedSession{Server: srv.URL, Token: "tok"}); err != nil {
+		t.Fatalf("saveSession: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"logout"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("a failed server-side logout must not fail the command - expected exit %d, got %d", ExitOK, code)
+	}
+	if s, _ := loadSession(); s != nil {
+		t.Fatalf("expected local session to be removed despite the server failure, got %+v", s)
+	}
+	if !strings.Contains(stderr.String(), "warning") {
+		t.Errorf("expected a warning on stderr about the failed server-side logout, got %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "warning") {
+		t.Errorf("warning must go to stderr, not stdout, got %q", stdout.String())
+	}
+}
+
+func TestRun_Logout_NoSession_NoOpAndNoHTTPCall(t *testing.T) {
+	withTempConfigDir(t)
+
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"logout"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("logout with no existing session must still be a no-op success - expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if calls != 0 {
+		t.Fatalf("expected zero HTTP calls when there is no session to log out of, got %d", calls)
+	}
+}
+
 func TestRun_Whoami_NotLoggedIn(t *testing.T) {
 	withTempConfigDir(t)
 

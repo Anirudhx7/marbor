@@ -1,0 +1,32 @@
+ollama-mesh - CLI client for the ollama-mesh Admin API
+
+Usage:
+  ollama-mesh <command> [flags]
+
+Commands:
+  version   print CLI and (if reachable) server version
+  status    print mesh health/status summary
+  login     authenticate once and save the session locally (recommended)
+  logout    remove the saved session
+  whoami    show the CLI's saved identity (live-verified)
+  nodes     list nodes known to the mesh
+  models    fleet-wide list, or pull/delete/unload/list on one node
+  runtime   start/stop/restart/logs/drain/undrain/health on one node
+  node      node control driver operations
+  key       per-API-key local/cloud routing overrides
+  spill     show per-key, per-provider local-vs-cloud request counts
+  requests  inspect routing decisions for past requests
+
+Run "ollama-mesh <command> --help" for the full list of actions and flags for
+that command.
+
+Global flags:
+  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --json             output machine-readable JSON instead of a human table
+  --username string  admin username, used to log in (env MESH_USERNAME)
+  --password string  admin password, used to log in (env MESH_PASSWORD)
+
+"nodes", "models", "runtime", and "node control" require credentials: run
+"ollama-mesh login" once (recommended), or pass --username+--password (or
+MESH_USERNAME+MESH_PASSWORD) on every invocation instead.
+"version" and "status" do not require credentials.

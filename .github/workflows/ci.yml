@@ -51,6 +51,18 @@ jobs:
         # weakening the hang-detection this timeout exists for.
         run: go test -race -timeout 300s ./...
 
+      - name: Docs drift check (man pages, docs/cli.md, README CLI table)
+        # cmd/gen-docs derives docs/man/*.1, docs/cli.md, and README.md's CLI
+        # table from internal/cli's command registry (P83+ plan). Required,
+        # not advisory - committed generated docs can otherwise go stale
+        # silently, and this is the only thing that catches it.
+        run: |
+          go run ./cmd/gen-docs
+          if ! git diff --exit-code -- docs/man docs/cli.md README.md; then
+            echo "Generated CLI docs are out of date - run 'make docs' and commit the result."
+            exit 1
+          fi
+
   ui-build:
     runs-on: ubuntu-latest
     steps:

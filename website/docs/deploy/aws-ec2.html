@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link active" href="../../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link active" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -330,25 +341,33 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2. ollama-mesh is a single static binary - no runtime, no dependencies, no config file - so an EC2 deploy is "download, start a service, configure from the dashboard."</p>
 <p>This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing, node-failure route-around, and self-healing recovery all verified live).</p>
 <h2 id="architecture">Architecture<a class="anchor" href="#architecture" aria-label="Link to section">#</a></h2>
-<pre class="code"><code>clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
+<div class="code-wrap"><pre class="code"><code>clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
                  │  warm-first routing + auth + dashboard + metrics
                  ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
-                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre>
+                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
+                 │  warm-first routing + auth + dashboard + metrics
+                 ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
+                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>The mesh box does <strong>not</strong> need a GPU - it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
 <h2 id="1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)<a class="anchor" href="#1-gpu-instances-the-ollama-nodes" aria-label="Link to section">#</a></h2>
 <p>Cheapest CUDA option is <code>g4dn.xlarge</code> (NVIDIA T4 16GB). <code>g5.xlarge</code> (A10G) and <code>g6.xlarge</code> (L4) are faster. Use a Deep Learning AMI or install the NVIDIA driver on Amazon Linux 2023, then install Ollama and bind it to the VPC:</p>
-<pre class="code" data-lang="bash"><code>curl -fsSL https://ollama.com/install.sh | sh
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fsSL https://ollama.com/install.sh | sh
 sudo systemctl edit ollama   # add: Environment=OLLAMA_HOST=0.0.0.0:11434
 sudo systemctl restart ollama
-ollama pull llama3.2:3b</code></pre>
+ollama pull llama3.2:3b</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -fsSL https://ollama.com/install.sh | sh
+sudo systemctl edit ollama   # add: Environment=OLLAMA_HOST=0.0.0.0:11434
+sudo systemctl restart ollama
+ollama pull llama3.2:3b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <blockquote><strong>Quota note:</strong> brand-new AWS accounts start with a GPU On-Demand vCPU quota of 0. Request an increase under Service Quotas → EC2 → "Running On-Demand G and VT instances" before launching. Approval can take hours to days.</blockquote>
 <h2 id="2-the-mesh-box">2. The mesh box<a class="anchor" href="#2-the-mesh-box" aria-label="Link to section">#</a></h2>
 <p>A small CPU instance (<code>t3.small</code> is plenty). Pull the release binary and point it at your GPU nodes' <strong>private</strong> IPs:</p>
-<pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/ollama-mesh \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/ollama-mesh \
   https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
-chmod +x /usr/local/bin/ollama-mesh</code></pre>
+chmod +x /usr/local/bin/ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -fL -o /usr/local/bin/ollama-mesh \
+  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
+chmod +x /usr/local/bin/ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>systemd unit (<code>/etc/systemd/system/ollama-mesh.service</code>):</p>
-<pre class="code" data-lang="ini"><code>[Unit]
+<div class="code-wrap"><pre class="code" data-lang="ini"><code>[Unit]
 After=network-online.target
 Wants=network-online.target
 [Service]
@@ -356,18 +375,29 @@ WorkingDirectory=/opt
 ExecStart=/usr/local/bin/ollama-mesh --db /opt/mesh.db
 Restart=always
 [Install]
-WantedBy=multi-user.target</code></pre>
-<pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh</code></pre>
+WantedBy=multi-user.target</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="[Unit]
+After=network-online.target
+Wants=network-online.target
+[Service]
+WorkingDirectory=/opt
+ExecStart=/usr/local/bin/ollama-mesh --db /opt/mesh.db
+Restart=always
+[Install]
+WantedBy=multi-user.target"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>First boot creates a blank-slate <code>/opt/mesh.db</code>. Log in at <code>http://&lt;mesh&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login - do this immediately since the admin port is reachable from the SSH tunnel below) and, from <strong>Settings</strong>, set <code>admin.bind_address</code> to <code>127.0.0.1:8080</code> (restart required). Add your GPU nodes from the <strong>GPU Nodes</strong> page and an API key from <strong>API Keys</strong> - or run <code>install.sh</code>'s network-discovery wizard against your VPC beforehand to seed the nodes automatically.</p>
 <h2 id="3-security-group">3. Security group<a class="anchor" href="#3-security-group" aria-label="Link to section">#</a></h2>
 <ul><li><strong>Endpoint <code>:11434</code></strong> - open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> - keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
 <p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. Login is username/password   (bcrypt-hashed, default <code>admin</code>/<code>admin</code> on first run - change it immediately);   a successful login issues an <code>HttpOnly</code> session cookie, which is what's sensitive here.</p>
 <ul><li><strong>Node <code>:11434</code></strong> - open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
 <h2 id="4-verify">4. Verify<a class="anchor" href="#4-verify" aria-label="Link to section">#</a></h2>
-<pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}
 curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/tags
 curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/generate \
-     -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'</code></pre>
+     -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://&lt;mesh&gt;:11434/health                          # {&quot;status&quot;:&quot;ok&quot;,&quot;nodes&quot;:{...}}
+curl -H &quot;Authorization: Bearer &lt;key&gt;&quot; http://&lt;mesh&gt;:11434/api/tags
+curl -H &quot;Authorization: Bearer &lt;key&gt;&quot; http://&lt;mesh&gt;:11434/api/generate \
+     -d '{&quot;model&quot;:&quot;llama3.2:3b&quot;,&quot;prompt&quot;:&quot;hi&quot;,&quot;stream&quot;:false}'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Point any OpenAI-compatible client at <code>http://&lt;mesh&gt;:11434/v1</code> with your key.</p>
 <h2 id="cost-tip">Cost tip<a class="anchor" href="#cost-tip" aria-label="Link to section">#</a></h2>
 <p>Only the GPU nodes are expensive. Stop them when idle - the mesh box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
@@ -398,6 +428,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

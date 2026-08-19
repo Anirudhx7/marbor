@@ -214,7 +214,18 @@ html.light .theme-toggle .moon { display: block; }
 .doc-content code { font-size: 0.86em; background: var(--bg-surface); padding: 2px 6px; border-radius: 3px; color: var(--text); border: 1px solid var(--border-subtle); }
 .doc-content pre.code { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 18px; position: relative; }
 .doc-content pre.code code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
-.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; right: 12px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content pre.code[data-lang]::before { content: attr(data-lang); position: absolute; top: 8px; left: 16px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.doc-content .code-wrap { position: relative; margin: 0 0 18px; }
+.doc-content .code-wrap pre.code { margin: 0; padding-right: 76px; }
+.doc-content .copy-btn {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-muted); font-family: var(--font-mono);
+  font-size: 11px; line-height: 1; transition: all .15s;
+}
+.doc-content .copy-btn:hover { color: var(--text); background: var(--bg-input); }
+.doc-content .copy-btn svg { width: 13px; height: 13px; }
+.doc-content .copy-btn.copied { color: var(--accent2); border-color: var(--accent2); }
 .doc-content blockquote { margin: 0 0 18px; padding: 11px 16px; border-left: 3px solid var(--accent); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-family: var(--font-serif); font-style: italic; }
 .doc-content blockquote p { margin: 0; color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -315,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -359,18 +370,24 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h3 id="fully-manual-alternative">Fully manual alternative<a class="anchor" href="#fully-manual-alternative" aria-label="Link to section">#</a></h3>
 <p>Restore doesn't have to go through the dashboard. Stopping the mesh, swapping the file, and starting it again works identically and isn't restricted to files in the scheduled backup directory - <strong>any</strong> <code>.db</code> file that was itself produced by a backup of this mesh (scheduled, manual download, or a straight file copy taken while the process was stopped) can be restored from, regardless of where it currently lives.</p>
 <p><strong>Bare metal / systemd:</strong></p>
-<pre class="code" data-lang="bash"><code>sudo systemctl stop ollama-mesh
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo systemctl stop ollama-mesh
 sudo cp /path/to/mesh-backup-20260730-140000.db /opt/ollama-mesh/mesh.db
-sudo systemctl start ollama-mesh</code></pre>
+sudo systemctl start ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo systemctl stop ollama-mesh
+sudo cp /path/to/mesh-backup-20260730-140000.db /opt/ollama-mesh/mesh.db
+sudo systemctl start ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Replace <code>/opt/ollama-mesh/mesh.db</code> with whatever path you actually run with (<code>--db</code> flag or <code>MESH_DB_PATH</code>) - not necessarily this exact path.</p>
 <p><strong>Docker / Docker Compose:</strong></p>
-<pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
 docker cp ./mesh-backup-20260730-140000.db ollama-mesh:/data/mesh.db
-docker compose start ollama-mesh</code></pre>
+docker compose start ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop ollama-mesh
+docker cp ./mesh-backup-20260730-140000.db ollama-mesh:/data/mesh.db
+docker compose start ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>If the file is already inside the container (e.g. a scheduled backup under <code>/backups</code>), copy it inside instead of using <code>docker cp</code>:</p>
-<pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop ollama-mesh
 docker compose run --rm --entrypoint sh ollama-mesh -c "cp /backups/mesh-backup-20260730-140000.db /data/mesh.db"
-docker compose start ollama-mesh</code></pre>
+docker compose start ollama-mesh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop ollama-mesh
+docker compose run --rm --entrypoint sh ollama-mesh -c &quot;cp /backups/mesh-backup-20260730-140000.db /data/mesh.db&quot;
+docker compose start ollama-mesh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Either way, the container must be <strong>stopped</strong> first, since SQLite's WAL sidecar files (<code>mesh.db-wal</code>, <code>mesh.db-shm</code>) would otherwise still be attached to the old database.</p>
 <p><strong>Kubernetes:</strong> scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a temporary debug pod with the same PVC mounted, or <code>kubectl cp</code> into that pod), then scale back to 1.</p>
 
@@ -400,6 +417,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

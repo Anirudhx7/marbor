@@ -27,6 +27,9 @@ const DOCS_OUT = join(__dirname, "docs");
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/"/g, "&quot;");
+}
 function inline(s) {
   // code spans first (protect their contents)
   const codes = [];
@@ -80,7 +83,8 @@ function renderMarkdown(md) {
       i++;
       while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
       i++; // closing fence
-      html += `<pre class="code"${lang ? ` data-lang="${lang}"` : ""}><code>${escapeHtml(buf.join("\n"))}</code></pre>\n`;
+      const raw = buf.join("\n");
+      html += `<div class="code-wrap"><pre class="code"${lang ? ` data-lang="${lang}"` : ""}><code>${escapeHtml(raw)}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="${escapeAttr(raw)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>\n`;
       continue;
     }
 
@@ -162,6 +166,8 @@ const DOC_GROUPS = [
   { title: "Deployment", items: [
     { slug: "PRODUCTION", label: "Production" },
     { slug: "deploy/aws-ec2", label: "AWS EC2" },
+    { slug: "deploy/gpu-node-registration", label: "GPU node registration" },
+    { slug: "deploy/node-agent-enrollment", label: "Node Agent enrollment" },
   ]},
   { title: "Integrations", items: [
     { slug: "integrations/continue", label: "Continue" },
@@ -291,6 +297,7 @@ var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",fun
 var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
 if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
 var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});

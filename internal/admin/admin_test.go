@@ -652,6 +652,72 @@ func TestHandleAddNode_RejectsDuplicateURL(t *testing.T) {
 	}
 }
 
+// TestHandleAddNode_UpsertsSameNameInsteadOfDuplicating is the HTTP-handler
+// regression test for the confirmed bug: POST /admin/nodes twice with the
+// identical {name, url} must not silently double the router's live node
+// count (SQLite's UpsertNode was always idempotent by name via INSERT OR
+// REPLACE; Router.AddNode previously was not - see Router.AddNode for the
+// full history). The second call is an update, so it must return 200 OK,
+// not 201 Created, to honestly reflect "updated" rather than "created".
+func TestHandleAddNode_UpsertsSameNameInsteadOfDuplicating(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, nil, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := `{"name":"gpu-01","url":"http://192.168.1.50:11434"}`
+
+	rec := httptest.NewRecorder()
+	s.handleAddNode(rec, httptest.NewRequest(http.MethodPost, "/admin/nodes", bytes.NewReader([]byte(body))))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first add: status = %d, want 201", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	s.handleAddNode(rec, httptest.NewRequest(http.MethodPost, "/admin/nodes", bytes.NewReader([]byte(body))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second (repeat) add: status = %d, want 200 (update, not create)", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	s.handleAddNode(rec, httptest.NewRequest(http.MethodPost, "/admin/nodes", bytes.NewReader([]byte(body))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("third (repeat) add: status = %d, want 200 (update, not create)", rec.Code)
+	}
+
+	if got := len(r.Nodes()); got != 1 {
+		t.Fatalf("router has %d live nodes after 3x identical POST /admin/nodes, want 1", got)
+	}
+}
+
+// TestHandleAddNode_UpsertReplacesURL verifies the deliberate-upsert design:
+// re-POSTing an existing node name with a different url updates that node's
+// url in place rather than being rejected or creating a second node - this
+// matches the DB layer's pre-existing unconditional-replace behavior, not a
+// new restriction (see Router.AddNode).
+func TestHandleAddNode_UpsertReplacesURL(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, nil, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	rec := httptest.NewRecorder()
+	s.handleAddNode(rec, httptest.NewRequest(http.MethodPost, "/admin/nodes", bytes.NewReader([]byte(`{"name":"gpu-01","url":"http://192.168.1.50:11434"}`))))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first add: status = %d, want 201", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	s.handleAddNode(rec, httptest.NewRequest(http.MethodPost, "/admin/nodes", bytes.NewReader([]byte(`{"name":"gpu-01","url":"http://192.168.1.51:11434"}`))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upsert with new url: status = %d, want 200", rec.Code)
+	}
+
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes after upsert, want 1", len(nodes))
+	}
+	if nodes[0].URL != "http://192.168.1.51:11434" {
+		t.Errorf("URL = %q, want upserted URL", nodes[0].URL)
+	}
+}
+
 // TestHandleAddNode_AllowsNewURL is the negative case: a genuinely new URL
 // must still be accepted and registered normally.
 func TestHandleAddNode_AllowsNewURL(t *testing.T) {

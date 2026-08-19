@@ -9,14 +9,9 @@ import (
 	"io"
 )
 
-func printRequestsUsage(w io.Writer) {
-	fmt.Fprint(w, "Usage: ollama-mesh requests explain <request-id> [flags]\n\nActions:\n")
-	renderTable(w, "  ", [][2]string{
-		{"explain <request-id>", "show why the router picked the node it did for one request"},
-	})
-	fmt.Fprint(w, "\nFlags:\n")
-	renderTable(w, "  ", authFlagsRows)
-}
+// printRequestsUsage is a thin wrapper over the registry-backed writeHelp
+// (help.go) - see the P83+ CLI hardening plan, migration step 4.
+func printRequestsUsage(w io.Writer) { writeHelp(w, findCommand(root(), "requests")) }
 
 func runRequestsExplain(flags *globalFlags, requestID string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)

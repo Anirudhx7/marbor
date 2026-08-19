@@ -126,65 +126,36 @@ var authFlagsRows = [][2]string{
 	{"--password string", "admin password, used to log in (env MESH_PASSWORD)"},
 }
 
-func printModelsUsage(w io.Writer) {
-	fmt.Fprint(w, "Usage: ollama-mesh models [action] [args] [flags]\n\nActions:\n")
-	renderTable(w, "  ", [][2]string{
-		{"(none)", "list models known across the fleet (aggregate view)"},
-		{"pull <node> <model>", "start pulling a model onto a node (async - does not wait for completion)"},
-		{"delete <node> <model>", "delete a model from a node's local storage"},
-		{"unload <node> <model>", "unload a model from a node's warm state"},
-		{"list <node>", "list models present on a node's local storage (per-node, not the fleet-wide aggregate above)"},
-	})
-	fmt.Fprint(w, "\nFlags:\n")
-	renderTable(w, "  ", authFlagsRows)
-}
+// printModelsUsage, printRuntimeUsage, printLoginUsage, and
+// printNodeControlUsage are thin wrappers over the registry-backed
+// writeHelp (help.go) - see the P83+ CLI hardening plan, migration step 4.
+// The registry node they render is looked up by name/path via findCommand;
+// the actual help text lives as data in registry_tree.go, not here.
+//
+// Known, reviewed diffs from the pre-refactor hand-written versions of these
+// functions (see internal/cli/testdata/help/*.golden for the exact
+// byte-for-byte old output) - none of these were fixed here because doing
+// so would require either restructuring the registry tree or hard-coding
+// per-command special cases into writeHelp, both out of scope for this step:
+//   - models: the old table's synthetic "(none)" row (documenting the
+//     fleet-wide list when models is invoked with no action) has no
+//     equivalent in the registry, which only has real Sub commands.
+//   - runtime: the old table grouped start/stop/restart into one row
+//     ("start|stop|restart <node>") and showed inline flag hints for logs
+//     ("[--lines=N]") and drain ("[--reason=X]"); the registry models
+//     start/stop/restart as three separate Sub commands (so they render as
+//     three rows), and the action table's name column is Name+args only,
+//     with no per-flag hint rendering.
+//   - node control: "accept"'s old row included its required flags inline
+//     ("accept <node> --driver X --identifier Y [--start-command Z]"); the
+//     generic action table renders Name+args only ("accept <node>").
+func printModelsUsage(w io.Writer) { writeHelp(w, findCommand(root(), "models")) }
 
-func printRuntimeUsage(w io.Writer) {
-	fmt.Fprint(w, "Usage: ollama-mesh runtime <action> <node> [flags]\n\nActions:\n")
-	renderTable(w, "  ", [][2]string{
-		{"start|stop|restart <node>", "start/stop/restart the node's inference runtime process"},
-		{"logs <node> [--lines=N]", "fetch recent log lines from the node's runtime process"},
-		{"drain <node> [--reason=X]", "mark the node draining (stop routing new requests to it)"},
-		{"undrain <node>", `reverse "runtime drain"`},
-		{"health <node>", "run an on-demand active liveness probe on the node"},
-	})
-	fmt.Fprint(w, "\nFlags:\n")
-	renderTable(w, "  ", authFlagsRows)
-	fmt.Fprint(w, `
-"start|stop|restart" requires the target node to have an operator-accepted
-control driver (see "node control accept") - a node with none configured
-returns an error rather than guessing one.
+func printRuntimeUsage(w io.Writer) { writeHelp(w, findCommand(root(), "runtime")) }
 
-"logs" is a point-in-time snapshot, not a live tail. A node whose control
-driver has no real log source (e.g. a bare PID-file process with no
-supervisor) returns a clear "not supported" error.
-`)
-}
+func printLoginUsage(w io.Writer) { writeHelp(w, findCommand(root(), "login")) }
 
-// loginFlagsRows is authFlagsRows verbatim - login shares the exact same
-// credential flags as every other credentialed command, since it is itself
-// how a session is produced.
-var loginFlagsRows = authFlagsRows
-
-func printLoginUsage(w io.Writer) {
-	fmt.Fprint(w, "Usage: ollama-mesh login [flags]\n\n")
-	fmt.Fprint(w, "Authenticates once and saves the resulting session to a local file (0600,\n")
-	fmt.Fprint(w, "under the OS user config dir) so other commands can omit --username/\n")
-	fmt.Fprint(w, "--password afterward. Run without --username/--password in a terminal to\n")
-	fmt.Fprint(w, "be prompted interactively (password input is not echoed).\n\n")
-	fmt.Fprint(w, "Flags:\n")
-	renderTable(w, "  ", loginFlagsRows)
-}
-
-func printNodeControlUsage(w io.Writer) {
-	fmt.Fprint(w, "Usage: ollama-mesh node control <action> <node> [flags]\n\nActions:\n")
-	renderTable(w, "  ", [][2]string{
-		{"probe <node>", "show a node's control-driver status (configured + discovered)"},
-		{"accept <node> --driver X --identifier Y [--start-command Z]", "accept a control driver + identifier for a node"},
-	})
-	fmt.Fprint(w, "\nFlags:\n")
-	renderTable(w, "  ", authFlagsRows)
-}
+func printNodeControlUsage(w io.Writer) { writeHelp(w, findCommand(root(), "node", "control")) }
 
 func splitFlagsAndArgs(args []string, boolFlagNames map[string]bool) (flagArgs, positional []string) {
 	for i := 0; i < len(args); i++ {
@@ -255,355 +226,19 @@ func reportError(err error, stderr io.Writer) int {
 	return ExitServerError
 }
 
-const usage = `ollama-mesh - CLI client for the ollama-mesh Admin API
-
-Usage:
-  ollama-mesh <command> [flags]
-
-Commands:
-  version                                    print CLI and (if reachable) server version
-  status                                     print mesh health/status summary
-  login                                      authenticate once and save the session locally (recommended)
-  logout                                     remove the saved session
-  whoami                                     show the CLI's saved identity (live-verified)
-  nodes                                      list nodes known to the mesh
-  nodes confirm-tls <node> --fingerprint=SHA256:...
-                                              pin a Node Agent's TLS certificate fingerprint (headless enrollment)
-  models [action] ...                        fleet-wide list, or pull/delete/unload/list on one node
-  runtime <action> <node> [flags]            start/stop/restart/logs/drain/undrain/health on one node
-  node control probe <node>                  show a node's control-driver status (configured + discovered)
-  node control accept <node> --driver X --identifier Y [--start-command Z]
-                                              accept a control driver + identifier for a node
-  key set-local-only <name> <true|false>    block (or re-allow) cloud fallback for one API key
-  key set-allow-local-degradation <name> <true|false>
-                                              let (or forbid) one API key receive a local alternate model
-  spill                                       show per-key, per-provider local-vs-cloud request counts
-  requests explain <request-id>              show why the router picked the node it did for one request
-
-Run "ollama-mesh <command> --help" for the full list of actions and flags for
-that command.
-
-Global flags:
-  --server string      Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
-  --json                output machine-readable JSON instead of a human table
-  --username string     admin username, used to log in (env MESH_USERNAME)
-  --password string      admin password, used to log in (env MESH_PASSWORD)
-
-"nodes", "models", "runtime", and "node control" require credentials: run
-"ollama-mesh login" once (recommended), or pass --username+--password (or
-MESH_USERNAME+MESH_PASSWORD) on every invocation instead.
-"version" and "status" do not require credentials.
-`
-
 // Run parses args and dispatches to the requested subcommand, returning the
-// process exit code (0/1/2/4 per operational-interfaces.md 5.2).
+// process exit code (0/1/2/4 per operational-interfaces.md 5.2). It delegates
+// entirely to the registry-driven dispatcher (dispatch.go) - see the P83+ CLI
+// hardening plan, migration steps 6-8. The old hand-rolled switch statement
+// that used to live here has been deleted now that every leaf command's Run
+// is wired to its real implementation. Behavioral equivalence with that old
+// switch was verified during the migration via a differential test
+// (dispatch_differential_test.go) that compared dispatch()'s output against
+// the legacy switch across ~190 argument vectors; that test was deleted once
+// this function started delegating directly to dispatch() (comparing the
+// dispatcher against itself would have been tautological). Current coverage
+// is dispatch_p83_test.go's registry-wide trailing-argument test plus the
+// full internal/cli test suite.
 func Run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
-		return ExitUserError
-	}
-
-	cmd := args[0]
-	rest := args[1:]
-
-	switch cmd {
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, usage)
-		return ExitOK
-	case "version":
-		fs, flags := newFlagSet("version", stderr)
-		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
-			return code
-		}
-		return runVersion(flags, stdout, stderr)
-	case "status":
-		fs, flags := newFlagSet("status", stderr)
-		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
-			return code
-		}
-		return runStatus(flags, stdout, stderr)
-	case "login":
-		fs, flags := newFlagSet("login", stderr)
-		if ok, code := parseFlags(fs, rest, printLoginUsage, stdout); !ok {
-			return code
-		}
-		return runLogin(flags, stdout, stderr)
-	case "logout":
-		fs, flags := newFlagSet("logout", stderr)
-		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
-			return code
-		}
-		return runLogout(flags, stdout, stderr)
-	case "whoami":
-		fs, flags := newFlagSet("whoami", stderr)
-		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
-			return code
-		}
-		return runWhoami(flags, stdout, stderr)
-	case "nodes":
-		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
-			switch rest[0] {
-			case "confirm-tls":
-				fs, flags := newFlagSet("nodes confirm-tls", stderr)
-				fingerprint := fs.String("fingerprint", "", "SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see \"agent service status\" on the node), in the form SHA256:<64 hex characters>")
-				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-				if ok, code := parseFlags(fs, flagArgs, nil, stdout); !ok {
-					return code
-				}
-				if len(positional) != 1 {
-					fmt.Fprintln(stderr, "usage: ollama-mesh nodes confirm-tls <node-name> --fingerprint=SHA256:... [flags]")
-					return ExitUserError
-				}
-				if *fingerprint == "" {
-					fmt.Fprintln(stderr, "error: --fingerprint is required (the value must come from you, not be silently accepted from the wire)")
-					return ExitUserError
-				}
-				return runNodesConfirmTLS(flags, positional[0], *fingerprint, stdout, stderr)
-			default:
-				fmt.Fprintf(stderr, "unknown nodes action %q (want confirm-tls)\n\n", rest[0])
-				return ExitUserError
-			}
-		}
-		fs, flags := newFlagSet("nodes", stderr)
-		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
-			return code
-		}
-		return runNodes(flags, stdout, stderr)
-	case "models":
-		if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
-			switch rest[0] {
-			case "pull":
-				fs, flags := newFlagSet("models pull", stderr)
-				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-				if ok, code := parseFlags(fs, flagArgs, printModelsUsage, stdout); !ok {
-					return code
-				}
-				if len(positional) != 2 {
-					fmt.Fprintln(stderr, "usage: ollama-mesh models pull <node> <model> [flags]")
-					return ExitUserError
-				}
-				return runModelsPull(flags, positional[0], positional[1], stdout, stderr)
-			case "delete":
-				fs, flags := newFlagSet("models delete", stderr)
-				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-				if ok, code := parseFlags(fs, flagArgs, printModelsUsage, stdout); !ok {
-					return code
-				}
-				if len(positional) != 2 {
-					fmt.Fprintln(stderr, "usage: ollama-mesh models delete <node> <model> [flags]")
-					return ExitUserError
-				}
-				return runModelsDelete(flags, positional[0], positional[1], stdout, stderr)
-			case "unload":
-				fs, flags := newFlagSet("models unload", stderr)
-				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-				if ok, code := parseFlags(fs, flagArgs, printModelsUsage, stdout); !ok {
-					return code
-				}
-				if len(positional) != 2 {
-					fmt.Fprintln(stderr, "usage: ollama-mesh models unload <node> <model> [flags]")
-					return ExitUserError
-				}
-				return runModelsUnload(flags, positional[0], positional[1], stdout, stderr)
-			case "list":
-				fs, flags := newFlagSet("models list", stderr)
-				flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-				if ok, code := parseFlags(fs, flagArgs, printModelsUsage, stdout); !ok {
-					return code
-				}
-				if len(positional) != 1 {
-					fmt.Fprintln(stderr, "usage: ollama-mesh models list <node> [flags]")
-					return ExitUserError
-				}
-				return runModelsList(flags, positional[0], stdout, stderr)
-			default:
-				fmt.Fprintf(stderr, "unknown models action %q (want pull, delete, unload, or list)\n\n", rest[0])
-				printModelsUsage(stderr)
-				return ExitUserError
-			}
-		}
-		fs, flags := newFlagSet("models", stderr)
-		if ok, code := parseFlags(fs, rest, printModelsUsage, stdout); !ok {
-			return code
-		}
-		return runModels(flags, stdout, stderr)
-	case "runtime":
-		if len(rest) < 1 {
-			printRuntimeUsage(stderr)
-			return ExitUserError
-		}
-		action := rest[0]
-		if action == "-h" || action == "--help" {
-			printRuntimeUsage(stdout)
-			return ExitOK
-		}
-		switch action {
-		case "start", "stop", "restart":
-			fs, flags := newFlagSet("runtime "+action, stderr)
-			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-			if ok, code := parseFlags(fs, flagArgs, printRuntimeUsage, stdout); !ok {
-				return code
-			}
-			if len(positional) != 1 {
-				fmt.Fprintf(stderr, "usage: ollama-mesh runtime %s <node> [flags]\n", action)
-				return ExitUserError
-			}
-			return runRuntimeAction(flags, action, positional[0], stdout, stderr)
-		case "logs":
-			fs, flags := newFlagSet("runtime logs", stderr)
-			lines := fs.Int("lines", 0, "number of log lines to fetch (0 = server default)")
-			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-			if ok, code := parseFlags(fs, flagArgs, printRuntimeUsage, stdout); !ok {
-				return code
-			}
-			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: ollama-mesh runtime logs <node> [--lines=N] [flags]")
-				return ExitUserError
-			}
-			return runRuntimeLogs(flags, positional[0], *lines, stdout, stderr)
-		case "drain":
-			fs, flags := newFlagSet("runtime drain", stderr)
-			reason := fs.String("reason", "", "reason recorded for the drain (default \"manual\")")
-			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-			if ok, code := parseFlags(fs, flagArgs, printRuntimeUsage, stdout); !ok {
-				return code
-			}
-			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: ollama-mesh runtime drain <node> [--reason=X] [flags]")
-				return ExitUserError
-			}
-			return runRuntimeDrain(flags, positional[0], *reason, stdout, stderr)
-		case "undrain":
-			fs, flags := newFlagSet("runtime undrain", stderr)
-			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-			if ok, code := parseFlags(fs, flagArgs, printRuntimeUsage, stdout); !ok {
-				return code
-			}
-			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: ollama-mesh runtime undrain <node> [flags]")
-				return ExitUserError
-			}
-			return runRuntimeUndrain(flags, positional[0], stdout, stderr)
-		case "health":
-			fs, flags := newFlagSet("runtime health", stderr)
-			flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-			if ok, code := parseFlags(fs, flagArgs, printRuntimeUsage, stdout); !ok {
-				return code
-			}
-			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: ollama-mesh runtime health <node> [flags]")
-				return ExitUserError
-			}
-			return runRuntimeHealth(flags, positional[0], stdout, stderr)
-		default:
-			fmt.Fprintf(stderr, "unknown runtime action %q (want start, stop, restart, logs, drain, undrain, or health)\n\n", action)
-			printRuntimeUsage(stderr)
-			return ExitUserError
-		}
-	case "node":
-		if len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
-			printNodeControlUsage(stdout)
-			return ExitOK
-		}
-		if len(rest) < 1 || rest[0] != "control" {
-			printNodeControlUsage(stderr)
-			return ExitUserError
-		}
-		if len(rest) < 2 || rest[1] == "-h" || rest[1] == "--help" {
-			w := stderr
-			code := ExitUserError
-			if len(rest) >= 2 {
-				w, code = stdout, ExitOK
-			}
-			printNodeControlUsage(w)
-			return code
-		}
-		switch rest[1] {
-		case "probe":
-			fs, flags := newFlagSet("node control probe", stderr)
-			flagArgs, positional := splitFlagsAndArgs(rest[2:], map[string]bool{"json": true})
-			if ok, code := parseFlags(fs, flagArgs, printNodeControlUsage, stdout); !ok {
-				return code
-			}
-			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: ollama-mesh node control probe <node> [flags]")
-				return ExitUserError
-			}
-			return runNodeControlProbe(flags, positional[0], stdout, stderr)
-		case "accept":
-			fs, flags := newFlagSet("node control accept", stderr)
-			driver := fs.String("driver", "", "control driver: systemd, docker, process, launchd, or windows_service")
-			identifier := fs.String("identifier", "", "driver-specific identifier (unit name, container name, PID file path, plist label, service name)")
-			startCommand := fs.String("start-command", "", "launch command for the process driver's Start action (only meaningful when --driver=process)")
-			flagArgs, positional := splitFlagsAndArgs(rest[2:], map[string]bool{"json": true})
-			if ok, code := parseFlags(fs, flagArgs, printNodeControlUsage, stdout); !ok {
-				return code
-			}
-			if len(positional) != 1 {
-				fmt.Fprintln(stderr, "usage: ollama-mesh node control accept <node> --driver X --identifier Y [--start-command Z]")
-				return ExitUserError
-			}
-			if *driver == "" || *identifier == "" {
-				fmt.Fprintln(stderr, "error: --driver and --identifier are required")
-				return ExitUserError
-			}
-			return runNodeControlAccept(flags, positional[0], *driver, *identifier, *startCommand, stdout, stderr)
-		default:
-			fmt.Fprintf(stderr, "unknown node control action %q\n\n", rest[1])
-			printNodeControlUsage(stderr)
-			return ExitUserError
-		}
-	case "key":
-		if len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
-			printKeyUsage(stdout)
-			return ExitOK
-		}
-		if len(rest) < 1 || (rest[0] != "set-local-only" && rest[0] != "set-allow-local-degradation") {
-			printKeyUsage(stderr)
-			return ExitUserError
-		}
-		action := rest[0]
-		fs, flags := newFlagSet("key "+action, stderr)
-		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-		if ok, code := parseFlags(fs, flagArgs, printKeyUsage, stdout); !ok {
-			return code
-		}
-		if len(positional) != 2 {
-			fmt.Fprintf(stderr, "usage: ollama-mesh key %s <name> <true|false>\n", action)
-			return ExitUserError
-		}
-		if action == "set-allow-local-degradation" {
-			return runKeySetAllowLocalDegradation(flags, positional[0], positional[1], stdout, stderr)
-		}
-		return runKeySetLocalOnly(flags, positional[0], positional[1], stdout, stderr)
-	case "spill":
-		fs, flags := newFlagSet("spill", stderr)
-		if ok, code := parseFlags(fs, rest, nil, stdout); !ok {
-			return code
-		}
-		return runSpill(flags, stdout, stderr)
-	case "requests":
-		if len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
-			printRequestsUsage(stdout)
-			return ExitOK
-		}
-		if len(rest) < 1 || rest[0] != "explain" {
-			printRequestsUsage(stderr)
-			return ExitUserError
-		}
-		fs, flags := newFlagSet("requests explain", stderr)
-		flagArgs, positional := splitFlagsAndArgs(rest[1:], map[string]bool{"json": true})
-		if ok, code := parseFlags(fs, flagArgs, printRequestsUsage, stdout); !ok {
-			return code
-		}
-		if len(positional) != 1 {
-			fmt.Fprintln(stderr, "usage: ollama-mesh requests explain <request-id> [flags]")
-			return ExitUserError
-		}
-		return runRequestsExplain(flags, positional[0], stdout, stderr)
-	default:
-		fmt.Fprintf(stderr, "unknown command %q\n\n", cmd)
-		fmt.Fprint(stderr, usage)
-		return ExitUserError
-	}
+	return dispatchAndRun(root(), args, stdout, stderr)
 }

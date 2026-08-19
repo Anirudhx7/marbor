@@ -1,0 +1,166 @@
+---
+# Registers N GPU nodes' runtime endpoints with an ollama-mesh Admin API.
+# This automates exactly the API call a human makes by hand on the
+# dashboard's GPU Nodes page when clicking "Add Node" (POST /admin/nodes) -
+# see docs/deploy/gpu-node-registration.md for the underlying HTTP contract
+# this playbook wraps.
+#
+# This playbook does NOT install or enroll the Node Agent - that's a
+# separate, independently-idempotent operation. See
+# ansible/playbooks/install-node-agent.yml.
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/register-gpus.yml \
+#     -e @my-inventory.yml \
+#     -e mesh_url=https://mesh.example.com \
+#     -e mesh_admin_username=admin \
+#     --ask-vault-pass \
+#     -e @secrets.vault.yml
+#
+# See ansible/README.md for the full variable reference.
+
+- name: Register GPU node runtime endpoints with ollama-mesh
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Override on the command line (-e) or in a vars file included with -e @file.
+    mesh_admin_username: admin
+    poll_retries: 10
+    poll_delay: 5
+    default_ollama_port: 11434
+
+  vars_files:
+    # Points at the example list by default so the playbook is runnable
+    # out of the box against the sample data. Real runs should override
+    # this whole vars_files entry (or just gpu_nodes) with -e @your-file.yml.
+    - ../inventory.example.yml
+
+  tasks:
+    - name: Verify required variables are set
+      ansible.builtin.assert:
+        that:
+          - mesh_url is defined
+          - mesh_url | length > 0
+          - mesh_admin_password is defined
+          - mesh_admin_password | length > 0
+          - gpu_nodes is defined
+          - gpu_nodes | length > 0
+        fail_msg: >-
+          mesh_url, mesh_admin_password, and a non-empty gpu_nodes list are
+          required. See ansible/README.md.
+
+    - name: Resolve node name, port, and runtime defaults
+      ansible.builtin.set_fact:
+        resolved_nodes: []
+
+    - name: Fail fast on a non-ollama node with no explicit port
+      ansible.builtin.assert:
+        that:
+          - not (item.runtime is defined and item.runtime != 'ollama' and item.runtime != '' and item.port is not defined)
+        fail_msg: >-
+          gpu_nodes entry for host {{ item.host }} sets runtime
+          "{{ item.runtime | default('ollama') }}" but no port. There is no
+          coded default port for non-ollama runtimes in ollama-mesh - port is
+          required for vllm/tgi/llamacpp/mlx. See ansible/README.md.
+      loop: "{{ gpu_nodes }}"
+      loop_control:
+        label: "{{ item.host }}"
+
+    - name: Build resolved node list (name/port/runtime defaults applied)
+      ansible.builtin.set_fact:
+        resolved_nodes: "{{ resolved_nodes + [ {
+          'name': gpu_node.name | default('gpu-node-%02d' | format(idx + 1)),
+          'host': gpu_node.host,
+          'runtime': gpu_node.runtime | default('ollama'),
+          'port': gpu_node.port | default(default_ollama_port)
+          } ] }}"
+      loop: "{{ gpu_nodes }}"
+      loop_control:
+        loop_var: gpu_node
+        index_var: idx
+        label: "{{ gpu_node.host }}"
+
+    - name: Log in to ollama-mesh Admin API (session reused for all nodes)
+      ansible.builtin.uri:
+        url: "{{ mesh_url }}/admin/login"
+        method: POST
+        body_format: json
+        body:
+          username: "{{ mesh_admin_username }}"
+          password: "{{ mesh_admin_password }}"
+        status_code: 200
+      register: mesh_login
+      no_log: true
+
+    - name: Register each node with the mesh (idempotent upsert by name)
+      ansible.builtin.uri:
+        url: "{{ mesh_url }}/admin/nodes"
+        method: POST
+        headers:
+          Cookie: "{{ mesh_login.set_cookie }}"
+        body_format: json
+        body:
+          name: "{{ node.name }}"
+          url: "http://{{ node.host }}:{{ node.port }}"
+          runtime: "{{ node.runtime }}"
+        status_code: [200, 201]
+      loop: "{{ resolved_nodes }}"
+      loop_control:
+        loop_var: node
+        label: "{{ node.name }} ({{ node.host }})"
+      register: register_results
+
+    - name: Wait for each node's runtime endpoint to report healthy
+      ansible.builtin.uri:
+        url: "{{ mesh_url }}/admin/nodes/{{ node.name }}"
+        method: GET
+        headers:
+          Cookie: "{{ mesh_login.set_cookie }}"
+        status_code: 200
+        return_content: true
+      register: node_poll
+      until: (node_poll.json.health | default('down')) == 'healthy'
+      retries: "{{ poll_retries }}"
+      delay: "{{ poll_delay }}"
+      loop: "{{ resolved_nodes }}"
+      loop_control:
+        loop_var: node
+        label: "{{ node.name }} ({{ node.host }})"
+      # Do not abort the whole run because one node never came up - collect
+      # per-node pass/fail so the summary below can name exactly which host
+      # failed, then fail the play at the very end.
+      ignore_errors: true
+      register: poll_results
+
+    - name: Build per-node final status
+      ansible.builtin.set_fact:
+        node_results: "{{ node_results | default([]) + [ {
+          'name': presult.node.name,
+          'host': presult.node.host,
+          'port': presult.node.port,
+          'runtime': presult.node.runtime,
+          'status': ('failed' if presult.failed | default(false) else 'healthy')
+          } ] }}"
+      loop: "{{ poll_results.results }}"
+      loop_control:
+        loop_var: presult
+        label: "{{ presult.node.name }}"
+
+    - name: Registration summary
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.status | upper }} - {{ item.name }}
+          ({{ item.host }}:{{ item.port }}, runtime={{ item.runtime }})
+      loop: "{{ node_results }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail the play if any node did not come up healthy
+      ansible.builtin.fail:
+        msg: >-
+          Registration incomplete. Nodes that did not report healthy within
+          {{ poll_retries }} attempts ({{ (poll_retries | int) * (poll_delay | int) }}s):
+          {{ node_results | selectattr('status', 'equalto', 'failed') | map(attribute='name') | list }}
+      when: node_results | selectattr('status', 'equalto', 'failed') | list | length > 0

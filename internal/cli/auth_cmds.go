@@ -85,13 +85,40 @@ func doLogin(flags *globalFlags, username, password string, stdout, stderr io.Wr
 	return ExitOK
 }
 
-// runLogout deletes the saved session file. Idempotent - "already logged
-// out" is success, not an error.
+// runLogout ends the session both server-side (POST /logout, via
+// Client.Logout) and locally (deleteSession). It is idempotent - "already
+// logged out" (no saved session) is success, not an error, and never even
+// attempts the server call in that case, since there is no token to
+// identify a session with.
+//
+// A failed server call (unreachable server, non-2xx, timeout) is reported as
+// a warning on stderr - never stdout, so --json output stays parseable -
+// and does NOT fail the command: the local session file is still deleted
+// and the command still exits 0. A user who types "logout" must never be
+// left with a live local session just because the network call failed.
 func runLogout(flags *globalFlags, stdout, stderr io.Writer) int {
+	session, err := loadSession()
+	if err != nil {
+		return reportError(serverErrorf("could not read saved session: %v", err), stderr)
+	}
+
+	serverLogout := false
+	if session != nil && session.Token != "" {
+		client := NewClient(session.Server, session.Token)
+		if err := client.Logout(); err != nil {
+			fmt.Fprintf(stderr, "warning: could not end server-side session: %v\n", err)
+		} else {
+			serverLogout = true
+		}
+	}
+
 	if err := deleteSession(); err != nil {
 		return reportError(serverErrorf("could not remove saved session: %v", err), stderr)
 	}
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]bool{"ok": true}); handled {
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"ok": true, "server_logout": serverLogout,
+	}); handled {
 		return code
 	}
 	fmt.Fprintln(stdout, "logged out")
@@ -140,8 +167,11 @@ func runWhoami(flags *globalFlags, stdout, stderr io.Writer) int {
 	case isCLIErr && cliErr.Code == ExitAuthError:
 		out.Cached = true
 		out.Status = "session expired or invalid - run ollama-mesh login"
-		if handled, _ := emitJSON(stdout, stderr, flags.jsonOutput, out); handled {
-			return ExitAuthError
+		if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, out); handled {
+			if code == ExitOK {
+				return ExitAuthError
+			}
+			return code
 		}
 		printWhoami(stdout, out)
 		return ExitAuthError
@@ -150,8 +180,8 @@ func runWhoami(flags *globalFlags, stdout, stderr io.Writer) int {
 		out.Status = "could not verify (server unreachable) - showing cached identity"
 	}
 
-	if handled, _ := emitJSON(stdout, stderr, flags.jsonOutput, out); handled {
-		return ExitOK
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, out); handled {
+		return code
 	}
 	printWhoami(stdout, out)
 	return ExitOK
