@@ -72,7 +72,8 @@ func TestMedianOdd(t *testing.T) {
 
 func TestMedianEven(t *testing.T) {
 	samples := []time.Duration{400 * time.Millisecond, 100 * time.Millisecond, 300 * time.Millisecond, 200 * time.Millisecond}
-	// after sort: [100, 200, 300, 400]; (4-1)/2 = 1 → 200ms (lower middle, not upper)
+	// after sort: [100, 200, 300, 400]; true median averages the two middle
+	// values (200 and 300) rather than taking the lower-middle one.
 	sorted := make([]time.Duration, len(samples))
 	copy(sorted, samples)
 	for i := 0; i < len(sorted); i++ {
@@ -82,8 +83,9 @@ func TestMedianEven(t *testing.T) {
 			}
 		}
 	}
-	median := sorted[(len(sorted)-1)/2]
-	if median != 200*time.Millisecond {
-		t.Errorf("median (even) = %v, want 200ms (lower-middle, not biased high)", median)
+	mid := len(sorted) / 2
+	median := (sorted[mid-1] + sorted[mid]) / 2
+	if median != 250*time.Millisecond {
+		t.Errorf("median (even) = %v, want 250ms (true median, not lower-middle biased low)", median)
 	}
 }
