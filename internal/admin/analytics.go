@@ -62,7 +62,10 @@ func (a *analyticsStore) pruneHourlyLocked(now time.Time) {
 		return
 	}
 	for key, b := range a.hourly {
-		t, err := time.Parse("2006-01-02T15", b.Hour)
+		// Hour keys are always written from time.Now().UTC(); a bare
+		// time.Parse would interpret them in the host's local zone, skewing
+		// this age check by the local UTC offset.
+		t, err := time.ParseInLocation("2006-01-02T15", b.Hour, time.UTC)
 		if err != nil || now.Sub(t) > hourlyRetention {
 			delete(a.hourly, key)
 		}
