@@ -1048,6 +1048,17 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc(v1, h)
 	}
 
+	// Go 1.22+ ServeMux returns a bare 405 (no handler invoked) for a method
+	// that doesn't match a registered pattern when another method on the same
+	// path does - so a cross-origin OPTIONS preflight for any method-specific
+	// route (every PATCH/PUT/DELETE/POST route below) never reaches s.cors,
+	// and the browser blocks the real request for lack of CORS headers. This
+	// catch-all answers preflight for the whole /admin/ subtree via s.cors
+	// itself, before any method-specific pattern is consulted.
+	mux.HandleFunc("OPTIONS /admin/", s.cors(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
 	reg("GET /admin/nodes", s.cors(s.adminAuth(s.handleNodes)))
 	reg("GET /admin/nodes/{name}", s.cors(s.adminAuth(s.handleNode)))
 	reg("PATCH /admin/nodes/{name}", s.cors(s.adminAuth(s.handlePatchNode)))
@@ -1238,7 +1249,7 @@ func (s *Server) cors(next http.HandlerFunc) http.HandlerFunc {
 		// authed, mutating API is a CSRF/exfil footgun, so it is opt-in only.
 		if origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			// Required for the session cookie to be sent/read cross-origin at
 			// all - safe to pair with a configured origin since it's never a
@@ -1880,12 +1891,17 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 			continue
 		}
 		keys = append(keys, config.KeyConfig{
-			Name:         k.Name,
-			Key:          k.Key,
-			RateLimit:    k.RateLimit,
-			DailyLimit:   k.DailyLimit,
-			MonthlyLimit: k.MonthlyLimit,
-			Models:       k.Models,
+			Name:                  k.Name,
+			Key:                   k.Key,
+			RateLimit:             k.RateLimit,
+			DailyLimit:            k.DailyLimit,
+			MonthlyLimit:          k.MonthlyLimit,
+			DailyUsdCap:           k.DailyUsdCap,
+			MonthlyUsdCap:         k.MonthlyUsdCap,
+			Models:                k.Models,
+			ExpiresAt:             k.ExpiresAt,
+			LocalOnly:             k.LocalOnly,
+			AllowLocalDegradation: k.AllowLocalDegradation,
 		})
 	}
 	s.mu.RLock()
@@ -6345,6 +6361,9 @@ func (s *Server) completePull(ctx context.Context, job *pullJob) {
 // exact ephemeral-scoped-key pattern so this probe exercises the real
 // client-auth path too, rather than needing an admin-bypass.
 func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) error {
+	if s.cfg.Proxy.Port <= 0 {
+		return fmt.Errorf("proxy port is not configured - cannot verify model load")
+	}
 	keyName := fmt.Sprintf("pull-verify-%s-%s-%d", nodeName, model, time.Now().UnixNano())
 	k := config.KeyConfig{
 		Name:      keyName,
