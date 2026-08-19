@@ -49,7 +49,7 @@ func TestHandleNodeDeleteModel_DispatchesToAgentWhenCapable(t *testing.T) {
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token")
+	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -151,7 +151,7 @@ func TestBuildAgentURL_EscapesReservedModelPathCharacters(t *testing.T) {
 		"org/my repo":  "http://localhost:9911/v1/models/org/my%20repo",
 	}
 	for model, want := range cases {
-		got, err := buildAgentURL("http://localhost:11434", 9911, "/v1/models/"+escapeModelPathSegments(model))
+		got, err := buildAgentURL("http://localhost:11434", 9911, "http", "/v1/models/"+escapeModelPathSegments(model))
 		if err != nil {
 			t.Fatalf("buildAgentURL(%q): %v", model, err)
 		}

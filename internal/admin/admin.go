@@ -2153,16 +2153,23 @@ func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"node": name, "enabled": rec.Enabled, "port": rec.Port, "scope": rec.Scope,
+		"node": name, "enabled": rec.Enabled, "port": rec.Port, "scope": rec.Scope, "scheme": rec.Scheme,
 	})
 }
 
 // handleEnableNodeAgent enables (or reconfigures) the Node Agent for a node:
-// generates a fresh token, persists {enabled, port, token}, pushes the
-// config to the live router so polling starts on the next cycle without a
-// restart, and returns the one-line install command with the token
+// generates a fresh token, persists {enabled, port, token, scheme}, pushes
+// the config to the live router so polling starts on the next cycle without
+// a restart, and returns the one-line install command with the token
 // embedded - the only response that ever carries the plaintext token.
-// POST /admin/nodes/{name}/agent  body: {"port": <int>}
+// scheme is the AGENT's own transport scheme, entirely independent of this
+// node's runtime URL scheme (store.NodeAgentRecord.Scheme's doc comment). An
+// omitted scheme means "keep whatever this host's Agent is already
+// configured with" on a reconfigure (read from the router's live config,
+// not the store - see the no-downgrade lookup below) - it defaults to
+// "http" only when there is no existing config at all (first-time enable).
+// A caller that wants to actually change the scheme must say so explicitly.
+// POST /admin/nodes/{name}/agent  body: {"port": <int>, "scheme"?: "http"|"https"}
 func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	host, found := s.router.NodeHost(name)
@@ -2172,6 +2179,13 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Port int `json:"port"`
+		// Scheme is a pointer so an omitted field (nil) is distinguishable
+		// from an explicit "" - omitted must mean "keep whatever this host's
+		// Agent is already configured with" on a reconfigure (e.g. a caller
+		// rotating the port/token via this same endpoint), never a silent
+		// reset to "http". Only a brand-new host (no existing record) treats
+		// omitted as "http" by default.
+		Scheme *string `json:"scheme"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -2181,23 +2195,69 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "port must be between 1 and 65535")
 		return
 	}
+	if body.Scheme != nil && *body.Scheme != "http" && *body.Scheme != "https" {
+		writeJSONError(w, http.StatusBadRequest, `scheme must be "http" or "https"`)
+		return
+	}
+
+	// nodePatchMu: this is the same class of check-then-mutate sequence
+	// handlePatchNode's TLS validation serializes against (see that field's
+	// doc comment above) - the no-downgrade check below and the persist a
+	// few lines later must not interleave with a concurrent request (e.g. a
+	// PATCH pinning a fingerprint racing this POST reconfiguring the Agent
+	// back to http://).
+	s.nodePatchMu.Lock()
+	defer s.nodePatchMu.Unlock()
+
+	// The router's live in-memory config, not a store read, is the source
+	// of truth for "existing" here (State Hierarchy: live beats persisted,
+	// guards-detail.md) - it reflects exactly what the poller/action paths
+	// are using right now, including in tests that call r.SetNodeAgent
+	// directly without a store round-trip.
+	scheme := "http"
+	if existing, hasExisting := s.router.NodeAgentSetting(name); hasExisting && existing.Scheme != "" {
+		scheme = existing.Scheme
+	}
+	if body.Scheme != nil {
+		scheme = *body.Scheme
+	}
+
+	// P24 no-downgrade (section 7), moved here from validateTLSPatch's old
+	// node.URL-based check now that a pinned fingerprint describes the
+	// Agent's own scheme, not the runtime's: reconfiguring the Agent back to
+	// http:// while any node sharing this host still has a pinned
+	// fingerprint would silently strand that pin (the next poll would fail
+	// closed with a confusing mismatch instead of the operator getting a
+	// clear, actionable error now). Clear every sibling's pin first (PATCH
+	// tls_fingerprint: null) if a genuine downgrade is intended.
+	if scheme == "http" {
+		for _, n := range s.router.Nodes() {
+			n.RLock()
+			sameHost, fp := n.Host == host, n.TLSFingerprint
+			n.RUnlock()
+			if sameHost && fp != "" {
+				writeJSONError(w, http.StatusConflict, fmt.Sprintf("node agent host %q has a pinned TLS fingerprint (node %q) - clear it first (PATCH /admin/nodes/%s with tls_fingerprint: null) before switching the Agent back to http://", host, n.Name, n.Name))
+				return
+			}
+		}
+	}
 	token, err := generateNodeAgentToken(nodeagent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 	// Persisted/pushed keyed by host, not name - every node sharing this
-	// physical machine now reads the same enabled/port/token record and is
-	// polled by the same single agent process (see SetNodeAgent's doc
+	// physical machine now reads the same enabled/port/token/scheme record
+	// and is polled by the same single agent process (see SetNodeAgent's doc
 	// comment). Enabling from any one node's UI panel enables it for all of
 	// them.
-	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: nodeagent.ScopeAdmin}
+	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: nodeagent.ScopeAdmin, Scheme: scheme}
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
 	}
-	s.router.SetNodeAgent(host, true, body.Port, token)
-	s.logSystemChange(r, "enable_node_agent", host, fmt.Sprintf("Port: %d", body.Port))
+	s.router.SetNodeAgent(host, true, body.Port, token, scheme)
+	s.logSystemChange(r, "enable_node_agent", host, fmt.Sprintf("Port: %d, Scheme: %s", body.Port, scheme))
 	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
@@ -2209,6 +2269,7 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 		"node":                    name,
 		"enabled":                 true,
 		"port":                    body.Port,
+		"scheme":                  scheme,
 		"token":                   token,
 		"install_command":         unixCmd,
 		"install_command_windows": windowsCmd,
@@ -2217,7 +2278,13 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 
 // handleDisableNodeAgent disables and deletes the Node Agent config for a
 // node - the router stops polling it on the next cycle (pollAgentTelemetry's
-// "no agent configured" branch clears any previously-reported fields).
+// "no agent configured" branch clears any previously-reported fields). Also
+// clears any pinned TLS fingerprint on every node sharing this host: with no
+// Agent config left, nothing ever dials it again, so a pin left in place
+// would sit inert - looking like an active protection in the UI/API while
+// enforcing nothing - until re-enabled, at which point it would silently
+// resurrect against whatever cert the Agent (re-)presents. Clearing on
+// disable keeps "pinned" always meaning "currently enforced."
 // DELETE /admin/nodes/{name}/agent
 func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -2226,13 +2293,31 @@ func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) 
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
+
+	// Same nodePatchMu discipline as handleEnableNodeAgent/handlePatchNode -
+	// the fingerprint clear below and the agent-config delete must not
+	// interleave with a concurrent PATCH re-pinning one of this host's nodes.
+	s.nodePatchMu.Lock()
+	defer s.nodePatchMu.Unlock()
+
+	empty := ""
+	for _, n := range s.router.Nodes() {
+		n.RLock()
+		sameHost, nodeName, fp := n.Host == host, n.Name, n.TLSFingerprint
+		n.RUnlock()
+		if sameHost && fp != "" {
+			s.router.PatchNode(nodeName, router.NodePatch{TLSFingerprint: &empty})
+			_ = s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty)
+		}
+	}
+
 	// Disables for the whole shared host, not just this one node row - see
 	// SetNodeAgent's doc comment.
 	if err := s.st.DeleteNodeAgent(host); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to delete node agent config")
 		return
 	}
-	s.router.SetNodeAgent(host, false, 0, "")
+	s.router.SetNodeAgent(host, false, 0, "", "")
 	s.logSystemChange(r, "disable_node_agent", host, "")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -2269,7 +2354,7 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
 		return
 	}
-	s.router.SetNodeAgent(host, true, rec.Port, token)
+	s.router.SetNodeAgent(host, true, rec.Port, token, rec.Scheme)
 	s.logSystemChange(r, "regenerate_node_agent_token", host, "")
 	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
@@ -2281,6 +2366,7 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"node":                    name,
 		"port":                    rec.Port,
+		"scheme":                  rec.Scheme,
 		"token":                   token,
 		"install_command":         unixCmd,
 		"install_command_windows": windowsCmd,
@@ -2475,7 +2561,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 // driver's Start action (Step 2 never persisted a StartCommand for any
 // other driver - it stays empty and is simply omitted).
 func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, action string, ctrl router.ControlConfig) error {
-	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/"+action)
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/"+action)
 	if err != nil {
 		return err
 	}
@@ -2593,7 +2679,7 @@ func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 // Start case, even though ProcessDriver.Logs ignores it today - keeps the
 // payload construction identical if that ever changes.
 func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, ctrl router.ControlConfig, lines int) ([]string, error) {
-	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/logs")
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/logs")
 	if err != nil {
 		return nil, err
 	}
@@ -3541,21 +3627,32 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	if patch.URL != nil {
 		resultingURL = *patch.URL
 	}
-	resultingScheme := ""
-	if u, err := url.Parse(resultingURL); err == nil {
-		resultingScheme = u.Scheme
-	}
 	resultingFP := currentFP
 	if patch.TLSFingerprint != nil {
 		resultingFP = *patch.TLSFingerprint
 	}
+	// resultingHost is the host whose Node Agent this patch's resulting
+	// state actually describes - a URL-only patch can move a node onto a
+	// completely different host (with a different, or no, Agent
+	// configured), so this must be looked up by the RESULTING host, never
+	// by name (which only ever resolves to the node's CURRENT, pre-patch
+	// host - see NodeAgentSettingByHost's doc comment).
+	resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 
 	// No-downgrade (section 7): once a fingerprint is pinned, the mesh must
-	// never end up treating that node as plaintext without an explicit
-	// clear (tls_fingerprint: null/"") in the very same request that also
-	// changes the URL.
-	if resultingFP != "" && resultingScheme != "https" {
-		return fmt.Errorf("node %q would have a pinned TLS fingerprint but a non-https:// URL - clear the pin (tls_fingerprint: null) before switching to a non-https:// URL, or keep the URL https://", name)
+	// never end up treating the Node Agent as plaintext without an explicit
+	// clear (tls_fingerprint: null/""). This checks the AGENT's own
+	// configured scheme for the RESULTING host (POST /admin/nodes/{name}/agent's
+	// scheme field, see store.NodeAgentRecord.Scheme's doc comment) - NOT
+	// the node's runtime URL scheme, which handlePatchNode's patch.URL
+	// controls and which is entirely independent of the Agent's transport.
+	// A pinned fingerprint always describes the Agent's TLS certificate,
+	// never the runtime's.
+	if resultingFP != "" {
+		agentCfg, hasAgent := s.router.NodeAgentSettingByHost(resultingHost)
+		if !hasAgent || !agentCfg.Enabled || agentCfg.Scheme != "https" {
+			return fmt.Errorf("node %q would have a pinned TLS fingerprint but its Node Agent (host %q) is not configured for https:// - enable Agent HTTPS (POST /admin/nodes/%s/agent with scheme:\"https\") before pinning, or clear the pin (tls_fingerprint: null)", name, resultingHost, name)
+		}
 	}
 
 	// Section 15: multi-GPU-per-host sibling consistency. Every NodeState
@@ -3582,7 +3679,6 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	// but for BOTH siblings, since it cannot tell which pin is correct. This
 	// check exists to reject that mutation before it is ever persisted.
 	if resultingFP != "" {
-		resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 		for _, n := range nodes {
 			if n.Name == name {
 				continue
@@ -6645,7 +6741,7 @@ func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
 // capability "models.list") and translates its snake_case wire response
 // into this API's camelCase nodeModelEntry shape.
 func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) ([]nodeModelEntry, error) {
-	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models")
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/models")
 	if err != nil {
 		return nil, err
 	}
@@ -6720,7 +6816,7 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 // subprocess's own environment for its lifetime (see
 // .local/specs/node-agent.md section 16).
 func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
-	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models")
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/models")
 	if err != nil {
 		return err
 	}
@@ -6780,7 +6876,7 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 // can differ from the host-level DiskFreeGB/DiskTotalGB the periodic
 // telemetry poll already reports for a Docker-controlled node.
 func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, ctrl router.ControlConfig) (freeBytes, totalBytes int64, err error) {
-	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/disk")
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/disk")
 	if err != nil {
 		return 0, 0, err
 	}
@@ -6817,12 +6913,16 @@ func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string,
 	return out.FreeBytes, out.TotalBytes, nil
 }
 
-// buildAgentURL derives an agent URL from the node's own URL (same host),
-// the configured agent port, and a literal path, via url.Parse per R5 -
-// never arithmetic port derivation. Mirrors agent_poll.go's buildAgentURL in
-// internal/router (kept as a separate small function since admin and router
-// are different packages).
-func buildAgentURL(nodeURL string, port int, path string) (string, error) {
+// buildAgentURL derives an agent URL from the node's own URL (same host, via
+// url.Parse per R5 - never arithmetic port derivation), the configured agent
+// port, a literal path, and the agent's OWN scheme (independent of nodeURL's
+// scheme - see store.NodeAgentRecord.Scheme's doc comment; before this
+// parameter existed, every agent action derived its scheme from the node's
+// runtime URL instead, so enabling agent HTTPS silently switched the
+// runtime endpoint to https:// too). Mirrors agent_poll.go's buildAgentURL
+// in internal/router (kept as a separate small function since admin and
+// router are different packages).
+func buildAgentURL(nodeURL string, port int, scheme string, path string) (string, error) {
 	u, err := url.Parse(nodeURL)
 	if err != nil {
 		return "", fmt.Errorf("parse node URL: %w", err)
@@ -6830,7 +6930,6 @@ func buildAgentURL(nodeURL string, port int, path string) (string, error) {
 	if u.Hostname() == "" {
 		return "", fmt.Errorf("node URL %q has no host", nodeURL)
 	}
-	scheme := u.Scheme
 	if scheme == "" {
 		scheme = "http"
 	}
@@ -6904,7 +7003,7 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 // through `docker exec` when the runtime is Docker-controlled - see
 // pullModelViaAgent's identical reasoning.
 func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
-	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/models/"+escapeModelPathSegments(model))
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/models/"+escapeModelPathSegments(model))
 	if err != nil {
 		return err
 	}
@@ -6970,7 +7069,10 @@ var nodeHealthCheckTimeout = 15 * time.Second
 var nodeTLSProbeTimeout = 10 * time.Second
 
 // handleNodeTLSProbe performs the P24 enrollment probe (spec section 2,
-// step 2-3): dials the node's own configured URL with a TLS-handshake-only
+// step 2-3): dials the node's Node Agent (NOT its runtime URL - the Agent's
+// own host:port, using the Agent's own configured scheme, which is
+// independent of the runtime endpoint's scheme, see
+// store.NodeAgentRecord.Scheme's doc comment) with a TLS-handshake-only
 // connection - no bearer token sent, no certificate validated against any
 // CA or existing pin - and reports the presented leaf certificate's SHA-256
 // fingerprint for the operator to compare against what "agent service
@@ -6980,39 +7082,29 @@ var nodeTLSProbeTimeout = 10 * time.Second
 func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 
-	var nodeURL string
-	found := false
-	for _, n := range s.router.Nodes() {
-		if n.Name == name {
-			n.RLock()
-			nodeURL = n.URL
-			n.RUnlock()
-			found = true
-			break
-		}
-	}
+	host, found := s.router.NodeHost(name)
 	if !found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-
-	u, err := url.Parse(nodeURL)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
-		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q's URL is not https:// - set it to https:// before probing for a certificate fingerprint", name))
+	agentCfg, ok := s.router.NodeAgentSetting(name)
+	if !ok || !agentCfg.Enabled {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q has no Node Agent configured - enable the Agent before probing", name))
 		return
 	}
-	port := u.Port()
-	if port == "" {
-		port = "443"
+	if agentCfg.Scheme != "https" {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q's Agent is not configured for https:// - enable Agent HTTPS before probing for a certificate fingerprint", name))
+		return
 	}
+	port := strconv.Itoa(agentCfg.Port)
 
 	ctx, cancel := context.WithTimeout(r.Context(), nodeTLSProbeTimeout)
 	defer cancel()
 
 	dialer := &net.Dialer{}
-	rawConn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(u.Hostname(), port))
+	rawConn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
 	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("could not reach %s: %v", nodeURL, err))
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("could not reach %s:%s: %v", host, port, err))
 		return
 	}
 	defer rawConn.Close()
@@ -7021,16 +7113,16 @@ func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 	// probe's entire purpose is TOFU - see whatever cert is presented,
 	// unconditionally, then hand it to the operator for out-of-band
 	// confirmation. It never decides trust itself.
-	tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: u.Hostname()})
+	tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: host})
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("TLS handshake with %s failed: %v", nodeURL, err))
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("TLS handshake with %s:%s failed: %v", host, port, err))
 		return
 	}
 	defer tlsConn.Close()
 
 	certs := tlsConn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("node %q presented no TLS certificate", name))
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("node %q's Agent presented no TLS certificate", name))
 		return
 	}
 
@@ -7115,7 +7207,7 @@ func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 // genuine transport/dispatch failures (can't reach the agent itself, bad
 // response shape).
 func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) (nodeHealthCheckResult, error) {
-	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, "/v1/runtime/health")
+	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/health")
 	if err != nil {
 		return nodeHealthCheckResult{}, err
 	}
@@ -7165,7 +7257,7 @@ var nodeUnloadModelTimeout = 30 * time.Second
 // node's own runtime HTTP API. See actions.go's handleUnloadModel for why
 // POST (not a literal "/unload" suffix) is the verb used on this path shape.
 func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
-	actionURL, err := buildAgentUnloadURL(nodeURL, agentCfg.Port, model)
+	actionURL, err := buildAgentUnloadURL(nodeURL, agentCfg.Port, agentCfg.Scheme, model)
 	if err != nil {
 		return err
 	}
@@ -7205,13 +7297,14 @@ func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentC
 }
 
 // buildAgentUnloadURL derives the agent's POST /v1/models/{name...} URL from
-// the node's own URL (same host) and the configured agent port, via
-// url.Parse per R5 - never arithmetic port derivation. Reuses
-// escapeModelPathSegments (same reasoning as buildAgentDeleteURL): model is
-// percent-escaped per "/"-delimited segment so a name containing '#'/'?'/
-// spaces can't be reinterpreted as a fragment/query boundary, while the
-// segment split itself is preserved for the agent's "{name...}" wildcard.
-func buildAgentUnloadURL(nodeURL string, port int, model string) (string, error) {
+// the node's own URL (same host, via url.Parse per R5 - never arithmetic
+// port derivation), the configured agent port, and the agent's OWN scheme
+// (independent of nodeURL's scheme - see buildAgentURL's doc comment).
+// Reuses escapeModelPathSegments (same reasoning as buildAgentDeleteURL):
+// model is percent-escaped per "/"-delimited segment so a name containing
+// '#'/'?'/spaces can't be reinterpreted as a fragment/query boundary, while
+// the segment split itself is preserved for the agent's "{name...}" wildcard.
+func buildAgentUnloadURL(nodeURL string, port int, scheme string, model string) (string, error) {
 	u, err := url.Parse(nodeURL)
 	if err != nil {
 		return "", fmt.Errorf("parse node URL: %w", err)
@@ -7219,7 +7312,6 @@ func buildAgentUnloadURL(nodeURL string, port int, model string) (string, error)
 	if u.Hostname() == "" {
 		return "", fmt.Errorf("node URL %q has no host", nodeURL)
 	}
-	scheme := u.Scheme
 	if scheme == "" {
 		scheme = "http"
 	}

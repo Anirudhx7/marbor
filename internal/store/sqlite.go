@@ -211,12 +211,23 @@ func (s *sqliteStore) migrate() error {
 		// for why the agent never trusts this column for enforcement).
 		// Default 'admin' matches every pre-P54 row's actual (unprefixed,
 		// full-scope-by-fallback) token.
+		// scheme (added post-P24 fix, see .local/specs/node-agent-tls.md's
+		// dated correction note) is the Node Agent's OWN transport scheme
+		// ("http" or "https") - independent of the runtime_nodes.url scheme
+		// the same host's inference endpoint uses. Before this column
+		// existed, every Node Agent URL builder derived its scheme from the
+		// node's runtime URL instead, so enabling HTTPS for the agent also
+		// silently switched the runtime endpoint to https:// and broke
+		// runtimes (Ollama, vLLM, etc.) that only ever serve plain HTTP.
+		// Default 'http' matches every pre-existing row's actual (plaintext)
+		// agent transport.
 		`CREATE TABLE IF NOT EXISTS node_agent (
 			name    TEXT PRIMARY KEY,
 			enabled INTEGER NOT NULL DEFAULT 0,
 			port    INTEGER NOT NULL DEFAULT 0,
 			token   TEXT NOT NULL DEFAULT '',
-			scope   TEXT NOT NULL DEFAULT 'admin'
+			scope   TEXT NOT NULL DEFAULT 'admin',
+			scheme  TEXT NOT NULL DEFAULT 'http'
 		)`,
 
 		// node_control holds the per-node ControlDriver configuration (P43,
@@ -497,6 +508,9 @@ func (s *sqliteStore) migrate() error {
 		// audit_log via QueryAuditLog, not request_log - routing_reason must
 		// live here too or the reason badge never populates in production.
 		`ALTER TABLE audit_log ADD COLUMN routing_reason TEXT NOT NULL DEFAULT ''`,
+		// Node Agent transport scheme, decoupled from the runtime URL's own
+		// scheme - see node_agent's table comment above.
+		`ALTER TABLE node_agent ADD COLUMN scheme TEXT NOT NULL DEFAULT 'http'`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -1264,9 +1278,13 @@ func (s *sqliteStore) UpsertNodeAgent(rec NodeAgentRecord) error {
 	if scope == "" {
 		scope = "admin"
 	}
+	scheme := rec.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
 	_, err = s.db.Exec(
-		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token, scope) VALUES (?, ?, ?, ?, ?)`,
-		rec.Name, enabled, rec.Port, enc, scope,
+		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token, scope, scheme) VALUES (?, ?, ?, ?, ?, ?)`,
+		rec.Name, enabled, rec.Port, enc, scope, scheme,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeAgent: %w", err)
@@ -1284,8 +1302,8 @@ func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
 	var enabled int
 	var encToken string
 	err := s.db.QueryRow(
-		`SELECT name, enabled, port, token, scope FROM node_agent WHERE name = ?`, name,
-	).Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope)
+		`SELECT name, enabled, port, token, scope, scheme FROM node_agent WHERE name = ?`, name,
+	).Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope, &rec.Scheme)
 	if err == sql.ErrNoRows {
 		return NodeAgentRecord{}, false, nil
 	}
@@ -1311,7 +1329,7 @@ func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
 // expected tokens), but dropping the row is the same defensive pattern
 // used everywhere else in this file for a corrupt secret.
 func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
-	rows, err := s.db.Query(`SELECT name, enabled, port, token, scope FROM node_agent`)
+	rows, err := s.db.Query(`SELECT name, enabled, port, token, scope, scheme FROM node_agent`)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllNodeAgents: %w", err)
 	}
@@ -1322,7 +1340,7 @@ func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
 		var rec NodeAgentRecord
 		var enabled int
 		var encToken string
-		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope); err != nil {
+		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope, &rec.Scheme); err != nil {
 			return nil, fmt.Errorf("store: AllNodeAgents scan: %w", err)
 		}
 		token, decErr := decryptSecret(s.secretKey, encToken)

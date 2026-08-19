@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Enabling "Use HTTPS" for a node's Node Agent on the GPU Nodes page silently switched that node's inference runtime endpoint (Ollama, vLLM, etc.) to `https://` too, taking the node down** - most runtimes don't serve TLS on their own port. Root cause: the Node Agent's transport scheme was never an independently configured property; every Node Agent URL builder in both `internal/router` and `internal/admin` derived its scheme from the node's runtime `URL` field instead of having one of its own, so the two settings were silently the same value under the hood. The Node Agent now has its own `scheme` field, persisted separately (`node_agent.scheme` column, defaults to `http` for existing rows) and configured independently via `POST /admin/nodes/{name}/agent {"port": ..., "scheme": "http"|"https"}` - changing it never touches the node's runtime URL, and vice versa. The GPU Nodes UI now has two distinct HTTPS checkboxes (Edit Node's, for the runtime endpoint; the Agent panel's own, for the Agent connection) with copy clarifying they're unrelated - the previous single mislabeled checkbox was the direct source of the confusion. The TLS certificate probe/pin flow (`POST /admin/nodes/{name}/tls-probe`, TOFU pinning, sibling-host consistency, no-downgrade) now also operates against the Agent's own host:port and scheme rather than the runtime URL, since the certificate being pinned was always the Agent's, not the runtime's.
+
 ## [0.19.2] - 2026-08-19
 
 ### Added
