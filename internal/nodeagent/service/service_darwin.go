@@ -240,9 +240,9 @@ func parseLaunchctlListStatus(out string) string {
 // plistDict/plistArray are a minimal subset of Apple's plist XML schema,
 // just enough to decode the ProgramArguments array this package itself
 // writes in launchdPlistContent - not a general plist parser. Our plist has
-// exactly one <array> element (ProgramArguments; RunAtLoad/KeepAlive are
-// <true/> booleans, not arrays), so there's no ambiguity in which array
-// this is even though encoding/xml doesn't preserve key/value pairing.
+// exactly one top-level <array> element (ProgramArguments; RunAtLoad/
+// KeepAlive are <true/> booleans, not arrays, and EnvironmentVariables is a
+// <dict> this type doesn't need to decode).
 type plistDict struct {
 	Keys   []string     `xml:"key"`
 	Arrays []plistArray `xml:"array"`

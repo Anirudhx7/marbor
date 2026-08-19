@@ -25,7 +25,6 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/bench"
 	"github.com/ollama-mesh/ollama-mesh/internal/cli"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
 	"github.com/ollama-mesh/ollama-mesh/internal/proxy"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
@@ -210,7 +209,7 @@ func resolveCommand(args []string) string {
 	case "bench":
 		return "bench"
 	case "agent":
-		return "agent"
+		return "agent-removed"
 	case "uninstall":
 		return "uninstall"
 	default:
@@ -262,9 +261,8 @@ func resolveCommand(args []string) string {
 // their columns stay aligned with each other too.
 var helpTableRows = [][2]string{
 	{"ollama-mesh [flags]", "run the mesh server (default)"},
-	{"ollama-mesh agent [flags]", "run the Node Agent (node-local execution point for the mesh)"},
 	{"ollama-mesh bench [flags]", "warm-vs-cold first-token latency benchmark"},
-	{"ollama-mesh uninstall [--purge]", "remove the mesh's and/or Node Agent's service registration from this host"},
+	{"ollama-mesh uninstall [--purge]", "remove the mesh's own service registration from this host"},
 }
 
 func printTopLevelHelp(w io.Writer) {
@@ -304,6 +302,16 @@ Server flags:
 // instead of "whoami"). Phrasing mirrors dispatch.go's "unknown command
 // %q"/"Did you mean %q?" lines byte-for-byte so the UX is identical whether
 // the typo is top-level or inside the CLI.
+// printAgentRemovedNotice explains where the Node Agent went for anyone
+// still typing "ollama-mesh agent ..." out of muscle memory from before the
+// control-plane/Node Agent binary split - it directs them to the dedicated
+// ollama-mesh-agent binary rather than silently starting the server or
+// failing with an opaque flag-parsing error.
+func printAgentRemovedNotice(w io.Writer) {
+	fmt.Fprintln(w, "ollama-mesh: the Node Agent is now a separate executable: ollama-mesh-agent")
+	fmt.Fprintln(w, "  Run \"ollama-mesh-agent service install --port=<port>\" (set the TOKEN env var) instead of \"ollama-mesh agent service install ...\".")
+}
+
 func printUnknownCommand(w io.Writer, tok string) {
 	fmt.Fprintf(w, "ollama-mesh: unknown command %q\n", tok)
 	if s := cli.SuggestTopLevel(tok); len(s) > 0 {
@@ -332,9 +340,9 @@ func main() {
 	case "bench":
 		bench.Run(os.Args[2:])
 		return
-	case "agent":
-		nodeagent.Run(os.Args[2:], Version)
-		return
+	case "agent-removed":
+		printAgentRemovedNotice(os.Stderr)
+		os.Exit(1)
 	case "uninstall":
 		runUninstall(os.Args[2:])
 		return

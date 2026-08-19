@@ -14,7 +14,7 @@ func TestSystemdUnitContent(t *testing.T) {
 	}
 	content := systemdUnitContent(cfg)
 
-	wantExecStart := "ExecStart=/usr/local/bin/ollama-mesh agent --port=9200"
+	wantExecStart := "ExecStart=/usr/local/bin/ollama-mesh --port=9200"
 	if !strings.Contains(content, wantExecStart) {
 		t.Errorf("systemdUnitContent() missing expected ExecStart line %q, got:\n%s", wantExecStart, content)
 	}
@@ -83,7 +83,7 @@ func TestSystemdUnitContentQuotesPathWithSpaces(t *testing.T) {
 	}
 	content := systemdUnitContent(cfg)
 
-	wantExecStart := `ExecStart="/opt/my company/bin/ollama-mesh" agent --port=9200`
+	wantExecStart := `ExecStart="/opt/my company/bin/ollama-mesh" --port=9200`
 	if !strings.Contains(content, wantExecStart) {
 		t.Errorf("systemdUnitContent() missing quoted ExecStart line %q, got:\n%s", wantExecStart, content)
 	}
