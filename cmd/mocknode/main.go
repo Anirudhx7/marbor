@@ -284,19 +284,40 @@ func handleGenerate(w http.ResponseWriter, r *http.Request, nodeName string, lat
 	}
 
 	tokens := tokensFor(req.Model)
-	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("X-Node-Name", nodeName)
 
+	start := time.Now()
+	time.Sleep(time.Duration(latencyMs) * time.Millisecond)
+
+	promptEvalCount := 8
+
+	if req.Stream != nil && !*req.Stream {
+		// Ollama's stream:false contract returns one JSON object, not NDJSON.
+		evalCount := len(tokens)
+		totalDuration := time.Since(start).Nanoseconds()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"model":             req.Model,
+			"created_at":        time.Now().Format(time.RFC3339Nano),
+			"response":          strings.Join(tokens, ""),
+			"done":              true,
+			"done_reason":       "stop",
+			"eval_count":        evalCount,
+			"prompt_eval_count": promptEvalCount,
+			"total_duration":    totalDuration,
+			"load_duration":     int64(latencyMs) * 1_000_000,
+			"eval_duration":     totalDuration - int64(latencyMs)*1_000_000,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	start := time.Now()
-	time.Sleep(time.Duration(latencyMs) * time.Millisecond)
-
-	promptEvalCount := 8
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 
@@ -378,19 +399,43 @@ func handleChat(w http.ResponseWriter, r *http.Request, nodeName string, latency
 	}
 
 	tokens := tokensFor(req.Model)
-	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("X-Node-Name", nodeName)
 
+	start := time.Now()
+	time.Sleep(time.Duration(latencyMs) * time.Millisecond)
+
+	promptEvalCount := 12
+
+	if req.Stream != nil && !*req.Stream {
+		// Ollama's stream:false contract returns one JSON object, not NDJSON.
+		evalCount := len(tokens)
+		totalDuration := time.Since(start).Nanoseconds()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"model":      req.Model,
+			"created_at": time.Now().Format(time.RFC3339Nano),
+			"message": map[string]string{
+				"role":    "assistant",
+				"content": strings.Join(tokens, ""),
+			},
+			"done":              true,
+			"done_reason":       "stop",
+			"eval_count":        evalCount,
+			"prompt_eval_count": promptEvalCount,
+			"total_duration":    totalDuration,
+			"load_duration":     int64(latencyMs) * 1_000_000,
+			"eval_duration":     totalDuration - int64(latencyMs)*1_000_000,
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	start := time.Now()
-	time.Sleep(time.Duration(latencyMs) * time.Millisecond)
-
-	promptEvalCount := 12
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 
@@ -505,11 +550,17 @@ func runOpenAICompatMock(runtime, nodeName, port string, latencyMs int) {
 	}
 }
 
+// responseTokenFamilies is responseTokens' keys in a fixed order, so
+// openAITokensFor's matching is deterministic (map iteration order is not).
+var responseTokenFamilies = []string{"llama3.2", "mistral", "qwen2.5", "llama-3"}
+
 func openAITokensFor(model string) []string {
 	lower := strings.ToLower(model)
-	for family, tokens := range responseTokens {
-		if strings.Contains(lower, family) || strings.HasPrefix(lower, strings.ToLower(strings.ReplaceAll(family, ".", ""))) {
-			return tokens
+	compact := strings.ReplaceAll(lower, ".", "")
+	for _, family := range responseTokenFamilies {
+		fc := strings.ReplaceAll(family, ".", "")
+		if strings.Contains(lower, family) || strings.Contains(compact, fc) {
+			return responseTokens[family]
 		}
 	}
 	return []string{"This", " is", " a", " mock", " OpenAI-compatible", " response", " from", " node", "."}
