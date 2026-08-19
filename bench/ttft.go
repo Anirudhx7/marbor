@@ -32,6 +32,10 @@ import (
 	"time"
 )
 
+// ttftDrainCapBytes bounds the post-TTFT body drain so a server that keeps
+// a stream open indefinitely can't block a sample forever.
+const ttftDrainCapBytes = 8 << 20 // 8MB
+
 func main() {
 	url := flag.String("url", "http://localhost:11434", "Base URL of the endpoint to benchmark (mesh or direct Ollama)")
 	model := flag.String("model", "llama3.2:3b", "Model name to request")
@@ -139,8 +143,12 @@ func measureTTFT(client *http.Client, baseURL, model, ep, apiKey string) (float6
 		// First byte of real content received - record TTFT.
 		ttft := float64(time.Since(start).Milliseconds())
 
-		// Drain remainder so the TCP connection can be reused.
-		go io.Copy(io.Discard, resp.Body) //nolint:errcheck
+		// Drain remainder synchronously (bounded) so the connection can be
+		// reused. An unbounded goroutine here would race the deferred
+		// Close() above - Close() mid-read can error the drain, and for a
+		// server that keeps the stream open the goroutine (and its
+		// connection) would never return, leaking across many samples.
+		io.Copy(io.Discard, io.LimitReader(resp.Body, ttftDrainCapBytes)) //nolint:errcheck
 
 		status := fmt.Sprintf("HTTP %d", resp.StatusCode)
 		return ttft, status, nil
