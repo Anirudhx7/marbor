@@ -1048,7 +1048,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		models, err := s.fetchHFModelList(r.Context(), targetURL)
 		if err != nil {
-			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadGateway)
+			writeJSONError(w, http.StatusBadGateway, err.Error())
 			return
 		}
 		hfModels = models
@@ -1095,7 +1095,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if successCount == 0 {
-			http.Error(w, fmt.Sprintf(`{"error":"%s"}`, lastErr.Error()), http.StatusBadGateway)
+			writeJSONError(w, http.StatusBadGateway, lastErr.Error())
 			return
 		}
 		sortHFModelsInPlace(hfModels, sortField, direction)
@@ -1168,7 +1168,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	targetURL := fmt.Sprintf("https://huggingface.co/api/models/%s?blobs=true", repoID)
 	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"create request: %s"}`, err.Error()), http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "create request: "+err.Error())
 		return
 	}
 
@@ -1178,19 +1178,19 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := hfHTTPClient.Do(req)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"fetch from Hugging Face: %s"}`, err.Error()), http.StatusBadGateway)
+		writeJSONError(w, http.StatusBadGateway, "fetch from Hugging Face: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		http.Error(w, fmt.Sprintf(`{"error":"Hugging Face API returned status %d"}`, resp.StatusCode), http.StatusBadGateway)
+		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("Hugging Face API returned status %d", resp.StatusCode))
 		return
 	}
 
 	var repo HFRepoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"decode Hugging Face response: %s"}`, err.Error()), http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "decode Hugging Face response: "+err.Error())
 		return
 	}
 
