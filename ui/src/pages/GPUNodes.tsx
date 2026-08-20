@@ -782,21 +782,29 @@ export function GPUNodes() {
     setRuntimeActionError(null);
     setRuntimeActionConfirm(null);
     setRuntimeActionNotice(null);
-    setTlsProbedFingerprint(null);
-    setTlsProbeError('');
-    setTlsExpectedFingerprint('');
-    setPendingResetTLSPin(false);
-    setPendingAgentReconfigure(false);
-    setPendingRegenerateToken(false);
+    // TLS/reconfigure/regenerate-token state is reset on open (openAgentModal
+    // above), not here - nothing reads it while this modal is closed
+    // (agentNode is null), so resetting it in both places was redundant.
+  };
+
+  // validateAgentPort parses/range-checks the Agent Port field, shared by
+  // handleEnableAgent (fresh enable) and requestAgentReconfigure (editing an
+  // already-enabled agent) so the valid range and error text can't drift
+  // between the two forms. Returns null (after setting agentError) on an
+  // invalid value.
+  const validateAgentPort = (): number | null => {
+    const port = parseInt(agentPort, 10);
+    if (isNaN(port) || port <= 0 || port > 65535) {
+      setAgentError('Port must be between 1 and 65535');
+      return null;
+    }
+    return port;
   };
 
   const handleEnableAgent = async () => {
     if (!agentNode) return;
-    const port = parseInt(agentPort, 10);
-    if (isNaN(port) || port <= 0 || port > 65535) {
-      setAgentError('Port must be between 1 and 65535');
-      return;
-    }
+    const port = validateAgentPort();
+    if (port === null) return;
     setAgentBusy(true);
     setAgentError(null);
     const scheme: 'http' | 'https' = agentUseHttps ? 'https' : 'http';
@@ -809,31 +817,45 @@ export function GPUNodes() {
         windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setNodes(prev => prev.map(n => n.name === agentNode.name
-        ? {
-            ...n,
-            agentPresent: true,
-            agentVersion: '0.1.0',
-            fanPercent: 55,
-            ramUsedMB: Math.round(20 * 1024),
-            diskFreeGB: 500,
-            agentCapabilities: ['telemetry'],
-            agentPlatform: 'linux',
-            agentArchitecture: 'amd64',
-            agentGpuVendor: 'nvidia',
-            agentRuntime: 'ollama',
-          }
+        // A node that's already enrolled (reconfigure) keeps its real
+        // platform/architecture/GPU-vendor/capabilities - only a genuinely
+        // fresh enable should stamp these placeholder defaults onto it.
+        ? (n.agentPresent
+            ? n
+            : {
+                ...n,
+                agentPresent: true,
+                agentVersion: '0.1.0',
+                fanPercent: 55,
+                ramUsedMB: Math.round(20 * 1024),
+                diskFreeGB: 500,
+                agentCapabilities: ['telemetry'],
+                agentPlatform: 'linux',
+                agentArchitecture: 'amd64',
+                agentGpuVendor: 'nvidia',
+                agentRuntime: 'ollama',
+              })
         : n));
       setAgentBusy(false);
       return;
     }
+    const targetNodeName = agentNode.name;
     try {
-      const res = await enableNodeAgent(agentNode.name, port, scheme);
-      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port, scheme: res.scheme });
-      setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
+      const res = await enableNodeAgent(targetNodeName, port, scheme);
       await loadNodes();
+      // The modal may have moved to a different node while this request was
+      // in flight - only apply the result if it's still relevant (same
+      // guard as handleCheckNodeHealth), so a slow response for node A never
+      // gets displayed as node B's freshly (re)enabled agent/install command.
+      if (agentNodeRef.current?.name !== targetNodeName) return;
+      setAgentStatus({ node: targetNodeName, enabled: true, port: res.port, scheme: res.scheme });
+      setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setAgentError(e?.message || 'Failed to enable node agent');
     } finally {
+      // Always clear busy regardless of which node is now open - it gates
+      // this modal's buttons in general, not per-node state.
       setAgentBusy(false);
     }
   };
@@ -846,11 +868,8 @@ export function GPUNodes() {
   // the same for a fresh enable and a reconfigure.
   const requestAgentReconfigure = () => {
     if (!agentNode || !agentStatus) return;
-    const port = parseInt(agentPort, 10);
-    if (isNaN(port) || port <= 0 || port > 65535) {
-      setAgentError('Port must be between 1 and 65535');
-      return;
-    }
+    const port = validateAgentPort();
+    if (port === null) return;
     const scheme: 'http' | 'https' = agentUseHttps ? 'https' : 'http';
     if (port === agentStatus.port && scheme === (agentStatus.scheme || 'http')) return;
     setAgentError(null);
@@ -872,11 +891,17 @@ export function GPUNodes() {
       setAgentBusy(false);
       return;
     }
+    const targetNodeName = agentNode.name;
     try {
-      const res = await regenerateNodeAgentToken(agentNode.name);
+      const res = await regenerateNodeAgentToken(targetNodeName);
+      // Same node-identity guard as handleCheckNodeHealth/handleEnableAgent -
+      // without it, a slow response for node A could hand node B's now-open
+      // modal node A's freshly minted token/install command.
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
-      setAgentStatus({ node: agentNode.name, enabled: true, port: res.port, scheme: res.scheme });
+      setAgentStatus({ node: targetNodeName, enabled: true, port: res.port, scheme: res.scheme });
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setAgentError(e?.message || 'Failed to regenerate node agent token');
     } finally {
       setAgentBusy(false);
@@ -1325,6 +1350,21 @@ export function GPUNodes() {
     };
   };
 
+  // sendNodePatch performs the demo/live patch application for a single
+  // node (demo: merge into `nodes` in place; live: PATCH + reload) - shared
+  // by applyPatch (Runtime edits, editNode-scoped) and applyAgentTLSPatch
+  // (Agent TLS pin/reset, agentNode-scoped) so a future fix to this shared
+  // core doesn't have to be applied twice.
+  const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }) => {
+    if (demoMode) {
+      setNodes(prev => prev.map(n => n.name === nodeName ? mergeNodePatch(n, patch) : n));
+      return;
+    }
+    if (!isLive) return;
+    await patchNode(nodeName, patch);
+    await loadNodes();
+  };
+
   // closeOnSuccess defaults to true for the main "Save Changes" submit. The
   // TLS probe/pin and reset actions pass false - they're inline actions
   // inside the still-open modal, not a form submit, so closing on success
@@ -1333,7 +1373,7 @@ export function GPUNodes() {
   const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }, closeOnSuccess = true) => {
     if (!editNode) return;
     if (demoMode) {
-      setNodes(prev => prev.map(n => n.name === editNode.name ? mergeNodePatch(n, patch) : n));
+      await sendNodePatch(editNode.name, patch);
       if (closeOnSuccess) {
         setEditNode(null);
       } else {
@@ -1346,8 +1386,7 @@ export function GPUNodes() {
     setEditSaving(true);
     setEditError('');
     try {
-      await patchNode(editNode.name, patch);
-      await loadNodes();
+      await sendNodePatch(editNode.name, patch);
       if (closeOnSuccess) {
         setEditNode(null);
       } else {
@@ -1389,10 +1428,15 @@ export function GPUNodes() {
       return;
     }
     setTlsProbing(true);
+    const targetNodeName = agentNode.name;
     try {
-      const result = await probeNodeTLS(agentNode.name);
+      const result = await probeNodeTLS(targetNodeName);
+      // Same node-identity guard as handleCheckNodeHealth - a slow probe for
+      // node A must not land in node B's now-open modal.
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setTlsProbedFingerprint(result.fingerprint);
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setTlsProbeError(e?.message || 'Failed to probe TLS certificate');
     } finally {
       setTlsProbing(false);
@@ -1407,18 +1451,22 @@ export function GPUNodes() {
   const applyAgentTLSPatch = async (patch: { tls_fingerprint: string }, onSuccess?: () => void) => {
     if (!agentNode) return;
     if (demoMode) {
-      setNodes(prev => prev.map(n => n.name === agentNode.name ? mergeNodePatch(n, patch) : n));
+      await sendNodePatch(agentNode.name, patch);
       setAgentNode(prev => prev ? mergeNodePatch(prev, patch) : prev);
       onSuccess?.();
       return;
     }
     if (!isLive) return;
+    const targetNodeName = agentNode.name;
     try {
-      await patchNode(agentNode.name, patch);
-      await loadNodes();
+      await sendNodePatch(targetNodeName, patch);
+      // Same node-identity guard as handleCheckNodeHealth - a slow pin/reset
+      // for node A must not be stamped onto node B's now-open modal.
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setAgentNode(prev => prev ? mergeNodePatch(prev, patch) : prev);
       onSuccess?.();
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setAgentError(e?.message || 'Failed to update TLS pin');
     }
   };
@@ -2250,7 +2298,7 @@ export function GPUNodes() {
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                   TLS Certificate Fingerprint
                 </label>
-                {agentStatus.scheme !== 'https' ? (
+                {!agentUseHttps ? (
                   <p className="text-xs text-muted-foreground">
                     Enable HTTPS above to pin this Agent's certificate. Pinning secures the
                     mesh-to-Agent connection only - it is unrelated to this node's runtime
@@ -2693,6 +2741,12 @@ export function GPUNodes() {
             <button
               onClick={async () => {
                 setPendingAgentReconfigure(false);
+                // A probed-but-unpinned fingerprint was probed against the
+                // pre-reconfigure connection - clear it so it can't be
+                // mistaken for (and pinned as) a fingerprint of the new one.
+                setTlsProbedFingerprint(null);
+                setTlsExpectedFingerprint('');
+                setTlsProbeError('');
                 await handleEnableAgent();
               }}
               disabled={agentBusy}
