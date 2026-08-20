@@ -507,7 +507,7 @@ export function GPUNodes() {
   // --- Node Agent management ---
   const [agentNode, setAgentNode] = useState<GPUNode | null>(null);
   const [agentStatus, setAgentStatus] = useState<NodeAgentStatus | null>(null);
-  const [agentPort, setAgentPort] = useState('11435');
+  const [agentPort, setAgentPort] = useState('9200');
   // agentUseHttps is the Node Agent's OWN transport scheme toggle -
   // independent of a node's runtime URL scheme (editUseHttps below, which
   // governs the Ollama/vLLM/etc. endpoint). Enabling this does not touch
@@ -518,6 +518,11 @@ export function GPUNodes() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentCopiedWhich, setAgentCopiedWhich] = useState<'unix' | 'windows' | null>(null);
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
+  // pendingAgentReconfigure gates the "Reconfigure Node Agent connection?"
+  // confirm - only shown when changing port/scheme on an ALREADY-enabled
+  // agent (nothing to disrupt on the very first Enable, so that path stays
+  // immediate-apply, same as handleEnableAgent always has been).
+  const [pendingAgentReconfigure, setPendingAgentReconfigure] = useState(false);
   const [healthCheckBusy, setHealthCheckBusy] = useState(false);
   const [healthCheckResult, setHealthCheckResult] = useState<NodeHealthCheckResult | null>(null);
   // Tracks the modal's current node synchronously (unlike agentNode state,
@@ -581,6 +586,13 @@ export function GPUNodes() {
     setAgentCopiedWhich(null);
     setHealthCheckBusy(false);
     setHealthCheckResult(null);
+    // TLS certificate probe/pin state (P90: this modal, not Edit Node, now
+    // owns the Agent's TLS fingerprint - reset it per-node same as the rest.
+    setTlsProbedFingerprint(null);
+    setTlsProbeError('');
+    setTlsExpectedFingerprint('');
+    setPendingResetTLSPin(false);
+    setPendingAgentReconfigure(false);
     setControlStatus(null);
     setControlError(null);
     setControlManualConfirm(false);
@@ -594,9 +606,16 @@ export function GPUNodes() {
     setLogsError(null);
     setLogsLines(null);
     if (demoMode) {
-      setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 11435, scheme: 'http' });
-      setAgentPort('11435');
-      setAgentUseHttps(false);
+      // Demo mock nodes have no dedicated agent-scheme field - a pinned
+      // tlsFingerprint is the mock's stand-in for "this demo agent is
+      // HTTPS" (mockData.ts's node-3/node-4 comments), so derive from that
+      // instead of hardcoding 'http' - otherwise the TLS Certificate
+      // section below would never render for the two demo nodes that exist
+      // specifically to demonstrate the pinned/mismatch cases.
+      const demoAgentScheme: 'http' | 'https' = node.tlsFingerprint ? 'https' : 'http';
+      setAgentStatus({ node: node.name, enabled: !!node.agentPresent, port: 9200, scheme: demoAgentScheme });
+      setAgentPort('9200');
+      setAgentUseHttps(demoAgentScheme === 'https');
       setControlStatus({
         node: node.name,
         configured: true,
@@ -609,7 +628,7 @@ export function GPUNodes() {
     try {
       const status = await getNodeAgent(node.name);
       setAgentStatus(status);
-      setAgentPort(String(status.port || 11435));
+      setAgentPort(String(status.port || 9200));
       setAgentUseHttps(status.scheme === 'https');
     } catch (e: any) {
       setAgentStatus({ node: node.name, enabled: false, port: 0 });
@@ -756,6 +775,11 @@ export function GPUNodes() {
     setRuntimeActionError(null);
     setRuntimeActionConfirm(null);
     setRuntimeActionNotice(null);
+    setTlsProbedFingerprint(null);
+    setTlsProbeError('');
+    setTlsExpectedFingerprint('');
+    setPendingResetTLSPin(false);
+    setPendingAgentReconfigure(false);
   };
 
   const handleEnableAgent = async () => {
@@ -806,6 +830,25 @@ export function GPUNodes() {
     }
   };
 
+  // requestAgentReconfigure is the click handler for the "Save Connection"
+  // button on an already-enabled agent. It never calls the API directly -
+  // it only validates and, if the port/scheme actually changed, opens the
+  // "Reconfigure Node Agent connection?" confirm. handleEnableAgent (below)
+  // is reused for the actual POST once confirmed - the backend endpoint is
+  // the same for a fresh enable and a reconfigure.
+  const requestAgentReconfigure = () => {
+    if (!agentNode || !agentStatus) return;
+    const port = parseInt(agentPort, 10);
+    if (isNaN(port) || port <= 0 || port > 65535) {
+      setAgentError('Port must be between 1 and 65535');
+      return;
+    }
+    const scheme: 'http' | 'https' = agentUseHttps ? 'https' : 'http';
+    if (port === agentStatus.port && scheme === (agentStatus.scheme || 'http')) return;
+    setAgentError(null);
+    setPendingAgentReconfigure(true);
+  };
+
   const handleRegenerateAgentToken = async () => {
     if (!agentNode) return;
     setAgentBusy(true);
@@ -813,7 +856,7 @@ export function GPUNodes() {
     if (demoMode) {
       const enrollCode = `demo-${Math.random().toString(36).slice(2, 10)}`;
       const meshUrl = window.location.origin;
-      const port = agentStatus?.port ?? 11435;
+      const port = agentStatus?.port ?? 9200;
       setAgentInstallCommand({
         unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
         windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
@@ -1191,11 +1234,6 @@ export function GPUNodes() {
   const [tlsResetting, setTlsResetting] = useState(false);
   const [tlsExpectedFingerprint, setTlsExpectedFingerprint] = useState('');
   const [tlsStatusCmdCopied, setTlsStatusCmdCopied] = useState(false);
-  // editAgentScheme mirrors this node's Node Agent's OWN scheme (fetched
-  // fresh whenever the modal opens) - TLS fingerprint pinning gates on this,
-  // NOT editUseHttps (which only controls the runtime URL's scheme and is
-  // otherwise unrelated to the Agent's transport).
-  const [editAgentScheme, setEditAgentScheme] = useState<'http' | 'https' | null>(null);
   // Normalized for comparison only - a pasted value differing merely in case
   // or wrapped whitespace/newlines (common with terminal copy) must not read
   // as a mismatch; the fingerprint pinned is always tlsProbedFingerprint
@@ -1216,17 +1254,6 @@ export function GPUNodes() {
     setEditGPUIndices((node.gpuIndices ?? []).join(', '));
     setEditMaxInFlight(node.maxInFlight && node.maxInFlight > 0 ? String(node.maxInFlight) : '');
     setEditError('');
-    setTlsProbedFingerprint(null);
-    setTlsProbeError('');
-    setTlsExpectedFingerprint('');
-    setEditAgentScheme(null);
-    if (demoMode) {
-      setEditAgentScheme(node.agentPresent ? 'http' : null);
-    } else {
-      getNodeAgent(node.name)
-        .then(status => setEditAgentScheme(status.enabled ? (status.scheme || 'http') : null))
-        .catch(() => setEditAgentScheme(null));
-    }
   };
 
   const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | 'invalid' | null => {
@@ -1342,18 +1369,20 @@ export function GPUNodes() {
   // fingerprint for display only (P24 spec section 2) - it never pins
   // anything. Demo mode has no real node to dial, so it surfaces the
   // already-known demo fingerprint (or a clearly-fake placeholder) instead
-  // of attempting a network call.
+  // of attempting a network call. Operates on agentNode (Manage Node Agent
+  // modal), NOT editNode - TLS pinning secures the Agent connection, not
+  // the runtime URL, so it moved out of the Edit Node (Runtime) modal (P90).
   const handleProbeTLS = async () => {
-    if (!editNode) return;
+    if (!agentNode) return;
     setTlsProbeError('');
     setTlsExpectedFingerprint('');
     if (demoMode) {
-      setTlsProbedFingerprint(editNode.tlsFingerprint || 'SHA256:' + '00'.repeat(32));
+      setTlsProbedFingerprint(agentNode.tlsFingerprint || 'SHA256:' + '00'.repeat(32));
       return;
     }
     setTlsProbing(true);
     try {
-      const result = await probeNodeTLS(editNode.name);
+      const result = await probeNodeTLS(agentNode.name);
       setTlsProbedFingerprint(result.fingerprint);
     } catch (e: any) {
       setTlsProbeError(e?.message || 'Failed to probe TLS certificate');
@@ -1362,23 +1391,43 @@ export function GPUNodes() {
     }
   };
 
+  // applyAgentTLSPatch pins/resets this node's Agent TLS fingerprint via the
+  // same generic node PATCH endpoint used by Runtime edits (admin.go
+  // handlePatchNode), but sends ONLY tls_fingerprint - never bundled with
+  // any Runtime field (url/gpu_model/etc.) - so it can never accidentally
+  // change the runtime address while pinning a certificate.
+  const applyAgentTLSPatch = async (patch: { tls_fingerprint: string }, onSuccess?: () => void) => {
+    if (!agentNode) return;
+    if (demoMode) {
+      setNodes(prev => prev.map(n => n.name === agentNode.name ? mergeNodePatch(n, patch) : n));
+      setAgentNode(prev => prev ? mergeNodePatch(prev, patch) : prev);
+      onSuccess?.();
+      return;
+    }
+    if (!isLive) return;
+    try {
+      await patchNode(agentNode.name, patch);
+      await loadNodes();
+      setAgentNode(prev => prev ? mergeNodePatch(prev, patch) : prev);
+      onSuccess?.();
+    } catch (e: any) {
+      setAgentError(e?.message || 'Failed to update TLS pin');
+    }
+  };
+
   // handleConfirmAndPinTLS is the ONLY code path that ever pins a
   // fingerprint - it only runs when the operator clicks "Confirm & Pin"
   // after reviewing a probed value, never automatically from a probe
   // result (P24 spec section 1/2).
   const handleConfirmAndPinTLS = async () => {
-    if (!editNode || !tlsProbedFingerprint) return;
+    if (!agentNode || !tlsProbedFingerprint) return;
     setTlsPinning(true);
-    setEditError('');
-    try {
-      await applyPatch({ tls_fingerprint: tlsProbedFingerprint }, false);
+    setAgentError(null);
+    await applyAgentTLSPatch({ tls_fingerprint: tlsProbedFingerprint }, () => {
       setTlsProbedFingerprint(null);
       setTlsExpectedFingerprint('');
-    } catch (e: any) {
-      setEditError(e?.message || 'Failed to pin TLS fingerprint');
-    } finally {
-      setTlsPinning(false);
-    }
+    });
+    setTlsPinning(false);
   };
 
   // handleResetTLSPin clears an existing pin (R10: destructive - disrupts
@@ -1387,17 +1436,11 @@ export function GPUNodes() {
   // file). Runs only from that modal's confirm click, never directly from
   // the Reset button.
   const handleResetTLSPin = async () => {
-    if (!editNode) return;
+    if (!agentNode) return;
     setTlsResetting(true);
-    setEditError('');
-    try {
-      await applyPatch({ tls_fingerprint: '' }, false);
-      setPendingResetTLSPin(false);
-    } catch (e: any) {
-      setEditError(e?.message || 'Failed to reset TLS pin');
-    } finally {
-      setTlsResetting(false);
-    }
+    setAgentError(null);
+    await applyAgentTLSPatch({ tls_fingerprint: '' }, () => setPendingResetTLSPin(false));
+    setTlsResetting(false);
   };
 
   return (
@@ -1784,105 +1827,6 @@ export function GPUNodes() {
               A node at or above this many in-flight requests is shed immediately (failover/cloud/503) instead of queued. Leave blank to use Settings &rarr; Routing's global Max In-Flight Per Node.
             </p>
           </div>
-          <div className="pt-2 border-t border-border">
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              TLS Certificate Fingerprint
-            </label>
-            {editAgentScheme !== 'https' ? (
-              <p className="text-xs text-muted-foreground">
-                Enable HTTPS for this node's Node Agent (in the Agent panel, not the runtime URL
-                above) to enable certificate pinning. Pinning secures the mesh-to-Agent connection
-                only - it is unrelated to this node's runtime URL/scheme.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {editNode?.tlsFingerprintMismatch && (
-                  <p className="text-xs font-medium text-destructive">
-                    Mismatch: the node's agent is presenting a different certificate than what's pinned. Connections are being refused. If you rotated the certificate intentionally (e.g. after "agent service regen-cert"), probe below and re-confirm.
-                  </p>
-                )}
-                {editNode?.tlsFingerprint ? (
-                  <p className="text-xs text-muted-foreground font-mono break-all">
-                    Pinned: {editNode.tlsFingerprint}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Not pinned yet.</p>
-                )}
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleProbeTLS}
-                    disabled={tlsProbing}
-                    className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
-                  >
-                    {tlsProbing ? 'Probing...' : 'Probe Certificate'}
-                  </button>
-                  {editNode?.tlsFingerprint && (
-                    <button
-                      type="button"
-                      onClick={() => setPendingResetTLSPin(true)}
-                      className="px-3 py-1.5 bg-secondary hover:bg-destructive/10 hover:text-destructive disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
-                    >
-                      Reset Pin
-                    </button>
-                  )}
-                </div>
-                {tlsProbeError && (
-                  <p className="text-xs text-destructive">{tlsProbeError}</p>
-                )}
-                {tlsProbedFingerprint && (
-                  <div className="p-3 bg-secondary border border-border rounded-lg space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Node presented certificate fingerprint:
-                    </p>
-                    <p className="text-xs font-mono break-all text-foreground">{tlsProbedFingerprint}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Run this on the node and confirm it matches before pinning:
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 min-w-0 font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
-                        ollama-mesh-agent service status
-                      </code>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          copyText('ollama-mesh-agent service status');
-                          setTlsStatusCmdCopied(true);
-                          setTimeout(() => setTlsStatusCmdCopied(false), 2000);
-                        }}
-                        className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        {tlsStatusCmdCopied ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={tlsExpectedFingerprint}
-                      onChange={(e) => setTlsExpectedFingerprint(e.target.value)}
-                      placeholder="Optional: paste the fingerprint printed on the node to verify"
-                      className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs font-mono text-foreground placeholder:text-muted-foreground placeholder:font-sans"
-                    />
-                    {tlsExpectedFingerprintNormalized !== '' && (
-                      tlsExpectedFingerprintNormalized === tlsProbedFingerprintNormalized ? (
-                        <p className="text-xs font-medium text-green-600 dark:text-green-500">Matches - safe to pin.</p>
-                      ) : (
-                        <p className="text-xs font-medium text-destructive">Doesn't match the probed fingerprint - do not pin. Re-check the node.</p>
-                      )
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleConfirmAndPinTLS}
-                      disabled={tlsPinning || (tlsExpectedFingerprintNormalized !== '' && tlsExpectedFingerprintNormalized !== tlsProbedFingerprintNormalized)}
-                      className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-medium rounded-lg transition-colors shadow-sm"
-                    >
-                      {tlsPinning ? 'Pinning...' : 'Confirm & Pin'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
           )}
@@ -1954,13 +1898,13 @@ export function GPUNodes() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Clear the pinned TLS certificate fingerprint for <span className="text-foreground font-semibold">{editNode?.name}</span>?
+            Clear the pinned TLS certificate fingerprint for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
             This node reverts to requiring re-enrollment: the mesh will refuse to connect over HTTPS again until you probe and confirm a fingerprint for it. Not reversible from here - you'll need to re-pin afterward. In-flight requests are not affected.
           </p>
-          {editError && (
-            <p className="text-sm text-destructive">{editError}</p>
+          {agentError && (
+            <p className="text-sm text-destructive">{agentError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -2188,6 +2132,10 @@ export function GPUNodes() {
             )}
           </div>
 
+          {agentNode && !agentStatus && (
+            <p className="text-sm text-muted-foreground">Loading Agent status...</p>
+          )}
+
           {agentStatus && !agentStatus.enabled && (
             <div className="space-y-3">
               <div>
@@ -2203,7 +2151,7 @@ export function GPUNodes() {
                   className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Port the agent process listens on for the mesh to poll (default 11435).
+                  Port the agent process listens on for the mesh to poll (default 9200).
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2220,8 +2168,8 @@ export function GPUNodes() {
               </div>
               <p className="text-xs text-muted-foreground -mt-2">
                 Encrypts the mesh's connection to this node's Agent only - this node's inference
-                runtime endpoint is unaffected and keeps its own URL/scheme. After enabling, open
-                Edit Node and use "Probe &amp; Pin" to verify and pin the Agent's certificate
+                runtime endpoint is unaffected and keeps its own URL/scheme. Once enabled, this
+                panel shows a "Probe &amp; Pin" control to verify and pin the Agent's certificate
                 fingerprint (required - an unpinned Agent connection will be rejected).
               </p>
               <div className="flex justify-end pt-2">
@@ -2241,6 +2189,155 @@ export function GPUNodes() {
               <p className="text-sm text-foreground">
                 Enabled on port <span className="font-mono">{agentStatus.port}</span> ({agentStatus.scheme === 'https' ? 'HTTPS' : 'HTTP'}).
               </p>
+
+              {/* Agent Connection - reconfigure port/scheme on an already-enabled
+                  agent. Changing this NEVER touches this node's runtime URL
+                  (node.url/scheme) - only this Agent's own port/scheme (P90). */}
+              <div className="space-y-2 pt-2 border-t border-border">
+                <p className="text-sm font-medium text-foreground">Agent Connection</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">
+                      Agent Port
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="65535"
+                      value={agentPort}
+                      onChange={(e) => setAgentPort(e.target.value)}
+                      className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-6">
+                    <input
+                      id="agent-reconfigure-https"
+                      type="checkbox"
+                      checked={agentUseHttps}
+                      onChange={(e) => setAgentUseHttps(e.target.checked)}
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    <label htmlFor="agent-reconfigure-https" className="text-sm text-foreground">
+                      HTTPS
+                    </label>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={requestAgentReconfigure}
+                    disabled={agentBusy}
+                    className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
+                  >
+                    Save Connection
+                  </button>
+                </div>
+              </div>
+
+              {/* TLS Certificate - pins/probes THIS Agent's own certificate.
+                  Reads only agentStatus.scheme (never node.scheme/node.url) so
+                  it can never be confused with, or derived from, the Runtime
+                  HTTPS setting in the Edit Node modal (P90 hard invariant). */}
+              <div className="space-y-2 pt-2 border-t border-border">
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                  TLS Certificate Fingerprint
+                </label>
+                {agentStatus.scheme !== 'https' ? (
+                  <p className="text-xs text-muted-foreground">
+                    Enable HTTPS above to pin this Agent's certificate. Pinning secures the
+                    mesh-to-Agent connection only - it is unrelated to this node's runtime
+                    URL/scheme in the Edit Node modal.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {agentNode?.tlsFingerprintMismatch && (
+                      <p className="text-xs font-medium text-destructive">
+                        Mismatch: the node's agent is presenting a different certificate than what's pinned. Connections are being refused. If you rotated the certificate intentionally (e.g. after "agent service regen-cert"), probe below and re-confirm.
+                      </p>
+                    )}
+                    {agentNode?.tlsFingerprint ? (
+                      <p className="text-xs text-muted-foreground font-mono break-all">
+                        Pinned: {agentNode.tlsFingerprint}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Not pinned yet - an unpinned Agent HTTPS connection is rejected.</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleProbeTLS}
+                        disabled={tlsProbing}
+                        className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
+                      >
+                        {tlsProbing ? 'Probing...' : 'Probe Certificate'}
+                      </button>
+                      {agentNode?.tlsFingerprint && (
+                        <button
+                          type="button"
+                          onClick={() => setPendingResetTLSPin(true)}
+                          className="px-3 py-1.5 bg-secondary hover:bg-destructive/10 hover:text-destructive disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
+                        >
+                          Reset Pin
+                        </button>
+                      )}
+                    </div>
+                    {tlsProbeError && (
+                      <p className="text-xs text-destructive">{tlsProbeError}</p>
+                    )}
+                    {tlsProbedFingerprint && (
+                      <div className="p-3 bg-secondary border border-border rounded-lg space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          Node presented certificate fingerprint:
+                        </p>
+                        <p className="text-xs font-mono break-all text-foreground">{tlsProbedFingerprint}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Run this on the node and confirm it matches before pinning:
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 min-w-0 font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
+                            ollama-mesh-agent service status
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              copyText('ollama-mesh-agent service status');
+                              setTlsStatusCmdCopied(true);
+                              setTimeout(() => setTlsStatusCmdCopied(false), 2000);
+                            }}
+                            className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-success/20 hover:bg-success/30 text-success rounded-lg transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            {tlsStatusCmdCopied ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={tlsExpectedFingerprint}
+                          onChange={(e) => setTlsExpectedFingerprint(e.target.value)}
+                          placeholder="Optional: paste the fingerprint printed on the node to verify"
+                          className="w-full px-2 py-1.5 bg-background border border-border rounded-lg text-xs font-mono text-foreground placeholder:text-muted-foreground placeholder:font-sans"
+                        />
+                        {tlsExpectedFingerprintNormalized !== '' && (
+                          tlsExpectedFingerprintNormalized === tlsProbedFingerprintNormalized ? (
+                            <p className="text-xs font-medium text-green-600 dark:text-green-500">Matches - safe to pin.</p>
+                          ) : (
+                            <p className="text-xs font-medium text-destructive">Doesn't match the probed fingerprint - do not pin. Re-check the node.</p>
+                          )
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleConfirmAndPinTLS}
+                          disabled={tlsPinning || (tlsExpectedFingerprintNormalized !== '' && tlsExpectedFingerprintNormalized !== tlsProbedFingerprintNormalized)}
+                          className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-medium rounded-lg transition-colors shadow-sm"
+                        >
+                          {tlsPinning ? 'Pinning...' : 'Confirm & Pin'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {agentNode?.agentPresent && (
                 <div className="text-xs text-muted-foreground space-y-1 bg-secondary/40 rounded-lg p-3">
                   <p><span className="font-medium text-foreground">Agent version:</span> {agentNode.agentVersion || '--'}</p>
@@ -2551,6 +2648,49 @@ export function GPUNodes() {
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {agentBusy ? 'Disabling...' : 'Disable Agent'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Reconfigure Node Agent Connection Confirmation Modal - only for
+          changing port/scheme on an ALREADY-enabled agent (P90). Text is
+          scoped entirely to "Agent connection" and never says "node address"
+          so it can't be mistaken for the Runtime "Change Node Address" modal
+          above - and confirming here never touches this node's runtime URL. */}
+      <Modal
+        isOpen={pendingAgentReconfigure}
+        onClose={() => setPendingAgentReconfigure(false)}
+        title="Reconfigure Node Agent connection?"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Change the Agent connection for <span className="text-foreground font-semibold">{agentNode?.name}</span> to{' '}
+            <span className="text-foreground font-semibold">{agentUseHttps ? 'https' : 'http'}://{agentNode?.host}:{agentPort}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            The mesh will use this address to reach the Agent going forward. This does not change this node's inference runtime endpoint. This also issues a new Agent token and invalidates the current one - you'll need to run the install command shown next on the node to re-enroll it before the mesh can reach it again.
+          </p>
+          {agentError && (
+            <p className="text-sm text-destructive">{agentError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setPendingAgentReconfigure(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                setPendingAgentReconfigure(false);
+                await handleEnableAgent();
+              }}
+              disabled={agentBusy}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {agentBusy ? 'Applying...' : 'Confirm'}
             </button>
           </div>
         </div>
