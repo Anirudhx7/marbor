@@ -17,6 +17,14 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
+// maxAdvisorCtxLen bounds the ?ctx= query param handleModelRepo accepts.
+// Far above any real model's context window (the largest publicly known are
+// in the low millions), but small enough that perTokenBytes*ctxLen in
+// computeContextFeasibility can never overflow int64 and wrap negative -
+// which would make classifyFit read a huge negative estimate as comfortably
+// "green", a fabricated-fit bug, not merely an unrealistic input.
+const maxAdvisorCtxLen = 10_000_000
+
 // shardedGGUFFilename matches a multi-part GGUF split filename, e.g.
 // "kimi-k2.5-q3_k_s-00001-of-00010.gguf" - see the exclusion in
 // handleModelRepo's GGUF loop for why these are never offered as a variant.
@@ -1143,6 +1151,14 @@ func fetchHFConfigJSON(ctx context.Context, repoID, token string) (hfConfigJSON,
 	if cfg.NumHiddenLayers <= 0 || cfg.NumAttentionHeads <= 0 || cfg.NumKeyValueHeads <= 0 || cfg.HiddenSize <= 0 || cfg.MaxPositionEmbeddings <= 0 {
 		return hfConfigJSON{}, false
 	}
+	if cfg.HiddenSize < cfg.NumAttentionHeads {
+		// hidden_size/num_attention_heads (head_dim) would truncate to 0 via
+		// integer division, silently zeroing the entire KV-cache term while
+		// still being labeled "derived" (high confidence) - a malformed
+		// config.json is data this codebase can't trust, not data it should
+		// guess a zero-cost answer from (R1).
+		return hfConfigJSON{}, false
+	}
 	return cfg, true
 }
 
@@ -1378,7 +1394,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 
 	ctxLen := int64(8192) // default to 8k context window
 	if cStr := r.URL.Query().Get("ctx"); cStr != "" {
-		if cVal, err := strconv.ParseInt(cStr, 10, 64); err == nil && cVal > 0 {
+		if cVal, err := strconv.ParseInt(cStr, 10, 64); err == nil && cVal > 0 && cVal <= maxAdvisorCtxLen {
 			ctxLen = cVal
 		}
 	}
@@ -1558,13 +1574,27 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				tag = fmt.Sprintf("hf.co/%s", repo.ID)
 			}
 
-			// Check downloaded status
-			isDl := downloaded[tag] || downloaded[tag+":latest"]
+			// Check downloaded status. downloadedName is what Ollama itself
+			// actually calls this model - it can differ from the tag we just
+			// constructed (a ":latest" suffix, or different case via the
+			// fallback loop below). /api/show must be asked about the name
+			// Ollama actually holds, not the tag we built, or a mismatch
+			// silently downgrades this variant from Derived to Estimated
+			// confidence with no visible error.
+			isDl := false
+			downloadedName := tag
+			if downloaded[tag] {
+				isDl = true
+			} else if downloaded[tag+":latest"] {
+				isDl = true
+				downloadedName = tag + ":latest"
+			}
 			if !isDl {
 				// Check case-insensitive base name cut match
 				for k := range downloaded {
 					if strings.EqualFold(k, tag) || strings.EqualFold(k, tag+":latest") {
 						isDl = true
+						downloadedName = k
 						break
 					}
 				}
@@ -1580,7 +1610,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			var arch *hfArchFacts
 			caveat := ggufAdvisoryRuntimeCaveat(runtime)
 			if isDl && targetNodeURL != "" && (runtime == "" || runtime == "ollama") {
-				if info, ok := s.router.FetchModelShow(targetNodeURL, tag); ok {
+				if info, ok := s.router.FetchModelShow(targetNodeURL, downloadedName); ok {
 					arch = &hfArchFacts{
 						NumLayers:    info.BlockCount,
 						NumKVHeads:   info.HeadCountKV,
@@ -1588,7 +1618,13 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 						HiddenSize:   info.EmbeddingLength,
 						MaxContext:   info.ContextLength,
 					}
-					caveat = ""
+					// info.ContextLength is the model's own GGUF-declared
+					// trained maximum - not the same thing as Ollama's
+					// per-model num_ctx load parameter, which an operator may
+					// have set lower and which this mesh has no way to read
+					// back (internal/store's ModelConfig.NumCtx is a
+					// write-only launch setting). Never conflate the two.
+					caveat = "This is the model's own trained maximum context, not necessarily what this node currently has it loaded with (num_ctx may be set lower)."
 				}
 			}
 

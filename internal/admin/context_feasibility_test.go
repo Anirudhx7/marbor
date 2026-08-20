@@ -235,6 +235,28 @@ func TestFetchHFConfigJSON_MissingFields(t *testing.T) {
 	}
 }
 
+// TestFetchHFConfigJSON_HeadDimTruncationGuard verifies a config.json where
+// hidden_size < num_attention_heads (which would make head_dim truncate to 0
+// via integer division, silently zeroing the entire KV-cache term while
+// still labeled "derived") is rejected as ok=false rather than accepted with
+// a fabricated zero-cost answer (R1).
+func TestFetchHFConfigJSON_HeadDimTruncationGuard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"num_hidden_layers":       32,
+			"num_attention_heads":     128,
+			"hidden_size":             64, // < num_attention_heads -> head_dim would truncate to 0
+			"max_position_embeddings": 8192,
+		})
+	}))
+	defer srv.Close()
+
+	_, ok := fetchHFConfigJSONAt(t, srv.URL)
+	if ok {
+		t.Error("expected ok=false when hidden_size < num_attention_heads (head_dim would truncate to 0)")
+	}
+}
+
 // TestFetchHFConfigJSON_NotFound verifies a 404 (most pure-GGUF repos have
 // no config.json at all) fails closed to ok=false.
 func TestFetchHFConfigJSON_NotFound(t *testing.T) {
@@ -408,5 +430,55 @@ func TestHandleModelRepo_ContextFeasibility_EstimatedFallback(t *testing.T) {
 	}
 	if cf.RecommendedCtx != nil {
 		t.Error("RecommendedCtx must never be set on the Estimated path")
+	}
+}
+
+// TestHandleModelRepo_CtxOverflowGuard is a regression test: an absurdly
+// large ?ctx= value must be rejected (falling back to the 8192 default)
+// rather than accepted verbatim, since perTokenBytes*requestedCtx in
+// computeContextFeasibility's Derived path can otherwise overflow int64 and
+// wrap negative - which classifyFit would then read as comfortably "green",
+// a fabricated-fit result rather than an honest rejection of a bogus input.
+func TestHandleModelRepo_CtxOverflowGuard(t *testing.T) {
+	fakeHF := `{
+		"id": "someorg/somemodel-gguf",
+		"downloads": 500,
+		"likes": 5,
+		"tags": ["text-generation"],
+		"lastModified": "2026-01-01T00:00:00.000Z",
+		"siblings": [
+			{"rfilename": "somemodel-Q4_K_M.gguf", "size": 4000000000}
+		]
+	}`
+	origTransport := hfHTTPClient.Transport
+	hfHTTPClient.Transport = stubRoundTripper{body: fakeHF}
+	defer func() { hfHTTPClient.Transport = origTransport }()
+
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/repo?id=someorg/somemodel-gguf&ctx=9223372036854775807", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Variants []ModelVariantFit `json:"variants"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Variants) != 1 {
+		t.Fatalf("got %d variants, want 1", len(resp.Variants))
+	}
+	if resp.Variants[0].ContextFeasibility.RequestedCtx != 8192 {
+		t.Errorf("RequestedCtx = %d, want the default 8192 (an out-of-range ctx must be rejected, not clamped/wrapped)", resp.Variants[0].ContextFeasibility.RequestedCtx)
+	}
+	if resp.Variants[0].VRAMEstMB <= 0 {
+		t.Errorf("VRAMEstMB = %d, want a positive estimate - a negative/overflowed value would classify as a fabricated \"green\" fit", resp.Variants[0].VRAMEstMB)
 	}
 }
