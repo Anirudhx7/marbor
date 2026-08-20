@@ -2248,8 +2248,11 @@ export function GPUNodes() {
 
               {/* Agent Connection - reconfigure port/scheme on an already-enabled
                   agent. Changing this NEVER touches this node's runtime URL
-                  (node.url/scheme) - only this Agent's own port/scheme (P90). */}
-              <div className="space-y-2 pt-2 border-t border-border">
+                  (node.url/scheme) - only this Agent's own port/scheme (P90).
+                  A bordered card (not a bare border-t divider) so the section
+                  boundary never sits close enough to the status line above it
+                  to read as a strike-through at smaller sizes/zoom levels. */}
+              <div className="space-y-2 p-3 bg-secondary/40 border border-border rounded-lg">
                 <p className="text-sm font-medium text-foreground">Agent Connection</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -2293,8 +2296,9 @@ export function GPUNodes() {
               {/* TLS Certificate - pins/probes THIS Agent's own certificate.
                   Reads only agentStatus.scheme (never node.scheme/node.url) so
                   it can never be confused with, or derived from, the Runtime
-                  HTTPS setting in the Edit Node modal (P90 hard invariant). */}
-              <div className="space-y-2 pt-2 border-t border-border">
+                  HTTPS setting in the Edit Node modal (P90 hard invariant).
+                  Same bordered-card treatment as Agent Connection above. */}
+              <div className="space-y-2 p-3 bg-secondary/40 border border-border rounded-lg">
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                   TLS Certificate Fingerprint
                 </label>
