@@ -523,6 +523,12 @@ export function GPUNodes() {
   // agent (nothing to disrupt on the very first Enable, so that path stays
   // immediate-apply, same as handleEnableAgent always has been).
   const [pendingAgentReconfigure, setPendingAgentReconfigure] = useState(false);
+  // pendingRegenerateToken gates the "Regenerate Node Agent token?" confirm
+  // (R10): handleRegenerateNodeAgentToken swaps the live token in the
+  // router's in-memory state immediately (admin.go SetNodeAgent), so the
+  // currently-running agent process - still presenting the old token - is
+  // rejected on its very next poll until reinstalled with the new command.
+  const [pendingRegenerateToken, setPendingRegenerateToken] = useState(false);
   const [healthCheckBusy, setHealthCheckBusy] = useState(false);
   const [healthCheckResult, setHealthCheckResult] = useState<NodeHealthCheckResult | null>(null);
   // Tracks the modal's current node synchronously (unlike agentNode state,
@@ -593,6 +599,7 @@ export function GPUNodes() {
     setTlsExpectedFingerprint('');
     setPendingResetTLSPin(false);
     setPendingAgentReconfigure(false);
+    setPendingRegenerateToken(false);
     setControlStatus(null);
     setControlError(null);
     setControlManualConfirm(false);
@@ -780,6 +787,7 @@ export function GPUNodes() {
     setTlsExpectedFingerprint('');
     setPendingResetTLSPin(false);
     setPendingAgentReconfigure(false);
+    setPendingRegenerateToken(false);
   };
 
   const handleEnableAgent = async () => {
@@ -2383,7 +2391,7 @@ export function GPUNodes() {
               )}
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={handleRegenerateAgentToken}
+                  onClick={() => setPendingRegenerateToken(true)}
                   disabled={agentBusy}
                   className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
                 >
@@ -2691,6 +2699,47 @@ export function GPUNodes() {
               className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {agentBusy ? 'Applying...' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Regenerate Node Agent Token Confirmation Modal (R10: swaps the live
+          token immediately - the currently-running agent process is
+          rejected on its very next poll until reinstalled with the new
+          command shown after confirming). */}
+      <Modal
+        isOpen={pendingRegenerateToken}
+        onClose={() => setPendingRegenerateToken(false)}
+        title="Regenerate Node Agent token?"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Regenerate the Agent token for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This immediately invalidates the currently-running agent's token - the mesh will refuse its connection until you run the new install command (shown next) on the node to re-enroll it. This does not change this node's inference runtime endpoint.
+          </p>
+          {agentError && (
+            <p className="text-sm text-destructive">{agentError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setPendingRegenerateToken(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                setPendingRegenerateToken(false);
+                await handleRegenerateAgentToken();
+              }}
+              disabled={agentBusy}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {agentBusy ? 'Regenerating...' : 'Regenerate Token'}
             </button>
           </div>
         </div>
