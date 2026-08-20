@@ -2242,18 +2242,22 @@ export function GPUNodes() {
 
           {agentStatus && agentStatus.enabled && (
             <div className="space-y-3">
-              <p className="text-sm text-foreground">
-                Enabled on port <span className="font-mono">{agentStatus.port}</span> ({agentStatus.scheme === 'https' ? 'HTTPS' : 'HTTP'}).
-              </p>
-
               {/* Agent Connection - reconfigure port/scheme on an already-enabled
                   agent. Changing this NEVER touches this node's runtime URL
                   (node.url/scheme) - only this Agent's own port/scheme (P90).
-                  A bordered card (not a bare border-t divider) so the section
-                  boundary never sits close enough to the status line above it
-                  to read as a strike-through at smaller sizes/zoom levels. */}
+                  The enabled/port/scheme status lives ONLY in this card's
+                  header pill + its own editable fields below - no separate
+                  "Enabled on port X (scheme)" line, since that was just a
+                  read-only restatement of the same two values shown (and
+                  editable) right underneath it. */}
               <div className="space-y-2 p-3 bg-secondary/40 border border-border rounded-lg">
-                <p className="text-sm font-medium text-foreground">Agent Connection</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground">Agent Connection</p>
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-success">
+                    <span className="w-2 h-2 rounded-full bg-success" />
+                    Enabled &middot; {agentStatus.scheme === 'https' ? 'HTTPS' : 'HTTP'}
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">
