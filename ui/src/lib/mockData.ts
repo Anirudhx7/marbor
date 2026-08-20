@@ -1035,9 +1035,18 @@ export const mockHFRepoDetails: Record<string, any> = {
     tags: ['text-generation', 'gguf', 'llama-3.2', 'conversational'],
     last_modified: '2026-06-15T18:30:00Z',
     variants: [
-      { tag: 'hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 2800, size_mb: 2020, recommended: true, fit: 'green', downloaded: false },
-      { tag: 'hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 4200, size_mb: 3200, recommended: false, fit: 'green', downloaded: false },
-      { tag: 'hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:F16', quantization: 'F16', vram_est_mb: 7500, size_mb: 6100, recommended: false, fit: 'green', downloaded: false }
+      // context_feasibility demonstrates P71's Derived path (this variant is
+      // shown as already downloaded, so a demo /api/show-equivalent fact set
+      // is plausible) - the other repos below are left without this field to
+      // keep this demo-data change scoped to demonstrating the feature, not
+      // rewriting every mock entry (the field is optional; ContextFeasibilityNote
+      // renders nothing when it's absent).
+      { tag: 'hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 2800, size_mb: 2020, recommended: true, fit: 'green', downloaded: false,
+        context_feasibility: { confidence: 'derived', requested_ctx: 8192, declared_max_context: 131072, exceeds_declared_max: false } },
+      { tag: 'hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 4200, size_mb: 3200, recommended: false, fit: 'green', downloaded: false,
+        context_feasibility: { confidence: 'derived', requested_ctx: 8192, declared_max_context: 131072, exceeds_declared_max: false } },
+      { tag: 'hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:F16', quantization: 'F16', vram_est_mb: 7500, size_mb: 6100, recommended: false, fit: 'yellow', downloaded: false,
+        context_feasibility: { confidence: 'derived', requested_ctx: 32768, declared_max_context: 131072, exceeds_declared_max: false, kv_cache_est_mb: 512, limiting_factor: 'kv_cache', recommended_ctx: 16384 } }
     ]
   },
   'bartowski/Llama-3.2-1B-Instruct-GGUF': {
@@ -1074,8 +1083,13 @@ export const mockHFRepoDetails: Record<string, any> = {
     tags: ['text-generation', 'gguf', 'gemma', 'instruction'],
     last_modified: '2026-06-10T16:45:00Z',
     variants: [
-      { tag: 'hf.co/google/gemma-2-9b-it-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 7000, size_mb: 5800, recommended: true, fit: 'green', downloaded: false },
-      { tag: 'hf.co/google/gemma-2-9b-it-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 11000, size_mb: 9600, recommended: false, fit: 'yellow', downloaded: false }
+      // context_feasibility here demonstrates the Estimated fallback (no
+      // config.json / not downloaded to any Ollama node) - contrast with the
+      // Derived example above.
+      { tag: 'hf.co/google/gemma-2-9b-it-GGUF:Q4_K_M', quantization: 'Q4_K_M', vram_est_mb: 7000, size_mb: 5800, recommended: true, fit: 'green', downloaded: false,
+        context_feasibility: { confidence: 'estimated', requested_ctx: 8192 } },
+      { tag: 'hf.co/google/gemma-2-9b-it-GGUF:Q8_0', quantization: 'Q8_0', vram_est_mb: 11000, size_mb: 9600, recommended: false, fit: 'yellow', downloaded: false,
+        context_feasibility: { confidence: 'estimated', requested_ctx: 8192 } }
     ]
   },
   'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF': {

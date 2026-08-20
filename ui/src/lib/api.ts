@@ -1032,6 +1032,26 @@ export interface HFModel {
   createdAt?: string;
 }
 
+// ContextFeasibility is P71's context-length feasibility advice for one
+// model variant at one requested context length. confidence is always
+// populated ("derived" or "estimated") so the UI can never present a rough
+// linear guess as if it were a real architecture-derived calculation.
+export interface ContextFeasibility {
+  confidence: 'derived' | 'estimated';
+  requested_ctx: number;
+  // declared_max_context is the model's own trained maximum context length,
+  // Known only when confidence === 'derived' - absent otherwise, never
+  // guessed.
+  declared_max_context?: number;
+  exceeds_declared_max?: boolean;
+  kv_cache_est_mb?: number;
+  limiting_factor?: 'weights' | 'kv_cache';
+  // recommended_ctx is only ever present when confidence === 'derived' - no
+  // recommendation is ever built on a rough estimate.
+  recommended_ctx?: number;
+  runtime_caveat?: string;
+}
+
 export interface ModelVariantFit {
   tag: string;
   quantization: string;
@@ -1040,6 +1060,7 @@ export interface ModelVariantFit {
   fit: 'green' | 'yellow' | 'red' | 'unknown';
   disk_fit: 'ok' | 'insufficient' | 'unknown';
   downloaded: boolean;
+  context_feasibility: ContextFeasibility;
 }
 
 export interface HFRepoDetails {

@@ -28,6 +28,48 @@ import { CustomDatePicker } from '../components/DateTimePicker';
 // the identical constant in GPUNodes.tsx for the full reasoning.
 const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent']);
 
+// ContextFeasibilityNote renders P71's context-length feasibility advice for
+// one variant. confidence is always shown (derived vs. estimated) so an
+// operator never mistakes a rough linear guess for a real architecture-
+// derived answer - a fabricated/overconfident number is exactly what this
+// feature exists to avoid (R1).
+function ContextFeasibilityNote({ cf, fit }: { cf: ModelVariantFit['context_feasibility']; fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
+  if (!cf) return null;
+  const isDerived = cf.confidence === 'derived';
+  const fmt = (n: number) => new Intl.NumberFormat().format(n);
+  const lines: string[] = [];
+
+  if (cf.exceeds_declared_max && cf.declared_max_context) {
+    lines.push(`Requested context exceeds this model's declared maximum of ${fmt(cf.declared_max_context)} tokens.`);
+  }
+  if (isDerived && fit !== 'green' && cf.limiting_factor) {
+    lines.push(
+      cf.limiting_factor === 'kv_cache'
+        ? `KV cache at ${fmt(cf.requested_ctx)} tokens is expected to exceed available VRAM.`
+        : 'Model weights alone are expected to exceed available VRAM at this size.'
+    );
+  }
+  if (isDerived && fit !== 'green' && cf.recommended_ctx) {
+    lines.push(`Recommended context: ~${fmt(cf.recommended_ctx)} tokens.`);
+  }
+
+  return (
+    <div className="mt-1 space-y-0.5">
+      <span className={`text-[9px] font-medium ${isDerived ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400'}`}>
+        {isDerived
+          ? `Context: derived from model architecture${cf.declared_max_context ? ` (max ${fmt(cf.declared_max_context)})` : ''}`
+          : 'Context: rough estimate - model architecture unknown'}
+      </span>
+      {lines.map((l, i) => (
+        <p key={i} className="text-[9px] text-muted-foreground leading-snug">{l}</p>
+      ))}
+      {cf.runtime_caveat && (
+        <p className="text-[9px] text-muted-foreground/70 italic leading-snug">{cf.runtime_caveat}</p>
+      )}
+    </div>
+  );
+}
+
 function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   const styles = {
     green: 'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
@@ -196,7 +238,7 @@ function ModelDetailPanel({
           likes: model.likes,
           tags: model.tags,
           last_modified: model.lastModified,
-          variants: [{ tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', disk_fit: diskFit(3500), downloaded: false }],
+          variants: [{ tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', disk_fit: diskFit(3500), downloaded: false, context_feasibility: { confidence: 'estimated', requested_ctx: len } }],
           disk_free_gb: diskFreeGB,
           disk_total_gb: 1000,
           disk_known: true,
@@ -366,6 +408,7 @@ function ModelDetailPanel({
                       <span className="text-[9px] text-muted-foreground font-mono block truncate" title={v.tag}>
                         {v.tag}
                       </span>
+                      <ContextFeasibilityNote cf={v.context_feasibility} fit={v.fit} />
                     </div>
                     <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
                       <FitBadge fit={v.fit} />
