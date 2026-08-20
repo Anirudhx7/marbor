@@ -881,6 +881,20 @@ func ggufOnlyRuntime(runtime string) bool {
 	}
 }
 
+// ggufAdvisoryRuntimeCaveat returns the P71 runtime caveat for a GGUF-family
+// runtime when no real architecture facts could be sourced (see
+// handleModelRepo's GGUF loop). Ollama itself gets no caveat here - when its
+// /api/show fetch succeeds the caller clears this to "", and when it fails
+// the model just isn't downloaded yet, which the Estimated confidence label
+// already communicates. llama.cpp has no equivalent endpoint at all, so it
+// always carries this note regardless of download state.
+func ggufAdvisoryRuntimeCaveat(runtime string) string {
+	if runtime == "llamacpp" {
+		return "llama.cpp has no endpoint this mesh can query for the model's real declared context length; this estimate does not account for the model's own trained maximum."
+	}
+	return ""
+}
+
 // hfSearchFilters returns the HF format filter tag (for the "filter=" param)
 // and the set of pipeline_tag values relevant to a given runtime's search.
 // GGUF runtimes use the "gguf" format filter alone with no pipeline_tag
@@ -1013,6 +1027,213 @@ type ModelVariantFit struct {
 	Fit          string `json:"fit"`      // "green", "yellow", "red", "unknown"
 	DiskFit      string `json:"disk_fit"` // "ok", "insufficient", "unknown"
 	Downloaded   bool   `json:"downloaded"`
+	// ContextFeasibility is P71's context-length feasibility advice at the
+	// requested ctx query-param value. Additive-only field; VRAMEstMB/Fit
+	// above already incorporate whatever total this struct computed (derived
+	// or estimated) so existing consumers see the improved number for free,
+	// while this field carries the confidence label and explanation that
+	// make it possible to tell a real architecture-derived answer from the
+	// older linear guess (R1: never presented as more certain than it is).
+	ContextFeasibility ContextFeasibility `json:"context_feasibility"`
+}
+
+// ContextFeasibility carries P71's context-length feasibility advice for one
+// model variant at one requested context length. Confidence is always
+// populated ("derived" or "estimated") so a caller can never mistake a rough
+// linear guess for a real architecture-derived calculation - see the P71
+// design plan's Known/Derived/Estimated/Unknown distinction.
+type ContextFeasibility struct {
+	// Confidence is "derived" when real transformer architecture facts were
+	// available (Ollama /api/show for a downloaded model, or an HF repo's
+	// config.json) and the KV-cache formula in kvCacheBytesPerToken actually
+	// ran; "estimated" when only the pre-existing linear multiplier could be
+	// used. Never any other value.
+	Confidence string `json:"confidence"`
+	// RequestedCtx echoes the context length this advice was computed for.
+	RequestedCtx int64 `json:"requested_ctx"`
+	// DeclaredMaxContext is the model's own trained maximum context length,
+	// Known only when Confidence=="derived" - nil (omitted) otherwise, never
+	// guessed.
+	DeclaredMaxContext *int64 `json:"declared_max_context,omitempty"`
+	// ExceedsDeclaredMax is true when RequestedCtx is beyond the model's own
+	// trained maximum - a correctness problem distinct from a VRAM/memory
+	// problem, only ever set when DeclaredMaxContext is Known.
+	ExceedsDeclaredMax bool `json:"exceeds_declared_max,omitempty"`
+	// KVCacheEstMB is the real per-token KV-cache formula's result at
+	// RequestedCtx, in MB. Only populated when Confidence=="derived".
+	KVCacheEstMB int64 `json:"kv_cache_est_mb,omitempty"`
+	// LimitingFactor names which term dominates the total estimate at
+	// RequestedCtx: "weights" or "kv_cache". Only populated when
+	// Confidence=="derived" - the linear estimate has no way to separate the
+	// two terms honestly.
+	LimitingFactor string `json:"limiting_factor,omitempty"`
+	// RecommendedCtx is the largest context length <= RequestedCtx (capped at
+	// DeclaredMaxContext) that the same real formula classifies "green" on
+	// this node. Only ever set when Confidence=="derived" and the requested
+	// length itself did not already classify green - never offered as a
+	// suggestion built on a rough estimate.
+	RecommendedCtx *int64 `json:"recommended_ctx,omitempty"`
+	// RuntimeCaveat is a short, static, runtime-family-specific note about
+	// what remains Unknown even when Confidence=="derived" (e.g. a runtime's
+	// own launched context ceiling, which this codebase has no way to
+	// discover - see P71 plan section D). Empty when there's nothing to add.
+	RuntimeCaveat string `json:"runtime_caveat,omitempty"`
+}
+
+// hfArchFacts is the runtime-agnostic set of real transformer architecture
+// facts the Derived KV-cache formula needs, however they were sourced -
+// Ollama /api/show's model_info block (GGUF, Ollama only) or an HF repo's
+// config.json (safetensors: vLLM/TGI/MLX, and any runtime once a repo's
+// config.json has been fetched).
+type hfArchFacts struct {
+	NumLayers    int64
+	NumKVHeads   int64
+	NumAttnHeads int64
+	HiddenSize   int64
+	MaxContext   int64
+}
+
+// hfConfigJSON is the subset of a Hugging Face model repo's config.json this
+// feature needs. Not every repo ships one (pure-GGUF repos rarely do, since
+// GGUF is a self-contained binary format) - fetchHFConfigJSON returns
+// ok=false whenever any required field is absent, and callers must fall back
+// to the existing linear estimate (R1) rather than invent these numbers.
+type hfConfigJSON struct {
+	NumHiddenLayers       int64 `json:"num_hidden_layers"`
+	NumAttentionHeads     int64 `json:"num_attention_heads"`
+	NumKeyValueHeads      int64 `json:"num_key_value_heads"`
+	HiddenSize            int64 `json:"hidden_size"`
+	MaxPositionEmbeddings int64 `json:"max_position_embeddings"`
+}
+
+// fetchHFConfigJSON fetches and parses a Hugging Face repo's config.json.
+// Works both before and after any node has downloaded the model - it's a
+// small file fetched directly from the repo, independent of any node/agent
+// state, matching this codebase's existing pattern of live per-request HF
+// fetches (no caching layer, same as handleModelRepo's own repo-detail
+// fetch).
+func fetchHFConfigJSON(ctx context.Context, repoID, token string) (hfConfigJSON, bool) {
+	targetURL := fmt.Sprintf("https://huggingface.co/%s/raw/main/config.json", repoID)
+	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
+	if err != nil {
+		return hfConfigJSON{}, false
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := hfHTTPClient.Do(req)
+	if err != nil {
+		return hfConfigJSON{}, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return hfConfigJSON{}, false
+	}
+	var cfg hfConfigJSON
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return hfConfigJSON{}, false
+	}
+	if cfg.NumKeyValueHeads == 0 {
+		// Many dense (non-GQA) architectures omit num_key_value_heads
+		// entirely, meaning every attention head is its own KV head (MHA) -
+		// this is config.json's own documented convention for that case, not
+		// a guess this codebase is inventing.
+		cfg.NumKeyValueHeads = cfg.NumAttentionHeads
+	}
+	if cfg.NumHiddenLayers <= 0 || cfg.NumAttentionHeads <= 0 || cfg.NumKeyValueHeads <= 0 || cfg.HiddenSize <= 0 || cfg.MaxPositionEmbeddings <= 0 {
+		return hfConfigJSON{}, false
+	}
+	return cfg, true
+}
+
+// kvCacheBytesPerToken computes the real per-token KV-cache footprint from
+// known transformer architecture facts: 2 (one for K, one for V) x layers x
+// kv_heads x head_dim x 2 bytes (fp16/bf16 - the default KV-cache dtype
+// across llama.cpp/Ollama/vLLM/TGI absent an explicit quantized-KV-cache
+// configuration, which this codebase has no way to detect - see the P71
+// design plan's edge-case section on KV-cache precision). head_dim is
+// derived (hiddenSize/numAttnHeads), not a separate metadata field.
+func kvCacheBytesPerToken(numLayers, numKVHeads, hiddenSize, numAttnHeads int64) int64 {
+	if numAttnHeads <= 0 {
+		return 0
+	}
+	headDim := hiddenSize / numAttnHeads
+	return 2 * numLayers * numKVHeads * headDim * 2
+}
+
+// computeContextFeasibility is the single shared implementation used for
+// every runtime family (Ollama GGUF, llama.cpp GGUF, vLLM/TGI/MLX
+// safetensors) - runtimes differ only in which metadata source (if any) they
+// can supply (see FetchModelShow / fetchHFConfigJSON), never in how the math
+// or fit classification works (P71 design plan section D's layered design:
+// one function, runtime-selected inputs, no per-runtime duplication).
+//
+// When arch is non-nil, the real per-token KV-cache formula runs and
+// Confidence is "derived". When nil, the pre-existing linear estimate
+// (sizeMB*overheadMult + ctxLen*perTokenMBFallback, unchanged from before
+// P71) is used instead and Confidence is "estimated" - callers must never
+// present the latter as if it were the former (R1).
+func computeContextFeasibility(
+	sizeMB, requestedCtx int64,
+	overheadMult, perTokenMBFallback float64,
+	vramTotalBytes int64, vramSource string,
+	arch *hfArchFacts,
+	runtimeCaveat string,
+) (totalEstBytes int64, fit string, cf ContextFeasibility) {
+	cf = ContextFeasibility{RequestedCtx: requestedCtx, RuntimeCaveat: runtimeCaveat}
+
+	if arch == nil {
+		cf.Confidence = "estimated"
+		totalEstBytes = int64(float64(sizeMB)*overheadMult+float64(requestedCtx)*perTokenMBFallback) * 1024 * 1024
+		fit = classifyFit(totalEstBytes, vramTotalBytes, vramSource)
+		return totalEstBytes, fit, cf
+	}
+
+	cf.Confidence = "derived"
+	maxCtx := arch.MaxContext
+	cf.DeclaredMaxContext = &maxCtx
+	cf.ExceedsDeclaredMax = requestedCtx > maxCtx
+
+	perTokenBytes := kvCacheBytesPerToken(arch.NumLayers, arch.NumKVHeads, arch.HiddenSize, arch.NumAttnHeads)
+	kvBytes := perTokenBytes * requestedCtx
+	weightBytes := int64(float64(sizeMB) * overheadMult * 1024 * 1024)
+	totalEstBytes = weightBytes + kvBytes
+	cf.KVCacheEstMB = kvBytes / (1024 * 1024)
+	if kvBytes > weightBytes {
+		cf.LimitingFactor = "kv_cache"
+	} else {
+		cf.LimitingFactor = "weights"
+	}
+
+	fit = classifyFit(totalEstBytes, vramTotalBytes, vramSource)
+
+	if fit != "green" && vramSource != "unknown" && vramSource != "inferred" && perTokenBytes > 0 {
+		// Binary-search the largest context length <= requestedCtx (capped at
+		// the model's own declared max, never above it) that this same real
+		// formula classifies green on this node - never offered when
+		// Confidence isn't "derived" (no recommendation built on a rough
+		// estimate).
+		lo, hi := int64(1), requestedCtx
+		if maxCtx < hi {
+			hi = maxCtx
+		}
+		var best int64
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			candBytes := weightBytes + perTokenBytes*mid
+			if classifyFit(candBytes, vramTotalBytes, vramSource) == "green" {
+				best = mid
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+		if best > 0 {
+			cf.RecommendedCtx = &best
+		}
+	}
+
+	return totalEstBytes, fit, cf
 }
 
 // handleModelSearch searches Hugging Face GGUF models.
@@ -1205,6 +1426,10 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	gpuCount := 0
 	vramFitBasis := ""
 	rawVramSource := ""
+	// targetNodeURL survives past the `if targetNode != nil` block below
+	// (whose own nodeURL local goes out of scope there) - P71's Ollama
+	// /api/show fetch needs it further down, in the GGUF variant loop.
+	targetNodeURL := ""
 
 	nodes := s.router.Nodes()
 	var targetNode *router.NodeState
@@ -1223,6 +1448,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	if targetNode != nil {
 		targetNode.RLock()
 		nodeURL := targetNode.URL
+		targetNodeURL = nodeURL
 		nodeName := targetNode.Name
 		vramTotalMB := targetNode.VRAMTotalMB
 		agentGPUs := append([]nodeagent.GPUInfo(nil), targetNode.AgentGPUs...)
@@ -1327,11 +1553,6 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				continue // skip directories/metadata placeholder files
 			}
 
-			// Calculate estimated VRAM based on file size and context length
-			// Formula: VRAMEstMB = sizeMB * 1.10 + ctxLen * 0.15
-			vramEstMB := int64(float64(sizeMB)*1.10 + float64(ctxLen)*0.15)
-			estBytes := vramEstMB * 1024 * 1024
-
 			tag := fmt.Sprintf("hf.co/%s:%s", repo.ID, quant)
 			if quant == "GGUF" {
 				tag = fmt.Sprintf("hf.co/%s", repo.ID)
@@ -1349,14 +1570,40 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			// P71: for a model already downloaded to an Ollama node (runtime
+			// "" or "ollama" - llama.cpp has no /api/show equivalent), fetch
+			// its real GGUF-derived architecture facts so the context
+			// feasibility below can be Derived instead of Estimated. Any
+			// failure (not downloaded, node unreachable, non-Ollama runtime)
+			// leaves arch nil and computeContextFeasibility falls back to the
+			// pre-existing linear formula unchanged.
+			var arch *hfArchFacts
+			caveat := ggufAdvisoryRuntimeCaveat(runtime)
+			if isDl && targetNodeURL != "" && (runtime == "" || runtime == "ollama") {
+				if info, ok := s.router.FetchModelShow(targetNodeURL, tag); ok {
+					arch = &hfArchFacts{
+						NumLayers:    info.BlockCount,
+						NumKVHeads:   info.HeadCountKV,
+						NumAttnHeads: info.HeadCount,
+						HiddenSize:   info.EmbeddingLength,
+						MaxContext:   info.ContextLength,
+					}
+					caveat = ""
+				}
+			}
+
+			// Formula (Estimated fallback): VRAMEstMB = sizeMB*1.10 + ctxLen*0.15
+			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, 1.10, 0.15, vramTotalBytes, vramSource, arch, caveat)
+
 			variants = append(variants, ModelVariantFit{
-				Tag:          tag,
-				Quantization: quant,
-				VRAMEstMB:    vramEstMB,
-				SizeMB:       sizeMB,
-				Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
-				DiskFit:      classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent),
-				Downloaded:   isDl,
+				Tag:                tag,
+				Quantization:       quant,
+				VRAMEstMB:          estBytes / (1024 * 1024),
+				SizeMB:             sizeMB,
+				Fit:                fitResult,
+				DiskFit:            classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent),
+				Downloaded:         isDl,
+				ContextFeasibility: cf,
 			})
 		}
 	} else {
@@ -1370,19 +1617,44 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		}
 		if hasSafetensors {
 			sizeMB := totalSize / (1024 * 1024)
+			isDl := downloaded[repo.ID]
+
+			// P71: an HF safetensors repo (vLLM/TGI/MLX) frequently ships a
+			// config.json with real transformer architecture facts, fetchable
+			// whether or not any node has downloaded the model yet. A missing
+			// or incomplete config.json leaves arch nil and
+			// computeContextFeasibility falls back to the pre-existing linear
+			// formula unchanged.
+			var arch *hfArchFacts
+			if cfg, ok := fetchHFConfigJSON(r.Context(), repo.ID, s.cfg.HuggingFace.Token); ok {
+				arch = &hfArchFacts{
+					NumLayers:    cfg.NumHiddenLayers,
+					NumKVHeads:   cfg.NumKeyValueHeads,
+					NumAttnHeads: cfg.NumAttentionHeads,
+					HiddenSize:   cfg.HiddenSize,
+					MaxContext:   cfg.MaxPositionEmbeddings,
+				}
+			}
+			// The runtime's own launched context ceiling (e.g. vLLM's
+			// --max-model-len) may sit below the model's trained max declared
+			// above - this codebase has no way to discover that today (P71
+			// plan section D), so it's always flagged as a caveat here,
+			// independent of whether arch was found.
+			caveat := "This runtime's own launch configuration may cap context below the model's declared maximum; the mesh cannot see that setting."
+
 			// vLLM/TGI carry more runtime overhead (PagedAttention KV cache,
 			// CUDA graph buffers) than llama.cpp, hence the higher multiplier.
-			vramEstMB := int64(float64(sizeMB)*1.20 + float64(ctxLen)*0.20)
-			estBytes := vramEstMB * 1024 * 1024
-			isDl := downloaded[repo.ID]
+			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, 1.20, 0.20, vramTotalBytes, vramSource, arch, caveat)
+
 			variants = append(variants, ModelVariantFit{
-				Tag:          repo.ID,
-				Quantization: detectSafetensorsQuant(repo.Tags),
-				VRAMEstMB:    vramEstMB,
-				SizeMB:       sizeMB,
-				Fit:          classifyFit(estBytes, vramTotalBytes, vramSource),
-				DiskFit:      classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent),
-				Downloaded:   isDl,
+				Tag:                repo.ID,
+				Quantization:       detectSafetensorsQuant(repo.Tags),
+				VRAMEstMB:          estBytes / (1024 * 1024),
+				SizeMB:             sizeMB,
+				Fit:                fitResult,
+				DiskFit:            classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent),
+				Downloaded:         isDl,
+				ContextFeasibility: cf,
 			})
 		}
 	}

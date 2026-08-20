@@ -1766,6 +1766,89 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 	return models, nil
 }
 
+// ModelShowInfo carries the subset of Ollama's /api/show model_info block
+// that Model Advisor's context-length feasibility advice (P71) needs to run
+// a real per-token KV-cache formula instead of a linear size estimate. Every
+// field here is read verbatim from Ollama's own GGUF-derived metadata -
+// never guessed - which is what makes this the one runtime where a model's
+// true max context and architecture facts are Known rather than Estimated.
+type ModelShowInfo struct {
+	ContextLength   int64 // <arch>.context_length - the model's trained max context
+	BlockCount      int64 // <arch>.block_count - number of transformer layers
+	HeadCount       int64 // <arch>.attention.head_count - number of attention heads
+	HeadCountKV     int64 // <arch>.attention.head_count_kv - number of KV heads (GQA)
+	EmbeddingLength int64 // <arch>.embedding_length - hidden size
+}
+
+// FetchModelShow calls a node's Ollama /api/show endpoint for one model tag
+// and extracts the architecture facts P71 needs. Returns ok=false (never an
+// error the caller must handle) whenever the node/model doesn't yield a
+// complete set of facts - a formula missing even one input isn't reliable,
+// so a partial answer is treated the same as no answer (R1). Deliberately
+// not cached like FetchModelTags: this is called only from the Model
+// Advisor detail flow, which is already an on-demand, not-polled request,
+// not a background poll loop that would benefit from a TTL cache.
+func (r *Router) FetchModelShow(nodeURL, tag string) (ModelShowInfo, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	body, err := json.Marshal(map[string]string{"name": tag})
+	if err != nil {
+		return ModelShowInfo{}, false
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", nodeURL+"/api/show", bytes.NewReader(body))
+	if err != nil {
+		return ModelShowInfo{}, false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return ModelShowInfo{}, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ModelShowInfo{}, false
+	}
+
+	var showResp struct {
+		ModelInfo map[string]interface{} `json:"model_info"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&showResp); err != nil {
+		return ModelShowInfo{}, false
+	}
+	arch, _ := showResp.ModelInfo["general.architecture"].(string)
+	if arch == "" {
+		return ModelShowInfo{}, false
+	}
+	num := func(key string) (int64, bool) {
+		v, ok := showResp.ModelInfo[arch+"."+key]
+		if !ok {
+			return 0, false
+		}
+		f, ok := v.(float64)
+		if !ok {
+			return 0, false
+		}
+		return int64(f), true
+	}
+
+	ctxLen, ok1 := num("context_length")
+	blocks, ok2 := num("block_count")
+	headCount, ok3 := num("attention.head_count")
+	headCountKV, ok4 := num("attention.head_count_kv")
+	embed, ok5 := num("embedding_length")
+	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || ctxLen <= 0 || blocks <= 0 || headCount <= 0 || headCountKV <= 0 || embed <= 0 {
+		return ModelShowInfo{}, false
+	}
+	return ModelShowInfo{
+		ContextLength:   ctxLen,
+		BlockCount:      blocks,
+		HeadCount:       headCount,
+		HeadCountKV:     headCountKV,
+		EmbeddingLength: embed,
+	}, true
+}
+
 // RecordRequestOutcome logs whether a request routed to a node succeeded or failed.
 // Failure marks LastErrorAt, which triggers node cooldown.
 func (r *Router) RecordRequestOutcome(nodeName string, success bool) {
