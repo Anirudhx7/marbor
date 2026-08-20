@@ -2258,8 +2258,8 @@ export function GPUNodes() {
                     Enabled &middot; {agentStatus.scheme === 'https' ? 'HTTPS' : 'HTTP'}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex-1 min-w-[100px]">
                     <label className="block text-xs font-medium text-muted-foreground mb-1">
                       Agent Port
                     </label>
@@ -2272,7 +2272,7 @@ export function GPUNodes() {
                       className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
                     />
                   </div>
-                  <div className="flex items-center gap-2 pt-6">
+                  <label htmlFor="agent-reconfigure-https" className="flex items-center gap-2 h-[38px] cursor-pointer shrink-0">
                     <input
                       id="agent-reconfigure-https"
                       type="checkbox"
@@ -2280,17 +2280,13 @@ export function GPUNodes() {
                       onChange={(e) => setAgentUseHttps(e.target.checked)}
                       className="h-4 w-4 rounded border-border"
                     />
-                    <label htmlFor="agent-reconfigure-https" className="text-sm text-foreground">
-                      HTTPS
-                    </label>
-                  </div>
-                </div>
-                <div className="flex justify-end">
+                    <span className="text-sm text-foreground">HTTPS</span>
+                  </label>
                   <button
                     type="button"
                     onClick={requestAgentReconfigure}
                     disabled={agentBusy}
-                    className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors"
+                    className="h-[38px] px-3 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg border border-border transition-colors shrink-0"
                   >
                     Save Connection
                   </button>
