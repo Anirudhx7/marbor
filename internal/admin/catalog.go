@@ -936,25 +936,40 @@ func hfSearchFilters(runtime string) (formatFilter string, pipelineTags []string
 	}
 }
 
-// fetchHFModelList performs one GET against HF's /api/models and decodes the
-// result. Extracted so handleModelSearch can issue more than one request
-// (one per pipeline_tag) and merge them - see hfSearchFilters.
-func (s *Server) fetchHFModelList(ctx context.Context, targetURL string) ([]HFModelInfo, error) {
+// hfAuthedGet issues a GET to targetURL with the Hugging Face bearer token
+// (if configured) attached, and returns the response after checking for a
+// non-200 status - the one request-build/auth/status-check sequence every
+// Hugging Face fetch in this file needs, so it isn't hand-rolled a third
+// time per call site. Callers own decoding the body and must close
+// resp.Body on a nil error.
+func hfAuthedGet(ctx context.Context, targetURL, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	if s.cfg.HuggingFace.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := hfHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch from Hugging Face: %w", err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("Hugging Face API returned status %d", resp.StatusCode)
 	}
+	return resp, nil
+}
+
+// fetchHFModelList performs one GET against HF's /api/models and decodes the
+// result. Extracted so handleModelSearch can issue more than one request
+// (one per pipeline_tag) and merge them - see hfSearchFilters.
+func (s *Server) fetchHFModelList(ctx context.Context, targetURL string) ([]HFModelInfo, error) {
+	resp, err := hfAuthedGet(ctx, targetURL, s.cfg.HuggingFace.Token)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 	var models []HFModelInfo
 	if err := json.NewDecoder(resp.Body).Decode(&models); err != nil {
 		return nil, fmt.Errorf("decode Hugging Face response: %w", err)
@@ -1117,26 +1132,52 @@ type hfConfigJSON struct {
 // fetchHFConfigJSON fetches and parses a Hugging Face repo's config.json.
 // Works both before and after any node has downloaded the model - it's a
 // small file fetched directly from the repo, independent of any node/agent
-// state, matching this codebase's existing pattern of live per-request HF
-// fetches (no caching layer, same as handleModelRepo's own repo-detail
-// fetch).
+// state.
+//
+// hfConfigCache/hfConfigCacheMu/hfConfigCacheTTL cache the result per repoID
+// for 30 seconds (same TTL as router.FetchModelTags/FetchModelShow) -
+// Model Advisor's context-length slider re-triggers handleModelRepo on every
+// tick, and this file's contents never change between requests for the same
+// repo.
+var (
+	hfConfigCacheMu sync.Mutex
+	hfConfigCache   = make(map[string]hfConfigCacheEntry)
+)
+
+type hfConfigCacheEntry struct {
+	Cfg       hfConfigJSON
+	OK        bool
+	FetchedAt time.Time
+}
+
+const hfConfigCacheTTL = 30 * time.Second
+
 func fetchHFConfigJSON(ctx context.Context, repoID, token string) (hfConfigJSON, bool) {
+	hfConfigCacheMu.Lock()
+	if cached, ok := hfConfigCache[repoID]; ok && time.Since(cached.FetchedAt) < hfConfigCacheTTL {
+		hfConfigCacheMu.Unlock()
+		return cached.Cfg, cached.OK
+	}
+	hfConfigCacheMu.Unlock()
+
+	cfg, ok := fetchHFConfigJSONUncached(ctx, repoID, token)
+
+	hfConfigCacheMu.Lock()
+	hfConfigCache[repoID] = hfConfigCacheEntry{Cfg: cfg, OK: ok, FetchedAt: time.Now()}
+	hfConfigCacheMu.Unlock()
+
+	return cfg, ok
+}
+
+// fetchHFConfigJSONUncached does the actual HTTP fetch/decode; see
+// fetchHFConfigJSON for the caching wrapper around it.
+func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfConfigJSON, bool) {
 	targetURL := fmt.Sprintf("https://huggingface.co/%s/raw/main/config.json", repoID)
-	req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
-	if err != nil {
-		return hfConfigJSON{}, false
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := hfHTTPClient.Do(req)
+	resp, err := hfAuthedGet(ctx, targetURL, token)
 	if err != nil {
 		return hfConfigJSON{}, false
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return hfConfigJSON{}, false
-	}
 	var cfg hfConfigJSON
 	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
 		return hfConfigJSON{}, false
@@ -1176,6 +1217,19 @@ func kvCacheBytesPerToken(numLayers, numKVHeads, hiddenSize, numAttnHeads int64)
 	headDim := hiddenSize / numAttnHeads
 	return 2 * numLayers * numKVHeads * headDim * 2
 }
+
+// Estimated-path overhead constants for computeContextFeasibility's two
+// runtime families, named and grouped here (rather than inline float
+// literals at each call site) so every runtime's numbers are visible in one
+// place instead of drifting independently. vLLM/TGI/MLX carry more runtime
+// overhead (PagedAttention KV cache, CUDA graph buffers) than llama.cpp,
+// hence the higher multiplier.
+const (
+	ggufOverheadMult              = 1.10
+	ggufPerTokenMBFallback        = 0.15
+	safetensorsOverheadMult       = 1.20
+	safetensorsPerTokenMBFallback = 0.20
+)
 
 // computeContextFeasibility is the single shared implementation used for
 // every runtime family (Ollama GGUF, llama.cpp GGUF, vLLM/TGI/MLX
@@ -1224,28 +1278,24 @@ func computeContextFeasibility(
 	fit = classifyFit(totalEstBytes, vramTotalBytes, vramSource)
 
 	if fit != "green" && vramSource != "unknown" && vramSource != "inferred" && perTokenBytes > 0 {
-		// Binary-search the largest context length <= requestedCtx (capped at
-		// the model's own declared max, never above it) that this same real
-		// formula classifies green on this node - never offered when
-		// Confidence isn't "derived" (no recommendation built on a rough
-		// estimate).
-		lo, hi := int64(1), requestedCtx
-		if maxCtx < hi {
-			hi = maxCtx
-		}
-		var best int64
-		for lo <= hi {
-			mid := (lo + hi) / 2
-			candBytes := weightBytes + perTokenBytes*mid
-			if classifyFit(candBytes, vramTotalBytes, vramSource) == "green" {
-				best = mid
-				lo = mid + 1
-			} else {
-				hi = mid - 1
+		// classifyFit's "green" boundary is the fixed linear threshold
+		// vramEstBytes <= capacity*0.85, and weightBytes+perTokenBytes*N is
+		// linear in N, so the largest green N is directly computable rather
+		// than searched for - capped at requestedCtx and never above the
+		// model's own declared max. Never offered when Confidence isn't
+		// "derived" (no recommendation built on a rough estimate).
+		cap85 := int64(float64(vramTotalBytes) * 0.85)
+		if cap85 > weightBytes {
+			best := (cap85 - weightBytes) / perTokenBytes
+			if best > requestedCtx {
+				best = requestedCtx
 			}
-		}
-		if best > 0 {
-			cf.RecommendedCtx = &best
+			if best > maxCtx {
+				best = maxCtx
+			}
+			if best > 0 {
+				cf.RecommendedCtx = &best
+			}
 		}
 	}
 
@@ -1403,27 +1453,12 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	runtime := r.URL.Query().Get("runtime")
 
 	targetURL := fmt.Sprintf("https://huggingface.co/api/models/%s?blobs=true", repoID)
-	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	resp, err := hfAuthedGet(r.Context(), targetURL, s.cfg.HuggingFace.Token)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "create request: "+err.Error())
-		return
-	}
-
-	if s.cfg.HuggingFace.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+s.cfg.HuggingFace.Token)
-	}
-
-	resp, err := hfHTTPClient.Do(req)
-	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, "fetch from Hugging Face: "+err.Error())
+		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("Hugging Face API returned status %d", resp.StatusCode))
-		return
-	}
 
 	var repo HFRepoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
@@ -1629,7 +1664,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Formula (Estimated fallback): VRAMEstMB = sizeMB*1.10 + ctxLen*0.15
-			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, 1.10, 0.15, vramTotalBytes, vramSource, arch, caveat)
+			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, ggufOverheadMult, ggufPerTokenMBFallback, vramTotalBytes, vramSource, arch, caveat)
 
 			variants = append(variants, ModelVariantFit{
 				Tag:                tag,
@@ -1678,9 +1713,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			// independent of whether arch was found.
 			caveat := "This runtime's own launch configuration may cap context below the model's declared maximum; the mesh cannot see that setting."
 
-			// vLLM/TGI carry more runtime overhead (PagedAttention KV cache,
-			// CUDA graph buffers) than llama.cpp, hence the higher multiplier.
-			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, 1.20, 0.20, vramTotalBytes, vramSource, arch, caveat)
+			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, safetensorsOverheadMult, safetensorsPerTokenMBFallback, vramTotalBytes, vramSource, arch, caveat)
 
 			variants = append(variants, ModelVariantFit{
 				Tag:                repo.ID,
