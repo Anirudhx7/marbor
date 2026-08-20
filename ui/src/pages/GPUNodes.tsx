@@ -2251,13 +2251,31 @@ export function GPUNodes() {
                   read-only restatement of the same two values shown (and
                   editable) right underneath it. */}
               <div className="space-y-2 p-3 bg-secondary/40 border border-border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-foreground">Agent Connection</p>
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-success">
-                    <span className="w-2 h-2 rounded-full bg-success" />
-                    Enabled &middot; {agentStatus.scheme === 'https' ? 'HTTPS' : 'HTTP'}
-                  </span>
-                </div>
+                {/* The mesh REJECTS an HTTPS Agent connection with no pinned
+                    (or a mismatched) fingerprint - see the TLS Certificate
+                    card below - so this pill must not read "Enabled" in
+                    plain green when that's true, or it contradicts the
+                    "connection is rejected" message directly underneath it. */}
+                {(() => {
+                  const httpsUnusable = agentStatus.scheme === 'https'
+                    && (!agentNode?.tlsFingerprint || agentNode?.tlsFingerprintMismatch);
+                  const label = agentStatus.scheme !== 'https'
+                    ? 'Enabled · HTTP'
+                    : agentNode?.tlsFingerprintMismatch
+                      ? 'Enabled · HTTPS (cert mismatch)'
+                      : httpsUnusable
+                        ? 'Enabled · HTTPS (unpinned)'
+                        : 'Enabled · HTTPS';
+                  return (
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-foreground">Agent Connection</p>
+                      <span className={`flex items-center gap-1.5 text-xs font-medium ${httpsUnusable ? 'text-amber-600 dark:text-amber-400' : 'text-success'}`}>
+                        <span className={`w-2 h-2 rounded-full ${httpsUnusable ? 'bg-amber-500' : 'bg-success'}`} />
+                        {label}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="flex-1 min-w-[100px]">
                     <label className="block text-xs font-medium text-muted-foreground mb-1">
