@@ -2170,14 +2170,34 @@ export function GPUNodes() {
           )}
 
           <div className="space-y-2">
-            <button
-              onClick={handleCheckNodeHealth}
-              disabled={healthCheckBusy}
-              title="Run a live health check against this node's inference runtime right now, instead of waiting for the next automatic poll - works whether or not a Node Agent is installed"
-              className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-            >
-              {healthCheckBusy ? 'Checking...' : 'Health Check'}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={handleCheckNodeHealth}
+                disabled={healthCheckBusy}
+                title="Run a live health check against this node's inference runtime right now, instead of waiting for the next automatic poll - works whether or not a Node Agent is installed"
+                className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+              >
+                {healthCheckBusy ? 'Checking...' : 'Health Check'}
+              </button>
+              {agentStatus?.enabled && (
+                <>
+                  <button
+                    onClick={() => setPendingRegenerateToken(true)}
+                    disabled={agentBusy}
+                    className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  >
+                    {agentBusy ? 'Working...' : 'Regenerate Token'}
+                  </button>
+                  <button
+                    onClick={() => setAgentToDisable(agentNode?.name ?? null)}
+                    disabled={agentBusy}
+                    className="px-4 py-2 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  >
+                    Disable Agent
+                  </button>
+                </>
+              )}
+            </div>
             {healthCheckResult && (
               <p className={`text-xs ${healthCheckResult.ok ? 'text-success' : 'text-destructive'}`}>
                 <span className="font-medium">Health check result:</span>{' '}
@@ -2459,22 +2479,6 @@ export function GPUNodes() {
                   )}
                 </div>
               )}
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => setPendingRegenerateToken(true)}
-                  disabled={agentBusy}
-                  className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-                >
-                  {agentBusy ? 'Working...' : 'Regenerate Token'}
-                </button>
-                <button
-                  onClick={() => setAgentToDisable(agentNode?.name ?? null)}
-                  disabled={agentBusy}
-                  className="px-4 py-2 bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed text-destructive font-medium rounded-lg text-sm transition-colors shadow-sm"
-                >
-                  Disable Agent
-                </button>
-              </div>
             </div>
           )}
 
