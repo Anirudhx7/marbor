@@ -70,7 +70,7 @@ func TestDiscoverSkipsItsOwnAgentUnit(t *testing.T) {
 	fakeToolPresence(t, map[string]bool{"systemctl": true})
 	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
 		if name == "systemctl" {
-			return "ollama-mesh-agent.service loaded active running ollama-mesh Node Agent\n", nil
+			return "marbor-agent.service loaded active running Marbor Node Agent\n", nil
 		}
 		return "", errors.New("unexpected command")
 	})
@@ -85,7 +85,7 @@ func TestDiscoverSkipsItsOwnAgentLaunchdLabel(t *testing.T) {
 	fakeToolPresence(t, map[string]bool{"launchctl": true})
 	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
 		if name == "launchctl" {
-			return "-\t0\tcom.ollama-mesh-agent\n", nil
+			return "-\t0\tcom.marbor.agent\n", nil
 		}
 		return "", errors.New("unexpected command")
 	})
@@ -100,7 +100,7 @@ func TestDiscoverSkipsItsOwnAgentWindowsService(t *testing.T) {
 	fakeToolPresence(t, map[string]bool{"sc": true})
 	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
 		if name == "sc" {
-			return "SERVICE_NAME: ollama-mesh-agent\n        STATE              : 4  RUNNING\n", nil
+			return "SERVICE_NAME: marbor-agent\n        STATE              : 4  RUNNING\n", nil
 		}
 		return "", errors.New("unexpected command")
 	})
@@ -115,7 +115,7 @@ func TestDiscoverSkipsItsOwnAgentDockerContainer(t *testing.T) {
 	fakeToolPresence(t, map[string]bool{"docker": true})
 	withCommand(t, func(ctx context.Context, name string, args ...string) (string, error) {
 		if name == "docker" {
-			return "ollama-mesh-agent\tollama-mesh/agent:latest\n", nil
+			return "marbor-agent\tmarbor/agent:latest\n", nil
 		}
 		return "", errors.New("unexpected command")
 	})

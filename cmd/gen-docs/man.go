@@ -10,8 +10,8 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/cli"
 )
 
-// man.go renders the roff (man(7)) pages: one root page (docs/man/ollama-mesh.1)
-// plus one page per top-level command that has subcommands (docs/man/ollama-mesh-<name>.1).
+// man.go renders the roff (man(7)) pages: one root page (docs/man/marbor.1)
+// plus one page per top-level command that has subcommands (docs/man/marbor-<name>.1).
 
 // flagLikeRe matches a leading "-" or "--" immediately followed by a letter,
 // e.g. "--driver" or "-h". Escaping hyphens as "\-" only inside flag-like
@@ -45,7 +45,7 @@ func roffEscape(s string) string {
 }
 
 func writeManHeader(b *strings.Builder, title, purpose string) {
-	fmt.Fprintf(b, ".TH %s 1 \"%s\" \"ollama-mesh %s\" \"ollama-mesh Manual\"\n", strings.ToUpper(roffEscape(title)), docsDate, cli.Version)
+	fmt.Fprintf(b, ".TH %s 1 \"%s\" \"marbor %s\" \"Marbor Manual\"\n", strings.ToUpper(roffEscape(title)), docsDate, cli.Version)
 	b.WriteString(".SH NAME\n")
 	fmt.Fprintf(b, "%s \\- %s\n", roffEscape(title), roffEscape(purpose))
 }
@@ -108,7 +108,7 @@ func genRootMan(root *cli.Command) string {
 
 	b.WriteString(".SH DESCRIPTION\n")
 	b.WriteString(roffEscape(
-		"ollama-mesh is a single static binary that is three tools in one - the mesh "+
+		"Marbor is a single static binary that is three tools in one - the mesh "+
 			"server, a Node Agent, and this thin CLI client of the Admin API - selected "+
 			"by the first argument. As a CLI, every subcommand below is exactly one Admin "+
 			"API request; it never talks to a Node Agent directly.") + "\n")
@@ -144,17 +144,17 @@ func genRootMan(root *cli.Command) string {
 	fmt.Fprintf(&b, ".TP\n.B %d\nAuthentication error (missing, invalid, or expired credentials).\n", cli.ExitAuthError)
 
 	b.WriteString(".SH ENVIRONMENT\n")
-	b.WriteString(".TP\n.B MESH_SERVER\nAdmin API base URL, used when \\-\\-server is not given.\n")
-	b.WriteString(".TP\n.B MESH_USERNAME\nAdmin username, used when \\-\\-username is not given.\n")
-	b.WriteString(".TP\n.B MESH_PASSWORD\nAdmin password, used when \\-\\-password is not given.\n")
+	b.WriteString(".TP\n.B MARBOR_SERVER\nAdmin API base URL, used when \\-\\-server is not given.\n")
+	b.WriteString(".TP\n.B MARBOR_USERNAME\nAdmin username, used when \\-\\-username is not given.\n")
+	b.WriteString(".TP\n.B MARBOR_PASSWORD\nAdmin password, used when \\-\\-password is not given.\n")
 
 	b.WriteString(".SH FILES\n")
-	b.WriteString(".TP\n.B $XDG_CONFIG_HOME/ollama-mesh/session\n")
+	b.WriteString(".TP\n.B $XDG_CONFIG_HOME/marbor/session\n")
 	b.WriteString(roffEscape(
-		"The session saved by \"ollama-mesh login\" (mode 0600), under the OS user "+
-			"config dir - e.g. ~/.config/ollama-mesh/session on Linux, "+
-			"~/Library/Application Support/ollama-mesh/session on macOS, "+
-			`%AppData%\ollama-mesh\session on Windows.`) + "\n")
+		"The session saved by \"marbor login\" (mode 0600), under the OS user "+
+			"config dir - e.g. ~/.config/marbor/session on Linux, "+
+			"~/Library/Application Support/marbor/session on macOS, "+
+			`%AppData%\marbor\session on Windows.`) + "\n")
 
 	writeManExamples(&b, allExamples(root))
 
@@ -168,7 +168,7 @@ func genRootMan(root *cli.Command) string {
 	return b.String()
 }
 
-// genGroupMan renders one command-group page (e.g. "ollama-mesh-models.1"),
+// genGroupMan renders one command-group page (e.g. "marbor-models.1"),
 // flattening arbitrarily nested subcommands (e.g. "node control probe") into
 // one COMMANDS list.
 func genGroupMan(root *cli.Command, cmd *cli.Command) string {

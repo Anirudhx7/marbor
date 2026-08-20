@@ -52,7 +52,7 @@ func printStartupBanner(cfg *config.Config, dbPath string) {
 	line := "================================================================"
 	fmt.Println()
 	fmt.Println(line)
-	fmt.Println("  ollama-mesh - blank slate (no nodes or API keys configured yet)")
+	fmt.Println("  marbor - blank slate (no nodes or API keys configured yet)")
 	fmt.Println(line)
 	fmt.Println()
 	fmt.Printf("  Database:            %s\n", dbPath)
@@ -218,7 +218,7 @@ func resolveCommand(args []string) string {
 		// cli.TopLevelCommandNames() below (which triggers
 		// sync.OnceValue(buildRoot), constructing and finalizing the whole
 		// ~20-node CLI registry tree) so that the overwhelmingly common case
-		// - an ordinary server invocation like "ollama-mesh -db ... -seed-node
+		// - an ordinary server invocation like "marbor -db ... -seed-node
 		// ..." - never pays for building a tree it has no use for, just to
 		// conclude "this is the server". Every other branch's outcome is
 		// unchanged; only its cost, and its position relative to this dash
@@ -260,23 +260,23 @@ func resolveCommand(args []string) string {
 // before an earlier fix), and both blocks share one tabwriter instance so
 // their columns stay aligned with each other too.
 var helpTableRows = [][2]string{
-	{"ollama-mesh [flags]", "run the mesh server (default)"},
-	{"ollama-mesh bench [flags]", "warm-vs-cold first-token latency benchmark"},
-	{"ollama-mesh uninstall [--purge]", "remove the mesh's own service registration from this host"},
+	{"marbor [flags]", "run the mesh server (default)"},
+	{"marbor bench [flags]", "warm-vs-cold first-token latency benchmark"},
+	{"marbor uninstall [--purge]", "remove the mesh's own service registration from this host"},
 }
 
 func printTopLevelHelp(w io.Writer) {
-	fmt.Fprintf(w, "ollama-mesh %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\nUsage:\n", Version)
+	fmt.Fprintf(w, "marbor %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\nUsage:\n", Version)
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	for _, r := range helpTableRows {
 		fmt.Fprintf(tw, "  %s\t%s\n", r[0], r[1])
 	}
 	for _, r := range cli.HelpRows() {
-		fmt.Fprintf(tw, "  ollama-mesh %s\t%s\n", r[0], r[1])
+		fmt.Fprintf(tw, "  marbor %s\t%s\n", r[0], r[1])
 	}
 	tw.Flush()
 	fmt.Fprint(w, `
-Run "ollama-mesh <command> --help" for the full list of actions and flags for
+Run "marbor <command> --help" for the full list of actions and flags for
 that command.
 
 Server flags:
@@ -303,17 +303,17 @@ Server flags:
 // %q"/"Did you mean %q?" lines byte-for-byte so the UX is identical whether
 // the typo is top-level or inside the CLI.
 // printAgentRemovedNotice explains where the Node Agent went for anyone
-// still typing "ollama-mesh agent ..." out of muscle memory from before the
+// still typing "marbor agent ..." out of muscle memory from before the
 // control-plane/Node Agent binary split - it directs them to the dedicated
-// ollama-mesh-agent binary rather than silently starting the server or
+// marbor-agent binary rather than silently starting the server or
 // failing with an opaque flag-parsing error.
 func printAgentRemovedNotice(w io.Writer) {
-	fmt.Fprintln(w, "ollama-mesh: the Node Agent is now a separate executable: ollama-mesh-agent")
-	fmt.Fprintln(w, "  Run \"ollama-mesh-agent service install --port=<port>\" (set the TOKEN env var) instead of \"ollama-mesh agent service install ...\".")
+	fmt.Fprintln(w, "marbor: the Node Agent is now a separate executable: marbor-agent")
+	fmt.Fprintln(w, "  Run \"marbor-agent service install --port=<port>\" (set the MARBOR_AGENT_SECRET env var) instead of \"marbor agent service install ...\".")
 }
 
 func printUnknownCommand(w io.Writer, tok string) {
-	fmt.Fprintf(w, "ollama-mesh: unknown command %q\n", tok)
+	fmt.Fprintf(w, "marbor: unknown command %q\n", tok)
 	if s := cli.SuggestTopLevel(tok); len(s) > 0 {
 		fmt.Fprintf(w, "Did you mean %q?\n", s[0])
 	}
@@ -324,7 +324,7 @@ func printUnknownCommand(w io.Writer, tok string) {
 func main() {
 	var (
 		showVersion   = flag.Bool("version", false, "print version and exit")
-		dbFlag        = flag.String("db", "", "path to the SQLite database (overrides MESH_DB_PATH env; default mesh.db)")
+		dbFlag        = flag.String("db", "", "path to the SQLite database (overrides MARBOR_DB_PATH env; default marbor.db)")
 		logFormatFlag = flag.String("log-format", "", "log output format: text (default) or json")
 		seedNodes     stringSliceFlag
 	)
@@ -357,26 +357,26 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("ollama-mesh %s\n", Version)
+		fmt.Printf("marbor %s\n", Version)
 		return
 	}
 
 	dbPath := *dbFlag
 	if dbPath == "" {
-		dbPath = os.Getenv("MESH_DB_PATH")
+		dbPath = os.Getenv("MARBOR_DB_PATH")
 	}
 	if dbPath == "" {
-		dbPath = "mesh.db"
+		dbPath = "marbor.db"
 	}
 
-	// MESH_BACKUP_DIR seeds the default scheduled-backup target directory
-	// (config.BackupConfig.TargetDir), same env-var pattern as MESH_DB_PATH
+	// MARBOR_BACKUP_DIR seeds the default scheduled-backup target directory
+	// (config.BackupConfig.TargetDir), same env-var pattern as MARBOR_DB_PATH
 	// above. docker-compose.yml sets this to /backups - a distinct named
 	// volume from mesh-data's /data mount - so a scheduled backup survives a
 	// docker volume rm/down -v on the data volume, and vice versa. The
 	// bare-metal fallback keeps backups next to the database when no data
 	// volume separation is possible anyway.
-	backupDir := os.Getenv("MESH_BACKUP_DIR")
+	backupDir := os.Getenv("MARBOR_BACKUP_DIR")
 	if backupDir == "" && dbPath != "-" {
 		backupDir = filepath.Join(filepath.Dir(dbPath), "backups")
 	}
@@ -427,7 +427,7 @@ func main() {
 		log.SetOutput(slog.NewLogLogger(h, slog.LevelInfo).Writer())
 	}
 
-	log.Printf("ollama-mesh %s starting...", Version)
+	log.Printf("marbor %s starting...", Version)
 	log.Printf("Database        : %s", dbPath)
 	log.Printf("Proxy port      : %d", cfg.Proxy.Port)
 	log.Printf("Auth enabled    : %t", cfg.Auth.IsEnabled())
@@ -816,7 +816,7 @@ func main() {
 		break
 	}
 	if pendingRestorePath != "" {
-		log.Printf("Restore requested: shutting down to swap mesh.db for %s", pendingRestorePath)
+		log.Printf("Restore requested: shutting down to swap marbor.db for %s", pendingRestorePath)
 	} else {
 		log.Println("Shutting down gracefully...")
 	}
@@ -881,21 +881,21 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	}
 
 	// Stage the full copy in a temp file alongside dbPath first, so a
-	// mid-copy failure never leaves the live mesh.db truncated or corrupt -
+	// mid-copy failure never leaves the live marbor.db truncated or corrupt -
 	// the live file is only ever touched by the final atomic rename below,
 	// once the replacement is proven complete.
 	tmpPath := dbPath + ".restoring"
 	src, err := os.Open(backupPath)
 	if err != nil {
 		log.Printf("ERROR: restore aborted - could not open backup file %s: %v", backupPath, err)
-		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		src.Close()
 		log.Printf("ERROR: restore aborted - could not create %s: %v", tmpPath, err)
-		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 	_, copyErr := io.Copy(dst, src)
@@ -904,7 +904,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if copyErr != nil || closeErr != nil {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
-		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 
@@ -918,7 +918,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted - staged copy failed validation: %v", err)
-		log.Println("ERROR: mesh.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// completion_test.go tests the "ollama-mesh completion bash|zsh|fish"
+// completion_test.go tests the "marbor completion bash|zsh|fish"
 // command (completion.go, registry_tree.go's completionCmd()) - P83+ CLI
 // hardening plan, Implementation section 7.
 
@@ -24,7 +24,7 @@ func TestRun_Completion_Bash(t *testing.T) {
 	if stdout == "" {
 		t.Fatal("stdout is empty")
 	}
-	for _, want := range []string{"models", "runtime", "complete -F _ollama_mesh ollama-mesh"} {
+	for _, want := range []string{"models", "runtime", "complete -F _marbor marbor"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("bash completion missing %q\n--- stdout ---\n%s", want, stdout)
 		}
@@ -39,7 +39,7 @@ func TestRun_Completion_Zsh(t *testing.T) {
 	if stdout == "" {
 		t.Fatal("stdout is empty")
 	}
-	for _, want := range []string{"#compdef ollama-mesh", "models", "runtime"} {
+	for _, want := range []string{"#compdef marbor", "models", "runtime"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("zsh completion missing %q\n--- stdout ---\n%s", want, stdout)
 		}
@@ -54,7 +54,7 @@ func TestRun_Completion_Fish(t *testing.T) {
 	if stdout == "" {
 		t.Fatal("stdout is empty")
 	}
-	for _, want := range []string{"complete -c ollama-mesh", "models", "runtime"} {
+	for _, want := range []string{"complete -c marbor", "models", "runtime"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("fish completion missing %q\n--- stdout ---\n%s", want, stdout)
 		}

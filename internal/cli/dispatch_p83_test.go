@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// dispatch_p83_test.go is the permanent regression net for P83 ("ollama-mesh
-// whoami status" and "ollama-mesh whoami dead" both silently ignored the
+// dispatch_p83_test.go is the permanent regression net for P83 ("marbor
+// whoami status" and "marbor whoami dead" both silently ignored the
 // extra argument and printed normal whoami output). It walks the live
 // registry - the real cli.Run entrypoint, now fully wired to the registry-
 // driven dispatcher (see the P83+ CLI hardening plan, migration steps 6-8) -
@@ -41,7 +41,7 @@ func leafCommands(c *Command) []*Command {
 // of the original P83 report ("whoami dead", "whoami status").
 func minimalValidArgsWithGarbage(leaf *Command) []string {
 	path := strings.Fields(leaf.Path())
-	args := append([]string{}, path[1:]...) // drop the leading "ollama-mesh" token
+	args := append([]string{}, path[1:]...) // drop the leading "marbor" token
 
 	for _, a := range leaf.Args {
 		if a.Variadic {
@@ -130,8 +130,8 @@ func TestIsZeroFlagValue_StringLiteralsNotTreatedAsUnset(t *testing.T) {
 			if strings.Contains(stderr.String(), "required") {
 				t.Fatalf("--identifier=%q was wrongly rejected as missing: stderr=%q", tc.identifier, stderr.String())
 			}
-			if result.matched == nil || result.matched.Path() != "ollama-mesh node control accept" {
-				t.Fatalf("expected matched command %q, got %v", "ollama-mesh node control accept", result.matched)
+			if result.matched == nil || result.matched.Path() != "marbor node control accept" {
+				t.Fatalf("expected matched command %q, got %v", "marbor node control accept", result.matched)
 			}
 			if got := result.ctx.String("identifier"); got != tc.identifier {
 				t.Fatalf("expected ctx.String(\"identifier\") == %q, got %q", tc.identifier, got)

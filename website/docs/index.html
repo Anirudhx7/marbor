@@ -6,8 +6,8 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Documentation · ollama-mesh</title>
-<meta name="description" content="ollama-mesh documentation -- integrations, production deployment, savings math, and use cases." />
+<title>Documentation · marbor</title>
+<meta name="description" content="marbor documentation -- integrations, production deployment, savings math, and use cases." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <style>:root {
   --bg: #0f0e0c;
@@ -285,15 +285,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../index.html#features">Features</a>
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -310,39 +310,39 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   <a href="../index.html#how">How it works</a>
   <a href="../index.html#compare">Compare</a>
   <a href="index.html">Docs</a>
-  <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
-  <a href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+  <a href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
+  <a href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
 </div>
 
 <main class="doc-index">
   <p class="eyebrow">Documentation</p>
   <h1>Run it, route it, read the numbers.</h1>
-  <p class="lead">Everything you need to put ollama-mesh in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
+  <p class="lead">Everything you need to put marbor in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
   
     <section class="index-section">
       <h2>Guides · 5 pages</h2>
       <div class="index-grid">
-        <a class="index-card" href="INTEGRATIONS.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Integrations</h3><p>ollama-mesh exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible /v1 endpoints u...</p><span class="arrow">Read →</span></a><a class="index-card" href="LIMITATIONS.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Known limitations</h3><p>This page documents what ollama-mesh does not do, what has been tested, and what to plan around in production. Infrastru...</p><span class="arrow">Read →</span></a><a class="index-card" href="SAVINGS-MATH.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Savings math</h3><p>This document is the financial model behind ollama-mesh's savings tracking. It is designed for infrastructure directors ...</p><span class="arrow">Read →</span></a><a class="index-card" href="USE-CASES.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Use cases</h3><p>The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aw...</p><span class="arrow">Read →</span></a><a class="index-card" href="backup.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Backup & Restore</h3><p>ollama-mesh is DB-first: mesh.db SQLite holds nodes, API keys, routing rules, warm-state...</p><span class="arrow">Read →</span></a>
+        <a class="index-card" href="INTEGRATIONS.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Integrations</h3><p>marbor exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible /v1 endpoints u...</p><span class="arrow">Read →</span></a><a class="index-card" href="LIMITATIONS.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Known limitations</h3><p>This page documents what marbor does not do, what has been tested, and what to plan around in production. Infrastru...</p><span class="arrow">Read →</span></a><a class="index-card" href="SAVINGS-MATH.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Savings math</h3><p>This document is the financial model behind marbor's savings tracking. It is designed for infrastructure directors ...</p><span class="arrow">Read →</span></a><a class="index-card" href="USE-CASES.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Use cases</h3><p>The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aw...</p><span class="arrow">Read →</span></a><a class="index-card" href="backup.html"><div class="index-card-top"><span class="index-card-count">Guides · 5 pages</span></div><h3>Backup & Restore</h3><p>marbor is DB-first: marbor.db SQLite holds nodes, API keys, routing rules, warm-state...</p><span class="arrow">Read →</span></a>
       </div>
     </section>
     <section class="index-section">
       <h2>Deployment · 4 pages</h2>
       <div class="index-grid">
-        <a class="index-card" href="PRODUCTION.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>Production</h3><p>This guide covers running ollama-mesh in a real production environment. There is no config file - ollama-mesh is DB-firs...</p><span class="arrow">Read →</span></a><a class="index-card" href="deploy/aws-ec2.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>AWS EC2</h3><p>Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2....</p><span class="arrow">Read →</span></a><a class="index-card" href="deploy/gpu-node-registration.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>GPU node registration</h3><p>Register many GPU nodes' runtime endpoints with the mesh at once, without clicking...</p><span class="arrow">Read →</span></a><a class="index-card" href="deploy/node-agent-enrollment.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>Node Agent enrollment</h3><p>Enroll and install the Node Agent on many already-registered GPU nodes at once,...</p><span class="arrow">Read →</span></a>
+        <a class="index-card" href="PRODUCTION.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>Production</h3><p>This guide covers running marbor in a real production environment. There is no config file - marbor is DB-firs...</p><span class="arrow">Read →</span></a><a class="index-card" href="deploy/aws-ec2.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>AWS EC2</h3><p>Run one marbor endpoint in front of one or more Ollama GPU boxes on EC2....</p><span class="arrow">Read →</span></a><a class="index-card" href="deploy/gpu-node-registration.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>GPU node registration</h3><p>Register many GPU nodes' runtime endpoints with the mesh at once, without clicking...</p><span class="arrow">Read →</span></a><a class="index-card" href="deploy/node-agent-enrollment.html"><div class="index-card-top"><span class="index-card-count">Deployment · 4 pages</span></div><h3>Node Agent enrollment</h3><p>Enroll and install the Node Agent on many already-registered GPU nodes at once,...</p><span class="arrow">Read →</span></a>
       </div>
     </section>
     <section class="index-section">
       <h2>Integrations · 4 pages</h2>
       <div class="index-grid">
-        <a class="index-card" href="integrations/continue.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>Continue</h3><p>Continue is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/librechat.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>LibreChat</h3><p>LibreChat supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU no...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/litellm.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>LiteLLM</h3><p>LiteLLM is a popular and powerful API gateway for provider abstraction, enterprise authentication, and user-level rate l...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/open-webui.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>Open WebUI</h3><p>Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes,...</p><span class="arrow">Read →</span></a>
+        <a class="index-card" href="integrations/continue.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>Continue</h3><p>Continue is an open-source AI coding assistant. Point it at marbor and every completion request routes through warm...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/librechat.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>LibreChat</h3><p>LibreChat supports Ollama as a custom endpoint. Point it at marbor to get warm-first routing across multiple GPU no...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/litellm.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>LiteLLM</h3><p>LiteLLM is a popular and powerful API gateway for provider abstraction, enterprise authentication, and user-level rate l...</p><span class="arrow">Read →</span></a><a class="index-card" href="integrations/open-webui.html"><div class="index-card-top"><span class="index-card-count">Integrations · 4 pages</span></div><h3>Open WebUI</h3><p>Point Open WebUI at marbor instead of a single Ollama box and you get warm-first routing across all your GPU nodes,...</p><span class="arrow">Read →</span></a>
       </div>
     </section>
 </main>
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 <script>

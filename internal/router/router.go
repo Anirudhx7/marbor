@@ -891,7 +891,7 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 			mac := hmac.New(sha256.New, []byte(cfg.Secret))
 			mac.Write(body)
 			sig := hex.EncodeToString(mac.Sum(nil))
-			req.Header.Set("X-Ollama-Mesh-Signature", fmt.Sprintf("sha256=%s", sig))
+			req.Header.Set("X-Marbor-Signature", fmt.Sprintf("sha256=%s", sig))
 		}
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Do(req)

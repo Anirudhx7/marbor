@@ -9,42 +9,42 @@
   // (toggle button, persistence) runs in the deferred script at end of <body>.
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>ollama-mesh - The control plane for self-hosted AI inference</title>
+<title>marbor - The control plane for self-hosted AI inference</title>
 <meta name="description" content="The control plane for self-hosted AI inference. Turn your own GPUs into a high-availability alternative to cloud LLM APIs - warm, VRAM-aware routing across Ollama, vLLM, TGI, llama.cpp, and MLX, one OpenAI-compatible gateway, and cost-metered cloud overflow." />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-<link rel="canonical" href="https://anirudh.social/ollama-mesh/" />
+<link rel="canonical" href="ollama-mesh.dev/" />
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
 <meta name="theme-color" content="#d4a853" />
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
-<meta property="og:site_name" content="ollama-mesh" />
+<meta property="og:site_name" content="marbor" />
 <meta property="og:locale" content="en_US" />
-<meta property="og:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
+<meta property="og:title" content="marbor - The control plane for self-hosted AI inference" />
 <meta property="og:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
-<meta property="og:url" content="https://anirudh.social/ollama-mesh/" />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
+<meta property="og:url" content="ollama-mesh.dev/" />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="ollama-mesh - The control plane for self-hosted AI inference" />
+<meta name="twitter:title" content="marbor - The control plane for self-hosted AI inference" />
 <meta name="twitter:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta name="twitter:image:alt" content="ollama-mesh admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta name="twitter:image:alt" content="marbor admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
 <script type="application/ld+json">
 [
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "name": "ollama-mesh",
-    "description": "The control plane for self-hosted AI inference. ollama-mesh schedules each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint with authentication, rate limiting, and cost-metered cloud overflow to OpenAI or Anthropic - a self-hosted alternative to cloud LLM APIs.",
-    "url": "https://anirudh.social/ollama-mesh/",
-    "downloadUrl": "https://github.com/Anirudhx7/ollama-mesh/releases",
+    "name": "marbor",
+    "description": "The control plane for self-hosted AI inference. marbor schedules each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint with authentication, rate limiting, and cost-metered cloud overflow to OpenAI or Anthropic - a self-hosted alternative to cloud LLM APIs.",
+    "url": "ollama-mesh.dev/",
+    "downloadUrl": "ollama-mesh.dev/releases",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, macOS, Windows",
     "license": "https://www.apache.org/licenses/LICENSE-2.0",
-    "codeRepository": "https://github.com/Anirudhx7/ollama-mesh",
+    "codeRepository": "ollama-mesh.dev",
     "programmingLanguage": "Go",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "Anirudh Mehandru", "url": "https://anirudh.social" },
@@ -56,33 +56,33 @@
     "mainEntity": [
       {
         "@type": "Question",
-        "name": "What is ollama-mesh?",
-        "acceptedAnswer": { "@type": "Answer", "text": "ollama-mesh is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs." }
+        "name": "What is marbor?",
+        "acceptedAnswer": { "@type": "Answer", "text": "marbor is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs." }
       },
       {
         "@type": "Question",
-        "name": "How is ollama-mesh different from a plain load balancer like nginx or HAProxy?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. ollama-mesh reads live model residency and VRAM state on every node and schedules each request to a warm GPU." }
+        "name": "How is marbor different from a plain load balancer like nginx or HAProxy?",
+        "acceptedAnswer": { "@type": "Answer", "text": "Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. marbor reads live model residency and VRAM state on every node and schedules each request to a warm GPU." }
       },
       {
         "@type": "Question",
-        "name": "Does ollama-mesh work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?",
-        "acceptedAnswer": { "@type": "Answer", "text": "All five. Despite the name, ollama-mesh is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL." }
+        "name": "Does marbor work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?",
+        "acceptedAnswer": { "@type": "Answer", "text": "All five. Despite the name, marbor is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL." }
       },
       {
         "@type": "Question",
-        "name": "Can ollama-mesh replace cloud LLM APIs like OpenAI?",
+        "name": "Can marbor replace cloud LLM APIs like OpenAI?",
         "acceptedAnswer": { "@type": "Answer", "text": "That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend." }
       },
       {
         "@type": "Question",
         "name": "How does high-availability failover work?",
-        "acceptedAnswer": { "@type": "Answer", "text": "If a node goes offline, ollama-mesh marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA." }
+        "acceptedAnswer": { "@type": "Answer", "text": "If a node goes offline, marbor marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA." }
       },
       {
         "@type": "Question",
         "name": "Can I add authentication and rate limiting in front of my models?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. ollama-mesh acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code." }
+        "acceptedAnswer": { "@type": "Answer", "text": "Yes. marbor acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code." }
       }
     ]
   }
@@ -761,7 +761,7 @@ SPCS-FEATURE-END */
 <!-- NAV -->
 <nav>
   <div class="page">
-    <a href="#top" class="brand" aria-label="ollama-mesh home">
+    <a href="#top" class="brand" aria-label="marbor home">
       <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
         <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
           <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -778,8 +778,8 @@ SPCS-FEATURE-END */
         <a class="link" href="#how">How it works</a>
         <a class="link" href="#compare">Compare</a>
         <a class="link" href="docs/">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -796,8 +796,8 @@ SPCS-FEATURE-END */
   <a href="#how">How it works</a>
   <a href="#compare">Compare</a>
   <a href="docs/">Docs</a>
-  <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
-  <a href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+  <a href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
+  <a href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
 </div>
 
 <a id="top"></a>
@@ -808,7 +808,7 @@ SPCS-FEATURE-END */
     <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
     <p class="subhead">
       A self-hosted control plane with a Node Agent for remote telemetry, model operations, and node-side maintenance.
-      ollama-mesh routes each request to the node already holding the model warm in VRAM - eliminating cold starts,
+      marbor routes each request to the node already holding the model warm in VRAM - eliminating cold starts,
       balancing queue depth across nodes, and metering cost-aware cloud overflow with full token accounting.
       The core stays a single Go binary; the Node Agent extends it on remote GPU hosts with richer live data, lifecycle control, and fleet maintenance.
     </p>
@@ -818,7 +818,7 @@ SPCS-FEATURE-END */
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
         install in one command
       </a>
-      <a href="https://anirudh.social/ollama-mesh/demo/" class="btn btn-demo" target="_blank" rel="noopener noreferrer">
+      <a href="ollama-mesh.dev/demo/" class="btn btn-demo" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
         live demo
       </a>
@@ -826,7 +826,7 @@ SPCS-FEATURE-END */
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5V3a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v19a1 1 0 0 1-1 1H6.5a2.5 2.5 0 0 1-2.5-2.5z"/></svg>
         read the docs
       </a>
-      <a href="https://github.com/Anirudhx7/ollama-mesh" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">
+      <a href="ollama-mesh.dev" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         view on github
       </a>
@@ -835,9 +835,9 @@ SPCS-FEATURE-END */
     <div class="install" id="install">
       <div class="prompt">
         <span class="sigil">$</span>
-        <span class="cmd">curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="dim">|</span> sh</span>
+        <span class="cmd">curl -fsSL ollama-mesh.dev/main/install.sh <span class="dim">|</span> sh</span>
       </div>
-      <button class="copy-btn" id="copyBtn" aria-label="Copy install command" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh">
+      <button class="copy-btn" id="copyBtn" aria-label="Copy install command" data-copy="curl -fsSL ollama-mesh.dev/main/install.sh | sh">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
         <span id="copyLabel">copy</span>
       </button>
@@ -871,10 +871,10 @@ SPCS-FEATURE-END */
     </div>
 
     <!-- routing diagram -->
-    <div class="routing" role="img" aria-label="Diagram: a chat completion request is scheduled dynamically by ollama-mesh based on queue depth and warm model residency.">
+    <div class="routing" role="img" aria-label="Diagram: a chat completion request is scheduled dynamically by marbor based on queue depth and warm model residency.">
       <div class="routing-head">
         <div class="dots"><span></span><span></span><span></span></div>
-        <span>ollama-mesh · scheduler console</span>
+        <span>marbor · scheduler console</span>
         <span style="margin-left:auto;color:var(--accent2)" id="liveIndicator">● simulating live traffic</span>
       </div>
       <div class="routing-body">
@@ -931,7 +931,7 @@ SPCS-FEATURE-END */
       vs a warm median of <strong>8.1&nbsp;s</strong> and a fastest warm response of
       <strong>0.4&nbsp;s</strong> - up to <strong>43×</strong> faster than the median cold start.
       Reproduce it on your hardware with the
-      <a href="https://github.com/Anirudhx7/ollama-mesh/tree/main/bench" style="color:var(--accent2);">open benchmark harness</a>.
+      <a href="ollama-mesh.dev/tree/main/bench" style="color:var(--accent2);">open benchmark harness</a>.
     </p>
   </div>
 </header>
@@ -952,12 +952,12 @@ SPCS-FEATURE-END */
             When a user requests a model that is not currently loaded in VRAM, conventional systems make them wait 20 to 30 seconds for the weights to load.
           </p>
           <p style="font-size: 14px; color: var(--text-muted); margin: 0; line-height: 1.6;">
-            <code>ollama-mesh</code> eliminates this wait entirely using a protocol called <strong>SPCS</strong>. The moment a cold-model request arrives, the scheduler immediately streams tokens from a warm draft model while loading the target model in the background. Once the target is warm and prefix-cached, it performs a seamless hot-swap mid-stream. The client receives a response starting in under 1 second, and the final output comes from the correct target model, exposing zero cold-start delay to the user.
+            <code>marbor</code> eliminates this wait entirely using a protocol called <strong>SPCS</strong>. The moment a cold-model request arrives, the scheduler immediately streams tokens from a warm draft model while loading the target model in the background. Once the target is warm and prefix-cached, it performs a seamless hot-swap mid-stream. The client receives a response starting in under 1 second, and the final output comes from the correct target model, exposing zero cold-start delay to the user.
           </p>
         </div>
         <div class="spcs-diagram">
           <div class="spcs-timeline">
-            <div class="spcs-timeline-label">Without ollama-mesh (Conventional Routing)</div>
+            <div class="spcs-timeline-label">Without marbor (Conventional Routing)</div>
             <div class="spcs-bar without">
               <div class="spcs-bar-text">
                 <span>Cold 70B Request</span>
@@ -967,7 +967,7 @@ SPCS-FEATURE-END */
             </div>
           </div>
           <div class="spcs-timeline">
-            <div class="spcs-timeline-label">With ollama-mesh + SPCS (Speculative Streaming)</div>
+            <div class="spcs-timeline-label">With marbor + SPCS (Speculative Streaming)</div>
             <div class="spcs-bar with">
               <div class="spcs-bar-fill"></div>
               <div class="spcs-bar-text">
@@ -992,7 +992,7 @@ SPCS-FEATURE-END -->
       <span class="brand-dot"></span>
       <span style="font-size:13px;color:var(--text-muted);">See it running live - real admin dashboard, VRAM state, and request telemetry.</span>
     </div>
-    <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" class="btn btn-demo" style="padding:6px 16px;font-size:12px;">
+    <a href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" class="btn btn-demo" style="padding:6px 16px;font-size:12px;">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" style="width:13px;height:13px;"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       open live demo &nbsp;↗
     </a>
@@ -1024,9 +1024,9 @@ SPCS-FEATURE-END -->
     <div style="margin-top: 32px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--accent-bg); display: flex; gap: 16px; align-items: flex-start;">
       <svg style="width: 20px; height: 20px; color: var(--accent); flex-shrink: 0; margin-top: 2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
       <div>
-        <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: bold; color: var(--text);">How ollama-mesh solves placement:</h4>
+        <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: bold; color: var(--text);">How marbor solves placement:</h4>
         <p style="margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6;">
-          By actively polling node states and VRAM layouts every 2 seconds, <code>ollama-mesh</code> acts as a centralized control plane. It schedules requests based on real-time model residency, coordinates queues across nodes, and overflows to cloud providers only when local capacity is fully saturated - preserving local compute first.
+          By actively polling node states and VRAM layouts every 2 seconds, <code>marbor</code> acts as a centralized control plane. It schedules requests based on real-time model residency, coordinates queues across nodes, and overflows to cloud providers only when local capacity is fully saturated - preserving local compute first.
         </p>
       </div>
     </div>
@@ -1038,7 +1038,7 @@ SPCS-FEATURE-END -->
   <div class="page">
     <p class="eyebrow">Built for platform engineers</p>
     <h2 class="sec">Everything you need to run <em>production AI on your own infrastructure.</em></h2>
-    <p class="sec-sub">Point every app at one OpenAI-compatible URL. ollama-mesh handles warm-state routing, high-availability failover, authentication, rate limiting, and cost analytics - across Ollama, vLLM, TGI, llama.cpp, and MLX.</p>
+    <p class="sec-sub">Point every app at one OpenAI-compatible URL. marbor handles warm-state routing, high-availability failover, authentication, rate limiting, and cost analytics - across Ollama, vLLM, TGI, llama.cpp, and MLX.</p>
 
     <div class="features">
       <div class="feat warm">
@@ -1134,7 +1134,7 @@ SPCS-FEATURE-END -->
   <div class="page">
     <p class="eyebrow">From zero to routed in three steps</p>
     <h2 class="sec">A unified control plane. <em>Optional Node Agent.</em></h2>
-    <p class="sec-sub">The core control plane is a single Go binary. When you want richer remote telemetry, model lifecycle operations, or node-side maintenance, install the Node Agent on the GPU hosts that need it. ollama-mesh still communicates with every runtime over standard HTTP APIs.</p>
+    <p class="sec-sub">The core control plane is a single Go binary. When you want richer remote telemetry, model lifecycle operations, or node-side maintenance, install the Node Agent on the GPU hosts that need it. marbor still communicates with every runtime over standard HTTP APIs.</p>
 
     <div class="steps">
       <div class="step">
@@ -1143,10 +1143,10 @@ SPCS-FEATURE-END -->
           <h3>Install the binary</h3>
           <p>Grab the release for your platform - or build from source with Go. It's one file with no runtime dependencies.</p>
           <p style="margin-bottom: 0.5rem;">Option 1: Download & Install only (Recommended)</p>
-          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="b">|</span> sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL ollama-mesh.dev/main/install.sh <span class="b">|</span> sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL ollama-mesh.dev/main/install.sh | sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 
           <p style="margin-top: 1.2rem; margin-bottom: 0.5rem;">Option 2: Install, scan local network & run daemon in background</p>
-          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh <span class="b">|</span> <span class="g">START</span>=1 sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL ollama-mesh.dev/main/install.sh <span class="b">|</span> <span class="g">START</span>=1 sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL ollama-mesh.dev/main/install.sh | START=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
       <div class="step">
@@ -1155,7 +1155,7 @@ SPCS-FEATURE-END -->
           <h3>Point it at your nodes</h3>
           <p>Add nodes from the dashboard, or seed them at install time. No config file to write. Ollama, vLLM, TGI, llama.cpp, and MLX nodes all work - set <code>runtime</code> per node.</p>
           <div class="code-wrap"><pre class="code"><span class="c"># seed at install time (repeatable flag)</span>
-ollama-mesh <span class="b">--seed-node</span> <span class="g">"name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama"</span> <span class="b">--seed-node</span> <span class="g">"name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"</span></pre><button class="copy-btn" aria-label="Copy" data-copy='ollama-mesh --seed-node "name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama" --seed-node "name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+marbor <span class="b">--seed-node</span> <span class="g">"name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama"</span> <span class="b">--seed-node</span> <span class="g">"name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"</span></pre><button class="copy-btn" aria-label="Copy" data-copy='marbor --seed-node "name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama" --seed-node "name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
       <div class="step">
@@ -1177,10 +1177,10 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
   <div class="page">
     <p class="eyebrow">Where it fits</p>
     <h2 class="sec">Why a GPU-aware scheduler beats a <em>plain load balancer.</em></h2>
-    <p class="sec-sub">Nginx, HAProxy, and Traefik balance TCP connections - they can't see which GPU holds your model warm. ollama-mesh schedules on live GPU and VRAM state instead. Here's the honest breakdown.</p>
+    <p class="sec-sub">Nginx, HAProxy, and Traefik balance TCP connections - they can't see which GPU holds your model warm. marbor schedules on live GPU and VRAM state instead. Here's the honest breakdown.</p>
     <div class="compare-summary" aria-label="Comparison summary">
       <span class="chip chip-yes">8 capability checks</span>
-      <span class="chip chip-partial">8/8 for ollama-mesh</span>
+      <span class="chip chip-partial">8/8 for marbor</span>
       <span class="chip chip-no">0/8 for plain load balancers</span>
     </div>
 
@@ -1189,7 +1189,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
         <thead>
           <tr>
             <th>Capability</th>
-            <th class="us">ollama-mesh</th>
+            <th class="us">marbor</th>
             <th>Plain load balancer (nginx / HAProxy)</th>
           </tr>
         </thead>
@@ -1240,16 +1240,16 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
 
     <!-- Secondary section for LiteLLM -->
     <div class="litellm-section">
-      <h3 class="litellm-title">Using LiteLLM already? ollama-mesh runs below it.</h3>
+      <h3 class="litellm-title">Using LiteLLM already? marbor runs below it.</h3>
       <p class="litellm-desc">
-        LiteLLM is excellent for provider abstraction, enterprise auth, and user-level rate limiting. <code>ollama-mesh</code> slots in directly below LiteLLM as your physical scheduling layer, handling raw GPU queue depths, model residency, and warm-state routing. Together, they form the standard enterprise stack for high-throughput, self-hosted LLM clusters.
+        LiteLLM is excellent for provider abstraction, enterprise auth, and user-level rate limiting. <code>marbor</code> slots in directly below LiteLLM as your physical scheduling layer, handling raw GPU queue depths, model residency, and warm-state routing. Together, they form the standard enterprise stack for high-throughput, self-hosted LLM clusters.
       </p>
       <div class="stack-diagram">
         <div class="stack-node app">Applications</div>
         <div class="stack-arrow">→</div>
         <div class="stack-node litellm">LiteLLM<br><span style="font-size: 10px; color: var(--text-muted)">Auth & Provider Abstraction</span></div>
         <div class="stack-arrow">→</div>
-        <div class="stack-node mesh">ollama-mesh<br><span style="font-size: 10px; opacity: 0.85">GPU Scheduling & VRAM Routing</span></div>
+        <div class="stack-node mesh">marbor<br><span style="font-size: 10px; opacity: 0.85">GPU Scheduling & VRAM Routing</span></div>
         <div class="stack-arrow">→</div>
         <div class="stack-node runtime">Runtimes<br><span style="font-size: 10px; opacity: 0.85">Ollama, vLLM, TGI, llama.cpp, MLX</span></div>
         <div class="stack-arrow">→</div>
@@ -1263,7 +1263,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
       <div>
         <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: bold; color: var(--text);">Self-hosted vs. cloud LLM APIs</h4>
         <p style="margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6;">
-          Every request ollama-mesh keeps on your own GPUs is a request you don't pay OpenAI or Anthropic for. It meters each cloud-overflow token against your configured reference rate, so you see the exact dollar difference between local and cloud on every response - see the <a href="docs/SAVINGS-MATH.html">savings math</a>.
+          Every request marbor keeps on your own GPUs is a request you don't pay OpenAI or Anthropic for. It meters each cloud-overflow token against your configured reference rate, so you see the exact dollar difference between local and cloud on every response - see the <a href="docs/SAVINGS-MATH.html">savings math</a>.
         </p>
       </div>
     </div>
@@ -1278,28 +1278,28 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
 
     <div class="faq-grid">
       <div class="faq-card">
-        <h3>What is ollama-mesh?</h3>
-        <p><code>ollama-mesh</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
+        <h3>What is marbor?</h3>
+        <p><code>marbor</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
       </div>
       <div class="faq-card">
-        <h3>How is ollama-mesh different from a plain load balancer like nginx or HAProxy?</h3>
-        <p>Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. <code>ollama-mesh</code> reads live model residency and VRAM state on every node and schedules each request to a warm GPU.</p>
+        <h3>How is marbor different from a plain load balancer like nginx or HAProxy?</h3>
+        <p>Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. <code>marbor</code> reads live model residency and VRAM state on every node and schedules each request to a warm GPU.</p>
       </div>
       <div class="faq-card">
-        <h3>Does ollama-mesh work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?</h3>
-        <p>All five. Despite the name, <code>ollama-mesh</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL.</p>
+        <h3>Does marbor work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?</h3>
+        <p>All five. Despite the name, <code>marbor</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL.</p>
       </div>
       <div class="faq-card">
-        <h3>Can ollama-mesh replace cloud LLM APIs like OpenAI?</h3>
+        <h3>Can marbor replace cloud LLM APIs like OpenAI?</h3>
         <p>That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend.</p>
       </div>
       <div class="faq-card">
         <h3>How does high-availability failover work?</h3>
-        <p>If a node goes offline, <code>ollama-mesh</code> marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA.</p>
+        <p>If a node goes offline, <code>marbor</code> marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA.</p>
       </div>
       <div class="faq-card">
         <h3>Can I add authentication and rate limiting in front of my models?</h3>
-        <p>Yes. <code>ollama-mesh</code> acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code.</p>
+        <p>Yes. <code>marbor</code> acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code.</p>
       </div>
     </div>
   </div>
@@ -1314,7 +1314,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
       <div class="cta-row">
         <a href="#install" class="btn btn-primary">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-          install ollama-mesh
+          install marbor
         </a>
         <a href="docs/" class="btn btn-ghost">read the docs →</a>
       </div>
@@ -1327,7 +1327,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
   <div class="page">
     <div class="foot-grid">
       <div class="foot-brand">
-        <a href="#top" class="brand" aria-label="ollama-mesh home">
+        <a href="#top" class="brand" aria-label="marbor home">
           <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
               <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1337,7 +1337,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
           <span class="name">ollama<span style="color:var(--accent)">-mesh</span></span>
         </a>
         <p>Warm-first routing and honest cost tracking for self-hosted GPU inference - Ollama, vLLM, TGI, llama.cpp, and MLX.</p>
-        <a class="gh-link" href="https://github.com/Anirudhx7/ollama-mesh" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer">
+        <a class="gh-link" href="ollama-mesh.dev" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer">
           <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
         <a class="gh-link" href="https://www.linkedin.com/in/anirudh-mehandru/" aria-label="LinkedIn profile" target="_blank" rel="noopener noreferrer" style="margin-left:10px;">
@@ -1350,7 +1350,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
         <a href="#how">How it works</a>
         <a href="#compare">Compare</a>
         <a href="docs/SAVINGS-MATH.html">Savings math</a>
-        <a href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);">Live demo ↗</a>
+        <a href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);">Live demo ↗</a>
       </div>
       <div class="foot-col">
         <h4>Docs</h4>
@@ -1370,8 +1370,8 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
       </div>
     </div>
     <div class="foot-bottom">
-      <span>© <span id="year">2026</span> ollama-mesh · Apache-2.0</span>
-      <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span> · <a href="https://github.com/Anirudhx7/ollama-mesh/releases" class="gh-link">releases ↗</a></span>
+      <span>© <span id="year">2026</span> marbor · Apache-2.0</span>
+      <span>marbor <span style="color:var(--accent)">{{VERSION}}</span> · <a href="ollama-mesh.dev/releases" class="gh-link">releases ↗</a></span>
     </div>
   </div>
 </footer>
@@ -1523,3 +1523,4 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
 </script>
 </body>
 </html>
+

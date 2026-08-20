@@ -220,7 +220,7 @@ type Store interface {
 
 	// Model configuration overrides - an operator-declared default parameter
 	// profile (load-time engine params, inference-time sampling defaults, meta
-	// fields) for a model on a specific node, applied whenever ollama-mesh
+	// fields) for a model on a specific node, applied whenever Marbor
 	// routes to it. Keyed by (model, node) rather than model alone: the same
 	// model name can be resident on nodes with different runtimes (Ollama,
 	// vLLM, TGI, llama.cpp) or simply different VRAM budgets, and a single
@@ -569,7 +569,7 @@ type AffinityRecord struct {
 
 // ModelConfig is the operator-declared default parameter profile for a model  --
 // covering Ollama's load-time engine params, inference-time sampling defaults,
-// and ollama-mesh's own meta/orchestration fields (system prompt override,
+// and Marbor's own meta/orchestration fields (system prompt override,
 // per-model rate caps). Every field is nilable/nullable: nil (or an absent
 // key in the persisted JSON) means "not configured, inherit the backend's own
 // default" - this struct must never carry a value the operator didn't

@@ -1,4 +1,4 @@
-Usage: ollama-mesh runtime [action] [args] [flags]
+Usage: marbor runtime [action] [args] [flags]
 
 Actions:
   start <node>    start the node's inference runtime process
@@ -10,13 +10,13 @@ Actions:
   health <node>   run an on-demand active liveness probe on the node
 
 Flags:
-  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
-  --username string  admin username, used to log in (env MESH_USERNAME)
-  --password string  admin password, used to log in (env MESH_PASSWORD)
+  --username string  admin username, used to log in (env MARBOR_USERNAME)
+  --password string  admin password, used to log in (env MARBOR_PASSWORD)
 
 "start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.
 
 "logs" is a point-in-time snapshot, not a live tail. A node whose control driver has no real log source (e.g. a bare PID-file process with no supervisor) returns a clear "not supported" error.
 
-requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).

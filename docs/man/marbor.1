@@ -1,0 +1,112 @@
+.TH MARBOR 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor \- CLI client for the Marbor Admin API
+.SH SYNOPSIS
+.B marbor
+.I command
+[\fIflags\fR]
+.SH DESCRIPTION
+Marbor is a single static binary that is three tools in one - the mesh server, a Node Agent, and this thin CLI client of the Admin API - selected by the first argument. As a CLI, every subcommand below is exactly one Admin API request; it never talks to a Node Agent directly.
+.SH COMMANDS
+.TP
+.B version
+print CLI and (if reachable) server version
+.TP
+.B status
+print mesh health/status summary
+.TP
+.B login
+authenticate once and save the session locally (recommended)
+.TP
+.B logout
+remove the saved session
+.TP
+.B whoami
+show the CLI's saved identity (live\-verified)
+.TP
+.B nodes
+list nodes known to the mesh. See \fBmarbor-nodes\fR(1).
+.TP
+.B models
+fleet\-wide list, or pull/delete/unload/list on one node. See \fBmarbor-models\fR(1).
+.TP
+.B runtime
+start/stop/restart/logs/drain/undrain/health on one node. See \fBmarbor-runtime\fR(1).
+.TP
+.B node
+node control driver operations. See \fBmarbor-node\fR(1).
+.TP
+.B key
+per\-API-key local/cloud routing overrides. See \fBmarbor-key\fR(1).
+.TP
+.B spill
+show per\-key, per\-provider local\-vs-cloud request counts
+.TP
+.B requests
+inspect routing decisions for past requests. See \fBmarbor-requests\fR(1).
+.TP
+.B completion <shell>
+generate a shell completion script (bash, zsh, or fish)
+.SH OPTIONS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+User error (bad arguments, unknown command, validation failure).
+.TP
+.B 2
+Server error (the Admin API is unreachable or returned an unexpected error).
+.TP
+.B 3
+Reserved for future partial-success reporting (batch operations); unused today.
+.TP
+.B 4
+Authentication error (missing, invalid, or expired credentials).
+.SH ENVIRONMENT
+.TP
+.B MARBOR_SERVER
+Admin API base URL, used when \-\-server is not given.
+.TP
+.B MARBOR_USERNAME
+Admin username, used when \-\-username is not given.
+.TP
+.B MARBOR_PASSWORD
+Admin password, used when \-\-password is not given.
+.SH FILES
+.TP
+.B $XDG_CONFIG_HOME/marbor/session
+The session saved by "marbor login" (mode 0600), under the OS user config dir - e.g. ~/.config/marbor/session on Linux, ~/Library/Application Support/marbor/session on macOS, %AppData%\emarbor\esession on Windows.
+.SH EXAMPLES
+.PP
+.nf
+source <(marbor completion bash)
+.fi
+.PP
+.nf
+marbor completion zsh > "${fpath[1]}/_marbor"
+.fi
+.PP
+.nf
+marbor completion fish > ~/.config/fish/completions/marbor.fish
+.fi
+.SH SEE ALSO
+\fBmarbor-nodes\fR(1),
+\fBmarbor-models\fR(1),
+\fBmarbor-runtime\fR(1),
+\fBmarbor-node\fR(1),
+\fBmarbor-key\fR(1),
+\fBmarbor-requests\fR(1)

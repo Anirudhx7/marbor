@@ -86,7 +86,7 @@ func TestUpsertAndGetNodeAgent_Scope(t *testing.T) {
 
 // TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin verifies a row
 // inserted before the P54 scope column existed (the exact shape of an
-// existing installation's mesh.db before this migration ran) reads back as
+// existing installation's marbor.db before this migration ran) reads back as
 // "admin" - matching that row's actual token, which has no scope prefix and
 // so parses as tierAdmin via scopeOf's fallback (backward compatible).
 func TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {

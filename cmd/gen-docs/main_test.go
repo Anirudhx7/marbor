@@ -107,9 +107,9 @@ func TestGenerate_RootManSections(t *testing.T) {
 	seedReadme(t, dir)
 
 	files := runGeneration(t, dir)
-	root, ok := files["docs/man/ollama-mesh.1"]
+	root, ok := files["docs/man/marbor.1"]
 	if !ok {
-		t.Fatal("docs/man/ollama-mesh.1 was not generated")
+		t.Fatal("docs/man/marbor.1 was not generated")
 	}
 	page := string(root)
 

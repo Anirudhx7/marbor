@@ -1,6 +1,6 @@
 # Integrations
 
-ollama-mesh exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible `/v1` endpoints unchanged. This means any client that works with Ollama or the OpenAI SDK can point at the mesh with a one-line change.
+marbor exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible `/v1` endpoints unchanged. This means any client that works with Ollama or the OpenAI SDK can point at the mesh with a one-line change.
 
 Set `OPENAI_BASE_URL` (or the equivalent in your client) to `http://your-mesh-host:11434` and set the API key to your `sk-mesh-...` key.
 
@@ -13,7 +13,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:11434/v1",
-    api_key="sk-mesh-abc123",   # your ollama-mesh key, not an OpenAI key
+    api_key="sk-mesh-abc123",   # your marbor key, not an OpenAI key
 )
 
 response = client.chat.completions.create(
@@ -123,7 +123,7 @@ curl http://localhost:11434/v1/models \
 
 ## curl - Native Ollama endpoint
 
-ollama-mesh also accepts the native Ollama `/api/chat` format:
+marbor also accepts the native Ollama `/api/chat` format:
 
 ```bash
 curl http://localhost:11434/api/chat \
@@ -182,3 +182,4 @@ for chunk in llm.stream("Explain cloud overflow in plain English."):
 - If your key has a `models:` allow-list configured, requests for any other model return `403 Forbidden`.
 - Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) are present on every response and follow the same conventions as the OpenAI API.
 - `GET /v1/models` returns the union of models loaded or downloaded across all healthy nodes.
+

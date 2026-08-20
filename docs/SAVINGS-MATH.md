@@ -1,8 +1,8 @@
 # Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend
 
-This document is the financial model behind ollama-mesh's savings tracking. It is designed for infrastructure directors and finance teams evaluating the ROI of shifting LLM inference from third-party cloud APIs to owned GPU hardware routed through ollama-mesh.
+This document is the financial model behind marbor's savings tracking. It is designed for infrastructure directors and finance teams evaluating the ROI of shifting LLM inference from third-party cloud APIs to owned GPU hardware routed through marbor.
 
-Every figure in the ollama-mesh dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "-" rather than an estimate. No number is ever fabricated.
+Every figure in the marbor dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "-" rather than an estimate. No number is ever fabricated.
 
 ---
 
@@ -10,9 +10,9 @@ Every figure in the ollama-mesh dashboard is derived from the formulas below. Wh
 
 An engineering organization running multi-agent LLM workflows at scale - coding copilots, RAG pipelines, automated code review, internal search - consumes millions of tokens per day. At cloud API rates, this translates to $5,000–$50,000/month in direct API spend, depending on model tier and volume.
 
-ollama-mesh enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.
+marbor enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.
 
-**Typical result:** Platform teams running 2–4 GPU nodes with ollama-mesh report 60–85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.
+**Typical result:** Platform teams running 2–4 GPU nodes with marbor report 60–85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.
 
 ---
 
@@ -20,7 +20,7 @@ ollama-mesh enables organizations to route this traffic to owned GPU hardware fi
 
 ### Local Request Savings
 
-When a request is served by a local Ollama node, ollama-mesh parses the real token count from the upstream response:
+When a request is served by a local Ollama node, marbor parses the real token count from the upstream response:
 
 - **Ollama NDJSON responses:** `eval_count` (completion tokens) + `prompt_eval_count` (input tokens) from the final streamed object
 - **OpenAI-compatible SSE responses:** `usage.total_tokens` from the terminal `[DONE]`-adjacent chunk
@@ -107,7 +107,7 @@ The following projections use conservative assumptions grounded in real-world mu
 | **Annual net savings at $0.015/1K reference** | **$766,800/year** |
 | **3-year TCO advantage** | **$2,300,400** |
 
-> **Note:** These projections calculate the *difference* between cloud API costs and amortized local hardware costs. The hardware amortization includes purchase price, power, cooling, and rack space over a 3-year depreciation schedule. Actual savings depend on GPU utilization rates, model sizes, and local-vs-cloud traffic split. ollama-mesh's dashboard shows the *real* split based on actual parsed token counts, not these projections.
+> **Note:** These projections calculate the *difference* between cloud API costs and amortized local hardware costs. The hardware amortization includes purchase price, power, cooling, and rack space over a 3-year depreciation schedule. Actual savings depend on GPU utilization rates, model sizes, and local-vs-cloud traffic split. marbor's dashboard shows the *real* split based on actual parsed token counts, not these projections.
 
 ---
 
@@ -141,7 +141,7 @@ After break-even, every locally-served token is pure cost deflection. The hardwa
 
 ### Data Sources
 
-1. **Local token counts** - parsed from the real upstream Ollama response, not estimated. ollama-mesh reads `eval_count` and `prompt_eval_count` from the final NDJSON object (Ollama native) or `usage.total_tokens` from the terminal SSE chunk (OpenAI-compatible).
+1. **Local token counts** - parsed from the real upstream Ollama response, not estimated. marbor reads `eval_count` and `prompt_eval_count` from the final NDJSON object (Ollama native) or `usage.total_tokens` from the terminal SSE chunk (OpenAI-compatible).
 
 2. **Cloud token counts** - parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.
 
@@ -151,11 +151,11 @@ After break-even, every locally-served token is pure cost deflection. The hardwa
 
 ### What "-" Means
 
-If requests were served but no token counts could be parsed from any response - for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk - the API returns `null` and the dashboard renders "-". ollama-mesh **never** substitutes an estimated or random number for missing token data.
+If requests were served but no token counts could be parsed from any response - for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk - the API returns `null` and the dashboard renders "-". marbor **never** substitutes an estimated or random number for missing token data.
 
 ### Counter Lifecycle
 
-Savings and spend counters are held in memory. Per-key token totals and quota counters are stored in-memory for zero-overhead routing and transactionally flushed to the SQLite `key_counters` table in `mesh.db` every 30 seconds and on clean shutdown. Aggregate savings counters reset on process restart. The audit log (if enabled) is the durable per-request record.
+Savings and spend counters are held in memory. Per-key token totals and quota counters are stored in-memory for zero-overhead routing and transactionally flushed to the SQLite `key_counters` table in `marbor.db` every 30 seconds and on clean shutdown. Aggregate savings counters reset on process restart. The audit log (if enabled) is the durable per-request record.
 
 ---
 
@@ -207,3 +207,4 @@ Every routed request is recorded in the JSON-lines audit log (when enabled) with
 - HTTP status and latency
 
 This log is the source of truth for financial reconciliation. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.
+

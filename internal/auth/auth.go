@@ -556,13 +556,13 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		m.mu.RUnlock()
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="marbor"`)
 			writeAuthError(w, http.StatusUnauthorized, "missing authorization header", "authentication_error", "missing_auth_header")
 			return
 		}
 		parts := strings.SplitN(auth, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="marbor"`)
 			writeAuthError(w, http.StatusUnauthorized, "invalid authorization format, expected 'Bearer <token>'", "authentication_error", "invalid_auth_format")
 			return
 		}
@@ -571,7 +571,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		ks, ok := m.keys[token]
 		m.mu.RUnlock()
 		if !ok {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="marbor"`)
 			writeAuthError(w, http.StatusUnauthorized, "invalid api key", "authentication_error", "invalid_api_key")
 			return
 		}
@@ -584,7 +584,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		ks.mu.RUnlock()
 
 		if keyExpired(expiresAt, time.Now()) {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="ollama-mesh"`)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="marbor"`)
 			writeAuthError(w, http.StatusUnauthorized, "api key has expired", "authentication_error", "api_key_expired")
 			return
 		}

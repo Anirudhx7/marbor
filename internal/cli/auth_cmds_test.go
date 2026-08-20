@@ -19,12 +19,12 @@ import (
 // fallback: a test built around "no credentials given" (e.g. in
 // runtime_test.go/models_test.go/control_test.go, none of which know
 // anything about sessions) would otherwise silently pick up a real saved
-// session on any machine where someone has run `ollama-mesh login`, and -
+// session on any machine where someone has run `marbor login`, and -
 // since the credentialed commands are mutating (runtime restart, model
 // pull/delete) - could fire a real request against whatever --server those
 // tests use.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "ollama-mesh-cli-test-config-*")
+	dir, err := os.MkdirTemp("", "marbor-cli-test-config-*")
 	if err != nil {
 		panic(err)
 	}
@@ -258,7 +258,7 @@ func TestRun_Login_UsernameFlagPlusPasswordEnv_BothResolve(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	t.Setenv("MESH_PASSWORD", "from-env")
+	t.Setenv("MARBOR_PASSWORD", "from-env")
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"login", "--server", srv.URL, "--username", "admin"}, &stdout, &stderr)
@@ -269,7 +269,7 @@ func TestRun_Login_UsernameFlagPlusPasswordEnv_BothResolve(t *testing.T) {
 
 func TestRun_NoEnvSecretLeaksViaHelpOrParseError(t *testing.T) {
 	withTempConfigDir(t)
-	t.Setenv("MESH_PASSWORD", "SEKRET-PASSWORD-VALUE")
+	t.Setenv("MARBOR_PASSWORD", "SEKRET-PASSWORD-VALUE")
 
 	for _, args := range [][]string{
 		{"whoami", "--help"},

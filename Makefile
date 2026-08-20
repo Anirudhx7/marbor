@@ -4,12 +4,12 @@ all: ui backend
 
 ui:
 	cd ui && npm install && npm run build
-	mkdir -p internal/admin/web/dist/grafana
-	cp grafana/ollama-mesh.json internal/admin/web/dist/grafana/ollama-mesh.json
+	powershell -NoProfile -Command "New-Item -ItemType Directory -Force internal/admin/web/dist/grafana | Out-Null"
+	copy grafana\marbor.json internal\admin\web\dist\grafana\marbor.json
 
 backend:
-	go build -o ollama-mesh .
-	go build -o ollama-mesh-agent ./cmd/ollama-mesh-agent
+	go build -o marbor .
+	go build -o marbor-agent ./cmd/marbor-agent
 
 build: ui backend
 
@@ -42,7 +42,7 @@ demo-down: ## Stop and remove demo stack
 
 demo-db: backend ## Regenerate mesh.demo.db from live schema (migrate()) + scripts/seed_demo.sql
 	rm -f mesh.demo.db.tmp mesh.demo.db.tmp.key
-	./ollama-mesh -db mesh.demo.db.tmp -seed-node "name=_schema_init,url=http://init,runtime=ollama"
+	./marbor -db mesh.demo.db.tmp -seed-node "name=_schema_init,url=http://init,runtime=ollama"
 	sqlite3 mesh.demo.db.tmp < scripts/seed_demo.sql
 	mv mesh.demo.db.tmp mesh.demo.db
 	rm -f mesh.demo.db.tmp.key
@@ -61,6 +61,6 @@ man: ## Regenerate man pages (docs/man/*.1) + docs/cli.md + README CLI table fro
 docs: man ## Alias for `make man` - CI's drift check runs the same generator and diffs the result
 
 clean:
-	rm -f ollama-mesh ollama-mesh-agent
+	rm -f marbor marbor-agent
 	rm -rf internal/admin/web/dist
 	rm -rf ui/node_modules

@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>GPU node registration (Ansible or any script) · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: GPU node registration (Ansible or any script)." />
+<title>GPU node registration (Ansible or any script) · marbor docs</title>
+<meta name="description" content="marbor documentation: GPU node registration (Ansible or any script)." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="GPU node registration (Ansible or any script) · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: GPU node registration (Ansible or any script)." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="GPU node registration (Ansible or any script) · marbor docs" />
+<meta property="og:description" content="marbor documentation: GPU node registration (Ansible or any script)." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="GPU node registration (Ansible or any script) · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="GPU node registration (Ansible or any script) · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../../index.html#features">Features</a>
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -388,11 +388,11 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
 <p>Once every node is registered, install their Node Agents - see <a href="node-agent-enrollment.html">Node Agent enrollment</a>.</p>
 <h2 id="recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook<a class="anchor" href="#recommended-path-the-first-party-ansible-playbook" aria-label="Link to section">#</a></h2>
 <p>A first-party Ansible playbook automates the sequence above - login once, register each node, poll until its runtime endpoint reports healthy - across an arbitrary list of GPU hosts declared in a simple vars file. It ships as source in this repo only; it is not published to Ansible Galaxy or any external registry. Use it instead of hand-rolling the loop above unless you have a reason to script this yourself (CI pipeline without Ansible, a language other than YAML, etc.) - the loop above remains correct as a reference for exactly what the playbook does under the hood, and as a no-Ansible fallback.</p>
-<ul><li>Playbook: <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/register-gpus.yml" target="_blank" rel="noopener"><code>ansible/playbooks/register-gpus.yml</code></a></li><li>Example inventory: <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/inventory.example.yml" target="_blank" rel="noopener"><code>ansible/inventory.example.yml</code></a></li><li>Full variable reference and prerequisites: <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/README.md" target="_blank" rel="noopener"><code>ansible/README.md</code></a></li></ul>
-<p>This playbook registers runtime endpoints only - it does not install or enroll Node Agents. See <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-node-agent.yml" target="_blank" rel="noopener"><code>ansible/playbooks/install-node-agent.yml</code></a> and <a href="node-agent-enrollment.html">Node Agent enrollment</a> for that separate step.</p>
+<ul><li>Playbook: <a href="ollama-mesh.dev/blob/main/ansible/playbooks/register-gpus.yml" target="_blank" rel="noopener"><code>ansible/playbooks/register-gpus.yml</code></a></li><li>Example inventory: <a href="ollama-mesh.dev/blob/main/ansible/inventory.example.yml" target="_blank" rel="noopener"><code>ansible/inventory.example.yml</code></a></li><li>Full variable reference and prerequisites: <a href="ollama-mesh.dev/blob/main/ansible/README.md" target="_blank" rel="noopener"><code>ansible/README.md</code></a></li></ul>
+<p>This playbook registers runtime endpoints only - it does not install or enroll Node Agents. See <a href="ollama-mesh.dev/blob/main/ansible/playbooks/install-node-agent.yml" target="_blank" rel="noopener"><code>ansible/playbooks/install-node-agent.yml</code></a> and <a href="node-agent-enrollment.html">Node Agent enrollment</a> for that separate step.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/deploy/gpu-node-registration.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/deploy/gpu-node-registration.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -405,8 +405,8 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

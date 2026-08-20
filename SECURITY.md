@@ -7,7 +7,7 @@
 | latest (main) | ✓ active |
 | older tags | ✗ update to latest |
 
-ollama-mesh follows a rolling release model. Security fixes ship in new releases; older tagged versions are not backported.
+marbor follows a rolling release model. Security fixes ship in new releases; older tagged versions are not backported.
 
 ---
 
@@ -15,7 +15,7 @@ ollama-mesh follows a rolling release model. Security fixes ship in new releases
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Report privately via [GitHub Security Advisories](https://github.com/Anirudhx7/ollama-mesh/security/advisories/new). You will receive a response within 72 hours. If the issue is confirmed, a fix will be published and the advisory will be disclosed publicly after a patch is available.
+Report privately via [GitHub Security Advisories](https://github.com/Anirudhx7/marbor/security/advisories/new). You will receive a response within 72 hours. If the issue is confirmed, a fix will be published and the advisory will be disclosed publicly after a patch is available.
 
 ---
 
@@ -23,11 +23,11 @@ Report privately via [GitHub Security Advisories](https://github.com/Anirudhx7/o
 
 ### API keys
 
-API keys are generated and managed through the **API Keys** page of the admin dashboard. Each key is a static Bearer token in the `Authorization: Bearer sk-mesh-...` header.
+API keys are generated and managed through the **API Keys** page of the admin dashboard. Each key is a static Bearer token in the `Authorization: Bearer sk-marbor-...` header.
 
 - Keys are matched by **exact string comparison** - substring matching is not used.
 - Key **names** are logged in the audit log and request log. The key value itself is never written to any log file.
-- Key metadata and usage counters (token totals, quota counters) are persisted in the SQLite database (`mesh.db`).
+- Key metadata and usage counters (token totals, quota counters) are persisted in the SQLite database (`marbor.db`).
 - Keys are never echoed back through any admin API response.
 
 ### Admin dashboard login
@@ -43,7 +43,7 @@ The admin dashboard and `/admin/v1/` API are gated by username/password login, n
 
 ## TLS
 
-ollama-mesh does not terminate TLS internally by design. TLS is delegated to a reverse proxy (nginx, Caddy, Traefik, a cloud load balancer, etc.).
+marbor does not terminate TLS internally by design. TLS is delegated to a reverse proxy (nginx, Caddy, Traefik, a cloud load balancer, etc.).
 
 **For any deployment reachable from outside your local network or VPN, you must place TLS in front of port 11434 and port 8080.** Without TLS, API keys and admin tokens travel in plaintext.
 
@@ -58,24 +58,24 @@ The metrics port (9090) should not be exposed to untrusted networks. Scrape it f
 | Data | Logged? |
 |------|---------|
 | Key name (e.g. "team-shared") | ✓ audit log and request log |
-| Key value (the `sk-mesh-...` string) | ✗ never |
+| Key value (the `sk-marbor-...` string) | ✗ never |
 | Request body / prompt content | ✗ never |
 | Response body | ✗ never |
 | Model name, node, status, latency | ✓ audit log |
 | Cloud provider used | ✓ audit log (`cloud: true`) |
 | Request ID (`X-Request-ID`) | ✓ audit log |
 
-The audit log is stored directly in SQLite (`mesh.db`). Enable it via the admin Settings dashboard. Old audit entries are pruned automatically based on your configured retention period.
+The audit log is stored directly in SQLite (`marbor.db`). Enable it via the admin Settings dashboard. Old audit entries are pruned automatically based on your configured retention period.
 
 ---
 
 ## Cloud Provider Keys
 
-Cloud provider API keys (OpenAI, Anthropic) are stored in the SQLite database (`mesh.db`). Protect this file:
+Cloud provider API keys (OpenAI, Anthropic) are stored in the SQLite database (`marbor.db`). Protect this file:
 
 ```bash
-chmod 600 /opt/ollama-mesh/mesh.db
-chown ollama-mesh:ollama-mesh /opt/ollama-mesh/mesh.db
+chmod 600 /opt/marbor/marbor.db
+chown marbor:marbor /opt/marbor/marbor.db
 ```
 
 Cloud provider keys are never returned through any admin API endpoint (they are masked as `***` on read).

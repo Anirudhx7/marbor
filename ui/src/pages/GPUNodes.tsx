@@ -813,8 +813,8 @@ export function GPUNodes() {
       const meshUrl = window.location.origin;
       setAgentStatus({ node: agentNode.name, enabled: true, port, scheme });
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setNodes(prev => prev.map(n => n.name === agentNode.name
         // A node that's already enrolled (reconfigure) keeps its real
@@ -885,8 +885,8 @@ export function GPUNodes() {
       const meshUrl = window.location.origin;
       const port = agentStatus?.port ?? 9200;
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setAgentBusy(false);
       return;
@@ -2393,12 +2393,12 @@ export function GPUNodes() {
                         </p>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 min-w-0 font-mono text-xs bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
-                            ollama-mesh-agent service status
+                            marbor-agent service status
                           </code>
                           <button
                             type="button"
                             onClick={() => {
-                              copyText('ollama-mesh-agent service status');
+                              copyText('marbor-agent service status');
                               setTlsStatusCmdCopied(true);
                               setTimeout(() => setTlsStatusCmdCopied(false), 2000);
                             }}
@@ -2901,7 +2901,7 @@ export function GPUNodes() {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            This replaces any previously configured driver. Start/Stop/Restart/Logs will run against this driver and identifier from now on - double-check they match what actually runs the inference runtime on this node, not the ollama-mesh Node Agent itself.
+            This replaces any previously configured driver. Start/Stop/Restart/Logs will run against this driver and identifier from now on - double-check they match what actually runs the inference runtime on this node, not the marbor Node Agent itself.
           </p>
           {controlError && <p className="text-sm text-destructive">{controlError}</p>}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">

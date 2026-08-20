@@ -36,18 +36,18 @@ func boundModel(model string) string {
 
 var (
 	requestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_requests_total",
+		Name: "marbor_requests_total",
 		Help: "Total requests proxied",
 	}, []string{"key_name", "model", "node", "status"})
 
 	requestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "ollamamesh_request_duration_seconds",
+		Name:    "marbor_request_duration_seconds",
 		Help:    "Request duration in seconds",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"model", "node"})
 
 	requestTTFT = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "ollamamesh_request_ttft_seconds",
+		Name: "marbor_request_ttft_seconds",
 		Help: "Time to first response byte, from real Write() timing (cold-start vs warm-residency signal)",
 		// Finer-grained than DefBuckets in the sub-second range where TTFT
 		// actually differentiates warm (fast) from cold-loading (slow) nodes.
@@ -55,87 +55,87 @@ var (
 	}, []string{"model", "node"})
 
 	activeConns = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ollamamesh_active_connections",
+		Name: "marbor_active_connections",
 		Help: "Current active connections per node",
 	}, []string{"node"})
 
 	nodeHealthy = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ollamamesh_node_healthy",
+		Name: "marbor_node_healthy",
 		Help: "Node health status (1=healthy, 0=unhealthy)",
 	}, []string{"node"})
 
 	warmupResident = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ollamamesh_warmup_model_resident",
+		Name: "marbor_warmup_model_resident",
 		Help: "Whether a warmup-target model is currently loaded in VRAM on a node (1=resident/warm, 0=cold). Proves warmup is actually keeping models warm, not just pinging.",
 	}, []string{"model", "node"})
 
 	scheduleFires = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_schedule_fires_total",
+		Name: "marbor_schedule_fires_total",
 		Help: "Scheduled actions fired, by action (warmup/drain/undrain) and node.",
 	}, []string{"action", "node"})
 
 	modelEvictions = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_model_evictions_total",
+		Name: "marbor_model_evictions_total",
 		Help: "Models unloaded from a node's VRAM (LRU headroom eviction, scheduled, or manual), by node.",
 	}, []string{"node"})
 
 	cacheHits = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "ollamamesh_cache_hits_total",
+		Name: "marbor_cache_hits_total",
 		Help: "Total cache hits (warm model routing)",
 	})
 
 	cacheMisses = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "ollamamesh_cache_misses_total",
+		Name: "marbor_cache_misses_total",
 		Help: "Total cache misses (cold start)",
 	})
 
 	tokensTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_tokens_total",
+		Name: "marbor_tokens_total",
 		Help: "Total tokens processed (best-effort from Ollama responses)",
 	}, []string{"key_name", "node"})
 
 	retriesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_retries_total",
+		Name: "marbor_retries_total",
 		Help: "Upstream failover retries (a node failed before sending bytes and another was tried)",
 	}, []string{"node"})
 
 	cloudFallbacksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_cloud_fallbacks_total",
+		Name: "marbor_cloud_fallbacks_total",
 		Help: "Requests that overflowed to a cloud provider because no local node could serve them",
 	}, []string{"provider"})
 
 	localDegradationTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_local_degradation_total",
+		Name: "marbor_local_degradation_total",
 		Help: "Requests substituted to a declared local alternate model (opt-in) instead of falling through to cloud",
 	}, []string{"from", "to"})
 
 	quotaRejectionsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_quota_rejections_total",
+		Name: "marbor_quota_rejections_total",
 		Help: "Requests rejected with 429 because a per-key daily or monthly quota was exhausted",
 	}, []string{"key_name", "period"})
 
 	panicsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "ollamamesh_panics_total",
+		Name: "marbor_panics_total",
 		Help: "Handler panics recovered by the recovery middleware (a non-zero rate is a bug to investigate)",
 	})
 
 	queueDepth = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "ollamamesh_queue_depth",
+		Name: "marbor_queue_depth",
 		Help: "Current number of requests queued waiting for a local node to become available",
 	})
 
 	queueTimeoutsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "ollamamesh_queue_timeouts_total",
+		Name: "marbor_queue_timeouts_total",
 		Help: "Requests that waited in the queue and timed out without getting a node",
 	})
 
 	warmupPingsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "ollamamesh_warmup_pings_total",
+		Name: "marbor_warmup_pings_total",
 		Help: "Proactive keepalive pings sent to prevent model eviction from VRAM",
 	}, []string{"model", "node", "status"})
 
 	predictionAccuracyRatio = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "ollamamesh_prediction_accuracy_ratio",
+		Name: "marbor_prediction_accuracy_ratio",
 		Help: "Ratio of successful prewarming predictions (0.0 to 1.0)",
 	})
 )

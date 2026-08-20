@@ -26,8 +26,8 @@ func TestRegistry_TreeValid(t *testing.T) {
 	if r1 != r2 {
 		t.Fatal("root() should memoize via sync.OnceValue and return the same *Command on every call")
 	}
-	if r1.Name != "ollama-mesh" {
-		t.Fatalf("root name = %q, want %q", r1.Name, "ollama-mesh")
+	if r1.Name != "marbor" {
+		t.Fatalf("root name = %q, want %q", r1.Name, "marbor")
 	}
 
 	// Spot-check a few known leaves/groups exist with the expected shape,
@@ -53,7 +53,7 @@ func TestRegistry_TreeValid(t *testing.T) {
 		if pull.MinArgs() != 2 || pull.MaxArgs() != 2 {
 			t.Errorf("models pull MinArgs/MaxArgs = %d/%d, want 2/2", pull.MinArgs(), pull.MaxArgs())
 		}
-		if got, want := pull.Path(), "ollama-mesh models pull"; got != want {
+		if got, want := pull.Path(), "marbor models pull"; got != want {
 			t.Errorf("models pull Path() = %q, want %q", got, want)
 		}
 	}

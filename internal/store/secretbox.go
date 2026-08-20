@@ -13,7 +13,7 @@ import (
 
 // Secrets persisted by sqliteStore (cloud provider API keys, mesh-issued
 // runtime API keys, LiteLLM/HuggingFace/webhook tokens) are encrypted at
-// rest with AES-256-GCM. The 32-byte master key comes from MESH_ENCRYPTION_KEY
+// rest with AES-256-GCM. The 32-byte master key comes from MARBOR_ENCRYPTION_KEY
 // (base64-encoded) if set, otherwise from a "<db path>.key" file generated on
 // first boot next to the database (0600, best-effort on platforms that
 // support it). Values are prefixed "enc:v1:" so legacy plaintext rows (pre-
@@ -23,7 +23,7 @@ import (
 // encrypts them in place on the next boot.
 const secretEncPrefix = "enc:v1:"
 
-const secretKeyEnvVar = "MESH_ENCRYPTION_KEY"
+const secretKeyEnvVar = "MARBOR_ENCRYPTION_KEY"
 
 // loadOrCreateSecretKey resolves the 32-byte AES-256 master key. dbPath ""
 // or ":memory:" (test/ephemeral stores) gets a random in-process key that is

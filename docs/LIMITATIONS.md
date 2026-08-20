@@ -1,31 +1,31 @@
 # Known Limitations
 
-This page documents what ollama-mesh does not do, what has been tested, and what to plan around in production. Infrastructure engineers evaluating the project for production use should read this before deploying.
+This page documents what marbor does not do, what has been tested, and what to plan around in production. Infrastructure engineers evaluating the project for production use should read this before deploying.
 
 ---
 
 ## Deployment Topology
 
 ### What has been tested
-The validated topology is **one ollama-mesh process on a single host, routing to one or more remote Ollama nodes**. This includes bare-metal and EC2 deployments. Multi-node routing, failover, and cloud overflow have been exercised in this configuration.
+The validated topology is **one marbor process on a single host, routing to one or more remote Ollama nodes**. This includes bare-metal and EC2 deployments. Multi-node routing, failover, and cloud overflow have been exercised in this configuration.
 
-No distributed or multi-instance ollama-mesh topology has been tested. There is no coordination layer, no distributed lock, and no leader election. Running two instances of ollama-mesh pointing at the same SQLite database file is not supported.
+No distributed or multi-instance marbor topology has been tested. There is no coordination layer, no distributed lock, and no leader election. Running two instances of marbor pointing at the same SQLite database file is not supported.
 
 ### No high availability or multi-region failover
-ollama-mesh is a single process. If the host running it goes down, inference traffic stops until the process restarts. There is no hot standby, no floating IP handoff, and no automatic failover between mesh instances.
+marbor is a single process. If the host running it goes down, inference traffic stops until the process restarts. There is no hot standby, no floating IP handoff, and no automatic failover between mesh instances.
 
-For production HA, the standard approach is to put a layer-4 load balancer (e.g., an AWS NLB) in front of two independent ollama-mesh instances, each with their own database file, and accept that in-flight requests to the failed instance are lost. This works because ollama-mesh is stateless for the routing path - only the admin session is lost on restart.
+For production HA, the standard approach is to put a layer-4 load balancer (e.g., an AWS NLB) in front of two independent marbor instances, each with their own database file, and accept that in-flight requests to the failed instance are lost. This works because marbor is stateless for the routing path - only the admin session is lost on restart.
 
 ---
 
 ## Docker Node Auto-Discovery
-Docker-based auto-discovery works by scanning the Docker socket for containers running Ollama and registering them as nodes. Discovered nodes use the container's own network IP (from the Docker API's `NetworkSettings`) when one is available, which is correct for containers on a bridge network regardless of whether ollama-mesh itself runs on bare metal or inside another container on the same Docker network.
+Docker-based auto-discovery works by scanning the Docker socket for containers running Ollama and registering them as nodes. Discovered nodes use the container's own network IP (from the Docker API's `NetworkSettings`) when one is available, which is correct for containers on a bridge network regardless of whether marbor itself runs on bare metal or inside another container on the same Docker network.
 
-**Fallback to `127.0.0.1`** still applies when a container has no network IP to report - the `--network host` case, where the container shares the host's network namespace and has no private IP of its own. In that case the discovered address is only reachable if ollama-mesh is also running with host networking (or directly on bare metal).
+**Fallback to `127.0.0.1`** still applies when a container has no network IP to report - the `--network host` case, where the container shares the host's network namespace and has no private IP of its own. In that case the discovered address is only reachable if marbor is also running with host networking (or directly on bare metal).
 
 Workarounds if a discovered node is unreachable:
-- Run ollama-mesh on the host directly (bare-metal or VM), not inside a container.
-- Run ollama-mesh in Docker with `network_mode: host`, matching the discovered node's networking mode.
+- Run marbor on the host directly (bare-metal or VM), not inside a container.
+- Run marbor in Docker with `network_mode: host`, matching the discovered node's networking mode.
 - Disable auto-discovery and add the node manually from the dashboard's **GPU Nodes** page, using the correct container IP or hostname.
 
 ---
@@ -36,14 +36,14 @@ Workarounds if a discovered node is unreachable:
 Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each node's `/api/ps` endpoint. That model-residency view is still available for every node, while richer remote GPU telemetry comes from the optional Node Agent when it is installed.
 
 ### VRAM capacity
-Total VRAM capacity is read from `nvidia-smi` on the host running ollama-mesh (for NVIDIA GPUs). For Apple Silicon (MLX) nodes or remote nodes where `nvidia-smi` is not applicable or available, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
+Total VRAM capacity is read from `nvidia-smi` on the host running marbor (for NVIDIA GPUs). For Apple Silicon (MLX) nodes or remote nodes where `nvidia-smi` is not applicable or available, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
 
 ### Temperature and power draw
-GPU temperature and power draw are read from `nvidia-smi` on the host running ollama-mesh for local NVIDIA GPU nodes.
+GPU temperature and power draw are read from `nvidia-smi` on the host running marbor for local NVIDIA GPU nodes.
 
-For remote nodes, the same telemetry (temperature, power draw, fan speed, GPU model, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It detects NVIDIA (`nvidia-smi`), AMD (`rocm-smi`), Intel (`xpu-smi`), or Apple Silicon (`system_profiler`) automatically, whichever is present on that host. It is opt-in, not auto-deployed: ollama-mesh never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard.
+For remote nodes, the same telemetry (temperature, power draw, fan speed, GPU model, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It detects NVIDIA (`nvidia-smi`), AMD (`rocm-smi`), Intel (`xpu-smi`), or Apple Silicon (`system_profiler`) automatically, whichever is present on that host. It is opt-in, not auto-deployed: marbor never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard.
 
-For Apple Silicon (MLX) nodes, the Node Agent reports the chip model (e.g. "Apple M3 Max") but not temperature/power/fan - `system_profiler` doesn't expose those unprivileged, and Apple Silicon's unified memory has no separate VRAM figure to report. These show `-` in the dashboard rather than a guessed number. ollama-mesh enforces strict data honesty-we never substitute estimated or fabricated numbers for missing telemetry.
+For Apple Silicon (MLX) nodes, the Node Agent reports the chip model (e.g. "Apple M3 Max") but not temperature/power/fan - `system_profiler` doesn't expose those unprivileged, and Apple Silicon's unified memory has no separate VRAM figure to report. These show `-` in the dashboard rather than a guessed number. marbor enforces strict data honesty-we never substitute estimated or fabricated numbers for missing telemetry.
 
 AMD and Intel GPU support via the Node Agent (`rocm-smi`/`xpu-smi` parsing) has not yet been validated against real hardware - if fan/temperature/power don't appear on an AMD or Intel node with the agent installed and running, that's the first thing worth reporting.
 
@@ -59,7 +59,7 @@ For defense in depth, still put a reverse proxy in front of the admin port (`808
 Rate limiting on the proxy port (`11434`) is implemented per API key via a token bucket, separately from the admin login throttle above.
 
 ### Demo-mode auth bypass exists in the binary, but is not reachable in a real deployment
-`admin.Server` has a `demoMode` flag that, when set, accepts a static `demo-session` bearer token in place of a real DB-backed session. It is set only by test code (`SetDemoMode` / `AdminToken`, called exclusively from `_test.go` files) - no CLI flag, config field, or environment variable in the shipped binary or `main.go` ever enables it, so a normally built and run `ollama-mesh` process has no code path that turns it on. (The public `/demo/` dashboard on the website is unrelated: it's a pure frontend flag, `VITE_FORCE_DEMO`, that makes the React app render entirely client-side mocked data - it never talks to a real `admin.Server` and never uses this token.) The flag stays in the shipped binary as dead code rather than being compiled out behind a build tag, since doing so cleanly requires reworking the ~20 test call sites that use it to authenticate against the real DB-backed session path instead.
+`admin.Server` has a `demoMode` flag that, when set, accepts a static `demo-session` bearer token in place of a real DB-backed session. It is set only by test code (`SetDemoMode` / `AdminToken`, called exclusively from `_test.go` files) - no CLI flag, config field, or environment variable in the shipped binary or `main.go` ever enables it, so a normally built and run `marbor` process has no code path that turns it on. (The public `/demo/` dashboard on the website is unrelated: it's a pure frontend flag, `VITE_FORCE_DEMO`, that makes the React app render entirely client-side mocked data - it never talks to a real `admin.Server` and never uses this token.) The flag stays in the shipped binary as dead code rather than being compiled out behind a build tag, since doing so cleanly requires reworking the ~20 test call sites that use it to authenticate against the real DB-backed session path instead.
 
 ---
 
@@ -76,9 +76,9 @@ Routing rules added via the admin API (the UI or `POST /admin/v1/routing/rules`)
 ---
 
 ## Configuration Model
-ollama-mesh is DB-first: `mesh.db` (SQLite) is the sole source of truth for every setting - nodes, API keys, routing rules, cloud providers, and everything on the Settings page. There is no config file and no split-brain between a static file and runtime state.
+marbor is DB-first: `marbor.db` (SQLite) is the sole source of truth for every setting - nodes, API keys, routing rules, cloud providers, and everything on the Settings page. There is no config file and no split-brain between a static file and runtime state.
 
-If you manage ollama-mesh configuration via infrastructure-as-code (Ansible, Terraform, etc.), drive it through the `/admin/v1/...` REST API (the same endpoints the dashboard uses) from a post-deploy step, rather than templating a file.
+If you manage marbor configuration via infrastructure-as-code (Ansible, Terraform, etc.), drive it through the `/admin/v1/...` REST API (the same endpoints the dashboard uses) from a post-deploy step, rather than templating a file.
 
 ---
 
@@ -89,8 +89,9 @@ Session affinity is implemented and gated by the `routing.session_affinity` flag
 
 ## Out of Scope
 The following are deliberate non-goals, not gaps to be filled:
-- **TLS termination.** ollama-mesh does not handle TLS. Put nginx or a load balancer in front for HTTPS. This keeps the binary simple and puts TLS configuration where operators already manage it.
+- **TLS termination.** marbor does not handle TLS. Put nginx or a load balancer in front for HTTPS. This keeps the binary simple and puts TLS configuration where operators already manage it.
 - **Auto-deployed remote telemetry.** Node Agent must be manually installed per node - mesh does not auto-deploy it to remote hosts.
 - **Multi-instance coordination.** No distributed consensus, no Raft, no etcd dependency. Single-host deployment only.
-- **Chat UI, model fine-tuning, or web scraping.** ollama-mesh is a proxy and router. These are out of scope.
+- **Chat UI, model fine-tuning, or web scraping.** marbor is a proxy and router. These are out of scope.
 - **Cloud provider breadth.** OpenAI-compatible providers are supported via built-in presets (OpenRouter, Groq, Together, Fireworks, DeepSeek, Mistral, xAI, Cerebras, NVIDIA NIM) or a custom base URL; Anthropic gets native translation. LiteLLM's approach of abstracting hundreds of providers behind one client SDK is not a goal.
+

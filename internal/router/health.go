@@ -97,7 +97,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// One node's bad/unexpected state (a stale DB record, a malformed probe,
 	// anything) must never be able to panic and take down the entire
 	// single-process mesh (architecture law) - that would mean a single bad
-	// row in mesh.db locks an operator out of their whole fleet, which is
+	// row in marbor.db locks an operator out of their whole fleet, which is
 	// exactly the failure this recovers from. A panic here degrades only
 	// this one node (marked unhealthy for this cycle) instead of crashing
 	// the process; the poll loop naturally retries it next interval.

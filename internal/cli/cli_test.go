@@ -26,7 +26,7 @@ func TestRun_Help(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d", ExitOK, code)
 	}
-	if !strings.Contains(stdout.String(), "ollama-mesh - CLI client") {
+	if !strings.Contains(stdout.String(), "marbor - CLI client") {
 		t.Fatalf("expected usage text in stdout, got %q", stdout.String())
 	}
 }

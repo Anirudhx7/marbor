@@ -63,7 +63,7 @@ type Client struct {
 	// usingSavedSession is set by authenticatedClient when Token came from
 	// the persisted session file (internal/cli/session.go), not a --token
 	// flag/env or a fresh --username/--password login. doRequest and
-	// doRequestBody use it to append a "run ollama-mesh login again" hint
+	// doRequestBody use it to append a "run marbor login again" hint
 	// to a 401/403 - the exact "clear message" the CLI persistent-auth
 	// queue item calls for, produced from a real server response rather
 	// than a local expiry guess (the saved session intentionally carries no
@@ -150,7 +150,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	}
 	if authed {
 		if c.Token == "" {
-			return nil, userErrorf("authentication required: run ollama-mesh login, or pass --username/--password (or MESH_USERNAME+MESH_PASSWORD)")
+			return nil, userErrorf("authentication required: run marbor login, or pass --username/--password (or MARBOR_USERNAME+MARBOR_PASSWORD)")
 		}
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -186,7 +186,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 // always exactly one Admin API request, never a direct Node Agent call.
 func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Response, error) {
 	if c.Token == "" {
-		return nil, userErrorf("authentication required: run ollama-mesh login, or pass --token (or --username/--password / MESH_TOKEN / MESH_USERNAME+MESH_PASSWORD)")
+		return nil, userErrorf("authentication required: run marbor login, or pass --token (or --username/--password / MARBOR_TOKEN / MARBOR_USERNAME+MARBOR_PASSWORD)")
 	}
 	var reader io.Reader
 	if body != nil {
@@ -719,7 +719,7 @@ func (c *Client) Models() (*ModelsResp, error) {
 // next step. Empty for every other token source.
 func (c *Client) savedSessionHint() string {
 	if c.usingSavedSession {
-		return " - run ollama-mesh login again"
+		return " - run marbor login again"
 	}
 	return ""
 }

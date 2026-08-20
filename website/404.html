@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Page Not Found | ollama-mesh</title>
+<title>Page Not Found | marbor</title>
 <meta name="robots" content="noindex, nofollow">
 <script>
   // SPA redirect for GitHub Pages demo subpath.
   // Deep-link to /demo/* → redirect directly to SPA hash route.
-  // E.g. /ollama-mesh/demo/gpu-nodes → /ollama-mesh/demo/#/gpu-nodes
+  // E.g. /marbor/demo/gpu-nodes → /marbor/demo/#/gpu-nodes
   (function () {
     var l = window.location;
     var path = l.pathname;
-    if (path === '/ollama-mesh/demo') {
-      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/');
-    } else if (path.indexOf('/ollama-mesh/demo/') === 0) {
-      var subpath = path.slice(18); // strip '/ollama-mesh/demo/' (18 chars)
-      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/ollama-mesh/demo/#/' + subpath + l.search + l.hash);
+    if (path === '/marbor/demo') {
+      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/marbor/demo/');
+    } else if (path.indexOf('/marbor/demo/') === 0) {
+      var subpath = path.slice(18); // strip '/marbor/demo/' (18 chars)
+      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/marbor/demo/#/' + subpath + l.search + l.hash);
     }
   })();
 </script>
@@ -70,7 +70,8 @@ a:hover { opacity: 0.85; }
   <div class="code">404</div>
   <h1>Page not found</h1>
   <p>The page you're looking for doesn't exist. It may have moved or been removed.</p>
-  <a href="/ollama-mesh/">Back to ollama-mesh</a>
+  <a href="/marbor/">Back to marbor</a>
 </div>
 </body>
 </html>
+

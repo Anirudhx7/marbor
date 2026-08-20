@@ -13,17 +13,17 @@ import (
 
 func TestLaunchdPlistContent(t *testing.T) {
 	cfg := Config{
-		BinaryPath: "/usr/local/bin/ollama-mesh",
+		BinaryPath: "/usr/local/bin/marbor",
 		Port:       9200,
 		Token:      "sekret",
 	}
 	plist := launchdPlistContent(cfg)
 
 	wantElements := []string{
-		"<string>/usr/local/bin/ollama-mesh</string>",
+		"<string>/usr/local/bin/marbor</string>",
 		"<string>--port=9200</string>",
 		"<key>Label</key>",
-		"<string>com.ollamamesh.agent</string>",
+		"<string>com.marbor.agent</string>",
 		"<key>EnvironmentVariables</key>",
 		"<key>TOKEN</key>",
 		"<string>sekret</string>",
@@ -52,7 +52,7 @@ func TestLaunchdPlistContent(t *testing.T) {
 
 func TestLaunchdPlistContent_RefreshInterval(t *testing.T) {
 	cfg := Config{
-		BinaryPath:      "/usr/local/bin/ollama-mesh",
+		BinaryPath:      "/usr/local/bin/marbor",
 		Port:            9200,
 		Token:           "sekret",
 		RefreshInterval: 30 * time.Second,
@@ -66,7 +66,7 @@ func TestLaunchdPlistContent_RefreshInterval(t *testing.T) {
 
 func TestLaunchdPlistContent_NoRefreshInterval(t *testing.T) {
 	cfg := Config{
-		BinaryPath: "/usr/local/bin/ollama-mesh",
+		BinaryPath: "/usr/local/bin/marbor",
 		Port:       9200,
 		Token:      "sekret",
 	}
@@ -79,7 +79,7 @@ func TestLaunchdPlistContent_NoRefreshInterval(t *testing.T) {
 
 func TestExtractBinaryPathFromPlist(t *testing.T) {
 	cfg := Config{
-		BinaryPath: "/usr/local/bin/ollama-mesh",
+		BinaryPath: "/usr/local/bin/marbor",
 		Port:       9200,
 		Token:      "sekret",
 	}
@@ -100,7 +100,7 @@ func TestExtractBinaryPathFromPlist_NoProgramArguments(t *testing.T) {
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.ollamamesh.agent</string>
+	<string>com.marbor.agent</string>
 </dict>
 </plist>
 `
@@ -123,17 +123,17 @@ func TestParseLaunchctlListStatus(t *testing.T) {
 	}{
 		{
 			name: "pid dict form",
-			out:  "{\n\t\"PID\" = 1234;\n\t\"Label\" = \"com.ollamamesh.agent\";\n}\n",
+			out:  "{\n\t\"PID\" = 1234;\n\t\"Label\" = \"com.marbor.agent\";\n}\n",
 			want: "running (pid 1234)",
 		},
 		{
 			name: "column form running",
-			out:  "1234\t0\tcom.ollamamesh.agent\n",
+			out:  "1234\t0\tcom.marbor.agent\n",
 			want: "running (pid 1234)",
 		},
 		{
 			name: "column form not running",
-			out:  "-\t0\tcom.ollamamesh.agent\n",
+			out:  "-\t0\tcom.marbor.agent\n",
 			want: "loaded (not running)",
 		},
 		{

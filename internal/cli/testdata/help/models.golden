@@ -1,4 +1,4 @@
-Usage: ollama-mesh models [action] [args] [flags]
+Usage: marbor models [action] [args] [flags]
 
 Actions:
   pull <node> <model>    start pulling a model onto a node (async - does not wait for completion)
@@ -7,9 +7,9 @@ Actions:
   list <node>            list models present on a node's local storage (per-node, not the fleet-wide aggregate above)
 
 Flags:
-  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
-  --username string  admin username, used to log in (env MESH_USERNAME)
-  --password string  admin password, used to log in (env MESH_PASSWORD)
+  --username string  admin username, used to log in (env MARBOR_USERNAME)
+  --password string  admin password, used to log in (env MARBOR_PASSWORD)
 
-requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).

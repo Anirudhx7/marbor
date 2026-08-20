@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>LiteLLM · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: LiteLLM." />
+<title>LiteLLM · marbor docs</title>
+<meta name="description" content="marbor documentation: LiteLLM." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="LiteLLM · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: LiteLLM." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="LiteLLM · marbor docs" />
+<meta property="og:description" content="marbor documentation: LiteLLM." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="LiteLLM · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="LiteLLM · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../../index.html#features">Features</a>
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -339,45 +339,45 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <article class="doc-content">
       <h1 id="litellm">LiteLLM<a class="anchor" href="#litellm" aria-label="Link to section">#</a></h1>
 <p><a href="https://litellm.ai" target="_blank" rel="noopener">LiteLLM</a> is a popular and powerful API gateway for provider abstraction, enterprise authentication, and user-level rate limiting. </p>
-<p>Rather than a competitor, <strong>ollama-mesh operates as a complementary layer alongside LiteLLM</strong>. They can be integrated in two distinct topologies depending on your architecture:</p>
-<ul><li><strong>Option A: Upstream Gateway Setup (LiteLLM &amp;rarr; ollama-mesh)</strong>: LiteLLM sits in front of your applications as the entry point and routes local model requests to ollama-mesh.</li><li><strong>Option B: Cloud Fallback Gateway Setup (ollama-mesh &amp;rarr; LiteLLM)</strong>: ollama-mesh routes cloud fallback traffic (when all local GPUs are saturated or down) through a central LiteLLM instance instead of hitting cloud endpoints directly.</li></ul>
+<p>Rather than a competitor, <strong>marbor operates as a complementary layer alongside LiteLLM</strong>. They can be integrated in two distinct topologies depending on your architecture:</p>
+<ul><li><strong>Option A: Upstream Gateway Setup (LiteLLM &amp;rarr; marbor)</strong>: LiteLLM sits in front of your applications as the entry point and routes local model requests to marbor.</li><li><strong>Option B: Cloud Fallback Gateway Setup (marbor &amp;rarr; LiteLLM)</strong>: marbor routes cloud fallback traffic (when all local GPUs are saturated or down) through a central LiteLLM instance instead of hitting cloud endpoints directly.</li></ul>
 <hr/>
 <h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to section">#</a></h2>
-<ul><li>LiteLLM running (Docker or bare-metal)</li><li>ollama-mesh running and reachable from the LiteLLM host</li><li>An API key from the ollama-mesh admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
+<ul><li>LiteLLM running (Docker or bare-metal)</li><li>marbor running and reachable from the LiteLLM host</li><li>An API key from the marbor admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
 <hr/>
-<h2 id="option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh">Option A - Upstream Gateway Setup (LiteLLM &amp;rarr; ollama-mesh)<a class="anchor" href="#option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh" aria-label="Link to section">#</a></h2>
-<p>This is the recommended setup when you want to use LiteLLM's enterprise controls (such as SSO, virtual keys, and multi-cloud routing) while leveraging ollama-mesh's warm-first GPU load balancing and local VRAM scheduling.</p>
-<div class="code-wrap"><pre class="code"><code>Applications ────&gt; LiteLLM (Gateway) ────&gt; ollama-mesh (Scheduler) ────&gt; GPU Nodes</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Applications ────&gt; LiteLLM (Gateway) ────&gt; ollama-mesh (Scheduler) ────&gt; GPU Nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<h2 id="option-a---upstream-gateway-setup-litellm-rarr-marbor">Option A - Upstream Gateway Setup (LiteLLM &amp;rarr; marbor)<a class="anchor" href="#option-a---upstream-gateway-setup-litellm-rarr-marbor" aria-label="Link to section">#</a></h2>
+<p>This is the recommended setup when you want to use LiteLLM's enterprise controls (such as SSO, virtual keys, and multi-cloud routing) while leveraging marbor's warm-first GPU load balancing and local VRAM scheduling.</p>
+<div class="code-wrap"><pre class="code"><code>Applications ────&gt; LiteLLM (Gateway) ────&gt; marbor (Scheduler) ────&gt; GPU Nodes</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Applications ────&gt; LiteLLM (Gateway) ────&gt; marbor (Scheduler) ────&gt; GPU Nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <h3 id="litellm-configuration">LiteLLM Configuration<a class="anchor" href="#litellm-configuration" aria-label="Link to section">#</a></h3>
-<p>Add ollama-mesh as a custom provider in LiteLLM's <code>config.yaml</code> using the OpenAI-compatible endpoint:</p>
+<p>Add marbor as a custom provider in LiteLLM's <code>config.yaml</code> using the OpenAI-compatible endpoint:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>model_list:
   - model_name: llama3.2
     litellm_params:
       model: openai/llama3.2
       api_base: http://&lt;mesh-host&gt;:11434/v1
-      api_key: sk-mesh-your-api-key # Key generated from the ollama-mesh dashboard</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="model_list:
+      api_key: sk-mesh-your-api-key # Key generated from the marbor dashboard</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="model_list:
   - model_name: llama3.2
     litellm_params:
       model: openai/llama3.2
       api_base: http://&lt;mesh-host&gt;:11434/v1
-      api_key: sk-mesh-your-api-key # Key generated from the ollama-mesh dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+      api_key: sk-mesh-your-api-key # Key generated from the marbor dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Replace:</p>
-<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP address of the machine running ollama-mesh.</li><li><code>sk-mesh-your-api-key</code> with the API key created in the ollama-mesh dashboard.</li><li><code>llama3.2</code> with whatever model names are loaded on your local GPU nodes.</li></ul>
+<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP address of the machine running marbor.</li><li><code>sk-mesh-your-api-key</code> with the API key created in the marbor dashboard.</li><li><code>llama3.2</code> with whatever model names are loaded on your local GPU nodes.</li></ul>
 <hr/>
-<h2 id="option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm">Option B - Cloud Fallback Gateway Setup (ollama-mesh &amp;rarr; LiteLLM)<a class="anchor" href="#option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm" aria-label="Link to section">#</a></h2>
-<p>If you already use LiteLLM to centralize your company's cloud LLM provider credentials (OpenAI, Anthropic, Groq, etc.), you can configure ollama-mesh to use LiteLLM as its single cloud fallback endpoint when local GPU nodes are saturated or offline.</p>
+<h2 id="option-b---cloud-fallback-gateway-setup-marbor-rarr-litellm">Option B - Cloud Fallback Gateway Setup (marbor &amp;rarr; LiteLLM)<a class="anchor" href="#option-b---cloud-fallback-gateway-setup-marbor-rarr-litellm" aria-label="Link to section">#</a></h2>
+<p>If you already use LiteLLM to centralize your company's cloud LLM provider credentials (OpenAI, Anthropic, Groq, etc.), you can configure marbor to use LiteLLM as its single cloud fallback endpoint when local GPU nodes are saturated or offline.</p>
 <p>This is managed dynamically through the admin dashboard interface and stored in the SQLite database.</p>
-<div class="code-wrap"><pre class="code"><code>Applications ────&gt; ollama-mesh ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Applications ────&gt; ollama-mesh ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><pre class="code"><code>Applications ────&gt; marbor ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Applications ────&gt; marbor ──(local GPUs busy)──&gt; LiteLLM ────&gt; Cloud APIs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <h3 id="admin-dashboard-configuration">Admin Dashboard Configuration<a class="anchor" href="#admin-dashboard-configuration" aria-label="Link to section">#</a></h3>
-<ol><li>Open the ollama-mesh dashboard and navigate to the <strong>Settings</strong> page.</li><li>Scroll to the <strong>Integrations &amp; Cost</strong> section.</li><li>Under <strong>LiteLLM Integration</strong>:</li><li>Toggle <strong>Enable LiteLLM</strong> to active.</li><li>Enter your <strong>LiteLLM Endpoint URL</strong> (e.g., <code>http://&lt;litellm-host&gt;:4000/v1</code>).</li><li>Enter the <strong>API Key</strong> (LiteLLM virtual or master key, sent as <code>Authorization: Bearer &lt;key&gt;</code> to the LiteLLM proxy).</li><li>Click <strong>Save Settings</strong> to persist the configuration to the SQLite store.</li></ol>
+<ol><li>Open the marbor dashboard and navigate to the <strong>Settings</strong> page.</li><li>Scroll to the <strong>Integrations &amp; Cost</strong> section.</li><li>Under <strong>LiteLLM Integration</strong>:</li><li>Toggle <strong>Enable LiteLLM</strong> to active.</li><li>Enter your <strong>LiteLLM Endpoint URL</strong> (e.g., <code>http://&lt;litellm-host&gt;:4000/v1</code>).</li><li>Enter the <strong>API Key</strong> (LiteLLM virtual or master key, sent as <code>Authorization: Bearer &lt;key&gt;</code> to the LiteLLM proxy).</li><li>Click <strong>Save Settings</strong> to persist the configuration to the SQLite store.</li></ol>
 <blockquote>[!IMPORTANT] Enabling <strong>LiteLLM Integration</strong> automatically disables and deactivates the native <strong>Cloud Providers</strong> config block on the settings page. You will see a banner indicating: <code>"Managed by LiteLLM while enabled - this list is inactive"</code>. All cloud fallback/overflow routing will be managed exclusively by the LiteLLM proxy.</blockquote>
 <hr/>
 <h2 id="docker-compose-setup">Docker Compose Setup<a class="anchor" href="#docker-compose-setup" aria-label="Link to section">#</a></h2>
 <p>If running both gateways on the same host, use a shared Docker network and service names for hostnames:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code># docker-compose.yml
 services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ollama-mesh.dev:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -394,7 +394,7 @@ services:
       - ./litellm-config.yaml:/app/config.yaml
     command: [ "--config", "/app/config.yaml" ]
     depends_on:
-      - ollama-mesh
+      - marbor
     networks:
       - shared-network
 
@@ -405,8 +405,8 @@ networks:
 volumes:
   mesh-data:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml
 services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ollama-mesh.dev:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
@@ -423,7 +423,7 @@ services:
       - ./litellm-config.yaml:/app/config.yaml
     command: [ &quot;--config&quot;, &quot;/app/config.yaml&quot; ]
     depends_on:
-      - ollama-mesh
+      - marbor
     networks:
       - shared-network
 
@@ -433,46 +433,46 @@ networks:
 
 volumes:
   mesh-data:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Your <code>litellm-config.yaml</code> can then reference <code>http://ollama-mesh:11434/v1</code> as the <code>api_base</code>, and ollama-mesh's settings can use <code>http://litellm:4000/v1</code> as the <code>url</code>.</p>
+<p>Your <code>litellm-config.yaml</code> can then reference <code>http://marbor:11434/v1</code> as the <code>api_base</code>, and marbor's settings can use <code>http://litellm:4000/v1</code> as the <code>url</code>.</p>
 <hr/>
 <h2 id="model-discovery">Model Discovery<a class="anchor" href="#model-discovery" aria-label="Link to section">#</a></h2>
-<p>With Option A, LiteLLM queries the configured model base. Under the hood, LiteLLM calls the <code>/v1/models</code> endpoint of <code>ollama-mesh</code> on startup to populate its active models.</p>
-<p>ollama-mesh aggregates loaded models across all healthy GPU nodes dynamically and responds to <code>/v1/models</code> in real-time. If a model is not currently warm on any node, it will still appear in the list if it is registered in <code>ollama-mesh</code>'s model configuration.</p>
+<p>With Option A, LiteLLM queries the configured model base. Under the hood, LiteLLM calls the <code>/v1/models</code> endpoint of <code>marbor</code> on startup to populate its active models.</p>
+<p>marbor aggregates loaded models across all healthy GPU nodes dynamically and responds to <code>/v1/models</code> in real-time. If a model is not currently warm on any node, it will still appear in the list if it is registered in <code>marbor</code>'s model configuration.</p>
 <hr/>
 <h2 id="verification">Verification<a class="anchor" href="#verification" aria-label="Link to section">#</a></h2>
-<h3 id="upstream-litellm-rarr-ollama-mesh">Upstream (LiteLLM &amp;rarr; ollama-mesh)<a class="anchor" href="#upstream-litellm-rarr-ollama-mesh" aria-label="Link to section">#</a></h3>
+<h3 id="upstream-litellm-rarr-marbor">Upstream (LiteLLM &amp;rarr; marbor)<a class="anchor" href="#upstream-litellm-rarr-marbor" aria-label="Link to section">#</a></h3>
 <ol><li>Send a request to LiteLLM:</li></ol>
 <p>   ``<code>bash    curl http://localhost:4000/chat/completions \      -H "Content-Type: application/json" \      -H "Authorization: Bearer your-litellm-key" \      -d '{        "model": "llama3.2",        "messages": [{"role": "user", "content": "Hello from LiteLLM!"}]      }'    </code>``</p>
-<ol><li>Verify the request appears in the ollama-mesh request log at <code>http://&lt;mesh-host&gt;:8080</code> with the correct model and node latency.</li></ol>
-<h3 id="fallback-ollama-mesh-rarr-litellm">Fallback (ollama-mesh &amp;rarr; LiteLLM)<a class="anchor" href="#fallback-ollama-mesh-rarr-litellm" aria-label="Link to section">#</a></h3>
-<ol><li>Drain or set all local nodes to offline via the ollama-mesh dashboard.</li><li>Send a request to ollama-mesh for a cloud model (e.g. <code>gpt-4o-mini</code>):</li></ol>
+<ol><li>Verify the request appears in the marbor request log at <code>http://&lt;mesh-host&gt;:8080</code> with the correct model and node latency.</li></ol>
+<h3 id="fallback-marbor-rarr-litellm">Fallback (marbor &amp;rarr; LiteLLM)<a class="anchor" href="#fallback-marbor-rarr-litellm" aria-label="Link to section">#</a></h3>
+<ol><li>Drain or set all local nodes to offline via the marbor dashboard.</li><li>Send a request to marbor for a cloud model (e.g. <code>gpt-4o-mini</code>):</li></ol>
 <p>   ``<code>bash    curl http://localhost:11434/v1/chat/completions \      -H "Authorization: Bearer sk-mesh-abc123" \      -H "Content-Type: application/json" \      -d '{        "model": "gpt-4o-mini",        "messages": [{"role": "user", "content": "Test fallback"}]      }'    </code>``</p>
 <ol><li>Check the LiteLLM logs: the request should be logged as incoming from the mesh and forwarded to the cloud provider.</li></ol>
 <hr/>
 <h2 id="troubleshooting">Troubleshooting<a class="anchor" href="#troubleshooting" aria-label="Link to section">#</a></h2>
 <h3 id="401-unauthorized">401 Unauthorized<a class="anchor" href="#401-unauthorized" aria-label="Link to section">#</a></h3>
-<ul><li><strong>Option A</strong>: Verify the <code>api_key</code> in LiteLLM's <code>config.yaml</code> matches an active key listed in the ollama-mesh admin dashboard.</li><li><strong>Option B</strong>: Verify the API Key in the ollama-mesh Settings matches LiteLLM's master key or a valid virtual key.</li></ul>
+<ul><li><strong>Option A</strong>: Verify the <code>api_key</code> in LiteLLM's <code>config.yaml</code> matches an active key listed in the marbor admin dashboard.</li><li><strong>Option B</strong>: Verify the API Key in the marbor Settings matches LiteLLM's master key or a valid virtual key.</li></ul>
 <h3 id="403-forbidden">403 Forbidden<a class="anchor" href="#403-forbidden" aria-label="Link to section">#</a></h3>
-<p>The key you are using has a model allow-list configured in the ollama-mesh dashboard that excludes the requested model. Either adjust the model allow-list or use a key with access to all models.</p>
+<p>The key you are using has a model allow-list configured in the marbor dashboard that excludes the requested model. Either adjust the model allow-list or use a key with access to all models.</p>
 <h3 id="connection-refused-timeout">Connection Refused / Timeout<a class="anchor" href="#connection-refused-timeout" aria-label="Link to section">#</a></h3>
-<p>If running inside Docker, make sure both containers share a network. <code>localhost</code> inside a Docker container refers to the container itself; use the service name (e.g. <code>ollama-mesh</code> or <code>litellm</code>) or <code>host.docker.internal</code> for the host machine.</p>
+<p>If running inside Docker, make sure both containers share a network. <code>localhost</code> inside a Docker container refers to the container itself; use the service name (e.g. <code>marbor</code> or <code>litellm</code>) or <code>host.docker.internal</code> for the host machine.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/litellm.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/integrations/litellm.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#prerequisites">Prerequisites</a></li><li class="lvl-2"><a href="#option-a---upstream-gateway-setup-litellm-rarr-ollama-mesh">Option A - Upstream Gateway Setup (LiteLLM &amp;rarr; ollama-mesh)</a></li><li class="lvl-3"><a href="#litellm-configuration">LiteLLM Configuration</a></li><li class="lvl-2"><a href="#option-b---cloud-fallback-gateway-setup-ollama-mesh-rarr-litellm">Option B - Cloud Fallback Gateway Setup (ollama-mesh &amp;rarr; LiteLLM)</a></li><li class="lvl-3"><a href="#admin-dashboard-configuration">Admin Dashboard Configuration</a></li><li class="lvl-2"><a href="#docker-compose-setup">Docker Compose Setup</a></li><li class="lvl-2"><a href="#model-discovery">Model Discovery</a></li><li class="lvl-2"><a href="#verification">Verification</a></li><li class="lvl-3"><a href="#upstream-litellm-rarr-ollama-mesh">Upstream (LiteLLM &amp;rarr; ollama-mesh)</a></li><li class="lvl-3"><a href="#fallback-ollama-mesh-rarr-litellm">Fallback (ollama-mesh &amp;rarr; LiteLLM)</a></li><li class="lvl-2"><a href="#troubleshooting">Troubleshooting</a></li><li class="lvl-3"><a href="#401-unauthorized">401 Unauthorized</a></li><li class="lvl-3"><a href="#403-forbidden">403 Forbidden</a></li><li class="lvl-3"><a href="#connection-refused-timeout">Connection Refused / Timeout</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#prerequisites">Prerequisites</a></li><li class="lvl-2"><a href="#option-a---upstream-gateway-setup-litellm-rarr-marbor">Option A - Upstream Gateway Setup (LiteLLM &amp;rarr; marbor)</a></li><li class="lvl-3"><a href="#litellm-configuration">LiteLLM Configuration</a></li><li class="lvl-2"><a href="#option-b---cloud-fallback-gateway-setup-marbor-rarr-litellm">Option B - Cloud Fallback Gateway Setup (marbor &amp;rarr; LiteLLM)</a></li><li class="lvl-3"><a href="#admin-dashboard-configuration">Admin Dashboard Configuration</a></li><li class="lvl-2"><a href="#docker-compose-setup">Docker Compose Setup</a></li><li class="lvl-2"><a href="#model-discovery">Model Discovery</a></li><li class="lvl-2"><a href="#verification">Verification</a></li><li class="lvl-3"><a href="#upstream-litellm-rarr-marbor">Upstream (LiteLLM &amp;rarr; marbor)</a></li><li class="lvl-3"><a href="#fallback-marbor-rarr-litellm">Fallback (marbor &amp;rarr; LiteLLM)</a></li><li class="lvl-2"><a href="#troubleshooting">Troubleshooting</a></li><li class="lvl-3"><a href="#401-unauthorized">401 Unauthorized</a></li><li class="lvl-3"><a href="#403-forbidden">403 Forbidden</a></li><li class="lvl-3"><a href="#connection-refused-timeout">Connection Refused / Timeout</a></li></ul>
   </aside>
 </div>
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

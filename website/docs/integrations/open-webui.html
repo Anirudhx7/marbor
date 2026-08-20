@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Open WebUI · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Open WebUI." />
+<title>Open WebUI · marbor docs</title>
+<meta name="description" content="marbor documentation: Open WebUI." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="Open WebUI · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: Open WebUI." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="Open WebUI · marbor docs" />
+<meta property="og:description" content="marbor documentation: Open WebUI." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Open WebUI · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="Open WebUI · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../../index.html#features">Features</a>
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -338,7 +338,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">Open WebUI</span></div>
     <article class="doc-content">
       <h1 id="open-webui">Open WebUI<a class="anchor" href="#open-webui" aria-label="Link to section">#</a></h1>
-<p>Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; the mesh handles which node actually runs the model.</p>
+<p>Point Open WebUI at marbor instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; the mesh handles which node actually runs the model.</p>
 <blockquote><strong>Open WebUI versions</strong>  Menu names and connection screens change frequently between Open WebUI releases. This guide has been tested against Open WebUI 0.10.x. If your interface looks different, look for <strong>Admin Panel &gt; Settings &gt; Connections</strong>, or configure the provider using the Docker environment variables shown below - those values don't change between UI versions.</blockquote>
 <hr/>
 <h2 id="recommended-openai-compatible-connection">Recommended: OpenAI-compatible connection<a class="anchor" href="#recommended-openai-compatible-connection" aria-label="Link to section">#</a></h2>
@@ -363,61 +363,61 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>This is the same request Open WebUI makes to verify an OpenAI-compatible provider (<code>GET /v1/models</code>). If it returns JSON listing your models, Open WebUI will be able to discover them too. If it fails, see <a href="#troubleshooting">Troubleshooting</a> below.</p>
 <hr/>
 <h2 id="networking-pitfalls">Networking pitfalls<a class="anchor" href="#networking-pitfalls" aria-label="Link to section">#</a></h2>
-<p><strong>localhost vs LAN IP</strong> - <code>localhost</code> means the same machine only. If Open WebUI and ollama-mesh run on different machines, use the LAN IP or hostname of the machine running ollama-mesh.</p>
+<p><strong>localhost vs LAN IP</strong> - <code>localhost</code> means the same machine only. If Open WebUI and marbor run on different machines, use the LAN IP or hostname of the machine running marbor.</p>
 <div class="code-wrap"><pre class="code"><code>Same machine:      http://localhost:11434
 Different machine:  http://192.168.1.7:11434</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="Same machine:      http://localhost:11434
 Different machine:  http://192.168.1.7:11434"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p><strong>Docker networking</strong> - if Open WebUI runs inside a Docker container, <code>localhost</code> refers to the container itself, not the Docker host. Use <code>host.docker.internal</code> (Docker Desktop) or the Docker host's LAN IP instead. If both ollama-mesh and Open WebUI run as containers in the same Compose file, use the mesh's service name (see the Compose example below).</p>
-<p><strong>HTTP vs HTTPS</strong> - unless you've configured a reverse proxy (Nginx, Traefik, Caddy) in front of it, ollama-mesh serves plain HTTP. Don't use <code>https://</code> unless you've explicitly set up TLS.</p>
+<p><strong>Docker networking</strong> - if Open WebUI runs inside a Docker container, <code>localhost</code> refers to the container itself, not the Docker host. Use <code>host.docker.internal</code> (Docker Desktop) or the Docker host's LAN IP instead. If both marbor and Open WebUI run as containers in the same Compose file, use the mesh's service name (see the Compose example below).</p>
+<p><strong>HTTP vs HTTPS</strong> - unless you've configured a reverse proxy (Nginx, Traefik, Caddy) in front of it, marbor serves plain HTTP. Don't use <code>https://</code> unless you've explicitly set up TLS.</p>
 <hr/>
 <h2 id="open-webui-desktop-vs-server">Open WebUI Desktop vs Server<a class="anchor" href="#open-webui-desktop-vs-server" aria-label="Link to section">#</a></h2>
-<p>The Open WebUI <strong>Desktop</strong> app uses a built-in local runtime (llama.cpp) by default, and some Desktop releases don't expose the same provider configuration screen as the server edition. To point Open WebUI at ollama-mesh, use the Open WebUI <strong>server</strong> (Docker or standalone) rather than the Desktop app.</p>
+<p>The Open WebUI <strong>Desktop</strong> app uses a built-in local runtime (llama.cpp) by default, and some Desktop releases don't expose the same provider configuration screen as the server edition. To point Open WebUI at marbor, use the Open WebUI <strong>server</strong> (Docker or standalone) rather than the Desktop app.</p>
 <hr/>
 <h2 id="quick-start-docker-compose">Quick start: Docker Compose<a class="anchor" href="#quick-start-docker-compose" aria-label="Link to section">#</a></h2>
 <p>The most common deployment - both services in one Compose file:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ollama-mesh.dev:latest
     ports:
       - "11434:11434"
       - "8080:8080"
     volumes:
-      - mesh-data:/root   # persists mesh.db - add nodes/keys once via the dashboard
+      - mesh-data:/root   # persists marbor.db - add nodes/keys once via the dashboard
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     ports:
       - "3000:8080"
     environment:
-      OPENAI_API_BASE_URL: "http://ollama-mesh:11434/v1"
+      OPENAI_API_BASE_URL: "http://marbor:11434/v1"
       OPENAI_API_KEY: "sk-mesh-abc123"
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - ollama-mesh
+      - marbor
 
 volumes:
   open-webui:
   mesh-data:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ollama-mesh.dev:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
     volumes:
-      - mesh-data:/root   # persists mesh.db - add nodes/keys once via the dashboard
+      - mesh-data:/root   # persists marbor.db - add nodes/keys once via the dashboard
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     ports:
       - &quot;3000:8080&quot;
     environment:
-      OPENAI_API_BASE_URL: &quot;http://ollama-mesh:11434/v1&quot;
+      OPENAI_API_BASE_URL: &quot;http://marbor:11434/v1&quot;
       OPENAI_API_KEY: &quot;sk-mesh-abc123&quot;
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - ollama-mesh
+      - marbor
 
 volumes:
   open-webui:
@@ -474,7 +474,7 @@ volumes:
 <p>If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's upstream timeout in <strong>Settings &gt; Advanced Routing &gt; Upstream Timeout</strong>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -487,8 +487,8 @@ volumes:
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

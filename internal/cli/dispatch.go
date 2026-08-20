@@ -251,7 +251,7 @@ func dispatchRun(cur *Command, rest []string, stdout, stderr io.Writer) dispatch
 	// newFlagSet("spill", stderr)) - flag.FlagSet.Usage()/PrintDefaults
 	// prints that name verbatim as "Usage of <name>:" on a bad-flag error,
 	// so this must match exactly rather than using cur.Path() (which
-	// includes the "ollama-mesh " prefix).
+	// includes the "marbor " prefix).
 	fsName := strings.TrimPrefix(cur.Path(), rootOf(cur).Name+" ")
 	fs, flags := newFlagSet(fsName, stderr)
 	intFlags := registerCommandFlags(fs, cur.Flags)
@@ -364,7 +364,7 @@ func dispatch(root *Command, args []string, stdout, stderr io.Writer) dispatchRe
 		// above) and cur can only still be root if the walk loop never
 		// descended, i.e. rest == args. Old cli.go's top-level switch
 		// (cli.go:280) has no dash guard at all - it switches on args[0]
-		// literally - so even a stray flag like "ollama-mesh --bogus"
+		// literally - so even a stray flag like "marbor --bogus"
 		// falls to the "unknown command" default case, not just an
 		// unmatched word.
 		return reportUnknownToken(root, root, rest[0], stdout, stderr)

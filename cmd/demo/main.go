@@ -1,6 +1,6 @@
-// cmd/demo/main.go - standalone demo binary for ollama-mesh
+// cmd/demo/main.go - standalone demo binary for marbor
 //
-// Starts 2 in-process mock Ollama nodes, wires up the full mesh stack
+// Starts 2 in-process mock Ollama nodes, wires up the full Marbor stack
 // (router, proxy, admin), sends 30 real requests through the proxy so
 // the dashboard shows real token counts and savings, then keeps running
 // until Ctrl-C.
@@ -162,7 +162,7 @@ func (m *mockOllamaServer) handleChat(w http.ResponseWriter, r *http.Request) {
 	if model == "" {
 		model = m.warmModel
 	}
-	writeNDJSON(w, model, "Hello! I'm a demo response from ollama-mesh.", 42, 18)
+	writeNDJSON(w, model, "Hello! I'm a demo response from Marbor.", 42, 18)
 }
 
 func (m *mockOllamaServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +183,7 @@ func (m *mockOllamaServer) handleGenerate(w http.ResponseWriter, r *http.Request
 	_ = enc.Encode(map[string]interface{}{
 		"model":      model,
 		"created_at": "2026-01-01T00:00:00Z",
-		"response":   "This is a demo response from the ollama-mesh proxy.",
+		"response":   "This is a demo response from the Marbor proxy.",
 		"done":       false,
 	})
 	if flusher != nil {
@@ -347,10 +347,10 @@ func sendDemoTraffic(proxyURL, apiKey string) {
 // ----------------------------------------------------------------------------
 
 func main() {
-	log.SetPrefix("[ollama-mesh demo] ")
+	log.SetPrefix("[marbor demo] ")
 
 	// Generate a stable API key for the demo session.
-	apiKey := "demo-key-ollama-mesh-2026"
+	apiKey := "demo-key-marbor-2026"
 
 	// Start 2 mock Ollama nodes. Both have llama3:8b warm in VRAM.
 	log.Println("Starting mock Ollama node 1 (warm: llama3:8b)...")
@@ -426,7 +426,7 @@ func main() {
 	// Print banner.
 	fmt.Println()
 	fmt.Println("================================================================")
-	fmt.Println("  ollama-mesh demo")
+	fmt.Println("  marbor demo")
 	fmt.Println("================================================================")
 	fmt.Println()
 	fmt.Println("  2 mock Ollama nodes started (in-process, no real GPU needed)")

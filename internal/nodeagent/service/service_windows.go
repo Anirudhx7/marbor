@@ -71,7 +71,7 @@ func agentDataDir() string {
 	if base == "" {
 		base = `C:\ProgramData`
 	}
-	return base + `\ollama-mesh-agent`
+	return base + `\marbor-agent`
 }
 
 func agentCertKeyPaths() (certPath, keyPath string) {
@@ -195,7 +195,7 @@ func (windowsManager) Install(cfg Config) error {
 			return fmt.Errorf("service: sc config failed: %w: %s", err, out)
 		}
 	} else {
-		out, err = runSC("create", Name, "binPath=", binPath, "start=", "auto", "DisplayName=", "ollama-mesh Node Agent")
+		out, err = runSC("create", Name, "binPath=", binPath, "start=", "auto", "DisplayName=", "Marbor Node Agent")
 		if err != nil {
 			return fmt.Errorf("service: sc create failed: %w: %s", err, out)
 		}
@@ -286,7 +286,7 @@ func (windowsManager) Status() (string, error) {
 // parseBinaryPathFromQC extracts the executable path from "sc qc <Name>"
 // output's BINARY_PATH_NAME line, e.g.:
 //
-//	BINARY_PATH_NAME  : "C:\Program Files\ollama-mesh\ollama-mesh.exe" agent --port=9200
+//	BINARY_PATH_NAME  : "C:\Program Files\marbor\marbor-agent.exe" --port=9200
 //
 // It returns the first quoted token if present, otherwise the first
 // whitespace-delimited token after the colon. Returns "" if the line can't

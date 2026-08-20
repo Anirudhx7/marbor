@@ -59,7 +59,7 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
             <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
           </svg>
           <div className="flex-1">
-            <h1 className="text-lg font-semibold text-foreground">ollama-mesh</h1>
+            <h1 className="text-lg font-semibold text-foreground">Marbor</h1>
             <p className="text-sm text-muted-foreground">User Portal</p>
           </div>
           <button

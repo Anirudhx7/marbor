@@ -1,0 +1,32 @@
+.TH MARBOR\-NODES 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-nodes \- list nodes known to the mesh
+.SH SYNOPSIS
+.B marbor nodes
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+list nodes known to the mesh
+.SH COMMANDS
+.TP
+.B confirm\-tls <node>
+pin a Node Agent's TLS certificate fingerprint (headless enrollment)
+.RS
+.TP
+.B \-\-fingerprint string
+SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see "agent service status" on the node), in the form SHA256:<64 hex characters> (required)
+.RE
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)

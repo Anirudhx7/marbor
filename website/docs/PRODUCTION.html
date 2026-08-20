@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Production Deployment Guide · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Production Deployment Guide." />
+<title>Production Deployment Guide · marbor docs</title>
+<meta name="description" content="marbor documentation: Production Deployment Guide." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="Production Deployment Guide · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: Production Deployment Guide." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="Production Deployment Guide · marbor docs" />
+<meta property="og:description" content="marbor documentation: Production Deployment Guide." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Production Deployment Guide · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="Production Deployment Guide · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../index.html#features">Features</a>
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -338,7 +338,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Production Deployment Guide</span></div>
     <article class="doc-content">
       <h1 id="production-deployment-guide">Production Deployment Guide<a class="anchor" href="#production-deployment-guide" aria-label="Link to section">#</a></h1>
-<p>This guide covers running ollama-mesh in a real production environment. There is no config file - ollama-mesh is DB-first (<code>mesh.db</code>, SQLite). Point it at a persistent path with <code>--db</code> (or <code>MESH_DB_PATH</code>), boot it once, and configure nodes/keys/routing/everything else through the admin dashboard or the <code>/admin/v1/...</code> REST API (see the <a href="../README.html#configuration">Configuration section of the README</a>).</p>
+<p>This guide covers running marbor in a real production environment. There is no config file - marbor is DB-first (<code>marbor.db</code>, SQLite). Point it at a persistent path with <code>--db</code> (or <code>MARBOR_DB_PATH</code>), boot it once, and configure nodes/keys/routing/everything else through the admin dashboard or the <code>/admin/v1/...</code> REST API (see the <a href="../README.html#configuration">Configuration section of the README</a>).</p>
 <hr/>
 <h2 id="ports">Ports<a class="anchor" href="#ports" aria-label="Link to section">#</a></h2>
 <div class="table-scroll"><table>
@@ -349,18 +349,18 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 </table></div>
 <hr/>
 <h2 id="systemd">systemd<a class="anchor" href="#systemd" aria-label="Link to section">#</a></h2>
-<p>Create <code>/etc/systemd/system/ollama-mesh.service</code>:</p>
+<p>Create <code>/etc/systemd/system/marbor.service</code>:</p>
 <div class="code-wrap"><pre class="code" data-lang="ini"><code>[Unit]
-Description=ollama-mesh LLM control plane
+Description=marbor LLM control plane
 After=network.target
 Wants=network.target
 
 [Service]
 Type=simple
-User=ollama-mesh
-Group=ollama-mesh
-WorkingDirectory=/opt/ollama-mesh
-ExecStart=/opt/ollama-mesh/ollama-mesh --db /opt/ollama-mesh/mesh.db
+User=marbor
+Group=marbor
+WorkingDirectory=/opt/marbor
+ExecStart=/opt/marbor/marbor --db /opt/marbor/marbor.db
 Restart=on-failure
 RestartSec=5
 
@@ -372,20 +372,20 @@ TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/opt/ollama-mesh
+ReadWritePaths=/opt/marbor
 
 [Install]
 WantedBy=multi-user.target</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="[Unit]
-Description=ollama-mesh LLM control plane
+Description=marbor LLM control plane
 After=network.target
 Wants=network.target
 
 [Service]
 Type=simple
-User=ollama-mesh
-Group=ollama-mesh
-WorkingDirectory=/opt/ollama-mesh
-ExecStart=/opt/ollama-mesh/ollama-mesh --db /opt/ollama-mesh/mesh.db
+User=marbor
+Group=marbor
+WorkingDirectory=/opt/marbor
+ExecStart=/opt/marbor/marbor --db /opt/marbor/marbor.db
 Restart=on-failure
 RestartSec=5
 
@@ -397,92 +397,92 @@ TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/opt/ollama-mesh
+ReadWritePaths=/opt/marbor
 
 [Install]
 WantedBy=multi-user.target"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo useradd -r -s /sbin/nologin ollama-mesh
-sudo mkdir -p /opt/ollama-mesh
-sudo cp ollama-mesh /opt/ollama-mesh/
-sudo chown -R ollama-mesh:ollama-mesh /opt/ollama-mesh
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo useradd -r -s /sbin/nologin marbor
+sudo mkdir -p /opt/marbor
+sudo cp marbor /opt/marbor/
+sudo chown -R marbor:marbor /opt/marbor
 sudo systemctl daemon-reload
-sudo systemctl enable --now ollama-mesh
-sudo journalctl -u ollama-mesh -f</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo useradd -r -s /sbin/nologin ollama-mesh
-sudo mkdir -p /opt/ollama-mesh
-sudo cp ollama-mesh /opt/ollama-mesh/
-sudo chown -R ollama-mesh:ollama-mesh /opt/ollama-mesh
+sudo systemctl enable --now marbor
+sudo journalctl -u marbor -f</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo useradd -r -s /sbin/nologin marbor
+sudo mkdir -p /opt/marbor
+sudo cp marbor /opt/marbor/
+sudo chown -R marbor:marbor /opt/marbor
 sudo systemctl daemon-reload
-sudo systemctl enable --now ollama-mesh
-sudo journalctl -u ollama-mesh -f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>First boot creates <code>/opt/ollama-mesh/mesh.db</code> blank-slate. Log in at <code>http://&lt;host&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login) and add your nodes/API keys from the dashboard - or run <code>install.sh</code>'s network-discovery wizard beforehand to seed nodes automatically.</p>
+sudo systemctl enable --now marbor
+sudo journalctl -u marbor -f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>First boot creates <code>/opt/marbor/marbor.db</code> blank-slate. Log in at <code>http://&lt;host&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login) and add your nodes/API keys from the dashboard - or run <code>install.sh</code>'s network-discovery wizard beforehand to seed nodes automatically.</p>
 <hr/>
 <h2 id="docker-compose">Docker Compose<a class="anchor" href="#docker-compose" aria-label="Link to section">#</a></h2>
 <p>The repo ships a working <code>docker-compose.yml</code>. It mounts <strong>two</strong> named volumes:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
 services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ollama-mesh.dev:latest
     ports:
       - "11434:11434"
       - "8080:8080"
       - "9090:9090"
     volumes:
-      - mesh-data:/data       # persists mesh.db across restarts
-      - mesh-backups:/backups # scheduled backups (Settings &gt; Backup &amp; Restore)
+      - mesh-data:/data       # persists marbor.db across restarts
+      - marbor-backups:/backups # scheduled backups (Settings &gt; Backup &amp; Restore)
     environment:
-      - MESH_DB_PATH=/data/mesh.db
-      - MESH_BACKUP_DIR=/backups
+      - MARBOR_DB_PATH=/data/marbor.db
+      - MARBOR_BACKUP_DIR=/backups
     restart: unless-stopped
 
 volumes:
   mesh-data:
-  mesh-backups:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml (reference - already in repo)
+  marbor-backups:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml (reference - already in repo)
 services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ollama-mesh.dev:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
       - &quot;9090:9090&quot;
     volumes:
-      - mesh-data:/data       # persists mesh.db across restarts
-      - mesh-backups:/backups # scheduled backups (Settings &gt; Backup &amp; Restore)
+      - mesh-data:/data       # persists marbor.db across restarts
+      - marbor-backups:/backups # scheduled backups (Settings &gt; Backup &amp; Restore)
     environment:
-      - MESH_DB_PATH=/data/mesh.db
-      - MESH_BACKUP_DIR=/backups
+      - MARBOR_DB_PATH=/data/marbor.db
+      - MARBOR_BACKUP_DIR=/backups
     restart: unless-stopped
 
 volumes:
   mesh-data:
-  mesh-backups:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>The <code>mesh-data</code> volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate <code>mesh.db</code> inside the volume - configure it via the dashboard at <code>http://localhost:8080</code> (<code>admin</code>/<code>admin</code>, forced password change on first login).</p>
-<p><code>mesh-backups</code> is a <strong>separate</strong> volume from <code>mesh-data</code>, on purpose: enable scheduled backups from the dashboard's Settings &gt; Backup &amp; Restore card (interval + retention count are configurable there), and a <code>docker volume rm mesh-data</code> or <code>docker-compose down -v</code> that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point <code>mesh-backups</code> at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as <code>mesh-data</code>. A manual "Download Backup Now" button on the same Settings card streams an on-demand copy straight to your browser at any time. The same card also lists scheduled backups and can restore one with a click - which stops and restarts the mesh process, so it requires <code>restart: unless-stopped</code> (already set above) or an equivalent supervisor. See <a href="backup.html"><code>backup.md</code></a> for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under <code>/backups</code> - any <code>.db</code> file works, on Docker or bare metal alike).</p>
+  marbor-backups:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>The <code>mesh-data</code> volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate <code>marbor.db</code> inside the volume - configure it via the dashboard at <code>http://localhost:8080</code> (<code>admin</code>/<code>admin</code>, forced password change on first login).</p>
+<p><code>marbor-backups</code> is a <strong>separate</strong> volume from <code>mesh-data</code>, on purpose: enable scheduled backups from the dashboard's Settings &gt; Backup &amp; Restore card (interval + retention count are configurable there), and a <code>docker volume rm mesh-data</code> or <code>docker-compose down -v</code> that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point <code>marbor-backups</code> at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as <code>mesh-data</code>. A manual "Download Backup Now" button on the same Settings card streams an on-demand copy straight to your browser at any time. The same card also lists scheduled backups and can restore one with a click - which stops and restarts the mesh process, so it requires <code>restart: unless-stopped</code> (already set above) or an equivalent supervisor. See <a href="backup.html"><code>backup.md</code></a> for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under <code>/backups</code> - any <code>.db</code> file works, on Docker or bare metal alike).</p>
 <hr/>
 <h2 id="kubernetes">Kubernetes<a class="anchor" href="#kubernetes" aria-label="Link to section">#</a></h2>
-<p>Minimal manifest. Adjust resource limits and image tag for your cluster. There is no ConfigMap - <code>mesh.db</code> lives on the PVC below, and nodes/keys/routing are set via the dashboard or <code>/admin/v1/...</code> REST API after the pod is up. GitOps-style operators can drive that same REST API from a post-deploy Job instead of hand-editing a file.</p>
+<p>Minimal manifest. Adjust resource limits and image tag for your cluster. There is no ConfigMap - <code>marbor.db</code> lives on the PVC below, and nodes/keys/routing are set via the dashboard or <code>/admin/v1/...</code> REST API after the pod is up. GitOps-style operators can drive that same REST API from a post-deploy Job instead of hand-editing a file.</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ollama-mesh
+  name: marbor
   namespace: ai-infra
 spec:
-  replicas: 1        # single instance - mesh.db on the PVC is not a shared datastore
+  replicas: 1        # single instance - marbor.db on the PVC is not a shared datastore
   selector:
     matchLabels:
-      app: ollama-mesh
+      app: marbor
   template:
     metadata:
       labels:
-        app: ollama-mesh
+        app: marbor
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
         prometheus.io/path: "/metrics"
     spec:
       containers:
-        - name: ollama-mesh
-          image: ghcr.io/anirudhx7/ollama-mesh:latest
-          args: ["--db", "/data/mesh.db"]
+        - name: marbor
+          image: ollama-mesh.dev:latest
+          args: ["--db", "/data/marbor.db"]
           ports:
             - containerPort: 11434   # endpoint
             - containerPort: 8080    # admin
@@ -512,16 +512,16 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: ollama-mesh-data
+            claimName: marbor-data
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ollama-mesh
+  name: marbor
   namespace: ai-infra
 spec:
   selector:
-    app: ollama-mesh
+    app: marbor
   ports:
     - name: proxy
       port: 11434
@@ -534,26 +534,26 @@ spec:
       targetPort: 9090</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ollama-mesh
+  name: marbor
   namespace: ai-infra
 spec:
-  replicas: 1        # single instance - mesh.db on the PVC is not a shared datastore
+  replicas: 1        # single instance - marbor.db on the PVC is not a shared datastore
   selector:
     matchLabels:
-      app: ollama-mesh
+      app: marbor
   template:
     metadata:
       labels:
-        app: ollama-mesh
+        app: marbor
       annotations:
         prometheus.io/scrape: &quot;true&quot;
         prometheus.io/port: &quot;9090&quot;
         prometheus.io/path: &quot;/metrics&quot;
     spec:
       containers:
-        - name: ollama-mesh
-          image: ghcr.io/anirudhx7/ollama-mesh:latest
-          args: [&quot;--db&quot;, &quot;/data/mesh.db&quot;]
+        - name: marbor
+          image: ollama-mesh.dev:latest
+          args: [&quot;--db&quot;, &quot;/data/marbor.db&quot;]
           ports:
             - containerPort: 11434   # endpoint
             - containerPort: 8080    # admin
@@ -583,16 +583,16 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: ollama-mesh-data
+            claimName: marbor-data
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ollama-mesh
+  name: marbor
   namespace: ai-infra
 spec:
   selector:
-    app: ollama-mesh
+    app: marbor
   ports:
     - name: proxy
       port: 11434
@@ -603,10 +603,10 @@ spec:
     - name: metrics
       port: 9090
       targetPort: 9090"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Note: the Kubernetes deployment above runs a single replica because <code>mesh.db</code> (SQLite) is the sole datastore and is not shared across instances. Running multiple replicas would split state across separate, inconsistent databases.</p>
+<p>Note: the Kubernetes deployment above runs a single replica because <code>marbor.db</code> (SQLite) is the sole datastore and is not shared across instances. Running multiple replicas would split state across separate, inconsistent databases.</p>
 <hr/>
 <h2 id="nginx-tls-termination">nginx TLS Termination<a class="anchor" href="#nginx-tls-termination" aria-label="Link to section">#</a></h2>
-<p>ollama-mesh does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:</p>
+<p>marbor does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:</p>
 <div class="code-wrap"><pre class="code" data-lang="nginx"><code>upstream ollama_mesh_proxy {
     server 127.0.0.1:11434;
 }
@@ -711,12 +711,12 @@ server {
 # 200 OK"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="graceful-shutdown">Graceful Shutdown<a class="anchor" href="#graceful-shutdown" aria-label="Link to section">#</a></h2>
-<p>On SIGTERM, ollama-mesh starts a 15-second graceful shutdown:</p>
-<ol><li>Stops accepting new connections on all three ports.</li><li>Allows in-flight requests to complete (up to the timeout).</li><li>Flushes in-memory per-key usage/quota counters to the <code>key_counters</code> table in <code>mesh.db</code> one final time.</li><li>Exits cleanly.</li></ol>
+<p>On SIGTERM, marbor starts a 15-second graceful shutdown:</p>
+<ol><li>Stops accepting new connections on all three ports.</li><li>Allows in-flight requests to complete (up to the timeout).</li><li>Flushes in-memory per-key usage/quota counters to the <code>key_counters</code> table in <code>marbor.db</code> one final time.</li><li>Exits cleanly.</li></ol>
 <p>For systemd, the <code>TimeoutStopSec=30</code> in the unit file gives the process time to drain before systemd sends SIGKILL.</p>
 <hr/>
 <h2 id="resource-sizing">Resource Sizing<a class="anchor" href="#resource-sizing" aria-label="Link to section">#</a></h2>
-<p>ollama-mesh is intentionally lightweight. It does not buffer request/response bodies (streaming passes through directly).</p>
+<p>marbor is intentionally lightweight. It does not buffer request/response bodies (streaming passes through directly).</p>
 <div class="table-scroll"><table>
 <thead><tr><th>Workload</th><th>Memory</th><th>CPU</th></tr></thead>
 <tbody><tr><td>Idle, 10 nodes</td><td>~30-50 MB RSS</td><td>negligible</td></tr>
@@ -728,11 +728,11 @@ server {
 <h2 id="durability-notes">Durability Notes<a class="anchor" href="#durability-notes" aria-label="Link to section">#</a></h2>
 <div class="table-scroll"><table>
 <thead><tr><th>Data</th><th>Persistence</th></tr></thead>
-<tbody><tr><td>Per-key token usage, quota counters</td><td>In-memory, flushed to the <code>key_counters</code> table in <code>mesh.db</code> every 30 seconds and on clean shutdown. A crash loses at most 30 seconds of counter updates.</td></tr>
-<tr><td>API key config, node config, routing/settings</td><td>In <code>mesh.db</code> (SQLite) - the sole source of truth. Set via the dashboard or <code>/admin/v1/...</code> REST API.</td></tr>
-<tr><td>Audit log (per-request)</td><td>The <code>audit_log</code> table in <code>mesh.db</code>, written when audit logging is enabled. Retention is configurable (<code>audit_retention_days</code> setting, default 30 days; 0 keeps rows forever) and enforced by a periodic prune job.</td></tr>
-<tr><td>Admin action trail</td><td>The separate <code>system_audit_log</code> table in <code>mesh.db</code> (who changed what in the dashboard/API). Independently retained (<code>audit_system_retention_days</code> setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log.</td></tr>
-<tr><td>Request log / analytics</td><td>Persisted to <code>request_log</code>, <code>hourly_buckets</code>, and <code>model_stats</code> tables in <code>mesh.db</code>, not purely in-memory.</td></tr>
+<tbody><tr><td>Per-key token usage, quota counters</td><td>In-memory, flushed to the <code>key_counters</code> table in <code>marbor.db</code> every 30 seconds and on clean shutdown. A crash loses at most 30 seconds of counter updates.</td></tr>
+<tr><td>API key config, node config, routing/settings</td><td>In <code>marbor.db</code> (SQLite) - the sole source of truth. Set via the dashboard or <code>/admin/v1/...</code> REST API.</td></tr>
+<tr><td>Audit log (per-request)</td><td>The <code>audit_log</code> table in <code>marbor.db</code>, written when audit logging is enabled. Retention is configurable (<code>audit_retention_days</code> setting, default 30 days; 0 keeps rows forever) and enforced by a periodic prune job.</td></tr>
+<tr><td>Admin action trail</td><td>The separate <code>system_audit_log</code> table in <code>marbor.db</code> (who changed what in the dashboard/API). Independently retained (<code>audit_system_retention_days</code> setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log.</td></tr>
+<tr><td>Request log / analytics</td><td>Persisted to <code>request_log</code>, <code>hourly_buckets</code>, and <code>model_stats</code> tables in <code>marbor.db</code>, not purely in-memory.</td></tr>
 <tr><td>GPU telemetry</td><td>Live reads from <code>nvidia-smi</code> on local nodes, and via the optional Node Agent on remote GPU hosts. Not persisted.</td></tr></tbody>
 </table></div>
 <hr/>
@@ -750,7 +750,7 @@ server {
 <p>Re-run <code>bench/loadtest</code> after any change to <code>internal/audit</code>, <code>internal/admin</code>'s async queues, or <code>internal/store/sqlite.go</code>'s connection/pragma settings, or on real production hardware, since any of those can move this number.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/PRODUCTION.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/PRODUCTION.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -763,8 +763,8 @@ server {
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

@@ -8,13 +8,13 @@ import (
 
 func TestSystemdUnitContent(t *testing.T) {
 	cfg := Config{
-		BinaryPath: "/usr/local/bin/ollama-mesh",
+		BinaryPath: "/usr/local/bin/marbor",
 		Port:       9200,
 		Token:      "sekret",
 	}
 	content := systemdUnitContent(cfg)
 
-	wantExecStart := "ExecStart=/usr/local/bin/ollama-mesh --port=9200"
+	wantExecStart := "ExecStart=/usr/local/bin/marbor --port=9200"
 	if !strings.Contains(content, wantExecStart) {
 		t.Errorf("systemdUnitContent() missing expected ExecStart line %q, got:\n%s", wantExecStart, content)
 	}
@@ -37,7 +37,7 @@ func TestSystemdUnitContent(t *testing.T) {
 
 func TestSystemdUnitContentWithRefreshInterval(t *testing.T) {
 	cfg := Config{
-		BinaryPath:      "/usr/local/bin/ollama-mesh",
+		BinaryPath:      "/usr/local/bin/marbor",
 		Port:            9200,
 		Token:           "sekret",
 		RefreshInterval: 30 * time.Second,
@@ -51,14 +51,14 @@ func TestSystemdUnitContentWithRefreshInterval(t *testing.T) {
 
 func TestExecStartBinary(t *testing.T) {
 	cfg := Config{
-		BinaryPath: "/opt/ollama-mesh/bin/ollama-mesh",
+		BinaryPath: "/opt/marbor/bin/marbor",
 		Port:       9200,
 		Token:      "sekret",
 	}
 	content := systemdUnitContent(cfg)
 
 	got := execStartBinary(content)
-	want := "/opt/ollama-mesh/bin/ollama-mesh"
+	want := "/opt/marbor/bin/marbor"
 	if got != want {
 		t.Errorf("execStartBinary() = %q, want %q", got, want)
 	}
@@ -77,19 +77,19 @@ func TestExecStartBinaryMissing(t *testing.T) {
 // that quoted form, not just the substring up to the first space.
 func TestSystemdUnitContentQuotesPathWithSpaces(t *testing.T) {
 	cfg := Config{
-		BinaryPath: "/opt/my company/bin/ollama-mesh",
+		BinaryPath: "/opt/my company/bin/marbor",
 		Port:       9200,
 		Token:      "sekret",
 	}
 	content := systemdUnitContent(cfg)
 
-	wantExecStart := `ExecStart="/opt/my company/bin/ollama-mesh" --port=9200`
+	wantExecStart := `ExecStart="/opt/my company/bin/marbor" --port=9200`
 	if !strings.Contains(content, wantExecStart) {
 		t.Errorf("systemdUnitContent() missing quoted ExecStart line %q, got:\n%s", wantExecStart, content)
 	}
 
 	got := execStartBinary(content)
-	want := "/opt/my company/bin/ollama-mesh"
+	want := "/opt/my company/bin/marbor"
 	if got != want {
 		t.Errorf("execStartBinary() = %q, want %q (full path recovered from quotes)", got, want)
 	}
@@ -99,7 +99,7 @@ func TestSystemdUnitContentQuotesPathWithSpaces(t *testing.T) {
 // (no whitespace anywhere) is completely unaffected by the quoting fix -
 // output is byte-identical to before.
 func TestSystemdUnitContentNoQuotingWhenNotNeeded(t *testing.T) {
-	cfg := Config{BinaryPath: "/usr/local/bin/ollama-mesh", Port: 9200, Token: "sekret"}
+	cfg := Config{BinaryPath: "/usr/local/bin/marbor", Port: 9200, Token: "sekret"}
 	content := systemdUnitContent(cfg)
 	if strings.Contains(content, `"`) {
 		t.Errorf("systemdUnitContent() should not add quotes when nothing needs them, got:\n%s", content)

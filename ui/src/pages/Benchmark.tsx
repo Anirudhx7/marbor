@@ -38,7 +38,7 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
   const [copied, setCopied] = useState(false);
 
   function copySummary() {
-    const text = `${result.node} · ${result.model}\n${result.speedup_x.toFixed(1)}x faster warm vs. cold (p50)\nCold TTFT (p50): ${fmtMs(result.cold_p50_ms)} (min ${fmtMs(result.cold_min_ms)}, max ${fmtMs(result.cold_max_ms)})\nWarm TTFT (p50): ${fmtMs(result.warm_p50_ms)} (min ${fmtMs(result.warm_min_ms)}, max ${fmtMs(result.warm_max_ms)})\nn=${result.n} samples per phase, measured via ollama-mesh's own proxy.`;
+    const text = `${result.node} · ${result.model}\n${result.speedup_x.toFixed(1)}x faster warm vs. cold (p50)\nCold TTFT (p50): ${fmtMs(result.cold_p50_ms)} (min ${fmtMs(result.cold_min_ms)}, max ${fmtMs(result.cold_max_ms)})\nWarm TTFT (p50): ${fmtMs(result.warm_p50_ms)} (min ${fmtMs(result.warm_min_ms)}, max ${fmtMs(result.warm_max_ms)})\nn=${result.n} samples per phase, measured via Marbor's own proxy.`;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

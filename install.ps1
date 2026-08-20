@@ -1,8 +1,8 @@
-# ollama-mesh Windows installer
+# marbor Windows installer
 # Downloads the latest release binary from GitHub for your architecture.
 #
 # Control plane:
-#   irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex
+#   irm ollama-mesh.dev/main/install.ps1 | iex
 #
 # Node Agent (run from an elevated/Administrator PowerShell), default path -
 # the mesh admin UI's "Node Agent" panel gives you this exact command with a
@@ -10,18 +10,18 @@
 # real token by calling back to MESH, so the real permanent bearer token
 # never appears in this command / your PowerShell history - P50):
 #   $env:ROLE="agent"; $env:MESH="<mesh admin base URL>"; $env:ENROLL="<code from the mesh admin UI>"
-#   irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex
+#   irm ollama-mesh.dev/main/install.ps1 | iex
 #
 # Legacy/manual path - the real permanent token directly, no exchange, no MESH needed:
 #   $env:ROLE="agent"; $env:TOKEN="<token from the mesh admin UI>"
-#   irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex
+#   irm ollama-mesh.dev/main/install.ps1 | iex
 #
 # One of TOKEN or ENROLL+MESH is required for ROLE=agent - there is no
 # existing-installation upgrade path (no prior Ollama Mesh deployments exist
 # to preserve).
 #
-# ROLE=agent downloads the dedicated ollama-mesh-agent.exe (a separate
-# artifact from the control-plane ollama-mesh.exe - a GPU host running this
+# ROLE=agent downloads the dedicated marbor-agent.exe (a separate
+# artifact from the control-plane marbor.exe - a GPU host running this
 # role never has a control-plane-capable executable on disk) and
 # registers+starts it as a native Windows Service via the binary's own
 # "service install" subcommand (internal/nodeagent/service) - this script's
@@ -54,14 +54,14 @@ function Wait-ForExit {
 
 try {
 
-$Repo = "Anirudhx7/ollama-mesh"
+$Repo = "Anirudhx7/marbor"
 $Role = if ($env:ROLE) { $env:ROLE } else { "mesh" }
-$BinName = if ($Role -eq "agent") { "ollama-mesh-agent.exe" } else { "ollama-mesh.exe" }
+$BinName = if ($Role -eq "agent") { "marbor-agent.exe" } else { "marbor.exe" }
 $Token = $env:TOKEN
 $Enroll = $env:ENROLL
 $Mesh = $env:MESH
 $Port = if ($env:PORT) { [int]$env:PORT } else { 9200 }
-$InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:ProgramFiles "ollama-mesh" }
+$InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:ProgramFiles "marbor" }
 
 if (-not [Environment]::Is64BitOperatingSystem) {
     Write-Error "Unsupported architecture: 32-bit Windows is not supported."
@@ -78,10 +78,10 @@ if ($isArm64) {
 }
 $Arch = "amd64"
 
-$BinaryAsset = if ($Role -eq "agent") { "ollama-mesh-agent-windows-$Arch.exe" } else { "ollama-mesh-windows-$Arch.exe" }
+$BinaryAsset = if ($Role -eq "agent") { "marbor-agent-windows-$Arch.exe" } else { "marbor-windows-$Arch.exe" }
 $Url = "https://github.com/$Repo/releases/latest/download/$BinaryAsset"
 $BinPath = Join-Path $InstallDir $BinName
-$ServiceName = "ollama-mesh-agent"
+$ServiceName = "marbor-agent"
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
@@ -105,7 +105,7 @@ if ($Role -eq "agent") {
     }
 }
 
-Write-Host "Downloading ollama-mesh for windows/$Arch..."
+Write-Host "Downloading marbor for windows/$Arch..."
 Write-Host "  $Url"
 try {
     Invoke-WebRequest -Uri $Url -OutFile $BinPath -UseBasicParsing
@@ -117,12 +117,12 @@ try {
 
 $VersionOutput = & $BinPath -version 2>$null
 $NewVersion = ($VersionOutput -split '\s+')[-1]
-Write-Host "Installed ollama-mesh $NewVersion to $BinPath"
+Write-Host "Installed marbor $NewVersion to $BinPath"
 
 # Unlike Linux (/usr/local/bin is already on PATH) and macOS, there's no
 # Windows equivalent default-PATH directory under Program Files - without
 # this, every command this script (and "agent service status"/"uninstall"
-# it tells the operator to run afterward) prints as a bare "ollama-mesh ..."
+# it tells the operator to run afterward) prints as a bare "marbor ..."
 # would fail with "not recognized" in any shell, exactly the class of bug
 # this closes. Machine scope needs elevation; fall back to User scope
 # (still PATH-effective for this account, no admin required) otherwise -
@@ -142,7 +142,7 @@ if (-not ($PathEntries -contains $InstallDir)) {
     $NewPath = (@($PathEntries) + $InstallDir) -join ";"
     try {
         [Environment]::SetEnvironmentVariable("Path", $NewPath, $PathScope)
-        Write-Host "Added $InstallDir to your $PathScope PATH - open a NEW terminal window for the 'ollama-mesh' command to be recognized there."
+        Write-Host "Added $InstallDir to your $PathScope PATH - open a NEW terminal window for the 'marbor' command to be recognized there."
     } catch {
         Write-Host "Could not add $InstallDir to PATH automatically ($_) - add it manually, or always run '$BinPath' by full path."
     }
@@ -182,7 +182,7 @@ if ($Role -eq "agent") {
     }
 
     Write-Host ""
-    Write-Host "Installing ollama-mesh Node Agent as a Windows service (port $Port)..."
+    Write-Host "Installing marbor Node Agent as a Windows service (port $Port)..."
     if ($Token) {
         # Deliberately not passing --token=$Token here - that would put the
         # real bearer token in this process's argv (visible via Task
@@ -202,16 +202,17 @@ if ($Role -eq "agent") {
 
     Write-Host ""
     Write-Host "Node Agent installed and running - the mesh will start polling it on its next poll cycle."
-    Write-Host "  Status:    ollama-mesh-agent service status"
-    Write-Host "  Uninstall: ollama-mesh-agent service uninstall"
+    Write-Host "  Status:    marbor-agent service status"
+    Write-Host "  Uninstall: marbor-agent service uninstall"
     exit 0
 }
 
 Write-Host ""
-Write-Host "ollama-mesh successfully installed to $BinPath"
+Write-Host "marbor successfully installed to $BinPath"
 Write-Host "Run: & '$BinPath'"
 Write-Host "Docs: https://github.com/$Repo"
 
 } finally {
     Wait-ForExit
 }
+

@@ -38,8 +38,8 @@ export function BudgetBanner() {
         .catch(() => {});
     };
     load();
-    window.addEventListener('ollama-mesh-settings-change', load);
-    return () => window.removeEventListener('ollama-mesh-settings-change', load);
+    window.addEventListener('marbor-settings-change', load);
+    return () => window.removeEventListener('marbor-settings-change', load);
   }, [demoMode]);
 
   useEffect(() => {
