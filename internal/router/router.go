@@ -362,7 +362,14 @@ type Router struct {
 	tagsCache map[string]*TagsCache
 	tagsMu    sync.Mutex
 	// tagsInflight prevents concurrent fetches to the same node URL (cache stampede).
-	tagsInflight    map[string]*tagsInflightEntry
+	tagsInflight map[string]*tagsInflightEntry
+	// showCache caches FetchModelShow results per "nodeURL|tag" for 30
+	// seconds, same TTL and rationale as tagsCache - Model Advisor's context
+	// slider re-queries handleModelRepo on every tick, so without this a
+	// single browsing session repeats identical /api/show round-trips to the
+	// same node for architecture facts that never change between requests.
+	showCache       map[string]modelShowCacheEntry
+	showMu          sync.Mutex
 	upstreamTimeout time.Duration // ResponseHeaderTimeout for upstream Transport
 	maxRetries      int           // max alternate nodes to try on upstream failure
 	// healthFailureThreshold/healthSuccessThreshold are the asymmetric
@@ -622,6 +629,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		prevAgentPresent:         make(map[string]bool),
 		tagsCache:                make(map[string]*TagsCache),
 		tagsInflight:             make(map[string]*tagsInflightEntry),
+		showCache:                make(map[string]modelShowCacheEntry),
 		upstreamTimeout:          upstreamTimeout,
 		maxRetries:               maxRetries,
 		healthFailureThreshold:   healthFailureThreshold,
@@ -1781,15 +1789,45 @@ type ModelShowInfo struct {
 	EmbeddingLength int64 // <arch>.embedding_length - hidden size
 }
 
+// modelShowCacheEntry holds a cached FetchModelShow result (success or
+// failure) for the showCache TTL cache.
+type modelShowCacheEntry struct {
+	Info      ModelShowInfo
+	OK        bool
+	FetchedAt time.Time
+}
+
+const modelShowCacheTTL = 30 * time.Second
+
 // FetchModelShow calls a node's Ollama /api/show endpoint for one model tag
 // and extracts the architecture facts P71 needs. Returns ok=false (never an
 // error the caller must handle) whenever the node/model doesn't yield a
 // complete set of facts - a formula missing even one input isn't reliable,
-// so a partial answer is treated the same as no answer (R1). Deliberately
-// not cached like FetchModelTags: this is called only from the Model
-// Advisor detail flow, which is already an on-demand, not-polled request,
-// not a background poll loop that would benefit from a TTL cache.
+// so a partial answer is treated the same as no answer (R1). Cached for 30s
+// per (nodeURL, tag) - same TTL as FetchModelTags - since Model Advisor's
+// context-length slider re-triggers this on every tick and the underlying
+// architecture facts never change between requests for the same model.
 func (r *Router) FetchModelShow(nodeURL, tag string) (ModelShowInfo, bool) {
+	cacheKey := nodeURL + "|" + tag
+	r.showMu.Lock()
+	if cached, ok := r.showCache[cacheKey]; ok && time.Since(cached.FetchedAt) < modelShowCacheTTL {
+		r.showMu.Unlock()
+		return cached.Info, cached.OK
+	}
+	r.showMu.Unlock()
+
+	info, ok := r.fetchModelShowUncached(nodeURL, tag)
+
+	r.showMu.Lock()
+	r.showCache[cacheKey] = modelShowCacheEntry{Info: info, OK: ok, FetchedAt: time.Now()}
+	r.showMu.Unlock()
+
+	return info, ok
+}
+
+// fetchModelShowUncached does the actual /api/show HTTP round-trip; see
+// FetchModelShow for the caching wrapper around it.
+func (r *Router) fetchModelShowUncached(nodeURL, tag string) (ModelShowInfo, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

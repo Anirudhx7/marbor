@@ -271,19 +271,24 @@ func TestFetchHFConfigJSON_NotFound(t *testing.T) {
 	}
 }
 
-// fetchHFConfigJSONAt is a test-only helper that calls fetchHFConfigJSON
-// against a given base URL instead of the real huggingface.co host, by
-// temporarily swapping hfHTTPClient's Transport to redirect requests there -
-// the same override pattern catalog_test.go's stubRoundTripper already uses
-// for HF calls, applied here so a single httptest.Server can stand in for
+// fetchHFConfigJSONAt is a test-only helper that calls the uncached
+// fetchHFConfigJSONUncached against a given base URL instead of the real
+// huggingface.co host, by temporarily swapping hfHTTPClient's Transport to
+// redirect requests there - the same override pattern catalog_test.go's
+// stubRoundTripper already uses for HF calls, applied here so a single
+// httptest.Server can stand in for
 // "https://huggingface.co/{repo}/raw/main/config.json" without a real
-// network call.
+// network call. Calls the uncached function directly (not the cached
+// fetchHFConfigJSON wrapper) since every test in this file reuses the same
+// literal repoID "any/repo" against a different mock server - going through
+// the 30s TTL cache would make later tests in the same run see an earlier
+// test's cached result instead of hitting their own mock.
 func fetchHFConfigJSONAt(t *testing.T, baseURL string) (hfConfigJSON, bool) {
 	t.Helper()
 	orig := hfHTTPClient.Transport
 	hfHTTPClient.Transport = redirectRoundTripper{target: baseURL}
 	defer func() { hfHTTPClient.Transport = orig }()
-	return fetchHFConfigJSON(context.Background(), "any/repo", "")
+	return fetchHFConfigJSONUncached(context.Background(), "any/repo", "")
 }
 
 type redirectRoundTripper struct {
