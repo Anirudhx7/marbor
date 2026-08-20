@@ -42,14 +42,23 @@ function ContextFeasibilityNote({ cf, fit }: { cf: ModelVariantFit['context_feas
   if (cf.exceeds_declared_max && cf.declared_max_context) {
     lines.push(`Requested context exceeds this model's declared maximum of ${fmt(cf.declared_max_context)} tokens.`);
   }
-  if (isDerived && fit !== 'green' && cf.limiting_factor) {
+  // Backend always populates limiting_factor once real architecture facts
+  // are known, regardless of whether VRAM capacity could be classified - but
+  // a VRAM-headroom claim is meaningless when fit is 'unknown' (the node's
+  // VRAM capacity itself isn't known), so only 'yellow'/'red' render it here.
+  const constrained = fit === 'yellow' || fit === 'red';
+  if (isDerived && constrained && cf.limiting_factor) {
+    // "yellow" still fits (classifyFit: <=100% of capacity, just past the 85%
+    // comfortable margin) - only "red" actually exceeds VRAM. Using "exceeds"
+    // for yellow would contradict the "Tight" badge shown right next to it.
+    const verb = fit === 'red' ? 'is expected to exceed available VRAM' : 'leaves little VRAM headroom on this node';
     lines.push(
       cf.limiting_factor === 'kv_cache'
-        ? `KV cache at ${fmt(cf.requested_ctx)} tokens is expected to exceed available VRAM.`
-        : 'Model weights alone are expected to exceed available VRAM at this size.'
+        ? `KV cache at ${fmt(cf.requested_ctx)} tokens ${verb}.`
+        : `Model weights alone ${verb} at this size.`
     );
   }
-  if (isDerived && fit !== 'green' && cf.recommended_ctx) {
+  if (isDerived && constrained && cf.recommended_ctx) {
     lines.push(`Recommended context: ~${fmt(cf.recommended_ctx)} tokens.`);
   }
 
@@ -218,7 +227,33 @@ function ModelDetailPanel({
           let fit: 'green' | 'yellow' | 'red' = 'green';
           if (estVram > 24576) fit = 'red';
           else if (estVram > 10240) fit = 'yellow';
-          return { ...v, vram_est_mb: Math.round(estVram), fit, disk_fit: diskFit(v.size_mb) };
+          // Demo-only: context_feasibility is static mock data keyed to
+          // whatever context length the mock author picked, so it must be
+          // re-pinned to the slider's actual value here or the note goes
+          // stale (wrong requested_ctx, and a recommended_ctx/limiting_factor
+          // left over from a fit color that no longer matches the badge
+          // above) the moment the slider moves away from that value.
+          const stillConstrained = fit === 'yellow' || fit === 'red';
+          const cf = v.context_feasibility
+            ? {
+                ...v.context_feasibility,
+                requested_ctx: len,
+                exceeds_declared_max: v.context_feasibility.declared_max_context
+                  ? len > v.context_feasibility.declared_max_context
+                  : v.context_feasibility.exceeds_declared_max,
+                limiting_factor: stillConstrained ? v.context_feasibility.limiting_factor : undefined,
+                kv_cache_est_mb: stillConstrained ? v.context_feasibility.kv_cache_est_mb : undefined,
+                // The mock's recommended_ctx is a fixed number picked for one
+                // specific mock scenario - only trust it here if it's still
+                // meaningfully below the slider's current position, so a
+                // slider change can never make the demo suggest a "lower"
+                // context that isn't actually lower than what's selected.
+                recommended_ctx: stillConstrained && v.context_feasibility.recommended_ctx < len
+                  ? v.context_feasibility.recommended_ctx
+                  : undefined,
+              }
+            : v.context_feasibility;
+          return { ...v, vram_est_mb: Math.round(estVram), fit, disk_fit: diskFit(v.size_mb), context_feasibility: cf };
         });
         // disk_free_gb/disk_total_gb/disk_known explicitly set (not just
         // spread from mock) - most mock entries don't declare them, and the

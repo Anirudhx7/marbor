@@ -121,6 +121,33 @@ func TestFetchModelShow_NodeUnreachable(t *testing.T) {
 	}
 }
 
+// TestFetchModelShow_HeadDimTruncationGuard verifies a model_info block
+// where embedding_length < attention.head_count (which would make head_dim
+// truncate to 0 via integer division downstream, silently zeroing the
+// entire KV-cache term while still labeled "derived") is rejected as
+// ok=false rather than accepted with a fabricated zero-cost answer (R1).
+func TestFetchModelShow_HeadDimTruncationGuard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"model_info": map[string]interface{}{
+				"general.architecture":          "llama",
+				"llama.context_length":          8192,
+				"llama.block_count":             32,
+				"llama.attention.head_count":    128,
+				"llama.attention.head_count_kv": 8,
+				"llama.embedding_length":        64, // < head_count -> head_dim would truncate to 0
+			},
+		})
+	}))
+	defer srv.Close()
+
+	r := newShowTestRouter()
+	_, ok := r.FetchModelShow(srv.URL, "some-model")
+	if ok {
+		t.Error("expected ok=false when embedding_length < attention.head_count (head_dim would truncate to 0)")
+	}
+}
+
 // TestFetchModelShow_NonOKStatus verifies a 404 (e.g. model not found/not
 // downloaded) returns ok=false rather than attempting to decode an error body.
 func TestFetchModelShow_NonOKStatus(t *testing.T) {

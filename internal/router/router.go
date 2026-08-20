@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -1813,7 +1814,12 @@ func (r *Router) FetchModelShow(nodeURL, tag string) (ModelShowInfo, bool) {
 	var showResp struct {
 		ModelInfo map[string]interface{} `json:"model_info"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&showResp); err != nil {
+	// A node's Ollama instance is a trusted-ish but not infallible peer - cap
+	// the decoded body so a misbehaving or compromised node can't stream an
+	// unbounded response into memory for the full 5s window (same 10MB
+	// ceiling FetchModelTags' /api/tags decode would benefit from, chosen
+	// generously above any real /api/show payload size).
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&showResp); err != nil {
 		return ModelShowInfo{}, false
 	}
 	arch, _ := showResp.ModelInfo["general.architecture"].(string)
@@ -1838,6 +1844,14 @@ func (r *Router) FetchModelShow(nodeURL, tag string) (ModelShowInfo, bool) {
 	headCountKV, ok4 := num("attention.head_count_kv")
 	embed, ok5 := num("embedding_length")
 	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 || ctxLen <= 0 || blocks <= 0 || headCount <= 0 || headCountKV <= 0 || embed <= 0 {
+		return ModelShowInfo{}, false
+	}
+	if embed < headCount {
+		// embedding_length/attention.head_count (head_dim) would truncate to
+		// 0 via integer division downstream, silently zeroing the entire
+		// KV-cache term while still being labeled "derived" (high
+		// confidence) - malformed model_info is data this codebase can't
+		// trust, not data it should guess a zero-cost answer from (R1).
 		return ModelShowInfo{}, false
 	}
 	return ModelShowInfo{
