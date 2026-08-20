@@ -1,4 +1,4 @@
-// bench measures warm-vs-cold first-token latency through an ollama-mesh or
+// bench measures warm-vs-cold first-token latency through a marbor or
 // Ollama endpoint. Run it while screen-recording to produce the side-by-side
 // demo that proves warm routing is worth it.
 //
@@ -31,7 +31,7 @@ import (
 )
 
 func main() {
-	endpoint := flag.String("endpoint", "http://localhost:11434", "Ollama or ollama-mesh base URL")
+	endpoint := flag.String("endpoint", "http://localhost:11434", "Ollama or marbor base URL")
 	model := flag.String("model", "llama3", "model name (must be pulled on the target node)")
 	apiKey := flag.String("key", "", "Bearer token if auth is enabled")
 	prompt := flag.String("prompt", "Say exactly three words.", "prompt sent on each request")
@@ -47,7 +47,7 @@ func main() {
 	client := &http.Client{Timeout: *timeout}
 
 	fmt.Println()
-	fmt.Println("=== ollama-mesh warm-vs-cold benchmark ===")
+	fmt.Println("=== marbor warm-vs-cold benchmark ===")
 	fmt.Printf("endpoint : %s\n", *endpoint)
 	fmt.Printf("model    : %s\n", *model)
 	fmt.Printf("prompt   : %q\n", *prompt)

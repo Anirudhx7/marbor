@@ -23,7 +23,7 @@ func New() (Manager, error) { return newLaunchdManager(), nil }
 // launchdLabel is the fixed launchd Label used across Install/Uninstall/
 // Start/Stop/Status - all five must agree on the exact same string, so it's
 // a single constant rather than derived per-call.
-const launchdLabel = "com.ollamamesh.agent"
+const launchdLabel = "com.marbor.agent"
 
 // launchdPlistPath is the system-wide LaunchDaemon location (not a per-user
 // LaunchAgent in ~/Library/LaunchAgents) - the agent must run regardless of
@@ -32,7 +32,7 @@ const launchdPlistPath = "/Library/LaunchDaemons/" + launchdLabel + ".plist"
 
 // launchdLogPath is where the daemon's stdout/stderr are redirected, since
 // launchd itself doesn't capture output anywhere useful by default.
-const launchdLogPath = "/var/log/ollama-mesh-agent.log"
+const launchdLogPath = "/var/log/marbor-agent.log"
 
 // agentSupportDir/agentCertPath/agentKeyPath are the Node Agent's TLS
 // certificate/key file locations on macOS (P24), matching the design's
@@ -41,7 +41,7 @@ const launchdLogPath = "/var/log/ollama-mesh-agent.log"
 // world-readable-by-convention config directory for a launchd daemon to
 // drop files into.
 const (
-	agentSupportDir = "/Library/Application Support/ollama-mesh-agent"
+	agentSupportDir = "/Library/Application Support/marbor-agent"
 	agentCertPath   = agentSupportDir + "/agent.crt"
 	agentKeyPath    = agentSupportDir + "/agent.key"
 )

@@ -1,21 +1,21 @@
-# ollama-mesh
+# marbor
 
 **The self-hosted control plane for AI inference - warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX**
 
-One OpenAI-compatible endpoint for all your self-hosted LLM traffic. ollama-mesh routes every request to the GPU node that already holds the model warm in VRAM - across Ollama, vLLM, TGI, llama.cpp, and MLX (Apple Silicon) - turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
+One OpenAI-compatible endpoint for all your self-hosted LLM traffic. marbor routes every request to the GPU node that already holds the model warm in VRAM - across Ollama, vLLM, TGI, llama.cpp, and MLX (Apple Silicon) - turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
 
-[![Build Status](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/ollama-mesh/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/ollama-mesh/releases/latest)
+[![Build Status](ollama-mesh.dev/actions/workflows/ci.yml/badge.svg)](ollama-mesh.dev/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases)](ollama-mesh.dev/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](https://anirudh.social/ollama-mesh/demo/)
+[![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](ollama-mesh.dev/demo/)
 
 
-![ollama-mesh dashboard](website/screenshots/dashboard.png)
+![marbor dashboard](website/screenshots/dashboard.png)
 *Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings - all from real parsed token counts.*
 
 ---
 
-> **[→ Try the live demo](https://anirudh.social/ollama-mesh/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
+> **[→ Try the live demo](ollama-mesh.dev/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
 
 ## Quick Start
 
@@ -25,13 +25,13 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 1. **Clone and start the demo stack**:
    ```bash
-   git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
+   git clone ollama-mesh.dev && cd marbor
    make demo
    ```
-   This spins up `ollama-mesh`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
+   This spins up `marbor`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
 
 2. **Access the dashboards**:
-   * **ollama-mesh Dashboard**: [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`)
+   * **marbor Dashboard**: [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`)
    * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
 
 3. **Run a manual benchmark**:
@@ -51,32 +51,32 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 *   **Install only**
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
+    curl -fsSL ollama-mesh.dev/main/install.sh | sh
     ```
-    Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `ollama-mesh` manually to start. If a version is already installed, this reports old → new instead of upgrading silently.
+    Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `marbor` manually to start. If a version is already installed, this reports old → new instead of upgrading silently.
 
 *   **Quick demo - Auto-Discover & Run in background**
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | START=1 sh
+    curl -fsSL ollama-mesh.dev/main/install.sh | START=1 sh
     ```
-    Installs the binary, starts the gateway in the background against a fresh `mesh.db`, and prints operational access details. Before starting, it scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) and interactively prompts you to pick which discovered nodes to seed into `mesh.db` (comma-separated numbers, `all`, or `skip`) - there's no config file to hand-edit. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try ollama-mesh, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
+    Installs the binary, starts the gateway in the background against a fresh `marbor.db`, and prints operational access details. Before starting, it scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) and interactively prompts you to pick which discovered nodes to seed into `marbor.db` (comma-separated numbers, `all`, or `skip`) - there's no config file to hand-edit. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try marbor, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
 
 *   **Production - Auto-Discover & Run as a managed service (recommended for real deployments)**
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | SERVICE=1 sh
+    curl -fsSL ollama-mesh.dev/main/install.sh | SERVICE=1 sh
     ```
-    Same as the quick-demo command (including the interactive node-discovery prompt), but instead of a background process it installs and enables a proper OS service (`Restart=on-failure`, starts on boot) - this is what you want for anything you intend to keep running. Currently implemented via `systemd` on Linux (requires root/sudo; logs via `journalctl -u ollama-mesh -f`). `SERVICE=1` is deliberately OS-agnostic - on macOS or any host without a supported service manager, it prints a notice and falls back to the same background mode as the quick-demo command rather than failing the install.
+    Same as the quick-demo command (including the interactive node-discovery prompt), but instead of a background process it installs and enables a proper OS service (`Restart=on-failure`, starts on boot) - this is what you want for anything you intend to keep running. Currently implemented via `systemd` on Linux (requires root/sudo; logs via `journalctl -u marbor -f`). `SERVICE=1` is deliberately OS-agnostic - on macOS or any host without a supported service manager, it prints a notice and falls back to the same background mode as the quick-demo command rather than failing the install.
 
 ### Uninstalling
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh | sh
+curl -fsSL ollama-mesh.dev/main/uninstall.sh | sh
 ```
 
-Run this from the same directory `install.sh` was run in (it looks for `mesh.db` and the pidfile there). It stops and removes the systemd service or background process and removes the binary. `mesh.db` is always kept by default when piped like this (stdin isn't a terminal, so the keep/remove prompt never runs) - pass `KEEP_DB=0` to remove it instead:
+Run this from the same directory `install.sh` was run in (it looks for `marbor.db` and the pidfile there). It stops and removes the systemd service or background process and removes the binary. `marbor.db` is always kept by default when piped like this (stdin isn't a terminal, so the keep/remove prompt never runs) - pass `KEEP_DB=0` to remove it instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/uninstall.sh | KEEP_DB=0 sh
+curl -fsSL ollama-mesh.dev/main/uninstall.sh | KEEP_DB=0 sh
 ```
 
 To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying on the env vars, download the script first so it runs with a real terminal attached: `curl -fsSL .../uninstall.sh -o uninstall.sh && sh uninstall.sh`.
@@ -87,13 +87,13 @@ To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying o
 
 Run a production-ready gateway + metrics stack scraping the proxy:
 ```bash
-git clone https://github.com/Anirudhx7/ollama-mesh && cd ollama-mesh
+git clone ollama-mesh.dev && cd marbor
 docker compose up -d
 ```
 This starts:
-* **ollama-mesh** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
+* **marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
 * **Prometheus**: Automatically scraping the mesh metrics endpoint.
-* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [ollama-mesh dashboard](grafana/ollama-mesh.json).
+* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [marbor dashboard](grafana/marbor.json).
 
 ---
 
@@ -105,7 +105,7 @@ Enterprise teams deploying LLM-powered applications - coding agents, RAG pipelin
 - **Invisible cloud egress.** Without a local-first routing layer, traffic silently overflows to OpenAI/Anthropic at $0.15–$60/M tokens. Platform teams discover the bill at month-end.
 - **No GPU utilization visibility.** Ops teams have Grafana for CPU and memory. They have nothing for per-node VRAM residency, model warm state, or inference cost attribution across API keys.
 
-**ollama-mesh eliminates all three.** It sits between your applications and your GPU fleet, routing every request to the node that already has the model loaded in VRAM. Cloud overflow is explicit, metered, and off by default. Every token is counted, attributed to an API key, and valued against your configured cloud reference rate.
+**marbor eliminates all three.** It sits between your applications and your GPU fleet, routing every request to the node that already has the model loaded in VRAM. Cloud overflow is explicit, metered, and off by default. Every token is counted, attributed to an API key, and valued against your configured cloud reference rate.
 
 ---
 
@@ -116,7 +116,7 @@ Client Application (Agent / RAG / Copilot)
     │
     ▼
 ┌───────────────────────────────────────────────────────┐
-│  ollama-mesh endpoint (:11434)                        │
+│  marbor endpoint (:11434)                        │
 │                                                       │
 │  Auth ─► Rate Limit ─► Quota Check ─► Model Allow     │
 │    │                                                  │
@@ -162,7 +162,7 @@ Client Application (Agent / RAG / Copilot)
 | | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access - enforced at the control plane, not advisory. |
 | | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
 | **Observability** | Prometheus metrics | 14 production metrics: request throughput, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, quota rejections, request queue depth/timeouts, warmup pings, panic recovery, node health. |
-| | Grafana dashboard | Included JSON (`grafana/ollama-mesh.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
+| | Grafana dashboard | Included JSON (`grafana/marbor.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
 | | Audit trail | Append-only JSON-lines audit log. Every request recorded with crypto/rand request IDs. |
 | | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (Node Agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
@@ -170,7 +170,7 @@ Client Application (Agent / RAG / Copilot)
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
 | | Per-node in-flight cap | Optional `max_in_flight_per_node` (global) with a per-node override. A node at/over its cap is excluded from routing - failover/cloud/503 - instead of queued, for operators who need overflow rather than piling onto a slow node. Best-effort (approximate under a concurrent request burst), not an atomic guarantee. |
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
-| | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-syncs state from `mesh.db` in place. Key rotations and routing changes take effect without dropping connections. |
+| | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-syncs state from `marbor.db` in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional Node Agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
@@ -186,11 +186,11 @@ Client Application (Agent / RAG / Copilot)
 
 The single most impactful metric for LLM infrastructure is **Time-to-First-Token (TTFT)**. Every cold model load adds tens of seconds of latency before the first token appears. In a multi-agent workflow making hundreds of calls per hour, this compounds into minutes of wasted wall-clock time per pipeline execution.
 
-ollama-mesh's warm-first routing avoids this: the router knows which models are resident in VRAM on which nodes at sub-3-second granularity and sends each request to a node that already has the model loaded.
+marbor's warm-first routing avoids this: the router knows which models are resident in VRAM on which nodes at sub-3-second granularity and sends each request to a node that already has the model loaded.
 
 ### Measured numbers (real hardware, not estimates)
 
-Measured through a deployed ollama-mesh v0.13.1 instance routing to a single consumer-GPU
+Measured through a deployed marbor v0.13.1 instance routing to a single consumer-GPU
 Ollama node, using [`bench/ttft.go`](bench/). Model: an 8B-parameter Q4_K_M model
 (~9.6 GB on disk). Cold = model evicted from VRAM (`keep_alive: 0`) before each request;
 warm = model already resident.
@@ -215,7 +215,7 @@ harness in [`bench/`](bench/).
 
 ## The Savings Angle
 
-This is the dashboard screenshot that sells itself: ollama-mesh tracks every token you served locally vs in the cloud, and shows you exactly how much that local inference saved compared to routing everything to OpenAI.
+This is the dashboard screenshot that sells itself: marbor tracks every token you served locally vs in the cloud, and shows you exactly how much that local inference saved compared to routing everything to OpenAI.
 
 The math uses real parsed token counts from each response (`eval_count` from Ollama, `usage.total_tokens` from cloud), valued at your configured reference rate. When token data is unavailable, the dashboard shows "-" rather than a fabricated number. No fake math.
 
@@ -225,7 +225,7 @@ Platform engineers with a team routing through local GPU hardware typically see 
 
 ## Supported Backends
 
-ollama-mesh is runtime-agnostic. Declare `runtime:` per node and the router uses the correct health probe and model-discovery call for each backend.
+marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the correct health probe and model-discovery call for each backend.
 
 | Backend | `runtime:` value | Health check | Model discovery | Path routing |
 |---------|-----------------|--------------|-----------------|--------------|
@@ -278,27 +278,27 @@ ollama-mesh is runtime-agnostic. Declare `runtime:` per node and the router uses
 
 | Platform | Architecture | Asset | Typical hardware |
 |----------|-------------|-------|------------------|
-| Linux | amd64 | `ollama-mesh-linux-amd64` | Production GPU servers, x86 workstations |
-| Linux | arm64 | `ollama-mesh-linux-arm64` | ARM servers, Graviton instances |
-| macOS | Apple Silicon | `ollama-mesh-darwin-arm64` | Mac Studio, Mac Pro, M-series dev machines |
-| macOS | Intel | `ollama-mesh-darwin-amd64` | Intel Macs |
-| Windows | amd64 | `ollama-mesh-windows-amd64.exe` | Windows GPU workstations |
-| Docker | multi-arch | `ghcr.io/anirudhx7/ollama-mesh` | Any container orchestrator |
+| Linux | amd64 | `marbor-linux-amd64` | Production GPU servers, x86 workstations |
+| Linux | arm64 | `marbor-linux-arm64` | ARM servers, Graviton instances |
+| macOS | Apple Silicon | `marbor-darwin-arm64` | Mac Studio, Mac Pro, M-series dev machines |
+| macOS | Intel | `marbor-darwin-amd64` | Intel Macs |
+| Windows | amd64 | `marbor-windows-amd64.exe` | Windows GPU workstations |
+| Docker | multi-arch | `ollama-mesh.dev` | Any container orchestrator |
 
-> **macOS Gatekeeper:** binaries are not yet Apple-notarized. Clear the quarantine flag once: `xattr -d com.apple.quarantine ollama-mesh`.
+> **macOS Gatekeeper:** binaries are not yet Apple-notarized. Clear the quarantine flag once: `xattr -d com.apple.quarantine marbor`.
 
-All builds and `checksums.txt` on the [releases page](https://github.com/Anirudhx7/ollama-mesh/releases/latest).
+All builds and `checksums.txt` on the [releases page](ollama-mesh.dev/releases/latest).
 
 
 **Build from source:**
 ```bash
-git clone https://github.com/Anirudhx7/ollama-mesh
-cd ollama-mesh
+git clone ollama-mesh.dev
+cd marbor
 make build
-./ollama-mesh
+./marbor
 ```
 
-Point your LLM clients at `:11434`. ollama-mesh speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints - both `ollama` clients and OpenAI SDKs work unchanged.
+Point your LLM clients at `:11434`. marbor speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints - both `ollama` clients and OpenAI SDKs work unchanged.
 
 **Integration guides:** [Open WebUI](docs/integrations/open-webui.md) · [Continue](docs/integrations/continue.md) · [LibreChat](docs/integrations/librechat.md) · [AWS EC2 deploy](docs/deploy/aws-ec2.md) · [GPU node registration (Ansible)](docs/deploy/gpu-node-registration.md) · [Node Agent enrollment (Ansible)](docs/deploy/node-agent-enrollment.md)
 
@@ -306,15 +306,15 @@ Point your LLM clients at `:11434`. ollama-mesh speaks the Ollama API and passes
 
 ## Configuration
 
-There is no config file. ollama-mesh is DB-first: everything lives in `mesh.db` (SQLite), and you configure it entirely through the admin dashboard or the REST API - nothing to hand-edit, nothing to redeploy for a settings change.
+There is no config file. marbor is DB-first: everything lives in `marbor.db` (SQLite), and you configure it entirely through the admin dashboard or the REST API - nothing to hand-edit, nothing to redeploy for a settings change.
 
 **First boot:**
 ```bash
-./ollama-mesh              # or --db /path/to/mesh.db to pick the database location
+./marbor              # or --db /path/to/marbor.db to pick the database location
 ```
-The binary opens (or creates) `mesh.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Log in at `http://localhost:8080` with `admin` / `admin` - you'll be forced to set a new password on first login.
+The binary opens (or creates) `marbor.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Log in at `http://localhost:8080` with `admin` / `admin` - you'll be forced to set a new password on first login.
 
-**Secrets at rest:** cloud provider API keys, mesh-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `mesh.db` with AES-256-GCM. The encryption key lives in `mesh.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `mesh.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MESH_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `mesh.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
+**Secrets at rest:** cloud provider API keys, mesh-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `marbor.db` with AES-256-GCM. The encryption key lives in `marbor.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `marbor.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MARBOR_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `marbor.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
 
 From there, everything is a dashboard page or an `/admin/v1/...` API call:
 
@@ -362,13 +362,13 @@ Router: extract model name from JSON body
 
 The router polls `/api/ps` on each node every 2 seconds. State is real-time, not cached guesses.
 
-**Config hot-reload:** `kill -HUP <pid>` or `POST /admin/v1/config/reload` re-syncs live routing/nodes/keys/cloud-providers from `mesh.db` without dropping connections. (Listen ports/addresses and a few other startup-only settings still need a restart - the dashboard flags which ones.)
+**Config hot-reload:** `kill -HUP <pid>` or `POST /admin/v1/config/reload` re-syncs live routing/nodes/keys/cloud-providers from `marbor.db` without dropping connections. (Listen ports/addresses and a few other startup-only settings still need a restart - the dashboard flags which ones.)
 
 ---
 
 ## Model Warmup
 
-ollama-mesh proactively keeps priority models loaded in VRAM between requests. Without this, idle models get evicted and the next request pays the cold-start tax.
+marbor proactively keeps priority models loaded in VRAM between requests. Without this, idle models get evicted and the next request pays the cold-start tax.
 
 Configure it in the dashboard's **Settings → Global Warmup** card: enable it, set the interval (default every 5 minutes), and list your highest-traffic models. Per-node warmup overrides live on the **Warmup** page.
 
@@ -425,92 +425,92 @@ Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API 
 
 ## CLI
 
-`ollama-mesh` is a single static binary that is two tools in one - the server and a thin CLI client
+`marbor` is a single static binary that is two tools in one - the server and a thin CLI client
 of the Admin API - selected by its first argument. The Node Agent is a separate binary,
-`ollama-mesh-agent`, installed on each GPU node (see [Node Agent enrollment](docs/deploy/node-agent-enrollment.md)):
+`marbor-agent`, installed on each GPU node (see [Node Agent enrollment](docs/deploy/node-agent-enrollment.md)):
 
 <!-- BEGIN CLI TABLE -->
 <!-- Generated by `make docs` (cmd/gen-docs) from internal/cli's command registry - do not edit by hand. -->
 | Command | Purpose |
 |---|---|
-| `ollama-mesh` | Run the mesh server (default, no argument needed) |
-| `ollama-mesh bench` | Benchmark warm-vs-cold first-token latency against a running mesh |
-| `ollama-mesh uninstall [--purge]` | Remove the mesh's own service registration from this host |
-| `ollama-mesh version` | print CLI and (if reachable) server version |
-| `ollama-mesh status` | print mesh health/status summary |
-| `ollama-mesh login` | authenticate once and save the session locally (recommended) |
-| `ollama-mesh logout` | remove the saved session |
-| `ollama-mesh whoami` | show the CLI's saved identity (live-verified) |
-| `ollama-mesh nodes` | list nodes known to the mesh (requires auth) |
-| `ollama-mesh nodes confirm-tls <node>` | pin a Node Agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
-| `ollama-mesh models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
-| `ollama-mesh models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
-| `ollama-mesh models delete <node> <model>` | delete a model from a node's local storage (requires auth) |
-| `ollama-mesh models unload <node> <model>` | unload a model from a node's warm state (requires auth) |
-| `ollama-mesh models list <node>` | list models present on a node's local storage (per-node, not the fleet-wide aggregate above) (requires auth) |
-| `ollama-mesh runtime` | start/stop/restart/logs/drain/undrain/health on one node (requires auth) |
-| `ollama-mesh runtime start <node>` | start the node's inference runtime process (requires auth) |
-| `ollama-mesh runtime stop <node>` | stop the node's inference runtime process (requires auth) |
-| `ollama-mesh runtime restart <node>` | restart the node's inference runtime process (requires auth) |
-| `ollama-mesh runtime logs <node>` | fetch recent log lines from the node's runtime process (requires auth) |
-| `ollama-mesh runtime drain <node>` | mark the node draining (stop routing new requests to it) (requires auth) |
-| `ollama-mesh runtime undrain <node>` | reverse "runtime drain" (requires auth) |
-| `ollama-mesh runtime health <node>` | run an on-demand active liveness probe on the node (requires auth) |
-| `ollama-mesh node` | node control driver operations |
-| `ollama-mesh node control` | show or accept a node's control driver (requires auth) |
-| `ollama-mesh node control probe <node>` | show a node's control-driver status (configured + discovered) (requires auth) |
-| `ollama-mesh node control accept <node>` | accept a control driver + identifier for a node (requires auth) |
-| `ollama-mesh key` | per-API-key local/cloud routing overrides (requires auth) |
-| `ollama-mesh key set-local-only <name> <true\|false>` | block (or re-allow) cloud fallback for one API key (requires auth) |
-| `ollama-mesh key set-allow-local-degradation <name> <true\|false>` | let (or forbid) one API key receive a local alternate model (requires auth) |
-| `ollama-mesh spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
-| `ollama-mesh requests` | inspect routing decisions for past requests (requires auth) |
-| `ollama-mesh requests explain <request-id>` | show why the router picked the node it did for one request (requires auth) |
-| `ollama-mesh completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
+| `marbor` | Run the mesh server (default, no argument needed) |
+| `marbor bench` | Benchmark warm-vs-cold first-token latency against a running mesh |
+| `marbor uninstall [--purge]` | Remove the mesh's own service registration from this host |
+| `marbor version` | print CLI and (if reachable) server version |
+| `marbor status` | print mesh health/status summary |
+| `marbor login` | authenticate once and save the session locally (recommended) |
+| `marbor logout` | remove the saved session |
+| `marbor whoami` | show the CLI's saved identity (live-verified) |
+| `marbor nodes` | list nodes known to the mesh (requires auth) |
+| `marbor nodes confirm-tls <node>` | pin a Node Agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
+| `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
+| `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
+| `marbor models delete <node> <model>` | delete a model from a node's local storage (requires auth) |
+| `marbor models unload <node> <model>` | unload a model from a node's warm state (requires auth) |
+| `marbor models list <node>` | list models present on a node's local storage (per-node, not the fleet-wide aggregate above) (requires auth) |
+| `marbor runtime` | start/stop/restart/logs/drain/undrain/health on one node (requires auth) |
+| `marbor runtime start <node>` | start the node's inference runtime process (requires auth) |
+| `marbor runtime stop <node>` | stop the node's inference runtime process (requires auth) |
+| `marbor runtime restart <node>` | restart the node's inference runtime process (requires auth) |
+| `marbor runtime logs <node>` | fetch recent log lines from the node's runtime process (requires auth) |
+| `marbor runtime drain <node>` | mark the node draining (stop routing new requests to it) (requires auth) |
+| `marbor runtime undrain <node>` | reverse "runtime drain" (requires auth) |
+| `marbor runtime health <node>` | run an on-demand active liveness probe on the node (requires auth) |
+| `marbor node` | node control driver operations |
+| `marbor node control` | show or accept a node's control driver (requires auth) |
+| `marbor node control probe <node>` | show a node's control-driver status (configured + discovered) (requires auth) |
+| `marbor node control accept <node>` | accept a control driver + identifier for a node (requires auth) |
+| `marbor key` | per-API-key local/cloud routing overrides (requires auth) |
+| `marbor key set-local-only <name> <true\|false>` | block (or re-allow) cloud fallback for one API key (requires auth) |
+| `marbor key set-allow-local-degradation <name> <true\|false>` | let (or forbid) one API key receive a local alternate model (requires auth) |
+| `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
+| `marbor requests` | inspect routing decisions for past requests (requires auth) |
+| `marbor requests explain <request-id>` | show why the router picked the node it did for one request (requires auth) |
+| `marbor completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
 <!-- END CLI TABLE -->
 
 > **Breaking change (beta, no migration shim):** the separate `mesh`/`mesh-cli` binary
-> (`cmd/mesh`) has been merged into the main `ollama-mesh` binary above. There were no external
+> (`cmd/mesh`) has been merged into the main `marbor` binary above. There were no external
 > users of the standalone CLI binary, so it was removed outright rather than kept as an alias.
 
 The CLI subcommands never talk to a Node Agent directly - every command is exactly one Admin API
 request:
 
 ```bash
-ollama-mesh version                          # CLI version, plus server version if reachable
-ollama-mesh status                           # health/uptime/node-count summary (GET /health)
+marbor version                          # CLI version, plus server version if reachable
+marbor status                           # health/uptime/node-count summary (GET /health)
 
-ollama-mesh login                            # authenticate once (prompts interactively) ...
-ollama-mesh nodes                            # ... then every other command works with zero flags
-ollama-mesh whoami                           # who the CLI is currently authenticated as
-ollama-mesh logout                           # remove the saved session
+marbor login                            # authenticate once (prompts interactively) ...
+marbor nodes                            # ... then every other command works with zero flags
+marbor whoami                           # who the CLI is currently authenticated as
+marbor logout                           # remove the saved session
 
-ollama-mesh node control probe gpu-03        # what control driver was auto-discovered
-ollama-mesh node control accept gpu-03 --driver systemd --identifier ollama.service
-ollama-mesh runtime restart gpu-03           # requires an accepted control driver first
+marbor node control probe gpu-03        # what control driver was auto-discovered
+marbor node control accept gpu-03 --driver systemd --identifier ollama.service
+marbor runtime restart gpu-03           # requires an accepted control driver first
 ```
 
 Every command supports `--json` from day one - this is the actual compatibility contract for
 scripts/CI/Ansible, not the human table output, which may change shape between releases. `--server`
-(default `http://localhost:8080`, env `MESH_SERVER`) points at a different Admin API instance.
+(default `http://localhost:8080`, env `MARBOR_SERVER`) points at a different Admin API instance.
 
 `nodes`, `models`, `node control probe|accept`, and `runtime start|stop|restart` require a session.
-The recommended flow is `ollama-mesh login` once (interactively, or with
+The recommended flow is `marbor login` once (interactively, or with
 `--username`/`--password`) - the CLI persists the resulting session to a local file (`0600`, under
 the OS user config dir) so every later command in that shell, in a fresh terminal, or across a
 reboot works with zero flags until the session expires. For scripts/CI/containers where a
 persisted file isn't wanted, pass credentials on every invocation instead:
-`--username`/`--password` or `MESH_USERNAME`/`MESH_PASSWORD` (these always take priority over the
-saved session). There is no `--token`/`MESH_TOKEN` flag - a bearer token passed as a CLI argument
+`--username`/`--password` or `MARBOR_USERNAME`/`MARBOR_PASSWORD` (these always take priority over the
+saved session). There is no `--token`/`MARBOR_TOKEN` flag - a bearer token passed as a CLI argument
 or read from an env var would still be visible in shell history, `ps`/Task Manager, and
 process-creation logging for the life of that process, so login/saved-session and
-username+password are the only credential paths. `ollama-mesh whoami` reports the saved identity,
-live-verified against the server; `ollama-mesh logout` deletes the saved file. `status` and
+username+password are the only credential paths. `marbor whoami` reports the saved identity,
+live-verified against the server; `marbor logout` deletes the saved file. `status` and
 `version` never need auth (`GET /health` is unauthenticated).
 
 **Shared Linux accounts are not recommended for administrative use.** The audit log records the
 authenticated mesh user, not necessarily the individual human using a shared operating-system
-account. If a shared account is unavoidable, prefer a per-shell `MESH_USERNAME`/`MESH_PASSWORD`
+account. If a shared account is unavoidable, prefer a per-shell `MARBOR_USERNAME`/`MARBOR_PASSWORD`
 pair over the persisted session file (env vars are process-scoped and don't collide across
 concurrent sessions on the same account; the saved file is one shared file). For production
 environments, the recommended deployment is one Linux account per administrator and one mesh user
@@ -530,7 +530,7 @@ The Docker image already contains the merged binary, so no image changes are nee
 CLI against a containerized mesh - run it inside the running container:
 
 ```bash
-docker exec <container> ollama-mesh status
+docker exec <container> marbor status
 ```
 
 ---
@@ -541,24 +541,24 @@ docker exec <container> ollama-mesh status
 
 14 metrics exported at `:9090/metrics`:
 
-- `ollamamesh_requests_total` - total proxied requests (labels: key, model, node, status)
-- `ollamamesh_request_duration_seconds` - histogram of request latency
-- `ollamamesh_active_connections` - active connections per node
-- `ollamamesh_node_healthy` - health gauge per node (1=healthy, 0=unhealthy)
-- `ollamamesh_cache_hits_total` - warm-model cache hits
-- `ollamamesh_cache_misses_total` - cold-start cache misses
-- `ollamamesh_tokens_total` - tokens processed (labels: key, node)
-- `ollamamesh_retries_total` - upstream failover retries per node
-- `ollamamesh_cloud_fallbacks_total` - cloud overflow events per provider
-- `ollamamesh_quota_rejections_total` - 429 quota enforcement events (labels: key, period)
-- `ollamamesh_panics_total` - recovered handler panics
-- `ollamamesh_queue_depth` - current request queue depth
-- `ollamamesh_queue_timeouts_total` - queued requests that timed out before getting a node
-- `ollamamesh_warmup_pings_total` - proactive keepalive pings per model/node
+- `marbor_requests_total` - total proxied requests (labels: key, model, node, status)
+- `marbor_request_duration_seconds` - histogram of request latency
+- `marbor_active_connections` - active connections per node
+- `marbor_node_healthy` - health gauge per node (1=healthy, 0=unhealthy)
+- `marbor_cache_hits_total` - warm-model cache hits
+- `marbor_cache_misses_total` - cold-start cache misses
+- `marbor_tokens_total` - tokens processed (labels: key, node)
+- `marbor_retries_total` - upstream failover retries per node
+- `marbor_cloud_fallbacks_total` - cloud overflow events per provider
+- `marbor_quota_rejections_total` - 429 quota enforcement events (labels: key, period)
+- `marbor_panics_total` - recovered handler panics
+- `marbor_queue_depth` - current request queue depth
+- `marbor_queue_timeouts_total` - queued requests that timed out before getting a node
+- `marbor_warmup_pings_total` - proactive keepalive pings per model/node
 
 ### Grafana
 
-Import `grafana/ollama-mesh.json` into Grafana. Point the Prometheus datasource at `:9090`. Pre-built panels: VRAM utilization, request throughput, latency percentiles, cloud fallback rate, cost attribution.
+Import `grafana/marbor.json` into Grafana. Point the Prometheus datasource at `:9090`. Pre-built panels: VRAM utilization, request throughput, latency percentiles, cloud fallback rate, cost attribution.
 
 ### Structured Logging
 
@@ -568,7 +568,7 @@ Import `grafana/ollama-mesh.json` into Grafana. Point the Prometheus datasource 
 
 ## Competitive Positioning
 
-| | ollama-mesh | LiteLLM | nginx/HAProxy | Portkey/Helicone |
+| | marbor | LiteLLM | nginx/HAProxy | Portkey/Helicone |
 |---|---|---|---|---|
 | **GPU-aware routing** | ✅ Polls VRAM state every 2s | ❌ Treats Ollama as a dumb URL | ❌ No GPU visibility | ❌ Cloud-only |
 | **Warm-model routing** | ✅ Routes to node with model in VRAM | ❌ | ❌ | ❌ |
@@ -582,7 +582,7 @@ Import `grafana/ollama-mesh.json` into Grafana. Point the Prometheus datasource 
 | **Prometheus + Grafana** | ✅ 14 metrics + included dashboard | ✅ | Partial | ❌ |
 | **Local-first architecture** | ✅ GPU traffic never leaves your network | ❌ Cloud-centric | ✅ | ❌ |
 
-### Use ollama-mesh when:
+### Use marbor when:
 
 - You have on-premises GPU hardware running Ollama, vLLM, TGI, llama.cpp, or MLX (Apple Silicon) and want to maximize utilization before paying for cloud tokens.
 - You need per-key auth, rate limiting, cost attribution, and a usage dashboard without standing up a Python service.
@@ -618,3 +618,5 @@ See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 ## License
 
 Apache-2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). The open-source core is free for any use, including commercial. Enterprise governance/compliance features are offered separately under a commercial license (see [ROADMAP.md](ROADMAP.md)).
+
+

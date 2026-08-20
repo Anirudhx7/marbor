@@ -99,7 +99,7 @@ func TestRun_NodesConfirmTLS_MissingNodeName(t *testing.T) {
 	if code != ExitUserError {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitUserError, code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: ollama-mesh nodes confirm-tls") {
+	if !strings.Contains(stderr.String(), "usage: marbor nodes confirm-tls") {
 		t.Errorf("expected a usage error, got %q", stderr.String())
 	}
 }

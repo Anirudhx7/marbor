@@ -17,7 +17,7 @@ const (
 	readmeEndMarker   = "<!-- END CLI TABLE -->"
 )
 
-// nonRegistryRows are real subcommands of the ollama-mesh binary that are
+// nonRegistryRows are real subcommands of the marbor binary that are
 // NOT part of internal/cli's Command registry - "bench" selects an entirely
 // different mode of the binary (see main.go), and "uninstall" is handled by
 // uninstall.go, not internal/cli. They still belong in the README's CLI
@@ -25,11 +25,11 @@ const (
 // prepended by hand rather than derived - this is the one place gen-docs
 // doesn't come purely from the registry, and it's the reason: these
 // deliberately live outside it. The Node Agent is a separate binary
-// (cmd/ollama-mesh-agent) as of the control-plane/agent split - it is not,
+// (cmd/marbor-agent) as of the control-plane/agent split - it is not,
 // and must never again be, a subcommand of this table.
 var nonRegistryRows = [][2]string{
-	{"ollama-mesh bench", "Benchmark warm-vs-cold first-token latency against a running mesh"},
-	{"ollama-mesh uninstall [--purge]", "Remove the mesh's own service registration from this host"},
+	{"marbor bench", "Benchmark warm-vs-cold first-token latency against a running mesh"},
+	{"marbor uninstall [--purge]", "Remove the mesh's own service registration from this host"},
 }
 
 func generateReadmeTable(root *cli.Command) error {

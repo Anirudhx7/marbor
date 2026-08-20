@@ -32,7 +32,7 @@ func sessionFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "ollama-mesh", "session"), nil
+	return filepath.Join(dir, "marbor", "session"), nil
 }
 
 // saveSession persists s to the session file with 0600 permissions - never

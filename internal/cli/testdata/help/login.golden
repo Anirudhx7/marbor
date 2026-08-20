@@ -1,4 +1,4 @@
-Usage: ollama-mesh login [flags]
+Usage: marbor login [flags]
 
 Authenticates once and saves the resulting session to a local file (0600,
 under the OS user config dir) so other commands can omit --username/
@@ -6,7 +6,7 @@ under the OS user config dir) so other commands can omit --username/
 be prompted interactively (password input is not echoed).
 
 Flags:
-  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
-  --username string  admin username, used to log in (env MESH_USERNAME)
-  --password string  admin password, used to log in (env MESH_PASSWORD)
+  --username string  admin username, used to log in (env MARBOR_USERNAME)
+  --password string  admin password, used to log in (env MARBOR_PASSWORD)

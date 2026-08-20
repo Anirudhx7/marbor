@@ -775,7 +775,7 @@ export function analyticsExportUrl(type: 'hourly' | 'models'): string {
   return `${BASE}/analytics/export?format=csv&type=${type}`;
 }
 
-// triggerBackupNow requests an on-demand mesh.db backup (POST, unlike the GET
+// triggerBackupNow requests an on-demand marbor.db backup (POST, unlike the GET
 // analyticsExportUrl above - server-side handleBackupNow needs a verb that
 // isn't cacheable/prefetchable) and pushes the streamed file into the
 // browser's normal download flow via a throwaway object URL + <a download>.
@@ -816,7 +816,7 @@ export async function fetchBackupList(): Promise<BackupFileInfo[]> {
 }
 
 // restoreBackup triggers a one-click restore from an already-existing
-// scheduled backup file: the mesh validates it, swaps mesh.db for it, and
+// scheduled backup file: the mesh validates it, swaps marbor.db for it, and
 // exits so the process supervisor (systemd/Docker/Kubernetes) restarts it
 // with the restored database - see docs/backup.md for the supervisor
 // requirement. The connection may drop before a response arrives since the

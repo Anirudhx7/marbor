@@ -1,8 +1,8 @@
-.TH OLLAMA\-MESH-RUNTIME 1 "2026-08-17" "ollama-mesh dev" "ollama-mesh Manual"
+.TH MARBOR\-RUNTIME 1 "2026-08-17" "marbor dev" "Marbor Manual"
 .SH NAME
-ollama\-mesh-runtime \- start/stop/restart/logs/drain/undrain/health on one node
+marbor\-runtime \- start/stop/restart/logs/drain/undrain/health on one node
 .SH SYNOPSIS
-.B ollama\-mesh runtime
+.B marbor runtime
 [action] [args] [\fIflags\fR]
 .SH DESCRIPTION
 "start|stop|restart" requires the target node to have an operator\-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.
@@ -43,15 +43,15 @@ run an on\-demand active liveness probe on the node
 .SH FLAGS
 .TP
 .B \-\-server
-Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
 .TP
 .B \-\-json
 output machine\-readable JSON instead of a human table
 .TP
 .B \-\-username
-admin username, used to log in (env MESH_USERNAME)
+admin username, used to log in (env MARBOR_USERNAME)
 .TP
 .B \-\-password
-admin password, used to log in (env MESH_PASSWORD)
+admin password, used to log in (env MARBOR_PASSWORD)
 .SH SEE ALSO
-\fBollama\-mesh\fR(1)
+\fBmarbor\fR(1)

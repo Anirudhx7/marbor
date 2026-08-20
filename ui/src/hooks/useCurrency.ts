@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'ollama-mesh-currency';
-const CHANGE_EVENT = 'ollama-mesh-currency-change';
+const STORAGE_KEY = 'marbor-currency';
+const CHANGE_EVENT = 'marbor-currency-change';
 
 export interface CurrencyPref {
   code: string;

@@ -29,25 +29,25 @@ type globalFlags struct {
 // every non-empty default verbatim as `(default "...")`, so seeding a secret
 // env var as the flag's default would leak it in plain text on both the
 // --help path and the genuine-parse-error path above (e.g. a mistyped flag
-// on any command, with MESH_PASSWORD exported, would print the live
-// password to stderr - straight into a CI log if that's where MESH_PASSWORD
+// on any command, with MARBOR_PASSWORD exported, would print the live
+// password to stderr - straight into a CI log if that's where MARBOR_PASSWORD
 // is coming from). Env fallback for these two fields happens later, via
 // resolveCred, only in the places that actually consume them
 // (authenticatedClient, runLogin) - never as a flag default.
 //
 // There is deliberately no --token flag: a bearer token passed as a CLI
 // argument is visible in shell history, `ps`/Task Manager, and
-// process-creation logging for the life of the process. "ollama-mesh login"
+// process-creation logging for the life of the process. "marbor login"
 // (which persists a session to a 0600 local file) plus --username/--password
 // are the only credential paths - see runLogin/authenticatedClient.
 func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	g := &globalFlags{}
-	fs.StringVar(&g.server, "server", envOr("MESH_SERVER", "http://localhost:8080"), "Admin API base URL")
+fs.StringVar(&g.server, "server", envOr("MARBOR_SERVER", "http://localhost:8080"), "Admin API base URL")
 	fs.BoolVar(&g.jsonOutput, "json", false, "output machine-readable JSON instead of a human table")
-	fs.StringVar(&g.username, "username", "", "admin username, used to log in (env MESH_USERNAME)")
-	fs.StringVar(&g.password, "password", "", "admin password, used to log in (env MESH_PASSWORD)")
+fs.StringVar(&g.username, "username", "", "admin username, used to log in (env MARBOR_USERNAME)")
+fs.StringVar(&g.password, "password", "", "admin password, used to log in (env MARBOR_PASSWORD)")
 	return fs, g
 }
 
@@ -120,10 +120,10 @@ func renderTable(w io.Writer, indent string, rows [][2]string) {
 // defined once and reused by every per-command usage function below so the
 // descriptions/env-var names can't drift between commands.
 var authFlagsRows = [][2]string{
-	{"--server string", `Admin API base URL (default "http://localhost:8080", env MESH_SERVER)`},
+	{"--server string", `Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)`},
 	{"--json", "output machine-readable JSON instead of a human table"},
-	{"--username string", "admin username, used to log in (env MESH_USERNAME)"},
-	{"--password string", "admin password, used to log in (env MESH_PASSWORD)"},
+	{"--username string", "admin username, used to log in (env MARBOR_USERNAME)"},
+	{"--password string", "admin password, used to log in (env MARBOR_PASSWORD)"},
 }
 
 // printModelsUsage, printRuntimeUsage, printLoginUsage, and
@@ -188,13 +188,13 @@ func envOr(key, def string) string {
 // (mesh nodes, mesh models). Missing credentials is a user error (1), not an
 // auth error (4) - auth was never attempted against the server. Resolution
 // priority: --username/--password flag/env > the saved session file written
-// by "ollama-mesh login" (lowest priority, and only used when it was saved
+// by "marbor login" (lowest priority, and only used when it was saved
 // against this same --server - a saved session for one mesh must never be
 // silently replayed against a different one). There is deliberately no
-// --token/MESH_TOKEN path - see newFlagSet's doc comment.
+// --token/MARBOR_TOKEN path - see newFlagSet's doc comment.
 func authenticatedClient(flags *globalFlags) (*Client, error) {
-	username := resolveCred(flags.username, "MESH_USERNAME")
-	password := resolveCred(flags.password, "MESH_PASSWORD")
+	username := resolveCred(flags.username, "MARBOR_USERNAME")
+	password := resolveCred(flags.password, "MARBOR_PASSWORD")
 
 	if username != "" && password != "" {
 		client := NewClient(flags.server, "")
@@ -205,14 +205,14 @@ func authenticatedClient(flags *globalFlags) (*Client, error) {
 	}
 	session, err := loadSession()
 	if err != nil {
-		return nil, serverErrorf("could not read saved session: %v - run ollama-mesh login again", err)
+		return nil, serverErrorf("could not read saved session: %v - run marbor login again", err)
 	}
 	if session != nil && normalizeServerURL(session.Server) == normalizeServerURL(flags.server) {
 		client := NewClient(flags.server, session.Token)
 		client.usingSavedSession = true
 		return client, nil
 	}
-	return nil, userErrorf("authentication required: run ollama-mesh login, or pass --username/--password (or MESH_USERNAME+MESH_PASSWORD)")
+	return nil, userErrorf("authentication required: run marbor login, or pass --username/--password (or MARBOR_USERNAME+MARBOR_PASSWORD)")
 }
 
 // reportError prints err's message to stderr and returns the exit code it

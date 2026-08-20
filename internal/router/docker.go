@@ -52,9 +52,9 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 	return nodes
 }
 
-// containerHost returns the address ollama-mesh should use to reach the
+// containerHost returns the address marbor should use to reach the
 // container: the container's own IP address on the first Docker network it
-// reports, if one is present. This is correct whether ollama-mesh runs on
+// reports, if one is present. This is correct whether marbor runs on
 // bare metal (routable via the bridge network) or inside another container
 // on the same Docker network (container-to-container traffic on a bridge
 // network uses container IPs, not 127.0.0.1).
@@ -62,7 +62,7 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 // Falls back to 127.0.0.1 only when no container IP can be determined  --
 // e.g. the container was started with --network host, where it shares the
 // host's network namespace and the mapped port is genuinely reachable via
-// loopback. We do not attempt to detect ollama-mesh's own network mode here;
+// loopback. We do not attempt to detect marbor's own network mode here;
 // this is a best-effort choice based only on what the Docker API reports for
 // the discovered container, not a guarantee of reachability in every topology.
 func containerHost(c dockerContainer) string {

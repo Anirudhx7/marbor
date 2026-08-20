@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'ollama-mesh-demo-mode';
-const CHANGE_EVENT = 'ollama-mesh-demo-mode-change';
+const STORAGE_KEY = 'marbor-demo-mode';
+const CHANGE_EVENT = 'marbor-demo-mode-change';
 
 export const forcedDemo = import.meta.env.VITE_FORCE_DEMO === 'true';
 

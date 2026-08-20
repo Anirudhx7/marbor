@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>ollama-mesh CLI Reference · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: ollama-mesh CLI Reference." />
+<title>marbor CLI Reference · marbor docs</title>
+<meta name="description" content="marbor documentation: marbor CLI Reference." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="ollama-mesh CLI Reference · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: ollama-mesh CLI Reference." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="marbor CLI Reference · marbor docs" />
+<meta property="og:description" content="marbor documentation: marbor CLI Reference." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="ollama-mesh CLI Reference · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="marbor CLI Reference · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../index.html#features">Features</a>
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -335,19 +335,19 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   </aside>
 
   <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">ollama-mesh CLI Reference</span></div>
+    <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">marbor CLI Reference</span></div>
     <article class="doc-content">
-      <h1 id="ollama-mesh-cli-reference">ollama-mesh CLI Reference<a class="anchor" href="#ollama-mesh-cli-reference" aria-label="Link to section">#</a></h1>
+      <h1 id="marbor-cli-reference">marbor CLI Reference<a class="anchor" href="#marbor-cli-reference" aria-label="Link to section">#</a></h1>
 <p>Generated from the CLI command registry (<code>internal/cli</code>) by <code>cmd/gen-docs</code> - do not edit by hand; run <code>make docs</code> after changing the registry.</p>
 <h2 id="global-flags">Global flags<a class="anchor" href="#global-flags" aria-label="Link to section">#</a></h2>
 <p>Every command accepts these in addition to any flags listed under it:</p>
-<ul><li><code>--server</code> - Admin API base URL (default "http://localhost:8080", env MESH_SERVER)</li><li><code>--json</code> - output machine-readable JSON instead of a human table</li><li><code>--username</code> - admin username, used to log in (env MESH_USERNAME)</li><li><code>--password</code> - admin password, used to log in (env MESH_PASSWORD)</li></ul>
+<ul><li><code>--server</code> - Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)</li><li><code>--json</code> - output machine-readable JSON instead of a human table</li><li><code>--username</code> - admin username, used to log in (env MARBOR_USERNAME)</li><li><code>--password</code> - admin password, used to log in (env MARBOR_PASSWORD)</li></ul>
 <h2 id="exit-status">Exit status<a class="anchor" href="#exit-status" aria-label="Link to section">#</a></h2>
 <ul><li><code>0</code> - success</li><li><code>1</code> - user error (bad arguments, unknown command, validation failure)</li><li><code>2</code> - server error (the Admin API is unreachable or returned an unexpected error)</li><li><code>3</code> - reserved for future partial-success reporting (batch operations); unused today</li><li><code>4</code> - authentication error (missing, invalid, or expired credentials)</li></ul>
 <h2 id="environment">Environment<a class="anchor" href="#environment" aria-label="Link to section">#</a></h2>
-<ul><li><code>MESH_SERVER</code> - Admin API base URL, used when <code>--server</code> is not given</li><li><code>MESH_USERNAME</code> - admin username, used when <code>--username</code> is not given</li><li><code>MESH_PASSWORD</code> - admin password, used when <code>--password</code> is not given</li></ul>
+<ul><li><code>MARBOR_SERVER</code> - Admin API base URL, used when <code>--server</code> is not given</li><li><code>MARBOR_USERNAME</code> - admin username, used when <code>--username</code> is not given</li><li><code>MARBOR_PASSWORD</code> - admin password, used when <code>--password</code> is not given</li></ul>
 <h2 id="files">Files<a class="anchor" href="#files" aria-label="Link to section">#</a></h2>
-<p>The session saved by <code>ollama-mesh login</code> (mode <code>0600</code>), under the OS user config dir - e.g. <code>~/.config/ollama-mesh/session</code> on Linux, <code>~/Library/Application Support/ollama-mesh/session</code> on macOS, <code>%AppData%\ollama-mesh\session</code> on Windows.</p>
+<p>The session saved by <code>marbor login</code> (mode <code>0600</code>), under the OS user config dir - e.g. <code>~/.config/marbor/session</code> on Linux, <code>~/Library/Application Support/marbor/session</code> on macOS, <code>%AppData%\marbor\session</code> on Windows.</p>
 <h2 id="commands">Commands<a class="anchor" href="#commands" aria-label="Link to section">#</a></h2>
 <h3 id="version"><code>version</code><a class="anchor" href="#version" aria-label="Link to section">#</a></h3>
 <p>print CLI and (if reachable) server version</p>
@@ -362,105 +362,105 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>show the CLI's saved identity (live-verified)</p>
 <h3 id="nodes"><code>nodes</code><a class="anchor" href="#nodes" aria-label="Link to section">#</a></h3>
 <p>list nodes known to the mesh</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
-<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="confirm-tls-node"><code>confirm-tls &lt;node&gt;</code><a class="anchor" href="#confirm-tls-node" aria-label="Link to section">#</a></h4>
 <p>pin a Node Agent's TLS certificate fingerprint (headless enrollment)</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
 <ul><li><code>--fingerprint string</code> - SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see "agent service status" on the node), in the form SHA256:&lt;64 hex characters&gt; (required)</li></ul>
 <h3 id="models"><code>models</code><a class="anchor" href="#models" aria-label="Link to section">#</a></h3>
 <p>fleet-wide list, or pull/delete/unload/list on one node</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
-<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="pull-node-model"><code>pull &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#pull-node-model" aria-label="Link to section">#</a></h4>
 <p>start pulling a model onto a node (async - does not wait for completion)</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="delete-node-model"><code>delete &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#delete-node-model" aria-label="Link to section">#</a></h4>
 <p>delete a model from a node's local storage</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="unload-node-model"><code>unload &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#unload-node-model" aria-label="Link to section">#</a></h4>
 <p>unload a model from a node's warm state</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="list-node"><code>list &lt;node&gt;</code><a class="anchor" href="#list-node" aria-label="Link to section">#</a></h4>
 <p>list models present on a node's local storage (per-node, not the fleet-wide aggregate above)</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="runtime"><code>runtime</code><a class="anchor" href="#runtime" aria-label="Link to section">#</a></h3>
 <p>start/stop/restart/logs/drain/undrain/health on one node</p>
 <p>"start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.</p>
 <p>"logs" is a point-in-time snapshot, not a live tail. A node whose control driver has no real log source (e.g. a bare PID-file process with no supervisor) returns a clear "not supported" error.</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
-<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="start-node"><code>start &lt;node&gt;</code><a class="anchor" href="#start-node" aria-label="Link to section">#</a></h4>
 <p>start the node's inference runtime process</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="stop-node"><code>stop &lt;node&gt;</code><a class="anchor" href="#stop-node" aria-label="Link to section">#</a></h4>
 <p>stop the node's inference runtime process</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="restart-node"><code>restart &lt;node&gt;</code><a class="anchor" href="#restart-node" aria-label="Link to section">#</a></h4>
 <p>restart the node's inference runtime process</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="logs-node"><code>logs &lt;node&gt;</code><a class="anchor" href="#logs-node" aria-label="Link to section">#</a></h4>
 <p>fetch recent log lines from the node's runtime process</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
 <ul><li><code>--lines int</code> - number of log lines to fetch (0 = server default)</li></ul>
 <h4 id="drain-node"><code>drain &lt;node&gt;</code><a class="anchor" href="#drain-node" aria-label="Link to section">#</a></h4>
 <p>mark the node draining (stop routing new requests to it)</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
 <ul><li><code>--reason string</code> - reason recorded for the drain (default "manual")</li></ul>
 <h4 id="undrain-node"><code>undrain &lt;node&gt;</code><a class="anchor" href="#undrain-node" aria-label="Link to section">#</a></h4>
 <p>reverse "runtime drain"</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="health-node"><code>health &lt;node&gt;</code><a class="anchor" href="#health-node" aria-label="Link to section">#</a></h4>
 <p>run an on-demand active liveness probe on the node</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="node"><code>node</code><a class="anchor" href="#node" aria-label="Link to section">#</a></h3>
 <p>node control driver operations</p>
 <h4 id="control"><code>control</code><a class="anchor" href="#control" aria-label="Link to section">#</a></h4>
 <p>show or accept a node's control driver</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h5 id="probe-node"><code>probe &lt;node&gt;</code><a class="anchor" href="#probe-node" aria-label="Link to section">#</a></h5>
 <p>show a node's control-driver status (configured + discovered)</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h5 id="accept-node"><code>accept &lt;node&gt;</code><a class="anchor" href="#accept-node" aria-label="Link to section">#</a></h5>
 <p>accept a control driver + identifier for a node</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
 <ul><li><code>--driver string</code> - control driver: systemd, docker, process, launchd, or windows_service (required)</li><li><code>--identifier string</code> - driver-specific identifier (unit name, container name, PID file path, plist label, service name) (required)</li><li><code>--start-command string</code> - launch command for the process driver's Start action (only meaningful when --driver=process)</li></ul>
 <h3 id="key"><code>key</code><a class="anchor" href="#key" aria-label="Link to section">#</a></h3>
 <p>per-API-key local/cloud routing overrides</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="set-local-only-name-truefalse"><code>set-local-only &lt;name&gt; &lt;true|false&gt;</code><a class="anchor" href="#set-local-only-name-truefalse" aria-label="Link to section">#</a></h4>
 <p>block (or re-allow) cloud fallback for one API key</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="set-allow-local-degradation-name-truefalse"><code>set-allow-local-degradation &lt;name&gt; &lt;true|false&gt;</code><a class="anchor" href="#set-allow-local-degradation-name-truefalse" aria-label="Link to section">#</a></h4>
 <p>let (or forbid) one API key receive a local alternate model</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="spill"><code>spill</code><a class="anchor" href="#spill" aria-label="Link to section">#</a></h3>
 <p>show per-key, per-provider local-vs-cloud request counts</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
-<p>requires credentials: run "ollama-mesh login" once (recommended), or pass --username+--password (or MESH_USERNAME+MESH_PASSWORD).</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h3 id="requests"><code>requests</code><a class="anchor" href="#requests" aria-label="Link to section">#</a></h3>
 <p>inspect routing decisions for past requests</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="explain-request-id"><code>explain &lt;request-id&gt;</code><a class="anchor" href="#explain-request-id" aria-label="Link to section">#</a></h4>
 <p>show why the router picked the node it did for one request</p>
-<p>Requires authentication - see the root README's CLI auth section, or run <code>ollama-mesh login</code>.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="completion-shell"><code>completion &lt;shell&gt;</code><a class="anchor" href="#completion-shell" aria-label="Link to section">#</a></h3>
 <p>_Hidden from <code>--help</code> output, but fully reachable._</p>
 <p>generate a shell completion script (bash, zsh, or fish)</p>
 <p>Generates a static completion script for the requested shell by walking the current command tree. The script never contacts the mesh or requires credentials, so it keeps working even when the mesh is unreachable or the operator isn't logged in.</p>
 <p>Examples:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>source &lt;(ollama-mesh completion bash)
-ollama-mesh completion zsh &gt; "${fpath[1]}/_ollama-mesh"
-ollama-mesh completion fish &gt; ~/.config/fish/completions/ollama-mesh.fish</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="source &lt;(ollama-mesh completion bash)
-ollama-mesh completion zsh &gt; &quot;${fpath[1]}/_ollama-mesh&quot;
-ollama-mesh completion fish &gt; ~/.config/fish/completions/ollama-mesh.fish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>source &lt;(marbor completion bash)
+marbor completion zsh &gt; "${fpath[1]}/_marbor"
+marbor completion fish &gt; ~/.config/fish/completions/marbor.fish</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="source &lt;(marbor completion bash)
+marbor completion zsh &gt; &quot;${fpath[1]}/_marbor&quot;
+marbor completion fish &gt; ~/.config/fish/completions/marbor.fish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/cli.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/cli.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -473,8 +473,8 @@ ollama-mesh completion fish &gt; ~/.config/fish/completions/ollama-mesh.fish"><s
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

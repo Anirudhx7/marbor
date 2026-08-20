@@ -11,12 +11,12 @@ import (
 
 func TestWindowsBinPath(t *testing.T) {
 	cfg := Config{
-		BinaryPath: `C:\Program Files\ollama-mesh\ollama-mesh.exe`,
+		BinaryPath: `C:\Program Files\marbor\marbor.exe`,
 		Port:       9200,
 		Token:      "sekret",
 	}
 	got := windowsBinPath(cfg)
-	want := `"C:\Program Files\ollama-mesh\ollama-mesh.exe" --port=9200`
+	want := `"C:\Program Files\marbor\marbor.exe" --port=9200`
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
 	}
@@ -27,13 +27,13 @@ func TestWindowsBinPath(t *testing.T) {
 
 func TestWindowsBinPath_WithRefreshInterval(t *testing.T) {
 	cfg := Config{
-		BinaryPath:      `C:\Program Files\ollama-mesh\ollama-mesh.exe`,
+		BinaryPath:      `C:\Program Files\marbor\marbor.exe`,
 		Port:            9200,
 		Token:           "sekret",
 		RefreshInterval: 30 * time.Second,
 	}
 	got := windowsBinPath(cfg)
-	want := `"C:\Program Files\ollama-mesh\ollama-mesh.exe" --port=9200 --refresh-interval=30s`
+	want := `"C:\Program Files\marbor\marbor.exe" --port=9200 --refresh-interval=30s`
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
 	}
@@ -41,12 +41,12 @@ func TestWindowsBinPath_WithRefreshInterval(t *testing.T) {
 
 func TestWindowsBinPath_NoSpacesStillQuoted(t *testing.T) {
 	cfg := Config{
-		BinaryPath: `C:\ollama-mesh\ollama-mesh.exe`,
+		BinaryPath: `C:\marbor\marbor.exe`,
 		Port:       8080,
 		Token:      "abc",
 	}
 	got := windowsBinPath(cfg)
-	want := `"C:\ollama-mesh\ollama-mesh.exe" --port=8080`
+	want := `"C:\marbor\marbor.exe" --port=8080`
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
 	}
@@ -81,12 +81,12 @@ func TestSetServiceTokenEnvCommand_ArgsNeverContainToken(t *testing.T) {
 // on non-English Windows) full control - P24's approved native-ACL approach
 // for the Windows agent TLS key directory.
 func TestRestrictDirToSystemAdminsCommand_UsesWellKnownSIDs(t *testing.T) {
-	cmd := restrictDirToSystemAdminsCommand(`C:\ProgramData\ollama-mesh-agent`)
+	cmd := restrictDirToSystemAdminsCommand(`C:\ProgramData\marbor-agent`)
 
 	if cmd.Args[0] != "icacls" {
 		t.Fatalf("Args[0] = %q, want icacls", cmd.Args[0])
 	}
-	if cmd.Args[1] != `C:\ProgramData\ollama-mesh-agent` {
+	if cmd.Args[1] != `C:\ProgramData\marbor-agent` {
 		t.Errorf("Args[1] = %q, want the target directory", cmd.Args[1])
 	}
 	joined := strings.Join(cmd.Args, " ")
@@ -105,15 +105,15 @@ func TestRestrictDirToSystemAdminsCommand_UsesWellKnownSIDs(t *testing.T) {
 }
 
 // TestAgentCertKeyPaths_UnderProgramData verifies Windows cert/key paths
-// resolve under %ProgramData%\ollama-mesh-agent, matching the design's
+// resolve under %ProgramData%\marbor-agent, matching the design's
 // per-platform table.
 func TestAgentCertKeyPaths_UnderProgramData(t *testing.T) {
 	certPath, keyPath := agentCertKeyPaths()
-	if !strings.HasSuffix(certPath, `ollama-mesh-agent\agent.crt`) {
-		t.Errorf("certPath = %q, want to end with ollama-mesh-agent\\agent.crt", certPath)
+	if !strings.HasSuffix(certPath, `marbor-agent\agent.crt`) {
+		t.Errorf("certPath = %q, want to end with marbor-agent\\agent.crt", certPath)
 	}
-	if !strings.HasSuffix(keyPath, `ollama-mesh-agent\agent.key`) {
-		t.Errorf("keyPath = %q, want to end with ollama-mesh-agent\\agent.key", keyPath)
+	if !strings.HasSuffix(keyPath, `marbor-agent\agent.key`) {
+		t.Errorf("keyPath = %q, want to end with marbor-agent\\agent.key", keyPath)
 	}
 }
 
@@ -127,27 +127,27 @@ func TestParseBinaryPathFromQC(t *testing.T) {
 			name: "quoted path with args",
 			out: `[SC] QueryServiceConfig SUCCESS
 
-SERVICE_NAME: ollama-mesh-agent
+SERVICE_NAME: marbor-agent
         TYPE               : 10  WIN32_OWN_PROCESS
         START_TYPE         : 2   AUTO_START
         ERROR_CONTROL      : 1   NORMAL
-        BINARY_PATH_NAME   : "C:\Program Files\ollama-mesh\ollama-mesh.exe" agent --port=9200 --token=sekret
+        BINARY_PATH_NAME   : "C:\Program Files\marbor\marbor.exe" agent --port=9200 --token=sekret
         LOAD_ORDER_GROUP   :
         TAG                : 0
-        DISPLAY_NAME       : ollama-mesh Node Agent
+        DISPLAY_NAME       : Marbor Node Agent
 `,
-			want: `C:\Program Files\ollama-mesh\ollama-mesh.exe`,
+			want: `C:\Program Files\marbor\marbor.exe`,
 		},
 		{
 			name: "unquoted path no spaces",
-			out: `SERVICE_NAME: ollama-mesh-agent
-        BINARY_PATH_NAME   : C:\ollama-mesh\ollama-mesh.exe agent --port=8080
+			out: `SERVICE_NAME: marbor-agent
+        BINARY_PATH_NAME   : C:\marbor\marbor.exe agent --port=8080
 `,
-			want: `C:\ollama-mesh\ollama-mesh.exe`,
+			want: `C:\marbor\marbor.exe`,
 		},
 		{
 			name: "missing line",
-			out:  "SERVICE_NAME: ollama-mesh-agent\n        TYPE : 10\n",
+			out:  "SERVICE_NAME: marbor-agent\n        TYPE : 10\n",
 			want: "",
 		},
 	}
@@ -170,7 +170,7 @@ func TestParseStateFromQuery(t *testing.T) {
 	}{
 		{
 			name: "running",
-			out: `SERVICE_NAME: ollama-mesh-agent
+			out: `SERVICE_NAME: marbor-agent
         TYPE               : 10  WIN32_OWN_PROCESS
         STATE              : 4  RUNNING
                                 (STOPPABLE, NOT_PAUSABLE, ACCEPTS_SHUTDOWN)
@@ -183,14 +183,14 @@ func TestParseStateFromQuery(t *testing.T) {
 		},
 		{
 			name: "stopped",
-			out: `SERVICE_NAME: ollama-mesh-agent
+			out: `SERVICE_NAME: marbor-agent
         STATE              : 1  STOPPED
 `,
 			want: "stopped",
 		},
 		{
 			name: "start pending",
-			out: `SERVICE_NAME: ollama-mesh-agent
+			out: `SERVICE_NAME: marbor-agent
         STATE              : 2  START_PENDING
 `,
 			want: "start_pending",

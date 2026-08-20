@@ -8,20 +8,20 @@ import (
 	"testing"
 )
 
-// buildAgentBinary compiles cmd/ollama-mesh-agent into t.TempDir() once per
+// buildAgentBinary compiles cmd/marbor-agent into t.TempDir() once per
 // test and returns the resulting path, so TestMain_Version/TestMain_ServiceUsage
 // exercise the real compiled binary (argv dispatch, -version interception,
 // delegation to internal/nodeagent.Run) rather than re-testing internal
 // package functions already covered by internal/nodeagent's own tests.
 func buildAgentBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "ollama-mesh-agent")
+	bin := filepath.Join(t.TempDir(), "marbor-agent")
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd/ollama-mesh-agent: %v\n%s", err, out)
+		t.Fatalf("go build ./cmd/marbor-agent: %v\n%s", err, out)
 	}
 	return bin
 }
@@ -32,8 +32,8 @@ func TestMain_VersionFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("-version: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "ollama-mesh-agent") {
-		t.Errorf("-version output = %q, want it to name ollama-mesh-agent", out)
+	if !strings.Contains(string(out), "marbor-agent") {
+		t.Errorf("-version output = %q, want it to name marbor-agent", out)
 	}
 }
 

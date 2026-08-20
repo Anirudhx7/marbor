@@ -1,11 +1,11 @@
-Usage: ollama-mesh key [action] [args] [flags]
+Usage: marbor key [action] [args] [flags]
 
 Actions:
   set-local-only <name> <true|false>               block (or re-allow) cloud fallback for one API key
   set-allow-local-degradation <name> <true|false>  let (or forbid) one API key receive a local alternate model
 
 Flags:
-  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
-  --username string  admin username, used to log in (env MESH_USERNAME)
-  --password string  admin password, used to log in (env MESH_PASSWORD)
+  --username string  admin username, used to log in (env MARBOR_USERNAME)
+  --password string  admin password, used to log in (env MARBOR_PASSWORD)

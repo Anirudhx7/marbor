@@ -238,13 +238,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// DELETE /v1/models/{model} - model deletion is out of scope for an inference proxy.
 	if r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/v1/models/") {
 		writeAPIError(w, http.StatusNotImplemented,
-			"this endpoint is not supported by ollama-mesh; for inference use /v1/chat/completions or /v1/completions",
+			"this endpoint is not supported by marbor; for inference use /v1/chat/completions or /v1/completions",
 			"invalid_request_error", "unsupported_endpoint")
 		return
 	}
 	if isUnsupportedOpenAIPath(r.URL.Path) {
 		writeAPIError(w, http.StatusNotImplemented,
-			"this endpoint is not supported by ollama-mesh; for inference use /v1/chat/completions or /v1/completions",
+			"this endpoint is not supported by marbor; for inference use /v1/chat/completions or /v1/completions",
 			"invalid_request_error", "unsupported_endpoint")
 		return
 	}
@@ -328,7 +328,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if modelName != requestedModelName {
-		w.Header().Set("X-Ollama-Mesh-Model-Fallback", requestedModelName+" -> "+modelName)
+		w.Header().Set("X-Marbor-Model-Fallback", requestedModelName+" -> "+modelName)
 		body = rewriteModelField(body, modelName)
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
@@ -736,7 +736,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Shared by both tryLocalDegradationChain call sites in ServeHTTP so the
 // header format, metric call, and rewrite stay in one place.
 func applyLocalDegradation(w http.ResponseWriter, body []byte, from, alt string) []byte {
-	w.Header().Set("X-Ollama-Mesh-Model-Fallback", from+" -> "+alt)
+	w.Header().Set("X-Marbor-Model-Fallback", from+" -> "+alt)
 	metrics.LocalDegradation(from, alt)
 	return rewriteModelField(body, alt)
 }
@@ -900,7 +900,7 @@ func (h *Handler) serveModels(w http.ResponseWriter) {
 		data = append(data, modelEntry{
 			ID:      name,
 			Object:  "model",
-			OwnedBy: "ollama-mesh",
+			OwnedBy: "marbor",
 			Created: now,
 			Status:  seen[name],
 		})
@@ -964,7 +964,7 @@ func (h *Handler) serveModel(w http.ResponseWriter, modelID string) {
 	out, _ := json.Marshal(modelEntry{
 		ID:      modelID,
 		Object:  "model",
-		OwnedBy: "ollama-mesh",
+		OwnedBy: "marbor",
 		Created: time.Now().Unix(),
 		Status:  status,
 	})
@@ -1012,7 +1012,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			return
 		}
 		writeAPIError(w, http.StatusNotImplemented,
-			"the Anthropic cloud provider does not support "+path+" through ollama-mesh; use an OpenAI-compatible overflow provider for this endpoint",
+			"the Anthropic cloud provider does not support "+path+" through marbor; use an OpenAI-compatible overflow provider for this endpoint",
 			"invalid_request_error", "unsupported_cloud_endpoint")
 		metrics.RequestsTotal(keyName, modelName, "cloud:"+cloud.Name, "501")
 		return

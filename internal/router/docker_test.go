@@ -112,7 +112,7 @@ func TestParseDockerContainersUsesContainerIP(t *testing.T) {
 	c.NetworkSettings.Networks = map[string]struct {
 		IPAddress string `json:"IPAddress"`
 	}{
-		"ollama-mesh_default": {IPAddress: "172.18.0.7"},
+		"marbor_default": {IPAddress: "172.18.0.7"},
 	}
 
 	nodes := parseDockerContainers([]dockerContainer{c})

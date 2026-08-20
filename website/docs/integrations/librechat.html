@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>LibreChat · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: LibreChat." />
+<title>LibreChat · marbor docs</title>
+<meta name="description" content="marbor documentation: LibreChat." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="LibreChat · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: LibreChat." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="LibreChat · marbor docs" />
+<meta property="og:description" content="marbor documentation: LibreChat." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="LibreChat · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="LibreChat · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../../index.html#features">Features</a>
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -338,10 +338,10 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">LibreChat</span></div>
     <article class="doc-content">
       <h1 id="librechat">LibreChat<a class="anchor" href="#librechat" aria-label="Link to section">#</a></h1>
-<p><a href="https://librechat.ai" target="_blank" rel="noopener">LibreChat</a> supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging - with no changes to how LibreChat works.</p>
+<p><a href="https://librechat.ai" target="_blank" rel="noopener">LibreChat</a> supports Ollama as a custom endpoint. Point it at marbor to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging - with no changes to how LibreChat works.</p>
 <hr/>
 <h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to section">#</a></h2>
-<ul><li>LibreChat running (Docker or bare-metal)</li><li>ollama-mesh running and reachable from the LibreChat host</li><li>An API key from the ollama-mesh admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
+<ul><li>LibreChat running (Docker or bare-metal)</li><li>marbor running and reachable from the LibreChat host</li><li>An API key from the marbor admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
 <hr/>
 <h2 id="librechatyaml-configuration">librechat.yaml configuration<a class="anchor" href="#librechatyaml-configuration" aria-label="Link to section">#</a></h2>
 <p>LibreChat reads endpoint config from <code>librechat.yaml</code>. Add an Ollama custom endpoint:</p>
@@ -377,11 +377,11 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
       headers:
         Authorization: &quot;Bearer sk-your-api-key&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Replace:</p>
-<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP of the ollama-mesh instance</li><li><code>sk-your-api-key</code> with a key from the admin dashboard</li><li>The model list with models available on your cluster</li></ul>
-<p>The <code>baseURL</code> uses <code>/v1</code> (OpenAI-compatible path). ollama-mesh translates these to Ollama-native requests internally.</p>
+<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP of the marbor instance</li><li><code>sk-your-api-key</code> with a key from the admin dashboard</li><li>The model list with models available on your cluster</li></ul>
+<p>The <code>baseURL</code> uses <code>/v1</code> (OpenAI-compatible path). marbor translates these to Ollama-native requests internally.</p>
 <hr/>
 <h2 id="docker-compose-setup">Docker Compose setup<a class="anchor" href="#docker-compose-setup" aria-label="Link to section">#</a></h2>
-<p>If LibreChat and ollama-mesh are on the same Docker host, use the service name as the host:</p>
+<p>If LibreChat and marbor are on the same Docker host, use the service name as the host:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code># In docker-compose.override.yml
 services:
   api:
@@ -400,7 +400,7 @@ services:
   custom:
     - name: "Ollama Mesh"
       apiKey: "sk-your-api-key"
-      baseURL: "http://ollama-mesh:11434/v1"
+      baseURL: "http://marbor:11434/v1"
       models:
         default: ["llama3.2"]
         fetch: true
@@ -409,25 +409,25 @@ services:
   custom:
     - name: &quot;Ollama Mesh&quot;
       apiKey: &quot;sk-your-api-key&quot;
-      baseURL: &quot;http://ollama-mesh:11434/v1&quot;
+      baseURL: &quot;http://marbor:11434/v1&quot;
       models:
         default: [&quot;llama3.2&quot;]
         fetch: true
       headers:
         Authorization: &quot;Bearer sk-your-api-key&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Add ollama-mesh to the same Docker network:</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code># In ollama-mesh docker-compose section
+<p>Add marbor to the same Docker network:</p>
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code># In marbor docker-compose section
 services:
   mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    image: ollama-mesh.dev:latest
     ports:
       - "11434:11434"
       - "8080:8080"
     networks:
-      - librechat_default</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# In ollama-mesh docker-compose section
+      - librechat_default</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# In marbor docker-compose section
 services:
   mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    image: ollama-mesh.dev:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
@@ -435,18 +435,18 @@ services:
       - librechat_default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="model-discovery">Model discovery<a class="anchor" href="#model-discovery" aria-label="Link to section">#</a></h2>
-<p>With <code>fetch: true</code>, LibreChat calls <code>GET /v1/models</code> on startup to populate the model list. ollama-mesh implements this endpoint - it returns all models currently loaded across healthy nodes.</p>
+<p>With <code>fetch: true</code>, LibreChat calls <code>GET /v1/models</code> on startup to populate the model list. marbor implements this endpoint - it returns all models currently loaded across healthy nodes.</p>
 <p>If <code>fetch: true</code> returns no models (nodes not yet ready), fall back to a static <code>default</code> list.</p>
 <hr/>
 <h2 id="verification">Verification<a class="anchor" href="#verification" aria-label="Link to section">#</a></h2>
-<ol><li>Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.</li><li>Send a test message.</li><li>Check the ollama-mesh request log at <code>http://&lt;mesh-host&gt;:8080</code> - the request should appear with model, node, and latency.</li></ol>
+<ol><li>Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.</li><li>Send a test message.</li><li>Check the marbor request log at <code>http://&lt;mesh-host&gt;:8080</code> - the request should appear with model, node, and latency.</li></ol>
 <p>If you see a 401, the <code>Authorization</code> header in <code>librechat.yaml</code> is missing or the key has been revoked. Regenerate from the admin dashboard.</p>
 <hr/>
 <h2 id="per-user-keys">Per-user keys<a class="anchor" href="#per-user-keys" aria-label="Link to section">#</a></h2>
 <p>For teams, create one API key per user (or one per LibreChat role) in the admin dashboard. This separates usage stats and lets you apply rate limits or model restrictions per key without affecting the shared LibreChat config.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/librechat.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/integrations/librechat.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -459,8 +459,8 @@ services:
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

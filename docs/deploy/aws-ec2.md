@@ -1,7 +1,7 @@
-# Deploy ollama-mesh on AWS EC2
+# Deploy marbor on AWS EC2
 
-Run one ollama-mesh endpoint in front of one or more Ollama GPU boxes on EC2.
-ollama-mesh is a single static binary - no runtime, no dependencies, no config
+Run one marbor endpoint in front of one or more Ollama GPU boxes on EC2.
+marbor is a single static binary - no runtime, no dependencies, no config
 file - so an EC2 deploy is "download, start a service, configure from the
 dashboard."
 
@@ -11,13 +11,13 @@ node-failure route-around, and self-healing recovery all verified live).
 ## Architecture
 
 ```
-clients ──► ollama-mesh box (cheap CPU instance, e.g. t3.small)
+clients ──► marbor box (cheap CPU instance, e.g. t3.small)
                  │  warm-first routing + auth + dashboard + metrics
                  ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
                  └──► GPU node 2  (g4dn/g5/g6, running Ollama)
 ```
 
-The mesh box does **not** need a GPU - it only routes. Put it on a small,
+The marbor box does **not** need a GPU - it only routes. Put it on a small,
 always-on instance; put Ollama on GPU instances you can scale or stop.
 
 ## 1. GPU instances (the Ollama nodes)
@@ -37,18 +37,18 @@ ollama pull llama3.2:3b
 > Request an increase under Service Quotas → EC2 → "Running On-Demand G and VT
 > instances" before launching. Approval can take hours to days.
 
-## 2. The mesh box
+## 2. The marbor box
 
 A small CPU instance (`t3.small` is plenty). Pull the release binary and point it
 at your GPU nodes' **private** IPs:
 
 ```bash
-curl -fL -o /usr/local/bin/ollama-mesh \
-  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/ollama-mesh-linux-amd64
-chmod +x /usr/local/bin/ollama-mesh
+curl -fL -o /usr/local/bin/marbor \
+  https://github.com/Anirudhx7/marbor/releases/latest/download/marbor-linux-amd64
+chmod +x /usr/local/bin/marbor
 ```
 
-systemd unit (`/etc/systemd/system/ollama-mesh.service`):
+systemd unit (`/etc/systemd/system/marbor.service`):
 
 ```ini
 [Unit]
@@ -56,17 +56,17 @@ After=network-online.target
 Wants=network-online.target
 [Service]
 WorkingDirectory=/opt
-ExecStart=/usr/local/bin/ollama-mesh --db /opt/mesh.db
+ExecStart=/usr/local/bin/marbor --db /opt/marbor.db
 Restart=always
 [Install]
 WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl daemon-reload && sudo systemctl enable --now ollama-mesh
+sudo systemctl daemon-reload && sudo systemctl enable --now marbor
 ```
 
-First boot creates a blank-slate `/opt/mesh.db`. Log in at `http://<mesh>:8080`
+First boot creates a blank-slate `/opt/marbor.db`. Log in at `http://<marbor>:8080`
 with `admin`/`admin` (forced password change on first login - do this
 immediately since the admin port is reachable from the SSH tunnel below) and,
 from **Settings**, set `admin.bind_address` to `127.0.0.1:8080` (restart
@@ -81,22 +81,22 @@ beforehand to seed the nodes automatically.
   (`ssh -L 8080:localhost:8080 ...`), or a private SG. Login is username/password
   (bcrypt-hashed, default `admin`/`admin` on first run - change it immediately);
   a successful login issues an `HttpOnly` session cookie, which is what's sensitive here.
-- **Node `:11434`** - open only from the mesh box's SG, not the internet.
+- **Node `:11434`** - open only from the marbor box's SG, not the internet.
 - Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.
 
 ## 4. Verify
 
 ```bash
-curl http://<mesh>:11434/health                          # {"status":"ok","nodes":{...}}
-curl -H "Authorization: Bearer <key>" http://<mesh>:11434/api/tags
-curl -H "Authorization: Bearer <key>" http://<mesh>:11434/api/generate \
+curl http://<marbor>:11434/health                          # {"status":"ok","nodes":{...}}
+curl -H "Authorization: Bearer <key>" http://<marbor>:11434/api/tags
+curl -H "Authorization: Bearer <key>" http://<marbor>:11434/api/generate \
      -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'
 ```
 
-Point any OpenAI-compatible client at `http://<mesh>:11434/v1` with your key.
+Point any OpenAI-compatible client at `http://<marbor>:11434/v1` with your key.
 
 ## Cost tip
 
-Only the GPU nodes are expensive. Stop them when idle - the mesh box detects the
+Only the GPU nodes are expensive. Stop them when idle - the marbor box detects the
 drop, routes around it, and auto-rejoins them when they come back (verified). Run
-the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.
+the marbor box 24/7 for a few dollars a month; scale GPU capacity independently.

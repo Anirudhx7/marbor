@@ -773,7 +773,7 @@ func (s *Server) StartPeriodicCleanup(ctx context.Context) {
 const backupCheckInterval = 15 * time.Minute
 
 // StartBackupScheduler launches a background goroutine that runs a scheduled
-// mesh.db backup (VACUUM INTO cfg.Backup.TargetDir) whenever it is enabled
+// marbor.db backup (VACUUM INTO cfg.Backup.TargetDir) whenever it is enabled
 // and due, then prunes old backup files beyond cfg.Backup.RetentionCount.
 // Call once after construction; ctx cancellation stops the ticker.
 func (s *Server) StartBackupScheduler(ctx context.Context) {
@@ -829,7 +829,7 @@ func (s *Server) runScheduledBackup(cfg config.BackupConfig) error {
 	}
 	// Staged under a .tmp suffix first (doesn't match backupFilenameRE, so
 	// pruneOldBackups/findDuplicateBackup/handleListBackups all ignore it)
-	// so a backup identical to one already on disk - e.g. mesh.db hasn't
+	// so a backup identical to one already on disk - e.g. marbor.db hasn't
 	// changed since the last scheduled run - can be discarded instead of
 	// cluttering the restore list with a byte-for-byte duplicate.
 	tmpPath := filepath.Join(cfg.TargetDir, backupFilename(time.Now())+".tmp")
@@ -927,7 +927,7 @@ func (s *Server) pruneOldBackups(dir string, retentionCount int) {
 // store itself right after every successful run, scheduled or skipped. Left
 // in, that write would poison every future backup's snapshot with the
 // previous run's own completion timestamp, so two backups of an otherwise
-// byte-for-byte-unchanged mesh.db would never hash-equal past the first.
+// byte-for-byte-unchanged marbor.db would never hash-equal past the first.
 var backupDedupIgnoredSettingsKeys = []string{"backup_last_at", "backup_last_error"}
 
 // hashBackupFile returns the SHA-256 hex digest of the file at path, used to
@@ -1011,7 +1011,7 @@ func hashBackupFile(path string) (string, error) {
 // findDuplicateBackup hashes every existing mesh-backup-*.db file in dir and
 // returns the name of one whose content matches hash, or "" if none match.
 // Used by both the scheduled backup job and the upload endpoint so a
-// byte-for-byte duplicate (mesh.db unchanged since the last backup, or an
+// byte-for-byte duplicate (marbor.db unchanged since the last backup, or an
 // operator re-uploading a file they already downloaded) never gets added to
 // the restorable pool a second time.
 func findDuplicateBackup(dir, hash string) (string, error) {
@@ -1207,7 +1207,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		// Grafana dashboard JSON download - would otherwise fall through to the
 		// SPA catch-all and return index.html instead of the dashboard.
-		mux.Handle("/grafana/ollama-mesh.json", s.noCache(http.FileServer(http.FS(sub))))
+			mux.Handle("/grafana/marbor.json", s.noCache(http.FileServer(http.FS(sub))))
 	} else {
 		fmt.Println("warn: failed to embed web UI:", err)
 	}
@@ -1875,7 +1875,7 @@ func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
 }
 
 // ReloadFromStore re-syncs live router/auth state from SQLite - the
-// mesh.db-first replacement for the old "reload config.yaml from disk"
+// marbor.db-first replacement for the old "reload config.yaml from disk"
 // behavior. Used by both handleConfigReload (POST /admin/config/reload) and
 // main.go's SIGHUP handler, since there is no file left to re-read; SQLite
 // (already the source of truth for nodes/keys/cloud providers/settings) is
@@ -2057,7 +2057,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // the GPU node to download the binary (if not already present) AND register
 // it as a persistent, auto-restarting OS service - install.sh/install.ps1's
 // ROLE=agent path (see .local/specs/node-agent.md section 12), which
-// downloads the binary then hands off to its own "ollama-mesh-agent service
+// downloads the binary then hands off to its own "marbor-agent service
 // install" self-registration subcommand (internal/nodeagent/service). unix
 // covers Linux/macOS; windows is the PowerShell equivalent for Windows
 // nodes, since a POSIX sh script can't run there. Safe to re-run for an
@@ -2071,11 +2071,11 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // POST /admin/agent/enroll.
 func nodeAgentInstallCommand(meshBaseURL string, port int, enrollCode string) (unix string, windows string) {
 	unix = fmt.Sprintf(
-		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=%s ENROLL=%s PORT=%d sh",
+		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | MARBOR_ROLE=agent MARBOR_SERVER=%s MARBOR_ENROLL=%s MARBOR_PORT=%d sh",
 		meshBaseURL, enrollCode, port,
 	)
 	windows = fmt.Sprintf(
-		`$env:ROLE="agent"; $env:MESH="%s"; $env:ENROLL="%s"; $env:PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+		`$env:MARBOR_ROLE="agent"; $env:MARBOR_SERVER="%s"; $env:MARBOR_ENROLL="%s"; $env:MARBOR_PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
 		meshBaseURL, enrollCode, port,
 	)
 	return unix, windows
@@ -5948,7 +5948,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// nodePullTimeout bounds how long ollama-mesh waits for a model pull to
+// nodePullTimeout bounds how long marbor waits for a model pull to
 // finish (direct-to-Ollama streaming read, or the agent dispatch call)
 // before giving up and marking the job failed. Model pulls, especially
 // Hugging Face-sourced GGUF files (fetched directly from huggingface.co
@@ -7555,11 +7555,11 @@ func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, backupFilename(time.Now())))
 	http.ServeFile(w, r, tmpPath)
-	s.logSystemChange(r, "manual_backup", "global", "Downloaded an on-demand mesh.db backup")
+		s.logSystemChange(r, "manual_backup", "global", "Downloaded an on-demand marbor.db backup")
 }
 
 // maxUploadedBackupSize caps a browser-uploaded backup file to 2 GiB -
-// generous for a mesh.db (typically low tens of MB) while still bounding
+// generous for a marbor.db (typically low tens of MB) while still bounding
 // disk/memory use against an abusive or mistaken upload.
 const maxUploadedBackupSize = 2 << 30 // 2 GiB
 
@@ -7592,7 +7592,7 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// ParseMultipartForm spills any part over the 32MB threshold to its own
-	// temp file under os.TempDir() - a mesh.db upload always does, since it's
+	// temp file under os.TempDir() - a marbor.db upload always does, since it's
 	// well above 32MB. That spill file is separate from tmpPath below (which
 	// this handler stages and cleans up itself) and net/http never removes
 	// it on the success path, so without this it leaks a full-size temp file
@@ -7623,7 +7623,7 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
-		writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("not a valid mesh.db backup: %v", err))
+			writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("not a valid marbor.db backup: %v", err))
 		return
 	}
 
@@ -7706,7 +7706,7 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 		switch exportType {
 		case "models":
 			w.Header().Set("Content-Type", "text/csv")
-			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="ollama-mesh-models-%s.csv"`, today))
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="marbor-models-%s.csv"`, today))
 			cw := csv.NewWriter(w)
 			_ = cw.Write([]string{"model", "local_requests", "cloud_requests", "local_pct", "saved_usd"})
 			for _, m := range s.analytics.topModels() {
@@ -7726,7 +7726,7 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 			cw.Flush()
 		default: // hourly
 			w.Header().Set("Content-Type", "text/csv")
-			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="ollama-mesh-analytics-%s.csv"`, today))
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="marbor-analytics-%s.csv"`, today))
 			cw := csv.NewWriter(w)
 			_ = cw.Write([]string{"hour", "local_requests", "cloud_requests", "saved_usd", "spent_usd"})
 			for _, b := range s.analytics.last24hBuckets() {

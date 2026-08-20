@@ -142,7 +142,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
         )}
         {forcedDemo && (
           <a
-            href="/ollama-mesh/"
+            href="/marbor/"
             className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <ArrowLeft className="w-4 h-4 shrink-0" />

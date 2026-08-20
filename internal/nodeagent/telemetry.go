@@ -1,4 +1,4 @@
-// Package nodeagent implements the ollama-mesh Node Agent Protocol v1: the
+// Package nodeagent implements the Marbor Node Agent Protocol v1: the
 // node-local execution point for the mesh. v1 ships a read-only "status"
 // resource (GPU/host/runtime facts reported back to the mesh on its existing
 // poll cycle) plus the first mutating resource (model pull) - future

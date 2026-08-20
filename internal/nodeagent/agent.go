@@ -21,7 +21,7 @@ import (
 const defaultRefreshInterval = 5 * time.Second
 
 // warnIfTokenFlagUsed prints a deprecation notice to w when the caller passed
-// --token directly (tokenFlag != ""), never for the TOKEN env var or the
+// --token directly (tokenFlag != ""), never for the MARBOR_AGENT_SECRET env var or the
 // --enroll/--mesh flow. Shared by runAgent and runServiceInstall
 // (service_cmd.go). Written to stderr (via the caller passing os.Stderr),
 // not through the logger: this is CLI UX aimed at whoever typed the flag,
@@ -31,15 +31,15 @@ func warnIfTokenFlagUsed(w io.Writer, tokenFlag string) {
 	if tokenFlag == "" {
 		return
 	}
-	fmt.Fprintln(w, "warning: --token is deprecated and will be removed in the next major release. Use the TOKEN environment variable or the ENROLL flow instead.")
+	fmt.Fprintln(w, "warning: --token is deprecated and will be removed in the next major release. Use the MARBOR_AGENT_SECRET environment variable or the MARBOR_ENROLL flow instead.")
 }
 
-// Run is the ollama-mesh-agent binary's entire entry point (called from
-// cmd/ollama-mesh-agent/main.go). version is the agent's own build version,
+// Run is the marbor-agent binary's entire entry point (called from
+// cmd/marbor-agent/main.go). version is the agent's own build version,
 // reported back as agent_version so the dashboard can tell which agent build
 // a node is running.
 //
-// "ollama-mesh-agent service ..." is dispatched here, before flag.Parse, the
+// "marbor-agent service ..." is dispatched here, before flag.Parse, the
 // same way main.go's own subcommand dispatch (e.g. "bench") checks os.Args
 // before parsing its own flag set - each subcommand owns its own flags
 // without polluting a shared namespace. See service_cmd.go.
@@ -75,16 +75,16 @@ func runAgent(args []string, version string) {
 
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
-	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the TOKEN env var instead)")
+	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the MARBOR_AGENT_SECRET env var instead)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
 	keyFlag := fs.String("key", "", "TLS private key file path, paired with --cert")
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "ollama-mesh-agent - Node Agent: node-local execution point for the mesh\n\n")
-		fmt.Fprintf(w, "Usage:\n  ollama-mesh-agent --port=<port>   (runs in the foreground; set the TOKEN env var)\n")
-		fmt.Fprintf(w, "  ollama-mesh-agent service install --port=<port>\n")
+		fmt.Fprintf(w, "marbor-agent - Node Agent: node-local execution point for the mesh\n\n")
+		fmt.Fprintf(w, "Usage:\n  marbor-agent --port=<port>   (runs in the foreground; set the MARBOR_AGENT_SECRET env var)\n")
+		fmt.Fprintf(w, "  marbor-agent service install --port=<port>\n")
 		fmt.Fprintf(w, "                                                     (installs as a persistent OS service)\n")
-		fmt.Fprintf(w, "  ollama-mesh-agent service {uninstall|start|stop|status}\n\nFlags:\n")
+		fmt.Fprintf(w, "  marbor-agent service {uninstall|start|stop|status}\n\nFlags:\n")
 		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
@@ -106,10 +106,10 @@ func runAgent(args []string, version string) {
 	warnIfTokenFlagUsed(os.Stderr, *tokenFlag)
 	token := *tokenFlag
 	if token == "" {
-		token = os.Getenv("TOKEN")
+		token = os.Getenv("MARBOR_AGENT_SECRET")
 	}
 	if token == "" {
-		winexit.Fatal("nodeagent: a token is required: pass --token=<token> or set the TOKEN environment variable")
+		winexit.Fatal("nodeagent: a token is required: pass --token=<token> or set the MARBOR_AGENT_SECRET environment variable")
 	}
 	if *refreshInterval <= 0 {
 		winexit.Fatal("nodeagent: --refresh-interval must be positive")
@@ -147,14 +147,14 @@ func runAgent(args []string, version string) {
 	// exactly like neither being set, since the listener can't serve HTTPS
 	// with only one of a cert/key pair anyway.
 	if *certFlag != "" && *keyFlag != "" {
-		log.Printf("ollama-mesh-agent %s listening on %s over HTTPS (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
+		log.Printf("marbor-agent %s listening on %s over HTTPS (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 		if err := http.ListenAndServeTLS(addr, *certFlag, *keyFlag, srv.Handler()); err != nil {
 			winexit.Fatalf("nodeagent: %v", err)
 		}
 		return
 	}
 
-	log.Printf("ollama-mesh-agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
+	log.Printf("marbor-agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		winexit.Fatalf("nodeagent: %v", err)
 	}

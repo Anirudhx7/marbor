@@ -14,13 +14,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// CurrentSchemaVersion is the mesh.db schema version this binary understands.
+// CurrentSchemaVersion is the marbor.db schema version this binary understands.
 // It is stamped into the settings table (key "schema_version") on every
 // successful migrate(). migrate() is otherwise forward-only and unversioned
 // (idempotent CREATE/ALTER, safe for older DBs) - this version check exists
 // solely to catch the opposite direction: an older binary opening a DB a
 // newer binary already wrote to. Bump only for a genuinely breaking
-// mesh.db schema change, not for ordinary additive migrations.
+// marbor.db schema change, not for ordinary additive migrations.
 const CurrentSchemaVersion = 1
 
 // sqliteStore is the SQLite-backed Store implementation.
@@ -98,7 +98,7 @@ func (s *sqliteStore) BackupTo(path string) error {
 // package-level function, not a Store method: it validates an arbitrary
 // candidate FILE (a backup sitting on disk), not the live store the caller
 // already has open. Callers (admin.go's restore handler) must call this
-// before touching the live mesh.db - a bad file has to fail loudly here,
+// before touching the live marbor.db - a bad file has to fail loudly here,
 // before any swap happens, never discovered only after the live database is
 // already gone.
 func ValidateBackupFile(path string) error {
@@ -125,7 +125,7 @@ func (s *sqliteStore) migrate() error {
 		return fmt.Errorf("migrate: create settings table: %w", err)
 	}
 	if stored := GetIntSetting(s, "schema_version", 0); stored > CurrentSchemaVersion {
-		return fmt.Errorf("mesh.db schema_version %d is newer than this binary supports (%d) - refusing to start; upgrade the binary or restore an older mesh.db backup", stored, CurrentSchemaVersion)
+		return fmt.Errorf("marbor.db schema_version %d is newer than this binary supports (%d) - refusing to start; upgrade the binary or restore an older marbor.db backup", stored, CurrentSchemaVersion)
 	}
 
 	stmts := []string{

@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend." />
+<title>Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend · marbor docs</title>
+<meta name="description" content="marbor documentation: Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend · marbor docs" />
+<meta property="og:description" content="marbor documentation: Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../index.html#features">Features</a>
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -338,17 +338,17 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend</span></div>
     <article class="doc-content">
       <h1 id="cost-deflection-analysis-local-gpu-inference-vs-cloud-api-spend">Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend<a class="anchor" href="#cost-deflection-analysis-local-gpu-inference-vs-cloud-api-spend" aria-label="Link to section">#</a></h1>
-<p>This document is the financial model behind ollama-mesh's savings tracking. It is designed for infrastructure directors and finance teams evaluating the ROI of shifting LLM inference from third-party cloud APIs to owned GPU hardware routed through ollama-mesh.</p>
-<p>Every figure in the ollama-mesh dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "-" rather than an estimate. No number is ever fabricated.</p>
+<p>This document is the financial model behind marbor's savings tracking. It is designed for infrastructure directors and finance teams evaluating the ROI of shifting LLM inference from third-party cloud APIs to owned GPU hardware routed through marbor.</p>
+<p>Every figure in the marbor dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "-" rather than an estimate. No number is ever fabricated.</p>
 <hr/>
 <h2 id="executive-summary">Executive Summary<a class="anchor" href="#executive-summary" aria-label="Link to section">#</a></h2>
 <p>An engineering organization running multi-agent LLM workflows at scale - coding copilots, RAG pipelines, automated code review, internal search - consumes millions of tokens per day. At cloud API rates, this translates to $5,000–$50,000/month in direct API spend, depending on model tier and volume.</p>
-<p>ollama-mesh enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.</p>
-<p><strong>Typical result:</strong> Platform teams running 2–4 GPU nodes with ollama-mesh report 60–85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.</p>
+<p>marbor enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.</p>
+<p><strong>Typical result:</strong> Platform teams running 2–4 GPU nodes with marbor report 60–85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.</p>
 <hr/>
 <h2 id="the-formulas">The Formulas<a class="anchor" href="#the-formulas" aria-label="Link to section">#</a></h2>
 <h3 id="local-request-savings">Local Request Savings<a class="anchor" href="#local-request-savings" aria-label="Link to section">#</a></h3>
-<p>When a request is served by a local Ollama node, ollama-mesh parses the real token count from the upstream response:</p>
+<p>When a request is served by a local Ollama node, marbor parses the real token count from the upstream response:</p>
 <ul><li><strong>Ollama NDJSON responses:</strong> <code>eval_count</code> (completion tokens) + <code>prompt_eval_count</code> (input tokens) from the final streamed object</li><li><strong>OpenAI-compatible SSE responses:</strong> <code>usage.total_tokens</code> from the terminal <code>[DONE]</code>-adjacent chunk</li></ul>
 <p>Savings for each locally-served request:</p>
 <div class="code-wrap"><pre class="code"><code>saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
@@ -410,7 +410,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <tr><td><strong>Annual net savings at $0.015/1K reference</strong></td><td><strong>$766,800/year</strong></td></tr>
 <tr><td><strong>3-year TCO advantage</strong></td><td><strong>$2,300,400</strong></td></tr></tbody>
 </table></div>
-<blockquote><strong>Note:</strong> These projections calculate the <em>difference</em> between cloud API costs and amortized local hardware costs. The hardware amortization includes purchase price, power, cooling, and rack space over a 3-year depreciation schedule. Actual savings depend on GPU utilization rates, model sizes, and local-vs-cloud traffic split. ollama-mesh's dashboard shows the <em>real</em> split based on actual parsed token counts, not these projections.</blockquote>
+<blockquote><strong>Note:</strong> These projections calculate the <em>difference</em> between cloud API costs and amortized local hardware costs. The hardware amortization includes purchase price, power, cooling, and rack space over a 3-year depreciation schedule. Actual savings depend on GPU utilization rates, model sizes, and local-vs-cloud traffic split. marbor's dashboard shows the <em>real</em> split based on actual parsed token counts, not these projections.</blockquote>
 <hr/>
 <h2 id="hardware-roi-calculator">Hardware ROI Calculator<a class="anchor" href="#hardware-roi-calculator" aria-label="Link to section">#</a></h2>
 <h3 id="break-even-analysis">Break-Even Analysis<a class="anchor" href="#break-even-analysis" aria-label="Link to section">#</a></h3>
@@ -429,14 +429,14 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <hr/>
 <h2 id="how-the-dashboard-computes-these-numbers">How the Dashboard Computes These Numbers<a class="anchor" href="#how-the-dashboard-computes-these-numbers" aria-label="Link to section">#</a></h2>
 <h3 id="data-sources">Data Sources<a class="anchor" href="#data-sources" aria-label="Link to section">#</a></h3>
-<ol><li><strong>Local token counts</strong> - parsed from the real upstream Ollama response, not estimated. ollama-mesh reads <code>eval_count</code> and <code>prompt_eval_count</code> from the final NDJSON object (Ollama native) or <code>usage.total_tokens</code> from the terminal SSE chunk (OpenAI-compatible).</li></ol>
+<ol><li><strong>Local token counts</strong> - parsed from the real upstream Ollama response, not estimated. marbor reads <code>eval_count</code> and <code>prompt_eval_count</code> from the final NDJSON object (Ollama native) or <code>usage.total_tokens</code> from the terminal SSE chunk (OpenAI-compatible).</li></ol>
 <ol><li><strong>Cloud token counts</strong> - parsed from the real cloud provider response. OpenAI and Anthropic both include usage objects in their streaming responses.</li></ol>
 <ol><li><strong>Reference rate</strong> - operator-configured on the dashboard's <strong>Settings &gt; Global Warmup &amp; Audit</strong> page (Savings reference cost). Single flat rate applied to all locally-served tokens.</li></ol>
 <ol><li><strong>Cloud rates</strong> - per-provider <code>cost_per_1k_tokens</code>, configured per cloud provider via the dashboard or the admin API.</li></ol>
 <h3 id="what---means">What "-" Means<a class="anchor" href="#what---means" aria-label="Link to section">#</a></h3>
-<p>If requests were served but no token counts could be parsed from any response - for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk - the API returns <code>null</code> and the dashboard renders "-". ollama-mesh <strong>never</strong> substitutes an estimated or random number for missing token data.</p>
+<p>If requests were served but no token counts could be parsed from any response - for example, the upstream never sent a final usage object, or the stream was aborted before the terminal chunk - the API returns <code>null</code> and the dashboard renders "-". marbor <strong>never</strong> substitutes an estimated or random number for missing token data.</p>
 <h3 id="counter-lifecycle">Counter Lifecycle<a class="anchor" href="#counter-lifecycle" aria-label="Link to section">#</a></h3>
-<p>Savings and spend counters are held in memory. Per-key token totals and quota counters are stored in-memory for zero-overhead routing and transactionally flushed to the SQLite <code>key_counters</code> table in <code>mesh.db</code> every 30 seconds and on clean shutdown. Aggregate savings counters reset on process restart. The audit log (if enabled) is the durable per-request record.</p>
+<p>Savings and spend counters are held in memory. Per-key token totals and quota counters are stored in-memory for zero-overhead routing and transactionally flushed to the SQLite <code>key_counters</code> table in <code>marbor.db</code> every 30 seconds and on clean shutdown. Aggregate savings counters reset on process restart. The audit log (if enabled) is the durable per-request record.</p>
 <hr/>
 <h2 id="configuration">Configuration<a class="anchor" href="#configuration" aria-label="Link to section">#</a></h2>
 <h3 id="setting-the-reference-rate">Setting the Reference Rate<a class="anchor" href="#setting-the-reference-rate" aria-label="Link to section">#</a></h3>
@@ -469,7 +469,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>This log is the source of truth for financial reconciliation. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/SAVINGS-MATH.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/SAVINGS-MATH.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -482,8 +482,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

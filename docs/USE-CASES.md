@@ -1,10 +1,10 @@
-# Who is ollama-mesh for?
+# Who is marbor for?
 
 The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a Node Agent for remote telemetry, model operations, and node-side maintenance.
 
-You point your apps at ollama-mesh instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible `/v1` endpoints), so existing clients work unchanged.
+You point your apps at marbor instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible `/v1` endpoints), so existing clients work unchanged.
 
-Where the Node Agent is installed on remote GPU hosts, ollama-mesh can surface richer live telemetry, perform node-side operations, and support maintenance workflows without changing the client-side API. Where it isn't installed, the core router still works and falls back to the best available telemetry.
+Where the Node Agent is installed on remote GPU hosts, marbor can surface richer live telemetry, perform node-side operations, and support maintenance workflows without changing the client-side API. Where it isn't installed, the core router still works and falls back to the best available telemetry.
 
 ---
 
@@ -12,19 +12,19 @@ Where the Node Agent is installed on remote GPU hosts, ollama-mesh can surface r
 
 ### 1. "Ollama is busy" kills your app
 
-Ollama has no queue management and no failover. When your GPU is saturated or the box is down, requests fail or hang. ollama-mesh routes those requests to a cost-aware cloud overflow target (like OpenAI or Anthropic) automatically -- your client never sees an error, and you only pay for cloud when local can't serve.
+Ollama has no queue management and no failover. When your GPU is saturated or the box is down, requests fail or hang. marbor routes those requests to a cost-aware cloud overflow target (like OpenAI or Anthropic) automatically -- your client never sees an error, and you only pay for cloud when local can't serve.
 
 **Who feels this:** anyone running an app, agent, or team workload against a single Ollama box.
 
 ### 2. Cold starts waste 30 seconds per model load
 
-With multiple Ollama nodes, a naive load balancer (nginx round-robin) sends requests to nodes that don't have the model loaded, triggering a cold load from disk every time. ollama-mesh polls `/api/ps` on every node and routes to the one that already has the model warm in VRAM.
+With multiple Ollama nodes, a naive load balancer (nginx round-robin) sends requests to nodes that don't have the model loaded, triggering a cold load from disk every time. marbor polls `/api/ps` on every node and routes to the one that already has the model warm in VRAM.
 
 **Who feels this:** homelabs and teams with 2+ GPU boxes serving more models than fit on one card.
 
 ### 3. No visibility, no control
 
-Vanilla Ollama has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. ollama-mesh adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, audit logging, and a Node Agent for remote telemetry, operations, and maintenance.
+Vanilla Ollama has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. marbor adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, audit logging, and a Node Agent for remote telemetry, operations, and maintenance.
 
 **Who feels this:** the platform engineer told "make AI work for the whole team" with on-prem GPUs and an OpenAI bill to justify.
 
@@ -40,11 +40,11 @@ Vanilla Ollama has no auth, no rate limits, no metrics, no request log. Anyone o
 
 ---
 
-## The Architecture Trade-offs: ollama-mesh vs. Plain Ollama + nginx
+## The Architecture Trade-offs: marbor vs. Plain Ollama + nginx
 
 Platform teams often attempt to orchestrate local GPU nodes using generic network load balancers (like nginx or HAProxy). The table below details why a generic proxy falls short compared to a hardware-aware scheduling layer.
 
-| Feature | Plain Ollama + nginx | ollama-mesh |
+| Feature | Plain Ollama + nginx | marbor |
 |---|---|---|
 | **Routing Intelligence** | Round-robin or least-connections (model-blind; causes constant cold-starts) | **Hardware-aware (routes to the node that already has the model warm in VRAM)** |
 | **Failover Strategy** | Static failover or raw connection drop | **Cost-aware cloud overflow (retains 100% uptime with cloud fallback only when forced)** |
@@ -60,18 +60,19 @@ Platform teams often attempt to orchestrate local GPU nodes using generic networ
 
 LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting. 
 
-Rather than a competitor, **ollama-mesh operates as a complementary layer beneath LiteLLM**. 
+Rather than a competitor, **marbor operates as a complementary layer beneath LiteLLM**. 
 
-When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while **ollama-mesh slots in directly below it as the physical scheduling and GPU orchestration layer**. 
+When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while **marbor slots in directly below it as the physical scheduling and GPU orchestration layer**. 
 
 This stack offers the best of both worlds:
 1. **LiteLLM (Gateway)**: Manages developer authentication, user quotas, and application-level routing.
-2. **ollama-mesh (Scheduler)**: Interacts directly with local GPU nodes, tracking `/api/ps` model warm-residency, managing queue depths, and executing cost-aware cloud overflow.
+2. **marbor (Scheduler)**: Interacts directly with local GPU nodes, tracking `/api/ps` model warm-residency, managing queue depths, and executing cost-aware cloud overflow.
 
 ---
 
 ## Honest limitations (current state)
 
 - GPU metrics (VRAM/temperature/power) for the local node come from `nvidia-smi` on the mesh host directly. Remote nodes get real GPU telemetry only if the optional Node Agent is installed on them (opt-in, not auto-deployed) - without it, remote GPU metrics fall back to operator-declared `vram_total_mb` or show "-". Warm-model detection works for all nodes regardless (it uses Ollama's own `/api/ps`).
-- Analytics and the request log are in-memory and reset on restart. Prometheus metrics persist, and the audit log persists to the `audit_log` table in `mesh.db` with configurable retention.
+- Analytics and the request log are in-memory and reset on restart. Prometheus metrics persist, and the audit log persists to the `audit_log` table in `marbor.db` with configurable retention.
 - Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "-", never an estimate.
+

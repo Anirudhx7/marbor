@@ -1,7 +1,7 @@
-ollama-mesh.1
-ollama-mesh-nodes.1
-ollama-mesh-models.1
-ollama-mesh-runtime.1
-ollama-mesh-node.1
-ollama-mesh-key.1
-ollama-mesh-requests.1
+marbor.1
+marbor-nodes.1
+marbor-models.1
+marbor-runtime.1
+marbor-node.1
+marbor-key.1
+marbor-requests.1

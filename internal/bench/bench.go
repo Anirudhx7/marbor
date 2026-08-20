@@ -1,4 +1,4 @@
-// Package bench implements the "ollama-mesh bench" subcommand.
+// Package bench implements the "marbor bench" subcommand.
 //
 // It measures cold vs warm Time-To-First-Token (TTFT) through the mesh proxy
 // using the OpenAI-compatible /v1/chat/completions streaming endpoint.
@@ -8,7 +8,7 @@
 //
 // Usage:
 //
-//	ollama-mesh bench --target http://localhost:11435 [--model llama3:8b] [--json] [--key <api-key>] [--timeout 120s]
+//	marbor bench --target http://localhost:11435 [--model llama3:8b] [--json] [--key <api-key>] [--timeout 120s]
 package bench
 
 import (
@@ -38,7 +38,7 @@ type Result struct {
 func Run(args []string) {
 	fs := flag.NewFlagSet("bench", flag.ExitOnError)
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "Usage: ollama-mesh bench [flags]\n\n")
+		fmt.Fprintf(w, "Usage: marbor bench [flags]\n\n")
 		fmt.Fprintf(w, "Measures cold vs warm Time-To-First-Token (TTFT) through the mesh proxy.\n")
 		fmt.Fprintf(w, "--target must point at the mesh proxy port, not an Ollama backend directly.\n\n")
 		fmt.Fprintf(w, "Flags:\n")

@@ -24,8 +24,8 @@ type loginOutput struct {
 // flag) - see newFlagSet's doc comment in cli.go; username/password (flag,
 // env, or interactive prompt) is the only input this command accepts.
 func runLogin(flags *globalFlags, stdout, stderr io.Writer) int {
-	username := resolveCred(flags.username, "MESH_USERNAME")
-	password := resolveCred(flags.password, "MESH_PASSWORD")
+	username := resolveCred(flags.username, "MARBOR_USERNAME")
+	password := resolveCred(flags.password, "MARBOR_PASSWORD")
 
 	if username != "" && password != "" {
 		return doLogin(flags, username, password, stdout, stderr)
@@ -153,7 +153,7 @@ func runWhoami(flags *globalFlags, stdout, stderr io.Writer) int {
 		return reportError(serverErrorf("could not read saved session: %v", err), stderr)
 	}
 	if session == nil {
-		return reportError(userErrorf("not logged in - run ollama-mesh login"), stderr)
+		return reportError(userErrorf("not logged in - run marbor login"), stderr)
 	}
 
 	client := NewClient(session.Server, session.Token)
@@ -166,7 +166,7 @@ func runWhoami(flags *globalFlags, stdout, stderr io.Writer) int {
 		out.Status = "active"
 	case isCLIErr && cliErr.Code == ExitAuthError:
 		out.Cached = true
-		out.Status = "session expired or invalid - run ollama-mesh login"
+		out.Status = "session expired or invalid - run marbor login"
 		if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, out); handled {
 			if code == ExitOK {
 				return ExitAuthError

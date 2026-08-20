@@ -183,8 +183,8 @@ func TestV1ModelsEndpoint(t *testing.T) {
 		if d.Object != "model" {
 			t.Errorf("data entry object = %q, want %q", d.Object, "model")
 		}
-		if d.OwnedBy != "ollama-mesh" {
-			t.Errorf("owned_by = %q, want %q", d.OwnedBy, "ollama-mesh")
+		if d.OwnedBy != "marbor" {
+			t.Errorf("owned_by = %q, want %q", d.OwnedBy, "marbor")
 		}
 	}
 

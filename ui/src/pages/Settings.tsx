@@ -422,7 +422,7 @@ export function SettingsPage() {
       };
 
       await updateSettings(payload);
-      window.dispatchEvent(new Event('ollama-mesh-settings-change'));
+      window.dispatchEvent(new Event('marbor-settings-change'));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setError(null);
@@ -1411,7 +1411,7 @@ export function SettingsPage() {
               <>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">Webhook URL</label>
-                  <input type="text" value={settings.webhookUrl} onChange={(e) => setSettings({ ...settings, webhookUrl: e.target.value })} placeholder="https://hooks.example.com/ollama-mesh" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+                  <input type="text" value={settings.webhookUrl} onChange={(e) => setSettings({ ...settings, webhookUrl: e.target.value })} placeholder="https://hooks.example.com/marbor" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">Signing Secret</label>
@@ -1710,7 +1710,7 @@ export function SettingsPage() {
               <p className="text-xs font-medium text-muted-foreground">
                 Full docs:{' '}
                 <a
-                  href="https://anirudh.social/ollama-mesh/docs/backup.html"
+                  href="https://anirudh.social/marbor/docs/backup.html"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
@@ -1734,7 +1734,7 @@ export function SettingsPage() {
                 <p className="text-[10px] text-red-500 mt-1.5">{backupDownloadError}</p>
               )}
               <p className="text-[10px] text-muted-foreground mt-1.5">
-                Downloads a consistent point-in-time copy of mesh.db to your browser, taken while the mesh keeps running.
+                Downloads a consistent point-in-time copy of marbor.db to your browser, taken while the mesh keeps running.
               </p>
               {settings.backupLastAt && (
                 <p className="text-xs text-muted-foreground mt-1.5">
@@ -1789,7 +1789,7 @@ export function SettingsPage() {
                   className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  In Docker, defaults to a separate volume from mesh.db's own data volume, so deleting one doesn't take out the other.
+                  In Docker, defaults to a separate volume from marbor.db's own data volume, so deleting one doesn't take out the other.
                 </p>
               </div>
             )}
@@ -1798,7 +1798,7 @@ export function SettingsPage() {
           <div className="mt-5 pt-5 border-t border-border">
             <p className="text-sm font-medium text-foreground mb-1">Restore from a backup</p>
             <p className="text-[10px] text-muted-foreground mb-3">
-              Swaps mesh.db for the selected file and restarts the mesh. Requires the deployment to auto-restart
+              Swaps marbor.db for the selected file and restarts the mesh. Requires the deployment to auto-restart
               on exit (systemd, Docker's <code>restart</code> policy, or Kubernetes) - otherwise start it manually
               afterward. This cannot be undone.
             </p>

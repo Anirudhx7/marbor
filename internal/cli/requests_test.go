@@ -55,7 +55,7 @@ func TestRun_RequestsExplain_MissingID(t *testing.T) {
 	if code != ExitUserError {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitUserError, code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "usage: ollama-mesh requests explain") {
+	if !strings.Contains(stderr.String(), "usage: marbor requests explain") {
 		t.Errorf("expected a usage error, got %q", stderr.String())
 	}
 }

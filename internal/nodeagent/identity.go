@@ -36,7 +36,7 @@ func nodeIDDir() string {
 			base = "."
 		}
 	}
-	dir := filepath.Join(base, "ollama-mesh-agent")
+	dir := filepath.Join(base, "marbor-agent")
 	_ = os.MkdirAll(dir, 0o755)
 	return dir
 }

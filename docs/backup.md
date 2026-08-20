@@ -1,6 +1,6 @@
 # Backup & Restore
 
-ollama-mesh is DB-first: `mesh.db` (SQLite) holds nodes, API keys, routing rules, warm-state
+marbor is DB-first: `marbor.db` (SQLite) holds nodes, API keys, routing rules, warm-state
 history, encrypted secrets, and every setting. Losing it means reconfiguring the mesh from
 scratch. This page covers taking backups and restoring one, both built into the dashboard's
 Settings > Backup & Restore card.
@@ -9,7 +9,7 @@ Settings > Backup & Restore card.
 
 ## Taking backups
 
-- **Download Backup Now** - takes an on-demand, point-in-time-consistent copy of `mesh.db` (via
+- **Download Backup Now** - takes an on-demand, point-in-time-consistent copy of `marbor.db` (via
   SQLite's `VACUUM INTO`, safe to run while the mesh keeps serving requests) and downloads it
   straight to your browser as `mesh-backup-<UTC timestamp>.db`.
 - **Scheduled Backup** - enable it, then set:
@@ -19,9 +19,9 @@ Settings > Backup & Restore card.
     above) are never touched by retention pruning - only the scheduler's own files count.
   - **Target Directory** - where scheduled backups are written on the machine running the mesh
     process. In Docker, this defaults to `/backups`, a *separate* named volume from the one
-    holding `mesh.db` (see `docker-compose.yml`) - so deleting the container, or even
+    holding `marbor.db` (see `docker-compose.yml`) - so deleting the container, or even
     `docker volume rm`-ing the data volume, doesn't take the backups down with it. On bare metal /
-    systemd, it defaults to a `backups/` directory next to `mesh.db` unless you set `MESH_BACKUP_DIR`
+    systemd, it defaults to a `backups/` directory next to `marbor.db` unless you set `MARBOR_BACKUP_DIR`
     or change it in Settings.
 
 The last scheduled-run outcome (timestamp of the last success, or the last error) is shown on the
@@ -39,7 +39,7 @@ target directory in a dropdown - pick one and click **Restore** next to it. Behi
 1. The mesh validates the file (`PRAGMA quick_check`) before touching anything - a corrupt or
    unrelated file is rejected here, before the live database is ever at risk.
 2. It gracefully drains in-flight requests (the same shutdown path a `SIGTERM` uses).
-3. It stages the full copy alongside the live `mesh.db` first, and only swaps it in via an atomic
+3. It stages the full copy alongside the live `marbor.db` first, and only swaps it in via an atomic
    rename once the copy is proven complete - a failure mid-copy leaves the *live* database
    untouched, never truncated or half-written.
 4. It exits the process on purpose, with a non-zero status.
@@ -52,7 +52,7 @@ the mesh does not restart itself; it relies on whatever already supervises it:
 | Docker / Docker Compose | a `restart` policy | `docker-compose.yml` ships with `restart: unless-stopped` |
 | systemd | `Restart=on-failure` (or `always`) | already in the example unit in [`PRODUCTION.md`](PRODUCTION.md) |
 | Kubernetes | default `restartPolicy` | `Always` by default for a Deployment - nothing extra needed |
-| A bare `./ollama-mesh` with no supervisor | none available | **will not come back on its own** - see below |
+| A bare `./marbor` with no supervisor | none available | **will not come back on its own** - see below |
 
 If you're running the binary directly with nothing supervising it (no systemd unit, no Docker, no
 Kubernetes), a one-click restore will stop the mesh and it will stay stopped until you start it
@@ -69,7 +69,7 @@ Pick a file and it uploads to the mesh, which validates it's a genuine SQLite da
 saves it into the same target directory as scheduled/manual backups, under the standard
 `mesh-backup-<timestamp>.db` name. It then appears in the dropdown like any other backup and can
 be restored the same way. A spinner replaces the **+** icon while the upload is in flight; an
-invalid file (wrong format, corrupt, not a mesh.db backup at all) is rejected with an error and
+invalid file (wrong format, corrupt, not a marbor.db backup at all) is rejected with an error and
 never touches the target directory.
 
 ### Fully manual alternative
@@ -83,33 +83,35 @@ from, regardless of where it currently lives.
 **Bare metal / systemd:**
 
 ```bash
-sudo systemctl stop ollama-mesh
-sudo cp /path/to/mesh-backup-20260730-140000.db /opt/ollama-mesh/mesh.db
-sudo systemctl start ollama-mesh
+sudo systemctl stop marbor
+sudo cp /path/to/mesh-backup-20260730-140000.db /opt/marbor/marbor.db
+sudo systemctl start marbor
 ```
 
-Replace `/opt/ollama-mesh/mesh.db` with whatever path you actually run with (`--db` flag or
-`MESH_DB_PATH`) - not necessarily this exact path.
+Replace `/opt/marbor/marbor.db` with whatever path you actually run with (`--db` flag or
+`MARBOR_DB_PATH`) - not necessarily this exact path.
 
 **Docker / Docker Compose:**
 
 ```bash
-docker compose stop ollama-mesh
-docker cp ./mesh-backup-20260730-140000.db ollama-mesh:/data/mesh.db
-docker compose start ollama-mesh
+docker compose stop marbor
+docker cp ./mesh-backup-20260730-140000.db marbor:/data/marbor.db
+docker compose start marbor
 ```
 
 If the file is already inside the container (e.g. a scheduled backup under `/backups`), copy it
 inside instead of using `docker cp`:
 
 ```bash
-docker compose stop ollama-mesh
-docker compose run --rm --entrypoint sh ollama-mesh -c "cp /backups/mesh-backup-20260730-140000.db /data/mesh.db"
-docker compose start ollama-mesh
+docker compose stop marbor
+docker compose run --rm --entrypoint sh marbor -c "cp /backups/mesh-backup-20260730-140000.db /data/marbor.db"
+docker compose start marbor
 ```
 
 Either way, the container must be **stopped** first, since SQLite's WAL sidecar files
-(`mesh.db-wal`, `mesh.db-shm`) would otherwise still be attached to the old database.
+(`marbor.db-wal`, `marbor.db-shm`) would otherwise still be attached to the old database.
 
 **Kubernetes:** scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a
 temporary debug pod with the same PVC mounted, or `kubectl cp` into that pod), then scale back to 1.
+
+

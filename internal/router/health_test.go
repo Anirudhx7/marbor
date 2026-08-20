@@ -19,7 +19,7 @@ func (panicProbe) Probe(ctx context.Context, nodeURL string) (runtimepkg.ProbeRe
 // TestPollNode_RecoversFromProbePanic guards the reliability boundary added
 // after a nil-probe bug crashed the whole mesh process on boot (a single
 // persisted node record took down the entire single-process mesh, locking
-// the operator out until they wiped mesh.db). No single node's poll -
+// the operator out until they wiped marbor.db). No single node's poll -
 // whatever the cause - may ever be allowed to panic the process again;
 // pollNode must recover, mark that node failed, and let the poll loop
 // retry it next cycle instead.

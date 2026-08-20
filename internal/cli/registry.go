@@ -193,9 +193,9 @@ func (c *Command) MaxArgs() int {
 }
 
 // Path walks the parent chain and returns the full invocation path, e.g.
-// "ollama-mesh models pull". Requires finalize to have run first (parent
+// "marbor models pull". Requires finalize to have run first (parent
 // pointers set); before that it returns just c.Name. The root command's own
-// Name ("ollama-mesh") supplies the leading token - callers must not also
+// Name ("marbor") supplies the leading token - callers must not also
 // prepend it.
 func (c *Command) Path() string {
 	var parts []string
@@ -207,7 +207,7 @@ func (c *Command) Path() string {
 
 // UsageLine renders a one-line "usage: <path> <args> [flags]" string from
 // Args, matching the hand-written usage strings already used throughout
-// cli.go (e.g. "usage: ollama-mesh models pull <node> <model> [flags]").
+// cli.go (e.g. "usage: marbor models pull <node> <model> [flags]").
 func (c *Command) UsageLine() string {
 	var b strings.Builder
 	b.WriteString("usage: ")

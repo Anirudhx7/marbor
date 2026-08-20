@@ -123,8 +123,8 @@ type HuggingFaceConfig struct {
 	Token string `yaml:"token" json:"token"`
 }
 
-// BackupConfig controls the scheduled mesh.db backup job (P49). TargetDir is
-// seeded from the MESH_BACKUP_DIR env var (or a "backups" dir next to the
+// BackupConfig controls the scheduled marbor.db backup job (P49). TargetDir is
+// seeded from the MARBOR_BACKUP_DIR env var (or a "backups" dir next to the
 // database) before an operator ever opens Settings, so an out-of-the-box
 // Docker deployment backs up correctly with zero configuration - see
 // docker-compose.yml's separate "mesh-backups" volume, kept distinct from the
@@ -159,7 +159,7 @@ type SavingsConfig struct {
 type WebhookConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
 	URL     string `yaml:"url" json:"url"`
-	// Secret is used to compute an HMAC-SHA256 signature sent as X-Ollama-Mesh-Signature.
+	// Secret is used to compute an HMAC-SHA256 signature sent as X-Marbor-Signature.
 	Secret string `yaml:"secret" json:"secret"`
 }
 

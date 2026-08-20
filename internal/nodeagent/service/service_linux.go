@@ -22,14 +22,14 @@ const systemdUnitDir = "/etc/systemd/system"
 // root-only (0600) so no local unprivileged user can read it - unlike the
 // unit file itself (0644 by systemd convention) or the process's own argv,
 // both of which are readable by any local user.
-const tokenEnvFilePath = "/etc/ollama-mesh-agent.env"
+const tokenEnvFilePath = "/etc/marbor-agent.env"
 
 // agentCertPath/agentKeyPath are the Node Agent's TLS certificate/key file
 // locations on Linux (P24), mirroring tokenEnvFilePath's precedent exactly:
 // same directory, same 0600-secret-file treatment for the key.
 const (
-	agentCertPath = "/etc/ollama-mesh-agent.crt"
-	agentKeyPath  = "/etc/ollama-mesh-agent.key"
+	agentCertPath = "/etc/marbor-agent.crt"
+	agentKeyPath  = "/etc/marbor-agent.key"
 )
 
 // CertKeyPaths returns this platform's Node Agent TLS certificate/key file
@@ -73,7 +73,7 @@ func systemdUnitContent(cfg Config) string {
 	execStart := strings.Join(parts, " ")
 
 	return fmt.Sprintf(`[Unit]
-Description=ollama-mesh Node Agent
+Description=Marbor Node Agent
 After=network-online.target
 Wants=network-online.target
 

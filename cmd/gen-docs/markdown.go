@@ -15,7 +15,7 @@ import (
 
 func generateMarkdown(root *cli.Command) error {
 	var b strings.Builder
-	b.WriteString("# ollama-mesh CLI Reference\n\n")
+	b.WriteString("# marbor CLI Reference\n\n")
 	b.WriteString("Generated from the CLI command registry (`internal/cli`) by `cmd/gen-docs` - " +
 		"do not edit by hand; run `make docs` after changing the registry.\n\n")
 
@@ -34,15 +34,15 @@ func generateMarkdown(root *cli.Command) error {
 	fmt.Fprintf(&b, "- `%d` - authentication error (missing, invalid, or expired credentials)\n\n", cli.ExitAuthError)
 
 	b.WriteString("## Environment\n\n")
-	b.WriteString("- `MESH_SERVER` - Admin API base URL, used when `--server` is not given\n")
-	b.WriteString("- `MESH_USERNAME` - admin username, used when `--username` is not given\n")
-	b.WriteString("- `MESH_PASSWORD` - admin password, used when `--password` is not given\n\n")
+	b.WriteString("- `MARBOR_SERVER` - Admin API base URL, used when `--server` is not given\n")
+	b.WriteString("- `MARBOR_USERNAME` - admin username, used when `--username` is not given\n")
+	b.WriteString("- `MARBOR_PASSWORD` - admin password, used when `--password` is not given\n\n")
 
 	b.WriteString("## Files\n\n")
-	b.WriteString("The session saved by `ollama-mesh login` (mode `0600`), under the OS user " +
-		"config dir - e.g. `~/.config/ollama-mesh/session` on Linux, " +
-		"`~/Library/Application Support/ollama-mesh/session` on macOS, " +
-		"`%AppData%\\ollama-mesh\\session` on Windows.\n\n")
+	b.WriteString("The session saved by `marbor login` (mode `0600`), under the OS user " +
+		"config dir - e.g. `~/.config/marbor/session` on Linux, " +
+		"`~/Library/Application Support/marbor/session` on macOS, " +
+		"`%AppData%\\marbor\\session` on Windows.\n\n")
 
 	b.WriteString("## Commands\n\n")
 	for _, c := range root.Sub {
@@ -66,7 +66,7 @@ func writeMarkdownCommand(b *strings.Builder, c *cli.Command, level int) {
 		fmt.Fprintf(b, "%s\n\n", c.Long)
 	}
 	if c.NeedsAuth {
-		b.WriteString("Requires authentication - see the root README's CLI auth section, or run `ollama-mesh login`.\n\n")
+		b.WriteString("Requires authentication - see the root README's CLI auth section, or run `marbor login`.\n\n")
 	}
 
 	if flags := visibleFlags(c); len(flags) > 0 {

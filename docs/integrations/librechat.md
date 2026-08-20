@@ -1,14 +1,14 @@
 # LibreChat
 
-[LibreChat](https://librechat.ai) supports Ollama as a custom endpoint. Point it at ollama-mesh to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging - with no changes to how LibreChat works.
+[LibreChat](https://librechat.ai) supports Ollama as a custom endpoint. Point it at marbor to get warm-first routing across multiple GPU nodes, cost-aware cloud overflow, and full request logging - with no changes to how LibreChat works.
 
 ---
 
 ## Prerequisites
 
 - LibreChat running (Docker or bare-metal)
-- ollama-mesh running and reachable from the LibreChat host
-- An API key from the ollama-mesh admin dashboard (`http://<mesh-host>:8080`)
+- marbor running and reachable from the LibreChat host
+- An API key from the marbor admin dashboard (`http://<marbor-host>:8080`)
 
 ---
 
@@ -19,9 +19,9 @@ LibreChat reads endpoint config from `librechat.yaml`. Add an Ollama custom endp
 ```yaml
 endpoints:
   custom:
-    - name: "Ollama Mesh"
+    - name: "Marbor"
       apiKey: "sk-your-api-key"
-      baseURL: "http://<mesh-host>:11434/v1"
+      baseURL: "http://<marbor-host>:11434/v1"
       models:
         default: ["llama3.2", "mistral-nemo", "deepseek-coder-v2"]
         fetch: true
@@ -36,17 +36,17 @@ endpoints:
 ```
 
 Replace:
-- `<mesh-host>` with the hostname or IP of the ollama-mesh instance
+- `<marbor-host>` with the hostname or IP of the marbor instance
 - `sk-your-api-key` with a key from the admin dashboard
 - The model list with models available on your cluster
 
-The `baseURL` uses `/v1` (OpenAI-compatible path). ollama-mesh translates these to Ollama-native requests internally.
+The `baseURL` uses `/v1` (OpenAI-compatible path). marbor translates these to Ollama-native requests internally.
 
 ---
 
 ## Docker Compose setup
 
-If LibreChat and ollama-mesh are on the same Docker host, use the service name as the host:
+If LibreChat and marbor are on the same Docker host, use the service name as the host:
 
 ```yaml
 # In docker-compose.override.yml
@@ -63,9 +63,9 @@ services:
 ```yaml
 endpoints:
   custom:
-    - name: "Ollama Mesh"
+    - name: "Marbor"
       apiKey: "sk-your-api-key"
-      baseURL: "http://ollama-mesh:11434/v1"
+      baseURL: "http://marbor:11434/v1"
       models:
         default: ["llama3.2"]
         fetch: true
@@ -73,13 +73,13 @@ endpoints:
         Authorization: "Bearer sk-your-api-key"
 ```
 
-Add ollama-mesh to the same Docker network:
+Add marbor to the same Docker network:
 
 ```yaml
-# In ollama-mesh docker-compose section
+# In marbor docker-compose section
 services:
-  mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ghcr.io/anirudhx7/marbor:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -91,7 +91,7 @@ services:
 
 ## Model discovery
 
-With `fetch: true`, LibreChat calls `GET /v1/models` on startup to populate the model list. ollama-mesh implements this endpoint - it returns all models currently loaded across healthy nodes.
+With `fetch: true`, LibreChat calls `GET /v1/models` on startup to populate the model list. marbor implements this endpoint - it returns all models currently loaded across healthy nodes.
 
 If `fetch: true` returns no models (nodes not yet ready), fall back to a static `default` list.
 
@@ -99,9 +99,9 @@ If `fetch: true` returns no models (nodes not yet ready), fall back to a static 
 
 ## Verification
 
-1. Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.
+1. Start LibreChat and select "Marbor" from the endpoint dropdown.
 2. Send a test message.
-3. Check the ollama-mesh request log at `http://<mesh-host>:8080` - the request should appear with model, node, and latency.
+3. Check the marbor request log at `http://<marbor-host>:8080` - the request should appear with model, node, and latency.
 
 If you see a 401, the `Authorization` header in `librechat.yaml` is missing or the key has been revoked. Regenerate from the admin dashboard.
 

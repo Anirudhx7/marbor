@@ -385,8 +385,8 @@ func TestProxyQuantizationFallback_SubstitutesWhenPrimaryDoesNotFit(t *testing.T
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	if want := "llama3.1:70b -> llama3.1:70b-q4_K_M"; rec.Header().Get("X-Ollama-Mesh-Model-Fallback") != want {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want %q", rec.Header().Get("X-Ollama-Mesh-Model-Fallback"), want)
+	if want := "llama3.1:70b -> llama3.1:70b-q4_K_M"; rec.Header().Get("X-Marbor-Model-Fallback") != want {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want %q", rec.Header().Get("X-Marbor-Model-Fallback"), want)
 	}
 	if gotModel != "llama3.1:70b-q4_K_M" {
 		t.Errorf("backend received model = %q, want llama3.1:70b-q4_K_M", gotModel)
@@ -435,8 +435,8 @@ func TestProxyQuantizationFallback_NoSubstitutionWhenPrimaryFits(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (primary model fits)", got)
+	if got := rec.Header().Get("X-Marbor-Model-Fallback"); got != "" {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want empty (primary model fits)", got)
 	}
 	if gotModel != "llama3.1:70b" {
 		t.Errorf("backend received model = %q, want llama3.1:70b (no substitution)", gotModel)
@@ -508,7 +508,7 @@ func TestLocalDegradation_OptInResolvesToHealthyAlt(t *testing.T) {
 	h := NewHandler(r, a, nil)
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
-	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req.Header.Set("X-Marbor-Allow-Local-Degradation", "true")
 	req = withKeyName(h, req, "test-key", []config.KeyConfig{
 		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
 	})
@@ -518,8 +518,8 @@ func TestLocalDegradation_OptInResolvesToHealthyAlt(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
 	}
-	if want := "big-model -> small-model"; rec.Header().Get("X-Ollama-Mesh-Model-Fallback") != want {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want %q", rec.Header().Get("X-Ollama-Mesh-Model-Fallback"), want)
+	if want := "big-model -> small-model"; rec.Header().Get("X-Marbor-Model-Fallback") != want {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want %q", rec.Header().Get("X-Marbor-Model-Fallback"), want)
 	}
 	if got, _ := gotModel.Load().(string); got != "small-model" {
 		t.Errorf("backend last received model = %q, want small-model", got)
@@ -567,7 +567,7 @@ func TestLocalDegradation_KeyNotAllowedFallsToCloud(t *testing.T) {
 	// The legacy header is sent (and would have opted this request in under
 	// the old design) but the key's policy does not grant the permission, so
 	// it must be ignored entirely.
-	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req.Header.Set("X-Marbor-Allow-Local-Degradation", "true")
 	req = withKeyName(h, req, "test-key", []config.KeyConfig{
 		{Name: "test-key", Key: "test-key", AllowLocalDegradation: false},
 	})
@@ -577,8 +577,8 @@ func TestLocalDegradation_KeyNotAllowedFallsToCloud(t *testing.T) {
 	if rec.Code == http.StatusOK {
 		t.Fatalf("status = 200, want a failure status - key policy does not allow degradation and no cloud is configured")
 	}
-	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (key policy denies degradation)", got)
+	if got := rec.Header().Get("X-Marbor-Model-Fallback"); got != "" {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want empty (key policy denies degradation)", got)
 	}
 	if gotModel != "big-model" {
 		t.Errorf("backend received model = %q, want big-model (no substitution attempted)", gotModel)
@@ -587,7 +587,7 @@ func TestLocalDegradation_KeyNotAllowedFallsToCloud(t *testing.T) {
 
 // TestLocalDegradation_HeaderCannotOverrideKeyPolicy is a direct regression
 // test for the code-review finding this change addresses: a client sending
-// the legacy X-Ollama-Mesh-Allow-Local-Degradation header must never be able
+// the legacy X-Marbor-Allow-Local-Degradation header must never be able
 // to grant itself a permission the operator did not configure for its key.
 // Unlike TestLocalDegradation_KeyNotAllowedFallsToCloud (where cloud is
 // simply absent), this reuses the exact healthy-alternate fleet from
@@ -634,7 +634,7 @@ func TestLocalDegradation_HeaderCannotOverrideKeyPolicy(t *testing.T) {
 	h := NewHandler(r, a, nil)
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
-	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req.Header.Set("X-Marbor-Allow-Local-Degradation", "true")
 	// AllowLocalDegradation omitted -> defaults to false.
 	req = withKeyName(h, req, "test-key", []config.KeyConfig{
 		{Name: "test-key", Key: "test-key"},
@@ -645,8 +645,8 @@ func TestLocalDegradation_HeaderCannotOverrideKeyPolicy(t *testing.T) {
 	if rec.Code == http.StatusOK {
 		t.Fatalf("status = 200, want a failure status - the header must not be able to grant degradation the key's policy denies")
 	}
-	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty - header alone must not authorize substitution", got)
+	if got := rec.Header().Get("X-Marbor-Model-Fallback"); got != "" {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want empty - header alone must not authorize substitution", got)
 	}
 	if got, _ := gotModel.Load().(string); got != "big-model" {
 		t.Errorf("backend last received model = %q, want big-model (no substitution attempted)", got)
@@ -677,7 +677,7 @@ func TestLocalDegradation_ChainExhaustedFallsToCloud(t *testing.T) {
 	h := NewHandler(r, a, nil)
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
-	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req.Header.Set("X-Marbor-Allow-Local-Degradation", "true")
 	req = withKeyName(h, req, "test-key", []config.KeyConfig{
 		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
 	})
@@ -687,8 +687,8 @@ func TestLocalDegradation_ChainExhaustedFallsToCloud(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503; body: %s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty (chain exhausted, no substitution)", got)
+	if got := rec.Header().Get("X-Marbor-Model-Fallback"); got != "" {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want empty (chain exhausted, no substitution)", got)
 	}
 }
 
@@ -732,7 +732,7 @@ func TestLocalDegradation_CyclicChainDoesNotHang(t *testing.T) {
 	h := NewHandler(r, a, nil)
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"model-a","prompt":"hi"}`)))
-	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req.Header.Set("X-Marbor-Allow-Local-Degradation", "true")
 	req = withKeyName(h, req, "test-key", []config.KeyConfig{
 		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
 	})
@@ -753,8 +753,8 @@ func TestLocalDegradation_CyclicChainDoesNotHang(t *testing.T) {
 	if rec.Code == http.StatusOK {
 		t.Fatalf("status = 200, want a failure status; every node always fails, so no substitution can succeed")
 	}
-	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "model-a -> model-b" {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want exactly one hop (model-a -> model-b)", got)
+	if got := rec.Header().Get("X-Marbor-Model-Fallback"); got != "model-a -> model-b" {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want exactly one hop (model-a -> model-b)", got)
 	}
 }
 
@@ -793,7 +793,7 @@ func TestLocalDegradation_RespectsPerKeyAllowList(t *testing.T) {
 	h := NewHandler(r, a, nil)
 
 	req := httptest.NewRequest("POST", "/api/generate", bytes.NewReader([]byte(`{"model":"big-model","prompt":"hi"}`)))
-	req.Header.Set("X-Ollama-Mesh-Allow-Local-Degradation", "true")
+	req.Header.Set("X-Marbor-Allow-Local-Degradation", "true")
 	req = withKeyName(h, req, "test-key", []config.KeyConfig{
 		{Name: "test-key", Key: "test-key", AllowLocalDegradation: true},
 	})
@@ -803,8 +803,8 @@ func TestLocalDegradation_RespectsPerKeyAllowList(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if got := rec.Header().Get("X-Ollama-Mesh-Model-Fallback"); got != "" {
-		t.Errorf("X-Ollama-Mesh-Model-Fallback = %q, want empty - the only alternate is outside the key's allow-list", got)
+	if got := rec.Header().Get("X-Marbor-Model-Fallback"); got != "" {
+		t.Errorf("X-Marbor-Model-Fallback = %q, want empty - the only alternate is outside the key's allow-list", got)
 	}
 	if rec.Code == http.StatusOK {
 		t.Fatalf("status = 200, want a failure status; the only local alternate is not in the key's allow-list")

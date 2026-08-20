@@ -51,7 +51,7 @@ export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
                 <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
               </svg>
             </div>
-            <h1 className="text-xl font-semibold text-foreground">ollama-mesh</h1>
+            <h1 className="text-xl font-semibold text-foreground">Marbor</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {mode === 'user' ? 'Sign in to the user portal' : 'Sign in to the admin dashboard'}
             </p>

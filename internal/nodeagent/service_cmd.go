@@ -17,17 +17,17 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/winexit"
 )
 
-// runServiceCommand dispatches "ollama-mesh-agent service <subcommand>".
+// runServiceCommand dispatches "marbor-agent service <subcommand>".
 // Each subcommand owns its own flag set, same pattern as Run's top-level
 // dispatch in main.go.
 func runServiceCommand(args []string, version string) {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Println("Usage: ollama-mesh-agent service {install|uninstall|start|stop|status|regen-cert} [flags]")
-		fmt.Println(`Run "ollama-mesh-agent service <subcommand> --help" for flags specific to that subcommand.`)
+		fmt.Println("Usage: marbor-agent service {install|uninstall|start|stop|status|regen-cert} [flags]")
+		fmt.Println(`Run "marbor-agent service <subcommand> --help" for flags specific to that subcommand.`)
 		return
 	}
 	if len(args) == 0 {
-		winexit.Fatal("nodeagent: usage: ollama-mesh-agent service {install|uninstall|start|stop|status|regen-cert}")
+		winexit.Fatal("nodeagent: usage: marbor-agent service {install|uninstall|start|stop|status|regen-cert}")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
@@ -51,14 +51,14 @@ func runServiceCommand(args []string, version string) {
 func runServiceInstall(args []string, version string) {
 	fs := flag.NewFlagSet("agent service install", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port for the installed service to serve /v1/status and /metrics on")
-	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the TOKEN env var instead)")
-	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the mesh admin UI, exchanged for the real token (or set the ENROLL env var); requires --mesh")
-	meshFlag := fs.String("mesh", "", "mesh admin base URL, required together with --enroll (or set the MESH env var)")
+	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the MARBOR_AGENT_SECRET env var instead)")
+	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the mesh admin UI, exchanged for the real token (or set the MARBOR_ENROLL env var); requires --mesh")
+	meshFlag := fs.String("mesh", "", "mesh admin base URL, required together with --enroll (or set the MARBOR_SERVER env var)")
 	refreshInterval := fs.Duration("refresh-interval", 0, "how often the installed service re-collects telemetry (default: the agent's own built-in default)")
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "ollama-mesh-agent service install - register the Node Agent as a persistent, auto-restarting OS service\n\n")
-		fmt.Fprintf(w, "Usage:\n  ollama-mesh-agent service install --port=<port>   (set the TOKEN env var)\n")
-		fmt.Fprintf(w, "  ollama-mesh-agent service install --port=<port> --enroll=<code> --mesh=<url>\n\n")
+		fmt.Fprintf(w, "marbor-agent service install - register the Node Agent as a persistent, auto-restarting OS service\n\n")
+		fmt.Fprintf(w, "Usage:\n  marbor-agent service install --port=<port>   (set the MARBOR_AGENT_SECRET env var)\n")
+		fmt.Fprintf(w, "  marbor-agent service install --port=<port> --enroll=<code> --mesh=<url>\n\n")
 		fmt.Fprintf(w, "Safe to re-run: re-installing (e.g. after a binary upgrade, or to rotate the token)\n")
 		fmt.Fprintf(w, "reconfigures and restarts the existing service rather than requiring uninstall first.\n\nFlags:\n")
 		fs.SetOutput(w)
@@ -82,23 +82,23 @@ func runServiceInstall(args []string, version string) {
 	warnIfTokenFlagUsed(os.Stderr, *tokenFlag)
 	token := *tokenFlag
 	if token == "" {
-		token = os.Getenv("TOKEN")
+		token = os.Getenv("MARBOR_AGENT_SECRET")
 	}
 	enroll := *enrollFlag
 	if enroll == "" {
-		enroll = os.Getenv("ENROLL")
+		enroll = os.Getenv("MARBOR_ENROLL")
 	}
 	mesh := *meshFlag
 	if mesh == "" {
-		mesh = os.Getenv("MESH")
+		mesh = os.Getenv("MARBOR_SERVER")
 	}
 
 	if token == "" && enroll == "" {
-		winexit.Fatal("nodeagent: a token is required: pass --token=<token>/TOKEN env var, or --enroll=<code>/ENROLL env var with --mesh=<url>/MESH env var")
+		winexit.Fatal("nodeagent: a token is required: pass --token=<token>/MARBOR_AGENT_SECRET env var, or --enroll=<code>/MARBOR_ENROLL env var with --mesh=<url>/MARBOR_SERVER env var")
 	}
 	if token == "" {
 		if mesh == "" {
-			winexit.Fatal("nodeagent: --enroll requires --mesh=<mesh admin base URL> (or the MESH environment variable)")
+			winexit.Fatal("nodeagent: --enroll requires --mesh=<mesh admin base URL> (or the MARBOR_SERVER environment variable)")
 		}
 		exchanged, err := exchangeEnrollmentCode(mesh, enroll)
 		if err != nil {
@@ -125,7 +125,7 @@ func runServiceInstall(args []string, version string) {
 	if err := mgr.Install(cfg); err != nil {
 		winexit.Fatalf("nodeagent: service install failed: %v", err)
 	}
-	log.Printf("ollama-mesh-agent %s installed as a persistent service (%s), listening on port %d and enabled to restart on boot/failure.", version, service.Name, *port)
+	log.Printf("marbor-agent %s installed as a persistent service (%s), listening on port %d and enabled to restart on boot/failure.", version, service.Name, *port)
 }
 
 // exchangeEnrollmentCode calls the mesh's POST /admin/agent/enroll endpoint
@@ -133,7 +133,7 @@ func runServiceInstall(args []string, version string) {
 // permanent bearer token (P50). This is the agent's first-ever outbound
 // call to the mesh - normally the mesh polls the agent, never the reverse -
 // so meshBaseURL must be supplied explicitly by the operator (via --mesh or
-// the MESH env var); the agent has no other way to know the mesh's address.
+// the MARBOR_SERVER env var); the agent has no other way to know the mesh's address.
 func exchangeEnrollmentCode(meshBaseURL, code string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -192,7 +192,7 @@ func runServiceUninstall(args []string) {
 	if err := mgr.Uninstall(*purge); err != nil {
 		winexit.Fatalf("nodeagent: service uninstall failed: %v", err)
 	}
-	log.Printf("ollama-mesh-agent service (%s) uninstalled.", service.Name)
+	log.Printf("marbor-agent service (%s) uninstalled.", service.Name)
 }
 
 func runServiceControl(args []string, action string) {
@@ -207,7 +207,7 @@ func runServiceControl(args []string, action string) {
 			if action == "stop" {
 				verb = "Stops"
 			}
-			fmt.Printf("Usage: ollama-mesh-agent service %s\n\n%s the already-installed Node Agent OS service. Takes no flags.\n", action, verb)
+			fmt.Printf("Usage: marbor-agent service %s\n\n%s the already-installed Node Agent OS service. Takes no flags.\n", action, verb)
 			return
 		}
 	}
@@ -231,7 +231,7 @@ func runServiceControl(args []string, action string) {
 	if doErr != nil {
 		winexit.Fatalf("nodeagent: service %s failed: %v", action, doErr)
 	}
-	log.Printf("ollama-mesh-agent service (%s) %s.", service.Name, pastTense)
+	log.Printf("marbor-agent service (%s) %s.", service.Name, pastTense)
 }
 
 func runServiceStatus(args []string) {
@@ -242,7 +242,7 @@ func runServiceStatus(args []string) {
 	// succeeds even when unwanted, which made the bug easy to miss.
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
-			fmt.Println("Usage: ollama-mesh-agent service status")
+			fmt.Println("Usage: marbor-agent service status")
 			fmt.Println("\nPrints the installed Node Agent OS service's current status. Takes no flags.")
 			return
 		}
@@ -289,7 +289,7 @@ func runServiceStatus(args []string) {
 func runServiceRegenCert(args []string) {
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
-			fmt.Println("Usage: ollama-mesh-agent service regen-cert")
+			fmt.Println("Usage: marbor-agent service regen-cert")
 			fmt.Println("\nForcibly regenerates the installed Node Agent's TLS certificate and key,")
 			fmt.Println("then restarts the service so the new certificate takes effect. This")
 			fmt.Println("invalidates any fingerprint the mesh has pinned for this node - re-run the")
@@ -322,8 +322,8 @@ func runServiceRegenCert(args []string) {
 	if err != nil {
 		// The regeneration and restart already succeeded; failing to read
 		// back the fingerprint for display is not itself a command failure.
-		log.Printf("ollama-mesh-agent service (%s) TLS certificate regenerated and service restarted, but could not read back the new fingerprint: %v", service.Name, err)
+		log.Printf("marbor-agent service (%s) TLS certificate regenerated and service restarted, but could not read back the new fingerprint: %v", service.Name, err)
 		return
 	}
-	log.Printf("ollama-mesh-agent service (%s) TLS certificate regenerated (new fingerprint: %s) and service restarted. Re-confirm and re-pin this node from the mesh admin UI/CLI.", service.Name, fingerprint)
+	log.Printf("marbor-agent service (%s) TLS certificate regenerated (new fingerprint: %s) and service restarted. Re-confirm and re-pin this node from the mesh admin UI/CLI.", service.Name, fingerprint)
 }

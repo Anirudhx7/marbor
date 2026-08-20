@@ -1,10 +1,10 @@
-Usage: ollama-mesh requests [action] [args] [flags]
+Usage: marbor requests [action] [args] [flags]
 
 Actions:
   explain <request-id>  show why the router picked the node it did for one request
 
 Flags:
-  --server string    Admin API base URL (default "http://localhost:8080", env MESH_SERVER)
+  --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
-  --username string  admin username, used to log in (env MESH_USERNAME)
-  --password string  admin password, used to log in (env MESH_PASSWORD)
+  --username string  admin username, used to log in (env MARBOR_USERNAME)
+  --password string  admin password, used to log in (env MARBOR_PASSWORD)

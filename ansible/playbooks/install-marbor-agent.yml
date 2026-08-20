@@ -1,13 +1,13 @@
 ---
-# Enrolls and installs the ollama-mesh Node Agent on N already-registered
+# Enrolls and installs the Marbor Agent on N already-registered
 # GPU nodes. This automates exactly the API call a human makes by hand on
-# the dashboard's GPU Nodes page when clicking "Enable Node Agent"
+# the dashboard's GPU Nodes page when clicking "Enable Marbor Agent"
 # (POST /admin/nodes/{name}/agent), plus running the returned install
 # command on the target host - see docs/deploy/node-agent-enrollment.md for
 # the underlying HTTP contract this playbook wraps.
 #
 # This playbook does NOT register the node's runtime endpoint - a node must
-# already exist in the mesh (see ansible/playbooks/register-gpus.yml) before
+# already exist in the marbor (see ansible/playbooks/register-gpus.yml) before
 # its agent can be enrolled. Deliberately kept separate: registration and
 # agent enrollment are two independently-idempotent operations, and you may
 # want to re-run one without the other (e.g. rotate/reinstall the agent on
@@ -16,22 +16,22 @@
 # Usage:
 #   ansible-playbook ansible/playbooks/install-node-agent.yml \
 #     -e @my-agent-inventory.yml \
-#     -e mesh_url=https://mesh.example.com \
-#     -e mesh_admin_username=admin \
+#     -e marbor_url=https://marbor.example.com \
+#     -e marbor_admin_username=admin \
 #     --ask-vault-pass \
 #     -e @secrets.vault.yml
 #
 # See ansible/README.md for the full variable reference and required SSH
 # access assumptions for the GPU hosts.
 
-- name: Enroll and install the ollama-mesh Node Agent
+- name: Enroll and install the Marbor Agent
   hosts: localhost
   connection: local
   gather_facts: false
 
   vars:
     # Override on the command line (-e) or in a vars file included with -e @file.
-    mesh_admin_username: admin
+    marbor_admin_username: admin
     poll_retries: 10
     poll_delay: 5
 
@@ -45,14 +45,14 @@
     - name: Verify required variables are set
       ansible.builtin.assert:
         that:
-          - mesh_url is defined
-          - mesh_url | length > 0
-          - mesh_admin_password is defined
-          - mesh_admin_password | length > 0
+          - marbor_url is defined
+          - marbor_url | length > 0
+          - marbor_admin_password is defined
+          - marbor_admin_password | length > 0
           - agent_nodes is defined
           - agent_nodes | length > 0
         fail_msg: >-
-          mesh_url, mesh_admin_password, and a non-empty agent_nodes list are
+          marbor_url, marbor_admin_password, and a non-empty agent_nodes list are
           required. See ansible/README.md.
 
     - name: Verify every agent_nodes entry has name, host, and port
@@ -72,24 +72,24 @@
       loop_control:
         label: "{{ item.host }}"
 
-    - name: Log in to ollama-mesh Admin API (session reused for all nodes)
+    - name: Log in to marbor Admin API (session reused for all nodes)
       ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/login"
+        url: "{{ marbor_url }}/admin/login"
         method: POST
         body_format: json
         body:
-          username: "{{ mesh_admin_username }}"
-          password: "{{ mesh_admin_password }}"
+          username: "{{ marbor_admin_username }}"
+          password: "{{ marbor_admin_password }}"
         status_code: 200
-      register: mesh_login
+      register: marbor_login
       no_log: true
 
     - name: Fetch current fleet status (used to decide agent re-enrollment)
       ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/nodes"
+        url: "{{ marbor_url }}/admin/nodes"
         method: GET
         headers:
-          Cookie: "{{ mesh_login.set_cookie }}"
+          Cookie: "{{ marbor_login.set_cookie }}"
         status_code: 200
         return_content: true
       register: fleet_status
@@ -100,7 +100,7 @@
           - item.name in (fleet_status.json | map(attribute='name') | list)
         fail_msg: >-
           agent_nodes entry {{ item.name }} ({{ item.host }}) is not a
-          registered mesh node. Run register-gpus.yml for it first.
+          registered marbor node. Run register-gpus.yml for it first.
       loop: "{{ agent_nodes }}"
       loop_control:
         label: "{{ item.name }}"
@@ -123,12 +123,12 @@
     # NOT already reporting agentPresent=true AND health="healthy" via
     # GET /admin/nodes. Re-running this playbook against a fully healthy
     # fleet therefore skips agent enrollment entirely for every node.
-    - name: Enable Node Agent and capture install command (only where needed)
+    - name: Enable Marbor Agent and capture install command (only where needed)
       ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/nodes/{{ node.name }}/agent"
+        url: "{{ marbor_url }}/admin/nodes/{{ node.name }}/agent"
         method: POST
         headers:
-          Cookie: "{{ mesh_login.set_cookie }}"
+          Cookie: "{{ marbor_login.set_cookie }}"
         body_format: json
         body:
           port: "{{ node.port }}"
@@ -141,7 +141,7 @@
       when: node.name not in already_enrolled_names
       register: agent_enable_results
 
-    - name: Install the Node Agent on each newly-enrolled GPU host
+    - name: Install the Marbor Agent on each newly-enrolled GPU host
       ansible.builtin.shell: "{{ (item.content | from_json).install_command }}"
       loop: "{{ agent_enable_results.results | rejectattr('skipped', 'defined') | list }}"
       loop_control:
@@ -152,10 +152,10 @@
 
     - name: Wait for each node to report agent present and healthy
       ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/nodes/{{ node.name }}"
+        url: "{{ marbor_url }}/admin/nodes/{{ node.name }}"
         method: GET
         headers:
-          Cookie: "{{ mesh_login.set_cookie }}"
+          Cookie: "{{ marbor_login.set_cookie }}"
         status_code: 200
         return_content: true
       register: node_poll

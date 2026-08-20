@@ -353,7 +353,7 @@ export interface Settings {
   // request's API key must have its allowLocalDegradation policy set to true.
   localDegradationChains: Record<string, string[]>;
 
-  // Scheduled mesh.db backup (P49). LastBackupAt/LastBackupError are
+// Scheduled marbor.db backup (P49). LastBackupAt/LastBackupError are
   // read-only status from the server, never sent back on save.
   backupEnabled: boolean;
   backupIntervalHours: number;
@@ -607,7 +607,7 @@ export interface BudgetEntry {
 }
 
 // ModelConfig is an operator-declared default parameter profile for a
-// specific (model, node) pair, applied whenever ollama-mesh routes to that
+// specific (model, node) pair, applied whenever Marbor routes to that
 // model on that node. The same model name can be resident on multiple nodes
 // with different runtimes (ollama/vllm/tgi/llamacpp/mlx) or VRAM budgets, so a
 // profile is only ever meaningful scoped to one node - `model` and `node`

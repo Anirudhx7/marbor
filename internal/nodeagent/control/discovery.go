@@ -10,10 +10,10 @@ import (
 
 // isSelf reports whether a discovered service/container/unit name is the
 // node agent's own registration (service.Name, e.g.
-// "ollama-mesh-agent.service" for systemd) rather than the inference
+// "marbor-agent.service" for systemd) rather than the inference
 // runtime it is trying to find. Needed because a naive substring match on
 // runtimeName (e.g. "ollama") also matches the agent's own unit name
-// ("ollama-mesh-agent"), which would make every probe report the agent
+// ("marbor-agent"), which would make every probe report the agent
 // controlling itself instead of the runtime.
 func isSelf(name string) bool {
 	return strings.Contains(strings.ToLower(name), strings.ToLower(service.Name))

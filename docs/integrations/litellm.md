@@ -2,60 +2,60 @@
 
 [LiteLLM](https://litellm.ai) is a popular and powerful API gateway for provider abstraction, enterprise authentication, and user-level rate limiting. 
 
-Rather than a competitor, **ollama-mesh operates as a complementary layer alongside LiteLLM**. They can be integrated in two distinct topologies depending on your architecture:
+Rather than a competitor, **marbor operates as a complementary layer alongside LiteLLM**. They can be integrated in two distinct topologies depending on your architecture:
 
-- **Option A: Upstream Gateway Setup (LiteLLM &rarr; ollama-mesh)**: LiteLLM sits in front of your applications as the entry point and routes local model requests to ollama-mesh.
-- **Option B: Cloud Fallback Gateway Setup (ollama-mesh &rarr; LiteLLM)**: ollama-mesh routes cloud fallback traffic (when all local GPUs are saturated or down) through a central LiteLLM instance instead of hitting cloud endpoints directly.
+- **Option A: Upstream Gateway Setup (LiteLLM &rarr; marbor)**: LiteLLM sits in front of your applications as the entry point and routes local model requests to marbor.
+- **Option B: Cloud Fallback Gateway Setup (marbor &rarr; LiteLLM)**: marbor routes cloud fallback traffic (when all local GPUs are saturated or down) through a central LiteLLM instance instead of hitting cloud endpoints directly.
 
 ---
 
 ## Prerequisites
 
 - LiteLLM running (Docker or bare-metal)
-- ollama-mesh running and reachable from the LiteLLM host
-- An API key from the ollama-mesh admin dashboard (`http://<mesh-host>:8080`)
+- marbor running and reachable from the LiteLLM host
+- An API key from the marbor admin dashboard (`http://<marbor-host>:8080`)
 
 ---
 
-## Option A - Upstream Gateway Setup (LiteLLM &rarr; ollama-mesh)
+## Option A - Upstream Gateway Setup (LiteLLM &rarr; marbor)
 
-This is the recommended setup when you want to use LiteLLM's enterprise controls (such as SSO, virtual keys, and multi-cloud routing) while leveraging ollama-mesh's warm-first GPU load balancing and local VRAM scheduling.
+This is the recommended setup when you want to use LiteLLM's enterprise controls (such as SSO, virtual keys, and multi-cloud routing) while leveraging marbor's warm-first GPU load balancing and local VRAM scheduling.
 
 ```
-Applications ────> LiteLLM (Gateway) ────> ollama-mesh (Scheduler) ────> GPU Nodes
+Applications ────> LiteLLM (Gateway) ────> marbor (Scheduler) ────> GPU Nodes
 ```
 
 ### LiteLLM Configuration
-Add ollama-mesh as a custom provider in LiteLLM's `config.yaml` using the OpenAI-compatible endpoint:
+Add marbor as a custom provider in LiteLLM's `config.yaml` using the OpenAI-compatible endpoint:
 
 ```yaml
 model_list:
   - model_name: llama3.2
     litellm_params:
       model: openai/llama3.2
-      api_base: http://<mesh-host>:11434/v1
-      api_key: sk-mesh-your-api-key # Key generated from the ollama-mesh dashboard
+      api_base: http://<marbor-host>:11434/v1
+      api_key: sk-marbor-your-api-key # Key generated from the marbor dashboard
 ```
 
 Replace:
-- `<mesh-host>` with the hostname or IP address of the machine running ollama-mesh.
-- `sk-mesh-your-api-key` with the API key created in the ollama-mesh dashboard.
+- `<marbor-host>` with the hostname or IP address of the machine running marbor.
+- `sk-marbor-your-api-key` with the API key created in the marbor dashboard.
 - `llama3.2` with whatever model names are loaded on your local GPU nodes.
 
 ---
 
-## Option B - Cloud Fallback Gateway Setup (ollama-mesh &rarr; LiteLLM)
+## Option B - Cloud Fallback Gateway Setup (marbor &rarr; LiteLLM)
 
-If you already use LiteLLM to centralize your company's cloud LLM provider credentials (OpenAI, Anthropic, Groq, etc.), you can configure ollama-mesh to use LiteLLM as its single cloud fallback endpoint when local GPU nodes are saturated or offline.
+If you already use LiteLLM to centralize your company's cloud LLM provider credentials (OpenAI, Anthropic, Groq, etc.), you can configure marbor to use LiteLLM as its single cloud fallback endpoint when local GPU nodes are saturated or offline.
 
 This is managed dynamically through the admin dashboard interface and stored in the SQLite database.
 
 ```
-Applications ────> ollama-mesh ──(local GPUs busy)──> LiteLLM ────> Cloud APIs
+Applications ────> marbor ──(local GPUs busy)──> LiteLLM ────> Cloud APIs
 ```
 
 ### Admin Dashboard Configuration
-1. Open the ollama-mesh dashboard and navigate to the **Settings** page.
+1. Open the marbor dashboard and navigate to the **Settings** page.
 2. Scroll to the **Integrations & Cost** section.
 3. Under **LiteLLM Integration**:
    - Toggle **Enable LiteLLM** to active.
@@ -76,13 +76,13 @@ If running both gateways on the same host, use a shared Docker network and servi
 ```yaml
 # docker-compose.yml
 services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ghcr.io/anirudhx7/marbor:latest
     ports:
       - "11434:11434"
       - "8080:8080"
     volumes:
-      - mesh-data:/root
+      - marbor-data:/root
     networks:
       - shared-network
 
@@ -94,7 +94,7 @@ services:
       - ./litellm-config.yaml:/app/config.yaml
     command: [ "--config", "/app/config.yaml" ]
     depends_on:
-      - ollama-mesh
+      - marbor
     networks:
       - shared-network
 
@@ -103,24 +103,24 @@ networks:
     driver: bridge
 
 volumes:
-  mesh-data:
+  marbor-data:
 ```
 
-Your `litellm-config.yaml` can then reference `http://ollama-mesh:11434/v1` as the `api_base`, and ollama-mesh's settings can use `http://litellm:4000/v1` as the `url`.
+Your `litellm-config.yaml` can then reference `http://marbor:11434/v1` as the `api_base`, and marbor's settings can use `http://litellm:4000/v1` as the `url`.
 
 ---
 
 ## Model Discovery
 
-With Option A, LiteLLM queries the configured model base. Under the hood, LiteLLM calls the `/v1/models` endpoint of `ollama-mesh` on startup to populate its active models.
+With Option A, LiteLLM queries the configured model base. Under the hood, LiteLLM calls the `/v1/models` endpoint of `marbor` on startup to populate its active models.
 
-ollama-mesh aggregates loaded models across all healthy GPU nodes dynamically and responds to `/v1/models` in real-time. If a model is not currently warm on any node, it will still appear in the list if it is registered in `ollama-mesh`'s model configuration.
+marbor aggregates loaded models across all healthy GPU nodes dynamically and responds to `/v1/models` in real-time. If a model is not currently warm on any node, it will still appear in the list if it is registered in `marbor`'s model configuration.
 
 ---
 
 ## Verification
 
-### Upstream (LiteLLM &rarr; ollama-mesh)
+### Upstream (LiteLLM &rarr; marbor)
 1. Send a request to LiteLLM:
    ```bash
    curl http://localhost:4000/chat/completions \
@@ -131,32 +131,32 @@ ollama-mesh aggregates loaded models across all healthy GPU nodes dynamically an
        "messages": [{"role": "user", "content": "Hello from LiteLLM!"}]
      }'
    ```
-2. Verify the request appears in the ollama-mesh request log at `http://<mesh-host>:8080` with the correct model and node latency.
+2. Verify the request appears in the marbor request log at `http://<marbor-host>:8080` with the correct model and node latency.
 
-### Fallback (ollama-mesh &rarr; LiteLLM)
-1. Drain or set all local nodes to offline via the ollama-mesh dashboard.
-2. Send a request to ollama-mesh for a cloud model (e.g. `gpt-4o-mini`):
+### Fallback (marbor &rarr; LiteLLM)
+1. Drain or set all local nodes to offline via the marbor dashboard.
+2. Send a request to marbor for a cloud model (e.g. `gpt-4o-mini`):
    ```bash
    curl http://localhost:11434/v1/chat/completions \
-     -H "Authorization: Bearer sk-mesh-abc123" \
+     -H "Authorization: Bearer sk-marbor-abc123" \
      -H "Content-Type: application/json" \
      -d '{
        "model": "gpt-4o-mini",
        "messages": [{"role": "user", "content": "Test fallback"}]
      }'
    ```
-3. Check the LiteLLM logs: the request should be logged as incoming from the mesh and forwarded to the cloud provider.
+3. Check the LiteLLM logs: the request should be logged as incoming from the marbor and forwarded to the cloud provider.
 
 ---
 
 ## Troubleshooting
 
 ### 401 Unauthorized
-- **Option A**: Verify the `api_key` in LiteLLM's `config.yaml` matches an active key listed in the ollama-mesh admin dashboard.
-- **Option B**: Verify the API Key in the ollama-mesh Settings matches LiteLLM's master key or a valid virtual key.
+- **Option A**: Verify the `api_key` in LiteLLM's `config.yaml` matches an active key listed in the marbor admin dashboard.
+- **Option B**: Verify the API Key in the marbor Settings matches LiteLLM's master key or a valid virtual key.
 
 ### 403 Forbidden
-The key you are using has a model allow-list configured in the ollama-mesh dashboard that excludes the requested model. Either adjust the model allow-list or use a key with access to all models.
+The key you are using has a model allow-list configured in the marbor dashboard that excludes the requested model. Either adjust the model allow-list or use a key with access to all models.
 
 ### Connection Refused / Timeout
-If running inside Docker, make sure both containers share a network. `localhost` inside a Docker container refers to the container itself; use the service name (e.g. `ollama-mesh` or `litellm`) or `host.docker.internal` for the host machine.
+If running inside Docker, make sure both containers share a network. `localhost` inside a Docker container refers to the container itself; use the service name (e.g. `marbor` or `litellm`) or `host.docker.internal` for the host machine.

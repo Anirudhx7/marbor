@@ -23,10 +23,10 @@ type globalFlag struct {
 // globalFlags is declaration order, matching cli.go's authFlagsRows text
 // verbatim so generated docs never say something different from --help.
 var globalFlags = []globalFlag{
-	{"server", `Admin API base URL (default "http://localhost:8080", env MESH_SERVER)`},
+	{"server", `Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)`},
 	{"json", "output machine-readable JSON instead of a human table"},
-	{"username", "admin username, used to log in (env MESH_USERNAME)"},
-	{"password", "admin password, used to log in (env MESH_PASSWORD)"},
+	{"username", "admin username, used to log in (env MARBOR_USERNAME)"},
+	{"password", "admin password, used to log in (env MARBOR_PASSWORD)"},
 }
 
 // groupPageCommands returns, in declared order, every top-level command that
@@ -47,7 +47,7 @@ func groupPageCommands(root *cli.Command) []*cli.Command {
 }
 
 // pageSlug returns the man/doc page identifier for a top-level group
-// command, e.g. "ollama-mesh-models".
+// command, e.g. "marbor-models".
 func pageSlug(root *cli.Command, c *cli.Command) string {
 	return root.Name + "-" + c.Name
 }

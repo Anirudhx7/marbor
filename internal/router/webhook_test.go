@@ -48,7 +48,7 @@ func TestWebhookFiredOnNodeDown(t *testing.T) {
 		}
 		mu.Lock()
 		received = append(received, payload)
-		gotSig = r.Header.Get("X-Ollama-Mesh-Signature")
+		gotSig = r.Header.Get("X-Marbor-Signature")
 		mu.Unlock()
 
 		// Verify HMAC signature.

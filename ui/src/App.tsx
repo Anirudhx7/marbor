@@ -99,7 +99,7 @@ const Benchmark    = lazy(() => import('./pages/Benchmark').then(m => ({ default
 // client-side navigation.
 // ---------------------------------------------------------------------------
 const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
-const basename = forcedDemo ? '/ollama-mesh/demo' : '/';
+const basename = forcedDemo ? '/marbor/demo' : '/';
 
 // ---------------------------------------------------------------------------
 // AppShell - rendered inside the Router so it can call useLocation.
@@ -213,7 +213,7 @@ function App() {
   function handleLoginSuccess(data: SessionData) {
     // Reset the URL to the app root so BrowserRouter lands on the dashboard
     // rather than /admin/login or /login. Target the app base, not '/': under
-    // the GitHub Pages demo the app is at /ollama-mesh/demo/ and resetting to
+    // the GitHub Pages demo the app is at /marbor/demo/ and resetting to
     // '/' would navigate out to the domain root.
     const home = basename === '/' ? '/' : basename + '/';
     if (window.location.pathname !== home) {

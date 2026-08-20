@@ -1,4 +1,4 @@
-// Package service registers the ollama-mesh Node Agent as a persistent,
+// Package service registers the Marbor Node Agent as a persistent,
 // auto-restarting OS service (systemd on Linux, launchd on macOS, native
 // Windows Service via sc.exe on Windows) - so an operator never manually
 // writes a unit file, plist, or runs sc.exe themselves. See
@@ -17,7 +17,7 @@ import (
 // Name is the service's registered name/label across all platforms
 // (systemd unit name, launchd Label, Windows service name) - one constant so
 // every platform implementation and any uninstall/status tooling agrees.
-const Name = "ollama-mesh-agent"
+const Name = "marbor-agent"
 
 // Config carries everything a Manager needs to (re)install the service.
 // Install must be idempotent: calling it again (e.g. to change the port, or
@@ -26,7 +26,7 @@ const Name = "ollama-mesh-agent"
 // flags, and restarts - the same flow serves both "first install" and
 // "upgrade in place."
 type Config struct {
-	// BinaryPath is the absolute path to the ollama-mesh binary to run as
+	// BinaryPath is the absolute path to the marbor-agent binary to run as
 	// the service's command. Callers should resolve this via os.Executable()
 	// so the service always points at the binary that's actually installed,
 	// not a relative/PATH-dependent name that could resolve differently
@@ -58,7 +58,7 @@ type Config struct {
 // same command line from the same Config fields.
 //
 // No leading "agent" subcommand token: BinaryPath is always the dedicated
-// ollama-mesh-agent binary (cmd/ollama-mesh-agent), which is itself the
+// marbor-agent binary, which is itself the
 // agent - there is no dispatcher inside it to route a subcommand through.
 //
 // Token is intentionally NOT included here: a service definition's command

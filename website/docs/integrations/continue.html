@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Continue (VS Code / JetBrains) · ollama-mesh docs</title>
-<meta name="description" content="ollama-mesh documentation: Continue (VS Code / JetBrains)." />
+<title>Continue (VS Code / JetBrains) · marbor docs</title>
+<meta name="description" content="marbor documentation: Continue (VS Code / JetBrains)." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="ollama-mesh" />
-<meta property="og:title" content="Continue (VS Code / JetBrains) · ollama-mesh docs" />
-<meta property="og:description" content="ollama-mesh documentation: Continue (VS Code / JetBrains)." />
-<meta property="og:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="ollama-mesh admin dashboard" />
+<meta property="og:site_name" content="marbor" />
+<meta property="og:title" content="Continue (VS Code / JetBrains) · marbor docs" />
+<meta property="og:description" content="marbor documentation: Continue (VS Code / JetBrains)." />
+<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Continue (VS Code / JetBrains) · ollama-mesh docs" />
-<meta name="twitter:image" content="https://anirudh.social/ollama-mesh/screenshots/dashboard.png" />
+<meta name="twitter:title" content="Continue (VS Code / JetBrains) · marbor docs" />
+<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../../index.html" class="brand" aria-label="ollama-mesh home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">ollama<span style="color:var(--accent)">-mesh</span></span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../../index.html#features">Features</a>
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/ollama-mesh" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/ollama-mesh/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -338,10 +338,10 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">Continue (VS Code / JetBrains)</span></div>
     <article class="doc-content">
       <h1 id="continue-vs-code-jetbrains">Continue (VS Code / JetBrains)<a class="anchor" href="#continue-vs-code-jetbrains" aria-label="Link to section">#</a></h1>
-<p><a href="https://continue.dev" target="_blank" rel="noopener">Continue</a> is an open-source AI coding assistant. Point it at ollama-mesh and every completion request routes through warm-first selection across your GPU nodes, with cost-aware cloud overflow when nodes are busy.</p>
+<p><a href="https://continue.dev" target="_blank" rel="noopener">Continue</a> is an open-source AI coding assistant. Point it at marbor and every completion request routes through warm-first selection across your GPU nodes, with cost-aware cloud overflow when nodes are busy.</p>
 <hr/>
 <h2 id="prerequisites">Prerequisites<a class="anchor" href="#prerequisites" aria-label="Link to section">#</a></h2>
-<ul><li>Continue extension installed (VS Code: <code>continue.continue</code>, JetBrains: Continue plugin)</li><li>ollama-mesh running and reachable from your workstation</li><li>An API key from the ollama-mesh admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
+<ul><li>Continue extension installed (VS Code: <code>continue.continue</code>, JetBrains: Continue plugin)</li><li>marbor running and reachable from your workstation</li><li>An API key from the marbor admin dashboard (<code>http://&lt;mesh-host&gt;:8080</code>)</li></ul>
 <hr/>
 <h2 id="configuration">Configuration<a class="anchor" href="#configuration" aria-label="Link to section">#</a></h2>
 <p>Open <code>~/.continue/config.json</code> (or use the Continue settings UI) and add an Ollama provider pointed at your mesh:</p>
@@ -397,7 +397,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   }
 }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Replace:</p>
-<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP where ollama-mesh runs (e.g. <code>192.168.1.50</code> or <code>localhost</code>)</li><li><code>sk-your-api-key</code> with a key from the admin dashboard</li><li>Model names with whatever models you have loaded on your nodes</li></ul>
+<ul><li><code>&lt;mesh-host&gt;</code> with the hostname or IP where marbor runs (e.g. <code>192.168.1.50</code> or <code>localhost</code>)</li><li><code>sk-your-api-key</code> with a key from the admin dashboard</li><li>Model names with whatever models you have loaded on your nodes</li></ul>
 <hr/>
 <h2 id="openai-compatible-alternative">OpenAI-compatible alternative<a class="anchor" href="#openai-compatible-alternative" aria-label="Link to section">#</a></h2>
 <p>If you prefer the OpenAI provider (useful when using cloud fallback models):</p>
@@ -485,7 +485,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>Create a separate API key for each developer in the admin dashboard. This lets you see per-user token usage and apply individual rate limits or model restrictions without sharing a single key.</p>
 
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/ollama-mesh/blob/main/docs/integrations/continue.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="ollama-mesh.dev/blob/main/docs/integrations/continue.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -498,8 +498,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> ollama-mesh contributors · Apache-2.0</span>
-    <span>ollama-mesh <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
+    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

@@ -7,7 +7,7 @@ import (
 )
 
 // completion.go generates static shell completion scripts (bash, zsh, fish)
-// for the "ollama-mesh completion <shell>" command (registry_tree.go's
+// for the "marbor completion <shell>" command (registry_tree.go's
 // completionCmd()) - P83+ CLI hardening plan, Implementation section 7. Every
 // script is built by walking the CURRENT command registry tree
 // (registry.go/registry_tree.go) at generation time and baking command,
@@ -15,7 +15,7 @@ import (
 //
 // Deliberately no dynamic behavior: no network call, no Admin API request, no
 // authentication, ever. A completion script that requires the mesh to be
-// reachable would defeat its own purpose (tab-completing "ollama-mesh
+// reachable would defeat its own purpose (tab-completing "marbor
 // runtime start <TAB>" must still work when the mesh is down or the operator
 // isn't logged in).
 //
@@ -127,7 +127,7 @@ func escapeSingleQuotes(s string) string {
 // bash
 // ---------------------------------------------------------------------------
 
-// generateBashCompletion builds a _ollama_mesh() completion function using
+// generateBashCompletion builds a _marbor() completion function using
 // COMP_WORDS/COMP_CWORD to reconstruct the command path typed so far, then a
 // case "$cmd" in ... esac with one arm per non-hidden command path in the
 // tree, each running compgen -W "<children> <flags> <global flags>" against
@@ -138,7 +138,7 @@ func generateBashCompletion(root *Command) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# bash completion for %s\n", root.Name)
 	b.WriteString("# generated from the command registry - do not edit by hand.\n\n")
-	b.WriteString("_ollama_mesh() {\n")
+	b.WriteString("_marbor() {\n")
 	b.WriteString("    local cur cmd i word\n")
 	b.WriteString("    cur=\"${COMP_WORDS[COMP_CWORD]}\"\n")
 	b.WriteString("    cmd=\"\"\n")
@@ -180,7 +180,7 @@ func generateBashCompletion(root *Command) string {
 	b.WriteString("        ;;\n")
 	b.WriteString("    esac\n")
 	b.WriteString("}\n")
-	b.WriteString("complete -F _ollama_mesh ollama-mesh\n")
+	b.WriteString("complete -F _marbor marbor\n")
 	return b.String()
 }
 
@@ -205,7 +205,7 @@ func shellSingleQuote(s string) string {
 // zsh
 // ---------------------------------------------------------------------------
 
-// generateZshCompletion builds a #compdef ollama-mesh script using the
+// generateZshCompletion builds a #compdef marbor script using the
 // standard _arguments -C '1:command:->cmd' '*::arg:->args' pattern, then
 // dispatches on the reconstructed command path (same technique as bash,
 // zsh-flavored) into per-group _describe calls listing child names with
@@ -301,7 +301,7 @@ func zshFlagLines(root *Command) []string {
 // fish
 // ---------------------------------------------------------------------------
 
-// generateFishCompletion builds flat "complete -c ollama-mesh ..." lines:
+// generateFishCompletion builds flat "complete -c marbor ..." lines:
 // top-level subcommands gated on __fish_use_subcommand, nested subcommands
 // gated on __fish_seen_subcommand_from <immediate parent>, and one line per
 // flag (with -r for a flag that takes a value).
@@ -401,7 +401,7 @@ func runCompletion(ctx *RunCtx) int {
 	}
 
 	// Nothing else may write to stdout in the success path - completions
-	// must be pipeable/sourceable (source <(ollama-mesh completion bash)).
+	// must be pipeable/sourceable (source <(marbor completion bash)).
 	io.WriteString(ctx.Stdout, script)
 	return ExitOK
 }
