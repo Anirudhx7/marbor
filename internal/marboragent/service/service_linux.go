@@ -26,7 +26,7 @@ const systemdUnitDir = "/etc/systemd/system"
 // environment at startup (no legacy TOKEN fallback).
 const tokenEnvFilePath = "/etc/marbor-agent.env"
 
-// agentCertPath/agentKeyPath are the Node Agent's TLS certificate/key file
+// agentCertPath/agentKeyPath are the Marbor Agent's TLS certificate/key file
 // locations on Linux (P24), mirroring tokenEnvFilePath's precedent exactly:
 // same directory, same 0600-secret-file treatment for the key.
 const (
@@ -34,7 +34,7 @@ const (
 	agentKeyPath  = "/etc/marbor-agent.key"
 )
 
-// CertKeyPaths returns this platform's Node Agent TLS certificate/key file
+// CertKeyPaths returns this platform's Marbor Agent TLS certificate/key file
 // paths - used by service_cmd.go's regen-cert subcommand and "agent service
 // status" to locate the files without duplicating the path constants there.
 func CertKeyPaths() (certPath, keyPath string) { return agentCertPath, agentKeyPath }

@@ -257,7 +257,7 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 // recordUnloadSideEffects updates every piece of mesh-side bookkeeping that
 // must follow a real, successful eviction, regardless of which path
 // performed the actual eviction (this router's own direct HTTP call above,
-// or a Node Agent dispatch - see Router.RecordManualUnload). Skipping this
+// or a Marbor Agent dispatch - see Router.RecordManualUnload). Skipping this
 // for an agent-dispatched unload would silently undo the operator's action:
 // without suppressWarmup, pingWarmupModels reloads the model straight back
 // into VRAM on its next tick (default 5m later); without DeleteWarmState, a
@@ -288,7 +288,7 @@ func (r *Router) recordUnloadSideEffects(nodeName, model, reason string) {
 
 // RecordManualUnload applies the same post-eviction bookkeeping as a direct
 // unload (see recordUnloadSideEffects) for a model actually evicted by a
-// Node Agent dispatch instead of this router's own HTTP call - the agent
+// Marbor Agent dispatch instead of this router's own HTTP call - the agent
 // path has no other way to reach this router-internal state. Always
 // "manual" reason: the only caller is the operator-facing unload endpoint.
 func (r *Router) RecordManualUnload(nodeName, model string) {
@@ -296,7 +296,7 @@ func (r *Router) RecordManualUnload(nodeName, model string) {
 }
 
 // ShouldUseAgentForUnload reports whether nodeName's unload should dispatch
-// through its Node Agent (enabled + reports capability "models.unload")
+// through its Marbor Agent (enabled + reports capability "models.unload")
 // instead of the direct Ollama keep_alive:0 HTTP call - the single decision
 // shared by the manual unload endpoint (admin.go handleUnloadModel) and the
 // scheduled unload path (UnloadModels below), per P33: a future change to
@@ -343,7 +343,7 @@ func (r *Router) nodeHasAgentCapability(n *NodeState, capability string) bool {
 	return false
 }
 
-// unloadModelViaAgent dispatches a model unload to nodeURL's Node Agent
+// unloadModelViaAgent dispatches a model unload to nodeURL's Marbor Agent
 // (POST /v1/models/{name...}, capability "models.unload"). Mirrors admin.go's
 // unloadModelViaAgent/buildAgentUnloadURL exactly (wire contract, response
 // decoding) - duplicated here rather than shared, since router cannot import
@@ -392,7 +392,7 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg Ma
 }
 
 // marborAgentUnloadTimeout bounds how long the scheduled-unload path waits for
-// a node agent's POST /v1/models/{name} (unload) response. Matches admin.go's
+// a Marbor agent's POST /v1/models/{name} (unload) response. Matches admin.go's
 // nodeUnloadModelTimeout for the manual path.
 const marborAgentUnloadTimeout = 30 * time.Second
 
@@ -477,7 +477,7 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 // skipped (unloadModel's own no-op guard) when this falls through to the
 // direct path below - only the agent branch makes them work for real.
 //
-// Dispatches through the node's Node Agent (capability "models.unload") when
+// Dispatches through the node's Marbor Agent (capability "models.unload") when
 // ShouldUseAgentForUnload says so - same decision handleUnloadModel makes for
 // the manual path (P33) - so a vLLM/TGI/llama.cpp/MLX node's scheduled unload
 // works for real instead of silently no-op-ing via the direct

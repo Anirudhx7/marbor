@@ -30,7 +30,7 @@ func CertFingerprintSHA256(rawCert []byte) string {
 
 // HTTPClientForNode returns an *http.Client sharing the Router's single
 // TLS-pinning-aware Transport (see dialTLSContext below), with the given
-// per-call timeout. Every HTTP client that talks to a Node Agent - the poll
+// per-call timeout. Every HTTP client that talks to a Marbor Agent - the poll
 // path (agent_poll.go), the model eviction path (eviction.go), and every
 // admin action-path call site (internal/admin/admin.go: pull/list/delete/
 // unload, runtime start/stop/restart/logs, health checks) - must be built
@@ -73,7 +73,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //     an implicit default-port case to reconcile.
 //   - r.marborAgents is keyed by bare Host with exactly one MarborAgentConfig
 //     (one port) per host - so a dial address unambiguously either matches
-//     "this is host H's Node Agent" or it doesn't. A non-matching address
+//     "this is host H's Marbor Agent" or it doesn't. A non-matching address
 //     (runtime-probe traffic sharing this same client/Transport, since
 //     New() passes it to runtimepkg.NewProbe too, or any other https
 //     target) falls through to ordinary certificate verification -
@@ -90,7 +90,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //   - Redirects: Go's http.Client re-invokes DialTLSContext for whatever
 //     new host:port a redirect targets, going through this exact same
 //     lookup - if the new target isn't a known node-agent endpoint it
-//     naturally falls through to ordinary verification. Node Agent
+//     naturally falls through to ordinary verification. Marbor Agent
 //     endpoints do not redirect in practice (R9's protocol is plain JSON
 //     GET/POST), so this is a non-issue in practice but the logic handles
 //     it safely regardless.
@@ -124,7 +124,7 @@ func (r *Router) dialTLSContext(ctx context.Context, network, addr string) (net.
 	}
 
 	if !matched || fingerprint == "" {
-		// Not a known Node Agent endpoint, or a Node Agent host with no pin
+		// Not a known Marbor Agent endpoint, or a Marbor Agent host with no pin
 		// declared yet: ordinary verified TLS, exactly what the zero-value
 		// Transport would have done for this address. A still-unpinned
 		// self-signed cert simply fails standard verification here and the
@@ -180,7 +180,7 @@ var ErrTLSFingerprintMismatch = errors.New("tls fingerprint mismatch")
 //
 // matched is true iff host:port corresponds to some host's configured Node
 // Agent (r.marborAgents, keyed by bare Host) - false means this dial address
-// isn't a Node Agent endpoint at all (e.g. runtime-probe traffic sharing the
+// isn't a Marbor Agent endpoint at all (e.g. runtime-probe traffic sharing the
 // same client/Transport) and pinning must not apply to it.
 //
 // ambiguous is true when two or more NodeState entries sharing that Host

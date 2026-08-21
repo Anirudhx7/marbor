@@ -462,7 +462,7 @@ type nodeResp struct {
 	// (P64) - 0 means no override is declared (the global
 	// routing.max_in_flight_per_node default applies instead).
 	MaxInFlight int `json:"maxInFlight,omitempty"`
-	// TLSFingerprint is this node's TOFU-pinned Node Agent cert fingerprint
+	// TLSFingerprint is this node's TOFU-pinned Marbor Agent cert fingerprint
 	// (P24) - empty/omitted means no pin (plaintext or not yet TLS-enrolled).
 	// See .local/specs/node-agent-tls.md.
 	TLSFingerprint string `json:"tlsFingerprint,omitempty"`
@@ -511,7 +511,7 @@ type nodeResp struct {
 	TokensTotal      int64              `json:"tokensTotal"`
 	AvgLatencyMs     float64            `json:"avgLatencyMs"`
 	WarmHitRatio     float64            `json:"warmHitRatio"`
-	// Node Agent-derived fields (internal/marboragent). AgentPresent is false
+	// Marbor Agent-derived fields (internal/marboragent). AgentPresent is false
 	// (and every other field below zero-value) whenever no agent is
 	// configured for this node, or the most recent agent poll failed - the
 	// UI must check AgentPresent before displaying FanPercent/RAMUsedMB/
@@ -569,7 +569,7 @@ type warmupStateEntry struct {
 
 // agentGPUDevice is the admin API's camelCase projection of
 // marboragent.GPUInfo (whose own JSON tags are snake_case, matching the
-// Node Agent Protocol wire format, not this admin API's convention) - one
+// Marbor Agent Protocol wire format, not this admin API's convention) - one
 // entry per physical GPU device in a node's multi-GPU array.
 type agentGPUDevice struct {
 	Index        int      `json:"index"`
@@ -1140,7 +1140,7 @@ func (s *Server) Handler() http.Handler {
 	reg("POST /admin/nodes/{name}/runtime/stop", s.cors(s.adminAuth(s.handleNodeRuntimeStop)))
 	reg("POST /admin/nodes/{name}/runtime/restart", s.cors(s.adminAuth(s.handleNodeRuntimeRestart)))
 	reg("POST /admin/nodes/{name}/runtime/logs", s.cors(s.adminAuth(s.handleNodeRuntimeLogs)))
-	// Deliberately no s.adminAuth: the caller is the Node Agent process
+	// Deliberately no s.adminAuth: the caller is the Marbor Agent process
 	// itself during install (agent service install --enroll=<code>), not an
 	// authenticated admin browser session. Safety rests entirely on the code
 	// being a random 128-bit single-use value with a short TTL (see
@@ -2113,7 +2113,7 @@ func generateMarborAgentToken(scope string) (string, error) {
 }
 
 // generateEnrollmentCode returns a short, URL-safe, single-use code used to
-// exchange for the real Node Agent token via POST /admin/agent/enroll (P50).
+// exchange for the real Marbor Agent token via POST /admin/agent/enroll (P50).
 // Deliberately shorter than generateMarborAgentToken: its value as a secret is
 // bounded by enrollmentCodeTTL and single-use consumption, not by matching a
 // permanent bearer token's entropy - 128 bits is unguessable within a
@@ -2126,7 +2126,7 @@ func generateEnrollmentCode() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// handleGetMarborAgent returns the current Node Agent configuration for a
+// handleGetMarborAgent returns the current Marbor Agent configuration for a
 // node, without the token (the token is only ever returned by the
 // enable/regenerate endpoints, at the moment an operator needs to copy it
 // into the install command).
@@ -2157,7 +2157,7 @@ func (s *Server) handleGetMarborAgent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleEnableMarborAgent enables (or reconfigures) the Node Agent for a node:
+// handleEnableMarborAgent enables (or reconfigures) the Marbor Agent for a node:
 // generates a fresh token, persists {enabled, port, token, scheme}, pushes
 // the config to the live router so polling starts on the next cycle without
 // a restart, and returns the one-line install command with the token
@@ -2276,7 +2276,7 @@ func (s *Server) handleEnableMarborAgent(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// handleDisableMarborAgent disables and deletes the Node Agent config for a
+// handleDisableMarborAgent disables and deletes the Marbor Agent config for a
 // node - the router stops polling it on the next cycle (pollAgentTelemetry's
 // "no agent configured" branch clears any previously-reported fields). Also
 // clears any pinned TLS fingerprint on every node sharing this host: with no
@@ -2323,7 +2323,7 @@ func (s *Server) handleDisableMarborAgent(w http.ResponseWriter, r *http.Request
 }
 
 // handleRegenerateMarborAgentToken issues a fresh token for an already-enabled
-// node agent, keeping its configured port. Returns 404 if the agent isn't
+// Marbor agent, keeping its configured port. Returns 404 if the agent isn't
 // currently enabled for this node (regenerating a token for a disabled/
 // nonexistent agent has no meaning - use handleEnableMarborAgent instead).
 // POST /admin/nodes/{name}/agent/regenerate
@@ -2513,7 +2513,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// This dispatches to the node's Node Agent, not to the runtime itself
+	// This dispatches to the node's Marbor Agent, not to the runtime itself
 	// (start/stop/restart are only meaningful because the runtime may
 	// legitimately be down right now) - gate on agent reachability, never
 	// nodeIsHealthy's runtime reachability, or "stop" ever succeeding once
@@ -2556,7 +2556,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 }
 
 // runtimeActionViaAgent dispatches action ("start"/"stop"/"restart") to
-// nodeURL's Node Agent (POST /v1/runtime/{action}, capability
+// nodeURL's Marbor Agent (POST /v1/runtime/{action}, capability
 // "runtime.{action}"). start_command is only included for the Process
 // driver's Start action (Step 2 never persisted a StartCommand for any
 // other driver - it stays empty and is simply omitted).
@@ -2673,7 +2673,7 @@ func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"lines": logLines})
 }
 
-// runtimeLogsViaAgent dispatches to nodeURL's Node Agent (POST
+// runtimeLogsViaAgent dispatches to nodeURL's Marbor Agent (POST
 // /v1/runtime/logs, capability "runtime.logs"). start_command is included
 // only for the Process driver, same conditional as runtimeActionViaAgent's
 // Start case, even though ProcessDriver.Logs ignores it today - keeps the
@@ -2740,8 +2740,8 @@ func (s *Server) newEnrollmentCode(node, token string) (string, error) {
 }
 
 // handleEnrollMarborAgent exchanges a short-lived, single-use enrollment code
-// for the node's real, permanent Node Agent bearer token (P50). Called by
-// the Node Agent itself during "agent service install --enroll=<code>",
+// for the node's real, permanent Marbor Agent bearer token (P50). Called by
+// the Marbor Agent itself during "agent service install --enroll=<code>",
 // never by an authenticated admin browser session - see the route
 // registration comment for why this deliberately skips s.adminAuth. The
 // code is deleted from the map unconditionally on lookup, before any
@@ -3141,7 +3141,7 @@ func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
 // handleUnloadModel evicts a single model from a node's VRAM on operator
 // request. It frees VRAM immediately without draining the node or waiting
 // for LRU pressure - the manual counterpart to auto-eviction. Dispatches
-// through the node's Node Agent (capability "models.unload") when available,
+// through the node's Marbor Agent (capability "models.unload") when available,
 // mirroring handleNodePull's dual-path shape - not handleNodeDeleteModel's
 // fallback-less 501 shape, since unload already has a legitimate direct
 // fallback today (Ollama's own keep_alive:0 HTTP trick, via
@@ -3631,7 +3631,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	if patch.TLSFingerprint != nil {
 		resultingFP = *patch.TLSFingerprint
 	}
-	// resultingHost is the host whose Node Agent this patch's resulting
+	// resultingHost is the host whose Marbor Agent this patch's resulting
 	// state actually describes - a URL-only patch can move a node onto a
 	// completely different host (with a different, or no, Agent
 	// configured), so this must be looked up by the RESULTING host, never
@@ -3640,7 +3640,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 
 	// No-downgrade (section 7): once a fingerprint is pinned, the mesh must
-	// never end up treating the Node Agent as plaintext without an explicit
+	// never end up treating the Marbor Agent as plaintext without an explicit
 	// clear (tls_fingerprint: null/""). This checks the AGENT's own
 	// configured scheme for the RESULTING host (POST /admin/nodes/{name}/agent's
 	// scheme field, see store.MarborAgentRecord.Scheme's doc comment) - NOT
@@ -3656,7 +3656,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	}
 
 	// Section 15: multi-GPU-per-host sibling consistency. Every NodeState
-	// sharing this node's Host talks to the exact same physical Node Agent
+	// sharing this node's Host talks to the exact same physical Marbor Agent
 	// process/certificate, so they may only ever agree on one pinned
 	// fingerprint (or none) - never disagree. Identical pins across siblings
 	// are fine and expected; this rejects only a genuine conflict. Storage
@@ -5740,7 +5740,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Name     string `json:"name"`
 		SizeVRAM int64  `json:"size_vram"`
 		// SizeDisk is the model's on-disk size in bytes, as reported by
-		// /api/tags (Ollama) or the Node Agent's models.list capability
+		// /api/tags (Ollama) or the Marbor Agent's models.list capability
 		// (vLLM/TGI/llama.cpp/MLX). Zero/omitted when neither source has
 		// reported it yet for this model (R1: never estimated).
 		SizeDisk   int64      `json:"size_disk,omitempty"`
@@ -6387,7 +6387,7 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 		errMsg := fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(upstreamMsg)))
 		if resp.StatusCode == http.StatusUnauthorized {
 			// Direct pulls hit the node's Ollama REST API directly, which has
-			// no field for a Hugging Face token - only a Node Agent can
+			// no field for a Hugging Face token - only a Marbor Agent can
 			// deliver one, via HF_TOKEN in the pull subprocess's own
 			// environment (actions.go runDownload). A 401 here almost always
 			// means a gated/token-required HF model on a node without an
@@ -6635,7 +6635,7 @@ func (s *Server) handleCancelPull(w http.ResponseWriter, r *http.Request) {
 // inference-runtime URL, health.go's pollNode/probe.Probe) - correct for
 // gating anything that proxies inference traffic or reads runtime-served
 // data (pull/models/delete-model), but wrong for gating a call that talks
-// to the Node Agent instead (see marborAgentIsPresent below): an operator
+// to the Marbor Agent instead (see marborAgentIsPresent below): an operator
 // intentionally stopping the runtime via Runtime Control makes this false
 // by design, and using it there would make "Start" unreachable right
 // after "Stop" ever succeeded once.
@@ -6652,7 +6652,7 @@ func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
 	return false
 }
 
-// marborAgentIsPresent reports whether the node named name's Node Agent
+// marborAgentIsPresent reports whether the node named name's Marbor Agent
 // answered the mesh's last poll (router.NodeState.AgentPresent, set by
 // agent_poll.go - independent of runtime reachability, per that file's own
 // "the agent is a fully independent HTTP endpoint from /api/ps" reasoning).
@@ -6695,7 +6695,7 @@ type nodeModelEntry struct {
 
 // handleNodeModels lists models already downloaded (not just currently
 // loaded - see the node's own "Loaded Models" field for that) on a specific
-// node, via its Node Agent's GET /v1/models (capability "models.list"). No
+// node, via its Marbor Agent's GET /v1/models (capability "models.list"). No
 // direct-HTTP fallback exists for this today (unlike handleNodePull) - a
 // node without an agent, or an agent build predating this capability,
 // returns a clear 501 rather than a fabricated empty-but-successful list
@@ -6737,7 +6737,7 @@ func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"models": models})
 }
 
-// listModelsViaAgent queries nodeURL's Node Agent (GET /v1/models,
+// listModelsViaAgent queries nodeURL's Marbor Agent (GET /v1/models,
 // capability "models.list") and translates its snake_case wire response
 // into this API's camelCase nodeModelEntry shape.
 func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig) ([]nodeModelEntry, error) {
@@ -6809,7 +6809,7 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 	return false
 }
 
-// pullModelViaAgent dispatches a model pull to nodeURL's Node Agent
+// pullModelViaAgent dispatches a model pull to nodeURL's Marbor Agent
 // (POST /v1/models, capability "models.pull") instead of the node's own
 // runtime HTTP API, forwarding the mesh's configured Hugging Face token
 // per-request - never stored on the agent side, only set in the pull
@@ -6870,7 +6870,7 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 	return nil
 }
 
-// containerDiskStatsViaAgent asks nodeURL's Node Agent for the real disk
+// containerDiskStatsViaAgent asks nodeURL's Marbor Agent for the real disk
 // stats of the container ctrl identifies (POST /v1/runtime/disk, capability
 // "runtime.disk") - see internal/marboragent's handleRuntimeDisk for why this
 // can differ from the host-level DiskFreeGB/DiskTotalGB the periodic
@@ -6944,7 +6944,7 @@ func buildAgentURL(nodeURL string, port int, scheme string, path string) (string
 var nodeDeleteModelTimeout = 60 * time.Second
 
 // handleNodeDeleteModel removes a locally-downloaded model from a specific
-// node, via its Node Agent's DELETE /v1/models/{name} (capability
+// node, via its Marbor Agent's DELETE /v1/models/{name} (capability
 // "models.delete"). No direct-HTTP fallback exists for this today (same
 // reasoning as handleNodeModels) - a node without an agent, or an agent
 // build predating this capability, returns a clear 501 rather than
@@ -6996,7 +6996,7 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
 }
 
-// deleteModelViaAgent dispatches a model delete to nodeURL's Node Agent
+// deleteModelViaAgent dispatches a model delete to nodeURL's Marbor Agent
 // (DELETE /v1/models/{name}, capability "models.delete"). ctrl carries the
 // node's configured driver/identifier (same router.ControlConfig cache
 // runtimeActionViaAgent reads) so the agent knows to route the delete
@@ -7069,7 +7069,7 @@ var nodeHealthCheckTimeout = 15 * time.Second
 var nodeTLSProbeTimeout = 10 * time.Second
 
 // handleNodeTLSProbe performs the P24 enrollment probe (spec section 2,
-// step 2-3): dials the node's Node Agent (NOT its runtime URL - the Agent's
+// step 2-3): dials the node's Marbor Agent (NOT its runtime URL - the Agent's
 // own host:port, using the Agent's own configured scheme, which is
 // independent of the runtime endpoint's scheme, see
 // store.MarborAgentRecord.Scheme's doc comment) with a TLS-handshake-only
@@ -7146,7 +7146,7 @@ type nodeHealthCheckResult struct {
 // handleNodeHealthCheck triggers an on-demand active liveness probe for a
 // node - distinct from the passive, poll-cycle-cached health already
 // carried on NodeState (populated from telemetry, up to one poll interval
-// stale). Prefers the node's Node Agent (GET /v1/runtime/health,
+// stale). Prefers the node's Marbor Agent (GET /v1/runtime/health,
 // capability "runtime.health_check") when available; falls back to
 // router.ProbeNodeOnDemand (the same RuntimeProbe the periodic poller
 // uses, read-only) for a node with no agent or an agent build predating
@@ -7198,7 +7198,7 @@ func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// healthCheckViaAgent queries nodeURL's Node Agent (GET /v1/runtime/health,
+// healthCheckViaAgent queries nodeURL's Marbor Agent (GET /v1/runtime/health,
 // capability "runtime.health_check") and relays its real ok/error/latency_ms
 // result. Unlike pullModelViaAgent/deleteModelViaAgent, a probe that comes
 // back ok:false is not a transport error - it's the health check doing its
@@ -7252,7 +7252,7 @@ func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentC
 // nodeDeleteModelTimeout - a local runtime call, never a transfer.
 var nodeUnloadModelTimeout = 30 * time.Second
 
-// unloadModelViaAgent dispatches a model unload to nodeURL's Node Agent
+// unloadModelViaAgent dispatches a model unload to nodeURL's Marbor Agent
 // (POST /v1/models/{name...}, capability "models.unload") instead of the
 // node's own runtime HTTP API. See actions.go's handleUnloadModel for why
 // POST (not a literal "/unload" suffix) is the verb used on this path shape.
@@ -7757,7 +7757,7 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// vramAgentVendorToolLabel maps a Node Agent's detected GPU vendor
+// vramAgentVendorToolLabel maps a Marbor Agent's detected GPU vendor
 // (marboragent.GPUBlock.Vendor - "nvidia"/"rocm"/"intel"/"apple") to the actual
 // command-line tool it read from, mirroring ui/src/components/VramBar.tsx's
 // AGENT_VENDOR_LABEL so the admin API and the GPU Nodes card never disagree
@@ -7771,7 +7771,7 @@ var vramAgentVendorToolLabel = map[string]string{
 
 // vramFitSourceLabel names the tool that actually produced a node's VRAM
 // total, given its raw VRAMSource ("nvidia"/"agent"/"declared"/"api"/"none")
-// and (when the source is "agent") the vendor the Node Agent detected. Only
+// and (when the source is "agent") the vendor the Marbor Agent detected. Only
 // called when vramTotalMB > 0, so the caller has already established there
 // is a real total to attribute - this just names its source honestly instead
 // of defaulting every non-"nvidia"/"declared" case to a claimed "nvidia-smi"

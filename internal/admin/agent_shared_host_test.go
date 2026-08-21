@@ -13,7 +13,7 @@ import (
 
 // TestEnableMarborAgentAppliesToSiblingOnSameHost is the regression test for
 // the reported bug: two node rows sharing the same physical host (same URL
-// hostname, different ports/runtimes) must share one Node Agent enrollment -
+// hostname, different ports/runtimes) must share one Marbor Agent enrollment -
 // enabling it via one node's admin API call must make the OTHER node's
 // agent config reflect the same enabled state, not require a second
 // independent enable. (The end-to-end "both nodes show AgentPresent after a

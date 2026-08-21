@@ -14,10 +14,10 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
-// TestGenerateNodeAgentTokenEmbedsScope verifies generateMarborAgentToken (P54)
+// TestGenerateMarborAgentTokenEmbedsScope verifies generateMarborAgentToken (P54)
 // produces a token whose scope round-trips through marboragent.TokenScope -
 // the same parsing the agent binary itself uses to enforce per-route scope.
-func TestGenerateNodeAgentTokenEmbedsScope(t *testing.T) {
+func TestGenerateMarborAgentTokenEmbedsScope(t *testing.T) {
 	for _, scope := range []string{marboragent.ScopeReadonly, marboragent.ScopeOperator, marboragent.ScopeAdmin} {
 		token, err := generateMarborAgentToken(scope)
 		if err != nil {
@@ -35,7 +35,7 @@ func TestGenerateNodeAgentTokenEmbedsScope(t *testing.T) {
 // scope alongside the token, and it must round-trip through GetMarborAgent -
 // the same record the mesh reads back on every subsequent admin request.
 func TestEnableMarborAgentPersistsAdminScope(t *testing.T) {
-	tmpDB := filepath.Join(t.TempDir(), "node-agent-scope.db")
+	tmpDB := filepath.Join(t.TempDir(), "marbor-agent-scope.db")
 	st, err := store.Open(tmpDB)
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
@@ -93,7 +93,7 @@ func TestEnableMarborAgentPersistsAdminScope(t *testing.T) {
 // regenerate path (handleRegenerateMarborAgentToken), which mints a fresh
 // token independently of handleEnableMarborAgent's.
 func TestRegenerateMarborAgentTokenPersistsAdminScope(t *testing.T) {
-	tmpDB := filepath.Join(t.TempDir(), "node-agent-scope-regen.db")
+	tmpDB := filepath.Join(t.TempDir(), "marbor-agent-scope-regen.db")
 	st, err := store.Open(tmpDB)
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)

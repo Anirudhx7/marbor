@@ -12,7 +12,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
-// TestMarborAgentInstallCommandUsesNewContract verifies the generated Node Agent
+// TestMarborAgentInstallCommandUsesNewContract verifies the generated Marbor Agent
 // install commands use the renamed Marbor Agent environment-variable contract
 // (MARBOR_SERVER / MARBOR_ENROLL) and never the legacy TOKEN / MESH / ENROLL
 // names. A regression here silently hands operators an install command that the

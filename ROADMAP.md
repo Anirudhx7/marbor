@@ -1,6 +1,6 @@
-# ollama-mesh Roadmap
+# marbor Roadmap
 
-ollama-mesh is a **single-instance, self-hosted inference control plane**. This roadmap is
+marbor is a **single-instance, self-hosted inference control plane**. This roadmap is
 the evolution of one thing - the **router's intelligence** - not a march toward distributed
 infrastructure. It runs as one static Go binary, SQLite only, in front of multiple GPU
 backends (Ollama, vLLM, TGI, llama.cpp, MLX) behind a single OpenAI-compatible endpoint.
@@ -49,7 +49,7 @@ production-hardened and free for any use under Apache-2.0.
 - Auth, per-key model allow-lists, rate limits, and daily/monthly quotas persisted across restarts (v0.3.x)
 - Observability - embedded admin dashboard, 14 Prometheus metrics, append-only audit log, analytics (v0.2.x–v0.9.x)
 - Day-2 ops - node drain, runtime key/node mutation, SIGHUP + HTTP config reload, structured JSON logging (v0.9.0)
-- `ollama-mesh bench` - reproducible cold-vs-warm TTFT measured through the mesh proxy (v0.11–v0.14)
+- `marbor bench` - reproducible cold-vs-warm TTFT measured through the mesh proxy (v0.11–v0.14)
 - Router decomposition - `placement` / `health` / `queue` split behind interfaces, so the next stages extend safely without touching the hot path (v0.11–v0.14)
 
 Full, dated release history lives in [CHANGELOG.md](CHANGELOG.md).
@@ -108,7 +108,7 @@ Ordered by pull, not promise - items graduate to "Next" when real deployments as
 
 ## Explicitly NOT on the roadmap (by design)
 
-ollama-mesh is single-instance by design. These are deliberately out of scope - they trade
+marbor is single-instance by design. These are deliberately out of scope - they trade
 the product's core simplicity for infrastructure it doesn't need:
 
 - ❌ etcd or any external datastore (SQLite only)
@@ -118,7 +118,7 @@ the product's core simplicity for infrastructure it doesn't need:
 - ❌ direct KV transport or shared KV between nodes
 - ❌ tenant isolation and compliance packs (HIPAA/SOC 2) - later-stage, not now
 - ❌ prompt-based model selection / policy engine ("small prompts → 7B") - gateway territory
-  already served well by LiteLLM; ollama-mesh routes *placement*, not *model choice*
+  already served well by LiteLLM; marbor routes *placement*, not *model choice*
 
 ---
 

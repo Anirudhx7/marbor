@@ -21,7 +21,7 @@ func checkToken(authHeader, expectedToken string) bool {
 	return strings.TrimPrefix(authHeader, "Bearer ") == expectedToken
 }
 
-// tier is a Node Agent token's authorization level (P54). Tiers are ordinal:
+// tier is a Marbor Agent token's authorization level (P54). Tiers are ordinal:
 // a token authorizes its own tier and every tier below it. tierAdmin is
 // deliberately the ceiling for every route today - no current route
 // requires it, it exists only so a future Group 3 ("Maintain") action can

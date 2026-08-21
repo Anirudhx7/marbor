@@ -44,7 +44,7 @@ at your GPU nodes' **private** IPs:
 
 ```bash
 curl -fL -o /usr/local/bin/marbor \
-  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/marbor-linux-amd64
+  https://github.com/Anirudhx7/marbor/releases/latest/download/marbor-linux-amd64
 chmod +x /usr/local/bin/marbor
 ```
 

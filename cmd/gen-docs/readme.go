@@ -24,7 +24,7 @@ const (
 // table for a human reading "what can this binary do", so they're
 // prepended by hand rather than derived - this is the one place gen-docs
 // doesn't come purely from the registry, and it's the reason: these
-// deliberately live outside it. The Node Agent is a separate binary
+// deliberately live outside it. The Marbor Agent is a separate binary
 // (cmd/marbor-agent) as of the control-plane/agent split - it is not,
 // and must never again be, a subcommand of this table.
 var nonRegistryRows = [][2]string{

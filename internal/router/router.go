@@ -28,7 +28,7 @@ import (
 // hostOrDefault returns host if non-empty, else rawURL's bare hostname -
 // the shared default used by both New (statically-configured nodes) and
 // AddNode (store/admin/Docker-discovered nodes) so every NodeState always
-// has a real, non-empty Host to key its Node Agent config by, even for a
+// has a real, non-empty Host to key its Marbor Agent config by, even for a
 // node whose config.NodeConfig.Host was never explicitly set.
 // ResultingHost predicts the Host UpdateNodeURL would assign to a node
 // currently at currentHost/currentURL if its URL changed to newURL, without
@@ -79,7 +79,7 @@ type NodeState struct {
 	Name string
 	URL  string
 	// Host groups this node with any other node sharing the same physical
-	// machine, so a single Node Agent process/enrollment/token covers all of
+	// machine, so a single Marbor Agent process/enrollment/token covers all of
 	// them (see SetMarborAgent/MarborAgentSetting, keyed by Host, not Name).
 	// Always non-empty in memory: defaulted to the URL's hostname in AddNode
 	// when config.NodeConfig.Host is unset, so it never needs a nil check.
@@ -94,7 +94,7 @@ type NodeState struct {
 	// PatchNode, same lifecycle as VRAMTotalMBConfig. Guarded by mu.
 	MaxInFlight int
 	// TLSFingerprint is this node's TOFU-pinned SHA-256 fingerprint
-	// ("SHA256:...") of its Node Agent's TLS certificate (P24): empty means
+	// ("SHA256:...") of its Marbor Agent's TLS certificate (P24): empty means
 	// "no pin - plaintext or not yet TLS-enrolled". Set at construction from
 	// config/store NodeOverride and updated live by PatchNode, same
 	// lifecycle as MaxInFlight. Guarded by mu. See
@@ -169,7 +169,7 @@ type NodeState struct {
 	LastErrorAt        time.Time
 	SuccessHistory     []bool
 
-	// Node Agent-derived telemetry (see internal/marboragent, .local/specs/node-agent.md).
+	// Marbor Agent-derived telemetry (see internal/marboragent, .local/specs/node-agent.md).
 	// AgentPresent is true only after a successful poll of this node's agent
 	// on the most recent poll cycle; it is set back to false on any failure
 	// or when no agent is configured, so a stale AgentVersion/FanPercent
@@ -271,7 +271,7 @@ type NodeState struct {
 	// AgentFailures counts consecutive failed agent polls, mirroring
 	// Failures/healthFailureThreshold's hysteresis for the node's own
 	// inference-runtime health - a single dropped TCP connection or timeout
-	// polling the Node Agent must not immediately blank out its telemetry
+	// polling the Marbor Agent must not immediately blank out its telemetry
 	// (fan/RAM/disk/GPU/runtime status) the way clearAgentTelemetry used to
 	// on the very first failure. Reset to 0 on the next successful poll.
 	AgentFailures int
@@ -353,7 +353,7 @@ type Router struct {
 	// prevHealthy tracks the last known health state per node name for
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
-	// prevAgentPresent mirrors prevHealthy for Node Agent reachability, so an
+	// prevAgentPresent mirrors prevHealthy for Marbor Agent reachability, so an
 	// operator gets an agent_down/agent_up webhook when a configured agent
 	// stops/resumes responding - independent of the node's own inference
 	// runtime health, which pollNode/markFailure already cover separately.
@@ -432,7 +432,7 @@ type Router struct {
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
 	nodeWarmup map[string]NodeWarmup
-	// marborAgents holds per-HOST Node Agent poll configuration (enabled,
+	// marborAgents holds per-HOST Marbor Agent poll configuration (enabled,
 	// port, bearer token), keyed by NodeState.Host - not by node name - so
 	// every node sharing a physical machine polls the same agent process
 	// with the same token (see pollAgentHost in agent_poll.go). Toggled via
@@ -716,7 +716,7 @@ func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
 	return NodeWarmup{Enabled: nw.Enabled, Models: append([]string(nil), nw.Models...)}
 }
 
-// MarborAgentConfig is the router's in-memory view of a host's Node Agent
+// MarborAgentConfig is the router's in-memory view of a host's Marbor Agent
 // poll configuration: whether the agent is enabled, which port it listens
 // on, and the bearer token the mesh presents when polling it. One config
 // per physical host, shared by every node row on that host.
@@ -731,7 +731,7 @@ type MarborAgentConfig struct {
 	Scheme string
 }
 
-// SetMarborAgent sets the per-HOST Node Agent poll config (admin-toggled,
+// SetMarborAgent sets the per-HOST Marbor Agent poll config (admin-toggled,
 // store-persisted by the caller under the same host key). Disabling removes
 // the host from the map entirely so pollAgentHost's "no agent configured"
 // branch runs on the next poll, clearing any previously-reported agent
@@ -1464,7 +1464,7 @@ type NodePatch struct {
 	// 0 explicitly clears any prior override back to "use the global default"
 	// (mirrors GPUIndices' non-nil-empty-slice-clears convention).
 	MaxInFlight *int `json:"max_in_flight"`
-	// TLSFingerprint declares this node's TOFU-pinned Node Agent cert
+	// TLSFingerprint declares this node's TOFU-pinned Marbor Agent cert
 	// fingerprint (P24) - nil means "not present in this PATCH, no change";
 	// a non-nil pointer to "" explicitly clears a prior pin (reset flow,
 	// see .local/specs/node-agent-tls.md section 2/5). No-downgrade

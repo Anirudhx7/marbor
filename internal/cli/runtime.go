@@ -61,7 +61,7 @@ func runRuntimeLogs(flags *globalFlags, node string, lines int, stdout, stderr i
 
 // runRuntimeDrain implements `mesh runtime drain <node> [--reason=X]` - POST
 // /admin/nodes/{name}/drain. Mesh-internal routing state (never sent to the
-// Node Agent) - same exit-code taxonomy as runRuntimeAction.
+// Marbor Agent) - same exit-code taxonomy as runRuntimeAction.
 func runRuntimeDrain(flags *globalFlags, node, reason string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

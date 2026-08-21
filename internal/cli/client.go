@@ -1,5 +1,5 @@
 // Package cli implements the mesh CLI - a thin client of the Admin API.
-// Per operational-interfaces.md, the CLI never talks to a Node Agent
+// Per operational-interfaces.md, the CLI never talks to a Marbor Agent
 // directly; every command is exactly one Admin API request.
 package cli
 
@@ -183,7 +183,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 // the Admin API, classified into the same exit-code taxonomy as doRequest.
 // Every mutating CLI command (runtime start/stop/restart, node control
 // accept) goes through this - per operational-interfaces.md, the CLI is
-// always exactly one Admin API request, never a direct Node Agent call.
+// always exactly one Admin API request, never a direct Marbor Agent call.
 func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Response, error) {
 	if c.Token == "" {
 		return nil, userErrorf("authentication required: run marbor login, or pass --token (or --username/--password / MARBOR_TOKEN / MARBOR_USERNAME+MARBOR_PASSWORD)")
@@ -441,7 +441,7 @@ type DrainResult struct {
 }
 
 // DrainNode calls POST /admin/nodes/{name}/drain - marks a node as draining
-// (mesh-internal routing state; never sent to the Node Agent), mirroring the
+// (mesh-internal routing state; never sent to the Marbor Agent), mirroring the
 // UI's GPUNodes.tsx "Drain" action.
 func (c *Client) DrainNode(node, reason string) (*DrainResult, error) {
 	var body map[string]string

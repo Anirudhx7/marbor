@@ -1,6 +1,6 @@
 package marboragent
 
-// actions.go implements the Node Agent Protocol's first mutating resource
+// actions.go implements the Marbor Agent Protocol's first mutating resource
 // (see .local/specs/node-agent.md section 16, node-agent-capabilities.md
 // Group 2): POST /v1/models, capability "models.pull". The agent runs the
 // locally-detected runtime's own model-download mechanism directly on the
@@ -187,7 +187,7 @@ func hfRepoID(model string) string {
 //
 // Otherwise (native/systemd/process driver, or no driver configured at all -
 // the pre-existing behavior for every node before this field existed) always
-// builds an explicit env with HOME guaranteed present: a node agent running
+// builds an explicit env with HOME guaranteed present: a Marbor agent running
 // as a systemd service (or other stripped-down service environment) may have
 // no $HOME set, and ollama's own CLI panics rather than falling back when
 // it's missing - so the agent can't just trust its own inherited environment
@@ -284,7 +284,7 @@ func writeAction(w http.ResponseWriter, status int, resp actionResponse) {
 // legitimate reason for it to run long.
 var listModelsTimeout = 30 * time.Second
 
-// modelEntry is one entry in GET /v1/models' response - the Node Agent
+// modelEntry is one entry in GET /v1/models' response - the Marbor Agent
 // Protocol's "models" resource, capability "models.list". SizeBytes is
 // omitted (never fabricated - R1) when the source can't report a real size.
 type modelEntry struct {

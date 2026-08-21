@@ -34,7 +34,7 @@ type modelsListResponse struct {
 	TotalModels int `json:"total_models"`
 }
 
-// TestHandleModels_OllamaOnlyFleetUnchanged verifies P36's new Node Agent
+// TestHandleModels_OllamaOnlyFleetUnchanged verifies P36's new Marbor Agent
 // models.list merge is a strict no-op for a fleet with no agent capability -
 // handleModels must fall back to exactly the same two sources (LoadedModels +
 // FetchModelTags) it always has.

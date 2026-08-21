@@ -22,7 +22,7 @@ func newDeleteModelRequest(t *testing.T, s *Server, node, model string) *http.Re
 }
 
 // TestHandleNodeDeleteModel_DispatchesToAgentWhenCapable verifies the mesh
-// forwards to the node's Node Agent (DELETE /v1/models/{name}, capability
+// forwards to the node's Marbor Agent (DELETE /v1/models/{name}, capability
 // "models.delete") - mirroring TestHandleNodeModels_DispatchesToAgentWhenCapable
 // for the list capability.
 func TestHandleNodeDeleteModel_DispatchesToAgentWhenCapable(t *testing.T) {

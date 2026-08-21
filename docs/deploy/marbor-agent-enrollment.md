@@ -83,13 +83,13 @@ rest, then poll until each is healthy - across an arbitrary list of already-
 registered GPU hosts declared in a simple vars file. It ships as source in this repo
 only; it is not published to Ansible Galaxy or any external registry.
 
-- Playbook: [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-marbor-agent.yml)
-- Example inventory: [`ansible/inventory-agents.example.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/inventory-agents.example.yml)
+- Playbook: [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/marbor/blob/main/ansible/playbooks/install-marbor-agent.yml)
+- Example inventory: [`ansible/inventory-agents.example.yml`](https://github.com/Anirudhx7/marbor/blob/main/ansible/inventory-agents.example.yml)
 - Full variable reference, the re-enrollment idempotency policy, and prerequisites:
-  [`ansible/README.md`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/README.md)
+  [`ansible/README.md`](https://github.com/Anirudhx7/marbor/blob/main/ansible/README.md)
 
 This playbook enrolls/installs agents only - it does not register a node's runtime
-endpoint. Run [`ansible/playbooks/register-gpus.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/register-gpus.yml)
+endpoint. Run [`ansible/playbooks/register-gpus.yml`](https://github.com/Anirudhx7/marbor/blob/main/ansible/playbooks/register-gpus.yml)
 first for any node not yet registered - see [GPU node registration](gpu-node-registration.md).
 
 ## Ansible sketch (how it works under the hood / no-Ansible fallback)

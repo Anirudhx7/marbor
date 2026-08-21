@@ -76,10 +76,10 @@ pipeline without Ansible, a language other than YAML, etc.) - the loop above rem
 correct as a reference for exactly what the playbook does under the hood, and as a
 no-Ansible fallback.
 
-- Playbook: [`ansible/playbooks/register-gpus.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/register-gpus.yml)
-- Example inventory: [`ansible/inventory.example.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/inventory.example.yml)
-- Full variable reference and prerequisites: [`ansible/README.md`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/README.md)
+- Playbook: [`ansible/playbooks/register-gpus.yml`](https://github.com/Anirudhx7/marbor/blob/main/ansible/playbooks/register-gpus.yml)
+- Example inventory: [`ansible/inventory.example.yml`](https://github.com/Anirudhx7/marbor/blob/main/ansible/inventory.example.yml)
+- Full variable reference and prerequisites: [`ansible/README.md`](https://github.com/Anirudhx7/marbor/blob/main/ansible/README.md)
 
 This playbook registers runtime endpoints only - it does not install or enroll marbor
-agents. See [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-marbor-agent.yml)
+agents. See [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/marbor/blob/main/ansible/playbooks/install-marbor-agent.yml)
 and [marbor agent enrollment](marbor-agent-enrollment.md) for that separate step.

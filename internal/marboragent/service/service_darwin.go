@@ -1,6 +1,6 @@
 //go:build darwin
 
-// launchd Manager implementation for the Node Agent's service-manager
+// launchd Manager implementation for the Marbor Agent's service-manager
 // package. Build-tagged to darwin: New() (this file's sole exported entry
 // point other than the Manager methods themselves) must be defined exactly
 // once per GOOS - see service.go's New() doc comment for why a single
@@ -34,7 +34,7 @@ const launchdPlistPath = "/Library/LaunchDaemons/" + launchdLabel + ".plist"
 // launchd itself doesn't capture output anywhere useful by default.
 const launchdLogPath = "/var/log/marbor-agent.log"
 
-// agentSupportDir/agentCertPath/agentKeyPath are the Node Agent's TLS
+// agentSupportDir/agentCertPath/agentKeyPath are the Marbor Agent's TLS
 // certificate/key file locations on macOS (P24), matching the design's
 // per-platform table: a dedicated Application Support directory (unlike
 // Linux's flat /etc files) since macOS has no equivalent single
@@ -46,7 +46,7 @@ const (
 	agentKeyPath    = agentSupportDir + "/agent.key"
 )
 
-// CertKeyPaths returns this platform's Node Agent TLS certificate/key file
+// CertKeyPaths returns this platform's Marbor Agent TLS certificate/key file
 // paths - used by service_cmd.go's regen-cert subcommand and "agent service
 // status" to locate the files without duplicating the path constants there.
 func CertKeyPaths() (certPath, keyPath string) { return agentCertPath, agentKeyPath }

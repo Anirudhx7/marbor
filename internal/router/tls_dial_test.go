@@ -108,7 +108,7 @@ func certFingerprint(t *testing.T, srv *httptest.Server) string {
 }
 
 // TestHTTPClientForNode_PinnedFingerprintMatch proves the happy path: a node
-// registered with the correct pinned fingerprint for its Node Agent's host:
+// registered with the correct pinned fingerprint for its Marbor Agent's host:
 // port can be reached over HTTPS through HTTPClientForNode.
 func TestHTTPClientForNode_PinnedFingerprintMatch(t *testing.T) {
 	srv := httptest.NewTLSServer(psHandler())
@@ -135,7 +135,7 @@ func TestHTTPClientForNode_PinnedFingerprintMatch(t *testing.T) {
 
 // TestHTTPClientForNode_PinnedFingerprintMismatch proves the fail-closed
 // path (spec section 6/7): a node pinned to the WRONG fingerprint for its
-// Node Agent's host:port must have every request over that transport
+// Marbor Agent's host:port must have every request over that transport
 // refused at the TLS handshake, never silently trusted or downgraded to
 // plaintext.
 func TestHTTPClientForNode_PinnedFingerprintMismatch(t *testing.T) {
@@ -221,6 +221,6 @@ func TestHTTPClientForNode_UnpinnedMarborAgentFailsClosed(t *testing.T) {
 	client := r.HTTPClientForNode(5 * time.Second)
 	_, err := client.Get(srv.URL + "/api/ps")
 	if err == nil {
-		t.Fatal("Get against an unpinned self-signed node agent succeeded, want standard-verification failure")
+		t.Fatal("Get against an unpinned self-signed Marbor agent succeeded, want standard-verification failure")
 	}
 }

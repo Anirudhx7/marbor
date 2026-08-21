@@ -84,12 +84,12 @@ func TestUpsertAndGetMarborAgent_Scope(t *testing.T) {
 	}
 }
 
-// TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin verifies a row
+// TestMarborAgentRowPredatingScopeColumnDefaultsToAdmin verifies a row
 // inserted before the P54 scope column existed (the exact shape of an
 // existing installation's marbor.db before this migration ran) reads back as
 // "admin" - matching that row's actual token, which has no scope prefix and
 // so parses as tierAdmin via scopeOf's fallback (backward compatible).
-func TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
+func TestMarborAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -135,9 +135,9 @@ func TestGetMarborAgentNotFound(t *testing.T) {
 	}
 }
 
-// TestNodeAgentTokenEncryptedAtRest verifies the token is stored under the
+// TestMarborAgentTokenEncryptedAtRest verifies the token is stored under the
 // enc:v1: prefix on disk, not as plaintext (R8).
-func TestNodeAgentTokenEncryptedAtRest(t *testing.T) {
+func TestMarborAgentTokenEncryptedAtRest(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -253,11 +253,11 @@ func TestDeleteMarborAgent(t *testing.T) {
 	}
 }
 
-// TestDeleteNodeCascadesNodeAgent verifies that removing a node (DeleteNode)
+// TestDeleteNodeCascadesMarborAgent verifies that removing a node (DeleteNode)
 // also removes its marbor_agent row - a stale agent token for a deleted node
 // is a dangling-secret concern (R8), even though other per-node aux tables
 // (node_overrides, node_drain) are left behind by the existing pattern.
-func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
+func TestDeleteNodeCascadesMarborAgent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -290,7 +290,7 @@ func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
 
 // TestDeleteNodeDoesNotCascadeSharedHostAgent verifies DeleteNode leaves the
 // marbor_agent row alone when another node still shares its host - deleting
-// one runtime on a multi-runtime box must not kill the Node Agent config for
+// one runtime on a multi-runtime box must not kill the Marbor Agent config for
 // its sibling node(s) on the same physical machine.
 func TestDeleteNodeDoesNotCascadeSharedHostAgent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -323,12 +323,12 @@ func TestDeleteNodeDoesNotCascadeSharedHostAgent(t *testing.T) {
 	}
 }
 
-// TestMigrateEncryptSecretsUpgradesLegacyNodeAgentToken mirrors
+// TestMigrateEncryptSecretsUpgradesLegacyMarborAgentToken mirrors
 // TestMigrateEncryptSecretsUpgradesLegacyPlaintext (secretbox_test.go) for
 // the marbor_agent table: a plaintext token written before this feature
 // existed (or by some other bypass) must be encrypted in place on the next
 // boot, transparently, with no manual step.
-func TestMigrateEncryptSecretsUpgradesLegacyNodeAgentToken(t *testing.T) {
+func TestMigrateEncryptSecretsUpgradesLegacyMarborAgentToken(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy.db")
 
 	st, err := Open(dbPath)

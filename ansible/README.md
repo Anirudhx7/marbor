@@ -193,11 +193,11 @@ safe to wire into CI/cron without silently succeeding on a partial fleet.
 ## Agent re-enrollment policy (read this before re-running against a live fleet)
 
 `POST /admin/nodes/{name}/agent` is **not** safe to call blindly on every
-run. Per `internal/admin/admin.go` `handleEnableNodeAgent`, every call:
+run. Per `internal/admin/admin.go` `handleEnableMarborAgent`, every call:
 
 - generates a brand-new opaque token,
 - overwrites the persisted `marbor_agent` record for that host, and
-- pushes the new token to the live router immediately (`SetNodeAgent`),
+- pushes the new token to the live router immediately (`SetMarborAgent`),
 
 with no check for whether an agent is already enrolled and healthy. Calling
 it repeatedly against an already-healthy node would rotate its credential

@@ -1,7 +1,7 @@
 // Multi-runtime/multi-GPU coverage (Architecture Law 5): this file's
 // node/model validation, eviction, and TTFT measurement are all
 // runtime-agnostic by construction, not by explicit per-runtime branching -
-// node/model discovery goes through the existing Node Agent
+// node/model discovery goes through the existing Marbor Agent
 // models.list/loadedModels endpoints, eviction reuses the same
 // UnloadModel/unloadModelViaAgent path handleUnloadModel already uses for
 // every runtime, and bench.MeasureChatTTFT talks to the OpenAI-compatible
@@ -288,7 +288,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 }
 
 // nodeHasModel checks whether model is known to already be present on node,
-// via whichever runtime-agnostic source is available: the Node Agent's
+// via whichever runtime-agnostic source is available: the Marbor Agent's
 // models.list capability if enabled, falling back to the router's live
 // LoadedModels view (covers nodes without an agent, or an agent build
 // predating models.list) - the same fallback order preflight.sh uses.
@@ -327,7 +327,7 @@ func (s *Server) nodeHasModel(ctx context.Context, nodeName, model string) bool 
 	return false
 }
 
-// evictModelForBenchmark unloads model from node, via the Node Agent when
+// evictModelForBenchmark unloads model from node, via the Marbor Agent when
 // configured or the direct router path otherwise - the same branch
 // handleUnloadModel takes, duplicated here as a small standalone helper
 // rather than refactoring that hotspot handler to accept a benchmark caller.

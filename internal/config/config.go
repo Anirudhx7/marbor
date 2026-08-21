@@ -279,7 +279,7 @@ type NodeConfig struct {
 	VRAMOverrides map[string]int64 `yaml:"vram_overrides,omitempty" json:"vram_overrides,omitempty"`
 	// Host groups this node with any other node that lives on the same
 	// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one box),
-	// so they can share one Node Agent enrollment/token instead of each
+	// so they can share one Marbor Agent enrollment/token instead of each
 	// needing its own. Empty defaults to the URL's hostname in
 	// Router.AddNode - most operators never need to set this explicitly.
 	Host string `yaml:"host,omitempty" json:"host,omitempty"`

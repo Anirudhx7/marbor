@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 )
 
-// Server is the Node Agent Protocol's local HTTP server: GET /v1/status
+// Server is the Marbor Agent Protocol's local HTTP server: GET /v1/status
 // (canonical JSON resource envelope), GET /metrics (Prometheus text, derived
 // from the same struct, left unversioned per Prometheus's own scrape-target
 // convention), and the "models" resource - POST /v1/models (pull), GET

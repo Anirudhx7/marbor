@@ -660,7 +660,7 @@ func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 }
 
 // TestHandleNodePull_DispatchesToAgentWhenCapable verifies the mesh routes a
-// pull to the node's Node Agent (not the direct Ollama /api/pull path) when
+// pull to the node's Marbor Agent (not the direct Ollama /api/pull path) when
 // the node has an agent enabled and reporting "models.pull" - and that the
 // mesh's configured Hugging Face token is forwarded per-request (node-agent
 // spec section 16). The direct-to-Ollama mock is never hit in this

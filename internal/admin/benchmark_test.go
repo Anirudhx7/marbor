@@ -24,7 +24,7 @@ import (
 // /v1/chat/completions endpoint - what the benchmark actually measures).
 // model is pre-registered as already loaded on the node, matching what
 // nodeHasModel's LoadedModels fallback checks, so tests don't need to mock
-// a Node Agent just to pass the pre-flight model-known check.
+// a Marbor Agent just to pass the pre-flight model-known check.
 func newBenchTestServer(t *testing.T, mockNodeURL, mockProxyURL, model string) *Server {
 	t.Helper()
 	cfg := config.Config{
