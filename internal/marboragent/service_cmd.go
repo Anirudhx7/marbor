@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent/service"
-	"github.com/ollama-mesh/ollama-mesh/internal/winexit"
+	"github.com/Anirudhx7/marbor/internal/marboragent/service"
+	"github.com/Anirudhx7/marbor/internal/winexit"
 )
 
 // runServiceCommand dispatches "marbor-agent service <subcommand>".

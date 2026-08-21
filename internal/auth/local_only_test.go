@@ -3,7 +3,7 @@ package auth
 import (
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/Anirudhx7/marbor/internal/config"
 )
 
 // TestIsLocalOnly guards the P66 fail-closed policy check: a key configured

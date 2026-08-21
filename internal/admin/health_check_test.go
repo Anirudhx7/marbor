@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/Anirudhx7/marbor/internal/config"
 )
 
 func newHealthCheckRequest(t *testing.T, s *Server, node string) *http.Request {

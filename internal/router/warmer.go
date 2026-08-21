@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
+	"github.com/Anirudhx7/marbor/internal/metrics"
 )
 
 // warmupPingTimeout is the per-ping HTTP timeout. Loading a model from disk

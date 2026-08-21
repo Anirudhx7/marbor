@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent/control"
+	"github.com/Anirudhx7/marbor/internal/marboragent/control"
 )
 
 // fakeControlDriver satisfies control.ControlDriver for tests, letting a

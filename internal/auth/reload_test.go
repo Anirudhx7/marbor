@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/Anirudhx7/marbor/internal/config"
 )
 
 func TestReloadPreservesCounterForUnchangedKey(t *testing.T) {

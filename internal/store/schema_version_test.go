@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // TestOpenStampsCurrentSchemaVersion verifies a fresh DB ends up recording

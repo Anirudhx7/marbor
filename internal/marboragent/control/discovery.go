@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent/service"
+	"github.com/Anirudhx7/marbor/internal/marboragent/service"
 )
 
 // isSelf reports whether a discovered service/container/unit name is the

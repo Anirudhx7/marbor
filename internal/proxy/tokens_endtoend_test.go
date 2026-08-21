@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/admin"
+	"github.com/Anirudhx7/marbor/internal/admin"
 )
 
 // liveRequestTokens fetches /admin/requests/live and returns the Tokens

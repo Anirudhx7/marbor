@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/cli"
+	"github.com/Anirudhx7/marbor/internal/cli"
 )
 
 // seedReadme writes a minimal README.md carrying the CLI table markers into

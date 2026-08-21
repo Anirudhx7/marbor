@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/cli"
+	"github.com/Anirudhx7/marbor/internal/cli"
 )
 
 // markdown.go renders docs/cli.md: one "##" section per top-level command,

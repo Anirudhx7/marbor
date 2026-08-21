@@ -3,8 +3,8 @@ package auth
 import (
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 func TestSaveLoadStateRoundTrip(t *testing.T) {

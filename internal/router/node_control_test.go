@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/Anirudhx7/marbor/internal/config"
 )
 
 func TestSetAndGetNodeControlSetting(t *testing.T) {

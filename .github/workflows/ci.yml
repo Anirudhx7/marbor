@@ -138,7 +138,7 @@ jobs:
         run: bash scripts/smoke.sh
 
   docker-main:
-    # Bleeding-edge image for testing: ghcr.io/anirudhx7/ollama-mesh:main
+    # Bleeding-edge image for testing: ghcr.io/anirudhx7/marbor:main
     # Stable releases keep :latest and :vX.Y.Z via goreleaser on v* tags.
     # Runs only after all check lanes are green, and only on pushes to main.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -168,5 +168,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/anirudhx7/ollama-mesh:main
-            ghcr.io/anirudhx7/ollama-mesh:main-${{ steps.sha.outputs.short }}
+            ghcr.io/anirudhx7/marbor:main
+            ghcr.io/anirudhx7/marbor:main-${{ steps.sha.outputs.short }}

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
 
 func TestMarborAgentConfig_TokenNeverMarshaled(t *testing.T) {

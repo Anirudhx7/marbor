@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/cli"
+	"github.com/Anirudhx7/marbor/internal/cli"
 )
 
 // TestResolveCommand protects the merged binary's dispatch entry point
@@ -232,12 +232,12 @@ func TestPrintUnknownCommand_SuggestsTopLevelTypo(t *testing.T) {
 // auth middleware) or the Admin API CLI. cmd/marbor-agent must never
 // depend on any of them - see TestAgentBinary_HasNoControlPlaneCapability.
 var controlPlaneOnlyPackages = []string{
-	"github.com/ollama-mesh/ollama-mesh/internal/admin",
-	"github.com/ollama-mesh/ollama-mesh/internal/router",
-	"github.com/ollama-mesh/ollama-mesh/internal/store",
-	"github.com/ollama-mesh/ollama-mesh/internal/proxy",
-	"github.com/ollama-mesh/ollama-mesh/internal/auth",
-	"github.com/ollama-mesh/ollama-mesh/internal/cli",
+	"github.com/Anirudhx7/marbor/internal/admin",
+	"github.com/Anirudhx7/marbor/internal/router",
+	"github.com/Anirudhx7/marbor/internal/store",
+	"github.com/Anirudhx7/marbor/internal/proxy",
+	"github.com/Anirudhx7/marbor/internal/auth",
+	"github.com/Anirudhx7/marbor/internal/cli",
 }
 
 // goListDeps runs "go list -deps" for importPath and returns the set of

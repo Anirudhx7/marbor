@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent/control"
+	"github.com/Anirudhx7/marbor/internal/marboragent/control"
 )
 
 // controlActionTimeout bounds how long the agent waits for a ControlDriver

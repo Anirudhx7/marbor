@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
+	"github.com/Anirudhx7/marbor/internal/config"
+	runtimepkg "github.com/Anirudhx7/marbor/internal/runtime"
 )
 
 // panicProbe simulates any bug in a RuntimeProbe implementation - the

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // TestFlushAffinityThenRestoreRoundTrips covers audit finding #8

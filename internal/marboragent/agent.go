@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/winexit"
+	"github.com/Anirudhx7/marbor/internal/winexit"
 )
 
 // defaultRefreshInterval is how often the background Scheduler re-collects

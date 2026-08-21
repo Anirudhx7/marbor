@@ -1,4 +1,4 @@
-// marbor-agent is the Node Agent binary: the node-local execution point
+// marbor-agent is the Marbor Agent binary: the node-local execution point
 // the mesh polls for GPU/host/runtime telemetry and issues control actions
 // through (internal/marboragent). It deliberately imports nothing from the
 // control-plane side of the codebase (internal/admin, internal/router,
@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
+	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
 
 // Version is set at build time via ldflags: -X main.Version=v0.x.y (the same
@@ -31,7 +31,7 @@ func main() {
 	// Handled here, not inside internal/marboragent: -version is a top-level
 	// binary concern (install.sh/install.ps1 both run "<binary> -version"
 	// to detect upgrades - the same pattern the root marbor binary
-	// uses), not an agent runtime flag, and nodeagent.Run's own flag set
+	// uses), not an agent runtime flag, and marboragent.Run's own flag set
 	// (runAgent, service_cmd.go) has no reason to know about it.
 	if len(os.Args) > 1 && (os.Args[1] == "-version" || os.Args[1] == "--version") {
 		fmt.Printf("marbor-agent %s\n", Version)
