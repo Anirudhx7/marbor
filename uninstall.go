@@ -19,20 +19,20 @@ import (
 // install.ps1 never offers a service mode for the mesh role at all (only for
 // ROLE=agent) - so this path, and everything gated on runtime.GOOS == "linux"
 // below, has no counterpart to check on those platforms.
-const meshSystemdUnitPath = "/etc/systemd/system/ollama-mesh.service"
+const meshSystemdUnitPath = "/etc/systemd/system/marbor.service"
 
 // meshPidfile mirrors uninstall.sh's PIDFILE: the nohup fallback path writes
 // its PID here, resolved relative to the working directory the installer (or
 // operator) was run from - this subcommand must be run from that same
 // directory to find it, exactly as uninstall.sh documents.
-const meshPidfile = "ollama-mesh.pid"
+const meshPidfile = "marbor.pid"
 
-// runUninstall implements "ollama-mesh uninstall": the Go-native counterpart
+// runUninstall implements "marbor uninstall": the Go-native counterpart
 // to uninstall.sh. Only ever touches this host's mesh service/process - a
-// Node Agent service (if any) is removed via "ollama-mesh-agent service
+// Node Agent service (if any) is removed via "marbor-agent service
 // uninstall" on its own host instead (post control-plane/Node-Agent binary
-// split, ollama-mesh no longer imports internal/nodeagent at all, so it has
-// no Manager to drive even if it wanted to). Never touches mesh.db - matches
+// split, marbor no longer imports internal/nodeagent at all, so it has
+// no Manager to drive even if it wanted to). Never touches marbor.db - matches
 // uninstall.sh's default of always asking before deleting real state, and
 // this subcommand has no interactive prompt to ask with, so the safe default
 // is "never" rather than guessing.
@@ -40,10 +40,10 @@ func runUninstall(args []string) {
 	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
 	purge := fs.Bool("purge", false, "also delete the installed binary (default: only removes service registrations)")
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "ollama-mesh uninstall - remove the mesh's own service registration (if any) from this host\n\n")
-		fmt.Fprintf(w, "Usage:\n  ollama-mesh uninstall [--purge]\n\n")
-		fmt.Fprintf(w, "To remove a Node Agent, run \"ollama-mesh-agent service uninstall\" on the agent's own host instead.\n")
-		fmt.Fprintf(w, "Never deletes mesh.db - remove it yourself if you also want the database gone.\n")
+		fmt.Fprintf(w, "marbor uninstall - remove the mesh's own service registration (if any) from this host\n\n")
+		fmt.Fprintf(w, "Usage:\n  marbor uninstall [--purge]\n\n")
+		fmt.Fprintf(w, "To remove a Node Agent, run \"marbor-agent service uninstall\" on the agent's own host instead.\n")
+		fmt.Fprintf(w, "Never deletes marbor.db - remove it yourself if you also want the database gone.\n")
 		fmt.Fprintf(w, "Run from the same directory the mesh was started from, so a nohup-mode\n%s is found.\n\nFlags:\n", meshPidfile)
 		fs.SetOutput(w)
 		fs.PrintDefaults()
@@ -56,7 +56,7 @@ func runUninstall(args []string) {
 		}
 	}
 	if err := fs.Parse(args); err != nil {
-		fmt.Fprintf(os.Stderr, "ollama-mesh: %v\n", err)
+		fmt.Fprintf(os.Stderr, "marbor: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -65,8 +65,8 @@ func runUninstall(args []string) {
 	if runtime.GOOS == "linux" {
 		if _, err := os.Stat(meshSystemdUnitPath); err == nil {
 			fmt.Println("Removing mesh systemd service...")
-			_ = exec.Command("systemctl", "stop", "ollama-mesh").Run()
-			_ = exec.Command("systemctl", "disable", "ollama-mesh").Run()
+			_ = exec.Command("systemctl", "stop", "marbor").Run()
+			_ = exec.Command("systemctl", "disable", "marbor").Run()
 			if err := os.Remove(meshSystemdUnitPath); err != nil && !os.IsNotExist(err) {
 				fmt.Fprintf(os.Stderr, "  [!] could not remove %s: %v (needs root/sudo?)\n", meshSystemdUnitPath, err)
 			} else {
@@ -98,11 +98,11 @@ func runUninstall(args []string) {
 
 	fmt.Println()
 	if didSomething {
-		fmt.Println("ollama-mesh has been uninstalled from this host.")
+		fmt.Println("marbor has been uninstalled from this host.")
 	} else {
 		fmt.Println("Nothing to uninstall on this host: no mesh service and no background mesh process were found.")
 	}
-	fmt.Println("mesh.db was left untouched - remove it yourself if you also want the database gone.")
+	fmt.Println("marbor.db was left untouched - remove it yourself if you also want the database gone.")
 }
 
 // readRunningPidfile reads a pidfile written by install.sh's nohup fallback

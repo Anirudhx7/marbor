@@ -4,10 +4,10 @@
 
 One OpenAI-compatible endpoint for all your self-hosted LLM traffic. marbor routes every request to the GPU node that already holds the model warm in VRAM - across Ollama, vLLM, TGI, llama.cpp, and MLX (Apple Silicon) - turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
 
-[![Build Status](ollama-mesh.dev/actions/workflows/ci.yml/badge.svg)](ollama-mesh.dev/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases)](ollama-mesh.dev/releases/latest)
+[![Build Status](marbor.dev/actions/workflows/ci.yml/badge.svg)](marbor.dev/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases)](marbor.dev/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](ollama-mesh.dev/demo/)
+[![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](marbor.dev/demo/)
 
 
 ![marbor dashboard](website/screenshots/dashboard.png)
@@ -15,7 +15,7 @@ One OpenAI-compatible endpoint for all your self-hosted LLM traffic. marbor rout
 
 ---
 
-> **[→ Try the live demo](ollama-mesh.dev/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
+> **[→ Try the live demo](marbor.dev/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 1. **Clone and start the demo stack**:
    ```bash
-   git clone ollama-mesh.dev && cd marbor
+   git clone marbor.dev && cd marbor
    make demo
    ```
    This spins up `marbor`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
@@ -51,32 +51,32 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 *   **Install only**
     ```bash
-    curl -fsSL ollama-mesh.dev/main/install.sh | sh
+    curl -fsSL marbor.dev/main/install.sh | sh
     ```
     Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `marbor` manually to start. If a version is already installed, this reports old → new instead of upgrading silently.
 
 *   **Quick demo - Auto-Discover & Run in background**
     ```bash
-    curl -fsSL ollama-mesh.dev/main/install.sh | START=1 sh
+    curl -fsSL marbor.dev/main/install.sh | START=1 sh
     ```
     Installs the binary, starts the gateway in the background against a fresh `marbor.db`, and prints operational access details. Before starting, it scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) and interactively prompts you to pick which discovered nodes to seed into `marbor.db` (comma-separated numbers, `all`, or `skip`) - there's no config file to hand-edit. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try marbor, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
 
 *   **Production - Auto-Discover & Run as a managed service (recommended for real deployments)**
     ```bash
-    curl -fsSL ollama-mesh.dev/main/install.sh | SERVICE=1 sh
+    curl -fsSL marbor.dev/main/install.sh | SERVICE=1 sh
     ```
     Same as the quick-demo command (including the interactive node-discovery prompt), but instead of a background process it installs and enables a proper OS service (`Restart=on-failure`, starts on boot) - this is what you want for anything you intend to keep running. Currently implemented via `systemd` on Linux (requires root/sudo; logs via `journalctl -u marbor -f`). `SERVICE=1` is deliberately OS-agnostic - on macOS or any host without a supported service manager, it prints a notice and falls back to the same background mode as the quick-demo command rather than failing the install.
 
 ### Uninstalling
 
 ```bash
-curl -fsSL ollama-mesh.dev/main/uninstall.sh | sh
+curl -fsSL marbor.dev/main/uninstall.sh | sh
 ```
 
 Run this from the same directory `install.sh` was run in (it looks for `marbor.db` and the pidfile there). It stops and removes the systemd service or background process and removes the binary. `marbor.db` is always kept by default when piped like this (stdin isn't a terminal, so the keep/remove prompt never runs) - pass `KEEP_DB=0` to remove it instead:
 
 ```bash
-curl -fsSL ollama-mesh.dev/main/uninstall.sh | KEEP_DB=0 sh
+curl -fsSL marbor.dev/main/uninstall.sh | KEEP_DB=0 sh
 ```
 
 To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying on the env vars, download the script first so it runs with a real terminal attached: `curl -fsSL .../uninstall.sh -o uninstall.sh && sh uninstall.sh`.
@@ -87,7 +87,7 @@ To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying o
 
 Run a production-ready gateway + metrics stack scraping the proxy:
 ```bash
-git clone ollama-mesh.dev && cd marbor
+git clone marbor.dev && cd marbor
 docker compose up -d
 ```
 This starts:
@@ -283,16 +283,16 @@ marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the 
 | macOS | Apple Silicon | `marbor-darwin-arm64` | Mac Studio, Mac Pro, M-series dev machines |
 | macOS | Intel | `marbor-darwin-amd64` | Intel Macs |
 | Windows | amd64 | `marbor-windows-amd64.exe` | Windows GPU workstations |
-| Docker | multi-arch | `ollama-mesh.dev` | Any container orchestrator |
+| Docker | multi-arch | `marbor.dev` | Any container orchestrator |
 
 > **macOS Gatekeeper:** binaries are not yet Apple-notarized. Clear the quarantine flag once: `xattr -d com.apple.quarantine marbor`.
 
-All builds and `checksums.txt` on the [releases page](ollama-mesh.dev/releases/latest).
+All builds and `checksums.txt` on the [releases page](marbor.dev/releases/latest).
 
 
 **Build from source:**
 ```bash
-git clone ollama-mesh.dev
+git clone marbor.dev
 cd marbor
 make build
 ./marbor

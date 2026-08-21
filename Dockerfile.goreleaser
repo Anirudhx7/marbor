@@ -3,6 +3,6 @@
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates
 WORKDIR /root
-COPY ollama-mesh .
+COPY marbor .
 EXPOSE 11434 8080 9090
-ENTRYPOINT ["./ollama-mesh"]
+ENTRYPOINT ["./marbor"]

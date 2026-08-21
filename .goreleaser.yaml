@@ -1,6 +1,6 @@
 version: 2
 
-project_name: ollama-mesh
+project_name: marbor
 
 # The UI is embedded into the binary via go:embed, so it must be built first.
 before:
@@ -9,7 +9,7 @@ before:
     - npm --prefix ui run build
 
 builds:
-  - id: ollama-mesh
+  - id: marbor
     main: .
     env:
       - CGO_ENABLED=0
@@ -28,10 +28,10 @@ builds:
   # Node Agent: a separate artifact so a GPU/node-agent host installs a
   # binary with no control-plane startup path at all - see the "Control
   # Plane / Node Agent Binary Separation" work item. Same version, same
-  # release, same OS/arch matrix as the ollama-mesh build above; only the
-  # entry point (cmd/ollama-mesh-agent) differs.
-  - id: ollama-mesh-agent
-    main: ./cmd/ollama-mesh-agent
+  # release, same OS/arch matrix as the marbor build above; only the
+  # entry point (cmd/marbor-agent) differs.
+  - id: marbor-agent
+    main: ./cmd/marbor-agent
     env:
       - CGO_ENABLED=0
     goos:
@@ -48,16 +48,16 @@ builds:
       - -s -w -X main.Version={{.Version}}
 
 # Raw binaries (not tarballs) so the README one-liner works:
-# curl -Lo ollama-mesh .../releases/latest/download/ollama-mesh-linux-amd64
+# curl -Lo marbor .../releases/latest/download/marbor-linux-amd64
 archives:
-  - id: ollama-mesh
-    ids: [ollama-mesh]
+  - id: marbor
+    ids: [marbor]
     formats: ['binary']
     name_template: '{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}'
-  - id: ollama-mesh-agent
-    ids: [ollama-mesh-agent]
+  - id: marbor-agent
+    ids: [marbor-agent]
     formats: ['binary']
-    name_template: 'ollama-mesh-agent-{{ .Os }}-{{ .Arch }}'
+    name_template: 'marbor-agent-{{ .Os }}-{{ .Arch }}'
 
 checksum:
   name_template: 'checksums.txt'

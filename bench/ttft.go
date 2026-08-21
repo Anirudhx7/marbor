@@ -1,4 +1,4 @@
-// bench/ttft.go - Time-To-First-Token (TTFT) benchmark for ollama-mesh.
+// bench/ttft.go - Time-To-First-Token (TTFT) benchmark for marbor.
 //
 // Measures the wall-clock milliseconds from request send to the moment the
 // first byte of the streaming NDJSON response is received.  Run it against
@@ -40,7 +40,7 @@ func main() {
 	url := flag.String("url", "http://localhost:11434", "Base URL of the endpoint to benchmark (mesh or direct Ollama)")
 	model := flag.String("model", "llama3.2:3b", "Model name to request")
 	n := flag.Int("n", 10, "Number of requests to send")
-	apiKey := flag.String("api-key", "", "Bearer API key (required for ollama-mesh, omit for direct Ollama)")
+	apiKey := flag.String("api-key", "", "Bearer API key (required for marbor, omit for direct Ollama)")
 	endpoint := flag.String("endpoint", "generate", "API endpoint: generate or chat")
 	flag.Parse()
 

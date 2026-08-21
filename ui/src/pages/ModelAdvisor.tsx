@@ -1156,7 +1156,7 @@ export function ModelAdvisor() {
           <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-foreground">No GPU Nodes Connected</h3>
           <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal mt-1">
-            Ollama-Mesh requires at least one active Ollama node to calculate VRAM capacity and check model compatibility.
+            Marbor requires at least one active Ollama node to calculate VRAM capacity and check model compatibility.
             Connect your first node in the <strong>GPU Nodes</strong> page.
           </p>
         </div>

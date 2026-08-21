@@ -82,29 +82,29 @@ summary_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/a
 [ "$summary_status" = "200" ] || fail "expected 200 from /admin/metrics/summary, got $summary_status"
 
 metrics_body=$(curl -fsS "http://localhost:9090/metrics") || fail "metrics endpoint on :9090 unreachable"
-echo "$metrics_body" | grep -q "ollamamesh_" || fail "metrics body missing ollamamesh_ prefix"
+echo "$metrics_body" | grep -q "marbor_" || fail "metrics body missing marbor_ prefix"
 
-echo "=== [6/6] ollama-mesh CLI check: version/status/nodes/models against the live demo stack ==="
+echo "=== [6/6] marbor CLI check: version/status/nodes/models against the live demo stack ==="
 if ! command -v go &>/dev/null; then
-  echo "go not found on PATH, skipping ollama-mesh CLI check" >&2
+  echo "go not found on PATH, skipping marbor CLI check" >&2
 else
   cli_bin="$(mktemp)"
-  go build -o "$cli_bin" . || fail "build for ollama-mesh CLI check failed"
+  go build -o "$cli_bin" . || fail "build for marbor CLI check failed"
 
   "$cli_bin" status --server "http://localhost:8080" >/dev/null \
-    || fail "ollama-mesh status against live demo stack failed"
+    || fail "marbor status against live demo stack failed"
 
   nodes_json=$("$cli_bin" nodes --server "http://localhost:8080" --username admin --password admin --json) \
-    || fail "ollama-mesh nodes against live demo stack failed"
+    || fail "marbor nodes against live demo stack failed"
   models_json=$("$cli_bin" models --server "http://localhost:8080" --username admin --password admin --json) \
-    || fail "ollama-mesh models against live demo stack failed"
+    || fail "marbor models against live demo stack failed"
 
   if command -v jq &>/dev/null; then
-    echo "$nodes_json" | jq -e 'length > 0' >/dev/null || fail "ollama-mesh nodes --json returned invalid or empty JSON"
-    echo "$models_json" | jq -e '.' >/dev/null || fail "ollama-mesh models --json returned invalid JSON"
+    echo "$nodes_json" | jq -e 'length > 0' >/dev/null || fail "marbor nodes --json returned invalid or empty JSON"
+    echo "$models_json" | jq -e '.' >/dev/null || fail "marbor models --json returned invalid JSON"
   else
-    echo "jq not found on PATH, skipping ollama-mesh --json validation" >&2
-    [ -n "$nodes_json" ] || fail "ollama-mesh nodes --json returned empty output"
+    echo "jq not found on PATH, skipping marbor --json validation" >&2
+    [ -n "$nodes_json" ] || fail "marbor nodes --json returned empty output"
   fi
 fi
 

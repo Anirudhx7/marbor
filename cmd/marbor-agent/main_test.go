@@ -41,7 +41,7 @@ func TestMain_VersionFlag(t *testing.T) {
 // forwards argv into internal/nodeagent.Run (rather than, say, silently
 // exiting 0) by triggering a subcommand-shaped error only nodeagent.Run
 // itself can produce (agent.go's "unknown agent subcommand" check) - the
-// same error a pre-split "ollama-mesh agent bogus" would have hit, now one
+// same error a pre-split "marbor agent bogus" would have hit, now one
 // argv position earlier.
 func TestMain_DelegatesUnknownSubcommandToNodeagent(t *testing.T) {
 	bin := buildAgentBinary(t)

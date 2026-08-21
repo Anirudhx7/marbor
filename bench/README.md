@@ -26,9 +26,9 @@ depending on disk speed and model size.
 How to reproduce: send the first-ever request to a fresh Ollama node for a
 model it has never served (or restart Ollama and wait for it to evict VRAM).
 
-### Scenario B - Warm via ollama-mesh (target)
+### Scenario B - Warm via marbor (target)
 
-ollama-mesh polls every node's `/api/ps` endpoint every 2 seconds to track
+marbor polls every node's `/api/ps` endpoint every 2 seconds to track
 which models are currently loaded in VRAM.  When a request arrives, the router
 selects a node that already has the model warm.  The node skips the disk-load
 step and starts generating immediately.
@@ -64,9 +64,9 @@ docker run --rm -v "${PWD}:/app" -w /app -e GOFLAGS=-buildvcs=false \
 
 **Prerequisites:**
 - Two machines (or VMs) each running `ollama serve`
-- ollama-mesh configured with both nodes added via the dashboard's **GPU Nodes** page (or `--seed-node`)
+- marbor configured with both nodes added via the dashboard's **GPU Nodes** page (or `--seed-node`)
 - The model you want to test pulled on both nodes (`ollama pull llama3.2:3b`)
-- A client API key issued from your running mesh instance (dashboard's API Keys page, or the admin API) - not a config file, ollama-mesh is fully DB-based
+- A client API key issued from your running mesh instance (dashboard's API Keys page, or the admin API) - not a config file, marbor is fully DB-based
 
 **Step 1 - Record cold TTFT (Scenario A)**
 
@@ -84,7 +84,7 @@ The first request will be slow (model load + generation).  Record p50.
 
 **Step 2 - Warm the model on node-a via the mesh**
 
-Send one request through ollama-mesh to node-a so it loads the model:
+Send one request through marbor to node-a so it loads the model:
 
 ```bash
 ./bench/ttft \
@@ -124,7 +124,7 @@ model before every single cold sample (a real n≥10 cold baseline, not just a
 cold first request).
 
 **Prerequisites - these scripts don't install or start anything for you:**
-- ollama-mesh already running (admin API and proxy reachable - defaults
+- marbor already running (admin API and proxy reachable - defaults
   `:8080`/`:11434`)
 - At least one GPU backend node (Ollama/vLLM/TGI/llama.cpp/MLX) added and
   healthy, with the model you want to test already pulled on it
@@ -141,7 +141,7 @@ Checks: admin login actually works, the target node exists and is healthy,
 the model is loaded (or at least pulled), and - if you provide the sizes -
 that the model safely fits under 80% of the node's VRAM.
 
-ollama-mesh is fully DB-based (`mesh.db`) - there's no config file to read a
+marbor is fully DB-based (`marbor.db`) - there's no config file to read a
 token from. Admin auth is the same session login the dashboard uses: an
 admin-role account's username and password (`admin`/`admin` in demo mode;
 otherwise whatever account you created via the dashboard's user setup).
@@ -261,7 +261,7 @@ GitHub Discussions post.  Do not publish fabricated or mock-derived numbers.
 
 ## Reference run (v0.13.1, real hardware)
 
-Measured 2026-07-02 through a deployed ollama-mesh v0.13.1 routing to a single
+Measured 2026-07-02 through a deployed marbor v0.13.1 routing to a single
 consumer-GPU Ollama node.  Model: 8B Q4_K_M (~9.6 GB on disk; only ~3.3 GB of its
 ~10.6 GB runtime footprint fit in VRAM, so warm TTFT was partly CPU-bound - expect
 tighter warm numbers on a GPU that fully fits the model).  Cold samples each
@@ -288,14 +288,14 @@ every 20 s) for clean warm numbers.
 | `--url` | `http://localhost:11434` | Base URL of the target endpoint |
 | `--model` | `llama3.2:3b` | Model to request |
 | `--n` | `10` | Number of requests |
-| `--api-key` | _(empty)_ | Bearer key (required for ollama-mesh, omit for direct Ollama) |
+| `--api-key` | _(empty)_ | Bearer key (required for marbor, omit for direct Ollama) |
 | `--endpoint` | `generate` | `generate` or `chat` |
 
 ---
 
 # SQLite write-path load sweep (`bench/loadtest`)
 
-**What this measures:** ollama-mesh's SQLite write path (`audit_log`, `request_log`,
+**What this measures:** marbor's SQLite write path (`audit_log`, `request_log`,
 `hourly_buckets`/`model_stats`) is already fully async - all three writes go through
 bounded (5000-slot) buffered channels with drop-on-full, not the request goroutine
 (`internal/audit/audit.go`, `internal/admin/admin.go`'s `logChan`/`statsChan`). Nobody has
@@ -347,12 +347,12 @@ capacity and inference-capacity claims separate.
    go build -o bench/loadtest ./bench/loadtest
    ```
 4. Run the sweep, pointing `--db` at the mesh's actual database file - the same path the mesh
-   itself was started with (its own `--db` flag or `MESH_DB_PATH` env var, default `mesh.db` in
+   itself was started with (its own `--db` flag or `MARBOR_DB_PATH` env var, default `marbor.db` in
    its working directory; `bench/loadtest`'s own `--db` flag is a separate, read-only pointer to
    that same file for passive size sampling, not a shared setting with the mesh process):
    ```bash
    ./bench/loadtest --url http://localhost:11434 --model llama3.2:3b \
-     --api-key <your-key> --db mesh.db --rates 5,10,20,40,80,160 --step-duration 30s
+     --api-key <your-key> --db marbor.db --rates 5,10,20,40,80,160 --step-duration 30s
    ```
 5. **Establish the single-node baseline first** - one mesh process, one mock backend. P53 is
    about the SQLite write path itself, which doesn't necessarily scale with inference node count,
@@ -370,7 +370,7 @@ capacity and inference-capacity claims separate.
 | `--url` | `http://localhost:11434` | Base URL of the mesh proxy |
 | `--model` | `llama3.2:3b` | Model to request (must be warm on the target node) |
 | `--api-key` | _(empty)_ | Bearer API key for the mesh |
-| `--db` | `mesh.db` | Path to the mesh's SQLite database, for passive `.db`/`-wal` size sampling |
+| `--db` | `marbor.db` | Path to the mesh's SQLite database, for passive `.db`/`-wal` size sampling |
 | `--rates` | `5,10,20,40,80` | Comma-separated ascending list of target req/s to sweep |
 | `--step-duration` | `20s` | How long to sustain each rate before moving to the next |
 | `--endpoint` | `chat` | `generate` or `chat` |

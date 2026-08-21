@@ -36,7 +36,7 @@ func TestResolveCommand(t *testing.T) {
 		{"top-level -h flag", []string{"-h"}, "help"},
 		{"top-level --help flag", []string{"--help"}, "help"},
 		{"root -version flag falls through to server", []string{"-version"}, "server"},
-		{"root -db flag falls through to server", []string{"-db", "mesh.db"}, "server"},
+		{"root -db flag falls through to server", []string{"-db", "marbor.db"}, "server"},
 		{"root -seed-node flag falls through to server", []string{"-seed-node", "name=a,url=http://x"}, "server"},
 		{"unknown token errors instead of starting the server", []string{"bogus"}, "unknown"},
 		{"uninstall subcommand", []string{"uninstall"}, "uninstall"},
@@ -114,8 +114,8 @@ func TestResolveCommand_MatchesRegistry(t *testing.T) {
 }
 
 // TestPrintTopLevelHelp_SourcesFromRegistry exercises the REAL production
-// help path (printTopLevelHelp, called directly by main() for "ollama-mesh
-// --help"/bare "ollama-mesh"/flag.Usage) rather than re-proving
+// help path (printTopLevelHelp, called directly by main() for "marbor
+// --help"/bare "marbor"/flag.Usage) rather than re-proving
 // internal/cli's own writeHelp() in isolation - that would just re-cover
 // finding #3's original scope, not this one (finding #12: main.go's
 // top-level --help previously hand-duplicated a stale subset of the CLI
@@ -157,7 +157,7 @@ func TestPrintTopLevelHelp_SourcesFromRegistry(t *testing.T) {
 
 	// The genuinely-non-CLI entrypoints must still be present and are not
 	// part of the registry at all. "agent" is deliberately excluded here -
-	// the Node Agent is a separate binary now (cmd/ollama-mesh-agent), not a
+	// the Node Agent is a separate binary now (cmd/marbor-agent), not a
 	// subcommand of this one; see TestResolveCommand's "agent" case and
 	// TestAgentSubcommand_RedirectsToDedicatedBinary below.
 	for _, name := range []string{"bench", "uninstall"} {
@@ -179,7 +179,7 @@ func TestResolveCommand_HiddenCommandsReachable(t *testing.T) {
 	}
 }
 
-// TestAgentSubcommand_RedirectsToDedicatedBinary proves "ollama-mesh agent
+// TestAgentSubcommand_RedirectsToDedicatedBinary proves "marbor agent
 // ..." fails clearly (per the control-plane/Node Agent binary split) rather
 // than silently doing something else, and that the message actually names
 // the replacement binary.
@@ -191,7 +191,7 @@ func TestAgentSubcommand_RedirectsToDedicatedBinary(t *testing.T) {
 	var buf bytes.Buffer
 	printAgentRemovedNotice(&buf)
 	out := buf.String()
-	for _, want := range []string{"ollama-mesh-agent", "service install"} {
+	for _, want := range []string{"marbor-agent", "service install"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("printAgentRemovedNotice() output missing %q:\n%s", want, out)
 		}
@@ -229,7 +229,7 @@ func TestPrintUnknownCommand_SuggestsTopLevelTypo(t *testing.T) {
 
 // controlPlaneOnlyPackages are the packages that give a binary the capability
 // to start the Mesh control plane (admin API, router, SQLite store, proxy,
-// auth middleware) or the Admin API CLI. cmd/ollama-mesh-agent must never
+// auth middleware) or the Admin API CLI. cmd/marbor-agent must never
 // depend on any of them - see TestAgentBinary_HasNoControlPlaneCapability.
 var controlPlaneOnlyPackages = []string{
 	"github.com/ollama-mesh/ollama-mesh/internal/admin",
@@ -264,23 +264,23 @@ func goListDeps(t *testing.T, importPath string) map[string]bool {
 
 // TestAgentBinary_HasNoControlPlaneCapability is the primary acceptance
 // criterion for the control-plane/Node-Agent binary split: a GPU/node-agent
-// host running only cmd/ollama-mesh-agent must have no code path capable of
-// starting the Mesh control plane, opening mesh.db, or serving the admin
+// host running only cmd/marbor-agent must have no code path capable of
+// starting the Mesh control plane, opening marbor.db, or serving the admin
 // API - proven here by showing the capability isn't even compiled into the
 // binary, not merely unreachable at runtime.
 func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
-	deps := goListDeps(t, "./cmd/ollama-mesh-agent")
+	deps := goListDeps(t, "./cmd/marbor-agent")
 	for _, forbidden := range controlPlaneOnlyPackages {
 		if deps[forbidden] {
-			t.Errorf("cmd/ollama-mesh-agent depends on %s - the agent binary must never be capable of starting the Mesh control plane", forbidden)
+			t.Errorf("cmd/marbor-agent depends on %s - the agent binary must never be capable of starting the Mesh control plane", forbidden)
 		}
 	}
 }
 
 // TestServerBinary_DoesNotDependOnAgentRuntime is the reverse direction: the
-// split should leave ollama-mesh with no half-agent architecture either.
+// split should leave marbor with no half-agent architecture either.
 //
-// This deliberately does NOT assert "ollama-mesh must not import package
+// This deliberately does NOT assert "marbor must not import package
 // internal/nodeagent at all" via go list -deps - that's unsatisfiable and
 // would be the wrong target. internal/admin genuinely needs nodeagent's
 // frozen R9 wire types (nodeagent.GPUInfo/GPUBlock) and its auth-scope
@@ -296,7 +296,7 @@ func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
 // protocol reorganization).
 //
 // What's actually provable, and what the acceptance criterion is really
-// about, is that no source file built into the ollama-mesh binary calls the
+// about, is that no source file built into the marbor binary calls the
 // agent's startup entry points - proven at the source level (not just
 // "unreachable at runtime") since a call site is a stronger, more durable
 // signal than a package-level import that Go's model can't help but retain
@@ -317,7 +317,7 @@ func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
 		}
 		for _, forbidden := range forbiddenCalls {
 			if strings.Contains(string(data), forbidden) {
-				t.Errorf("%s calls %s - the Node Agent runtime/service-manager entry point is cmd/ollama-mesh-agent's job now, not ollama-mesh's", path, forbidden)
+				t.Errorf("%s calls %s - the Node Agent runtime/service-manager entry point is cmd/marbor-agent's job now, not marbor's", path, forbidden)
 			}
 		}
 	}

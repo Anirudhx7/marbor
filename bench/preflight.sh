@@ -5,7 +5,7 @@
 # pulled on that node, and model's on-disk size is under 80% of the node's
 # total VRAM (Step 1's fit rule).
 #
-# ollama-mesh is fully DB-based (mesh.db) - there is no config.yaml. Admin
+# marbor is fully DB-based (marbor.db) - there is no config.yaml. Admin
 # auth is session-based (POST /admin/login with an admin-role account's
 # username/password, same as the dashboard login), not a static bearer token.
 #

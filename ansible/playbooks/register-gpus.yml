@@ -1,5 +1,5 @@
 ---
-# Registers N GPU nodes' runtime endpoints with an ollama-mesh Admin API.
+# Registers N GPU nodes' runtime endpoints with an marbor Admin API.
 # This automates exactly the API call a human makes by hand on the
 # dashboard's GPU Nodes page when clicking "Add Node" (POST /admin/nodes) -
 # see docs/deploy/gpu-node-registration.md for the underlying HTTP contract
@@ -19,7 +19,7 @@
 #
 # See ansible/README.md for the full variable reference.
 
-- name: Register GPU node runtime endpoints with ollama-mesh
+- name: Register GPU node runtime endpoints with marbor
   hosts: localhost
   connection: local
   gather_facts: false
@@ -62,7 +62,7 @@
         fail_msg: >-
           gpu_nodes entry for host {{ item.host }} sets runtime
           "{{ item.runtime | default('ollama') }}" but no port. There is no
-          coded default port for non-ollama runtimes in ollama-mesh - port is
+          coded default port for non-ollama runtimes in marbor - port is
           required for vllm/tgi/llamacpp/mlx. See ansible/README.md.
       loop: "{{ gpu_nodes }}"
       loop_control:
@@ -82,7 +82,7 @@
         index_var: idx
         label: "{{ gpu_node.host }}"
 
-    - name: Log in to ollama-mesh Admin API (session reused for all nodes)
+    - name: Log in to marbor Admin API (session reused for all nodes)
       ansible.builtin.uri:
         url: "{{ mesh_url }}/admin/login"
         method: POST

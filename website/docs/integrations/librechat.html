@@ -13,11 +13,11 @@
 <meta property="og:site_name" content="marbor" />
 <meta property="og:title" content="LibreChat · marbor docs" />
 <meta property="og:description" content="marbor documentation: LibreChat." />
-<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="LibreChat · marbor docs" />
-<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -301,8 +301,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -347,7 +347,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>LibreChat reads endpoint config from <code>librechat.yaml</code>. Add an Ollama custom endpoint:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>endpoints:
   custom:
-    - name: "Ollama Mesh"
+    - name: "Marbor"
       apiKey: "sk-your-api-key"
       baseURL: "http://&lt;mesh-host&gt;:11434/v1"
       models:
@@ -362,7 +362,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
       headers:
         Authorization: "Bearer sk-your-api-key"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="endpoints:
   custom:
-    - name: &quot;Ollama Mesh&quot;
+    - name: &quot;Marbor&quot;
       apiKey: &quot;sk-your-api-key&quot;
       baseURL: &quot;http://&lt;mesh-host&gt;:11434/v1&quot;
       models:
@@ -398,7 +398,7 @@ services:
 <p><code>librechat.yaml</code> with Docker networking:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>endpoints:
   custom:
-    - name: "Ollama Mesh"
+    - name: "Marbor"
       apiKey: "sk-your-api-key"
       baseURL: "http://marbor:11434/v1"
       models:
@@ -407,7 +407,7 @@ services:
       headers:
         Authorization: "Bearer sk-your-api-key"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="endpoints:
   custom:
-    - name: &quot;Ollama Mesh&quot;
+    - name: &quot;Marbor&quot;
       apiKey: &quot;sk-your-api-key&quot;
       baseURL: &quot;http://marbor:11434/v1&quot;
       models:
@@ -419,7 +419,7 @@ services:
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code># In marbor docker-compose section
 services:
   mesh:
-    image: ollama-mesh.dev:latest
+    image: marbor.dev:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -427,7 +427,7 @@ services:
       - librechat_default</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# In marbor docker-compose section
 services:
   mesh:
-    image: ollama-mesh.dev:latest
+    image: marbor.dev:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
@@ -439,14 +439,14 @@ services:
 <p>If <code>fetch: true</code> returns no models (nodes not yet ready), fall back to a static <code>default</code> list.</p>
 <hr/>
 <h2 id="verification">Verification<a class="anchor" href="#verification" aria-label="Link to section">#</a></h2>
-<ol><li>Start LibreChat and select "Ollama Mesh" from the endpoint dropdown.</li><li>Send a test message.</li><li>Check the marbor request log at <code>http://&lt;mesh-host&gt;:8080</code> - the request should appear with model, node, and latency.</li></ol>
+<ol><li>Start LibreChat and select "Marbor" from the endpoint dropdown.</li><li>Send a test message.</li><li>Check the marbor request log at <code>http://&lt;mesh-host&gt;:8080</code> - the request should appear with model, node, and latency.</li></ol>
 <p>If you see a 401, the <code>Authorization</code> header in <code>librechat.yaml</code> is missing or the key has been revoked. Regenerate from the admin dashboard.</p>
 <hr/>
 <h2 id="per-user-keys">Per-user keys<a class="anchor" href="#per-user-keys" aria-label="Link to section">#</a></h2>
 <p>For teams, create one API key per user (or one per LibreChat role) in the admin dashboard. This separates usage stats and lets you apply rate limits or model restrictions per key without affecting the shared LibreChat config.</p>
 
       <div class="doc-foot-edit">
-        <a href="ollama-mesh.dev/blob/main/docs/integrations/librechat.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="marbor.dev/blob/main/docs/integrations/librechat.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>

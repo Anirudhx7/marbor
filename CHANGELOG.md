@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed
+- **Project renamed from Ollama Mesh / ollama-mesh to Marbor / marbor (hard cutover, pre-transfer).** No behavior change - name change only. Binary entrypoints are now `marbor` (control plane + CLI) and `marbor-agent` (Node Agent); the default database is `marbor.db`; the config/data directory is `~/.marbor` (and `%APPDATA%\marbor` on Windows); all environment variables use the `MARBOR_*` prefix (`MARBOR_DB_PATH`, `MARBOR_BACKUP_DIR`, `MARBOR_AGENT_SECRET`, `MARBOR_ENROLL`, `MARBOR_SERVER`); Prometheus metrics are `marbor_*`; HTTP headers are `X-Marbor-Version` / `X-Marbor-Model-Fallback` / `X-Marbor-Signature`; the auth realm is `realm="marbor"`; OS service identities are `com.marbor.agent` (launchd), `marbor-agent.service` (systemd), and `Marbor Node Agent` (Windows). The Go module path, GitHub repository URL, and container registry image (`ghcr.io/.../ollama-mesh`) remain unchanged until the repository is transferred to `marborhq/marbor` in a later step.
+
 ## [0.19.3] - 2026-08-20
 
 ### Added

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # marbor installer
 # Downloads the latest release binary from GitHub for your OS and architecture.
-# Usage: curl -fsSL ollama-mesh.dev/main/install.sh | sh
+# Usage: curl -fsSL marbor.dev/main/install.sh | sh
 #
 # There is no config.yaml anymore - marbor is DB-first (marbor.db). When
 # starting the daemon for the first time, this installer scans the local
@@ -39,12 +39,12 @@
 #                TOKEN=<token>  (legacy/manual path) - the real permanent
 #                  token directly, no exchange, no MESH needed.
 #              One of TOKEN or ENROLL+MESH is required - there is no
-#              existing-installation upgrade path (no prior Ollama Mesh
+#              existing-installation upgrade path (no prior Marbor
 #              deployments exist to preserve).
 #              PORT=<port> optionally overrides the default (9200).
 #              Example: curl ... | ROLE=agent MESH=http://mesh-host:8080 ENROLL=xxxxx PORT=9200 sh
 #
-# Uninstall: ollama-mesh.dev/main/uninstall.sh
+# Uninstall: marbor.dev/main/uninstall.sh
 # Uninstall a Node Agent: marbor-agent service uninstall (on the node, not this script)
 
 set -e

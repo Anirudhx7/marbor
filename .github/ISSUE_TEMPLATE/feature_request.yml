@@ -1,5 +1,5 @@
 name: Feature request
-description: Something ollama-mesh should do but doesn't
+description: Something marbor should do but doesn't
 labels: [enhancement]
 body:
   - type: textarea

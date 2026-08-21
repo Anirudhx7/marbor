@@ -2,7 +2,7 @@
 # Downloads the latest release binary from GitHub for your architecture.
 #
 # Control plane:
-#   irm ollama-mesh.dev/main/install.ps1 | iex
+#   irm marbor.dev/main/install.ps1 | iex
 #
 # Node Agent (run from an elevated/Administrator PowerShell), default path -
 # the mesh admin UI's "Node Agent" panel gives you this exact command with a
@@ -10,14 +10,14 @@
 # real token by calling back to MESH, so the real permanent bearer token
 # never appears in this command / your PowerShell history - P50):
 #   $env:ROLE="agent"; $env:MESH="<mesh admin base URL>"; $env:ENROLL="<code from the mesh admin UI>"
-#   irm ollama-mesh.dev/main/install.ps1 | iex
+#   irm marbor.dev/main/install.ps1 | iex
 #
 # Legacy/manual path - the real permanent token directly, no exchange, no MESH needed:
 #   $env:ROLE="agent"; $env:TOKEN="<token from the mesh admin UI>"
-#   irm ollama-mesh.dev/main/install.ps1 | iex
+#   irm marbor.dev/main/install.ps1 | iex
 #
 # One of TOKEN or ENROLL+MESH is required for ROLE=agent - there is no
-# existing-installation upgrade path (no prior Ollama Mesh deployments exist
+# existing-installation upgrade path (no prior Marbor deployments exist
 # to preserve).
 #
 # ROLE=agent downloads the dedicated marbor-agent.exe (a separate

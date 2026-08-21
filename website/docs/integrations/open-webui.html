@@ -13,11 +13,11 @@
 <meta property="og:site_name" content="marbor" />
 <meta property="og:title" content="Open WebUI · marbor docs" />
 <meta property="og:description" content="marbor documentation: Open WebUI." />
-<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Open WebUI · marbor docs" />
-<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -301,8 +301,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -377,7 +377,7 @@ Different machine:  http://192.168.1.7:11434"><svg viewBox="0 0 24 24" fill="non
 <p>The most common deployment - both services in one Compose file:</p>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>services:
   marbor:
-    image: ollama-mesh.dev:latest
+    image: marbor.dev:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -400,7 +400,7 @@ volumes:
   open-webui:
   mesh-data:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="services:
   marbor:
-    image: ollama-mesh.dev:latest
+    image: marbor.dev:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
@@ -474,7 +474,7 @@ volumes:
 <p>If a mesh node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the mesh's upstream timeout in <strong>Settings &gt; Advanced Routing &gt; Upstream Timeout</strong>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
 
       <div class="doc-foot-edit">
-        <a href="ollama-mesh.dev/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="marbor.dev/blob/main/docs/integrations/open-webui.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>

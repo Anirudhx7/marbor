@@ -1068,7 +1068,7 @@ func TestSetCloudProviderPrioritiesLeavesOmittedProvidersUntouched(t *testing.T)
 	}
 }
 
-// TestOpenUpgradesPreCapRuntimeKeysSchema simulates an existing mesh.db from
+// TestOpenUpgradesPreCapRuntimeKeysSchema simulates an existing marbor.db from
 // before the spend-cap columns existed: a runtime_keys table with none of
 // daily_usd_cap/monthly_usd_cap. Open() must ALTER TABLE them in via the
 // idempotent migration (sqlite.go migrate()) rather than erroring or leaving
@@ -1128,7 +1128,7 @@ func TestOpenUpgradesPreCapRuntimeKeysSchema(t *testing.T) {
 	}
 }
 
-// TestOpenMigratesModelConfigsToNodeKeyed simulates an existing mesh.db from
+// TestOpenMigratesModelConfigsToNodeKeyed simulates an existing marbor.db from
 // before model_configs was keyed by (model, node): a model-only-PK table with
 // one row. Open() must detect the old schema via migrateModelConfigsToNodeKeyed
 // (sqlite.go), fan that row out to every known runtime_nodes entry, and
@@ -1242,7 +1242,7 @@ func TestOpenMigratesModelConfigsToNodeKeyed(t *testing.T) {
 	}
 }
 
-// TestOpenUpgradesPreReasonNodeDrainSchema simulates an existing mesh.db from
+// TestOpenUpgradesPreReasonNodeDrainSchema simulates an existing marbor.db from
 // before node_drain had a drained_reason column. Open() must ALTER TABLE it
 // in via the idempotent migration (sqlite.go migrate()) rather than erroring
 // or leaving SetNodeDrain/NodeDrainStates broken. drained_reason is already

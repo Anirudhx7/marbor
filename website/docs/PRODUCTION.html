@@ -13,11 +13,11 @@
 <meta property="og:site_name" content="marbor" />
 <meta property="og:title" content="Production Deployment Guide · marbor docs" />
 <meta property="og:description" content="marbor documentation: Production Deployment Guide." />
-<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Production Deployment Guide · marbor docs" />
-<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -301,8 +301,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="../docs/index.html">Docs</a>
-        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -421,7 +421,7 @@ sudo journalctl -u marbor -f"><svg viewBox="0 0 24 24" fill="none" stroke="curre
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
 services:
   marbor:
-    image: ollama-mesh.dev:latest
+    image: marbor.dev:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -439,7 +439,7 @@ volumes:
   marbor-backups:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml (reference - already in repo)
 services:
   marbor:
-    image: ollama-mesh.dev:latest
+    image: marbor.dev:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
@@ -481,7 +481,7 @@ spec:
     spec:
       containers:
         - name: marbor
-          image: ollama-mesh.dev:latest
+          image: marbor.dev:latest
           args: ["--db", "/data/marbor.db"]
           ports:
             - containerPort: 11434   # endpoint
@@ -552,7 +552,7 @@ spec:
     spec:
       containers:
         - name: marbor
-          image: ollama-mesh.dev:latest
+          image: marbor.dev:latest
           args: [&quot;--db&quot;, &quot;/data/marbor.db&quot;]
           ports:
             - containerPort: 11434   # endpoint
@@ -607,11 +607,11 @@ spec:
 <hr/>
 <h2 id="nginx-tls-termination">nginx TLS Termination<a class="anchor" href="#nginx-tls-termination" aria-label="Link to section">#</a></h2>
 <p>marbor does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:</p>
-<div class="code-wrap"><pre class="code" data-lang="nginx"><code>upstream ollama_mesh_proxy {
+<div class="code-wrap"><pre class="code" data-lang="nginx"><code>upstream marbor__proxy {
     server 127.0.0.1:11434;
 }
 
-upstream ollama_mesh_admin {
+upstream marbor__admin {
     server 127.0.0.1:8080;
 }
 
@@ -624,7 +624,7 @@ server {
     ssl_certificate_key /etc/ssl/private/llm.example.com.key;
 
     location / {
-        proxy_pass         http://ollama_mesh_proxy;
+        proxy_pass         http://marbor__proxy;
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
@@ -651,14 +651,14 @@ server {
     deny  all;
 
     location / {
-        proxy_pass http://ollama_mesh_admin;
+        proxy_pass http://marbor__admin;
         proxy_set_header Host $host;
     }
-}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="upstream ollama_mesh_proxy {
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="upstream marbor__proxy {
     server 127.0.0.1:11434;
 }
 
-upstream ollama_mesh_admin {
+upstream marbor__admin {
     server 127.0.0.1:8080;
 }
 
@@ -671,7 +671,7 @@ server {
     ssl_certificate_key /etc/ssl/private/llm.example.com.key;
 
     location / {
-        proxy_pass         http://ollama_mesh_proxy;
+        proxy_pass         http://marbor__proxy;
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
@@ -698,7 +698,7 @@ server {
     deny  all;
 
     location / {
-        proxy_pass http://ollama_mesh_admin;
+        proxy_pass http://marbor__admin;
         proxy_set_header Host $host;
     }
 }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
@@ -750,7 +750,7 @@ server {
 <p>Re-run <code>bench/loadtest</code> after any change to <code>internal/audit</code>, <code>internal/admin</code>'s async queues, or <code>internal/store/sqlite.go</code>'s connection/pragma settings, or on real production hardware, since any of those can move this number.</p>
 
       <div class="doc-foot-edit">
-        <a href="ollama-mesh.dev/blob/main/docs/PRODUCTION.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="marbor.dev/blob/main/docs/PRODUCTION.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
