@@ -44,10 +44,10 @@ func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	g := &globalFlags{}
-fs.StringVar(&g.server, "server", envOr("MARBOR_SERVER", "http://localhost:8080"), "Admin API base URL")
+	fs.StringVar(&g.server, "server", envOr("MARBOR_SERVER", "http://localhost:8080"), "Admin API base URL")
 	fs.BoolVar(&g.jsonOutput, "json", false, "output machine-readable JSON instead of a human table")
-fs.StringVar(&g.username, "username", "", "admin username, used to log in (env MARBOR_USERNAME)")
-fs.StringVar(&g.password, "password", "", "admin password, used to log in (env MARBOR_PASSWORD)")
+	fs.StringVar(&g.username, "username", "", "admin username, used to log in (env MARBOR_USERNAME)")
+	fs.StringVar(&g.password, "password", "", "admin password, used to log in (env MARBOR_PASSWORD)")
 	return fs, g
 }
 

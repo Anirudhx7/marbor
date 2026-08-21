@@ -607,11 +607,11 @@ spec:
 <hr/>
 <h2 id="nginx-tls-termination">nginx TLS Termination<a class="anchor" href="#nginx-tls-termination" aria-label="Link to section">#</a></h2>
 <p>marbor does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:</p>
-<div class="code-wrap"><pre class="code" data-lang="nginx"><code>upstream marbor__proxy {
+<div class="code-wrap"><pre class="code" data-lang="nginx"><code>upstream marbor_proxy {
     server 127.0.0.1:11434;
 }
 
-upstream marbor__admin {
+upstream marbor_admin {
     server 127.0.0.1:8080;
 }
 
@@ -624,7 +624,7 @@ server {
     ssl_certificate_key /etc/ssl/private/llm.example.com.key;
 
     location / {
-        proxy_pass         http://marbor__proxy;
+        proxy_pass         http://marbor_proxy;
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
@@ -651,14 +651,14 @@ server {
     deny  all;
 
     location / {
-        proxy_pass http://marbor__admin;
+        proxy_pass http://marbor_admin;
         proxy_set_header Host $host;
     }
-}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="upstream marbor__proxy {
+}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="upstream marbor_proxy {
     server 127.0.0.1:11434;
 }
 
-upstream marbor__admin {
+upstream marbor_admin {
     server 127.0.0.1:8080;
 }
 
@@ -671,7 +671,7 @@ server {
     ssl_certificate_key /etc/ssl/private/llm.example.com.key;
 
     location / {
-        proxy_pass         http://marbor__proxy;
+        proxy_pass         http://marbor_proxy;
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
@@ -698,7 +698,7 @@ server {
     deny  all;
 
     location / {
-        proxy_pass http://marbor__admin;
+        proxy_pass http://marbor_admin;
         proxy_set_header Host $host;
     }
 }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>

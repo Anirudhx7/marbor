@@ -39,7 +39,7 @@ node and returns a ready-to-run install command with the enrollment code embedde
   "enabled": true,
   "port": 11434,
   "token": "admin.<opaque-permanent-token>",
-  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent Marbor=https://marbor.example.com ENROLL=<short-lived-code> PORT=11434 sh",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent Marbor=https://marbor.example.com ENROLL=<short-lived-code> PORT=11434 sh",
   "install_command_windows": "..."
 }
 ```
@@ -83,7 +83,7 @@ rest, then poll until each is healthy - across an arbitrary list of already-
 registered GPU hosts declared in a simple vars file. It ships as source in this repo
 only; it is not published to Ansible Galaxy or any external registry.
 
-- Playbook: [`ansible/playbooks/install-node-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-node-agent.yml)
+- Playbook: [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-marbor-agent.yml)
 - Example inventory: [`ansible/inventory-agents.example.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/inventory-agents.example.yml)
 - Full variable reference, the re-enrollment idempotency policy, and prerequisites:
   [`ansible/README.md`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/README.md)

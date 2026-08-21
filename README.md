@@ -5,7 +5,7 @@
 One OpenAI-compatible endpoint for all your self-hosted LLM traffic. marbor routes every request to the GPU node that already holds the model warm in VRAM - across Ollama, vLLM, TGI, llama.cpp, and MLX (Apple Silicon) - turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
 
 [![Build Status](marbor.dev/actions/workflows/ci.yml/badge.svg)](marbor.dev/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases)](marbor.dev/releases/latest)
+[![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](marbor.dev/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](marbor.dev/demo/)
 

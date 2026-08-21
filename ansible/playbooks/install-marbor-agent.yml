@@ -14,7 +14,7 @@
 # an already-registered node, without touching its runtime registration).
 #
 # Usage:
-#   ansible-playbook ansible/playbooks/install-node-agent.yml \
+#   ansible-playbook ansible/playbooks/install-marbor-agent.yml \
 #     -e @my-agent-inventory.yml \
 #     -e marbor_url=https://marbor.example.com \
 #     -e marbor_admin_username=admin \
