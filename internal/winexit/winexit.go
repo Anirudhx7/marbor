@@ -1,5 +1,5 @@
 // Package winexit provides a single fatal-exit path shared by main.go and
-// internal/nodeagent. On Windows, if the process owns its own console (no
+// internal/marboragent. On Windows, if the process owns its own console (no
 // pre-existing shell will remain open after exit - e.g. it was launched by
 // double-click, a desktop shortcut, or Explorer), Exit pauses for a keypress
 // before terminating so a fatal error is readable instead of vanishing with

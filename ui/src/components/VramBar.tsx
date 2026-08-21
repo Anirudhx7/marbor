@@ -21,7 +21,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 // AGENT_VENDOR_LABEL maps a marbor agent's detected GPU vendor (GPUBlock.Vendor
-// in internal/nodeagent) to the actual command-line tool it read from, so an
+// in internal/marboragent) to the actual command-line tool it read from, so an
 // agent-sourced reading's badge names the real source the same way the
 // local-nvidia-smi path's "nvidia-smi" badge already does, instead of a
 // vendor-blind "agent" for every card alike.

@@ -1,6 +1,6 @@
 package router
 
-// agent_poll.go - polls each physical host's Node Agent (internal/nodeagent)
+// agent_poll.go - polls each physical host's Node Agent (internal/marboragent)
 // exactly once per refresh interval, on its own goroutine group (see
 // pollAgentHosts, called alongside - not nested inside - the per-node
 // /api/ps health poll in health.go). One poll's Telemetry is fanned out to
@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 )
 
 // pollAgentHosts groups every current node by its shared Host, polls each
@@ -139,7 +139,7 @@ func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*Node
 		return
 	}
 
-	var t nodeagent.Telemetry
+	var t marboragent.Telemetry
 	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
 		for _, n := range members {
 			r.setAgentTLSMismatch(n, false)
@@ -167,7 +167,7 @@ func (r *Router) setAgentTLSMismatch(n *NodeState, mismatch bool) {
 // applyAgentTelemetry writes one member's share of a host-level Telemetry
 // snapshot: the shared host/GPU/capability fields identically, and this
 // member's own runtime-specific fields matched out of t.Runtimes.
-func (r *Router) applyAgentTelemetry(n *NodeState, t nodeagent.Telemetry) {
+func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 	n.mu.RLock()
 	hasGPU := n.VRAMSource == "nvidia"
 	pinnedID := n.AgentRuntimeID
@@ -193,9 +193,9 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t nodeagent.Telemetry) {
 	// future genuinely-breaking protocol bump ever needs to be diagnosed -
 	// it never gates or changes any decode/routing behavior itself. Logged
 	// once per node, not every poll cycle.
-	if t.Agent.ProtocolVersion > nodeagent.ProtocolVersion && !n.agentProtocolWarned {
+	if t.Agent.ProtocolVersion > marboragent.ProtocolVersion && !n.agentProtocolWarned {
 		n.agentProtocolWarned = true
-		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this mesh understands (%d) - some new agent fields may not be recognized until the mesh is upgraded", n.Name, t.Agent.ProtocolVersion, nodeagent.ProtocolVersion)
+		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this mesh understands (%d) - some new agent fields may not be recognized until the mesh is upgraded", n.Name, t.Agent.ProtocolVersion, marboragent.ProtocolVersion)
 	}
 	if t.Host != nil {
 		n.CPUPercent = derefOr(t.Host.CPUPercent, n.CPUPercent)
@@ -218,7 +218,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t nodeagent.Telemetry) {
 	if t.GPU != nil {
 		n.AgentGPUVendor = t.GPU.Vendor
 		n.AgentGPUCount = t.GPU.Count
-		n.AgentGPUs = append([]nodeagent.GPUInfo(nil), t.GPU.Devices...)
+		n.AgentGPUs = append([]marboragent.GPUInfo(nil), t.GPU.Devices...)
 		n.DriverVersion = t.GPU.DriverVersion
 		n.CUDAVersion = t.GPU.CUDAVersion
 		// FanPercent/Temperature/PowerDrawW/VRAM* fall back to the primary
@@ -311,7 +311,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t nodeagent.Telemetry) {
 	n.mu.Unlock()
 }
 
-// matchRuntime picks the *nodeagent.RuntimeInfo (from t.Runtimes, or the
+// matchRuntime picks the *marboragent.RuntimeInfo (from t.Runtimes, or the
 // legacy singular t.Runtime for an old agent build) that corresponds to one
 // node row, and the RuntimeID it should now be pinned to (unchanged from
 // pinnedID when falling back to the legacy field, since that carries no
@@ -325,7 +325,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t nodeagent.Telemetry) {
 //     field (an agent build older than this change - R9).
 //  4. No match at all -> nil, this node's runtime-specific fields get
 //     cleared while the shared host fields (still reachable) stay populated.
-func matchRuntime(t nodeagent.Telemetry, pinnedID string, nodePort int) (*nodeagent.RuntimeInfo, string) {
+func matchRuntime(t marboragent.Telemetry, pinnedID string, nodePort int) (*marboragent.RuntimeInfo, string) {
 	if pinnedID != "" {
 		for i := range t.Runtimes {
 			if t.Runtimes[i].ID == pinnedID {

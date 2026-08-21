@@ -1181,7 +1181,7 @@ export async function triggerWarmupPing(): Promise<{ status: string }> {
   return res.json();
 }
 
-// --- marbor agent (per-node optional telemetry agent, internal/nodeagent) ---
+// --- marbor agent (per-node optional telemetry agent, internal/marboragent) ---
 //
 // The token is only ever returned by enable/regenerate - it is never
 // retrievable again afterward (matches the API Keys "shown once" pattern).

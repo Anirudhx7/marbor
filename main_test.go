@@ -263,7 +263,7 @@ func goListDeps(t *testing.T, importPath string) map[string]bool {
 }
 
 // TestAgentBinary_HasNoControlPlaneCapability is the primary acceptance
-// criterion for the control-plane/Node-Agent binary split: a GPU/node-agent
+// criterion for the control-plane/Marbor-Agent binary split: a GPU/marbor-agent
 // host running only cmd/marbor-agent must have no code path capable of
 // starting the Mesh control plane, opening marbor.db, or serving the admin
 // API - proven here by showing the capability isn't even compiled into the
@@ -281,17 +281,17 @@ func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
 // split should leave marbor with no half-agent architecture either.
 //
 // This deliberately does NOT assert "marbor must not import package
-// internal/nodeagent at all" via go list -deps - that's unsatisfiable and
-// would be the wrong target. internal/admin genuinely needs nodeagent's
-// frozen R9 wire types (nodeagent.GPUInfo/GPUBlock) and its auth-scope
-// constants (nodeagent.ScopeAdmin/...) - pre-existing, required, unrelated
+// internal/marboragent at all" via go list -deps - that's unsatisfiable and
+// would be the wrong target. internal/admin genuinely needs marboragent's
+// frozen R9 wire types (marboragent.GPUInfo/GPUBlock) and its auth-scope
+// constants (marboragent.ScopeAdmin/...) - pre-existing, required, unrelated
 // to this split. Go's dependency graph is package-granular, not
 // symbol-granular: because agent.go/service_cmd.go (the actual runtime/
 // service-install logic) live in that SAME package as those wire types,
 // any consumer of the wire types transitively pulls in
-// internal/nodeagent/service too, with no way to prune it short of
-// splitting nodeagent's protocol types into their own leaf package - a
-// real refactor of internal/nodeagent, which is explicitly out of scope
+// internal/marboragent/service too, with no way to prune it short of
+// splitting marboragent's protocol types into their own leaf package - a
+// real refactor of internal/marboragent, which is explicitly out of scope
 // here (this is an entry-point/artifact/installation change, not a
 // protocol reorganization).
 //
@@ -306,7 +306,7 @@ func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("globbing root .go files: %v", err)
 	}
-	forbiddenCalls := []string{"nodeagent.Run(", "service.New()"}
+	forbiddenCalls := []string{"marboragent.Run(", "service.New()"}
 	for _, path := range rootGoFiles {
 		if strings.HasSuffix(path, "_test.go") {
 			continue // this file itself references these strings in comments/assertions above.
@@ -317,7 +317,7 @@ func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
 		}
 		for _, forbidden := range forbiddenCalls {
 			if strings.Contains(string(data), forbidden) {
-				t.Errorf("%s calls %s - the Node Agent runtime/service-manager entry point is cmd/marbor-agent's job now, not marbor's", path, forbidden)
+				t.Errorf("%s calls %s - the Marbor Agent runtime/service-manager entry point is cmd/marbor-agent's job now, not marbor's", path, forbidden)
 			}
 		}
 	}

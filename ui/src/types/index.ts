@@ -117,7 +117,7 @@ export interface GPUNode {
   tokensTotal?: number;
   avgLatencyMs?: number;
   warmHitRatio?: number;
-  // marbor agent-derived telemetry (internal/nodeagent). agentPresent is false
+  // marbor agent-derived telemetry (internal/marboragent). agentPresent is false
   // whenever no agent is configured for this node, or the most recent agent
   // poll failed - the UI must check agentPresent before displaying
   // cpuPercent/fanPercent/ramUsedMB/diskFreeGB/agentVersion as real
@@ -174,7 +174,7 @@ export interface LocalModel {
   family?: string;
 }
 
-// AgentGPUDevice mirrors internal/nodeagent.GPUInfo - one physical GPU
+// AgentGPUDevice mirrors internal/marboragent.GPUInfo - one physical GPU
 // device from the agent's multi-GPU array.
 export interface AgentGPUDevice {
   index: number;

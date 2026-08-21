@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 )
 
 // agentTelemetryServer returns a minimal /v1/status server that always
@@ -20,8 +20,8 @@ func agentTelemetryServer() *httptest.Server {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent: nodeagent.Agent{
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{
 				NodeID:          "node-id-1",
 				Version:         "v0.16.0",
 				ProtocolVersion: 1,

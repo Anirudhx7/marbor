@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
@@ -322,7 +322,7 @@ func TestHandleModelCatalog_GPUCountUnknown(t *testing.T) {
 	nodes := s.router.Nodes()
 	nodes[0].Lock()
 	nodes[0].AgentPresent = true
-	nodes[0].AgentGPUs = []nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 8192}}
+	nodes[0].AgentGPUs = []marboragent.GPUInfo{{Index: 0, VRAMTotalMB: 8192}}
 	nodes[0].Unlock()
 
 	// A fresh response struct for this decode - gpu_count_unknown carries
@@ -401,7 +401,7 @@ func TestNodeVRAMCapacity(t *testing.T) {
 	cases := []struct {
 		name            string
 		vramTotalMB     int64
-		agentGPUs       []nodeagent.GPUInfo
+		agentGPUs       []marboragent.GPUInfo
 		runtime         string
 		declaredIndices []int
 		wantMB          int64
@@ -410,14 +410,14 @@ func TestNodeVRAMCapacity(t *testing.T) {
 		wantBasis       string
 	}{
 		{"no agent GPUs falls back to aggregate", 24000, nil, "ollama", nil, 24000, -1, 0, ""},
-		{"single agent GPU falls back to aggregate", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}}, "ollama", nil, 24000, -1, 1, ""},
-		{"multi-GPU ollama sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 24000}}, "ollama", nil, 48000, -1, 2, "combined"},
-		{"multi-GPU llamacpp sums across devices", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "llamacpp", nil, 24000, -1, 2, "combined"},
-		{"multi-GPU empty runtime treated as shardable (matches ggufOnlyRuntime)", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 12000}, {VRAMTotalMB: 12000}}, "", nil, 24000, -1, 2, "combined"},
-		{"multi-GPU vllm uses largest device only, never the sum", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 24000, VRAMUsedMB: 6000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "vllm", nil, 24000, 6000, 2, "largest"},
-		{"multi-GPU tgi uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 8000, VRAMUsedMB: 8000}, {VRAMTotalMB: 24000, VRAMUsedMB: 6000}}, "tgi", nil, 24000, 6000, 2, "largest"},
-		{"multi-GPU mlx uses largest device only", 24000, []nodeagent.GPUInfo{{VRAMTotalMB: 16000, VRAMUsedMB: 4000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "mlx", nil, 16000, 4000, 2, "largest"},
-		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []nodeagent.GPUInfo{{}, {}}, "ollama", nil, 24000, -1, 2, ""},
+		{"single agent GPU falls back to aggregate", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 24000}}, "ollama", nil, 24000, -1, 1, ""},
+		{"multi-GPU ollama sums across devices", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 24000}, {VRAMTotalMB: 24000}}, "ollama", nil, 48000, -1, 2, "combined"},
+		{"multi-GPU llamacpp sums across devices", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 16000}, {VRAMTotalMB: 8000}}, "llamacpp", nil, 24000, -1, 2, "combined"},
+		{"multi-GPU empty runtime treated as shardable (matches ggufOnlyRuntime)", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 12000}, {VRAMTotalMB: 12000}}, "", nil, 24000, -1, 2, "combined"},
+		{"multi-GPU vllm uses largest device only, never the sum", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 24000, VRAMUsedMB: 6000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "vllm", nil, 24000, 6000, 2, "largest"},
+		{"multi-GPU tgi uses largest device only", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 8000, VRAMUsedMB: 8000}, {VRAMTotalMB: 24000, VRAMUsedMB: 6000}}, "tgi", nil, 24000, 6000, 2, "largest"},
+		{"multi-GPU mlx uses largest device only", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 16000, VRAMUsedMB: 4000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "mlx", nil, 16000, 4000, 2, "largest"},
+		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []marboragent.GPUInfo{{}, {}}, "ollama", nil, 24000, -1, 2, ""},
 
 		// P75 Gap B: two host-scoped ollama nodes, each pinned to one of the
 		// host's two GPUs (index 0 and index 1 respectively) via a declared
@@ -426,10 +426,10 @@ func TestNodeVRAMCapacity(t *testing.T) {
 		// Declared to a single device, each must be sized against that
 		// device alone, never vramTotalMB (the whole host's aggregate).
 		{"Gap B: ollama node declared to GPU 0 only sizes against that device alone", 48000,
-			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
+			[]marboragent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
 			"ollama", []int{0}, 24000, 5000, 1, ""},
 		{"Gap B: sibling node declared to GPU 1 only sizes against that device alone", 48000,
-			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
+			[]marboragent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
 			"ollama", []int{1}, 24000, 9000, 1, ""},
 
 		// P75 Gap C: vLLM would default to "largest" (single-device) sizing
@@ -438,14 +438,14 @@ func TestNodeVRAMCapacity(t *testing.T) {
 		// operator's confirmation that this instance spans those GPUs, so it
 		// must switch to "combined", overriding the runtime-name heuristic.
 		{"Gap C: vllm declared to 2 GPUs (tensor-parallel) sums instead of largest-only", 48000,
-			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}, {Index: 2, VRAMTotalMB: 24000}},
+			[]marboragent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}, {Index: 2, VRAMTotalMB: 24000}},
 			"vllm", []int{0, 1}, 48000, -1, 2, "combined"},
 
 		// A declaration that matches none of the currently-reported devices
 		// (stale/misconfigured) must not zero out sizing - falls back to the
 		// unscoped (undeclared) behavior for that runtime.
 		{"stale declaration matching no reported device falls back to unscoped", 48000,
-			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}},
+			[]marboragent.GPUInfo{{Index: 0, VRAMTotalMB: 24000}, {Index: 1, VRAMTotalMB: 24000}},
 			"ollama", []int{7}, 48000, -1, 2, "combined"},
 
 		// A declared multi-GPU scope whose devices transiently report zero
@@ -454,7 +454,7 @@ func TestNodeVRAMCapacity(t *testing.T) {
 		// whole HOST's aggregate would silently reintroduce the Gap B/C
 		// double-count this declared-scope fix exists to prevent.
 		{"Gap B/C: declared multi-GPU scope with zero-VRAM telemetry glitch reports unknown, not the host aggregate", 96000,
-			[]nodeagent.GPUInfo{{Index: 0, VRAMTotalMB: 0}, {Index: 1, VRAMTotalMB: 0}, {Index: 2, VRAMTotalMB: 24000}, {Index: 3, VRAMTotalMB: 24000}},
+			[]marboragent.GPUInfo{{Index: 0, VRAMTotalMB: 0}, {Index: 1, VRAMTotalMB: 0}, {Index: 2, VRAMTotalMB: 24000}, {Index: 3, VRAMTotalMB: 24000}},
 			"vllm", []int{0, 1}, 0, -1, 2, ""},
 	}
 	for _, c := range cases {

@@ -25,9 +25,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w -X main.Version={{.Version}}
-  # Node Agent: a separate artifact so a GPU/node-agent host installs a
+  # Node Agent: a separate artifact so a GPU/marbor-agent host installs a
   # binary with no control-plane startup path at all - see the "Control
-  # Plane / Node Agent Binary Separation" work item. Same version, same
+  # Plane / Marbor Agent Binary Separation" work item. Same version, same
   # release, same OS/arch matrix as the marbor build above; only the
   # entry point (cmd/marbor-agent) differs.
   - id: marbor-agent

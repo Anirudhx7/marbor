@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 )
 
 func TestNodeAgentConfig_TokenNeverMarshaled(t *testing.T) {
@@ -106,8 +106,8 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		tel := nodeagent.Telemetry{
-			Agent: nodeagent.Agent{
+		tel := marboragent.Telemetry{
+			Agent: marboragent.Agent{
 				NodeID:          "node-id-1",
 				Version:         "v0.16.0",
 				ProtocolVersion: 1,
@@ -115,19 +115,19 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 				Architecture:    "amd64",
 			},
 			Capabilities: []string{"status"},
-			GPU: &nodeagent.GPUBlock{
+			GPU: &marboragent.GPUBlock{
 				Count:  1,
 				Vendor: "nvidia",
-				Devices: []nodeagent.GPUInfo{
+				Devices: []marboragent.GPUInfo{
 					{Index: 0, Vendor: "nvidia", TemperatureC: &temp, FanPercent: &fan, PowerWatts: &power, VRAMUsedMB: 8000, VRAMTotalMB: 16000},
 				},
 			},
-			Host: &nodeagent.HostTelemetry{
+			Host: &marboragent.HostTelemetry{
 				CPUPercent: &cpu,
 				RAMUsedMB:  4000,
 				DiskFreeGB: 100,
 			},
-			Runtime: &nodeagent.RuntimeInfo{Name: "ollama"},
+			Runtime: &marboragent.RuntimeInfo{Name: "ollama"},
 		}
 		json.NewEncoder(w).Encode(tel)
 	}))
@@ -203,11 +203,11 @@ func TestPollAgentTelemetryFillsGPUModelWhenUnset(t *testing.T) {
 	defer psSrv1.Close()
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			GPU: &nodeagent.GPUBlock{
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			GPU: &marboragent.GPUBlock{
 				Count:  1,
 				Vendor: "nvidia",
-				Devices: []nodeagent.GPUInfo{
+				Devices: []marboragent.GPUInfo{
 					{Index: 0, Vendor: "nvidia", Model: "NVIDIA GeForce RTX 4090"},
 				},
 			},
@@ -279,10 +279,10 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 
 	fan := 61.0
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent:        nodeagent.Agent{Version: "v0.16.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent:        marboragent.Agent{Version: "v0.16.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
 			Capabilities: []string{"status"},
-			GPU:          &nodeagent.GPUBlock{Count: 1, Vendor: "nvidia", Devices: []nodeagent.GPUInfo{{Index: 0, FanPercent: &fan}}},
+			GPU:          &marboragent.GPUBlock{Count: 1, Vendor: "nvidia", Devices: []marboragent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
 	}))
 	defer agentSrv.Close()
@@ -343,18 +343,18 @@ func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		if callCount == 1 {
-			json.NewEncoder(w).Encode(nodeagent.Telemetry{
-				Agent: nodeagent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
-				GPU: &nodeagent.GPUBlock{
+			json.NewEncoder(w).Encode(marboragent.Telemetry{
+				Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+				GPU: &marboragent.GPUBlock{
 					Count: 1, Vendor: "nvidia",
-					Devices: []nodeagent.GPUInfo{{Index: 0, TemperatureC: &temp, PowerWatts: &power, VRAMUsedMB: 8000, VRAMTotalMB: 16000}},
+					Devices: []marboragent.GPUInfo{{Index: 0, TemperatureC: &temp, PowerWatts: &power, VRAMUsedMB: 8000, VRAMTotalMB: 16000}},
 				},
 			})
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent: nodeagent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
-			GPU:   &nodeagent.GPUBlock{Count: 0, Vendor: "nvidia", Devices: []nodeagent.GPUInfo{}},
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+			GPU:   &marboragent.GPUBlock{Count: 0, Vendor: "nvidia", Devices: []marboragent.GPUInfo{}},
 		})
 	}))
 	defer agentSrv.Close()
@@ -398,7 +398,7 @@ func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
 
 // TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored proves the rolling-
 // upgrade contract for a NEWER agent talking to an OLDER mesh: extra JSON
-// fields this mesh binary's nodeagent.Telemetry struct doesn't define must
+// fields this mesh binary's marboragent.Telemetry struct doesn't define must
 // be silently ignored (Go's default json.Decoder behavior - no
 // DisallowUnknownFields anywhere in this path), never cause the poll to be
 // treated as a failure. Every currently-known field must still populate
@@ -408,7 +408,7 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 	defer psSrv.Close()
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Hand-built JSON (not nodeagent.Telemetry) so it can include fields
+		// Hand-built JSON (not marboragent.Telemetry) so it can include fields
 		// that don't exist in this mesh binary's struct yet - simulating a
 		// future agent build's response.
 		w.Header().Set("Content-Type", "application/json")
@@ -509,8 +509,8 @@ func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 	defer psSrv.Close()
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent: nodeagent.Agent{Version: "v99.0.0", ProtocolVersion: nodeagent.ProtocolVersion + 1},
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v99.0.0", ProtocolVersion: marboragent.ProtocolVersion + 1},
 		})
 	}))
 	defer agentSrv.Close()
@@ -573,7 +573,7 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{Agent: nodeagent.Agent{Version: "v0.16.0", ProtocolVersion: 1}})
+		json.NewEncoder(w).Encode(marboragent.Telemetry{Agent: marboragent.Agent{Version: "v0.16.0", ProtocolVersion: 1}})
 	}))
 	defer agentSrv.Close()
 	agentPort := mustPort(t, agentSrv.URL)
@@ -665,9 +665,9 @@ func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent: nodeagent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
-			GPU:   &nodeagent.GPUBlock{Count: 1, Devices: []nodeagent.GPUInfo{{Index: 0, FanPercent: &fan}}},
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+			GPU:   &marboragent.GPUBlock{Count: 1, Devices: []marboragent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
 	}))
 	defer agentSrv.Close()
@@ -738,8 +738,8 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent: nodeagent.Agent{Version: "v99.0.0", ProtocolVersion: nodeagent.ProtocolVersion + 1},
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v99.0.0", ProtocolVersion: marboragent.ProtocolVersion + 1},
 		})
 	}))
 	defer agentSrv.Close()
@@ -797,9 +797,9 @@ func TestPollAgentTelemetryStillPolledWhenAPIPSFails(t *testing.T) {
 
 	fan := 61.0
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent: nodeagent.Agent{Version: "v0.16.0", ProtocolVersion: 1},
-			GPU:   &nodeagent.GPUBlock{Count: 1, Devices: []nodeagent.GPUInfo{{Index: 0, FanPercent: &fan}}},
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v0.16.0", ProtocolVersion: 1},
+			GPU:   &marboragent.GPUBlock{Count: 1, Devices: []marboragent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
 	}))
 	defer agentSrv.Close()

@@ -7,7 +7,7 @@ import "golang.org/x/sys/windows"
 // disableEcho turns off console input echo for fd (the console handle
 // backing stdin), returning a restore func. golang.org/x/sys/windows is
 // already a direct dependency of this module (used by internal/winexit and
-// internal/nodeagent's Windows service code), so this adds no new
+// internal/marboragent's Windows service code), so this adds no new
 // dependency.
 func disableEcho(fd uintptr) (restore func(), err error) {
 	h := windows.Handle(fd)

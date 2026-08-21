@@ -80,6 +80,6 @@ no-Ansible fallback.
 - Example inventory: [`ansible/inventory.example.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/inventory.example.yml)
 - Full variable reference and prerequisites: [`ansible/README.md`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/README.md)
 
-This playbook registers runtime endpoints only - it does not install or enroll Node
-Agents. See [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-marbor-agent.yml)
+This playbook registers runtime endpoints only - it does not install or enroll marbor
+agents. See [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-marbor-agent.yml)
 and [marbor agent enrollment](marbor-agent-enrollment.md) for that separate step.

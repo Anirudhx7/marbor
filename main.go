@@ -308,7 +308,7 @@ Server flags:
 // marbor-agent binary rather than silently starting the server or
 // failing with an opaque flag-parsing error.
 func printAgentRemovedNotice(w io.Writer) {
-	fmt.Fprintln(w, "marbor: the Node Agent is now a separate executable: marbor-agent")
+	fmt.Fprintln(w, "marbor: the marbor agent is now a separate executable: marbor-agent")
 	fmt.Fprintln(w, "  Run \"marbor-agent service install --port=<port>\" (set the MARBOR_AGENT_SECRET env var) instead of \"marbor agent service install ...\".")
 }
 
@@ -559,7 +559,7 @@ func main() {
 			r.SetNodeAgent(key, true, a.Port, a.Token, a.Scheme)
 		}
 	} else {
-		log.Printf("WARNING: could not load node agents from store: %v", err)
+		log.Printf("WARNING: could not load marbor agents from store: %v", err)
 	}
 	if controls, err := st.AllNodeControl(); err == nil {
 		for _, c := range controls {

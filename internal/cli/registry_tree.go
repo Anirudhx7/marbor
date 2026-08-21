@@ -103,7 +103,7 @@ func buildRoot() *Command {
 				Sub: []*Command{
 					{
 						Name:      "confirm-tls",
-						Short:     "pin a Node Agent's TLS certificate fingerprint (headless enrollment)",
+						Short:     "pin a marbor agent's TLS certificate fingerprint (headless enrollment)",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}},
 						Flags: []FlagSpec{

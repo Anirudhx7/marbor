@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
@@ -344,7 +344,7 @@ type catalogNodeEntry struct {
 //     official-library shorthand (every compiled catalogModels variant tag
 //     is exactly this shape, e.g. "llama3.2:3b"). Only `ollama pull` resolves
 //     this. The node agent's own pull fallback for every other runtime
-//     (nodeagent/actions.go pullViaHFHub/pullViaTGI) shells out to
+//     (internal/marboragent/actions.go pullViaHFHub/pullViaTGI) shells out to
 //     huggingface-cli/text-generation-server with a Hugging Face "org/repo"
 //     id - a bare Ollama library name is not that, and llama.cpp has no
 //     other pull mechanism of its own either.
@@ -609,7 +609,7 @@ func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) strin
 // combined-vs-largest basis for runtimes ggufOnlyRuntime would otherwise
 // default to "largest" (Gap C: a declared multi-GPU scope on e.g. vLLM is
 // itself evidence of a configured tensor-parallel deployment).
-func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []nodeagent.GPUInfo, runtime string, declaredIndices []int) (capacityMB int64, usedMB int64, gpuCount int, basis string) {
+func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []marboragent.GPUInfo, runtime string, declaredIndices []int) (capacityMB int64, usedMB int64, gpuCount int, basis string) {
 	scoped, applied := scopeGPUsToDeclared(agentGPUs, declaredIndices)
 	gpuCount = len(scoped)
 	if gpuCount < 2 {
@@ -682,7 +682,7 @@ func gpuCountUnknown(agentPresent bool, vramSource string, gpuCount int) bool {
 	return !agentPresent || vramSource == "declared" || gpuCount == 0
 }
 
-func scopeGPUsToDeclared(agentGPUs []nodeagent.GPUInfo, declaredIndices []int) (scoped []nodeagent.GPUInfo, applied bool) {
+func scopeGPUsToDeclared(agentGPUs []marboragent.GPUInfo, declaredIndices []int) (scoped []marboragent.GPUInfo, applied bool) {
 	if len(declaredIndices) == 0 {
 		return agentGPUs, false
 	}
@@ -690,7 +690,7 @@ func scopeGPUsToDeclared(agentGPUs []nodeagent.GPUInfo, declaredIndices []int) (
 	for _, idx := range declaredIndices {
 		want[idx] = true
 	}
-	out := make([]nodeagent.GPUInfo, 0, len(agentGPUs))
+	out := make([]marboragent.GPUInfo, 0, len(agentGPUs))
 	for _, g := range agentGPUs {
 		if want[g.Index] {
 			out = append(out, g)
@@ -720,7 +720,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		nodeName := n.Name
 		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
-		agentGPUs := append([]nodeagent.GPUInfo(nil), n.AgentGPUs...)
+		agentGPUs := append([]marboragent.GPUInfo(nil), n.AgentGPUs...)
 		declaredGPUIndices := append([]int(nil), n.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource
@@ -1502,7 +1502,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		targetNodeURL = nodeURL
 		nodeName := targetNode.Name
 		vramTotalMB := targetNode.VRAMTotalMB
-		agentGPUs := append([]nodeagent.GPUInfo(nil), targetNode.AgentGPUs...)
+		agentGPUs := append([]marboragent.GPUInfo(nil), targetNode.AgentGPUs...)
 		declaredGPUIndices := append([]int(nil), targetNode.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		vramSource = targetNode.VRAMSource
