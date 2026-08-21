@@ -1,6 +1,6 @@
-# Node Agent enrollment (Ansible or any script)
+# marbor agent enrollment (Ansible or any script)
 
-Enroll and install the Node Agent on many already-registered GPU nodes at once,
+Enroll and install the marbor agent on many already-registered GPU nodes at once,
 without clicking through the dashboard per node. Every step below is a plain REST
 call against the Admin API - the GPU Nodes dashboard page is a thin wrapper over the
 same endpoints, so anything the UI can do, a script with an authenticated admin
@@ -24,13 +24,13 @@ was generated for. Tokens can be rotated or revoked at any time without touching
 other nodes.
 
 The install command the API hands back does **not** embed the real permanent token
-directly. It embeds a short-lived, single-use enrollment code instead (`ENROLL=`),
+directly. It embeds a short-lived, single-use enrollment code instead (`MARBOR_ENROLL=`),
 which the agent exchanges for the real token via `POST /admin/agent/enroll` at
 install time - so the permanent bearer token never sits in shell history, SSH logs,
-or chat. (`install.sh` also accepts a raw `TOKEN=` as a legacy/manual fallback, but
-`ENROLL=` is what the API generates and what you should script against.)
+or chat. (`install.sh` also accepts a raw `MARBOR_AGENT_SECRET=` as a manual path, but
+`MARBOR_ENROLL=` is what the API generates and what you should script against.)
 
-`POST /admin/nodes/{name}/agent` - enables the Node Agent for an already-registered
+`POST /admin/nodes/{name}/agent` - enables the marbor agent for an already-registered
 node and returns a ready-to-run install command with the enrollment code embedded:
 
 ```json
@@ -39,7 +39,7 @@ node and returns a ready-to-run install command with the enrollment code embedde
   "enabled": true,
   "port": 11434,
   "token": "admin.<opaque-permanent-token>",
-  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=https://marbor.example.com ENROLL=<short-lived-code> PORT=11434 sh",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=<short-lived-code> PORT=11434 sh",
   "install_command_windows": "..."
 }
 ```
@@ -57,16 +57,16 @@ reporting `agentPresent: true` and `health: "healthy"`.
 ## Scripted enrollment for N nodes
 
 ```bash
-MESH=https://marbor.example.com
+MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
 
-curl -sf -c "$COOKIES" -X POST "$MESH/admin/login" \
+curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"<your admin password>"}' > /dev/null
 
 for host in gpu01 gpu02 gpu03; do
   # Enable the agent, capture the install command
-  INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes/$host/agent" \
+  INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes/$host/agent" \
     -H "Content-Type: application/json" \
     -d '{"port":11434}' | jq -r '.install_command')
 

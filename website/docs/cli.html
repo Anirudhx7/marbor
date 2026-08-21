@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>marbor CLI Reference · marbor docs</title>
-<meta name="description" content="marbor documentation: marbor CLI Reference." />
+<title>marbor CLI Reference · Marbor docs</title>
+<meta name="description" content="Marbor documentation: marbor CLI Reference." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="marbor" />
-<meta property="og:title" content="marbor CLI Reference · marbor docs" />
-<meta property="og:description" content="marbor documentation: marbor CLI Reference." />
-<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
+<meta property="og:site_name" content="Marbor" />
+<meta property="og:title" content="marbor CLI Reference · Marbor docs" />
+<meta property="og:description" content="Marbor documentation: marbor CLI Reference." />
+<meta property="og:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="marbor CLI Reference · marbor docs" />
-<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
+<meta name="twitter:title" content="marbor CLI Reference · Marbor docs" />
+<meta name="twitter:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../index.html" class="brand" aria-label="Marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">Marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../index.html#features">Features</a>
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="../docs/index.html">Docs</a>
-        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -326,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -365,7 +365,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="confirm-tls-node"><code>confirm-tls &lt;node&gt;</code><a class="anchor" href="#confirm-tls-node" aria-label="Link to section">#</a></h4>
-<p>pin a Node Agent's TLS certificate fingerprint (headless enrollment)</p>
+<p>pin a marbor agent's TLS certificate fingerprint (headless enrollment)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
 <ul><li><code>--fingerprint string</code> - SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see "agent service status" on the node), in the form SHA256:&lt;64 hex characters&gt; (required)</li></ul>
@@ -460,7 +460,7 @@ marbor completion zsh &gt; &quot;${fpath[1]}/_marbor&quot;
 marbor completion fish &gt; ~/.config/fish/completions/marbor.fish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 
       <div class="doc-foot-edit">
-        <a href="marbor.dev/blob/main/docs/cli.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/marbor/blob/main/docs/cli.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -473,8 +473,8 @@ marbor completion fish &gt; ~/.config/fish/completions/marbor.fish"><svg viewBox
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
-    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> Marbor contributors · Apache-2.0</span>
+    <span>Marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

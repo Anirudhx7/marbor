@@ -69,7 +69,7 @@ The repo ships a working `docker-compose.yml`. It mounts **two** named volumes:
 # docker-compose.yml (reference - already in repo)
 services:
   marbor:
-    image: marbor.dev:latest
+    image: ghcr.io/anirudhx7/marbor:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -119,7 +119,7 @@ spec:
     spec:
       containers:
         - name: marbor
-          image: marbor.dev:latest
+          image: ghcr.io/anirudhx7/marbor:latest
           args: ["--db", "/data/marbor.db"]
           ports:
             - containerPort: 11434   # endpoint
@@ -282,7 +282,7 @@ The bottleneck at high concurrency is almost always the upstream Ollama nodes or
 | Audit log (per-request) | The `audit_log` table in `marbor.db`, written when audit logging is enabled. Retention is configurable (`audit_retention_days` setting, default 30 days; 0 keeps rows forever) and enforced by a periodic prune job. |
 | Admin action trail | The separate `system_audit_log` table in `marbor.db` (who changed what in the dashboard/API). Independently retained (`audit_system_retention_days` setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log. |
 | Request log / analytics | Persisted to `request_log`, `hourly_buckets`, and `model_stats` tables in `marbor.db`, not purely in-memory. |
-| GPU telemetry | Live reads from `nvidia-smi` on local nodes, and via the optional Node Agent on remote GPU hosts. Not persisted. |
+| GPU telemetry | Live reads from `nvidia-smi` on local nodes, and via the optional marbor agent on remote GPU hosts. Not persisted. |
 
 ---
 

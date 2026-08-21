@@ -2,7 +2,7 @@ interface VramBarProps {
   used: number; // GB
   total: number; // GB, 0 = unknown
   source?: 'nvidia' | 'agent' | 'api' | 'declared' | 'none';
-  // Which vendor tool the Node Agent detected on the host (e.g. "nvidia",
+  // Which vendor tool the marbor agent detected on the host (e.g. "nvidia",
   // "rocm", "intel", "apple") - only meaningful when source === 'agent', so
   // the badge can show which tool actually produced the reading (e.g.
   // "rocm-smi") instead of a vague "agent" for every vendor alike.
@@ -20,7 +20,7 @@ const SOURCE_LABEL: Record<string, string> = {
   declared: 'declared',
 };
 
-// AGENT_VENDOR_LABEL maps a Node Agent's detected GPU vendor (GPUBlock.Vendor
+// AGENT_VENDOR_LABEL maps a marbor agent's detected GPU vendor (GPUBlock.Vendor
 // in internal/nodeagent) to the actual command-line tool it read from, so an
 // agent-sourced reading's badge names the real source the same way the
 // local-nvidia-smi path's "nvidia-smi" badge already does, instead of a

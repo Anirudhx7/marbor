@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Deploy marbor on AWS EC2 · marbor docs</title>
-<meta name="description" content="marbor documentation: Deploy marbor on AWS EC2." />
+<title>Deploy marbor on AWS EC2 · Marbor docs</title>
+<meta name="description" content="Marbor documentation: Deploy marbor on AWS EC2." />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="marbor" />
-<meta property="og:title" content="Deploy marbor on AWS EC2 · marbor docs" />
-<meta property="og:description" content="marbor documentation: Deploy marbor on AWS EC2." />
-<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
+<meta property="og:site_name" content="Marbor" />
+<meta property="og:title" content="Deploy marbor on AWS EC2 · Marbor docs" />
+<meta property="og:description" content="Marbor documentation: Deploy marbor on AWS EC2." />
+<meta property="og:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Deploy marbor on AWS EC2 · marbor docs" />
-<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
+<meta name="twitter:title" content="Deploy marbor on AWS EC2 · Marbor docs" />
+<meta name="twitter:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../../index.html" class="brand" aria-label="Marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">Marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../../index.html#features">Features</a>
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -326,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link active" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link active" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -348,7 +348,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
                  │  warm-first routing + auth + dashboard + metrics
                  ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
                  └──► GPU node 2  (g4dn/g5/g6, running Ollama)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>The mesh box does <strong>not</strong> need a GPU - it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
+<p>The marbor box does <strong>not</strong> need a GPU - it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
 <h2 id="1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)<a class="anchor" href="#1-gpu-instances-the-ollama-nodes" aria-label="Link to section">#</a></h2>
 <p>Cheapest CUDA option is <code>g4dn.xlarge</code> (NVIDIA T4 16GB). <code>g5.xlarge</code> (A10G) and <code>g6.xlarge</code> (L4) are faster. Use a Deep Learning AMI or install the NVIDIA driver on Amazon Linux 2023, then install Ollama and bind it to the VPC:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fsSL https://ollama.com/install.sh | sh
@@ -359,12 +359,12 @@ sudo systemctl edit ollama   # add: Environment=OLLAMA_HOST=0.0.0.0:11434
 sudo systemctl restart ollama
 ollama pull llama3.2:3b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <blockquote><strong>Quota note:</strong> brand-new AWS accounts start with a GPU On-Demand vCPU quota of 0. Request an increase under Service Quotas → EC2 → "Running On-Demand G and VT instances" before launching. Approval can take hours to days.</blockquote>
-<h2 id="2-the-mesh-box">2. The mesh box<a class="anchor" href="#2-the-mesh-box" aria-label="Link to section">#</a></h2>
+<h2 id="2-the-marbor-box">2. The marbor box<a class="anchor" href="#2-the-marbor-box" aria-label="Link to section">#</a></h2>
 <p>A small CPU instance (<code>t3.small</code> is plenty). Pull the release binary and point it at your GPU nodes' <strong>private</strong> IPs:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/marbor \
-  marbor.dev/releases/latest/download/marbor-linux-amd64
+  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/marbor-linux-amd64
 chmod +x /usr/local/bin/marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -fL -o /usr/local/bin/marbor \
-  marbor.dev/releases/latest/download/marbor-linux-amd64
+  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/marbor-linux-amd64
 chmod +x /usr/local/bin/marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>systemd unit (<code>/etc/systemd/system/marbor.service</code>):</p>
 <div class="code-wrap"><pre class="code" data-lang="ini"><code>[Unit]
@@ -385,39 +385,39 @@ Restart=always
 [Install]
 WantedBy=multi-user.target"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>First boot creates a blank-slate <code>/opt/marbor.db</code>. Log in at <code>http://&lt;mesh&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login - do this immediately since the admin port is reachable from the SSH tunnel below) and, from <strong>Settings</strong>, set <code>admin.bind_address</code> to <code>127.0.0.1:8080</code> (restart required). Add your GPU nodes from the <strong>GPU Nodes</strong> page and an API key from <strong>API Keys</strong> - or run <code>install.sh</code>'s network-discovery wizard against your VPC beforehand to seed the nodes automatically.</p>
+<p>First boot creates a blank-slate <code>/opt/marbor.db</code>. Log in at <code>http://&lt;marbor&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login - do this immediately since the admin port is reachable from the SSH tunnel below) and, from <strong>Settings</strong>, set <code>admin.bind_address</code> to <code>127.0.0.1:8080</code> (restart required). Add your GPU nodes from the <strong>GPU Nodes</strong> page and an API key from <strong>API Keys</strong> - or run <code>install.sh</code>'s network-discovery wizard against your VPC beforehand to seed the nodes automatically.</p>
 <h2 id="3-security-group">3. Security group<a class="anchor" href="#3-security-group" aria-label="Link to section">#</a></h2>
 <ul><li><strong>Endpoint <code>:11434</code></strong> - open only to your app servers / SG, never <code>0.0.0.0/0</code>.</li><li><strong>Admin <code>:8080</code></strong> - keep on <code>127.0.0.1</code> and reach it via SSH tunnel</li></ul>
 <p>  (<code>ssh -L 8080:localhost:8080 ...</code>), or a private SG. Login is username/password   (bcrypt-hashed, default <code>admin</code>/<code>admin</code> on first run - change it immediately);   a successful login issues an <code>HttpOnly</code> session cookie, which is what's sensitive here.</p>
-<ul><li><strong>Node <code>:11434</code></strong> - open only from the mesh box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
+<ul><li><strong>Node <code>:11434</code></strong> - open only from the marbor box's SG, not the internet.</li><li>Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.</li></ul>
 <h2 id="4-verify">4. Verify<a class="anchor" href="#4-verify" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://&lt;mesh&gt;:11434/health                          # {"status":"ok","nodes":{...}}
-curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/tags
-curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;mesh&gt;:11434/api/generate \
-     -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://&lt;mesh&gt;:11434/health                          # {&quot;status&quot;:&quot;ok&quot;,&quot;nodes&quot;:{...}}
-curl -H &quot;Authorization: Bearer &lt;key&gt;&quot; http://&lt;mesh&gt;:11434/api/tags
-curl -H &quot;Authorization: Bearer &lt;key&gt;&quot; http://&lt;mesh&gt;:11434/api/generate \
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://&lt;marbor&gt;:11434/health                          # {"status":"ok","nodes":{...}}
+curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;marbor&gt;:11434/api/tags
+curl -H "Authorization: Bearer &lt;key&gt;" http://&lt;marbor&gt;:11434/api/generate \
+     -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://&lt;marbor&gt;:11434/health                          # {&quot;status&quot;:&quot;ok&quot;,&quot;nodes&quot;:{...}}
+curl -H &quot;Authorization: Bearer &lt;key&gt;&quot; http://&lt;marbor&gt;:11434/api/tags
+curl -H &quot;Authorization: Bearer &lt;key&gt;&quot; http://&lt;marbor&gt;:11434/api/generate \
      -d '{&quot;model&quot;:&quot;llama3.2:3b&quot;,&quot;prompt&quot;:&quot;hi&quot;,&quot;stream&quot;:false}'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Point any OpenAI-compatible client at <code>http://&lt;mesh&gt;:11434/v1</code> with your key.</p>
+<p>Point any OpenAI-compatible client at <code>http://&lt;marbor&gt;:11434/v1</code> with your key.</p>
 <h2 id="cost-tip">Cost tip<a class="anchor" href="#cost-tip" aria-label="Link to section">#</a></h2>
-<p>Only the GPU nodes are expensive. Stop them when idle - the mesh box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
+<p>Only the GPU nodes are expensive. Stop them when idle - the marbor box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the marbor box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
 
       <div class="doc-foot-edit">
-        <a href="marbor.dev/blob/main/docs/deploy/aws-ec2.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/marbor/blob/main/docs/deploy/aws-ec2.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#architecture">Architecture</a></li><li class="lvl-2"><a href="#1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)</a></li><li class="lvl-2"><a href="#2-the-mesh-box">2. The mesh box</a></li><li class="lvl-2"><a href="#3-security-group">3. Security group</a></li><li class="lvl-2"><a href="#4-verify">4. Verify</a></li><li class="lvl-2"><a href="#cost-tip">Cost tip</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#architecture">Architecture</a></li><li class="lvl-2"><a href="#1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)</a></li><li class="lvl-2"><a href="#2-the-marbor-box">2. The marbor box</a></li><li class="lvl-2"><a href="#3-security-group">3. Security group</a></li><li class="lvl-2"><a href="#4-verify">4. Verify</a></li><li class="lvl-2"><a href="#cost-tip">Cost tip</a></li></ul>
   </aside>
 </div>
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
-    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> Marbor contributors · Apache-2.0</span>
+    <span>Marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

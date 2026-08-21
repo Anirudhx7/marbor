@@ -156,7 +156,7 @@ function AgentBadge({ present, version }: { present?: boolean; version?: string 
   if (present) {
     return (
       <span
-        title={version ? `Node Agent installed (v${version})` : 'Node Agent installed'}
+        title={version ? `marbor agent installed (v${version})` : 'marbor agent installed'}
         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-primary/15 text-primary border border-primary/30 whitespace-nowrap"
       >
         <Radio className="w-3 h-3" />
@@ -166,7 +166,7 @@ function AgentBadge({ present, version }: { present?: boolean; version?: string 
   }
   return (
     <span
-      title="No Node Agent installed - only local nvidia-smi telemetry available"
+      title="No marbor agent installed - only local nvidia-smi telemetry available"
       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-secondary text-muted-foreground border border-border whitespace-nowrap"
     >
       <Radio className="w-3 h-3 opacity-50" />
@@ -265,7 +265,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
         <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
           <button
             onClick={() => onManageAgent(node)}
-            title="Manage Node Agent (fan/RAM/disk telemetry)"
+            title="Manage marbor agent (fan/RAM/disk telemetry)"
             className="p-1.5 text-muted-foreground hover:text-primary transition-colors"
           >
             <Radio className="w-4 h-4" />
@@ -352,7 +352,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
         </div>
       </div>
 
-      {/* Node Agent Telemetry - only ever real values from the agent poll;
+      {/* marbor agent Telemetry - only ever real values from the agent poll;
           '--' whenever agentPresent is false, never a fabricated number (R1). */}
       <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/40 border border-border/20 rounded-lg p-3">
         <div>
@@ -504,11 +504,11 @@ export function GPUNodes() {
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
 
-  // --- Node Agent management ---
+  // --- marbor agent management ---
   const [agentNode, setAgentNode] = useState<GPUNode | null>(null);
   const [agentStatus, setAgentStatus] = useState<NodeAgentStatus | null>(null);
   const [agentPort, setAgentPort] = useState('9200');
-  // agentUseHttps is the Node Agent's OWN transport scheme toggle -
+  // agentUseHttps is the marbor agent's OWN transport scheme toggle -
   // independent of a node's runtime URL scheme (editUseHttps below, which
   // governs the Ollama/vLLM/etc. endpoint). Enabling this does not touch
   // the node's runtime URL at all.
@@ -518,12 +518,12 @@ export function GPUNodes() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentCopiedWhich, setAgentCopiedWhich] = useState<'unix' | 'windows' | null>(null);
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
-  // pendingAgentReconfigure gates the "Reconfigure Node Agent connection?"
+  // pendingAgentReconfigure gates the "Reconfigure marbor agent connection?"
   // confirm - only shown when changing port/scheme on an ALREADY-enabled
   // agent (nothing to disrupt on the very first Enable, so that path stays
   // immediate-apply, same as handleEnableAgent always has been).
   const [pendingAgentReconfigure, setPendingAgentReconfigure] = useState(false);
-  // pendingRegenerateToken gates the "Regenerate Node Agent token?" confirm
+  // pendingRegenerateToken gates the "Regenerate marbor agent token?" confirm
   // (R10): handleRegenerateNodeAgentToken swaps the live token in the
   // router's in-memory state immediately (admin.go SetNodeAgent), so the
   // currently-running agent process - still presenting the old token - is
@@ -639,7 +639,7 @@ export function GPUNodes() {
       setAgentUseHttps(status.scheme === 'https');
     } catch (e: any) {
       setAgentStatus({ node: node.name, enabled: false, port: 0 });
-      setAgentError(e?.message || 'Failed to fetch node agent status');
+      setAgentError(e?.message || 'Failed to fetch marbor agent status');
     }
     try {
       const control = await getNodeControl(node.name);
@@ -813,8 +813,8 @@ export function GPUNodes() {
       const meshUrl = window.location.origin;
       setAgentStatus({ node: agentNode.name, enabled: true, port, scheme });
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setNodes(prev => prev.map(n => n.name === agentNode.name
         // A node that's already enrolled (reconfigure) keeps its real
@@ -852,7 +852,7 @@ export function GPUNodes() {
       setAgentInstallCommand({ unix: res.install_command, windows: res.install_command_windows });
     } catch (e: any) {
       if (agentNodeRef.current?.name !== targetNodeName) return;
-      setAgentError(e?.message || 'Failed to enable node agent');
+      setAgentError(e?.message || 'Failed to enable marbor agent');
     } finally {
       // Always clear busy regardless of which node is now open - it gates
       // this modal's buttons in general, not per-node state.
@@ -863,7 +863,7 @@ export function GPUNodes() {
   // requestAgentReconfigure is the click handler for the "Save Connection"
   // button on an already-enabled agent. It never calls the API directly -
   // it only validates and, if the port/scheme actually changed, opens the
-  // "Reconfigure Node Agent connection?" confirm. handleEnableAgent (below)
+  // "Reconfigure marbor agent connection?" confirm. handleEnableAgent (below)
   // is reused for the actual POST once confirmed - the backend endpoint is
   // the same for a fresh enable and a reconfigure.
   const requestAgentReconfigure = () => {
@@ -885,8 +885,8 @@ export function GPUNodes() {
       const meshUrl = window.location.origin;
       const port = agentStatus?.port ?? 9200;
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=${meshUrl} ENROLL=${enrollCode} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:MESH="${meshUrl}"; $env:ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
       });
       setAgentBusy(false);
       return;
@@ -902,7 +902,7 @@ export function GPUNodes() {
       setAgentStatus({ node: targetNodeName, enabled: true, port: res.port, scheme: res.scheme });
     } catch (e: any) {
       if (agentNodeRef.current?.name !== targetNodeName) return;
-      setAgentError(e?.message || 'Failed to regenerate node agent token');
+      setAgentError(e?.message || 'Failed to regenerate marbor agent token');
     } finally {
       setAgentBusy(false);
     }
@@ -966,7 +966,7 @@ export function GPUNodes() {
       setAgentToDisable(null);
       await loadNodes();
     } catch (e: any) {
-      setAgentError(e?.message || 'Failed to disable node agent');
+      setAgentError(e?.message || 'Failed to disable marbor agent');
     } finally {
       setAgentBusy(false);
     }
@@ -1416,7 +1416,7 @@ export function GPUNodes() {
   // fingerprint for display only (P24 spec section 2) - it never pins
   // anything. Demo mode has no real node to dial, so it surfaces the
   // already-known demo fingerprint (or a clearly-fake placeholder) instead
-  // of attempting a network call. Operates on agentNode (Manage Node Agent
+  // of attempting a network call. Operates on agentNode (Manage marbor agent
   // modal), NOT editNode - TLS pinning secures the Agent connection, not
   // the runtime URL, so it moved out of the Edit Node (Runtime) modal (P90).
   const handleProbeTLS = async () => {
@@ -1664,7 +1664,7 @@ export function GPUNodes() {
                 onChange={(e) => setNewNode({ ...newNode, useHttps: e.target.checked })}
                 className="rounded border-border bg-background text-primary focus:ring-primary/20"
               />
-              <span className="text-xs text-muted-foreground">Use HTTPS for this node's inference runtime endpoint (only if the runtime itself - Ollama, vLLM, etc. - serves TLS on this port; most don't by default). This is separate from the Node Agent's own HTTPS setting, which is configured after adding the node.</span>
+              <span className="text-xs text-muted-foreground">Use HTTPS for this node's inference runtime endpoint (only if the runtime itself - Ollama, vLLM, etc. - serves TLS on this port; most don't by default). This is separate from the marbor agent's own HTTPS setting, which is configured after adding the node.</span>
             </label>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1781,7 +1781,7 @@ export function GPUNodes() {
               onChange={(e) => setEditUseHttps(e.target.checked)}
               className="rounded border-border bg-background text-primary focus:ring-primary/20"
             />
-            <span className="text-xs text-muted-foreground">Use HTTPS for this node's inference runtime endpoint (only if the runtime itself - Ollama, vLLM, etc. - serves TLS on this port; most don't by default). This is separate from the Node Agent's own HTTPS setting in the Agent panel.</span>
+            <span className="text-xs text-muted-foreground">Use HTTPS for this node's inference runtime endpoint (only if the runtime itself - Ollama, vLLM, etc. - serves TLS on this port; most don't by default). This is separate from the marbor agent's own HTTPS setting in the Agent panel.</span>
           </label>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
@@ -2141,16 +2141,16 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Manage Node Agent Modal */}
+      {/* Manage marbor agent Modal */}
       <Modal
         isOpen={agentNode !== null}
         onClose={closeAgentModal}
-        title={`Node Agent: ${agentNode?.name ?? ''}`}
+        title={`marbor agent: ${agentNode?.name ?? ''}`}
         maxWidth="2xl"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            The Node Agent is an optional process you run on this GPU node to report CPU usage, fan speed, RAM usage, and free disk space back to the mesh. Everything else (VRAM, temperature, power) is already collected without it.
+            The marbor agent is an optional process you run on this GPU node to report CPU usage, fan speed, RAM usage, and free disk space back to the mesh. Everything else (VRAM, temperature, power) is already collected without it.
           </p>
 
           {agentNode && (() => {
@@ -2174,7 +2174,7 @@ export function GPUNodes() {
               <button
                 onClick={handleCheckNodeHealth}
                 disabled={healthCheckBusy}
-                title="Run a live health check against this node's inference runtime right now, instead of waiting for the next automatic poll - works whether or not a Node Agent is installed"
+                title="Run a live health check against this node's inference runtime right now, instead of waiting for the next automatic poll - works whether or not a marbor agent is installed"
                 className="px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
               >
                 {healthCheckBusy ? 'Checking...' : 'Health Check'}
@@ -2646,11 +2646,11 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Node Agent Install Command Modal - separate dialog so the enroll token/commands don't get buried below Runtime Control */}
+      {/* marbor agent Install Command Modal - separate dialog so the enroll token/commands don't get buried below Runtime Control */}
       <Modal
         isOpen={agentInstallCommand !== null}
         onClose={() => setAgentInstallCommand(null)}
-        title="Node Agent Install Command"
+        title="marbor agent Install Command"
         maxWidth="lg"
       >
         {agentInstallCommand && (
@@ -2700,16 +2700,16 @@ export function GPUNodes() {
         )}
       </Modal>
 
-      {/* Disable Node Agent Confirmation Modal */}
+      {/* Disable marbor agent Confirmation Modal */}
       <Modal
         isOpen={agentToDisable !== null}
         onClose={() => setAgentToDisable(null)}
-        title="Disable Node Agent"
+        title="Disable marbor agent"
         maxWidth="sm"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to disable the Node Agent on <span className="text-foreground font-semibold">{agentToDisable}</span>?
+            Are you sure you want to disable the marbor agent on <span className="text-foreground font-semibold">{agentToDisable}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
             Fan/RAM/disk telemetry stops updating for this node. VRAM, temperature, and power readings are unaffected. You can re-enable it later, but it will need a fresh token and a restart of the agent process on the node.
@@ -2735,7 +2735,7 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Reconfigure Node Agent Connection Confirmation Modal - only for
+      {/* Reconfigure marbor agent Connection Confirmation Modal - only for
           changing port/scheme on an ALREADY-enabled agent (P90). Text is
           scoped entirely to "Agent connection" and never says "node address"
           so it can't be mistaken for the Runtime "Change Node Address" modal
@@ -2743,7 +2743,7 @@ export function GPUNodes() {
       <Modal
         isOpen={pendingAgentReconfigure}
         onClose={() => setPendingAgentReconfigure(false)}
-        title="Reconfigure Node Agent connection?"
+        title="Reconfigure marbor agent connection?"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -2784,14 +2784,14 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Regenerate Node Agent Token Confirmation Modal (R10: swaps the live
+      {/* Regenerate marbor agent Token Confirmation Modal (R10: swaps the live
           token immediately - the currently-running agent process is
           rejected on its very next poll until reinstalled with the new
           command shown after confirming). */}
       <Modal
         isOpen={pendingRegenerateToken}
         onClose={() => setPendingRegenerateToken(false)}
-        title="Regenerate Node Agent token?"
+        title="Regenerate marbor agent token?"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -2901,7 +2901,7 @@ export function GPUNodes() {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            This replaces any previously configured driver. Start/Stop/Restart/Logs will run against this driver and identifier from now on - double-check they match what actually runs the inference runtime on this node, not the marbor Node Agent itself.
+            This replaces any previously configured driver. Start/Stop/Restart/Logs will run against this driver and identifier from now on - double-check they match what actually runs the inference runtime on this node, not the marbor agent itself.
           </p>
           {controlError && <p className="text-sm text-destructive">{controlError}</p>}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">

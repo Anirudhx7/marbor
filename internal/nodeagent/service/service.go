@@ -69,9 +69,10 @@ type Config struct {
 // on the node read or capture it. Each platform implementation instead
 // delivers Token via that platform's environment mechanism (systemd
 // EnvironmentFile, launchd EnvironmentVariables, Windows service registry
-// Environment value), and the agent already reads TOKEN from its process
-// environment as a fallback to --token (see nodeagent.Run), so no agent-side
-// change was needed to support this.
+// Environment value), and the agent reads MARBOR_AGENT_SECRET from its
+// process environment (it has no legacy TOKEN fallback; see
+// nodeagent.Run / runServiceInstall), so no agent-side change was needed to
+// support this.
 func (c Config) args() []string {
 	a := []string{fmt.Sprintf("--port=%d", c.Port)}
 	if c.RefreshInterval > 0 {

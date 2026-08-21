@@ -33,7 +33,7 @@ Workarounds if a discovered node is unreachable:
 ## GPU Telemetry
 
 ### VRAM usage
-Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each node's `/api/ps` endpoint. That model-residency view is still available for every node, while richer remote GPU telemetry comes from the optional Node Agent when it is installed.
+Per-node VRAM usage (how much VRAM each model is consuming) is fetched from each node's `/api/ps` endpoint. That model-residency view is still available for every node, while richer remote GPU telemetry comes from the optional marbor agent when it is installed.
 
 ### VRAM capacity
 Total VRAM capacity is read from `nvidia-smi` on the host running marbor (for NVIDIA GPUs). For Apple Silicon (MLX) nodes or remote nodes where `nvidia-smi` is not applicable or available, capacity must be declared explicitly when adding/editing the node from the **GPU Nodes** page. If neither is set, capacity is shown as `-` in the dashboard.
@@ -41,11 +41,11 @@ Total VRAM capacity is read from `nvidia-smi` on the host running marbor (for NV
 ### Temperature and power draw
 GPU temperature and power draw are read from `nvidia-smi` on the host running marbor for local NVIDIA GPU nodes.
 
-For remote nodes, the same telemetry (temperature, power draw, fan speed, GPU model, CPU%, RAM, disk) is available via the Node Agent - a small, optional binary the operator installs on each remote GPU host. It detects NVIDIA (`nvidia-smi`), AMD (`rocm-smi`), Intel (`xpu-smi`), or Apple Silicon (`system_profiler`) automatically, whichever is present on that host. It is opt-in, not auto-deployed: marbor never pushes it to remote hosts on its own. Without the Node Agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard.
+For remote nodes, the same telemetry (temperature, power draw, fan speed, GPU model, CPU%, RAM, disk) is available via the marbor agent - a small, optional binary the operator installs on each remote GPU host. It detects NVIDIA (`nvidia-smi`), AMD (`rocm-smi`), Intel (`xpu-smi`), or Apple Silicon (`system_profiler`) automatically, whichever is present on that host. It is opt-in, not auto-deployed: marbor never pushes it to remote hosts on its own. Without the marbor agent installed, remote node telemetry gracefully degrades to show `-` for temperature and power draw in the dashboard.
 
-For Apple Silicon (MLX) nodes, the Node Agent reports the chip model (e.g. "Apple M3 Max") but not temperature/power/fan - `system_profiler` doesn't expose those unprivileged, and Apple Silicon's unified memory has no separate VRAM figure to report. These show `-` in the dashboard rather than a guessed number. marbor enforces strict data honesty-we never substitute estimated or fabricated numbers for missing telemetry.
+For Apple Silicon (MLX) nodes, the marbor agent reports the chip model (e.g. "Apple M3 Max") but not temperature/power/fan - `system_profiler` doesn't expose those unprivileged, and Apple Silicon's unified memory has no separate VRAM figure to report. These show `-` in the dashboard rather than a guessed number. marbor enforces strict data honesty-we never substitute estimated or fabricated numbers for missing telemetry.
 
-AMD and Intel GPU support via the Node Agent (`rocm-smi`/`xpu-smi` parsing) has not yet been validated against real hardware - if fan/temperature/power don't appear on an AMD or Intel node with the agent installed and running, that's the first thing worth reporting.
+AMD and Intel GPU support via the marbor agent (`rocm-smi`/`xpu-smi` parsing) has not yet been validated against real hardware - if fan/temperature/power don't appear on an AMD or Intel node with the agent installed and running, that's the first thing worth reporting.
 
 ---
 
@@ -90,7 +90,7 @@ Session affinity is implemented and gated by the `routing.session_affinity` flag
 ## Out of Scope
 The following are deliberate non-goals, not gaps to be filled:
 - **TLS termination.** marbor does not handle TLS. Put nginx or a load balancer in front for HTTPS. This keeps the binary simple and puts TLS configuration where operators already manage it.
-- **Auto-deployed remote telemetry.** Node Agent must be manually installed per node - mesh does not auto-deploy it to remote hosts.
+- **Auto-deployed remote telemetry.** marbor agent must be manually installed per node - mesh does not auto-deploy it to remote hosts.
 - **Multi-instance coordination.** No distributed consensus, no Raft, no etcd dependency. Single-host deployment only.
 - **Chat UI, model fine-tuning, or web scraping.** marbor is a proxy and router. These are out of scope.
 - **Cloud provider breadth.** OpenAI-compatible providers are supported via built-in presets (OpenRouter, Groq, Together, Fireworks, DeepSeek, Mistral, xAI, Cerebras, NVIDIA NIM) or a custom base URL; Anthropic gets native translation. LiteLLM's approach of abstracting hundreds of providers behind one client SDK is not a goal.

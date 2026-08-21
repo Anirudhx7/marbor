@@ -4,10 +4,10 @@
 
 One OpenAI-compatible endpoint for all your self-hosted LLM traffic. marbor routes every request to the GPU node that already holds the model warm in VRAM - across Ollama, vLLM, TGI, llama.cpp, and MLX (Apple Silicon) - turning your own hardware into a high-availability alternative to cloud LLM APIs. Bearer-token authentication and per-key rate limits protect your GPUs; cloud overflow to OpenAI or Anthropic activates only when local capacity is fully saturated, with real-time financial tracking. Local hardware first. Cloud second. Full spend attribution.
 
-[![Build Status](marbor.dev/actions/workflows/ci.yml/badge.svg)](marbor.dev/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](marbor.dev/releases/latest)
+[![Build Status](https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Anirudhx7/ollama-mesh?include_prereleases)](https://github.com/Anirudhx7/marbor/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](marbor.dev/demo/)
+[![Live Demo](https://img.shields.io/badge/live%20demo-%E2%86%97-orange)](https://anirudh.social/marbor/demo/)
 
 
 ![marbor dashboard](website/screenshots/dashboard.png)
@@ -15,7 +15,7 @@ One OpenAI-compatible endpoint for all your self-hosted LLM traffic. marbor rout
 
 ---
 
-> **[→ Try the live demo](marbor.dev/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
+> **[→ Try the live demo](https://anirudh.social/marbor/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 1. **Clone and start the demo stack**:
    ```bash
-   git clone marbor.dev && cd marbor
+   git clone https://github.com/Anirudhx7/marbor && cd marbor
    make demo
    ```
    This spins up `marbor`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
@@ -51,32 +51,32 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 
 *   **Install only**
     ```bash
-    curl -fsSL marbor.dev/main/install.sh | sh
+    curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
     ```
     Downloads the official matching binary for your platform (`linux`/`darwin` and `amd64`/`arm64`) and installs it to `/usr/local/bin`. Run `marbor` manually to start. If a version is already installed, this reports old → new instead of upgrading silently.
 
 *   **Quick demo - Auto-Discover & Run in background**
     ```bash
-    curl -fsSL marbor.dev/main/install.sh | START=1 sh
+    curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | START=1 sh
     ```
     Installs the binary, starts the gateway in the background against a fresh `marbor.db`, and prints operational access details. Before starting, it scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) and interactively prompts you to pick which discovered nodes to seed into `marbor.db` (comma-separated numbers, `all`, or `skip`) - there's no config file to hand-edit. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try marbor, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
 
 *   **Production - Auto-Discover & Run as a managed service (recommended for real deployments)**
     ```bash
-    curl -fsSL marbor.dev/main/install.sh | SERVICE=1 sh
+    curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh
     ```
     Same as the quick-demo command (including the interactive node-discovery prompt), but instead of a background process it installs and enables a proper OS service (`Restart=on-failure`, starts on boot) - this is what you want for anything you intend to keep running. Currently implemented via `systemd` on Linux (requires root/sudo; logs via `journalctl -u marbor -f`). `SERVICE=1` is deliberately OS-agnostic - on macOS or any host without a supported service manager, it prints a notice and falls back to the same background mode as the quick-demo command rather than failing the install.
 
 ### Uninstalling
 
 ```bash
-curl -fsSL marbor.dev/main/uninstall.sh | sh
+curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/uninstall.sh | sh
 ```
 
 Run this from the same directory `install.sh` was run in (it looks for `marbor.db` and the pidfile there). It stops and removes the systemd service or background process and removes the binary. `marbor.db` is always kept by default when piped like this (stdin isn't a terminal, so the keep/remove prompt never runs) - pass `KEEP_DB=0` to remove it instead:
 
 ```bash
-curl -fsSL marbor.dev/main/uninstall.sh | KEEP_DB=0 sh
+curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/uninstall.sh | KEEP_DB=0 sh
 ```
 
 To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying on the env vars, download the script first so it runs with a real terminal attached: `curl -fsSL .../uninstall.sh -o uninstall.sh && sh uninstall.sh`.
@@ -87,7 +87,7 @@ To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying o
 
 Run a production-ready gateway + metrics stack scraping the proxy:
 ```bash
-git clone marbor.dev && cd marbor
+git clone https://github.com/Anirudhx7/marbor && cd marbor
 docker compose up -d
 ```
 This starts:
@@ -165,14 +165,14 @@ Client Application (Agent / RAG / Copilot)
 | | Grafana dashboard | Included JSON (`grafana/marbor.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
 | | Audit trail | Append-only JSON-lines audit log. Every request recorded with crypto/rand request IDs. |
-| | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (Node Agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
+| | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (marbor agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
 | | Per-node in-flight cap | Optional `max_in_flight_per_node` (global) with a per-node override. A node at/over its cap is excluded from routing - failover/cloud/503 - instead of queued, for operators who need overflow rather than piling onto a slow node. Best-effort (approximate under a concurrent request burst), not an atomic guarantee. |
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
 | | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-syncs state from `marbor.db` in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
-| | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional Node Agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
+| | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional marbor agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
 | **Multi-Backend** | Ollama, vLLM, TGI, llama.cpp, MLX | Declare `runtime: ollama/vllm/tgi/llamacpp/mlx` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. |
 | | Path-aware routing | `/api/*` routes to Ollama nodes only. `/v1/*` routes to any runtime. Non-Ollama nodes are transparent to OpenAI SDK clients. |
@@ -283,16 +283,16 @@ marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the 
 | macOS | Apple Silicon | `marbor-darwin-arm64` | Mac Studio, Mac Pro, M-series dev machines |
 | macOS | Intel | `marbor-darwin-amd64` | Intel Macs |
 | Windows | amd64 | `marbor-windows-amd64.exe` | Windows GPU workstations |
-| Docker | multi-arch | `marbor.dev` | Any container orchestrator |
+| Docker | multi-arch | `ghcr.io/anirudhx7/marbor` | Any container orchestrator |
 
 > **macOS Gatekeeper:** binaries are not yet Apple-notarized. Clear the quarantine flag once: `xattr -d com.apple.quarantine marbor`.
 
-All builds and `checksums.txt` on the [releases page](marbor.dev/releases/latest).
+All builds and `checksums.txt` on the [releases page](https://github.com/Anirudhx7/marbor/releases/latest).
 
 
 **Build from source:**
 ```bash
-git clone marbor.dev
+git clone https://github.com/Anirudhx7/marbor
 cd marbor
 make build
 ./marbor
@@ -300,7 +300,7 @@ make build
 
 Point your LLM clients at `:11434`. marbor speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints - both `ollama` clients and OpenAI SDKs work unchanged.
 
-**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) · [Continue](docs/integrations/continue.md) · [LibreChat](docs/integrations/librechat.md) · [AWS EC2 deploy](docs/deploy/aws-ec2.md) · [GPU node registration (Ansible)](docs/deploy/gpu-node-registration.md) · [Node Agent enrollment (Ansible)](docs/deploy/node-agent-enrollment.md)
+**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) · [Continue](docs/integrations/continue.md) · [LibreChat](docs/integrations/librechat.md) · [AWS EC2 deploy](docs/deploy/aws-ec2.md) · [GPU node registration (Ansible)](docs/deploy/gpu-node-registration.md) · [marbor agent enrollment (Ansible)](docs/deploy/marbor-agent-enrollment.md)
 
 ---
 
@@ -426,8 +426,8 @@ Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API 
 ## CLI
 
 `marbor` is a single static binary that is two tools in one - the server and a thin CLI client
-of the Admin API - selected by its first argument. The Node Agent is a separate binary,
-`marbor-agent`, installed on each GPU node (see [Node Agent enrollment](docs/deploy/node-agent-enrollment.md)):
+of the Admin API - selected by its first argument. The marbor agent is a separate binary,
+`marbor-agent`, installed on each GPU node (see [marbor agent enrollment](docs/deploy/marbor-agent-enrollment.md)):
 
 <!-- BEGIN CLI TABLE -->
 <!-- Generated by `make docs` (cmd/gen-docs) from internal/cli's command registry - do not edit by hand. -->
@@ -442,7 +442,7 @@ of the Admin API - selected by its first argument. The Node Agent is a separate 
 | `marbor logout` | remove the saved session |
 | `marbor whoami` | show the CLI's saved identity (live-verified) |
 | `marbor nodes` | list nodes known to the mesh (requires auth) |
-| `marbor nodes confirm-tls <node>` | pin a Node Agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
+| `marbor nodes confirm-tls <node>` | pin a marbor agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
 | `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
 | `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
 | `marbor models delete <node> <model>` | delete a model from a node's local storage (requires auth) |
@@ -473,7 +473,7 @@ of the Admin API - selected by its first argument. The Node Agent is a separate 
 > (`cmd/mesh`) has been merged into the main `marbor` binary above. There were no external
 > users of the standalone CLI binary, so it was removed outright rather than kept as an alias.
 
-The CLI subcommands never talk to a Node Agent directly - every command is exactly one Admin API
+The CLI subcommands never talk to a marbor agent directly - every command is exactly one Admin API
 request:
 
 ```bash

@@ -2071,11 +2071,11 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // POST /admin/agent/enroll.
 func nodeAgentInstallCommand(meshBaseURL string, port int, enrollCode string) (unix string, windows string) {
 	unix = fmt.Sprintf(
-		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MESH=%s ENROLL=%s PORT=%d sh",
+		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=%s MARBOR_ENROLL=%s PORT=%d sh",
 		meshBaseURL, enrollCode, port,
 	)
 	windows = fmt.Sprintf(
-		`$env:ROLE="agent"; $env:MESH="%s"; $env:ENROLL="%s"; $env:PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+		`$env:ROLE="agent"; $env:MARBOR_SERVER="%s"; $env:MARBOR_ENROLL="%s"; $env:PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
 		meshBaseURL, enrollCode, port,
 	)
 	return unix, windows

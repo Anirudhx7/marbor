@@ -44,9 +44,9 @@ export const mockGPUNodes: GPUNode[] = [
     tokensTotal: 245000,
     avgLatencyMs: 120,
     warmHitRatio: 0.98,
-    // Node Agent installed on this node (demo parity - all demo nodes run
+    // marbor agent installed on this node (demo parity - all demo nodes run
     // the agent so the fleet view shows full telemetry everywhere). This is
-    // the demo's one multi-GPU node, showing the full Node Agent Protocol
+    // the demo's one multi-GPU node, showing the full marbor agent Protocol
     // v1 envelope (agentGpus array, host capacity/identity, runtime
     // version/status, node_id).
     agentPresent: true,
@@ -90,7 +90,7 @@ export const mockGPUNodes: GPUNode[] = [
     id: 'node-2',
     name: 'gpu-node-02',
     // Same host as node-1 (10.0.0.11) on purpose - demonstrates the
-    // multi-runtime-per-host Node Agent fix: one physical box running both
+    // multi-runtime-per-host marbor agent fix: one physical box running both
     // Ollama (:11434, node-1) and vLLM (:8000, here), sharing one agent
     // process/enrollment, both showing agentPresent: true.
     host: '10.0.0.11',
@@ -137,7 +137,7 @@ export const mockGPUNodes: GPUNode[] = [
     // its host with another runtime pinned to a different GPU).
     gpuIndices: [0],
     // P24 demo example: this node has been migrated to HTTPS and has a
-    // pinned Node Agent certificate fingerprint - the healthy/normal case.
+    // pinned marbor agent certificate fingerprint - the healthy/normal case.
     scheme: 'https',
     tlsFingerprint: 'SHA256:' + 'a1b2c3d4e5f6'.repeat(6).slice(0, 64),
     port: 8080,

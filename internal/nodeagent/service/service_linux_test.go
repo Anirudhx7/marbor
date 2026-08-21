@@ -24,6 +24,9 @@ func TestSystemdUnitContent(t *testing.T) {
 	if !strings.Contains(content, "EnvironmentFile="+tokenEnvFilePath) {
 		t.Errorf("systemdUnitContent() missing EnvironmentFile=%s, got:\n%s", tokenEnvFilePath, content)
 	}
+	if strings.Contains(content, "MARBOR_AGENT_SECRET=") {
+		t.Errorf("systemdUnitContent() EnvironmentFile content must use the new MARBOR_AGENT_SECRET key, got:\n%s", content)
+	}
 	if !strings.Contains(content, "Restart=on-failure") {
 		t.Errorf("systemdUnitContent() missing Restart=on-failure, got:\n%s", content)
 	}

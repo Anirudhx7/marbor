@@ -12,6 +12,30 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
+// TestNodeAgentInstallCommandUsesNewContract verifies the generated Node Agent
+// install commands use the renamed Marbor Agent environment-variable contract
+// (MARBOR_SERVER / MARBOR_ENROLL) and never the legacy TOKEN / MESH / ENROLL
+// names. A regression here silently hands operators an install command that the
+// agent binary (which only reads MARBOR_*) cannot consume. ROLE and PORT are
+// installer-specific arguments and are intentionally still present.
+func TestNodeAgentInstallCommandUsesNewContract(t *testing.T) {
+	unix, windows := nodeAgentInstallCommand("https://marbor.example.com", 11434, "abc123")
+
+	for name, cmd := range map[string]string{"unix": unix, "windows": windows} {
+		if !strings.Contains(cmd, "MARBOR_SERVER=") {
+			t.Errorf("%s install command missing MARBOR_SERVER: %q", name, cmd)
+		}
+		if !strings.Contains(cmd, "MARBOR_ENROLL=") {
+			t.Errorf("%s install command missing MARBOR_ENROLL: %q", name, cmd)
+		}
+		for _, legacy := range []string{"TOKEN=", "MESH=", " ENROLL="} {
+			if strings.Contains(cmd, legacy) {
+				t.Errorf("%s install command still contains legacy %q: %q", name, legacy, cmd)
+			}
+		}
+	}
+}
+
 func newRuntimeActionRequest(t *testing.T, s *Server, node, action string) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/"+node+"/runtime/"+action, nil)

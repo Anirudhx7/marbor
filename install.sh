@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # marbor installer
 # Downloads the latest release binary from GitHub for your OS and architecture.
-# Usage: curl -fsSL marbor.dev/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
 #
 # There is no config.yaml anymore - marbor is DB-first (marbor.db). When
 # starting the daemon for the first time, this installer scans the local
@@ -21,7 +21,7 @@
 #   FORCE_PROBE=1  re-run the network discovery wizard even if marbor.db
 #              already exists (by default it only runs on a fresh DB).
 #
-#   ROLE=agent  install the Node Agent: downloads the dedicated
+#   ROLE=agent  install the marbor agent: downloads the dedicated
 #              marbor-agent binary (a separate artifact from the
 #              control-plane marbor binary - a GPU host running this
 #              role never has a control-plane-capable executable on disk),
@@ -31,21 +31,23 @@
 #              self-registration subcommand (internal/nodeagent/service - no
 #              separate service-file logic duplicated in this script for the
 #              agent role). Credentials:
-#                ENROLL=<code> MESH=<url>  (default, shown by the mesh admin
-#                  UI's "Node Agent" panel) - a short-lived, single-use code
-#                  the binary itself exchanges for the real token by calling
-#                  back to MESH, so the real permanent bearer token never
-#                  appears in this command / your shell history (P50).
-#                TOKEN=<token>  (legacy/manual path) - the real permanent
-#                  token directly, no exchange, no MESH needed.
-#              One of TOKEN or ENROLL+MESH is required - there is no
-#              existing-installation upgrade path (no prior Marbor
-#              deployments exist to preserve).
+#                MARBOR_ENROLL=<code> MARBOR_SERVER=<url>  (default, shown by the
+#                  marbor admin UI's "marbor agent" panel) - a short-lived,
+#                  single-use code the binary itself exchanges for the real
+#                  token by calling back to MARBOR_SERVER, so the real
+#                  permanent bearer token never appears in this command / your
+#                  shell history (P50). It is read from the MARBOR_AGENT_SECRET
+#                  environment variable at agent startup (no legacy TOKEN env).
+#                MARBOR_AGENT_SECRET=<token>  (manual path) - the real permanent
+#                  token directly, no exchange, no MARBOR_SERVER needed.
+#              One of MARBOR_AGENT_SECRET or MARBOR_ENROLL+MARBOR_SERVER is
+#              required - there is no existing-installation upgrade path (no
+#              prior Marbor deployments exist to preserve).
 #              PORT=<port> optionally overrides the default (9200).
-#              Example: curl ... | ROLE=agent MESH=http://mesh-host:8080 ENROLL=xxxxx PORT=9200 sh
+#              Example: curl ... | ROLE=agent MARBOR_SERVER=http://marbor-host:8080 MARBOR_ENROLL=xxxxx PORT=9200 sh
 #
-# Uninstall: marbor.dev/main/uninstall.sh
-# Uninstall a Node Agent: marbor-agent service uninstall (on the node, not this script)
+# Uninstall: https://raw.githubusercontent.com/Anirudhx7/marbor/main/uninstall.sh
+# Uninstall a marbor agent: marbor-agent service uninstall (on the node, not this script)
 
 set -e
 
@@ -269,56 +271,57 @@ if [ "$ROLE" != "agent" ]; then
   ( install_man_pages ) || echo "  [!] Skipped man page install (non-fatal - 'man marbor' won't work, everything else does)."
 fi
 
-# Node Agent role: register+start as a persistent OS service and stop here -
+# marbor agent role: register+start as a persistent OS service and stop here -
 # none of the control-plane logic below (node discovery wizard, mesh's own
 # systemd unit, dashboard) applies to a node running only the agent. The
 # binary's own "service install" subcommand owns the actual
 # systemd/launchd registration (internal/nodeagent/service) - this script's
 # job for this role is just "download the right binary, then hand off to it."
 if [ "$ROLE" = "agent" ]; then
-  if [ -z "$TOKEN" ] && [ -z "$ENROLL" ]; then
+  if [ -z "$MARBOR_AGENT_SECRET" ] && [ -z "$MARBOR_ENROLL" ]; then
     echo ""
-    echo "Error: ROLE=agent requires TOKEN=<token> or ENROLL=<code> MESH=<url>."
-    echo "  Generate one from the mesh admin UI: GPU Nodes -> (a node) -> Node Agent -> Enable Agent."
+    echo "Error: ROLE=agent requires MARBOR_AGENT_SECRET=<token> or MARBOR_ENROLL=<code> MARBOR_SERVER=<url>."
+    echo "  Generate one from the marbor admin UI: GPU Nodes -> (a node) -> marbor agent -> Enable Agent."
     exit 1
   fi
-  if [ -n "$ENROLL" ] && [ -z "$TOKEN" ] && [ -z "$MESH" ]; then
+  if [ -n "$MARBOR_ENROLL" ] && [ -z "$MARBOR_AGENT_SECRET" ] && [ -z "$MARBOR_SERVER" ]; then
     echo ""
-    echo "Error: ENROLL=<code> requires MESH=<url> (the mesh admin dashboard's address)."
+    echo "Error: MARBOR_ENROLL=<code> requires MARBOR_SERVER=<url> (the marbor admin dashboard's address)."
     exit 1
   fi
   AGENT_PORT="${PORT:-9200}"
 
   echo ""
-  echo "Installing marbor Node Agent as a persistent service (port $AGENT_PORT)..."
+  echo "Installing marbor agent as a persistent service (port $AGENT_PORT)..."
   # set -- preserves per-arg quoting (unlike an unquoted variable expansion,
   # which would word-split/glob a code, token, or URL containing whitespace
   # or shell metacharacters) - "$@" below expands each positional param as
-  # its own word. TOKEN is deliberately NOT passed as --token here (that
-  # would put the real bearer token in this process's argv, visible via
-  # `ps`/Task Manager for the life of the install) - it's already in this
-  # shell's environment (TOKEN=... sh), and the binary's own "service
-  # install" subcommand already falls back to the TOKEN env var when
-  # --token isn't given, so it's just inherited below.
-  if [ -n "$TOKEN" ]; then
+  # its own word. MARBOR_AGENT_SECRET is deliberately NOT passed as --token
+  # here (that would put the real bearer token in this process's argv, visible
+  # via `ps`/Task Manager for the life of the install) - it's already in this
+  # shell's environment (MARBOR_AGENT_SECRET=... sh), and the binary's own
+  # "service install" subcommand already reads MARBOR_AGENT_SECRET from its
+  # environment when --token isn't given, so it's just inherited below.
+  if [ -n "$MARBOR_AGENT_SECRET" ]; then
     set -- service install --port="$AGENT_PORT"
   else
-    set -- service install --port="$AGENT_PORT" --enroll="$ENROLL" --mesh="$MESH"
+    set -- service install --port="$AGENT_PORT" --enroll="$MARBOR_ENROLL" --mesh="$MARBOR_SERVER"
   fi
   if [ "$(id -u)" = "0" ]; then
     "$BIN_PATH" "$@"
   elif command -v sudo >/dev/null 2>&1; then
-    # -E forwards this shell's environment (incl. TOKEN) to the sudo'd
-    # process instead of resetting it - required for the TOKEN env-var
-    # fallback above to actually reach the binary under sudo.
+    # -E forwards this shell's environment (incl. MARBOR_AGENT_SECRET) to the
+    # sudo'd process instead of resetting it - required for the
+    # MARBOR_AGENT_SECRET env-var value above to actually reach the binary
+    # under sudo.
     sudo -E "$BIN_PATH" "$@"
   else
-    echo "Error: installing the Node Agent service requires root, and sudo is not available."
+    echo "Error: installing the marbor agent service requires root, and sudo is not available."
     exit 1
   fi
 
   echo ""
-  echo "Node Agent installed and running - the mesh will start polling it on its next poll cycle."
+  echo "marbor agent installed and running - the marbor server will start polling it on its next poll cycle."
   echo "  Status:    marbor-agent service status"
   echo "  Uninstall: marbor-agent service uninstall"
   exit 0

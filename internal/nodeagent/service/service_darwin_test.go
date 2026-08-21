@@ -25,7 +25,7 @@ func TestLaunchdPlistContent(t *testing.T) {
 		"<key>Label</key>",
 		"<string>com.marbor.agent</string>",
 		"<key>EnvironmentVariables</key>",
-		"<key>TOKEN</key>",
+		"<key>MARBOR_AGENT_SECRET</key>",
 		"<string>sekret</string>",
 		"<key>RunAtLoad</key>",
 		"<true/>",

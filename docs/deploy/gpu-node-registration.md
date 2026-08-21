@@ -7,8 +7,8 @@ so anything the UI can do, a script with an authenticated admin session can do
 identically.
 
 This covers registering a node's runtime endpoint only. Once a node is registered,
-see [Node Agent enrollment](node-agent-enrollment.md) for the separate step of
-installing its Node Agent.
+see [marbor agent enrollment](marbor-agent-enrollment.md) for the separate step of
+installing its marbor agent.
 
 ## Authenticating a script
 
@@ -21,10 +21,10 @@ also accept as `Authorization: Bearer <token>` if you prefer to extract the toke
 value from the cookie yourself.
 
 ```bash
-MESH=https://mesh.example.com
+MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
 
-curl -sf -c "$COOKIES" -X POST "$MESH/admin/login" \
+curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"<your admin password>"}' > /dev/null
 ```
@@ -40,7 +40,7 @@ instead of creating a duplicate; the first call returns `201 Created`. Safe to
 re-run.
 
 ```bash
-curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes" \
+curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes" \
   -H "Content-Type: application/json" \
   -d '{"name":"gpu01","url":"http://gpu01:11434"}'
 ```
@@ -48,22 +48,22 @@ curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes" \
 ## Scripted registration for N nodes
 
 ```bash
-MESH=https://mesh.example.com
+MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
 
-curl -sf -c "$COOKIES" -X POST "$MESH/admin/login" \
+curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"<your admin password>"}' > /dev/null
 
 for host in gpu01 gpu02 gpu03; do
-  curl -sf -b "$COOKIES" -X POST "$MESH/admin/nodes" \
+  curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$host\",\"url\":\"http://$host:11434\"}"
 done
 ```
 
-Once every node is registered, install their Node Agents - see
-[Node Agent enrollment](node-agent-enrollment.md).
+Once every node is registered, install their marbor agents - see
+[marbor agent enrollment](marbor-agent-enrollment.md).
 
 ## Recommended path: the first-party Ansible playbook
 
@@ -82,4 +82,4 @@ no-Ansible fallback.
 
 This playbook registers runtime endpoints only - it does not install or enroll Node
 Agents. See [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-marbor-agent.yml)
-and [Node Agent enrollment](node-agent-enrollment.md) for that separate step.
+and [marbor agent enrollment](marbor-agent-enrollment.md) for that separate step.

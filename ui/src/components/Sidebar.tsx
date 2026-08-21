@@ -87,7 +87,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
           </div>
           <div className="flex flex-col">
             <span className="font-semibold text-foreground text-sm tracking-tight">
-              ollama<span className="text-primary">-mesh</span>
+              marbor
             </span>
             <span className="text-[10px] font-medium text-muted-foreground leading-none">v{version}</span>
           </div>
@@ -192,7 +192,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
               </svg>
             </div>
             <span className="font-semibold text-foreground text-sm tracking-tight">
-              ollama<span className="text-primary">-mesh</span>
+              marbor
             </span>
           </div>
         </div>

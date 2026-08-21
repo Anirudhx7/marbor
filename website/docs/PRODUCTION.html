@@ -6,18 +6,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Production Deployment Guide · marbor docs</title>
-<meta name="description" content="marbor documentation: Production Deployment Guide." />
+<title>Production Deployment Guide · Marbor docs</title>
+<meta name="description" content="Marbor documentation: Production Deployment Guide." />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
-<meta property="og:site_name" content="marbor" />
-<meta property="og:title" content="Production Deployment Guide · marbor docs" />
-<meta property="og:description" content="marbor documentation: Production Deployment Guide." />
-<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
+<meta property="og:site_name" content="Marbor" />
+<meta property="og:title" content="Production Deployment Guide · Marbor docs" />
+<meta property="og:description" content="Marbor documentation: Production Deployment Guide." />
+<meta property="og:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Production Deployment Guide · marbor docs" />
-<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
+<meta name="twitter:title" content="Production Deployment Guide · Marbor docs" />
+<meta name="twitter:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -294,15 +294,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <body>
 <nav>
   <div class="page">
-    <a href="../index.html" class="brand" aria-label="marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
+    <a href="../index.html" class="brand" aria-label="Marbor home"><div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div><span class="name">Marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
     <div class="nav-right">
       <div class="nav-links">
         <a class="link" href="../index.html#features">Features</a>
         <a class="link" href="../index.html#how">How it works</a>
         <a class="link" href="../index.html#compare">Compare</a>
         <a class="link active" href="../docs/index.html">Docs</a>
-        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -326,7 +326,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
-      <a class="doc-nav-link active" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/node-agent-enrollment.html">Node Agent enrollment</a>
+      <a class="doc-nav-link active" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Integrations</div>
@@ -421,7 +421,7 @@ sudo journalctl -u marbor -f"><svg viewBox="0 0 24 24" fill="none" stroke="curre
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
 services:
   marbor:
-    image: marbor.dev:latest
+    image: ghcr.io/anirudhx7/marbor:latest
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -439,7 +439,7 @@ volumes:
   marbor-backups:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml (reference - already in repo)
 services:
   marbor:
-    image: marbor.dev:latest
+    image: ghcr.io/anirudhx7/marbor:latest
     ports:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
@@ -481,7 +481,7 @@ spec:
     spec:
       containers:
         - name: marbor
-          image: marbor.dev:latest
+          image: ghcr.io/anirudhx7/marbor:latest
           args: ["--db", "/data/marbor.db"]
           ports:
             - containerPort: 11434   # endpoint
@@ -552,7 +552,7 @@ spec:
     spec:
       containers:
         - name: marbor
-          image: marbor.dev:latest
+          image: ghcr.io/anirudhx7/marbor:latest
           args: [&quot;--db&quot;, &quot;/data/marbor.db&quot;]
           ports:
             - containerPort: 11434   # endpoint
@@ -733,7 +733,7 @@ server {
 <tr><td>Audit log (per-request)</td><td>The <code>audit_log</code> table in <code>marbor.db</code>, written when audit logging is enabled. Retention is configurable (<code>audit_retention_days</code> setting, default 30 days; 0 keeps rows forever) and enforced by a periodic prune job.</td></tr>
 <tr><td>Admin action trail</td><td>The separate <code>system_audit_log</code> table in <code>marbor.db</code> (who changed what in the dashboard/API). Independently retained (<code>audit_system_retention_days</code> setting, default 0 = forever) since it is lower-volume and more security-sensitive than the per-request audit log.</td></tr>
 <tr><td>Request log / analytics</td><td>Persisted to <code>request_log</code>, <code>hourly_buckets</code>, and <code>model_stats</code> tables in <code>marbor.db</code>, not purely in-memory.</td></tr>
-<tr><td>GPU telemetry</td><td>Live reads from <code>nvidia-smi</code> on local nodes, and via the optional Node Agent on remote GPU hosts. Not persisted.</td></tr></tbody>
+<tr><td>GPU telemetry</td><td>Live reads from <code>nvidia-smi</code> on local nodes, and via the optional marbor agent on remote GPU hosts. Not persisted.</td></tr></tbody>
 </table></div>
 <hr/>
 <h2 id="write-path-capacity">Write-Path Capacity<a class="anchor" href="#write-path-capacity" aria-label="Link to section">#</a></h2>
@@ -750,7 +750,7 @@ server {
 <p>Re-run <code>bench/loadtest</code> after any change to <code>internal/audit</code>, <code>internal/admin</code>'s async queues, or <code>internal/store/sqlite.go</code>'s connection/pragma settings, or on real production hardware, since any of those can move this number.</p>
 
       <div class="doc-foot-edit">
-        <a href="marbor.dev/blob/main/docs/PRODUCTION.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="https://github.com/Anirudhx7/marbor/blob/main/docs/PRODUCTION.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -763,8 +763,8 @@ server {
 
 <footer class="foot">
   <div class="foot-bottom">
-    <span>© <span id="year">2026</span> marbor contributors · Apache-2.0</span>
-    <span>marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
+    <span>© <span id="year">2026</span> Marbor contributors · Apache-2.0</span>
+    <span>Marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
   </div>
 </footer>
 

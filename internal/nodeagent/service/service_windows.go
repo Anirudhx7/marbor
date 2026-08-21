@@ -124,27 +124,28 @@ func serviceRegistryPath() string {
 }
 
 // setServiceTokenEnvCommand builds the powershell.exe invocation that writes
-// TOKEN=<token> as the service's Environment (REG_MULTI_SZ - the type
-// Windows services read their environment block from) registry value. The
-// token is delivered via the command's Stdin, never as a command-line
-// argument: unlike reg.exe's "/d TOKEN=<token>" form, this keeps the token
-// out of Task Manager's "Command line" column, sc qc, WMI
-// Win32_Process.CommandLine, and Sysmon Event ID 1 - the same class of
-// exposure windowsBinPath already keeps --token out of, just via a
-// different native tool that only accepts secrets as an argument. Split out
-// from setServiceTokenEnv so a test can assert on the built command's Args
-// without requiring an elevated Windows box to actually run it.
+// MARBOR_AGENT_SECRET=<token> as the service's Environment
+// (REG_MULTI_SZ - the type Windows services read their environment block
+// from) registry value. The token is delivered via the command's Stdin,
+// never as a command-line argument: unlike reg.exe's
+// "/d MARBOR_AGENT_SECRET=<token>" form, this keeps the token out of Task
+// Manager's "Command line" column, sc qc, WMI Win32_Process.CommandLine, and
+// Sysmon Event ID 1 - the same class of exposure windowsBinPath already
+// keeps --token out of, just via a different native tool that only accepts
+// secrets as an argument. Split out from setServiceTokenEnv so a test can
+// assert on the built command's Args without requiring an elevated Windows
+// box to actually run it.
 func setServiceTokenEnvCommand(token string) *exec.Cmd {
-	script := `$t = [Console]::In.ReadLine(); Set-ItemProperty -Path '` + serviceRegistryPath() + `' -Name Environment -Value @("TOKEN=$t") -Type MultiString`
+	script := `$t = [Console]::In.ReadLine(); Set-ItemProperty -Path '` + serviceRegistryPath() + `' -Name Environment -Value @("MARBOR_AGENT_SECRET=$t") -Type MultiString`
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
 	cmd.Stdin = strings.NewReader(token + "\n")
 	return cmd
 }
 
-// setServiceTokenEnv writes TOKEN=<token> as the service's Environment
-// registry value via powershell.exe (same "shell out to a native OS tool"
-// pattern as sc.exe - no new Go module dependency), passing the token via
-// stdin rather than argv (see setServiceTokenEnvCommand).
+// setServiceTokenEnv writes MARBOR_AGENT_SECRET=<token> as the service's
+// Environment registry value via powershell.exe (same "shell out to a native
+// OS tool" pattern as sc.exe - no new Go module dependency), passing the
+// token via stdin rather than argv (see setServiceTokenEnvCommand).
 func setServiceTokenEnv(token string) error {
 	cmd := setServiceTokenEnvCommand(token)
 	var buf bytes.Buffer

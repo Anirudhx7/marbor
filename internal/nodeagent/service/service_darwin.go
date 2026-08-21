@@ -80,10 +80,12 @@ func launchdPlistContent(cfg Config) string {
 	// Token travels via EnvironmentVariables, not ProgramArguments: argv is
 	// visible to any local user via `ps`/Activity Monitor regardless of file
 	// permissions, whereas a process's environment is only visible to its
-	// owner (root here) via `ps eww`, not to other local users.
-	b.WriteString("\t<key>EnvironmentVariables</key>\n\t<dict>\n")
-	b.WriteString("\t\t<key>TOKEN</key>\n\t\t<string>" + xmlEscape(cfg.Token) + "</string>\n")
-	b.WriteString("\t</dict>\n")
+	// owner (root here) via `ps eww`, not to other local users. The agent
+	// binary reads MARBOR_AGENT_SECRET from its environment at startup (no
+	// legacy TOKEN fallback).
+	b.WriteString("	<key>EnvironmentVariables</key>\n	<dict>\n")
+	b.WriteString("		<key>MARBOR_AGENT_SECRET</key>\n		<string>" + xmlEscape(cfg.Token) + "</string>\n")
+	b.WriteString("	</dict>\n")
 
 	b.WriteString("\t<key>RunAtLoad</key>\n\t<true/>\n")
 	b.WriteString("\t<key>KeepAlive</key>\n\t<true/>\n")

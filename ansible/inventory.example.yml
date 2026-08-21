@@ -13,7 +13,7 @@
 #             wins.
 #   host      required - IP or hostname of the GPU node. Used both as the
 #             mesh-facing node URL (http://<host>:<port>) and as the SSH
-#             target for installing the Node Agent.
+#             target for installing the marbor agent.
 #   port      optional for runtime "ollama" (defaults to 11434, matching both
 #             the Ollama convention and this project's own proxy default -
 #             see internal/config/config.go). REQUIRED for every other

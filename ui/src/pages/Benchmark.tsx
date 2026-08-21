@@ -137,7 +137,7 @@ export function Benchmark() {
     if (!selectedNode) { setModels([]); return; }
     setModelsError(null);
     const node = nodes.find(n => n.name === selectedNode);
-    // Prefer the Node Agent's models.list (runtime-agnostic, on-disk models).
+    // Prefer the marbor agent's models.list (runtime-agnostic, on-disk models).
     // Without that capability, fall back to the same /admin/models
     // aggregation the Model Catalog page uses (queries the node's /api/tags
     // directly, so it sees all on-disk models, not just currently-warm ones)
@@ -150,7 +150,7 @@ export function Benchmark() {
         .then(list => setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name)))
         .catch(() => {
           setModels((node.loadedModels || []).map(m => m.name));
-          setModelsError('Node Agent model list unavailable - showing currently-loaded models only.');
+          setModelsError('marbor agent model list unavailable - showing currently-loaded models only.');
         });
     } else {
       fetchModels()

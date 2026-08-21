@@ -57,7 +57,7 @@ export interface GPUNode {
   vramTotalMB: number;
   vramUsedMB: number;
   // How VRAM figures were obtained, so the UI never presents a guess as a
-  // measurement: nvidia = live local nvidia-smi; agent = a remote Node Agent
+  // measurement: nvidia = live local nvidia-smi; agent = a remote marbor agent
   // (any vendor - see agentGpuVendor below for which tool); api = summed from
   // the node's own /api/ps (real, total unknown); declared = total from
   // config; none = no data.
@@ -78,7 +78,7 @@ export interface GPUNode {
   // means no override is declared, so the global
   // routing.max_in_flight_per_node default applies instead.
   maxInFlight?: number;
-  // TOFU-pinned Node Agent TLS certificate fingerprint (P24) - undefined/
+  // TOFU-pinned marbor agent TLS certificate fingerprint (P24) - undefined/
   // empty means no pin (plaintext or not yet TLS-enrolled). See
   // .local/specs/node-agent-tls.md.
   tlsFingerprint?: string;
@@ -117,7 +117,7 @@ export interface GPUNode {
   tokensTotal?: number;
   avgLatencyMs?: number;
   warmHitRatio?: number;
-  // Node Agent-derived telemetry (internal/nodeagent). agentPresent is false
+  // marbor agent-derived telemetry (internal/nodeagent). agentPresent is false
   // whenever no agent is configured for this node, or the most recent agent
   // poll failed - the UI must check agentPresent before displaying
   // cpuPercent/fanPercent/ramUsedMB/diskFreeGB/agentVersion as real
@@ -402,7 +402,7 @@ export interface ModelEntry {
   name: string;
   size_vram: number;
   // size_disk is the model's on-disk size in bytes (from Ollama /api/tags or
-  // the Node Agent's models.list capability). Absent when neither source has
+  // the marbor agent's models.list capability). Absent when neither source has
   // reported it yet for this model.
   size_disk?: number;
   nodes: ModelNode[];

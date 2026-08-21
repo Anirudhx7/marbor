@@ -22,7 +22,7 @@
 #          playbook fails fast, naming the host, if a name isn't found among
 #          the mesh's current nodes.
 #   host   required - IP or hostname of the GPU node. Used as the SSH target
-#          for installing the Node Agent.
+#          for installing the marbor agent.
 #   port   required - the node's listening port, sent to
 #          POST /admin/nodes/{name}/agent (must match the port the node was
 #          registered with).
