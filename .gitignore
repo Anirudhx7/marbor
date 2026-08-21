@@ -1,5 +1,7 @@
 marbor
 marbor.exe
+marbor-agent
+marbor-agent.exe
 ui/node_modules/
 internal/admin/web/dist/
 *.exe
