@@ -2047,7 +2047,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.router.RemoveNode(name)
-	_ = s.st.DeleteNode(name)                    // cascades node_agent deletion, see sqliteStore.DeleteNode
+	_ = s.st.DeleteNode(name)                    // cascades marbor_agent deletion, see sqliteStore.DeleteNode
 	_ = s.st.SetSetting("warmup:node:"+name, "") // drop any warmup setting for the node
 	s.logSystemChange(r, "remove_node", name, "")
 	w.WriteHeader(http.StatusNoContent)
@@ -2138,7 +2138,7 @@ func (s *Server) handleGetMarborAgent(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	// node_agent is keyed by the shared host string (see SetMarborAgent's doc
+	// marbor_agent is keyed by the shared host string (see SetMarborAgent's doc
 	// comment) - every node on this host reads/writes the same record.
 	rec, found, err := s.st.GetMarborAgent(host)
 	if err != nil {
@@ -2257,7 +2257,7 @@ func (s *Server) handleEnableMarborAgent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.router.SetMarborAgent(host, true, body.Port, token, scheme)
-	s.logSystemChange(r, "enable_node_agent", host, fmt.Sprintf("Port: %d, Scheme: %s", body.Port, scheme))
+	s.logSystemChange(r, "enable_marbor_agent", host, fmt.Sprintf("Port: %d, Scheme: %s", body.Port, scheme))
 	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
@@ -2318,7 +2318,7 @@ func (s *Server) handleDisableMarborAgent(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.router.SetMarborAgent(host, false, 0, "", "")
-	s.logSystemChange(r, "disable_node_agent", host, "")
+	s.logSystemChange(r, "disable_marbor_agent", host, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -2355,7 +2355,7 @@ func (s *Server) handleRegenerateMarborAgentToken(w http.ResponseWriter, r *http
 		return
 	}
 	s.router.SetMarborAgent(host, true, rec.Port, token, rec.Scheme)
-	s.logSystemChange(r, "regenerate_node_agent_token", host, "")
+	s.logSystemChange(r, "regenerate_marbor_agent_token", host, "")
 	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
@@ -2766,7 +2766,7 @@ func (s *Server) handleEnrollMarborAgent(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusUnauthorized, "invalid or expired enrollment code")
 		return
 	}
-	s.logSystemChange(r, "enroll_node_agent", rec.node, "")
+	s.logSystemChange(r, "enroll_marbor_agent", rec.node, "")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"token": rec.token})
 }

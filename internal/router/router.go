@@ -437,7 +437,7 @@ type Router struct {
 	// every node sharing a physical machine polls the same agent process
 	// with the same token (see pollAgentHost in agent_poll.go). Toggled via
 	// the admin API (resolved from a node name to its Host first) and
-	// persisted in the node_agent table (internal/store) under that same
+	// persisted in the marbor_agent table (internal/store) under that same
 	// host-string key. Guarded by r.mu, same pattern as nodeWarmup. A host
 	// absent from this map (or present with Enabled: false) means every
 	// node on it is polled for /api/ps as normal but never has its agent
@@ -782,7 +782,7 @@ func (r *Router) MarborAgentSettingByHost(host string) (MarborAgentConfig, bool)
 
 // NodeHost returns the Host that name's node belongs to, and whether name
 // was found at all. admin.go handlers use this to resolve a node name (from
-// the URL path) to the shared host key before reading/writing node_agent -
+// the URL path) to the shared host key before reading/writing marbor_agent -
 // see SetMarborAgent/MarborAgentSetting's doc comments.
 func (r *Router) NodeHost(name string) (string, bool) {
 	r.mu.RLock()

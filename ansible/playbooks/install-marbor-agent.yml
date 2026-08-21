@@ -116,7 +116,7 @@
     #
     # POST /admin/nodes/{name}/agent is NOT safe to call on an already-healthy
     # node. It unconditionally mints a fresh token, overwrites the persisted
-    # node_agent record, and pushes the new token to the live router
+    # marbor_agent record, and pushes the new token to the live router
     # (internal/admin/admin.go handleEnableNodeAgent) - a repeat call rotates
     # credentials out from under a running agent and would knock a healthy
     # connection offline for no reason. So: only call it for a node that is

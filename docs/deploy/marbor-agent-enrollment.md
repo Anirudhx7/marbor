@@ -48,7 +48,7 @@ Run the returned `install_command` on the target host (via Ansible, SSH, whateve
 you use) and the agent exchanges the code for its real token and registers itself.
 
 **This endpoint is not safe to call blindly on every run.** It unconditionally mints
-a fresh token, overwrites the persisted `node_agent` record, and pushes the new
+a fresh token, overwrites the persisted `marbor_agent` record, and pushes the new
 token to the live router - a repeat call against an already-healthy node rotates its
 credential out from under it and could interrupt a live connection for no reason.
 Check `GET /admin/nodes` first and only call this for a node that isn't already
