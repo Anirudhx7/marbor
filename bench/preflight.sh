@@ -134,7 +134,7 @@ if [[ "$model_check" == LOADED* ]]; then
 else
   echo "  WARN: model '${MODEL}' not currently resident (warm) on '${NODE_NAME}' (${model_check})."
   echo "  Not necessarily fatal - it may just not be warm yet. Checking whether it's at least"
-  echo "  pulled, via the mesh's own GET /admin/nodes/${NODE_NAME}/models (Node Agent"
+  echo "  pulled, via the mesh's own GET /admin/nodes/${NODE_NAME}/models (marbor agent"
   echo "  'models.list' capability - runtime-agnostic across Ollama/vLLM/TGI/llama.cpp/MLX,"
   echo "  unlike hitting the node's raw API directly)..."
 
@@ -156,7 +156,7 @@ sys.exit(0 if model in names else 1)
       fail "model '${MODEL}' is not pulled on node '${NODE_NAME}' (per /admin/nodes/${NODE_NAME}/models) - pull it first"
     fi
   elif [ "$models_resp" = "501" ]; then
-    echo "  SKIPPED: node '${NODE_NAME}' has no Node Agent 'models.list' capability enabled"
+    echo "  SKIPPED: node '${NODE_NAME}' has no marbor agent 'models.list' capability enabled"
     echo "  (HTTP 501), so this can't be checked automatically for this runtime/setup."
     echo "  Manually confirm the model is pulled on the node before proceeding (e.g. for an"
     echo "  Ollama node: curl http://<node-ip>:11434/api/tags; for vLLM/TGI/llama.cpp/MLX,"

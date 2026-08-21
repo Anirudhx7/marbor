@@ -18,10 +18,12 @@ import (
 
 const systemdUnitDir = "/etc/systemd/system"
 
-// tokenEnvFilePath holds the agent's bearer token as TOKEN=<value>, written
-// root-only (0600) so no local unprivileged user can read it - unlike the
-// unit file itself (0644 by systemd convention) or the process's own argv,
-// both of which are readable by any local user.
+// tokenEnvFilePath holds the agent's bearer token as
+// MARBOR_AGENT_SECRET=<value>, written root-only (0600) so no local
+// unprivileged user can read it - unlike the unit file itself (0644 by
+// systemd convention) or the process's own argv, both of which are readable
+// by any local user. The agent binary reads MARBOR_AGENT_SECRET from its
+// environment at startup (no legacy TOKEN fallback).
 const tokenEnvFilePath = "/etc/marbor-agent.env"
 
 // agentCertPath/agentKeyPath are the Node Agent's TLS certificate/key file
@@ -134,7 +136,7 @@ func (systemdManager) Install(cfg Config) error {
 
 	// Written before the unit file, 0600, so a rotated token is in place
 	// before systemd ever tries to (re)start the service against it.
-	if err := os.WriteFile(tokenEnvFilePath, []byte("TOKEN="+cfg.Token+"\n"), 0600); err != nil {
+	if err := os.WriteFile(tokenEnvFilePath, []byte("MARBOR_AGENT_SECRET="+cfg.Token+"\n"), 0600); err != nil {
 		return fmt.Errorf("service: writing token env file: %w", err)
 	}
 

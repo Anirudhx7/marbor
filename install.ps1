@@ -2,23 +2,26 @@
 # Downloads the latest release binary from GitHub for your architecture.
 #
 # Control plane:
-#   irm marbor.dev/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.ps1 | iex
 #
-# Node Agent (run from an elevated/Administrator PowerShell), default path -
-# the mesh admin UI's "Node Agent" panel gives you this exact command with a
+# marbor agent (run from an elevated/Administrator PowerShell), default path -
+# the marbor admin UI's "marbor agent" panel gives you this exact command with a
 # short-lived, single-use enrollment code (the binary exchanges it for the
-# real token by calling back to MESH, so the real permanent bearer token
-# never appears in this command / your PowerShell history - P50):
-#   $env:ROLE="agent"; $env:MESH="<mesh admin base URL>"; $env:ENROLL="<code from the mesh admin UI>"
-#   irm marbor.dev/main/install.ps1 | iex
+# real token by calling back to MARBOR_SERVER, so the real permanent bearer
+# token never appears in this command / your PowerShell history - P50). The
+# agent reads MARBOR_AGENT_SECRET from its environment at startup (no legacy
+# TOKEN env):
+#   $env:ROLE="agent"; $env:MARBOR_SERVER="<marbor admin base URL>"; $env:MARBOR_ENROLL="<code from the marbor admin UI>"
+#   irm https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.ps1 | iex
 #
-# Legacy/manual path - the real permanent token directly, no exchange, no MESH needed:
-#   $env:ROLE="agent"; $env:TOKEN="<token from the mesh admin UI>"
-#   irm marbor.dev/main/install.ps1 | iex
+# Manual path - the real permanent token directly, no exchange, no
+# MARBOR_SERVER needed:
+#   $env:ROLE="agent"; $env:MARBOR_AGENT_SECRET="<token from the marbor admin UI>"
+#   irm https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.ps1 | iex
 #
-# One of TOKEN or ENROLL+MESH is required for ROLE=agent - there is no
-# existing-installation upgrade path (no prior Marbor deployments exist
-# to preserve).
+# One of MARBOR_AGENT_SECRET or MARBOR_ENROLL+MARBOR_SERVER is required for
+# ROLE=agent - there is no existing-installation upgrade path (no prior Marbor
+# deployments exist to preserve).
 #
 # ROLE=agent downloads the dedicated marbor-agent.exe (a separate
 # artifact from the control-plane marbor.exe - a GPU host running this
@@ -57,9 +60,9 @@ try {
 $Repo = "Anirudhx7/ollama-mesh"
 $Role = if ($env:ROLE) { $env:ROLE } else { "mesh" }
 $BinName = if ($Role -eq "agent") { "marbor-agent.exe" } else { "marbor.exe" }
-$Token = $env:TOKEN
-$Enroll = $env:ENROLL
-$Mesh = $env:MESH
+$AgentSecret = $env:MARBOR_AGENT_SECRET
+$Enroll = $env:MARBOR_ENROLL
+$Server = $env:MARBOR_SERVER
 $Port = if ($env:PORT) { [int]$env:PORT } else { 9200 }
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:ProgramFiles "marbor" }
 
@@ -166,42 +169,42 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
 }
 
 if ($Role -eq "agent") {
-    if (-not $Token -and -not $Enroll) {
-        Write-Error "ROLE=agent requires TOKEN=<token> or ENROLL=<code> MESH=<url>."
-        Write-Error "Generate one from the mesh admin UI: GPU Nodes -> (a node) -> Node Agent -> Enable Agent."
+    if (-not $AgentSecret -and -not $Enroll) {
+        Write-Error "ROLE=agent requires MARBOR_AGENT_SECRET=<token> or MARBOR_ENROLL=<code> MARBOR_SERVER=<url>."
+        Write-Error "Generate one from the marbor admin UI: GPU Nodes -> (a node) -> marbor agent -> Enable Agent."
         exit 1
     }
-    if ($Enroll -and -not $Token -and -not $Mesh) {
-        Write-Error "ENROLL=<code> requires MESH=<url> (the mesh admin dashboard's address)."
+    if ($Enroll -and -not $AgentSecret -and -not $Server) {
+        Write-Error "MARBOR_ENROLL=<code> requires MARBOR_SERVER=<url> (the marbor admin dashboard's address)."
         exit 1
     }
 
     if (-not $IsElevated) {
-        Write-Error "Installing the Node Agent service requires an elevated (Run as Administrator) PowerShell session."
+        Write-Error "Installing the marbor agent service requires an elevated (Run as Administrator) PowerShell session."
         exit 1
     }
 
     Write-Host ""
-    Write-Host "Installing marbor Node Agent as a Windows service (port $Port)..."
-    if ($Token) {
-        # Deliberately not passing --token=$Token here - that would put the
-        # real bearer token in this process's argv (visible via Task
+    Write-Host "Installing marbor agent as a Windows service (port $Port)..."
+    if ($AgentSecret) {
+        # Deliberately not passing --token=$AgentSecret here - that would put
+        # the real bearer token in this process's argv (visible via Task
         # Manager/`Get-Process -IncludeUserName`/WMI for the life of the
-        # install). $env:TOKEN is already set in this process's environment
-        # and is inherited by the child process automatically; the binary's
-        # own "service install" subcommand already falls back to the
-        # TOKEN env var when --token isn't given.
+        # install). $env:MARBOR_AGENT_SECRET is already set in this process's
+        # environment and is inherited by the child process automatically; the
+        # binary's own "service install" subcommand already reads
+        # MARBOR_AGENT_SECRET from its environment when --token isn't given.
         & $BinPath service install --port=$Port
     } else {
-        & $BinPath service install --port=$Port --enroll=$Enroll --mesh=$Mesh
+        & $BinPath service install --port=$Port --enroll=$Enroll --mesh=$Server
     }
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Node Agent service install failed (exit code $LASTEXITCODE)."
+        Write-Error "marbor agent service install failed (exit code $LASTEXITCODE)."
         exit 1
     }
 
     Write-Host ""
-    Write-Host "Node Agent installed and running - the mesh will start polling it on its next poll cycle."
+    Write-Host "marbor agent installed and running - the marbor server will start polling it on its next poll cycle."
     Write-Host "  Status:    marbor-agent service status"
     Write-Host "  Uninstall: marbor-agent service uninstall"
     exit 0

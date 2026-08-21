@@ -5,7 +5,7 @@
 # see docs/deploy/gpu-node-registration.md for the underlying HTTP contract
 # this playbook wraps.
 #
-# This playbook does NOT install or enroll the Node Agent - that's a
+# This playbook does NOT install or enroll the marbor agent - that's a
 # separate, independently-idempotent operation. See
 # ansible/playbooks/install-marbor-agent.yml.
 #

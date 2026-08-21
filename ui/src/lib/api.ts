@@ -1181,7 +1181,7 @@ export async function triggerWarmupPing(): Promise<{ status: string }> {
   return res.json();
 }
 
-// --- Node Agent (per-node optional telemetry agent, internal/nodeagent) ---
+// --- marbor agent (per-node optional telemetry agent, internal/nodeagent) ---
 //
 // The token is only ever returned by enable/regenerate - it is never
 // retrievable again afterward (matches the API Keys "shown once" pattern).
@@ -1208,7 +1208,7 @@ export interface NodeAgentEnableResult {
 
 export async function getNodeAgent(name: string): Promise<NodeAgentStatus> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch node agent status');
+  if (!res.ok) throw new Error('Failed to fetch marbor agent status');
   return res.json();
 }
 
@@ -1218,7 +1218,7 @@ export async function enableNodeAgent(name: string, port: number, scheme: 'http'
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ port, scheme }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to enable node agent'); }
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to enable marbor agent'); }
   return res.json();
 }
 
@@ -1227,7 +1227,7 @@ export async function regenerateNodeAgentToken(name: string): Promise<NodeAgentE
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to regenerate node agent token'); }
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to regenerate marbor agent token'); }
   return res.json();
 }
 
@@ -1236,10 +1236,10 @@ export async function disableNodeAgent(name: string): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to disable node agent'); }
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to disable marbor agent'); }
 }
 
-// ControlDriver (P43) - how the Node Agent starts/stops/restarts the
+// ControlDriver (P43) - how the marbor agent starts/stops/restarts the
 // inference runtime process on this node. `discovered` is a suggestion
 // only, refreshed by the agent's own probe on every poll cycle; `driver`/
 // `identifier`/`configured` is the operator-accepted value, which only
@@ -1336,7 +1336,7 @@ export async function getNodeModels(name: string): Promise<LocalModel[]> {
 }
 
 // deleteNodeModel removes a locally-downloaded model from a node, via the
-// node's Node Agent ("models.delete" capability). Callers must check
+// node's marbor agent ("models.delete" capability). Callers must check
 // node.agentCapabilities?.includes('models.delete') before calling - a node
 // without the capability returns a 501, surfaced here as a thrown error.
 // model's "/"-delimited segments are each encodeURIComponent'd independently
@@ -1361,7 +1361,7 @@ export interface NodeHealthCheckResult {
 }
 
 // checkNodeHealth triggers an on-demand active liveness probe against a
-// node's real runtime right now, via the node's Node Agent
+// node's real runtime right now, via the node's marbor agent
 // ("runtime.health_check" capability) - distinct from the node's passive,
 // poll-cycle-cached health already shown elsewhere in the dashboard.
 // Callers must check node.agentCapabilities?.includes('runtime.health_check')

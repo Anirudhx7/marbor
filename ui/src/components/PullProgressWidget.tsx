@@ -149,7 +149,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
           <p className="text-xs text-muted-foreground mb-2">
             <span className="font-semibold text-foreground">{job.node}</span>
             {' · '}
-            {job.method === 'agent' ? 'via Node Agent' : 'direct'}
+            {job.method === 'agent' ? 'via marbor agent' : 'direct'}
           </p>
 
           {job.status === 'downloading' && (

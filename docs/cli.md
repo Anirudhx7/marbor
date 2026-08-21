@@ -66,7 +66,7 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 #### `confirm-tls <node>`
 
-pin a Node Agent's TLS certificate fingerprint (headless enrollment)
+pin a marbor agent's TLS certificate fingerprint (headless enrollment)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 

@@ -13,7 +13,7 @@ func TestWarnIfTokenFlagUsed(t *testing.T) {
 		wantWarn  bool
 	}{
 		{"token flag used", "secret123", true},
-		{"token flag empty (TOKEN env var or --enroll/--mesh path)", "", false},
+		{"token flag empty (MARBOR_AGENT_SECRET env var or --enroll/--mesh path)", "", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

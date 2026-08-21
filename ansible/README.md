@@ -1,11 +1,11 @@
 # marbor fleet enrollment - Ansible
 
-Automates GPU node registration and Node Agent installation against an
+Automates GPU node registration and marbor agent installation against an
 marbor Admin API. This does exactly what a human does by hand on the
 dashboard's **GPU Nodes** page - it wraps the same Admin API calls
 (`POST /admin/nodes`, `POST /admin/nodes/{name}/agent`) plus running the
 resulting install command on each GPU host. See
-`docs/deploy/gpu-node-registration.md` and `docs/deploy/node-agent-enrollment.md`
+`docs/deploy/gpu-node-registration.md` and `docs/deploy/marbor-agent-enrollment.md`
 for the full HTTP contract this automates, including a no-Ansible curl/uri
 walkthrough if you'd rather script it yourself or just understand what's
 happening under the hood.
@@ -17,13 +17,13 @@ and run it locally against your own fleet.
 
 ## Two playbooks, two independent operations
 
-Registering a node's runtime endpoint and enrolling its Node Agent are
+Registering a node's runtime endpoint and enrolling its marbor agent are
 deliberately kept as **separate playbooks**, not one combined script:
 
 | Playbook | Does | Inventory |
 |---|---|---|
 | [`playbooks/register-gpus.yml`](playbooks/register-gpus.yml) | Registers each node's runtime endpoint with the mesh (`POST /admin/nodes`) | [`inventory.example.yml`](inventory.example.yml) |
-| [`playbooks/install-marbor-agent.yml`](playbooks/install-marbor-agent.yml) | Enrolls and installs the Node Agent on an already-registered node (`POST /admin/nodes/{name}/agent` + install) | [`inventory-agents.example.yml`](inventory-agents.example.yml) |
+| [`playbooks/install-marbor-agent.yml`](playbooks/install-marbor-agent.yml) | Enrolls and installs the marbor agent on an already-registered node (`POST /admin/nodes/{name}/agent` + install) | [`inventory-agents.example.yml`](inventory-agents.example.yml) |
 
 Each is independently idempotent - re-running `register-gpus.yml` never
 touches agent enrollment, and re-running `install-marbor-agent.yml` never
@@ -44,7 +44,7 @@ URL without disturbing its already-healthy agent.
   (`mesh_url`, e.g. `https://mesh.example.com`).
 - SSH access from wherever you run `install-marbor-agent.yml` to every GPU
   host in your agent inventory, with a user that can run the install command
-  (the Node Agent installer registers a system service - see
+  (the marbor agent installer registers a system service - see
   `install.sh`/`install.ps1` - so that user typically needs
   `sudo`/Administrator rights, or you configure `become: true` yourself).
   Neither playbook sets `ansible_user`, `ansible_ssh_private_key_file`, or
@@ -66,7 +66,7 @@ URL without disturbing its already-healthy agent.
   runtime endpoints. Runs entirely from `localhost`; never touches the GPU
   hosts over SSH.
 - [`playbooks/install-marbor-agent.yml`](playbooks/install-marbor-agent.yml) -
-  enrolls and installs Node Agents. Runs the API calls from `localhost` and
+  enrolls and installs marbor agents. Runs the API calls from `localhost` and
   delegates only the install step to each GPU host.
 
 Both are plain vars files, not classic Ansible host inventories - each
@@ -89,7 +89,7 @@ ansible-playbook ansible/playbooks/register-gpus.yml \
   -e @secrets.vault.yml
 ```
 
-Then enroll their Node Agents:
+Then enroll their marbor agents:
 
 ```bash
 cp ansible/inventory-agents.example.yml my-agent-fleet.yml
@@ -175,9 +175,9 @@ never came up healthy.
    node in the run.
 2. Fetches the current fleet (`GET /admin/nodes`) and fails fast, naming any
    host whose `name` isn't a registered mesh node yet.
-3. Decides whether the Node Agent needs (re-)enrolling - see **Agent
+3. Decides whether the marbor agent needs (re-)enrolling - see **Agent
    re-enrollment policy** below.
-4. If needed, enables the Node Agent (`POST /admin/nodes/{name}/agent`) and
+4. If needed, enables the marbor agent (`POST /admin/nodes/{name}/agent`) and
    captures the returned `install_command`.
 5. Runs `install_command` on the GPU host itself over SSH (`delegate_to`).
 6. Polls `GET /admin/nodes/{name}` until the node reports `health: "healthy"`
@@ -210,7 +210,7 @@ So `install-marbor-agent.yml` checks `GET /admin/nodes` first and **only calls
 against a fully healthy fleet skips agent enrollment/install entirely for
 every node that doesn't need it. If you deliberately want to force a token
 rotation for a specific node, use `POST /admin/nodes/{name}/agent/regenerate`
-directly (see `docs/deploy/node-agent-enrollment.md`) rather than re-running
+directly (see `docs/deploy/marbor-agent-enrollment.md`) rather than re-running
 this playbook.
 
 ## Field name reference (Admin API JSON)

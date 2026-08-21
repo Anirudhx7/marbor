@@ -3,7 +3,7 @@
 # GPU nodes. This automates exactly the API call a human makes by hand on
 # the dashboard's GPU Nodes page when clicking "Enable Marbor Agent"
 # (POST /admin/nodes/{name}/agent), plus running the returned install
-# command on the target host - see docs/deploy/node-agent-enrollment.md for
+# command on the target host - see docs/deploy/marbor-agent-enrollment.md for
 # the underlying HTTP contract this playbook wraps.
 #
 # This playbook does NOT register the node's runtime endpoint - a node must

@@ -184,9 +184,9 @@ NODE_VRAM_GB=24 \
 | `NODE_VRAM_GB` | no | enables the automatic 80%-VRAM fit check |
 
 The model-pulled check goes through the mesh's own
-`GET /admin/nodes/{name}/models` API (via the node's Node Agent), so it works
+`GET /admin/nodes/{name}/models` API (via the node's marbor agent), so it works
 the same way regardless of which runtime that node is running - Ollama, vLLM,
-TGI, llama.cpp, or MLX. If the node has no Node Agent `models.list`
+TGI, llama.cpp, or MLX. If the node has no marbor agent `models.list`
 capability enabled, that one check is skipped with a manual reminder instead
 of failing outright.
 
