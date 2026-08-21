@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
-	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
+	"github.com/Anirudhx7/marbor/internal/metrics"
+	runtimepkg "github.com/Anirudhx7/marbor/internal/runtime"
 )
 
 // pollNvidiaAll refreshes nvidia-smi stats for all local nodes and stores

@@ -3,7 +3,7 @@ package store_test
 import (
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 func float64p(v float64) *float64 { return &v }

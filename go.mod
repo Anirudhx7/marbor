@@ -1,4 +1,4 @@
-module github.com/ollama-mesh/ollama-mesh
+module github.com/Anirudhx7/marbor
 
 go 1.25.12
 

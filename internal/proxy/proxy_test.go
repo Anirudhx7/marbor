@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/admin"
-	"github.com/ollama-mesh/ollama-mesh/internal/audit"
-	"github.com/ollama-mesh/ollama-mesh/internal/auth"
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/router"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/admin"
+	"github.com/Anirudhx7/marbor/internal/audit"
+	"github.com/Anirudhx7/marbor/internal/auth"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // liveRequestEntry mirrors the fields of admin.RequestLog the proxy tests

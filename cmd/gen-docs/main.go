@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/cli"
+	"github.com/Anirudhx7/marbor/internal/cli"
 )
 
 // docsDate is the man page ".TH" date field. Bumped by hand whenever the

@@ -11,9 +11,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/admin"
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/Anirudhx7/marbor/internal/admin"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
 )
 
 func newBareHandler(t *testing.T) *Handler {

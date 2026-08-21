@@ -9,7 +9,7 @@ package auth
 import (
 	"time"
 
-	storemod "github.com/ollama-mesh/ollama-mesh/internal/store"
+	storemod "github.com/Anirudhx7/marbor/internal/store"
 )
 
 // counterSnapshot is the persisted form of a keyCounter.

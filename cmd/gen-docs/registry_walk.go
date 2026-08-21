@@ -1,6 +1,6 @@
 package main
 
-import "github.com/ollama-mesh/ollama-mesh/internal/cli"
+import "github.com/Anirudhx7/marbor/internal/cli"
 
 // registry_walk.go holds helpers shared by man.go/markdown.go/readme.go for
 // reading internal/cli's Command tree. cli.Command's fields (Name, Aliases,

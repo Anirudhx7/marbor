@@ -3,7 +3,7 @@
 package marboragent
 
 import (
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent/service"
+	"github.com/Anirudhx7/marbor/internal/marboragent/service"
 	"golang.org/x/sys/windows/svc"
 )
 

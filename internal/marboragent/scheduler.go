@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent/control"
-	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
+	"github.com/Anirudhx7/marbor/internal/marboragent/control"
+	runtimepkg "github.com/Anirudhx7/marbor/internal/runtime"
 )
 
 // Scheduler runs a background refresh loop that periodically collects a

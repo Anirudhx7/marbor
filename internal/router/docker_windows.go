@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/Anirudhx7/marbor/internal/config"
 )
 
 // discoverDockerNodes on Windows connects to Docker Desktop's TCP endpoint

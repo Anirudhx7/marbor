@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/Anirudhx7/marbor/internal/config"
 )
 
 func okHandler() http.Handler {

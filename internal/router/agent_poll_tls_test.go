@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
 
 // agentTLSTelemetryServer returns a minimal /v1/status TLS server, mirroring

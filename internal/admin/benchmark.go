@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/bench"
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/bench"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // benchmarkJobMaxAge mirrors pullJobMaxAge: how long a finished benchmark job

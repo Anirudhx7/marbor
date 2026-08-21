@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/metrics"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // recordModelDigest remembers the first non-empty digest observed for a

@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/cli"
+	"github.com/Anirudhx7/marbor/internal/cli"
 )
 
 // readme.go rewrites README.md's CLI table in place, between two marker

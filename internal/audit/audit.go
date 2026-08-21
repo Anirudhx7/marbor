@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // Entry is one audit log record. Matches store.AuditEntry field for field.

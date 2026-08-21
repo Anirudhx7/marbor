@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/router"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // newBenchTestServer builds a Server with one node (mockNodeURL, standing in

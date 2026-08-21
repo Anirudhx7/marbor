@@ -17,11 +17,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/admin"
-	"github.com/ollama-mesh/ollama-mesh/internal/audit"
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/router"
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/admin"
+	"github.com/Anirudhx7/marbor/internal/audit"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // newDyingNode returns a mock Ollama node that sends one chunk, then severs

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/admin"
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/Anirudhx7/marbor/internal/admin"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
 )
 
 // mgmtTestHandler builds a Handler backed by a single healthy upstream that

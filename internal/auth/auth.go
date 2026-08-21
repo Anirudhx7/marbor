@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/metrics"
 )
 
 // authAPIError is the OpenAI-compatible error envelope used by auth middleware.

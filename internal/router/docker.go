@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/config"
+	"github.com/Anirudhx7/marbor/internal/config"
 )
 
 // dockerContainer is the subset of fields we need from Docker's /containers/json response.

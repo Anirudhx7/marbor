@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
+	runtimepkg "github.com/Anirudhx7/marbor/internal/runtime"
 )
 
 // DetectedRuntime is one inference runtime found listening locally, before

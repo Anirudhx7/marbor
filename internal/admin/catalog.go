@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
-	"github.com/ollama-mesh/ollama-mesh/internal/router"
+	"github.com/Anirudhx7/marbor/internal/marboragent"
+	"github.com/Anirudhx7/marbor/internal/router"
 )
 
 // maxAdvisorCtxLen bounds the ?ctx= query param handleModelRepo accepts.

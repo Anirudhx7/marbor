@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/metrics"
+	"github.com/Anirudhx7/marbor/internal/metrics"
 )
 
 // recoverWriter wraps http.ResponseWriter to track whether the response has

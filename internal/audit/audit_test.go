@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ollama-mesh/ollama-mesh/internal/store"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 func TestLogEnabled(t *testing.T) {
