@@ -187,16 +187,16 @@ if ($Role -eq "agent") {
     Write-Host ""
     Write-Host "Installing marbor agent as a Windows service (port $Port)..."
     if ($AgentSecret) {
-        # Deliberately not passing --token=$AgentSecret here - that would put
-        # the real bearer token in this process's argv (visible via Task
-        # Manager/`Get-Process -IncludeUserName`/WMI for the life of the
+        # Deliberately not passing the token as a CLI argument here - that
+        # would put the real bearer token in this process's argv (visible via
+        # Task Manager/`Get-Process -IncludeUserName`/WMI for the life of the
         # install). $env:MARBOR_AGENT_SECRET is already set in this process's
         # environment and is inherited by the child process automatically; the
         # binary's own "service install" subcommand already reads
-        # MARBOR_AGENT_SECRET from its environment when --token isn't given.
+        # MARBOR_AGENT_SECRET from its environment.
         & $BinPath service install --port=$Port
     } else {
-        & $BinPath service install --port=$Port --enroll=$Enroll --mesh=$Server
+        & $BinPath service install --port=$Port --enroll=$Enroll --server=$Server
     }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "marbor agent service install failed (exit code $LASTEXITCODE)."

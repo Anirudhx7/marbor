@@ -207,7 +207,7 @@ func (s *sqliteStore) migrate() error {
 		// (enc:v1: prefix, see secretbox.go) by every writer below. scope
 		// (P54: per-action token scoping) is NOT a secret - it's a plaintext
 		// mirror of the tier embedded in token's own prefix, kept purely for
-		// admin API observability (see NodeAgentRecord.Scope's doc comment
+		// admin API observability (see MarborAgentRecord.Scope's doc comment
 		// for why the agent never trusts this column for enforcement).
 		// Default 'admin' matches every pre-P54 row's actual (unprefixed,
 		// full-scope-by-fallback) token.
@@ -517,7 +517,7 @@ func (s *sqliteStore) migrate() error {
 	if err := s.migrateEncryptSecrets(); err != nil {
 		return fmt.Errorf("migrate encrypt secrets: %w", err)
 	}
-	if err := s.migrateNodeAgentRekeyByHost(); err != nil {
+	if err := s.migrateMarborAgentRekeyByHost(); err != nil {
 		return fmt.Errorf("migrate node_agent rekey by host: %w", err)
 	}
 	if err := s.SetSetting("schema_version", strconv.Itoa(CurrentSchemaVersion)); err != nil {
@@ -526,13 +526,13 @@ func (s *sqliteStore) migrate() error {
 	return nil
 }
 
-// migrateNodeAgentRekeyByHost moves any node_agent row still keyed by an old
+// migrateMarborAgentRekeyByHost moves any node_agent row still keyed by an old
 // node name (from before host-scoping) onto its node's shared host key, so
 // disable/enable/regenerate - which all operate by host post-fix - actually
 // find the row. A row is left alone if its key already matches some node's
 // host (already migrated, or coincidentally identical to the node's name).
 // Idempotent: safe to run on every boot.
-func (s *sqliteStore) migrateNodeAgentRekeyByHost() error {
+func (s *sqliteStore) migrateMarborAgentRekeyByHost() error {
 	nodes, err := s.AllNodes()
 	if err != nil {
 		return fmt.Errorf("select runtime_nodes: %w", err)
@@ -1010,7 +1010,7 @@ func (s *sqliteStore) DeleteNode(name string) error {
 		return fmt.Errorf("store: DeleteNode: %w", err)
 	}
 
-	// node_agent is keyed by the node's shared host (see UpsertNodeAgent
+	// node_agent is keyed by the node's shared host (see UpsertMarborAgent
 	// callers), not by node name - deleting by name here would silently
 	// leave the real row (and its secret token) orphaned (R8). Only delete
 	// it if no other node still shares that host, since node_agent covers
@@ -1032,7 +1032,7 @@ func (s *sqliteStore) DeleteNode(name string) error {
 	// concern (R8), so it is cleaned up here even though node_overrides/
 	// node_drain rows for a deleted node are left behind by the existing
 	// pattern - don't invent broader cleanup discipline beyond this.
-	if err := s.DeleteNodeAgent(agentHost); err != nil {
+	if err := s.DeleteMarborAgent(agentHost); err != nil {
 		return fmt.Errorf("store: DeleteNode: cascade node_agent: %w", err)
 	}
 	return nil
@@ -1262,13 +1262,13 @@ func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
 
 // --- Node Agent (per-node telemetry agent config) ---
 
-// UpsertNodeAgent persists rec, encrypting the token at rest. Called both
+// UpsertMarborAgent persists rec, encrypting the token at rest. Called both
 // when an operator enables/reconfigures the agent for a node and when a
 // token is regenerated.
-func (s *sqliteStore) UpsertNodeAgent(rec NodeAgentRecord) error {
+func (s *sqliteStore) UpsertMarborAgent(rec MarborAgentRecord) error {
 	enc, err := encryptSecret(s.secretKey, rec.Token)
 	if err != nil {
-		return fmt.Errorf("store: UpsertNodeAgent: encrypt token: %w", err)
+		return fmt.Errorf("store: UpsertMarborAgent: encrypt token: %w", err)
 	}
 	enabled := 0
 	if rec.Enabled {
@@ -1287,39 +1287,39 @@ func (s *sqliteStore) UpsertNodeAgent(rec NodeAgentRecord) error {
 		rec.Name, enabled, rec.Port, enc, scope, scheme,
 	)
 	if err != nil {
-		return fmt.Errorf("store: UpsertNodeAgent: %w", err)
+		return fmt.Errorf("store: UpsertMarborAgent: %w", err)
 	}
 	return nil
 }
 
-// GetNodeAgent returns the agent config for name. found is false if no row
+// GetMarborAgent returns the agent config for name. found is false if no row
 // exists. A decrypt failure is returned as-is (not dropped): the blast
 // radius of a single-node lookup failing is that one node's telemetry
 // falling back to "-", not every node's, so there is no whole-list
-// corruption risk here (unlike AllNodeAgents below).
-func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
-	var rec NodeAgentRecord
+// corruption risk here (unlike AllMarborAgents below).
+func (s *sqliteStore) GetMarborAgent(name string) (MarborAgentRecord, bool, error) {
+	var rec MarborAgentRecord
 	var enabled int
 	var encToken string
 	err := s.db.QueryRow(
 		`SELECT name, enabled, port, token, scope, scheme FROM node_agent WHERE name = ?`, name,
 	).Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope, &rec.Scheme)
 	if err == sql.ErrNoRows {
-		return NodeAgentRecord{}, false, nil
+		return MarborAgentRecord{}, false, nil
 	}
 	if err != nil {
-		return NodeAgentRecord{}, false, fmt.Errorf("store: GetNodeAgent: %w", err)
+		return MarborAgentRecord{}, false, fmt.Errorf("store: GetMarborAgent: %w", err)
 	}
 	rec.Enabled = enabled != 0
 	token, err := decryptSecret(s.secretKey, encToken)
 	if err != nil {
-		return NodeAgentRecord{}, false, fmt.Errorf("store: GetNodeAgent: decrypt token: %w", err)
+		return MarborAgentRecord{}, false, fmt.Errorf("store: GetMarborAgent: decrypt token: %w", err)
 	}
 	rec.Token = token
 	return rec, true, nil
 }
 
-// AllNodeAgents returns every configured node agent. A row whose token
+// AllMarborAgents returns every configured node agent. A row whose token
 // fails to decrypt (corrupt data, rotated key) is dropped rather than
 // failing the whole read - this list feeds the router's boot-time agent
 // poll wiring, and one bad row must not blank out telemetry for every other
@@ -1328,24 +1328,24 @@ func (s *sqliteStore) GetNodeAgent(name string) (NodeAgentRecord, bool, error) {
 // authenticate against a real agent anyway (checkToken rejects blank
 // expected tokens), but dropping the row is the same defensive pattern
 // used everywhere else in this file for a corrupt secret.
-func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
+func (s *sqliteStore) AllMarborAgents() ([]MarborAgentRecord, error) {
 	rows, err := s.db.Query(`SELECT name, enabled, port, token, scope, scheme FROM node_agent`)
 	if err != nil {
-		return nil, fmt.Errorf("store: AllNodeAgents: %w", err)
+		return nil, fmt.Errorf("store: AllMarborAgents: %w", err)
 	}
 	defer rows.Close()
 
-	var out []NodeAgentRecord
+	var out []MarborAgentRecord
 	for rows.Next() {
-		var rec NodeAgentRecord
+		var rec MarborAgentRecord
 		var enabled int
 		var encToken string
 		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope, &rec.Scheme); err != nil {
-			return nil, fmt.Errorf("store: AllNodeAgents scan: %w", err)
+			return nil, fmt.Errorf("store: AllMarborAgents scan: %w", err)
 		}
 		token, decErr := decryptSecret(s.secretKey, encToken)
 		if decErr != nil {
-			log.Printf("store: AllNodeAgents: dropping %s: %v (re-enable the agent to restore it)", rec.Name, decErr)
+			log.Printf("store: AllMarborAgents: dropping %s: %v (re-enable the agent to restore it)", rec.Name, decErr)
 			continue
 		}
 		rec.Enabled = enabled != 0
@@ -1353,15 +1353,15 @@ func (s *sqliteStore) AllNodeAgents() ([]NodeAgentRecord, error) {
 		out = append(out, rec)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: AllNodeAgents rows: %w", err)
+		return nil, fmt.Errorf("store: AllMarborAgents rows: %w", err)
 	}
 	return out, nil
 }
 
-func (s *sqliteStore) DeleteNodeAgent(name string) error {
+func (s *sqliteStore) DeleteMarborAgent(name string) error {
 	_, err := s.db.Exec(`DELETE FROM node_agent WHERE name=?`, name)
 	if err != nil {
-		return fmt.Errorf("store: DeleteNodeAgent: %w", err)
+		return fmt.Errorf("store: DeleteMarborAgent: %w", err)
 	}
 	return nil
 }

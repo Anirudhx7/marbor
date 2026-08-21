@@ -206,10 +206,10 @@ func TestUnloadModelsScheduledDispatchesToAgentWhenCapable(t *testing.T) {
 
 	// NodeState is constructed directly here (bypassing AddNode, which would
 	// otherwise default Host from the URL's hostname) - set Host explicitly
-	// so it matches the key SetNodeAgent is called with below (nodeAgents is
-	// keyed by Host, not Name - see SetNodeAgent's doc comment).
+	// so it matches the key SetMarborAgent is called with below (marborAgents is
+	// keyed by Host, not Name - see SetMarborAgent's doc comment).
 	r := &Router{nodes: []*NodeState{{Name: "n1", URL: nodeSrv.URL, Host: "n1", Healthy: true}}}
-	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent("n1", true, agentPort, "agent-secret-token", "http")
 	r.nodes[0].AgentCapabilities = []string{"models.unload"}
 
 	r.UnloadModels(context.Background(), "n1", []string{"org/repo"})
@@ -247,7 +247,7 @@ func TestUnloadModelsScheduledAgentDownNodeSkipped(t *testing.T) {
 	fmt.Sscanf(strings.TrimPrefix(agentSrv.URL, "http://127.0.0.1:"), "%d", &agentPort)
 
 	r := &Router{nodes: []*NodeState{{Name: "n1", URL: "http://localhost:11434", Host: "n1", Healthy: false}}}
-	r.SetNodeAgent("n1", true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent("n1", true, agentPort, "agent-secret-token", "http")
 	r.nodes[0].AgentCapabilities = []string{"models.unload"}
 
 	r.UnloadModels(context.Background(), "n1", []string{"some-model"})
@@ -276,7 +276,7 @@ func TestUnloadModelsScheduledNoAgentCapabilityUsesDirectPath(t *testing.T) {
 	defer nodeSrv.Close()
 
 	r := &Router{nodes: []*NodeState{{Name: "n1", URL: nodeSrv.URL, Host: "n1", Healthy: true}}}
-	r.SetNodeAgent("n1", true, 9999, "agent-secret-token", "http")
+	r.SetMarborAgent("n1", true, 9999, "agent-secret-token", "http")
 	r.nodes[0].AgentCapabilities = []string{"status", "models.pull"} // no "models.unload"
 
 	r.UnloadModels(context.Background(), "n1", []string{"llama3"})

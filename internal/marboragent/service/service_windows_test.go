@@ -20,8 +20,8 @@ func TestWindowsBinPath(t *testing.T) {
 	if got != want {
 		t.Errorf("windowsBinPath() = %q, want %q", got, want)
 	}
-	if strings.Contains(got, "--token") {
-		t.Errorf("windowsBinPath() must not embed --token (visible via sc qc / Task Manager), got %q", got)
+	if strings.Contains(got, "sekret") {
+		t.Errorf("windowsBinPath() must not embed the token (visible via sc qc / Task Manager), got %q", got)
 	}
 }
 
@@ -53,7 +53,7 @@ func TestWindowsBinPath_NoSpacesStillQuoted(t *testing.T) {
 }
 
 func TestSetServiceTokenEnvCommand_ArgsNeverContainToken(t *testing.T) {
-	const token = "sekret-node-agent-token"
+	const token = "sekret-marbor-agent-token"
 	cmd := setServiceTokenEnvCommand(token)
 
 	for i, arg := range cmd.Args {

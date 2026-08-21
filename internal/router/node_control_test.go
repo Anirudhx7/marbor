@@ -23,7 +23,7 @@ func TestSetAndGetNodeControlSetting(t *testing.T) {
 	}
 }
 
-// TestSetNodeControlUnconfiguredRemovesEntry mirrors SetNodeAgent's disable
+// TestSetNodeControlUnconfiguredRemovesEntry mirrors SetMarborAgent's disable
 // behavior: passing Configured:false clears the node from the map entirely,
 // so a lifecycle action on it hits the "no control driver configured" path
 // rather than a stale accepted value.

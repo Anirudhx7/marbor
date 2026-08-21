@@ -296,16 +296,16 @@ if [ "$ROLE" = "agent" ]; then
   # set -- preserves per-arg quoting (unlike an unquoted variable expansion,
   # which would word-split/glob a code, token, or URL containing whitespace
   # or shell metacharacters) - "$@" below expands each positional param as
-  # its own word. MARBOR_AGENT_SECRET is deliberately NOT passed as --token
-  # here (that would put the real bearer token in this process's argv, visible
-  # via `ps`/Task Manager for the life of the install) - it's already in this
-  # shell's environment (MARBOR_AGENT_SECRET=... sh), and the binary's own
-  # "service install" subcommand already reads MARBOR_AGENT_SECRET from its
-  # environment when --token isn't given, so it's just inherited below.
+  # its own word. MARBOR_AGENT_SECRET is deliberately NOT passed as a CLI
+  # argument here (that would put the real bearer token in this process's
+  # argv, visible via `ps`/Task Manager for the life of the install) - it's
+  # already in this shell's environment (MARBOR_AGENT_SECRET=... sh), and the
+  # binary's own "service install" subcommand already reads MARBOR_AGENT_SECRET
+  # from its environment, so it's just inherited below.
   if [ -n "$MARBOR_AGENT_SECRET" ]; then
     set -- service install --port="$AGENT_PORT"
   else
-    set -- service install --port="$AGENT_PORT" --enroll="$MARBOR_ENROLL" --mesh="$MARBOR_SERVER"
+    set -- service install --port="$AGENT_PORT" --enroll="$MARBOR_ENROLL" --server="$MARBOR_SERVER"
   fi
   if [ "$(id -u)" = "0" ]; then
     "$BIN_PATH" "$@"

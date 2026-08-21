@@ -131,7 +131,7 @@ func serviceRegistryPath() string {
 // "/d MARBOR_AGENT_SECRET=<token>" form, this keeps the token out of Task
 // Manager's "Command line" column, sc qc, WMI Win32_Process.CommandLine, and
 // Sysmon Event ID 1 - the same class of exposure windowsBinPath already
-// keeps --token out of, just via a different native tool that only accepts
+// keeps the token out of the command line, just via a different native tool that only accepts
 // secrets as an argument. Split out from setServiceTokenEnv so a test can
 // assert on the built command's Args without requiring an elevated Windows
 // box to actually run it.

@@ -20,20 +20,6 @@ import (
 // own node poll interval.
 const defaultRefreshInterval = 5 * time.Second
 
-// warnIfTokenFlagUsed prints a deprecation notice to w when the caller passed
-// --token directly (tokenFlag != ""), never for the MARBOR_AGENT_SECRET env var or the
-// --enroll/--mesh flow. Shared by runAgent and runServiceInstall
-// (service_cmd.go). Written to stderr (via the caller passing os.Stderr),
-// not through the logger: this is CLI UX aimed at whoever typed the flag,
-// not a runtime log line that should get timestamped or land in a service
-// log when the agent runs under systemd/launchd/Windows service.
-func warnIfTokenFlagUsed(w io.Writer, tokenFlag string) {
-	if tokenFlag == "" {
-		return
-	}
-	fmt.Fprintln(w, "warning: --token is deprecated and will be removed in the next major release. Use the MARBOR_AGENT_SECRET environment variable or the MARBOR_ENROLL flow instead.")
-}
-
 // Run is the marbor-agent binary's entire entry point (called from
 // cmd/marbor-agent/main.go). version is the agent's own build version,
 // reported back as agent_version so the dashboard can tell which agent build
@@ -75,7 +61,6 @@ func runAgent(args []string, version string) {
 
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
-	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the MARBOR_AGENT_SECRET env var instead)")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
 	keyFlag := fs.String("key", "", "TLS private key file path, paired with --cert")
@@ -103,13 +88,9 @@ func runAgent(args []string, version string) {
 		winexit.Fatalf("marboragent: %v", err)
 	}
 
-	warnIfTokenFlagUsed(os.Stderr, *tokenFlag)
-	token := *tokenFlag
+	token := os.Getenv("MARBOR_AGENT_SECRET")
 	if token == "" {
-		token = os.Getenv("MARBOR_AGENT_SECRET")
-	}
-	if token == "" {
-		winexit.Fatal("marboragent: a token is required: pass --token=<token> or set the MARBOR_AGENT_SECRET environment variable")
+		winexit.Fatal("marboragent: a token is required: set the MARBOR_AGENT_SECRET environment variable")
 	}
 	if *refreshInterval <= 0 {
 		winexit.Fatal("marboragent: --refresh-interval must be positive")

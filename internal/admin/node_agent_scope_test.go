@@ -14,27 +14,27 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
-// TestGenerateNodeAgentTokenEmbedsScope verifies generateNodeAgentToken (P54)
+// TestGenerateNodeAgentTokenEmbedsScope verifies generateMarborAgentToken (P54)
 // produces a token whose scope round-trips through marboragent.TokenScope -
 // the same parsing the agent binary itself uses to enforce per-route scope.
 func TestGenerateNodeAgentTokenEmbedsScope(t *testing.T) {
 	for _, scope := range []string{marboragent.ScopeReadonly, marboragent.ScopeOperator, marboragent.ScopeAdmin} {
-		token, err := generateNodeAgentToken(scope)
+		token, err := generateMarborAgentToken(scope)
 		if err != nil {
-			t.Fatalf("generateNodeAgentToken(%q): %v", scope, err)
+			t.Fatalf("generateMarborAgentToken(%q): %v", scope, err)
 		}
 		if got := marboragent.TokenScope(token); got != scope {
-			t.Errorf("TokenScope(generateNodeAgentToken(%q)) = %q, want %q", scope, got, scope)
+			t.Errorf("TokenScope(generateMarborAgentToken(%q)) = %q, want %q", scope, got, scope)
 		}
 	}
 }
 
-// TestEnableNodeAgentPersistsAdminScope is the P54 admin-API regression:
-// handleEnableNodeAgent must mint an admin-scope token (today's default -
+// TestEnableMarborAgentPersistsAdminScope is the P54 admin-API regression:
+// handleEnableMarborAgent must mint an admin-scope token (today's default -
 // no Group 3 action exists yet to justify a lower tier) and persist that
-// scope alongside the token, and it must round-trip through GetNodeAgent -
+// scope alongside the token, and it must round-trip through GetMarborAgent -
 // the same record the mesh reads back on every subsequent admin request.
-func TestEnableNodeAgentPersistsAdminScope(t *testing.T) {
+func TestEnableMarborAgentPersistsAdminScope(t *testing.T) {
 	tmpDB := filepath.Join(t.TempDir(), "node-agent-scope.db")
 	st, err := store.Open(tmpDB)
 	if err != nil {
@@ -58,9 +58,9 @@ func TestEnableNodeAgentPersistsAdminScope(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.SetPathValue("name", "test-node")
 	w := httptest.NewRecorder()
-	s.handleEnableNodeAgent(w, req)
+	s.handleEnableMarborAgent(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("handleEnableNodeAgent = %d, want 200: %s", w.Code, w.Body.String())
+		t.Fatalf("handleEnableMarborAgent = %d, want 200: %s", w.Code, w.Body.String())
 	}
 
 	var resp struct {
@@ -74,25 +74,25 @@ func TestEnableNodeAgentPersistsAdminScope(t *testing.T) {
 	}
 
 	host, _ := r.NodeHost("test-node")
-	rec, found, err := st.GetNodeAgent(host)
+	rec, found, err := st.GetMarborAgent(host)
 	if err != nil {
-		t.Fatalf("GetNodeAgent: %v", err)
+		t.Fatalf("GetMarborAgent: %v", err)
 	}
 	if !found {
-		t.Fatal("GetNodeAgent: record not found after enable")
+		t.Fatal("GetMarborAgent: record not found after enable")
 	}
 	if rec.Scope != marboragent.ScopeAdmin {
-		t.Errorf("persisted NodeAgentRecord.Scope = %q, want %q", rec.Scope, marboragent.ScopeAdmin)
+		t.Errorf("persisted MarborAgentRecord.Scope = %q, want %q", rec.Scope, marboragent.ScopeAdmin)
 	}
 	if rec.Token != resp.Token {
 		t.Errorf("persisted token %q does not match returned token %q", rec.Token, resp.Token)
 	}
 }
 
-// TestRegenerateNodeAgentTokenPersistsAdminScope mirrors the above for the
-// regenerate path (handleRegenerateNodeAgentToken), which mints a fresh
-// token independently of handleEnableNodeAgent's.
-func TestRegenerateNodeAgentTokenPersistsAdminScope(t *testing.T) {
+// TestRegenerateMarborAgentTokenPersistsAdminScope mirrors the above for the
+// regenerate path (handleRegenerateMarborAgentToken), which mints a fresh
+// token independently of handleEnableMarborAgent's.
+func TestRegenerateMarborAgentTokenPersistsAdminScope(t *testing.T) {
 	tmpDB := filepath.Join(t.TempDir(), "node-agent-scope-regen.db")
 	st, err := store.Open(tmpDB)
 	if err != nil {
@@ -116,18 +116,18 @@ func TestRegenerateNodeAgentTokenPersistsAdminScope(t *testing.T) {
 	enableReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	enableReq.SetPathValue("name", "test-node")
 	enableW := httptest.NewRecorder()
-	s.handleEnableNodeAgent(enableW, enableReq)
+	s.handleEnableMarborAgent(enableW, enableReq)
 	if enableW.Code != http.StatusOK {
-		t.Fatalf("handleEnableNodeAgent = %d, want 200: %s", enableW.Code, enableW.Body.String())
+		t.Fatalf("handleEnableMarborAgent = %d, want 200: %s", enableW.Code, enableW.Body.String())
 	}
 
 	regenReq := httptest.NewRequest(http.MethodPost, "/admin/nodes/test-node/agent/regenerate", nil)
 	regenReq.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	regenReq.SetPathValue("name", "test-node")
 	regenW := httptest.NewRecorder()
-	s.handleRegenerateNodeAgentToken(regenW, regenReq)
+	s.handleRegenerateMarborAgentToken(regenW, regenReq)
 	if regenW.Code != http.StatusOK {
-		t.Fatalf("handleRegenerateNodeAgentToken = %d, want 200: %s", regenW.Code, regenW.Body.String())
+		t.Fatalf("handleRegenerateMarborAgentToken = %d, want 200: %s", regenW.Code, regenW.Body.String())
 	}
 
 	var resp struct {
@@ -141,15 +141,15 @@ func TestRegenerateNodeAgentTokenPersistsAdminScope(t *testing.T) {
 	}
 
 	host, _ := r.NodeHost("test-node")
-	rec, found, err := st.GetNodeAgent(host)
+	rec, found, err := st.GetMarborAgent(host)
 	if err != nil {
-		t.Fatalf("GetNodeAgent: %v", err)
+		t.Fatalf("GetMarborAgent: %v", err)
 	}
 	if !found {
-		t.Fatal("GetNodeAgent: record not found after regenerate")
+		t.Fatal("GetMarborAgent: record not found after regenerate")
 	}
 	if rec.Scope != marboragent.ScopeAdmin {
-		t.Errorf("persisted NodeAgentRecord.Scope after regenerate = %q, want %q", rec.Scope, marboragent.ScopeAdmin)
+		t.Errorf("persisted MarborAgentRecord.Scope after regenerate = %q, want %q", rec.Scope, marboragent.ScopeAdmin)
 	}
 	if rec.Token != resp.Token {
 		t.Errorf("persisted token %q does not match regenerated token %q", rec.Token, resp.Token)

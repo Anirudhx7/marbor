@@ -12,14 +12,14 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
-// TestNodeAgentInstallCommandUsesNewContract verifies the generated Node Agent
+// TestMarborAgentInstallCommandUsesNewContract verifies the generated Node Agent
 // install commands use the renamed Marbor Agent environment-variable contract
 // (MARBOR_SERVER / MARBOR_ENROLL) and never the legacy TOKEN / MESH / ENROLL
 // names. A regression here silently hands operators an install command that the
 // agent binary (which only reads MARBOR_*) cannot consume. ROLE and PORT are
 // installer-specific arguments and are intentionally still present.
-func TestNodeAgentInstallCommandUsesNewContract(t *testing.T) {
-	unix, windows := nodeAgentInstallCommand("https://marbor.example.com", 11434, "abc123")
+func TestMarborAgentInstallCommandUsesNewContract(t *testing.T) {
+	unix, windows := marborAgentInstallCommand("https://marbor.example.com", 11434, "abc123")
 
 	for name, cmd := range map[string]string{"unix": unix, "windows": windows} {
 		if !strings.Contains(cmd, "MARBOR_SERVER=") {
@@ -72,10 +72,10 @@ func TestHandleNodeRuntimeAction_DispatchesToAgentWhenConfigured(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	// nodeAgents is keyed by the node's shared Host now, not its Name - see
-	// router.SetNodeAgent's doc comment.
+	// marborAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetMarborAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -128,10 +128,10 @@ func TestHandleNodeRuntimeAction_WorksWhileRuntimeUnhealthy(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	// nodeAgents is keyed by the node's shared Host now, not its Name - see
-	// router.SetNodeAgent's doc comment.
+	// marborAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetMarborAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -196,10 +196,10 @@ func TestHandleNodeRuntimeAction_UnconfiguredNodeReturns422(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	// nodeAgents is keyed by the node's shared Host now, not its Name - see
-	// router.SetNodeAgent's doc comment.
+	// marborAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetMarborAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -256,10 +256,10 @@ func TestHandleNodeRuntimeLogs_DispatchesToAgentWhenConfigured(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	// nodeAgents is keyed by the node's shared Host now, not its Name - see
-	// router.SetNodeAgent's doc comment.
+	// marborAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetMarborAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -338,10 +338,10 @@ func TestHandleNodeRuntimeLogs_UnconfiguredNodeReturns422(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	// nodeAgents is keyed by the node's shared Host now, not its Name - see
-	// router.SetNodeAgent's doc comment.
+	// marborAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetMarborAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -384,10 +384,10 @@ func TestHandleNodeRuntimeLogs_AgentErrorPassthrough(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	// nodeAgents is keyed by the node's shared Host now, not its Name - see
-	// router.SetNodeAgent's doc comment.
+	// marborAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetMarborAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()
@@ -432,10 +432,10 @@ func TestHandleNodeRuntimeAction_AgentErrorPassthrough(t *testing.T) {
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
-	// nodeAgents is keyed by the node's shared Host now, not its Name - see
-	// router.SetNodeAgent's doc comment.
+	// marborAgents is keyed by the node's shared Host now, not its Name - see
+	// router.SetMarborAgent's doc comment.
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()

@@ -305,7 +305,7 @@ func (s *Server) nodeHasModel(ctx context.Context, nodeName, model string) bool 
 		break
 	}
 
-	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	agentCfg, agentOK := s.router.MarborAgentSetting(nodeName)
 	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "models.list") {
 		return false
 	}

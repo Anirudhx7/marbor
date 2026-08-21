@@ -42,7 +42,7 @@ const (
 )
 
 // Exported scope names - the wire contract for token generation
-// (admin.go's generateNodeAgentToken) and parsing (scopeOf below). A token
+// (admin.go's generateMarborAgentToken) and parsing (scopeOf below). A token
 // is "<scope>." + a random secret; these are the only three recognized
 // prefixes. Keep these names in sync with tierNames.
 const (
@@ -53,7 +53,7 @@ const (
 
 // tierNames maps the token's embedded scope prefix (see scopeOf) to its
 // tier. Order/spelling here is the wire contract for token generation
-// (admin.go's generateNodeAgentToken) and parsing (scopeOf) - keep in sync.
+// (admin.go's generateMarborAgentToken) and parsing (scopeOf) - keep in sync.
 var tierNames = map[string]tier{
 	ScopeReadonly: tierReadonly,
 	ScopeOperator: tierOperator,

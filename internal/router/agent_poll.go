@@ -34,9 +34,9 @@ func (r *Router) pollAgentHosts() {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
-	nodeAgentsSnapshot := make(map[string]NodeAgentConfig, len(r.nodeAgents))
-	for h, cfg := range r.nodeAgents {
-		nodeAgentsSnapshot[h] = cfg
+	marborAgentsSnapshot := make(map[string]MarborAgentConfig, len(r.marborAgents))
+	for h, cfg := range r.marborAgents {
+		marborAgentsSnapshot[h] = cfg
 	}
 	r.mu.RUnlock()
 
@@ -45,7 +45,7 @@ func (r *Router) pollAgentHosts() {
 		n.RLock()
 		host := n.Host
 		n.RUnlock()
-		if cfg, ok := nodeAgentsSnapshot[host]; ok && cfg.Enabled {
+		if cfg, ok := marborAgentsSnapshot[host]; ok && cfg.Enabled {
 			groups[host] = append(groups[host], n)
 			continue
 		}
@@ -62,9 +62,9 @@ func (r *Router) pollAgentHosts() {
 
 	var wg sync.WaitGroup
 	for host, members := range groups {
-		cfg := nodeAgentsSnapshot[host]
+		cfg := marborAgentsSnapshot[host]
 		wg.Add(1)
-		go func(host string, cfg NodeAgentConfig, members []*NodeState) {
+		go func(host string, cfg MarborAgentConfig, members []*NodeState) {
 			defer wg.Done()
 			r.pollAgentHost(host, cfg, members)
 		}(host, cfg, members)
@@ -78,7 +78,7 @@ func (r *Router) pollAgentHosts() {
 // RuntimeStatus/AgentRuntimeID) matched per member against the polled
 // Telemetry.Runtimes array. On any failure to reach the agent, every member
 // is cleared exactly like the old single-node failure path.
-func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*NodeState) {
+func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*NodeState) {
 	if len(members) == 0 {
 		return
 	}
@@ -88,7 +88,7 @@ func (r *Router) pollAgentHost(host string, cfg NodeAgentConfig, members []*Node
 	// to derive this from the runtime URL instead, which meant enabling
 	// HTTPS for the agent also silently switched the runtime endpoint to
 	// https:// and broke runtimes that only serve plain HTTP. See
-	// store.NodeAgentRecord.Scheme's doc comment.
+	// store.MarborAgentRecord.Scheme's doc comment.
 	scheme := cfg.Scheme
 	if scheme == "" {
 		scheme = "http"

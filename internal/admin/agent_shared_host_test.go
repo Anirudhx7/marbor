@@ -11,7 +11,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 )
 
-// TestEnableNodeAgentAppliesToSiblingOnSameHost is the regression test for
+// TestEnableMarborAgentAppliesToSiblingOnSameHost is the regression test for
 // the reported bug: two node rows sharing the same physical host (same URL
 // hostname, different ports/runtimes) must share one Node Agent enrollment -
 // enabling it via one node's admin API call must make the OTHER node's
@@ -20,9 +20,9 @@ import (
 // poll" behavior this config sharing enables is covered by
 // internal/router/agent_poll_test.go's TestPollAgentTelemetryFillsGPUModelWhenUnset
 // and friends, which exercise pollAgentHosts directly - that function is
-// unexported, so this admin-level test scopes itself to what handleEnableNodeAgent
+// unexported, so this admin-level test scopes itself to what handleEnableMarborAgent
 // itself is responsible for: the shared config.)
-func TestEnableNodeAgentAppliesToSiblingOnSameHost(t *testing.T) {
+func TestEnableMarborAgentAppliesToSiblingOnSameHost(t *testing.T) {
 	// Both node rows point at the same host (127.0.0.1) with different
 	// ports/runtimes - the exact shape of the reported bug.
 	r := router.New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
@@ -43,20 +43,20 @@ func TestEnableNodeAgentAppliesToSiblingOnSameHost(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
 	req.SetPathValue("name", "ollama-node")
 	w := httptest.NewRecorder()
-	s.handleEnableNodeAgent(w, req)
+	s.handleEnableMarborAgent(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("handleEnableNodeAgent = %d, want 200: %s", w.Code, w.Body.String())
+		t.Fatalf("handleEnableMarborAgent = %d, want 200: %s", w.Code, w.Body.String())
 	}
 
 	// The sibling node's config must already reflect enabled=true, without
 	// ever calling enable on it directly - this is the actual fix: both
-	// nodes' NodeAgentSetting resolve through the same shared host key.
-	got, ok := r.NodeAgentSetting("vllm-node")
+	// nodes' MarborAgentSetting resolve through the same shared host key.
+	got, ok := r.MarborAgentSetting("vllm-node")
 	if !ok || !got.Enabled {
-		t.Fatalf("NodeAgentSetting(vllm-node) = (%+v, %v), want enabled after enabling via the sibling ollama-node", got, ok)
+		t.Fatalf("MarborAgentSetting(vllm-node) = (%+v, %v), want enabled after enabling via the sibling ollama-node", got, ok)
 	}
 	if got.Port != 9200 {
-		t.Errorf("NodeAgentSetting(vllm-node).Port = %d, want 9200 (the port set via ollama-node)", got.Port)
+		t.Errorf("MarborAgentSetting(vllm-node).Port = %d, want 9200 (the port set via ollama-node)", got.Port)
 	}
 
 	// GET /agent from either node's admin panel must report the same

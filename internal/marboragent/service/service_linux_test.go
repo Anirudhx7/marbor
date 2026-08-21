@@ -18,8 +18,8 @@ func TestSystemdUnitContent(t *testing.T) {
 	if !strings.Contains(content, wantExecStart) {
 		t.Errorf("systemdUnitContent() missing expected ExecStart line %q, got:\n%s", wantExecStart, content)
 	}
-	if strings.Contains(content, "--token") {
-		t.Errorf("systemdUnitContent() must not embed --token in ExecStart, got:\n%s", content)
+	if strings.Contains(content, "sekret") {
+		t.Errorf("systemdUnitContent() must not embed the token in ExecStart, got:\n%s", content)
 	}
 	if !strings.Contains(content, "EnvironmentFile="+tokenEnvFilePath) {
 		t.Errorf("systemdUnitContent() missing EnvironmentFile=%s, got:\n%s", tokenEnvFilePath, content)

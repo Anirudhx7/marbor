@@ -39,14 +39,15 @@ func TestLaunchdPlistContent(t *testing.T) {
 
 	// ProgramArguments must be a real argv array - each argument its own
 	// XML element, not shell-joined into a single string.
-	if strings.Contains(plist, "<string>--port=9200 --token=sekret</string>") {
+	if strings.Contains(plist, "<string>--port=9200 sekret</string>") {
 		t.Errorf("ProgramArguments must not be a single shell-joined string")
 	}
-	// The token must never appear inside ProgramArguments (argv is visible
-	// to any local user via ps/Activity Monitor) - only inside
-	// EnvironmentVariables.
-	if strings.Contains(plist, "--token") {
-		t.Errorf("launchdPlistContent must not embed --token in ProgramArguments, got:\n%s", plist)
+	// The token value must never appear inside ProgramArguments (argv is
+	// visible to any local user via ps/Activity Monitor) - only inside
+	// EnvironmentVariables, i.e. after that key in the plist.
+	argsSection := strings.Split(plist, "<key>EnvironmentVariables</key>")[0]
+	if strings.Contains(argsSection, "sekret") {
+		t.Errorf("launchdPlistContent must not embed the token before the EnvironmentVariables block, got:\n%s", plist)
 	}
 }
 

@@ -10,8 +10,8 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getNodeAgent, enableNodeAgent, regenerateNodeAgentToken, disableNodeAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
-import type { NodeAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
+import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
 
@@ -506,7 +506,7 @@ export function GPUNodes() {
 
   // --- marbor agent management ---
   const [agentNode, setAgentNode] = useState<GPUNode | null>(null);
-  const [agentStatus, setAgentStatus] = useState<NodeAgentStatus | null>(null);
+  const [agentStatus, setAgentStatus] = useState<MarborAgentStatus | null>(null);
   const [agentPort, setAgentPort] = useState('9200');
   // agentUseHttps is the marbor agent's OWN transport scheme toggle -
   // independent of a node's runtime URL scheme (editUseHttps below, which
@@ -524,8 +524,8 @@ export function GPUNodes() {
   // immediate-apply, same as handleEnableAgent always has been).
   const [pendingAgentReconfigure, setPendingAgentReconfigure] = useState(false);
   // pendingRegenerateToken gates the "Regenerate marbor agent token?" confirm
-  // (R10): handleRegenerateNodeAgentToken swaps the live token in the
-  // router's in-memory state immediately (admin.go SetNodeAgent), so the
+  // (R10): handleRegenerateMarborAgentToken swaps the live token in the
+  // router's in-memory state immediately (admin.go SetMarborAgent), so the
   // currently-running agent process - still presenting the old token - is
   // rejected on its very next poll until reinstalled with the new command.
   const [pendingRegenerateToken, setPendingRegenerateToken] = useState(false);
@@ -633,7 +633,7 @@ export function GPUNodes() {
       return;
     }
     try {
-      const status = await getNodeAgent(node.name);
+      const status = await getMarborAgent(node.name);
       setAgentStatus(status);
       setAgentPort(String(status.port || 9200));
       setAgentUseHttps(status.scheme === 'https');
@@ -841,7 +841,7 @@ export function GPUNodes() {
     }
     const targetNodeName = agentNode.name;
     try {
-      const res = await enableNodeAgent(targetNodeName, port, scheme);
+      const res = await enableMarborAgent(targetNodeName, port, scheme);
       await loadNodes();
       // The modal may have moved to a different node while this request was
       // in flight - only apply the result if it's still relevant (same
@@ -893,7 +893,7 @@ export function GPUNodes() {
     }
     const targetNodeName = agentNode.name;
     try {
-      const res = await regenerateNodeAgentToken(targetNodeName);
+      const res = await regenerateMarborAgentToken(targetNodeName);
       // Same node-identity guard as handleCheckNodeHealth/handleEnableAgent -
       // without it, a slow response for node A could hand node B's now-open
       // modal node A's freshly minted token/install command.
@@ -960,7 +960,7 @@ export function GPUNodes() {
       return;
     }
     try {
-      await disableNodeAgent(agentToDisable);
+      await disableMarborAgent(agentToDisable);
       setAgentStatus(s => s ? { ...s, enabled: false } : s);
       setAgentInstallCommand(null);
       setAgentToDisable(null);

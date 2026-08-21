@@ -40,7 +40,7 @@ func TestHandlePatchNode_SetsTLSFingerprint(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1))
@@ -98,7 +98,7 @@ func TestHandlePatchNode_URLSchemeAloneDoesNotAffectAgentPin(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -131,7 +131,7 @@ func TestHandlePatchNode_AllowsDowngradeWhenClearingFingerprintInSameRequest(t *
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -168,7 +168,7 @@ func TestHandlePatchNode_ClearsExistingFingerprint(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -201,7 +201,7 @@ func TestHandlePatchNode_JSONNullIsNoOpNotClear(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://gpu-0:9091"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -232,7 +232,7 @@ func TestHandlePatchNode_RejectsSiblingFingerprintConflict(t *testing.T) {
 		{Name: "gpu-0", URL: "https://shared-host:11434"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
-	r.SetNodeAgent("shared-host", true, 9200, "", "https")
+	r.SetMarborAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	// Confirm the fixture actually produces siblings before asserting on the
@@ -275,7 +275,7 @@ func TestHandlePatchNode_AllowsIdenticalSiblingFingerprint(t *testing.T) {
 		{Name: "gpu-0", URL: "https://shared-host:11434"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
-	r.SetNodeAgent("shared-host", true, 9200, "", "https")
+	r.SetMarborAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -310,7 +310,7 @@ func TestHandleNodeTLSProbe_WithoutPin(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: srv.URL},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, mustPortForTest(t, srv.URL), "", "https")
+	r.SetMarborAgent("127.0.0.1", true, mustPortForTest(t, srv.URL), "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/tls-probe", nil)
@@ -361,7 +361,7 @@ func TestHandleNodeTLSProbe_NeverSendsBearerToken(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: srv.URL},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, mustPortForTest(t, srv.URL), "super-secret-agent-token", "https")
+	r.SetMarborAgent("127.0.0.1", true, mustPortForTest(t, srv.URL), "super-secret-agent-token", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/tls-probe", nil)
@@ -409,8 +409,8 @@ func TestHandlePatchNode_RejectsURLOnlyMoveOntoConflictingSiblingHost(t *testing
 		{Name: "gpu-0", URL: "https://solo-host:9091"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
-	r.SetNodeAgent("solo-host", true, 9200, "", "https")
-	r.SetNodeAgent("shared-host", true, 9200, "", "https")
+	r.SetMarborAgent("solo-host", true, 9200, "", "https")
+	r.SetMarborAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -453,8 +453,8 @@ func TestHandlePatchNode_AllowsURLOnlyMoveOntoIdenticalSiblingFingerprint(t *tes
 		{Name: "gpu-0", URL: "https://solo-host:9091"},
 		{Name: "gpu-1", URL: "https://shared-host:11435"},
 	}, nil)
-	r.SetNodeAgent("solo-host", true, 9200, "", "https")
-	r.SetNodeAgent("shared-host", true, 9200, "", "https")
+	r.SetMarborAgent("solo-host", true, 9200, "", "https")
+	r.SetMarborAgent("shared-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -495,8 +495,8 @@ func TestHandlePatchNode_AllowsURLOnlyMoveOntoHostWithNoPinnedSibling(t *testing
 		{Name: "gpu-0", URL: "https://solo-host:9091"},
 		{Name: "gpu-1", URL: "https://empty-host:11435"},
 	}, nil)
-	r.SetNodeAgent("solo-host", true, 9200, "", "https")
-	r.SetNodeAgent("empty-host", true, 9200, "", "https")
+	r.SetMarborAgent("solo-host", true, 9200, "", "https")
+	r.SetMarborAgent("empty-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -562,8 +562,8 @@ func TestHandlePatchNode_ConcurrentPatchesCannotProduceConflictingSiblingPins(t 
 		{Name: "gpu-D", URL: "https://host-A:9092"},
 		{Name: "gpu-C", URL: "https://host-C:9093"},
 	}, nil)
-	r.SetNodeAgent("host-A", true, 9200, "", "https")
-	r.SetNodeAgent("host-C", true, 9200, "", "https")
+	r.SetMarborAgent("host-A", true, 9200, "", "https")
+	r.SetMarborAgent("host-C", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-A", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -638,7 +638,7 @@ func TestHandlePatchNode_PinGatingUsesResultingHostAgentScheme(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://old-host:9091"},
 	}, nil)
-	r.SetNodeAgent("new-host", true, 9200, "", "https")
+	r.SetMarborAgent("new-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"url":"https://new-host:9091","tls_fingerprint":%q}`, validFP1))
@@ -665,7 +665,7 @@ func TestHandlePatchNode_PinGatingIgnoresCurrentHostAgentScheme(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://configured-host:9091"},
 	}, nil)
-	r.SetNodeAgent("configured-host", true, 9200, "", "https")
+	r.SetMarborAgent("configured-host", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"url":"https://unconfigured-host:9091","tls_fingerprint":%q}`, validFP1))
@@ -701,17 +701,17 @@ func TestHandleNodeTLSProbe_RejectsNonHTTPSNode(t *testing.T) {
 	}
 }
 
-// TestHandleEnableNodeAgent_RejectsSchemeDowngradeWhilePinned verifies P24's
+// TestHandleEnableMarborAgent_RejectsSchemeDowngradeWhilePinned verifies P24's
 // no-downgrade rule (section 7) at its actual enforcement point now that a
 // pinned fingerprint describes the Agent's own scheme, not the runtime's:
 // reconfiguring the Agent from https back to http while a fingerprint is
 // still pinned for that host must be rejected (409), not silently accepted
 // and left stranding an orphaned pin the next poll would fail closed on.
-func TestHandleEnableNodeAgent_RejectsSchemeDowngradeWhilePinned(t *testing.T) {
+func TestHandleEnableMarborAgent_RejectsSchemeDowngradeWhilePinned(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -721,7 +721,7 @@ func TestHandleEnableNodeAgent_RejectsSchemeDowngradeWhilePinned(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9200,"scheme":"http"}`))
 	req.SetPathValue("name", "gpu-0")
 	rec := httptest.NewRecorder()
-	s.handleEnableNodeAgent(rec, req)
+	s.handleEnableMarborAgent(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("agent scheme downgrade while pinned: status = %d, want 409, body=%s", rec.Code, rec.Body.String())
 	}
@@ -735,12 +735,12 @@ func TestHandleEnableNodeAgent_RejectsSchemeDowngradeWhilePinned(t *testing.T) {
 	}
 }
 
-// TestHandleEnableNodeAgent_ReconfigureOmittingSchemeKeepsExisting verifies
+// TestHandleEnableMarborAgent_ReconfigureOmittingSchemeKeepsExisting verifies
 // the adversarial-review fix: a reconfigure call (e.g. rotating the port)
 // that omits "scheme" entirely must NOT silently reset an existing https
 // Agent back to http - it must keep the persisted scheme unless the caller
 // explicitly says otherwise.
-func TestHandleEnableNodeAgent_ReconfigureOmittingSchemeKeepsExisting(t *testing.T) {
+func TestHandleEnableMarborAgent_ReconfigureOmittingSchemeKeepsExisting(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
 	}, nil)
@@ -750,7 +750,7 @@ func TestHandleEnableNodeAgent_ReconfigureOmittingSchemeKeepsExisting(t *testing
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9200,"scheme":"https"}`))
 	req.SetPathValue("name", "gpu-0")
 	rec := httptest.NewRecorder()
-	s.handleEnableNodeAgent(rec, req)
+	s.handleEnableMarborAgent(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("initial enable: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
@@ -759,7 +759,7 @@ func TestHandleEnableNodeAgent_ReconfigureOmittingSchemeKeepsExisting(t *testing
 	req2 := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9201}`))
 	req2.SetPathValue("name", "gpu-0")
 	rec2 := httptest.NewRecorder()
-	s.handleEnableNodeAgent(rec2, req2)
+	s.handleEnableMarborAgent(rec2, req2)
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("reconfigure: status = %d, want 200, body=%s", rec2.Code, rec2.Body.String())
 	}
@@ -774,21 +774,21 @@ func TestHandleEnableNodeAgent_ReconfigureOmittingSchemeKeepsExisting(t *testing
 		t.Errorf("scheme after omitted-scheme reconfigure = %q, want %q (must not silently downgrade)", resp.Scheme, "https")
 	}
 
-	cfg, ok := r.NodeAgentSetting("gpu-0")
+	cfg, ok := r.MarborAgentSetting("gpu-0")
 	if !ok || cfg.Scheme != "https" {
-		t.Errorf("router NodeAgentConfig.Scheme = %q (ok=%v), want %q", cfg.Scheme, ok, "https")
+		t.Errorf("router MarborAgentConfig.Scheme = %q (ok=%v), want %q", cfg.Scheme, ok, "https")
 	}
 }
 
-// TestHandleDisableNodeAgent_ClearsPinnedFingerprint verifies the
+// TestHandleDisableMarborAgent_ClearsPinnedFingerprint verifies the
 // adversarial-review fix: disabling the Node Agent entirely must clear any
 // pinned TLS fingerprint on that host's nodes, not leave a stale/inert pin
 // that shows as "protected" while nothing ever verifies it again.
-func TestHandleDisableNodeAgent_ClearsPinnedFingerprint(t *testing.T) {
+func TestHandleDisableMarborAgent_ClearsPinnedFingerprint(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	if rec := patchNodeRequest(t, s, "gpu-0", fmt.Sprintf(`{"tls_fingerprint":%q}`, validFP1)); rec.Code != http.StatusOK {
@@ -798,7 +798,7 @@ func TestHandleDisableNodeAgent_ClearsPinnedFingerprint(t *testing.T) {
 	req := httptest.NewRequest(http.MethodDelete, "/admin/nodes/gpu-0/agent", nil)
 	req.SetPathValue("name", "gpu-0")
 	rec := httptest.NewRecorder()
-	s.handleDisableNodeAgent(rec, req)
+	s.handleDisableMarborAgent(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("disable: status = %d, want 204, body=%s", rec.Code, rec.Body.String())
 	}
@@ -812,21 +812,21 @@ func TestHandleDisableNodeAgent_ClearsPinnedFingerprint(t *testing.T) {
 	}
 }
 
-// TestHandleEnableNodeAgent_AllowsSchemeDowngradeWhenNoPin verifies the
+// TestHandleEnableMarborAgent_AllowsSchemeDowngradeWhenNoPin verifies the
 // downgrade guard only fires when a fingerprint is actually pinned - a node
 // with an Agent enabled but never pinned (or already cleared) can freely
 // move between http and https.
-func TestHandleEnableNodeAgent_AllowsSchemeDowngradeWhenNoPin(t *testing.T) {
+func TestHandleEnableMarborAgent_AllowsSchemeDowngradeWhenNoPin(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434", Host: "gpu-0"},
 	}, nil)
-	r.SetNodeAgent("gpu-0", true, 9200, "", "https")
+	r.SetMarborAgent("gpu-0", true, 9200, "", "https")
 	s := NewServer(r, nil, config.Config{})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/nodes/gpu-0/agent", strings.NewReader(`{"port":9200,"scheme":"http"}`))
 	req.SetPathValue("name", "gpu-0")
 	rec := httptest.NewRecorder()
-	s.handleEnableNodeAgent(rec, req)
+	s.handleEnableMarborAgent(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("agent scheme downgrade with no pin: status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}

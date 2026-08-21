@@ -304,8 +304,8 @@ func (r *Router) RecordManualUnload(nodeName, model string) {
 // requirement: a node with no agent configured/enabled, or one that hasn't
 // reported "models.unload", always gets false here, so the caller's
 // pre-existing direct-path fallback runs completely unchanged.
-func (r *Router) ShouldUseAgentForUnload(nodeName string) (NodeAgentConfig, bool) {
-	cfg, ok := r.NodeAgentSetting(nodeName)
+func (r *Router) ShouldUseAgentForUnload(nodeName string) (MarborAgentConfig, bool) {
+	cfg, ok := r.MarborAgentSetting(nodeName)
 	if !ok || !cfg.Enabled {
 		return cfg, false
 	}
@@ -316,8 +316,8 @@ func (r *Router) ShouldUseAgentForUnload(nodeName string) (NodeAgentConfig, bool
 // variant. UnloadModels below has already looked up its target NodeState via
 // FindNode before this would otherwise run a second, redundant linear scan
 // over r.nodes for the exact same node - this avoids that.
-func (r *Router) shouldUseAgentForUnloadNode(n *NodeState, nodeName string) (NodeAgentConfig, bool) {
-	cfg, ok := r.NodeAgentSetting(nodeName)
+func (r *Router) shouldUseAgentForUnloadNode(n *NodeState, nodeName string) (MarborAgentConfig, bool) {
+	cfg, ok := r.MarborAgentSetting(nodeName)
 	if !ok || !cfg.Enabled {
 		return cfg, false
 	}
@@ -349,7 +349,7 @@ func (r *Router) nodeHasAgentCapability(n *NodeState, capability string) bool {
 // decoding) - duplicated here rather than shared, since router cannot import
 // admin (the reverse dependency direction would be a cycle); only the
 // agent-vs-direct decision above is shared, per the reliability requirement.
-func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg NodeAgentConfig, model string) error {
+func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg MarborAgentConfig, model string) error {
 	scheme := cfg.Scheme
 	if scheme == "" {
 		scheme = "http"
@@ -368,7 +368,7 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg No
 	// site must go through the same TLS-pinning-aware Transport as the poll
 	// path and every admin action-path client (P24, no partially-secured
 	// agent where telemetry is HTTPS and unload stays plaintext).
-	resp, err := r.HTTPClientForNode(nodeAgentUnloadTimeout).Do(req)
+	resp, err := r.HTTPClientForNode(marborAgentUnloadTimeout).Do(req)
 	if err != nil {
 		return fmt.Errorf("agent unload model failed: %w", err)
 	}
@@ -391,15 +391,15 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg No
 	return nil
 }
 
-// nodeAgentUnloadTimeout bounds how long the scheduled-unload path waits for
+// marborAgentUnloadTimeout bounds how long the scheduled-unload path waits for
 // a node agent's POST /v1/models/{name} (unload) response. Matches admin.go's
 // nodeUnloadModelTimeout for the manual path.
-const nodeAgentUnloadTimeout = 30 * time.Second
+const marborAgentUnloadTimeout = 30 * time.Second
 
 // buildAgentUnloadURL derives the agent's POST /v1/models/{name} URL from the
 // node's own URL (same host, via url.Parse per R5 - never arithmetic port
 // derivation), the configured agent port, and the agent's OWN scheme
-// (independent of nodeURL's scheme - see store.NodeAgentRecord.Scheme's doc
+// (independent of nodeURL's scheme - see store.MarborAgentRecord.Scheme's doc
 // comment). model is percent-escaped per "/"-delimited segment so a name
 // containing "/" (e.g. "org/repo") lands on the agent side as multiple path
 // segments, matching its "{name...}" wildcard route. Mirrors admin.go's
@@ -532,7 +532,7 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 					addFailure(m, "node is currently unreachable (down)")
 					return
 				}
-				actx, cancel := context.WithTimeout(ctx, nodeAgentUnloadTimeout)
+				actx, cancel := context.WithTimeout(ctx, marborAgentUnloadTimeout)
 				defer cancel()
 				if err := r.unloadModelViaAgent(actx, nodeURL, agentCfg, m); err != nil {
 					log.Printf("scheduled unload of %q on %s failed (agent): %v", m, nodeName, err)
