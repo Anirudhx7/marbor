@@ -1,4 +1,4 @@
-# Example node list for ansible/playbooks/install-node-agent.yml.
+# Example node list for ansible/playbooks/install-marbor-agent.yml.
 #
 # Copy this file (e.g. to my-agent-inventory.yml, gitignored or kept private)
 # and edit the agent_nodes list to match your fleet. Same "plain vars file,

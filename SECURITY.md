@@ -15,7 +15,7 @@ marbor follows a rolling release model. Security fixes ship in new releases; old
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Report privately via [GitHub Security Advisories](https://github.com/Anirudhx7/marbor/security/advisories/new). You will receive a response within 72 hours. If the issue is confirmed, a fix will be published and the advisory will be disclosed publicly after a patch is available.
+Report privately via [GitHub Security Advisories](https://github.com/Anirudhx7/ollama-mesh/security/advisories/new). You will receive a response within 72 hours. If the issue is confirmed, a fix will be published and the advisory will be disclosed publicly after a patch is available.
 
 ---
 

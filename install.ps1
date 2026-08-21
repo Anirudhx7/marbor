@@ -54,7 +54,7 @@ function Wait-ForExit {
 
 try {
 
-$Repo = "Anirudhx7/marbor"
+$Repo = "Anirudhx7/ollama-mesh"
 $Role = if ($env:ROLE) { $env:ROLE } else { "mesh" }
 $BinName = if ($Role -eq "agent") { "marbor-agent.exe" } else { "marbor.exe" }
 $Token = $env:TOKEN

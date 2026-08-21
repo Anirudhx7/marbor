@@ -1207,7 +1207,7 @@ func (s *Server) Handler() http.Handler {
 		}
 		// Grafana dashboard JSON download - would otherwise fall through to the
 		// SPA catch-all and return index.html instead of the dashboard.
-			mux.Handle("/grafana/marbor.json", s.noCache(http.FileServer(http.FS(sub))))
+		mux.Handle("/grafana/marbor.json", s.noCache(http.FileServer(http.FS(sub))))
 	} else {
 		fmt.Println("warn: failed to embed web UI:", err)
 	}
@@ -2071,11 +2071,11 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // POST /admin/agent/enroll.
 func nodeAgentInstallCommand(meshBaseURL string, port int, enrollCode string) (unix string, windows string) {
 	unix = fmt.Sprintf(
-		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | MARBOR_ROLE=agent MARBOR_SERVER=%s MARBOR_ENROLL=%s MARBOR_PORT=%d sh",
+		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | MARBOR_ROLE=agent MARBOR_SERVER=%s MARBOR_ENROLL=%s MARBOR_PORT=%d sh",
 		meshBaseURL, enrollCode, port,
 	)
 	windows = fmt.Sprintf(
-		`$env:MARBOR_ROLE="agent"; $env:MARBOR_SERVER="%s"; $env:MARBOR_ENROLL="%s"; $env:MARBOR_PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.ps1 | iex`,
+		`$env:MARBOR_ROLE="agent"; $env:MARBOR_SERVER="%s"; $env:MARBOR_ENROLL="%s"; $env:MARBOR_PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
 		meshBaseURL, enrollCode, port,
 	)
 	return unix, windows
@@ -7555,7 +7555,7 @@ func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, backupFilename(time.Now())))
 	http.ServeFile(w, r, tmpPath)
-		s.logSystemChange(r, "manual_backup", "global", "Downloaded an on-demand marbor.db backup")
+	s.logSystemChange(r, "manual_backup", "global", "Downloaded an on-demand marbor.db backup")
 }
 
 // maxUploadedBackupSize caps a browser-uploaded backup file to 2 GiB -
@@ -7623,7 +7623,7 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
-			writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("not a valid marbor.db backup: %v", err))
+		writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("not a valid marbor.db backup: %v", err))
 		return
 	}
 

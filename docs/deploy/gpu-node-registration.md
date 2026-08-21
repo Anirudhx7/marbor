@@ -81,5 +81,5 @@ no-Ansible fallback.
 - Full variable reference and prerequisites: [`ansible/README.md`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/README.md)
 
 This playbook registers runtime endpoints only - it does not install or enroll Node
-Agents. See [`ansible/playbooks/install-node-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-node-agent.yml)
+Agents. See [`ansible/playbooks/install-marbor-agent.yml`](https://github.com/Anirudhx7/ollama-mesh/blob/main/ansible/playbooks/install-marbor-agent.yml)
 and [Node Agent enrollment](node-agent-enrollment.md) for that separate step.

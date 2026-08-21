@@ -181,11 +181,11 @@ Note: the Kubernetes deployment above runs a single replica because `marbor.db` 
 marbor does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:
 
 ```nginx
-upstream ollama_MARBOR_proxy {
+upstream marbor_proxy {
     server 127.0.0.1:11434;
 }
 
-upstream ollama_MARBOR_admin {
+upstream marbor_admin {
     server 127.0.0.1:8080;
 }
 
@@ -198,7 +198,7 @@ server {
     ssl_certificate_key /etc/ssl/private/llm.example.com.key;
 
     location / {
-        proxy_pass         http://ollama_MARBOR_proxy;
+        proxy_pass         http://marbor_proxy;
         proxy_http_version 1.1;
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
@@ -225,7 +225,7 @@ server {
     deny  all;
 
     location / {
-        proxy_pass http://ollama_MARBOR_admin;
+        proxy_pass http://marbor_admin;
         proxy_set_header Host $host;
     }
 }

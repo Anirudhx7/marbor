@@ -23,10 +23,10 @@ deliberately kept as **separate playbooks**, not one combined script:
 | Playbook | Does | Inventory |
 |---|---|---|
 | [`playbooks/register-gpus.yml`](playbooks/register-gpus.yml) | Registers each node's runtime endpoint with the mesh (`POST /admin/nodes`) | [`inventory.example.yml`](inventory.example.yml) |
-| [`playbooks/install-node-agent.yml`](playbooks/install-node-agent.yml) | Enrolls and installs the Node Agent on an already-registered node (`POST /admin/nodes/{name}/agent` + install) | [`inventory-agents.example.yml`](inventory-agents.example.yml) |
+| [`playbooks/install-marbor-agent.yml`](playbooks/install-marbor-agent.yml) | Enrolls and installs the Node Agent on an already-registered node (`POST /admin/nodes/{name}/agent` + install) | [`inventory-agents.example.yml`](inventory-agents.example.yml) |
 
 Each is independently idempotent - re-running `register-gpus.yml` never
-touches agent enrollment, and re-running `install-node-agent.yml` never
+touches agent enrollment, and re-running `install-marbor-agent.yml` never
 re-registers a node's endpoint. Run `register-gpus.yml` first for a new
 node (the agent playbook fails fast, naming the host, if you point it at a
 name the mesh doesn't recognize yet); after that, run either one on its own
@@ -42,7 +42,7 @@ URL without disturbing its already-healthy agent.
   matching this project's zero-external-dependency ethos.
 - Network access from wherever you run the playbook to the mesh's Admin API
   (`mesh_url`, e.g. `https://mesh.example.com`).
-- SSH access from wherever you run `install-node-agent.yml` to every GPU
+- SSH access from wherever you run `install-marbor-agent.yml` to every GPU
   host in your agent inventory, with a user that can run the install command
   (the Node Agent installer registers a system service - see
   `install.sh`/`install.ps1` - so that user typically needs
@@ -61,11 +61,11 @@ URL without disturbing its already-healthy agent.
 - [`inventory.example.yml`](inventory.example.yml) - example `gpu_nodes:`
   list for `register-gpus.yml`.
 - [`inventory-agents.example.yml`](inventory-agents.example.yml) - example
-  `agent_nodes:` list for `install-node-agent.yml`.
+  `agent_nodes:` list for `install-marbor-agent.yml`.
 - [`playbooks/register-gpus.yml`](playbooks/register-gpus.yml) - registers
   runtime endpoints. Runs entirely from `localhost`; never touches the GPU
   hosts over SSH.
-- [`playbooks/install-node-agent.yml`](playbooks/install-node-agent.yml) -
+- [`playbooks/install-marbor-agent.yml`](playbooks/install-marbor-agent.yml) -
   enrolls and installs Node Agents. Runs the API calls from `localhost` and
   delegates only the install step to each GPU host.
 
@@ -95,7 +95,7 @@ Then enroll their Node Agents:
 cp ansible/inventory-agents.example.yml my-agent-fleet.yml
 # edit my-agent-fleet.yml: same nodes, by the exact name they registered as
 
-ansible-playbook ansible/playbooks/install-node-agent.yml \
+ansible-playbook ansible/playbooks/install-marbor-agent.yml \
   -e @my-agent-fleet.yml \
   -e mesh_url=https://mesh.example.com \
   -e mesh_admin_username=admin \
@@ -137,7 +137,7 @@ playbook **requires an explicit `port` for `vllm`, `tgi`, `llamacpp`, and
 the Admin API's own `POST /admin/nodes` behavior and matches Ollama's own
 standard port.
 
-## What each `agent_nodes` entry needs (`install-node-agent.yml`)
+## What each `agent_nodes` entry needs (`install-marbor-agent.yml`)
 
 | Field  | Required? |
 |--------|-----------|
@@ -169,7 +169,7 @@ At the end, prints a plain-text summary line per node (name, host:port,
 runtime, final status), then fails the play (non-zero exit) if any node
 never came up healthy.
 
-## What `install-node-agent.yml` does, per node
+## What `install-marbor-agent.yml` does, per node
 
 1. Logs in once (`POST /admin/login`), reusing the session cookie for every
    node in the run.
@@ -204,7 +204,7 @@ it repeatedly against an already-healthy node would rotate its credential
 out from under it and could interrupt a live polling/agent connection for
 no reason - there's no benefit and a real (if small) disruption cost.
 
-So `install-node-agent.yml` checks `GET /admin/nodes` first and **only calls
+So `install-marbor-agent.yml` checks `GET /admin/nodes` first and **only calls
 `POST /admin/nodes/{name}/agent` for a node that is not already reporting
 `agentPresent: true` and `health: "healthy"`**. Re-running the playbook
 against a fully healthy fleet skips agent enrollment/install entirely for
@@ -231,7 +231,7 @@ playbooks rely on (verified against `internal/admin/admin.go`
   playbooks, per this project's standing architecture position.
   `register-gpus.yml` assumes the runtime is already installed and
   reachable at `host:port` before it runs.
-- Windows GPU hosts. `install-node-agent.yml` connects over SSH and runs a
+- Windows GPU hosts. `install-marbor-agent.yml` connects over SSH and runs a
   POSIX shell install command - Windows agent installation needs the
   Admin API's `install_command_windows` run manually, or a WinRM-based
   playbook this repo doesn't provide.
