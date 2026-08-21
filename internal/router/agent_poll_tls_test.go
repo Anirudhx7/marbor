@@ -49,7 +49,7 @@ func TestPollAgentHost_TLSMismatchSetsAgentTLSMismatch(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, agentPort, "", "https")
+	r.SetMarborAgent("127.0.0.1", true, agentPort, "", "https")
 
 	wrongFP := "SHA256:" + strings.Repeat("0", 64)
 	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &wrongFP}) {
@@ -84,7 +84,7 @@ func TestPollAgentHost_SuccessClearsAgentTLSMismatch(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, agentPort, "", "https")
+	r.SetMarborAgent("127.0.0.1", true, agentPort, "", "https")
 
 	wrongFP := "SHA256:" + strings.Repeat("0", 64)
 	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &wrongFP}) {
@@ -147,13 +147,13 @@ func TestMixedTLSAndPlaintextFleet_BothPollCorrectly(t *testing.T) {
 	// "127.0.0.1" and "localhost" are two distinct Host map keys that both
 	// resolve to loopback - real, independently-dialable addresses (unlike
 	// an arbitrary non-resolvable label), needed since pollAgentHosts groups
-	// and SetNodeAgent keys strictly by the Host string.
+	// and SetMarborAgent keys strictly by the Host string.
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-tls", URL: "https://127.0.0.1:1", Host: "127.0.0.1"},
 		{Name: "gpu-plain", URL: "http://localhost:1", Host: "localhost"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, tlsAgentPort, "", "https")
-	r.SetNodeAgent("localhost", true, plainAgentPort, "", "http")
+	r.SetMarborAgent("127.0.0.1", true, tlsAgentPort, "", "https")
+	r.SetMarborAgent("localhost", true, plainAgentPort, "", "http")
 
 	fp := certFingerprint(t, tlsAgentSrv)
 	if !r.PatchNode("gpu-tls", NodePatch{TLSFingerprint: &fp}) {
@@ -202,7 +202,7 @@ func TestAgentSchemeIndependentOfRuntimeURL(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: runtimeURL, Host: "127.0.0.1"},
 	}, nil)
-	r.SetNodeAgent("127.0.0.1", true, agentPort, "", "https")
+	r.SetMarborAgent("127.0.0.1", true, agentPort, "", "https")
 
 	fp := certFingerprint(t, agentSrv)
 	if !r.PatchNode("gpu-0", NodePatch{TLSFingerprint: &fp}) {
@@ -253,9 +253,9 @@ func TestPollAgentHost_GenericFailureDoesNotSetTLSMismatch(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://127.0.0.1:1", Host: "127.0.0.1"},
 	}, nil)
-	// Port 1 is not a real listening agent - SetNodeAgent enables polling
+	// Port 1 is not a real listening agent - SetMarborAgent enables polling
 	// against it, which will fail as an ordinary connection error.
-	r.SetNodeAgent("127.0.0.1", true, 1, "", "http")
+	r.SetMarborAgent("127.0.0.1", true, 1, "", "http")
 
 	r.pollAgentHosts()
 

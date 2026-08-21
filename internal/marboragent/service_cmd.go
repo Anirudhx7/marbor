@@ -51,14 +51,13 @@ func runServiceCommand(args []string, version string) {
 func runServiceInstall(args []string, version string) {
 	fs := flag.NewFlagSet("agent service install", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port for the installed service to serve /v1/status and /metrics on")
-	tokenFlag := fs.String("token", "", "bearer token required on every request (deprecated, use the MARBOR_AGENT_SECRET env var instead)")
-	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the mesh admin UI, exchanged for the real token (or set the MARBOR_ENROLL env var); requires --mesh")
-	meshFlag := fs.String("mesh", "", "mesh admin base URL, required together with --enroll (or set the MARBOR_SERVER env var)")
+	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the mesh admin UI, exchanged for the real token (or set the MARBOR_ENROLL env var); requires --server")
+	serverFlag := fs.String("server", "", "mesh admin base URL, required together with --enroll (or set the MARBOR_SERVER env var)")
 	refreshInterval := fs.Duration("refresh-interval", 0, "how often the installed service re-collects telemetry (default: the agent's own built-in default)")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "marbor-agent service install - register the Marbor Agent as a persistent, auto-restarting OS service\n\n")
 		fmt.Fprintf(w, "Usage:\n  marbor-agent service install --port=<port>   (set the MARBOR_AGENT_SECRET env var)\n")
-		fmt.Fprintf(w, "  marbor-agent service install --port=<port> --enroll=<code> --mesh=<url>\n\n")
+		fmt.Fprintf(w, "  marbor-agent service install --port=<port> --enroll=<code> --server=<url>\n\n")
 		fmt.Fprintf(w, "Safe to re-run: re-installing (e.g. after a binary upgrade, or to rotate the token)\n")
 		fmt.Fprintf(w, "reconfigures and restarts the existing service rather than requiring uninstall first.\n\nFlags:\n")
 		fs.SetOutput(w)
@@ -79,28 +78,24 @@ func runServiceInstall(args []string, version string) {
 		winexit.Fatalf("marboragent: %v", err)
 	}
 
-	warnIfTokenFlagUsed(os.Stderr, *tokenFlag)
-	token := *tokenFlag
-	if token == "" {
-		token = os.Getenv("MARBOR_AGENT_SECRET")
-	}
+	token := os.Getenv("MARBOR_AGENT_SECRET")
 	enroll := *enrollFlag
 	if enroll == "" {
 		enroll = os.Getenv("MARBOR_ENROLL")
 	}
-	mesh := *meshFlag
-	if mesh == "" {
-		mesh = os.Getenv("MARBOR_SERVER")
+	server := *serverFlag
+	if server == "" {
+		server = os.Getenv("MARBOR_SERVER")
 	}
 
 	if token == "" && enroll == "" {
-		winexit.Fatal("marboragent: a token is required: pass --token=<token>/MARBOR_AGENT_SECRET env var, or --enroll=<code>/MARBOR_ENROLL env var with --mesh=<url>/MARBOR_SERVER env var")
+		winexit.Fatal("marboragent: a token is required: set the MARBOR_AGENT_SECRET env var, or --enroll=<code>/MARBOR_ENROLL env var with --server=<url>/MARBOR_SERVER env var")
 	}
 	if token == "" {
-		if mesh == "" {
-			winexit.Fatal("marboragent: --enroll requires --mesh=<mesh admin base URL> (or the MARBOR_SERVER environment variable)")
+		if server == "" {
+			winexit.Fatal("marboragent: --enroll requires --server=<mesh admin base URL> (or the MARBOR_SERVER environment variable)")
 		}
-		exchanged, err := exchangeEnrollmentCode(mesh, enroll)
+		exchanged, err := exchangeEnrollmentCode(server, enroll)
 		if err != nil {
 			winexit.Fatalf("marboragent: enrollment failed: %v", err)
 		}
@@ -132,16 +127,16 @@ func runServiceInstall(args []string, version string) {
 // to trade a short-lived, single-use enrollment code for the node's real,
 // permanent bearer token (P50). This is the agent's first-ever outbound
 // call to the mesh - normally the mesh polls the agent, never the reverse -
-// so meshBaseURL must be supplied explicitly by the operator (via --mesh or
+// so serverBaseURL must be supplied explicitly by the operator (via --server or
 // the MARBOR_SERVER env var); the agent has no other way to know the mesh's address.
-func exchangeEnrollmentCode(meshBaseURL, code string) (string, error) {
+func exchangeEnrollmentCode(serverBaseURL, code string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	reqBody, err := json.Marshal(map[string]string{"code": code})
 	if err != nil {
 		return "", err
 	}
-	url := strings.TrimRight(meshBaseURL, "/") + "/admin/agent/enroll"
+	url := strings.TrimRight(serverBaseURL, "/") + "/admin/agent/enroll"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", err
@@ -149,7 +144,7 @@ func exchangeEnrollmentCode(meshBaseURL, code string) (string, error) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("could not reach mesh at %s: %w", meshBaseURL, err)
+		return "", fmt.Errorf("could not reach mesh at %s: %w", serverBaseURL, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

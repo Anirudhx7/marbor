@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-func TestNodeAgentRecord_TokenNeverMarshaled(t *testing.T) {
-	rec := NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "secret-value"}
+func TestMarborAgentRecord_TokenNeverMarshaled(t *testing.T) {
+	rec := MarborAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "secret-value"}
 	b, err := json.Marshal(rec)
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 	if strings.Contains(string(b), "secret-value") {
-		t.Fatalf("NodeAgentRecord must never marshal Token (P68 - closes config-dump leak path), got %s", b)
+		t.Fatalf("MarborAgentRecord must never marshal Token (P68 - closes config-dump leak path), got %s", b)
 	}
 }
 
@@ -32,7 +32,7 @@ func TestUserSession_TokenNeverMarshaled(t *testing.T) {
 	}
 }
 
-func TestUpsertAndGetNodeAgent(t *testing.T) {
+func TestUpsertAndGetMarborAgent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -40,26 +40,26 @@ func TestUpsertAndGetNodeAgent(t *testing.T) {
 	}
 	defer st.Close()
 
-	rec := NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "sk-agent-token-real"}
-	if err := st.UpsertNodeAgent(rec); err != nil {
-		t.Fatalf("UpsertNodeAgent: %v", err)
+	rec := MarborAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "sk-agent-token-real"}
+	if err := st.UpsertMarborAgent(rec); err != nil {
+		t.Fatalf("UpsertMarborAgent: %v", err)
 	}
 
-	got, found, err := st.GetNodeAgent("gpu-1")
+	got, found, err := st.GetMarborAgent("gpu-1")
 	if err != nil {
-		t.Fatalf("GetNodeAgent: %v", err)
+		t.Fatalf("GetMarborAgent: %v", err)
 	}
 	if !found {
-		t.Fatal("GetNodeAgent: found=false, want true")
+		t.Fatal("GetMarborAgent: found=false, want true")
 	}
 	if got.Name != "gpu-1" || !got.Enabled || got.Port != 9200 || got.Token != "sk-agent-token-real" {
-		t.Fatalf("GetNodeAgent = %+v, want round-tripped plaintext record", got)
+		t.Fatalf("GetMarborAgent = %+v, want round-tripped plaintext record", got)
 	}
 }
 
-// TestUpsertAndGetNodeAgent_Scope is the P54 store-level round-trip: Scope
-// persists alongside Token and comes back unchanged through GetNodeAgent.
-func TestUpsertAndGetNodeAgent_Scope(t *testing.T) {
+// TestUpsertAndGetMarborAgent_Scope is the P54 store-level round-trip: Scope
+// persists alongside Token and comes back unchanged through GetMarborAgent.
+func TestUpsertAndGetMarborAgent_Scope(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -67,20 +67,20 @@ func TestUpsertAndGetNodeAgent_Scope(t *testing.T) {
 	}
 	defer st.Close()
 
-	rec := NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "operator.sk-agent-token", Scope: "operator"}
-	if err := st.UpsertNodeAgent(rec); err != nil {
-		t.Fatalf("UpsertNodeAgent: %v", err)
+	rec := MarborAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "operator.sk-agent-token", Scope: "operator"}
+	if err := st.UpsertMarborAgent(rec); err != nil {
+		t.Fatalf("UpsertMarborAgent: %v", err)
 	}
 
-	got, found, err := st.GetNodeAgent("gpu-1")
+	got, found, err := st.GetMarborAgent("gpu-1")
 	if err != nil {
-		t.Fatalf("GetNodeAgent: %v", err)
+		t.Fatalf("GetMarborAgent: %v", err)
 	}
 	if !found {
-		t.Fatal("GetNodeAgent: found=false, want true")
+		t.Fatal("GetMarborAgent: found=false, want true")
 	}
 	if got.Scope != "operator" {
-		t.Fatalf("GetNodeAgent.Scope = %q, want %q", got.Scope, "operator")
+		t.Fatalf("GetMarborAgent.Scope = %q, want %q", got.Scope, "operator")
 	}
 }
 
@@ -106,19 +106,19 @@ func TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
 		t.Fatalf("seed legacy row: %v", err)
 	}
 
-	got, found, err := st.GetNodeAgent("legacy-node")
+	got, found, err := st.GetMarborAgent("legacy-node")
 	if err != nil {
-		t.Fatalf("GetNodeAgent: %v", err)
+		t.Fatalf("GetMarborAgent: %v", err)
 	}
 	if !found {
-		t.Fatal("GetNodeAgent: found=false, want true")
+		t.Fatal("GetMarborAgent: found=false, want true")
 	}
 	if got.Scope != "admin" {
-		t.Fatalf("GetNodeAgent.Scope for a pre-P54 row = %q, want %q (column default)", got.Scope, "admin")
+		t.Fatalf("GetMarborAgent.Scope for a pre-P54 row = %q, want %q (column default)", got.Scope, "admin")
 	}
 }
 
-func TestGetNodeAgentNotFound(t *testing.T) {
+func TestGetMarborAgentNotFound(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -126,12 +126,12 @@ func TestGetNodeAgentNotFound(t *testing.T) {
 	}
 	defer st.Close()
 
-	_, found, err := st.GetNodeAgent("nonexistent")
+	_, found, err := st.GetMarborAgent("nonexistent")
 	if err != nil {
-		t.Fatalf("GetNodeAgent: %v", err)
+		t.Fatalf("GetMarborAgent: %v", err)
 	}
 	if found {
-		t.Fatal("GetNodeAgent: found=true for a node with no agent row, want false")
+		t.Fatal("GetMarborAgent: found=true for a node with no agent row, want false")
 	}
 }
 
@@ -145,8 +145,8 @@ func TestNodeAgentTokenEncryptedAtRest(t *testing.T) {
 	}
 	defer st.Close()
 
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "sk-agent-token-real"}); err != nil {
-		t.Fatalf("UpsertNodeAgent: %v", err)
+	if err := st.UpsertMarborAgent(MarborAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "sk-agent-token-real"}); err != nil {
+		t.Fatalf("UpsertMarborAgent: %v", err)
 	}
 
 	ss := st.(*sqliteStore)
@@ -159,7 +159,7 @@ func TestNodeAgentTokenEncryptedAtRest(t *testing.T) {
 	}
 }
 
-func TestAllNodeAgents(t *testing.T) {
+func TestAllMarborAgents(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -167,21 +167,21 @@ func TestAllNodeAgents(t *testing.T) {
 	}
 	defer st.Close()
 
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
-		t.Fatalf("UpsertNodeAgent(gpu-1): %v", err)
+	if err := st.UpsertMarborAgent(MarborAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
+		t.Fatalf("UpsertMarborAgent(gpu-1): %v", err)
 	}
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "gpu-2", Enabled: false, Port: 9201, Token: "tok-2"}); err != nil {
-		t.Fatalf("UpsertNodeAgent(gpu-2): %v", err)
+	if err := st.UpsertMarborAgent(MarborAgentRecord{Name: "gpu-2", Enabled: false, Port: 9201, Token: "tok-2"}); err != nil {
+		t.Fatalf("UpsertMarborAgent(gpu-2): %v", err)
 	}
 
-	all, err := st.AllNodeAgents()
+	all, err := st.AllMarborAgents()
 	if err != nil {
-		t.Fatalf("AllNodeAgents: %v", err)
+		t.Fatalf("AllMarborAgents: %v", err)
 	}
 	if len(all) != 2 {
-		t.Fatalf("AllNodeAgents returned %d rows, want 2", len(all))
+		t.Fatalf("AllMarborAgents returned %d rows, want 2", len(all))
 	}
-	byName := make(map[string]NodeAgentRecord, len(all))
+	byName := make(map[string]MarborAgentRecord, len(all))
 	for _, r := range all {
 		byName[r.Name] = r
 	}
@@ -193,12 +193,12 @@ func TestAllNodeAgents(t *testing.T) {
 	}
 }
 
-// TestAllNodeAgentsDropsUndecryptableRow mirrors
+// TestAllMarborAgentsDropsUndecryptableRow mirrors
 // TestAllKeysDropsUndecryptableRowWithoutBreakingOthers (secretbox_test.go):
 // one corrupt/undecryptable node_agent.token must not fail the whole list -
 // this feeds the router's boot-time agent poll wiring, and one bad row must
 // not blank out telemetry for every other node.
-func TestAllNodeAgentsDropsUndecryptableRow(t *testing.T) {
+func TestAllMarborAgentsDropsUndecryptableRow(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -206,8 +206,8 @@ func TestAllNodeAgentsDropsUndecryptableRow(t *testing.T) {
 	}
 	defer st.Close()
 
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "good", Enabled: true, Port: 9200, Token: "tok-good"}); err != nil {
-		t.Fatalf("UpsertNodeAgent(good): %v", err)
+	if err := st.UpsertMarborAgent(MarborAgentRecord{Name: "good", Enabled: true, Port: 9200, Token: "tok-good"}); err != nil {
+		t.Fatalf("UpsertMarborAgent(good): %v", err)
 	}
 
 	ss := st.(*sqliteStore)
@@ -216,21 +216,21 @@ func TestAllNodeAgentsDropsUndecryptableRow(t *testing.T) {
 		t.Fatalf("seed broken row: %v", err)
 	}
 
-	all, err := st.AllNodeAgents()
+	all, err := st.AllMarborAgents()
 	if err != nil {
-		t.Fatalf("AllNodeAgents: want no error from one corrupt row, got %v", err)
+		t.Fatalf("AllMarborAgents: want no error from one corrupt row, got %v", err)
 	}
 	if len(all) != 1 || all[0].Name != "good" || all[0].Token != "tok-good" {
-		t.Fatalf("AllNodeAgents = %+v, want only the good row, decrypted, broken row absent", all)
+		t.Fatalf("AllMarborAgents = %+v, want only the good row, decrypted, broken row absent", all)
 	}
 	for _, r := range all {
 		if r.Token == "" {
-			t.Fatalf("AllNodeAgents returned a row with Token=\"\" (name=%s); an empty token must never authenticate", r.Name)
+			t.Fatalf("AllMarborAgents returned a row with Token=\"\" (name=%s); an empty token must never authenticate", r.Name)
 		}
 	}
 }
 
-func TestDeleteNodeAgent(t *testing.T) {
+func TestDeleteMarborAgent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
 	if err != nil {
@@ -238,18 +238,18 @@ func TestDeleteNodeAgent(t *testing.T) {
 	}
 	defer st.Close()
 
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
-		t.Fatalf("UpsertNodeAgent: %v", err)
+	if err := st.UpsertMarborAgent(MarborAgentRecord{Name: "gpu-1", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
+		t.Fatalf("UpsertMarborAgent: %v", err)
 	}
-	if err := st.DeleteNodeAgent("gpu-1"); err != nil {
-		t.Fatalf("DeleteNodeAgent: %v", err)
+	if err := st.DeleteMarborAgent("gpu-1"); err != nil {
+		t.Fatalf("DeleteMarborAgent: %v", err)
 	}
-	_, found, err := st.GetNodeAgent("gpu-1")
+	_, found, err := st.GetMarborAgent("gpu-1")
 	if err != nil {
-		t.Fatalf("GetNodeAgent after delete: %v", err)
+		t.Fatalf("GetMarborAgent after delete: %v", err)
 	}
 	if found {
-		t.Fatal("GetNodeAgent after DeleteNodeAgent: found=true, want false")
+		t.Fatal("GetMarborAgent after DeleteMarborAgent: found=true, want false")
 	}
 }
 
@@ -266,22 +266,22 @@ func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
 	defer st.Close()
 
 	// node_agent is keyed by the node's shared host, not its name (see
-	// admin.go's handleEnableNodeAgent: NodeAgentRecord{Name: host, ...}) -
+	// admin.go's handleEnableMarborAgent: MarborAgentRecord{Name: host, ...}) -
 	// this fixture mirrors that real write pattern.
 	if err := st.UpsertNode(NodeRecord{Name: "gpu-1", URL: "http://10.0.0.5:11434", Runtime: "ollama"}); err != nil {
 		t.Fatalf("UpsertNode: %v", err)
 	}
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "10.0.0.5", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
-		t.Fatalf("UpsertNodeAgent: %v", err)
+	if err := st.UpsertMarborAgent(MarborAgentRecord{Name: "10.0.0.5", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
+		t.Fatalf("UpsertMarborAgent: %v", err)
 	}
 
 	if err := st.DeleteNode("gpu-1"); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	_, found, err := st.GetNodeAgent("10.0.0.5")
+	_, found, err := st.GetMarborAgent("10.0.0.5")
 	if err != nil {
-		t.Fatalf("GetNodeAgent after DeleteNode: %v", err)
+		t.Fatalf("GetMarborAgent after DeleteNode: %v", err)
 	}
 	if found {
 		t.Fatal("DeleteNode did not cascade-delete the node_agent row - stale token left behind (R8)")
@@ -306,17 +306,17 @@ func TestDeleteNodeDoesNotCascadeSharedHostAgent(t *testing.T) {
 	if err := st.UpsertNode(NodeRecord{Name: "gpu-2", URL: "http://10.0.0.5:8000", Runtime: "vllm"}); err != nil {
 		t.Fatalf("UpsertNode gpu-2: %v", err)
 	}
-	if err := st.UpsertNodeAgent(NodeAgentRecord{Name: "10.0.0.5", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
-		t.Fatalf("UpsertNodeAgent: %v", err)
+	if err := st.UpsertMarborAgent(MarborAgentRecord{Name: "10.0.0.5", Enabled: true, Port: 9200, Token: "tok-1"}); err != nil {
+		t.Fatalf("UpsertMarborAgent: %v", err)
 	}
 
 	if err := st.DeleteNode("gpu-1"); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}
 
-	_, found, err := st.GetNodeAgent("10.0.0.5")
+	_, found, err := st.GetMarborAgent("10.0.0.5")
 	if err != nil {
-		t.Fatalf("GetNodeAgent after DeleteNode: %v", err)
+		t.Fatalf("GetMarborAgent after DeleteNode: %v", err)
 	}
 	if !found {
 		t.Fatal("DeleteNode wrongly cascade-deleted the node_agent row still used by gpu-2")
@@ -362,11 +362,11 @@ func TestMigrateEncryptSecretsUpgradesLegacyNodeAgentToken(t *testing.T) {
 		t.Fatalf("node_agent.token = %q, want enc:v1: prefix after migration", raw)
 	}
 
-	rec, found, err := st2.GetNodeAgent("gpu-1")
+	rec, found, err := st2.GetMarborAgent("gpu-1")
 	if err != nil {
-		t.Fatalf("GetNodeAgent: %v", err)
+		t.Fatalf("GetMarborAgent: %v", err)
 	}
 	if !found || rec.Token != "legacy-plaintext-token" {
-		t.Fatalf("GetNodeAgent = %+v, found=%v, want decrypted legacy plaintext", rec, found)
+		t.Fatalf("GetMarborAgent = %+v, found=%v, want decrypted legacy plaintext", rec, found)
 	}
 }

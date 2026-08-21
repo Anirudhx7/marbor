@@ -51,8 +51,9 @@ type Config struct {
 	KeyPath  string
 }
 
-// args returns the flag argument list (excluding the binary path itself, and
-// deliberately excluding --token) that each platform implementation embeds
+// args returns the flag argument list (excluding the binary path itself; the
+// bearer token is never a command-line argument - it travels via each
+// platform's environment mechanism) that each platform implementation embeds
 // into its service definition (systemd ExecStart, launchd ProgramArguments,
 // sc.exe binPath). Centralized here so all three platforms build the exact
 // same command line from the same Config fields.

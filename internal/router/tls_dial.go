@@ -71,7 +71,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //     this codebase is built with an explicit port (buildAgentURL,
 //     buildAgentUnloadURL, admin.go's per-action URLs), so there is never
 //     an implicit default-port case to reconcile.
-//   - r.nodeAgents is keyed by bare Host with exactly one NodeAgentConfig
+//   - r.marborAgents is keyed by bare Host with exactly one MarborAgentConfig
 //     (one port) per host - so a dial address unambiguously either matches
 //     "this is host H's Node Agent" or it doesn't. A non-matching address
 //     (runtime-probe traffic sharing this same client/Transport, since
@@ -96,7 +96,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //     it safely regardless.
 //   - Test-server addresses (httptest.NewTLSServer, 127.0.0.1:<random>)
 //     match this same lookup as long as the test registers a NodeState with
-//     Host="127.0.0.1" and a NodeAgentConfig{Port: <that port>} - no special
+//     Host="127.0.0.1" and a MarborAgentConfig{Port: <that port>} - no special
 //     casing needed for tests.
 //   - Section 15's multi-GPU-per-host case: today, nothing prevents two
 //     NodeState entries sharing one Host from carrying different pinned
@@ -179,7 +179,7 @@ var ErrTLSFingerprintMismatch = errors.New("tls fingerprint mismatch")
 // Agent endpoint.
 //
 // matched is true iff host:port corresponds to some host's configured Node
-// Agent (r.nodeAgents, keyed by bare Host) - false means this dial address
+// Agent (r.marborAgents, keyed by bare Host) - false means this dial address
 // isn't a Node Agent endpoint at all (e.g. runtime-probe traffic sharing the
 // same client/Transport) and pinning must not apply to it.
 //
@@ -191,7 +191,7 @@ var ErrTLSFingerprintMismatch = errors.New("tls fingerprint mismatch")
 // disagreeing answers.
 func (r *Router) pinnedFingerprintFor(host, portStr string) (fingerprint string, matched bool, ambiguous bool) {
 	r.mu.RLock()
-	cfg, ok := r.nodeAgents[host]
+	cfg, ok := r.marborAgents[host]
 	if !ok || strconv.Itoa(cfg.Port) != portStr {
 		r.mu.RUnlock()
 		return "", false, false

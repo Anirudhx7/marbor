@@ -13,7 +13,7 @@ import (
 // the legacy TOKEN key. The agent binary only reads MARBOR_AGENT_SECRET, so a
 // service that wrote TOKEN would start the agent with an empty secret.
 func TestSetServiceTokenEnvCommandUsesMARBOR_AGENT_SECRET(t *testing.T) {
-	const token = "sekret-node-agent-token"
+	const token = "sekret-marbor-agent-token"
 	cmd := setServiceTokenEnvCommand(token)
 
 	joined := strings.Join(cmd.Args, " ")

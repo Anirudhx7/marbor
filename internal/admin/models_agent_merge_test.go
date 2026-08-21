@@ -106,7 +106,7 @@ func TestHandleModels_MergesAgentIdleModels(t *testing.T) {
 		{Name: "gpu-0", URL: "http://127.0.0.1:1"},
 	}, nil)
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()

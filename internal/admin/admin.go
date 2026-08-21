@@ -1129,10 +1129,10 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/benchmark/{id}/progress", s.cors(s.adminAuth(s.handleBenchmarkProgress)))
 	reg("DELETE /admin/benchmark/{id}", s.cors(s.adminAuth(s.handleCancelBenchmark)))
 	reg("GET /admin/benchmark/runs", s.cors(s.adminAuth(s.handleListBenchmarkRuns)))
-	reg("GET /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleGetNodeAgent)))
-	reg("POST /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleEnableNodeAgent)))
-	reg("DELETE /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleDisableNodeAgent)))
-	reg("POST /admin/nodes/{name}/agent/regenerate", s.cors(s.adminAuth(s.handleRegenerateNodeAgentToken)))
+	reg("GET /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleGetMarborAgent)))
+	reg("POST /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleEnableMarborAgent)))
+	reg("DELETE /admin/nodes/{name}/agent", s.cors(s.adminAuth(s.handleDisableMarborAgent)))
+	reg("POST /admin/nodes/{name}/agent/regenerate", s.cors(s.adminAuth(s.handleRegenerateMarborAgentToken)))
 	reg("GET /admin/nodes/{name}/control", s.cors(s.adminAuth(s.handleGetNodeControl)))
 	reg("POST /admin/nodes/{name}/control/accept", s.cors(s.adminAuth(s.handleAcceptNodeControl)))
 	reg("DELETE /admin/nodes/{name}/control", s.cors(s.adminAuth(s.handleClearNodeControl)))
@@ -1144,8 +1144,8 @@ func (s *Server) Handler() http.Handler {
 	// itself during install (agent service install --enroll=<code>), not an
 	// authenticated admin browser session. Safety rests entirely on the code
 	// being a random 128-bit single-use value with a short TTL (see
-	// handleEnrollNodeAgent) - the same trust model as a password-reset link.
-	reg("POST /admin/agent/enroll", s.cors(s.handleEnrollNodeAgent))
+	// handleEnrollMarborAgent) - the same trust model as a password-reset link.
+	reg("POST /admin/agent/enroll", s.cors(s.handleEnrollMarborAgent))
 	reg("GET /admin/audit", s.cors(s.adminAuth(s.handleAudit)))
 	reg("GET /admin/system-audit", s.cors(s.adminAuth(s.handleSystemAudit)))
 	reg("GET /admin/nodes/model-fit", s.cors(s.adminAuth(s.handleModelFit)))
@@ -2053,7 +2053,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// nodeAgentInstallCommand returns the one-line commands an operator runs on
+// marborAgentInstallCommand returns the one-line commands an operator runs on
 // the GPU node to download the binary (if not already present) AND register
 // it as a persistent, auto-restarting OS service - install.sh/install.ps1's
 // ROLE=agent path (see .local/specs/node-agent.md section 12), which
@@ -2069,7 +2069,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // real bearer token in shell history/SSH logs/chat forever. meshBaseURL
 // tells the agent where to exchange the code for the real token via
 // POST /admin/agent/enroll.
-func nodeAgentInstallCommand(meshBaseURL string, port int, enrollCode string) (unix string, windows string) {
+func marborAgentInstallCommand(meshBaseURL string, port int, enrollCode string) (unix string, windows string) {
 	unix = fmt.Sprintf(
 		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=%s MARBOR_ENROLL=%s PORT=%d sh",
 		meshBaseURL, enrollCode, port,
@@ -2095,7 +2095,7 @@ func requestBaseURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// generateNodeAgentToken returns a 32-random-byte, base64url-encoded opaque
+// generateMarborAgentToken returns a 32-random-byte, base64url-encoded opaque
 // token (per .local/specs/node-agent.md section 5 - a distinct protocol
 // from the client-facing API-key mechanism, not a reuse of it), prefixed
 // with "<scope>." (P54: per-action token scoping -
@@ -2104,7 +2104,7 @@ func requestBaseURL(r *http.Request) string {
 // travels embedded in the token itself and is parsed agent-side by
 // marboragent.scopeOf/TokenScope. scope must be one of marboragent.ScopeReadonly/
 // ScopeOperator/ScopeAdmin.
-func generateNodeAgentToken(scope string) (string, error) {
+func generateMarborAgentToken(scope string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -2114,7 +2114,7 @@ func generateNodeAgentToken(scope string) (string, error) {
 
 // generateEnrollmentCode returns a short, URL-safe, single-use code used to
 // exchange for the real Node Agent token via POST /admin/agent/enroll (P50).
-// Deliberately shorter than generateNodeAgentToken: its value as a secret is
+// Deliberately shorter than generateMarborAgentToken: its value as a secret is
 // bounded by enrollmentCodeTTL and single-use consumption, not by matching a
 // permanent bearer token's entropy - 128 bits is unguessable within a
 // 20-minute single-use window regardless.
@@ -2126,21 +2126,21 @@ func generateEnrollmentCode() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// handleGetNodeAgent returns the current Node Agent configuration for a
+// handleGetMarborAgent returns the current Node Agent configuration for a
 // node, without the token (the token is only ever returned by the
 // enable/regenerate endpoints, at the moment an operator needs to copy it
 // into the install command).
 // GET /admin/nodes/{name}/agent
-func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGetMarborAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	host, found := s.router.NodeHost(name)
 	if !found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	// node_agent is keyed by the shared host string (see SetNodeAgent's doc
+	// node_agent is keyed by the shared host string (see SetMarborAgent's doc
 	// comment) - every node on this host reads/writes the same record.
-	rec, found, err := s.st.GetNodeAgent(host)
+	rec, found, err := s.st.GetMarborAgent(host)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read marbor agent config")
 		return
@@ -2157,20 +2157,20 @@ func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleEnableNodeAgent enables (or reconfigures) the Node Agent for a node:
+// handleEnableMarborAgent enables (or reconfigures) the Node Agent for a node:
 // generates a fresh token, persists {enabled, port, token, scheme}, pushes
 // the config to the live router so polling starts on the next cycle without
 // a restart, and returns the one-line install command with the token
 // embedded - the only response that ever carries the plaintext token.
 // scheme is the AGENT's own transport scheme, entirely independent of this
-// node's runtime URL scheme (store.NodeAgentRecord.Scheme's doc comment). An
+// node's runtime URL scheme (store.MarborAgentRecord.Scheme's doc comment). An
 // omitted scheme means "keep whatever this host's Agent is already
 // configured with" on a reconfigure (read from the router's live config,
 // not the store - see the no-downgrade lookup below) - it defaults to
 // "http" only when there is no existing config at all (first-time enable).
 // A caller that wants to actually change the scheme must say so explicitly.
 // POST /admin/nodes/{name}/agent  body: {"port": <int>, "scheme"?: "http"|"https"}
-func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleEnableMarborAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	host, found := s.router.NodeHost(name)
 	if !found {
@@ -2212,10 +2212,10 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	// The router's live in-memory config, not a store read, is the source
 	// of truth for "existing" here (State Hierarchy: live beats persisted,
 	// guards-detail.md) - it reflects exactly what the poller/action paths
-	// are using right now, including in tests that call r.SetNodeAgent
+	// are using right now, including in tests that call r.SetMarborAgent
 	// directly without a store round-trip.
 	scheme := "http"
-	if existing, hasExisting := s.router.NodeAgentSetting(name); hasExisting && existing.Scheme != "" {
+	if existing, hasExisting := s.router.MarborAgentSetting(name); hasExisting && existing.Scheme != "" {
 		scheme = existing.Scheme
 	}
 	if body.Scheme != nil {
@@ -2241,29 +2241,29 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	token, err := generateNodeAgentToken(marboragent.ScopeAdmin)
+	token, err := generateMarborAgentToken(marboragent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 	// Persisted/pushed keyed by host, not name - every node sharing this
 	// physical machine now reads the same enabled/port/token/scheme record
-	// and is polled by the same single agent process (see SetNodeAgent's doc
+	// and is polled by the same single agent process (see SetMarborAgent's doc
 	// comment). Enabling from any one node's UI panel enables it for all of
 	// them.
-	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: marboragent.ScopeAdmin, Scheme: scheme}
-	if err := s.st.UpsertNodeAgent(rec); err != nil {
+	rec := store.MarborAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: marboragent.ScopeAdmin, Scheme: scheme}
+	if err := s.st.UpsertMarborAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist marbor agent config")
 		return
 	}
-	s.router.SetNodeAgent(host, true, body.Port, token, scheme)
+	s.router.SetMarborAgent(host, true, body.Port, token, scheme)
 	s.logSystemChange(r, "enable_node_agent", host, fmt.Sprintf("Port: %d, Scheme: %s", body.Port, scheme))
 	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
 		return
 	}
-	unixCmd, windowsCmd := nodeAgentInstallCommand(requestBaseURL(r), body.Port, code)
+	unixCmd, windowsCmd := marborAgentInstallCommand(requestBaseURL(r), body.Port, code)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"node":                    name,
@@ -2276,7 +2276,7 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleDisableNodeAgent disables and deletes the Node Agent config for a
+// handleDisableMarborAgent disables and deletes the Node Agent config for a
 // node - the router stops polling it on the next cycle (pollAgentTelemetry's
 // "no agent configured" branch clears any previously-reported fields). Also
 // clears any pinned TLS fingerprint on every node sharing this host: with no
@@ -2286,7 +2286,7 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 // resurrect against whatever cert the Agent (re-)presents. Clearing on
 // disable keeps "pinned" always meaning "currently enforced."
 // DELETE /admin/nodes/{name}/agent
-func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDisableMarborAgent(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	host, found := s.router.NodeHost(name)
 	if !found {
@@ -2294,7 +2294,7 @@ func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Same nodePatchMu discipline as handleEnableNodeAgent/handlePatchNode -
+	// Same nodePatchMu discipline as handleEnableMarborAgent/handlePatchNode -
 	// the fingerprint clear below and the agent-config delete must not
 	// interleave with a concurrent PATCH re-pinning one of this host's nodes.
 	s.nodePatchMu.Lock()
@@ -2312,29 +2312,29 @@ func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Disables for the whole shared host, not just this one node row - see
-	// SetNodeAgent's doc comment.
-	if err := s.st.DeleteNodeAgent(host); err != nil {
+	// SetMarborAgent's doc comment.
+	if err := s.st.DeleteMarborAgent(host); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to delete marbor agent config")
 		return
 	}
-	s.router.SetNodeAgent(host, false, 0, "", "")
+	s.router.SetMarborAgent(host, false, 0, "", "")
 	s.logSystemChange(r, "disable_node_agent", host, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleRegenerateNodeAgentToken issues a fresh token for an already-enabled
+// handleRegenerateMarborAgentToken issues a fresh token for an already-enabled
 // node agent, keeping its configured port. Returns 404 if the agent isn't
 // currently enabled for this node (regenerating a token for a disabled/
-// nonexistent agent has no meaning - use handleEnableNodeAgent instead).
+// nonexistent agent has no meaning - use handleEnableMarborAgent instead).
 // POST /admin/nodes/{name}/agent/regenerate
-func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRegenerateMarborAgentToken(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	host, found := s.router.NodeHost(name)
 	if !found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	rec, found, err := s.st.GetNodeAgent(host)
+	rec, found, err := s.st.GetMarborAgent(host)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read marbor agent config")
 		return
@@ -2343,25 +2343,25 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("marbor agent not enabled for %q", name))
 		return
 	}
-	token, err := generateNodeAgentToken(marboragent.ScopeAdmin)
+	token, err := generateMarborAgentToken(marboragent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 	rec.Token = token
 	rec.Scope = marboragent.ScopeAdmin
-	if err := s.st.UpsertNodeAgent(rec); err != nil {
+	if err := s.st.UpsertMarborAgent(rec); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to persist marbor agent config")
 		return
 	}
-	s.router.SetNodeAgent(host, true, rec.Port, token, rec.Scheme)
+	s.router.SetMarborAgent(host, true, rec.Port, token, rec.Scheme)
 	s.logSystemChange(r, "regenerate_node_agent_token", host, "")
 	code, err := s.newEnrollmentCode(host, token)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate enrollment code")
 		return
 	}
-	unixCmd, windowsCmd := nodeAgentInstallCommand(requestBaseURL(r), rec.Port, code)
+	unixCmd, windowsCmd := marborAgentInstallCommand(requestBaseURL(r), rec.Port, code)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"node":                    name,
@@ -2518,13 +2518,13 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	// legitimately be down right now) - gate on agent reachability, never
 	// nodeIsHealthy's runtime reachability, or "stop" ever succeeding once
 	// would permanently block "start" from working again on this node.
-	if !nodeAgentIsPresent(s.router.Nodes(), nodeName) {
+	if !marborAgentIsPresent(s.router.Nodes(), nodeName) {
 		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the marbor agent process/service on that host before running runtime %s", nodeName, action))
 		return
 	}
 
 	capability := "runtime." + action
-	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	agentCfg, agentOK := s.router.MarborAgentSetting(nodeName)
 	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, capability) {
 		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for runtime %s", nodeName, action))
 		return
@@ -2560,7 +2560,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 // "runtime.{action}"). start_command is only included for the Process
 // driver's Start action (Step 2 never persisted a StartCommand for any
 // other driver - it stays empty and is simply omitted).
-func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, action string, ctrl router.ControlConfig) error {
+func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, action string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/"+action)
 	if err != nil {
 		return err
@@ -2634,12 +2634,12 @@ func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 	// Same reasoning as handleNodeRuntimeAction: logs are read via the Node
 	// Agent, and are exactly what an operator needs while the runtime itself
 	// is stopped - gate on agent reachability, not runtime reachability.
-	if !nodeAgentIsPresent(s.router.Nodes(), nodeName) {
+	if !marborAgentIsPresent(s.router.Nodes(), nodeName) {
 		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the marbor agent process/service on that host before running runtime logs", nodeName))
 		return
 	}
 
-	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	agentCfg, agentOK := s.router.MarborAgentSetting(nodeName)
 	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "runtime.logs") {
 		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for runtime logs", nodeName))
 		return
@@ -2678,7 +2678,7 @@ func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 // only for the Process driver, same conditional as runtimeActionViaAgent's
 // Start case, even though ProcessDriver.Logs ignores it today - keeps the
 // payload construction identical if that ever changes.
-func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, ctrl router.ControlConfig, lines int) ([]string, error) {
+func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, ctrl router.ControlConfig, lines int) ([]string, error) {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/logs")
 	if err != nil {
 		return nil, err
@@ -2739,7 +2739,7 @@ func (s *Server) newEnrollmentCode(node, token string) (string, error) {
 	return code, nil
 }
 
-// handleEnrollNodeAgent exchanges a short-lived, single-use enrollment code
+// handleEnrollMarborAgent exchanges a short-lived, single-use enrollment code
 // for the node's real, permanent Node Agent bearer token (P50). Called by
 // the Node Agent itself during "agent service install --enroll=<code>",
 // never by an authenticated admin browser session - see the route
@@ -2748,7 +2748,7 @@ func (s *Server) newEnrollmentCode(node, token string) (string, error) {
 // validation, so a code can never be redeemed twice even under a concurrent
 // replay: the second racer's lookup simply misses.
 // POST /admin/agent/enroll  body: {"code": "<enrollment code>"}
-func (s *Server) handleEnrollNodeAgent(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleEnrollMarborAgent(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Code string `json:"code"`
 	}
@@ -3636,20 +3636,20 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	// completely different host (with a different, or no, Agent
 	// configured), so this must be looked up by the RESULTING host, never
 	// by name (which only ever resolves to the node's CURRENT, pre-patch
-	// host - see NodeAgentSettingByHost's doc comment).
+	// host - see MarborAgentSettingByHost's doc comment).
 	resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 
 	// No-downgrade (section 7): once a fingerprint is pinned, the mesh must
 	// never end up treating the Node Agent as plaintext without an explicit
 	// clear (tls_fingerprint: null/""). This checks the AGENT's own
 	// configured scheme for the RESULTING host (POST /admin/nodes/{name}/agent's
-	// scheme field, see store.NodeAgentRecord.Scheme's doc comment) - NOT
+	// scheme field, see store.MarborAgentRecord.Scheme's doc comment) - NOT
 	// the node's runtime URL scheme, which handlePatchNode's patch.URL
 	// controls and which is entirely independent of the Agent's transport.
 	// A pinned fingerprint always describes the Agent's TLS certificate,
 	// never the runtime's.
 	if resultingFP != "" {
-		agentCfg, hasAgent := s.router.NodeAgentSettingByHost(resultingHost)
+		agentCfg, hasAgent := s.router.MarborAgentSettingByHost(resultingHost)
 		if !hasAgent || !agentCfg.Enabled || agentCfg.Scheme != "https" {
 			return fmt.Errorf("node %q would have a pinned TLS fingerprint but its marbor agent (host %q) is not configured for https:// - enable Agent HTTPS (POST /admin/nodes/%s/agent with scheme:\"https\") before pinning, or clear the pin (tls_fingerprint: null)", name, resultingHost, name)
 		}
@@ -5861,7 +5861,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		if !snap.healthy || snap.url == "" {
 			continue
 		}
-		agentCfg, agentOK := s.router.NodeAgentSetting(snap.name)
+		agentCfg, agentOK := s.router.MarborAgentSetting(snap.name)
 		if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(nodes, snap.name, "models.list") {
 			continue
 		}
@@ -6246,7 +6246,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// let a disk-full pull fail deep into a multi-GB transfer instead of
 	// being caught before it started.
 	if ctrl, configured := s.router.NodeControlSetting(nodeName); configured && ctrl.Driver == "docker" {
-		if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled && nodeHasAgentCapability(nodes, nodeName, "runtime.disk") {
+		if agentCfg, agentOK := s.router.MarborAgentSetting(nodeName); agentOK && agentCfg.Enabled && nodeHasAgentCapability(nodes, nodeName, "runtime.disk") {
 			if freeB, totalB, err := s.containerDiskStatsViaAgent(r.Context(), nodeURL, agentCfg, ctrl); err == nil && totalB > 0 {
 				diskFreeGB = float64(freeB) / (1024 * 1024 * 1024)
 				diskTotalGB = float64(totalB) / (1024 * 1024 * 1024)
@@ -6290,7 +6290,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	agentCfg, agentOK := s.router.MarborAgentSetting(nodeName)
 	useAgent := agentOK && agentCfg.Enabled && nodeHasAgentCapability(s.router.Nodes(), nodeName, "models.pull")
 	method := "direct"
 	if useAgent {
@@ -6635,7 +6635,7 @@ func (s *Server) handleCancelPull(w http.ResponseWriter, r *http.Request) {
 // inference-runtime URL, health.go's pollNode/probe.Probe) - correct for
 // gating anything that proxies inference traffic or reads runtime-served
 // data (pull/models/delete-model), but wrong for gating a call that talks
-// to the Node Agent instead (see nodeAgentIsPresent below): an operator
+// to the Node Agent instead (see marborAgentIsPresent below): an operator
 // intentionally stopping the runtime via Runtime Control makes this false
 // by design, and using it there would make "Start" unreachable right
 // after "Stop" ever succeeded once.
@@ -6652,7 +6652,7 @@ func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
 	return false
 }
 
-// nodeAgentIsPresent reports whether the node named name's Node Agent
+// marborAgentIsPresent reports whether the node named name's Node Agent
 // answered the mesh's last poll (router.NodeState.AgentPresent, set by
 // agent_poll.go - independent of runtime reachability, per that file's own
 // "the agent is a fully independent HTTP endpoint from /api/ps" reasoning).
@@ -6661,7 +6661,7 @@ func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
 // to the runtime it manages - the whole point of these calls is to work
 // while the runtime is stopped. Returns false if the node isn't found,
 // same as nodeIsHealthy.
-func nodeAgentIsPresent(nodes []*router.NodeState, name string) bool {
+func marborAgentIsPresent(nodes []*router.NodeState, name string) bool {
 	for _, n := range nodes {
 		if n.Name != name {
 			continue
@@ -6719,7 +6719,7 @@ func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	agentCfg, agentOK := s.router.MarborAgentSetting(nodeName)
 	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "models.list") {
 		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for listing local models", nodeName))
 		return
@@ -6740,7 +6740,7 @@ func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
 // listModelsViaAgent queries nodeURL's Node Agent (GET /v1/models,
 // capability "models.list") and translates its snake_case wire response
 // into this API's camelCase nodeModelEntry shape.
-func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) ([]nodeModelEntry, error) {
+func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig) ([]nodeModelEntry, error) {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/models")
 	if err != nil {
 		return nil, err
@@ -6815,7 +6815,7 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 // per-request - never stored on the agent side, only set in the pull
 // subprocess's own environment for its lifetime (see
 // .local/specs/node-agent.md section 16).
-func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
+func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, model string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/models")
 	if err != nil {
 		return err
@@ -6875,7 +6875,7 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 // "runtime.disk") - see internal/marboragent's handleRuntimeDisk for why this
 // can differ from the host-level DiskFreeGB/DiskTotalGB the periodic
 // telemetry poll already reports for a Docker-controlled node.
-func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, ctrl router.ControlConfig) (freeBytes, totalBytes int64, err error) {
+func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, ctrl router.ControlConfig) (freeBytes, totalBytes int64, err error) {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/disk")
 	if err != nil {
 		return 0, 0, err
@@ -6916,7 +6916,7 @@ func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string,
 // buildAgentURL derives an agent URL from the node's own URL (same host, via
 // url.Parse per R5 - never arithmetic port derivation), the configured agent
 // port, a literal path, and the agent's OWN scheme (independent of nodeURL's
-// scheme - see store.NodeAgentRecord.Scheme's doc comment; before this
+// scheme - see store.MarborAgentRecord.Scheme's doc comment; before this
 // parameter existed, every agent action derived its scheme from the node's
 // runtime URL instead, so enabling agent HTTPS silently switched the
 // runtime endpoint to https:// too). Mirrors agent_poll.go's buildAgentURL
@@ -6975,7 +6975,7 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	agentCfg, agentOK := s.router.MarborAgentSetting(nodeName)
 	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "models.delete") {
 		writeJSONError(w, http.StatusNotImplemented, fmt.Sprintf("node %q has no agent capability for deleting local models", nodeName))
 		return
@@ -7002,7 +7002,7 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 // runtimeActionViaAgent reads) so the agent knows to route the delete
 // through `docker exec` when the runtime is Docker-controlled - see
 // pullModelViaAgent's identical reasoning.
-func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
+func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, model string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/models/"+escapeModelPathSegments(model))
 	if err != nil {
 		return err
@@ -7072,7 +7072,7 @@ var nodeTLSProbeTimeout = 10 * time.Second
 // step 2-3): dials the node's Node Agent (NOT its runtime URL - the Agent's
 // own host:port, using the Agent's own configured scheme, which is
 // independent of the runtime endpoint's scheme, see
-// store.NodeAgentRecord.Scheme's doc comment) with a TLS-handshake-only
+// store.MarborAgentRecord.Scheme's doc comment) with a TLS-handshake-only
 // connection - no bearer token sent, no certificate validated against any
 // CA or existing pin - and reports the presented leaf certificate's SHA-256
 // fingerprint for the operator to compare against what "agent service
@@ -7087,7 +7087,7 @@ func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	agentCfg, ok := s.router.NodeAgentSetting(name)
+	agentCfg, ok := s.router.MarborAgentSetting(name)
 	if !ok || !agentCfg.Enabled {
 		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q has no marbor agent configured - enable the Agent before probing", name))
 		return
@@ -7176,7 +7176,7 @@ func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), nodeHealthCheckTimeout)
 	defer cancel()
 
-	agentCfg, agentOK := s.router.NodeAgentSetting(nodeName)
+	agentCfg, agentOK := s.router.MarborAgentSetting(nodeName)
 	if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(s.router.Nodes(), nodeName, "runtime.health_check") {
 		ok, errMsg, latencyMs, found := s.router.ProbeNodeOnDemand(ctx, nodeName)
 		if !found {
@@ -7206,7 +7206,7 @@ func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 // populated nodeHealthCheckResult, not an error; err is reserved for
 // genuine transport/dispatch failures (can't reach the agent itself, bad
 // response shape).
-func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig) (nodeHealthCheckResult, error) {
+func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig) (nodeHealthCheckResult, error) {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/health")
 	if err != nil {
 		return nodeHealthCheckResult{}, err
@@ -7256,7 +7256,7 @@ var nodeUnloadModelTimeout = 30 * time.Second
 // (POST /v1/models/{name...}, capability "models.unload") instead of the
 // node's own runtime HTTP API. See actions.go's handleUnloadModel for why
 // POST (not a literal "/unload" suffix) is the verb used on this path shape.
-func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, model string, ctrl router.ControlConfig) error {
+func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, model string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentUnloadURL(nodeURL, agentCfg.Port, agentCfg.Scheme, model)
 	if err != nil {
 		return err

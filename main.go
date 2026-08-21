@@ -535,14 +535,14 @@ func main() {
 			}
 		}
 	}
-	if agents, err := st.AllNodeAgents(); err == nil {
+	if agents, err := st.AllMarborAgents(); err == nil {
 		for _, a := range agents {
 			if !a.Enabled {
 				continue
 			}
 			// a.Name was the persisted key before this change - historically
 			// always a node name (node_agent was per-node, keyed 1:1 with
-			// runtime_nodes.name). Now that nodeAgents is host-keyed,
+			// runtime_nodes.name). Now that marborAgents is host-keyed,
 			// translate: if a.Name still matches an existing node, resolve
 			// that node's Host and use it as the key, so an upgrade doesn't
 			// silently orphan every pre-existing agent-enabled install
@@ -556,7 +556,7 @@ func main() {
 			if host, ok := r.NodeHost(a.Name); ok {
 				key = host
 			}
-			r.SetNodeAgent(key, true, a.Port, a.Token, a.Scheme)
+			r.SetMarborAgent(key, true, a.Port, a.Token, a.Scheme)
 		}
 	} else {
 		log.Printf("WARNING: could not load marbor agents from store: %v", err)

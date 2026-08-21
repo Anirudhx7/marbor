@@ -738,7 +738,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		// settings must report no capabilities, not the raw agent-advertised
 		// list, so the catalog and real pull dispatch never disagree.
 		var capabilities []string
-		if agentCfg, agentOK := s.router.NodeAgentSetting(nodeName); agentOK && agentCfg.Enabled {
+		if agentCfg, agentOK := s.router.MarborAgentSetting(nodeName); agentOK && agentCfg.Enabled {
 			capabilities = agentCapabilities
 		}
 

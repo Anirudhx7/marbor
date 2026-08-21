@@ -628,7 +628,7 @@ func TestDetectSafetensorsQuant(t *testing.T) {
 // so a node whose agent is present but disabled in settings must report no
 // capabilities, even though it last polled some.
 func TestHandleModelCatalog_Capabilities(t *testing.T) {
-	// Each node needs its own host:port - SetNodeAgent keys agent config by
+	// Each node needs its own host:port - SetMarborAgent keys agent config by
 	// host, so nodes sharing one URL would clobber each other's agent config.
 	ollamaA := mockOllamaServer(t)
 	defer ollamaA.Close()
@@ -639,7 +639,7 @@ func TestHandleModelCatalog_Capabilities(t *testing.T) {
 
 	// hostOrDefault falls back to url.Hostname(), which strips the port - all
 	// three mock servers bind to 127.0.0.1, so distinct Host values must be
-	// set explicitly or SetNodeAgent (keyed by host) would clobber each
+	// set explicitly or SetMarborAgent (keyed by host) would clobber each
 	// other's config despite each node having a different URL/port.
 	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 60000}, []config.NodeConfig{
 		{Name: "agent-enabled", URL: ollamaA.URL, Host: "host-a", Runtime: "vllm"},
@@ -648,9 +648,9 @@ func TestHandleModelCatalog_Capabilities(t *testing.T) {
 	}, nil)
 
 	enabledHost, _ := r.NodeHost("agent-enabled")
-	r.SetNodeAgent(enabledHost, true, 9999, "token-a", "http")
+	r.SetMarborAgent(enabledHost, true, 9999, "token-a", "http")
 	disabledHost, _ := r.NodeHost("agent-disabled")
-	r.SetNodeAgent(disabledHost, false, 9999, "token-b", "http")
+	r.SetMarborAgent(disabledHost, false, 9999, "token-b", "http")
 
 	for _, n := range r.Nodes() {
 		n.Lock()

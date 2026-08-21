@@ -51,7 +51,7 @@ func TestHandleNodeModels_DispatchesToAgentWhenCapable(t *testing.T) {
 		{Name: "gpu-0", URL: "http://localhost:11434"},
 	}, nil)
 	agentHost, _ := r.NodeHost("gpu-0")
-	r.SetNodeAgent(agentHost, true, agentPort, "agent-secret-token", "http")
+	r.SetMarborAgent(agentHost, true, agentPort, "agent-secret-token", "http")
 	for _, n := range r.Nodes() {
 		if n.Name == "gpu-0" {
 			n.Lock()

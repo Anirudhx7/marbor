@@ -66,14 +66,14 @@ type Store interface {
 
 	// Node Agent (per-node opaque bearer token + enable/port, encrypted at
 	// rest - see internal/marboragent and .local/specs/node-agent.md section 5).
-	// GetNodeAgent's error may be returned as-is by callers (single-node
+	// GetMarborAgent's error may be returned as-is by callers (single-node
 	// lookup, blast radius is that one node's telemetry falling back to "-");
-	// AllNodeAgents must never fail the whole list on one bad row (drop and
+	// AllMarborAgents must never fail the whole list on one bad row (drop and
 	// continue, matching AllKeys/AllCloudProviders).
-	UpsertNodeAgent(rec NodeAgentRecord) error
-	GetNodeAgent(name string) (NodeAgentRecord, bool, error)
-	AllNodeAgents() ([]NodeAgentRecord, error)
-	DeleteNodeAgent(name string) error
+	UpsertMarborAgent(rec MarborAgentRecord) error
+	GetMarborAgent(name string) (MarborAgentRecord, bool, error)
+	AllMarborAgents() ([]MarborAgentRecord, error)
+	DeleteMarborAgent(name string) error
 
 	// Node ControlDriver config (per-node, how the agent controls the
 	// runtime process - P43, .local/specs/node-agent-capabilities.md
@@ -347,14 +347,14 @@ type NodeOverride struct {
 	TLSFingerprint *string `json:"tls_fingerprint,omitempty"`
 }
 
-// NodeAgentRecord is the per-node Node Agent configuration: whether the
+// MarborAgentRecord is the per-node Node Agent configuration: whether the
 // agent is enabled for this node, which port it listens on, and the opaque
 // bearer token the mesh presents when polling it. Token is encrypted at
 // rest by the sqliteStore implementation (AES-256-GCM, same primitive as
 // secretbox.go) - see .local/specs/node-agent.md section 5 for why this is
 // a distinct protocol/table from the client-facing API-key mechanism, not a
 // reuse of it.
-type NodeAgentRecord struct {
+type MarborAgentRecord struct {
 	Name    string `json:"name"`
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
@@ -705,12 +705,12 @@ func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *
 func (NopStore) NodeOverrides() (map[string]NodeOverride, error)     { return nil, nil }
 func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error       { return nil }
 func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error) { return nil, nil }
-func (NopStore) UpsertNodeAgent(_ NodeAgentRecord) error             { return nil }
-func (NopStore) GetNodeAgent(_ string) (NodeAgentRecord, bool, error) {
-	return NodeAgentRecord{}, false, nil
+func (NopStore) UpsertMarborAgent(_ MarborAgentRecord) error         { return nil }
+func (NopStore) GetMarborAgent(_ string) (MarborAgentRecord, bool, error) {
+	return MarborAgentRecord{}, false, nil
 }
-func (NopStore) AllNodeAgents() ([]NodeAgentRecord, error)                    { return nil, nil }
-func (NopStore) DeleteNodeAgent(_ string) error                               { return nil }
+func (NopStore) AllMarborAgents() ([]MarborAgentRecord, error)                { return nil, nil }
+func (NopStore) DeleteMarborAgent(_ string) error                             { return nil }
 func (NopStore) UpsertNodeControlDiscovered(_, _, _ string, _ []string) error { return nil }
 func (NopStore) UpsertNodeControlConfigured(_, _, _, _ string) error          { return nil }
 func (NopStore) ClearNodeControlConfigured(_ string) error                    { return nil }

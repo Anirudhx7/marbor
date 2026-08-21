@@ -1186,7 +1186,7 @@ export async function triggerWarmupPing(): Promise<{ status: string }> {
 // The token is only ever returned by enable/regenerate - it is never
 // retrievable again afterward (matches the API Keys "shown once" pattern).
 
-export interface NodeAgentStatus {
+export interface MarborAgentStatus {
   node: string;
   enabled: boolean;
   port: number;
@@ -1196,7 +1196,7 @@ export interface NodeAgentStatus {
   scheme?: 'http' | 'https';
 }
 
-export interface NodeAgentEnableResult {
+export interface MarborAgentEnableResult {
   node: string;
   enabled: boolean;
   port: number;
@@ -1206,13 +1206,13 @@ export interface NodeAgentEnableResult {
   install_command_windows: string; // Windows PowerShell one-liner (install.ps1, ROLE=agent)
 }
 
-export async function getNodeAgent(name: string): Promise<NodeAgentStatus> {
+export async function getMarborAgent(name: string): Promise<MarborAgentStatus> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch marbor agent status');
   return res.json();
 }
 
-export async function enableNodeAgent(name: string, port: number, scheme: 'http' | 'https' = 'http'): Promise<NodeAgentEnableResult> {
+export async function enableMarborAgent(name: string, port: number, scheme: 'http' | 'https' = 'http'): Promise<MarborAgentEnableResult> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -1222,7 +1222,7 @@ export async function enableNodeAgent(name: string, port: number, scheme: 'http'
   return res.json();
 }
 
-export async function regenerateNodeAgentToken(name: string): Promise<NodeAgentEnableResult> {
+export async function regenerateMarborAgentToken(name: string): Promise<MarborAgentEnableResult> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent/regenerate`, {
     method: 'POST',
     headers: authHeaders(),
@@ -1231,7 +1231,7 @@ export async function regenerateNodeAgentToken(name: string): Promise<NodeAgentE
   return res.json();
 }
 
-export async function disableNodeAgent(name: string): Promise<void> {
+export async function disableMarborAgent(name: string): Promise<void> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, {
     method: 'DELETE',
     headers: authHeaders(),

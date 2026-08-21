@@ -80,7 +80,7 @@ type NodeState struct {
 	URL  string
 	// Host groups this node with any other node sharing the same physical
 	// machine, so a single Node Agent process/enrollment/token covers all of
-	// them (see SetNodeAgent/NodeAgentSetting, keyed by Host, not Name).
+	// them (see SetMarborAgent/MarborAgentSetting, keyed by Host, not Name).
 	// Always non-empty in memory: defaulted to the URL's hostname in AddNode
 	// when config.NodeConfig.Host is unset, so it never needs a nil check.
 	Host         string
@@ -432,7 +432,7 @@ type Router struct {
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
 	nodeWarmup map[string]NodeWarmup
-	// nodeAgents holds per-HOST Node Agent poll configuration (enabled,
+	// marborAgents holds per-HOST Node Agent poll configuration (enabled,
 	// port, bearer token), keyed by NodeState.Host - not by node name - so
 	// every node sharing a physical machine polls the same agent process
 	// with the same token (see pollAgentHost in agent_poll.go). Toggled via
@@ -442,9 +442,9 @@ type Router struct {
 	// absent from this map (or present with Enabled: false) means every
 	// node on it is polled for /api/ps as normal but never has its agent
 	// fields (AgentPresent, FanPercent, RAMUsedMB, DiskFreeGB) populated.
-	nodeAgents map[string]NodeAgentConfig
+	marborAgents map[string]MarborAgentConfig
 	// nodeControl holds the per-node accepted ControlDriver config (P43),
-	// guarded by r.mu same as nodeAgents. Absent (or Configured: false)
+	// guarded by r.mu same as marborAgents. Absent (or Configured: false)
 	// means lifecycle actions must return the "no control driver
 	// configured" error rather than guessing.
 	nodeControl map[string]ControlConfig
@@ -643,7 +643,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		sessionAffinity:          cfg.SessionAffinity,
 		modelDigests:             make(map[string]string),
 		nodeWarmup:               make(map[string]NodeWarmup),
-		nodeAgents:               make(map[string]NodeAgentConfig),
+		marborAgents:             make(map[string]MarborAgentConfig),
 		schedLastFired:           make(map[string]string),
 		lastUsed:                 make(map[string]time.Time),
 		pinned:                   make(map[string]map[string]bool),
@@ -716,74 +716,74 @@ func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
 	return NodeWarmup{Enabled: nw.Enabled, Models: append([]string(nil), nw.Models...)}
 }
 
-// NodeAgentConfig is the router's in-memory view of a host's Node Agent
+// MarborAgentConfig is the router's in-memory view of a host's Node Agent
 // poll configuration: whether the agent is enabled, which port it listens
 // on, and the bearer token the mesh presents when polling it. One config
 // per physical host, shared by every node row on that host.
-type NodeAgentConfig struct {
+type MarborAgentConfig struct {
 	Enabled bool
 	Port    int
 	Token   string `json:"-"`
 	// Scheme is the agent's own transport scheme ("http" or "https"),
 	// independent of the node's runtime URL scheme - see
-	// store.NodeAgentRecord.Scheme's doc comment. Always "http" or "https";
-	// SetNodeAgent defaults it to "http" if passed empty.
+	// store.MarborAgentRecord.Scheme's doc comment. Always "http" or "https";
+	// SetMarborAgent defaults it to "http" if passed empty.
 	Scheme string
 }
 
-// SetNodeAgent sets the per-HOST Node Agent poll config (admin-toggled,
+// SetMarborAgent sets the per-HOST Node Agent poll config (admin-toggled,
 // store-persisted by the caller under the same host key). Disabling removes
 // the host from the map entirely so pollAgentHost's "no agent configured"
 // branch runs on the next poll, clearing any previously-reported agent
 // fields for every node on that host.
-func (r *Router) SetNodeAgent(host string, enabled bool, port int, token string, scheme string) {
+func (r *Router) SetMarborAgent(host string, enabled bool, port int, token string, scheme string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.nodeAgents == nil {
-		r.nodeAgents = make(map[string]NodeAgentConfig)
+	if r.marborAgents == nil {
+		r.marborAgents = make(map[string]MarborAgentConfig)
 	}
 	if !enabled {
-		delete(r.nodeAgents, host)
+		delete(r.marborAgents, host)
 		return
 	}
 	if scheme == "" {
 		scheme = "http"
 	}
-	r.nodeAgents[host] = NodeAgentConfig{Enabled: true, Port: port, Token: token, Scheme: scheme}
+	r.marborAgents[host] = MarborAgentConfig{Enabled: true, Port: port, Token: token, Scheme: scheme}
 }
 
-// NodeAgentSetting returns the agent config for the HOST that name's node
+// MarborAgentSetting returns the agent config for the HOST that name's node
 // belongs to, and whether one is configured (enabled) at all. Callers that
-// already have a host string (e.g. pollAgentHost) should index nodeAgents
+// already have a host string (e.g. pollAgentHost) should index marborAgents
 // directly instead - this is the node-name-based convenience for admin.go
 // handlers that still receive a node name from the URL path.
-func (r *Router) NodeAgentSetting(name string) (NodeAgentConfig, bool) {
+func (r *Router) MarborAgentSetting(name string) (MarborAgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	host, ok := r.hostOfLocked(name)
 	if !ok {
-		return NodeAgentConfig{}, false
+		return MarborAgentConfig{}, false
 	}
-	cfg, ok := r.nodeAgents[host]
+	cfg, ok := r.marborAgents[host]
 	return cfg, ok
 }
 
-// NodeAgentSettingByHost returns the agent config for a bare host string
+// MarborAgentSettingByHost returns the agent config for a bare host string
 // directly (no node-name resolution) - for callers like validateTLSPatch
 // that must check the config for a node's RESULTING host (post-patch),
 // which a name-based lookup cannot express since name still resolves to the
 // node's CURRENT (pre-mutation) host.
-func (r *Router) NodeAgentSettingByHost(host string) (NodeAgentConfig, bool) {
+func (r *Router) MarborAgentSettingByHost(host string) (MarborAgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	cfg, ok := r.nodeAgents[host]
+	cfg, ok := r.marborAgents[host]
 	return cfg, ok
 }
 
 // NodeHost returns the Host that name's node belongs to, and whether name
 // was found at all. admin.go handlers use this to resolve a node name (from
 // the URL path) to the shared host key before reading/writing node_agent -
-// see SetNodeAgent/NodeAgentSetting's doc comments.
+// see SetMarborAgent/MarborAgentSetting's doc comments.
 func (r *Router) NodeHost(name string) (string, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -820,7 +820,7 @@ type ControlConfig struct {
 
 // SetNodeControl sets the per-node ControlDriver config (admin-toggled,
 // store-persisted by the caller). Removing the node from the map entirely
-// on !configured mirrors SetNodeAgent's disable behavior.
+// on !configured mirrors SetMarborAgent's disable behavior.
 func (r *Router) SetNodeControl(name string, cfg ControlConfig) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1311,7 +1311,7 @@ func (r *Router) RemoveNode(name string) {
 	}
 	delete(r.prevHealthy, name)
 	delete(r.prevAgentPresent, name)
-	// nodeAgents is keyed by Host, shared by every node on that host - only
+	// marborAgents is keyed by Host, shared by every node on that host - only
 	// drop the entry once no other node still references this host, so
 	// removing one node on a multi-runtime host doesn't disable the agent
 	// for its siblings.
@@ -1324,7 +1324,7 @@ func (r *Router) RemoveNode(name string) {
 			}
 		}
 		if !stillShared {
-			delete(r.nodeAgents, hostRemoved)
+			delete(r.marborAgents, hostRemoved)
 		}
 	}
 	if urlToRemove != "" {
