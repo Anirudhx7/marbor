@@ -101,7 +101,7 @@ func TestNodeAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
 	// Deliberately omit the scope column, simulating a pre-P54 row (or the
 	// ALTER TABLE migration's default applying to a row written before it
 	// ran).
-	if _, err := ss.db.Exec(`INSERT INTO node_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
+	if _, err := ss.db.Exec(`INSERT INTO marbor_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
 		"legacy-node", 1, 9200, "legacy-plaintext-token"); err != nil {
 		t.Fatalf("seed legacy row: %v", err)
 	}
@@ -151,11 +151,11 @@ func TestNodeAgentTokenEncryptedAtRest(t *testing.T) {
 
 	ss := st.(*sqliteStore)
 	var raw string
-	if err := ss.db.QueryRow(`SELECT token FROM node_agent WHERE name=?`, "gpu-1").Scan(&raw); err != nil {
+	if err := ss.db.QueryRow(`SELECT token FROM marbor_agent WHERE name=?`, "gpu-1").Scan(&raw); err != nil {
 		t.Fatalf("select raw token: %v", err)
 	}
 	if raw == "sk-agent-token-real" || !strings.HasPrefix(raw, secretEncPrefix) {
-		t.Fatalf("node_agent.token stored as %q, want enc:v1:-prefixed ciphertext", raw)
+		t.Fatalf("marbor_agent.token stored as %q, want enc:v1:-prefixed ciphertext", raw)
 	}
 }
 
@@ -195,7 +195,7 @@ func TestAllMarborAgents(t *testing.T) {
 
 // TestAllMarborAgentsDropsUndecryptableRow mirrors
 // TestAllKeysDropsUndecryptableRowWithoutBreakingOthers (secretbox_test.go):
-// one corrupt/undecryptable node_agent.token must not fail the whole list -
+// one corrupt/undecryptable marbor_agent.token must not fail the whole list -
 // this feeds the router's boot-time agent poll wiring, and one bad row must
 // not blank out telemetry for every other node.
 func TestAllMarborAgentsDropsUndecryptableRow(t *testing.T) {
@@ -211,7 +211,7 @@ func TestAllMarborAgentsDropsUndecryptableRow(t *testing.T) {
 	}
 
 	ss := st.(*sqliteStore)
-	if _, err := ss.db.Exec(`INSERT INTO node_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
+	if _, err := ss.db.Exec(`INSERT INTO marbor_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
 		"broken", 1, 9201, secretEncPrefix+"not-valid-base64-ciphertext!!"); err != nil {
 		t.Fatalf("seed broken row: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestDeleteMarborAgent(t *testing.T) {
 }
 
 // TestDeleteNodeCascadesNodeAgent verifies that removing a node (DeleteNode)
-// also removes its node_agent row - a stale agent token for a deleted node
+// also removes its marbor_agent row - a stale agent token for a deleted node
 // is a dangling-secret concern (R8), even though other per-node aux tables
 // (node_overrides, node_drain) are left behind by the existing pattern.
 func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
@@ -265,7 +265,7 @@ func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
 	}
 	defer st.Close()
 
-	// node_agent is keyed by the node's shared host, not its name (see
+	// marbor_agent is keyed by the node's shared host, not its name (see
 	// admin.go's handleEnableMarborAgent: MarborAgentRecord{Name: host, ...}) -
 	// this fixture mirrors that real write pattern.
 	if err := st.UpsertNode(NodeRecord{Name: "gpu-1", URL: "http://10.0.0.5:11434", Runtime: "ollama"}); err != nil {
@@ -284,12 +284,12 @@ func TestDeleteNodeCascadesNodeAgent(t *testing.T) {
 		t.Fatalf("GetMarborAgent after DeleteNode: %v", err)
 	}
 	if found {
-		t.Fatal("DeleteNode did not cascade-delete the node_agent row - stale token left behind (R8)")
+		t.Fatal("DeleteNode did not cascade-delete the marbor_agent row - stale token left behind (R8)")
 	}
 }
 
 // TestDeleteNodeDoesNotCascadeSharedHostAgent verifies DeleteNode leaves the
-// node_agent row alone when another node still shares its host - deleting
+// marbor_agent row alone when another node still shares its host - deleting
 // one runtime on a multi-runtime box must not kill the Node Agent config for
 // its sibling node(s) on the same physical machine.
 func TestDeleteNodeDoesNotCascadeSharedHostAgent(t *testing.T) {
@@ -319,13 +319,13 @@ func TestDeleteNodeDoesNotCascadeSharedHostAgent(t *testing.T) {
 		t.Fatalf("GetMarborAgent after DeleteNode: %v", err)
 	}
 	if !found {
-		t.Fatal("DeleteNode wrongly cascade-deleted the node_agent row still used by gpu-2")
+		t.Fatal("DeleteNode wrongly cascade-deleted the marbor_agent row still used by gpu-2")
 	}
 }
 
 // TestMigrateEncryptSecretsUpgradesLegacyNodeAgentToken mirrors
 // TestMigrateEncryptSecretsUpgradesLegacyPlaintext (secretbox_test.go) for
-// the node_agent table: a plaintext token written before this feature
+// the marbor_agent table: a plaintext token written before this feature
 // existed (or by some other bypass) must be encrypted in place on the next
 // boot, transparently, with no manual step.
 func TestMigrateEncryptSecretsUpgradesLegacyNodeAgentToken(t *testing.T) {
@@ -336,9 +336,9 @@ func TestMigrateEncryptSecretsUpgradesLegacyNodeAgentToken(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 	ss := st.(*sqliteStore)
-	if _, err := ss.db.Exec(`INSERT INTO node_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
+	if _, err := ss.db.Exec(`INSERT INTO marbor_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
 		"gpu-1", 1, 9200, "legacy-plaintext-token"); err != nil {
-		t.Fatalf("seed node_agent: %v", err)
+		t.Fatalf("seed marbor_agent: %v", err)
 	}
 	if err := st.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -352,14 +352,14 @@ func TestMigrateEncryptSecretsUpgradesLegacyNodeAgentToken(t *testing.T) {
 	ss2 := st2.(*sqliteStore)
 
 	var raw string
-	if err := ss2.db.QueryRow(`SELECT token FROM node_agent WHERE name=?`, "gpu-1").Scan(&raw); err != nil {
+	if err := ss2.db.QueryRow(`SELECT token FROM marbor_agent WHERE name=?`, "gpu-1").Scan(&raw); err != nil {
 		t.Fatalf("select raw token: %v", err)
 	}
 	if raw == "legacy-plaintext-token" {
-		t.Fatal("node_agent.token still stored as plaintext after migration")
+		t.Fatal("marbor_agent.token still stored as plaintext after migration")
 	}
 	if !strings.HasPrefix(raw, secretEncPrefix) {
-		t.Fatalf("node_agent.token = %q, want enc:v1: prefix after migration", raw)
+		t.Fatalf("marbor_agent.token = %q, want enc:v1: prefix after migration", raw)
 	}
 
 	rec, found, err := st2.GetMarborAgent("gpu-1")

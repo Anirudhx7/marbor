@@ -541,7 +541,7 @@ func main() {
 				continue
 			}
 			// a.Name was the persisted key before this change - historically
-			// always a node name (node_agent was per-node, keyed 1:1 with
+			// always a node name (agent config was per-node, keyed 1:1 with
 			// runtime_nodes.name). Now that marborAgents is host-keyed,
 			// translate: if a.Name still matches an existing node, resolve
 			// that node's Host and use it as the key, so an upgrade doesn't

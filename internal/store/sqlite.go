@@ -202,7 +202,7 @@ func (s *sqliteStore) migrate() error {
 			drained_reason TEXT NOT NULL DEFAULT ''
 		)`,
 
-		// node_agent holds the per-node Node Agent configuration (opaque
+		// marbor_agent holds the per-node Marbor Agent configuration (opaque
 		// bearer token, port, enabled flag). Token is encrypted at rest
 		// (enc:v1: prefix, see secretbox.go) by every writer below. scope
 		// (P54: per-action token scoping) is NOT a secret - it's a plaintext
@@ -212,16 +212,16 @@ func (s *sqliteStore) migrate() error {
 		// Default 'admin' matches every pre-P54 row's actual (unprefixed,
 		// full-scope-by-fallback) token.
 		// scheme (added post-P24 fix, see .local/specs/node-agent-tls.md's
-		// dated correction note) is the Node Agent's OWN transport scheme
+		// dated correction note) is the Marbor Agent's OWN transport scheme
 		// ("http" or "https") - independent of the runtime_nodes.url scheme
 		// the same host's inference endpoint uses. Before this column
-		// existed, every Node Agent URL builder derived its scheme from the
+		// existed, every Marbor Agent URL builder derived its scheme from the
 		// node's runtime URL instead, so enabling HTTPS for the agent also
 		// silently switched the runtime endpoint to https:// and broke
 		// runtimes (Ollama, vLLM, etc.) that only ever serve plain HTTP.
 		// Default 'http' matches every pre-existing row's actual (plaintext)
 		// agent transport.
-		`CREATE TABLE IF NOT EXISTS node_agent (
+		`CREATE TABLE IF NOT EXISTS marbor_agent (
 			name    TEXT PRIMARY KEY,
 			enabled INTEGER NOT NULL DEFAULT 0,
 			port    INTEGER NOT NULL DEFAULT 0,
@@ -232,7 +232,7 @@ func (s *sqliteStore) migrate() error {
 
 		// node_control holds the per-node ControlDriver configuration (P43,
 		// node-agent-capabilities.md section 5.5) - none of these columns
-		// are secrets (no token/key here), unlike node_agent, so no
+		// are secrets (no token/key here), unlike marbor_agent, so no
 		// secretbox encryption applies. discovered_evidence is a JSON array
 		// stored as TEXT, same convention as other JSON-in-TEXT columns in
 		// this file (e.g. runtime_keys.models). configured is 0 until an
@@ -494,10 +494,10 @@ func (s *sqliteStore) migrate() error {
 		// each needing its own - see internal/router.AddNode for the
 		// default-from-URL-hostname fallback when this is left empty.
 		`ALTER TABLE runtime_nodes ADD COLUMN host TEXT`,
-		// P54: per-action Node Agent token scoping - see node_agent's table
-		// comment above for why 'admin' is the correct default for rows that
-		// predate this column.
-		`ALTER TABLE node_agent ADD COLUMN scope TEXT NOT NULL DEFAULT 'admin'`,
+		// P54: per-action Marbor Agent token scoping - see marbor_agent's
+		// table comment above for why 'admin' is the correct default for
+		// rows that predate this column.
+		`ALTER TABLE marbor_agent ADD COLUMN scope TEXT NOT NULL DEFAULT 'admin'`,
 		// P41: per-request routing explainability. routing_reason is the short
 		// top-level Reason (session_affinity | pinned_warm | score_based);
 		// routing_detail is the JSON-encoded score breakdown (nil for
@@ -508,9 +508,9 @@ func (s *sqliteStore) migrate() error {
 		// audit_log via QueryAuditLog, not request_log - routing_reason must
 		// live here too or the reason badge never populates in production.
 		`ALTER TABLE audit_log ADD COLUMN routing_reason TEXT NOT NULL DEFAULT ''`,
-		// Node Agent transport scheme, decoupled from the runtime URL's own
-		// scheme - see node_agent's table comment above.
-		`ALTER TABLE node_agent ADD COLUMN scheme TEXT NOT NULL DEFAULT 'http'`,
+		// Marbor Agent transport scheme, decoupled from the runtime URL's own
+		// scheme - see marbor_agent's table comment above.
+		`ALTER TABLE marbor_agent ADD COLUMN scheme TEXT NOT NULL DEFAULT 'http'`,
 	} {
 		s.db.Exec(col) // ignore error - column may already exist
 	}
@@ -518,7 +518,7 @@ func (s *sqliteStore) migrate() error {
 		return fmt.Errorf("migrate encrypt secrets: %w", err)
 	}
 	if err := s.migrateMarborAgentRekeyByHost(); err != nil {
-		return fmt.Errorf("migrate node_agent rekey by host: %w", err)
+		return fmt.Errorf("migrate marbor_agent rekey by host: %w", err)
 	}
 	if err := s.SetSetting("schema_version", strconv.Itoa(CurrentSchemaVersion)); err != nil {
 		return fmt.Errorf("migrate: stamp schema_version: %w", err)
@@ -526,7 +526,7 @@ func (s *sqliteStore) migrate() error {
 	return nil
 }
 
-// migrateMarborAgentRekeyByHost moves any node_agent row still keyed by an old
+// migrateMarborAgentRekeyByHost moves any marbor_agent row still keyed by an old
 // node name (from before host-scoping) onto its node's shared host key, so
 // disable/enable/regenerate - which all operate by host post-fix - actually
 // find the row. A row is left alone if its key already matches some node's
@@ -553,22 +553,22 @@ func (s *sqliteStore) migrateMarborAgentRekeyByHost() error {
 		hosts[host] = true
 	}
 
-	rows, err := s.db.Query(`SELECT name FROM node_agent`)
+	rows, err := s.db.Query(`SELECT name FROM marbor_agent`)
 	if err != nil {
-		return fmt.Errorf("select node_agent: %w", err)
+		return fmt.Errorf("select marbor_agent: %w", err)
 	}
 	var keys []string
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
 			rows.Close()
-			return fmt.Errorf("scan node_agent: %w", err)
+			return fmt.Errorf("scan marbor_agent: %w", err)
 		}
 		keys = append(keys, name)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("node_agent rows: %w", err)
+		return fmt.Errorf("marbor_agent rows: %w", err)
 	}
 
 	for _, key := range keys {
@@ -580,16 +580,16 @@ func (s *sqliteStore) migrateMarborAgentRekeyByHost() error {
 			continue // not a known node name, or would be a no-op rename
 		}
 		if _, err := s.db.Exec(
-			`INSERT OR IGNORE INTO node_agent (name, enabled, port, token)
-			 SELECT ?, enabled, port, token FROM node_agent WHERE name = ?`,
+			`INSERT OR IGNORE INTO marbor_agent (name, enabled, port, token)
+			 SELECT ?, enabled, port, token FROM marbor_agent WHERE name = ?`,
 			host, key,
 		); err != nil {
-			return fmt.Errorf("rekey node_agent %s -> %s: %w", key, host, err)
+			return fmt.Errorf("rekey marbor_agent %s -> %s: %w", key, host, err)
 		}
-		if _, err := s.db.Exec(`DELETE FROM node_agent WHERE name = ?`, key); err != nil {
-			return fmt.Errorf("delete legacy node_agent row %s: %w", key, err)
+		if _, err := s.db.Exec(`DELETE FROM marbor_agent WHERE name = ?`, key); err != nil {
+			return fmt.Errorf("delete legacy-keyed marbor_agent row %s: %w", key, err)
 		}
-		log.Printf("store: migrated node_agent config for %q to shared host key %q", key, host)
+		log.Printf("store: migrated marbor_agent config for %q to shared host key %q", key, host)
 	}
 	return nil
 }
@@ -658,16 +658,16 @@ func (s *sqliteStore) migrateEncryptSecrets() error {
 		}
 	}
 
-	rows, err = s.db.Query(`SELECT name, token FROM node_agent`)
+	rows, err = s.db.Query(`SELECT name, token FROM marbor_agent`)
 	if err != nil {
-		return fmt.Errorf("select node_agent: %w", err)
+		return fmt.Errorf("select marbor_agent: %w", err)
 	}
 	pending = pending[:0]
 	for rows.Next() {
 		var name, token string
 		if err := rows.Scan(&name, &token); err != nil {
 			rows.Close()
-			return fmt.Errorf("scan node_agent: %w", err)
+			return fmt.Errorf("scan marbor_agent: %w", err)
 		}
 		if token != "" && !strings.HasPrefix(token, secretEncPrefix) {
 			pending = append(pending, plain{name, token})
@@ -675,15 +675,15 @@ func (s *sqliteStore) migrateEncryptSecrets() error {
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("node_agent rows: %w", err)
+		return fmt.Errorf("marbor_agent rows: %w", err)
 	}
 	for _, p := range pending {
 		enc, err := encryptSecret(s.secretKey, p.value)
 		if err != nil {
-			return fmt.Errorf("encrypt node_agent.token for %s: %w", p.name, err)
+			return fmt.Errorf("encrypt marbor_agent.token for %s: %w", p.name, err)
 		}
-		if _, err := s.db.Exec(`UPDATE node_agent SET token=? WHERE name=?`, enc, p.name); err != nil {
-			return fmt.Errorf("update node_agent.token for %s: %w", p.name, err)
+		if _, err := s.db.Exec(`UPDATE marbor_agent SET token=? WHERE name=?`, enc, p.name); err != nil {
+			return fmt.Errorf("update marbor_agent.token for %s: %w", p.name, err)
 		}
 	}
 
@@ -1010,10 +1010,10 @@ func (s *sqliteStore) DeleteNode(name string) error {
 		return fmt.Errorf("store: DeleteNode: %w", err)
 	}
 
-	// node_agent is keyed by the node's shared host (see UpsertMarborAgent
+	// marbor_agent is keyed by the node's shared host (see UpsertMarborAgent
 	// callers), not by node name - deleting by name here would silently
 	// leave the real row (and its secret token) orphaned (R8). Only delete
-	// it if no other node still shares that host, since node_agent covers
+	// it if no other node still shares that host, since marbor_agent covers
 	// every node on the host, not just the one being removed.
 	agentHost := hostForDelete(host, nodeURL)
 	if agentHost == "" {
@@ -1033,7 +1033,7 @@ func (s *sqliteStore) DeleteNode(name string) error {
 	// node_drain rows for a deleted node are left behind by the existing
 	// pattern - don't invent broader cleanup discipline beyond this.
 	if err := s.DeleteMarborAgent(agentHost); err != nil {
-		return fmt.Errorf("store: DeleteNode: cascade node_agent: %w", err)
+		return fmt.Errorf("store: DeleteNode: cascade marbor_agent: %w", err)
 	}
 	return nil
 }
@@ -1283,7 +1283,7 @@ func (s *sqliteStore) UpsertMarborAgent(rec MarborAgentRecord) error {
 		scheme = "http"
 	}
 	_, err = s.db.Exec(
-		`INSERT OR REPLACE INTO node_agent (name, enabled, port, token, scope, scheme) VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT OR REPLACE INTO marbor_agent (name, enabled, port, token, scope, scheme) VALUES (?, ?, ?, ?, ?, ?)`,
 		rec.Name, enabled, rec.Port, enc, scope, scheme,
 	)
 	if err != nil {
@@ -1302,7 +1302,7 @@ func (s *sqliteStore) GetMarborAgent(name string) (MarborAgentRecord, bool, erro
 	var enabled int
 	var encToken string
 	err := s.db.QueryRow(
-		`SELECT name, enabled, port, token, scope, scheme FROM node_agent WHERE name = ?`, name,
+		`SELECT name, enabled, port, token, scope, scheme FROM marbor_agent WHERE name = ?`, name,
 	).Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope, &rec.Scheme)
 	if err == sql.ErrNoRows {
 		return MarborAgentRecord{}, false, nil
@@ -1329,7 +1329,7 @@ func (s *sqliteStore) GetMarborAgent(name string) (MarborAgentRecord, bool, erro
 // expected tokens), but dropping the row is the same defensive pattern
 // used everywhere else in this file for a corrupt secret.
 func (s *sqliteStore) AllMarborAgents() ([]MarborAgentRecord, error) {
-	rows, err := s.db.Query(`SELECT name, enabled, port, token, scope, scheme FROM node_agent`)
+	rows, err := s.db.Query(`SELECT name, enabled, port, token, scope, scheme FROM marbor_agent`)
 	if err != nil {
 		return nil, fmt.Errorf("store: AllMarborAgents: %w", err)
 	}
@@ -1359,7 +1359,7 @@ func (s *sqliteStore) AllMarborAgents() ([]MarborAgentRecord, error) {
 }
 
 func (s *sqliteStore) DeleteMarborAgent(name string) error {
-	_, err := s.db.Exec(`DELETE FROM node_agent WHERE name=?`, name)
+	_, err := s.db.Exec(`DELETE FROM marbor_agent WHERE name=?`, name)
 	if err != nil {
 		return fmt.Errorf("store: DeleteMarborAgent: %w", err)
 	}

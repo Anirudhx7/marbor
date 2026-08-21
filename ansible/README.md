@@ -196,7 +196,7 @@ safe to wire into CI/cron without silently succeeding on a partial fleet.
 run. Per `internal/admin/admin.go` `handleEnableNodeAgent`, every call:
 
 - generates a brand-new opaque token,
-- overwrites the persisted `node_agent` record for that host, and
+- overwrites the persisted `marbor_agent` record for that host, and
 - pushes the new token to the live router immediately (`SetNodeAgent`),
 
 with no check for whether an agent is already enrolled and healthy. Calling
