@@ -58,11 +58,11 @@ Platform teams often attempt to orchestrate local GPU nodes using generic networ
 
 ## Where does LiteLLM fit?
 
-LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting. 
+LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting.
 
-Rather than a competitor, **marbor operates as a complementary layer beneath LiteLLM**. 
+Rather than a competitor, **marbor operates as a complementary layer beneath LiteLLM**.
 
-When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while **marbor slots in directly below it as the physical scheduling and GPU orchestration layer**. 
+When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while **marbor slots in directly below it as the physical scheduling and GPU orchestration layer**.
 
 This stack offers the best of both worlds:
 1. **LiteLLM (Gateway)**: Manages developer authentication, user quotas, and application-level routing.
@@ -75,4 +75,3 @@ This stack offers the best of both worlds:
 - GPU metrics (VRAM/temperature/power) for the local node come from `nvidia-smi` on the mesh host directly. Remote nodes get real GPU telemetry only if the optional marbor agent is installed on them (opt-in, not auto-deployed) - without it, remote GPU metrics fall back to operator-declared `vram_total_mb` or show "-". Warm-model detection works for all nodes regardless (it uses Ollama's own `/api/ps`).
 - Analytics and the request log are in-memory and reset on restart. Prometheus metrics persist, and the audit log persists to the `audit_log` table in `marbor.db` with configurable retention.
 - Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "-", never an estimate.
-

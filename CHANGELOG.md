@@ -579,5 +579,3 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Prometheus metrics on :9090
 - Docker Compose example
 - Single Go binary, zero runtime dependencies
-
-

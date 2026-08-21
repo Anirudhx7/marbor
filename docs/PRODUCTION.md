@@ -317,5 +317,3 @@ have an honest number today.
 Re-run `bench/loadtest` after any change to `internal/audit`, `internal/admin`'s async
 queues, or `internal/store/sqlite.go`'s connection/pragma settings, or on real production
 hardware, since any of those can move this number.
-
-

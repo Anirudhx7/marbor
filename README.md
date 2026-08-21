@@ -641,5 +641,3 @@ See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 ## License
 
 Apache-2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). The open-source core is free for any use, including commercial. Enterprise governance/compliance features are offered separately under a commercial license (see [ROADMAP.md](ROADMAP.md)).
-
-

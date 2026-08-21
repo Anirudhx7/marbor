@@ -207,4 +207,3 @@ Every routed request is recorded in the JSON-lines audit log (when enabled) with
 - HTTP status and latency
 
 This log is the source of truth for financial reconciliation. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.
-

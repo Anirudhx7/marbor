@@ -41,5 +41,3 @@ scrape_configs:
 | Routing | Healthy Nodes | `marbor_node_healthy` |
 | Routing | Active Connections per Node | `marbor_active_connections` by `node` |
 | Routing | Tokens/s by API Key | `marbor_tokens_total` by `key_name` |
-
-
