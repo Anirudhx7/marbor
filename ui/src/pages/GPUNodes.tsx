@@ -813,8 +813,8 @@ export function GPUNodes() {
       const meshUrl = window.location.origin;
       setAgentStatus({ node: agentNode.name, enabled: true, port, scheme });
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.ps1 | iex`,
       });
       setNodes(prev => prev.map(n => n.name === agentNode.name
         // A node that's already enrolled (reconfigure) keeps its real
@@ -885,8 +885,8 @@ export function GPUNodes() {
       const meshUrl = window.location.origin;
       const port = agentStatus?.port ?? 9200;
       setAgentInstallCommand({
-        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
-        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.ps1 | iex`,
+        unix: `curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=${meshUrl} MARBOR_ENROLL=${enrollCode} PORT=${port} sh`,
+        windows: `$env:ROLE="agent"; $env:MARBOR_SERVER="${meshUrl}"; $env:MARBOR_ENROLL="${enrollCode}"; $env:PORT="${port}"; irm https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.ps1 | iex`,
       });
       setAgentBusy(false);
       return;

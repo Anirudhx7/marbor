@@ -39,7 +39,7 @@ node and returns a ready-to-run install command with the enrollment code embedde
   "enabled": true,
   "port": 11434,
   "token": "admin.<opaque-permanent-token>",
-  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=<short-lived-code> PORT=11434 sh",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=<short-lived-code> PORT=11434 sh",
   "install_command_windows": "..."
 }
 ```
