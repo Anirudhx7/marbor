@@ -243,7 +243,7 @@ var controlPlaneOnlyPackages = []string{
 // goListDeps runs "go list -deps" for importPath and returns the set of
 // import paths in its build graph, so a test can assert on the actual
 // compiled dependency graph rather than trusting that nobody added a new
-// import later. This is the real proof for the control-plane/Node-Agent
+// import later. This is the real proof for the control-plane/Marbor Agent
 // binary split's acceptance criterion: it fails the moment anyone imports a
 // forbidden package, not just when someone remembers to update a hand-typed
 // list of what's supposedly true.

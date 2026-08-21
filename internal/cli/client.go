@@ -186,7 +186,7 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 // always exactly one Admin API request, never a direct Marbor Agent call.
 func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Response, error) {
 	if c.Token == "" {
-		return nil, userErrorf("authentication required: run marbor login, or pass --token (or --username/--password / MARBOR_TOKEN / MARBOR_USERNAME+MARBOR_PASSWORD)")
+		return nil, userErrorf("authentication required: run 'marbor login', or pass --username/--password (or set MARBOR_USERNAME+MARBOR_PASSWORD)")
 	}
 	var reader io.Reader
 	if body != nil {

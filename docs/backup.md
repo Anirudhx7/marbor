@@ -113,5 +113,3 @@ Either way, the container must be **stopped** first, since SQLite's WAL sidecar 
 
 **Kubernetes:** scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a
 temporary debug pod with the same PVC mounted, or `kubectl cp` into that pod), then scale back to 1.
-
-

@@ -94,4 +94,3 @@ The following are deliberate non-goals, not gaps to be filled:
 - **Multi-instance coordination.** No distributed consensus, no Raft, no etcd dependency. Single-host deployment only.
 - **Chat UI, model fine-tuning, or web scraping.** marbor is a proxy and router. These are out of scope.
 - **Cloud provider breadth.** OpenAI-compatible providers are supported via built-in presets (OpenRouter, Groq, Together, Fireworks, DeepSeek, Mistral, xAI, Cerebras, NVIDIA NIM) or a custom base URL; Anthropic gets native translation. LiteLLM's approach of abstracting hundreds of providers behind one client SDK is not a goal.
-

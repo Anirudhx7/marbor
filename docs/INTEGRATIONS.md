@@ -182,4 +182,3 @@ for chunk in llm.stream("Explain cloud overflow in plain English."):
 - If your key has a `models:` allow-list configured, requests for any other model return `403 Forbidden`.
 - Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) are present on every response and follow the same conventions as the OpenAI API.
 - `GET /v1/models` returns the union of models loaded or downloaded across all healthy nodes.
-
