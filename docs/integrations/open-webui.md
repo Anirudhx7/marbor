@@ -1,6 +1,6 @@
 # Open WebUI
 
-Point Open WebUI at ollama-mesh instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; the mesh handles which node actually runs the model.
+Point Open WebUI at marbor instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; the mesh handles which node actually runs the model.
 
 > **Open WebUI versions**
 >
@@ -41,22 +41,22 @@ This is the same request Open WebUI makes to verify an OpenAI-compatible provide
 
 ## Networking pitfalls
 
-**localhost vs LAN IP** - `localhost` means the same machine only. If Open WebUI and ollama-mesh run on different machines, use the LAN IP or hostname of the machine running ollama-mesh.
+**localhost vs LAN IP** - `localhost` means the same machine only. If Open WebUI and marbor run on different machines, use the LAN IP or hostname of the machine running marbor.
 
 ```
 Same machine:      http://localhost:11434
 Different machine:  http://192.168.1.7:11434
 ```
 
-**Docker networking** - if Open WebUI runs inside a Docker container, `localhost` refers to the container itself, not the Docker host. Use `host.docker.internal` (Docker Desktop) or the Docker host's LAN IP instead. If both ollama-mesh and Open WebUI run as containers in the same Compose file, use the mesh's service name (see the Compose example below).
+**Docker networking** - if Open WebUI runs inside a Docker container, `localhost` refers to the container itself, not the Docker host. Use `host.docker.internal` (Docker Desktop) or the Docker host's LAN IP instead. If both marbor and Open WebUI run as containers in the same Compose file, use the mesh's service name (see the Compose example below).
 
-**HTTP vs HTTPS** - unless you've configured a reverse proxy (Nginx, Traefik, Caddy) in front of it, ollama-mesh serves plain HTTP. Don't use `https://` unless you've explicitly set up TLS.
+**HTTP vs HTTPS** - unless you've configured a reverse proxy (Nginx, Traefik, Caddy) in front of it, marbor serves plain HTTP. Don't use `https://` unless you've explicitly set up TLS.
 
 ---
 
 ## Open WebUI Desktop vs Server
 
-The Open WebUI **Desktop** app uses a built-in local runtime (llama.cpp) by default, and some Desktop releases don't expose the same provider configuration screen as the server edition. To point Open WebUI at ollama-mesh, use the Open WebUI **server** (Docker or standalone) rather than the Desktop app.
+The Open WebUI **Desktop** app uses a built-in local runtime (llama.cpp) by default, and some Desktop releases don't expose the same provider configuration screen as the server edition. To point Open WebUI at marbor, use the Open WebUI **server** (Docker or standalone) rather than the Desktop app.
 
 ---
 
@@ -66,25 +66,25 @@ The most common deployment - both services in one Compose file:
 
 ```yaml
 services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ghcr.io/anirudhx7/marbor:latest
     ports:
       - "11434:11434"
       - "8080:8080"
     volumes:
-      - mesh-data:/root   # persists mesh.db - add nodes/keys once via the dashboard
+      - mesh-data:/root   # persists marbor.db - add nodes/keys once via the dashboard
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     ports:
       - "3000:8080"
     environment:
-      OPENAI_API_BASE_URL: "http://ollama-mesh:11434/v1"
+      OPENAI_API_BASE_URL: "http://marbor:11434/v1"
       OPENAI_API_KEY: "sk-mesh-abc123"
     volumes:
       - open-webui:/app/backend/data
     depends_on:
-      - ollama-mesh
+      - marbor
 
 volumes:
   open-webui:

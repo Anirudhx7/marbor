@@ -229,11 +229,11 @@ function page({ slug, title, contentHtml, headings }) {
 <meta property="og:site_name" content="Marbor" />
 <meta property="og:title" content="${escapeHtml(title)} · Marbor docs" />
 <meta property="og:description" content="Marbor documentation: ${escapeHtml(title)}." />
-<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(title)} · Marbor docs" />
-<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
 <style>${DOC_CSS}</style>
 </head>
 <body>
@@ -246,8 +246,8 @@ function page({ slug, title, contentHtml, headings }) {
         <a class="link" href="${r}index.html#how">How it works</a>
         <a class="link" href="${r}index.html#compare">Compare</a>
         <a class="link active" href="${r}docs/index.html">Docs</a>
-        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -263,7 +263,7 @@ function page({ slug, title, contentHtml, headings }) {
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="${r}docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     ${docSidebar(slug)}
   </aside>
 
@@ -272,7 +272,7 @@ function page({ slug, title, contentHtml, headings }) {
     <article class="doc-content">
       ${contentHtml}
       <div class="doc-foot-edit">
-        <a href="ollama-mesh.dev/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="marbor.dev/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>
@@ -343,8 +343,8 @@ function docsIndexPage() {
         <a class="link" href="${r}index.html#how">How it works</a>
         <a class="link" href="${r}index.html#compare">Compare</a>
         <a class="link active" href="index.html">Docs</a>
-        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -361,8 +361,8 @@ function docsIndexPage() {
   <a href="${r}index.html#how">How it works</a>
   <a href="${r}index.html#compare">Compare</a>
   <a href="index.html">Docs</a>
-  <a href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
-  <a href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+  <a href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
+  <a href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
 </div>
 
 <main class="doc-index">

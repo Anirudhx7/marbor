@@ -6,7 +6,7 @@
 # Requires bench/ttft already built (see BENCH-RUNBOOK.md Step 2's docker build
 # command, or `go build -o bench/ttft ./bench` if Go is installed locally).
 #
-# ollama-mesh is fully DB-based (mesh.db) - there is no config.yaml. Admin
+# marbor is fully DB-based (marbor.db) - there is no config.yaml. Admin
 # auth is session-based (POST /admin/login with an admin-role account's
 # username/password, same as the dashboard login), not a static bearer token.
 #

@@ -13,11 +13,11 @@
 <meta property="og:site_name" content="marbor" />
 <meta property="og:title" content="Node Agent enrollment (Ansible or any script) · marbor docs" />
 <meta property="og:description" content="marbor documentation: Node Agent enrollment (Ansible or any script)." />
-<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Node Agent enrollment (Ansible or any script) · marbor docs" />
-<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -301,8 +301,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -351,14 +351,14 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
   "enabled": true,
   "port": 11434,
   "token": "admin.&lt;opaque-permanent-token&gt;",
-  "install_command": "curl -fsSL ollama-mesh.dev/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh",
+  "install_command": "curl -fsSL marbor.dev/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh",
   "install_command_windows": "..."
 }</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
   &quot;node&quot;: &quot;gpu01&quot;,
   &quot;enabled&quot;: true,
   &quot;port&quot;: 11434,
   &quot;token&quot;: &quot;admin.&lt;opaque-permanent-token&gt;&quot;,
-  &quot;install_command&quot;: &quot;curl -fsSL ollama-mesh.dev/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh&quot;,
+  &quot;install_command&quot;: &quot;curl -fsSL marbor.dev/main/install.sh | ROLE=agent MESH=https://mesh.example.com ENROLL=&lt;short-lived-code&gt; PORT=11434 sh&quot;,
   &quot;install_command_windows&quot;: &quot;...&quot;
 }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Run the returned <code>install_command</code> on the target host (via Ansible, SSH, whatever you use) and the agent exchanges the code for its real token and registers itself.</p>
@@ -397,9 +397,9 @@ for host in gpu01 gpu02 gpu03; do
 done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <h2 id="recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook<a class="anchor" href="#recommended-path-the-first-party-ansible-playbook" aria-label="Link to section">#</a></h2>
 <p>A first-party Ansible playbook automates the sequence above - login once, check which nodes already have a healthy agent (skipping those), enable and install the rest, then poll until each is healthy - across an arbitrary list of already- registered GPU hosts declared in a simple vars file. It ships as source in this repo only; it is not published to Ansible Galaxy or any external registry.</p>
-<ul><li>Playbook: <a href="ollama-mesh.dev/blob/main/ansible/playbooks/install-node-agent.yml" target="_blank" rel="noopener"><code>ansible/playbooks/install-node-agent.yml</code></a></li><li>Example inventory: <a href="ollama-mesh.dev/blob/main/ansible/inventory-agents.example.yml" target="_blank" rel="noopener"><code>ansible/inventory-agents.example.yml</code></a></li><li>Full variable reference, the re-enrollment idempotency policy, and prerequisites:</li></ul>
-<p>  <a href="ollama-mesh.dev/blob/main/ansible/README.md" target="_blank" rel="noopener"><code>ansible/README.md</code></a></p>
-<p>This playbook enrolls/installs agents only - it does not register a node's runtime endpoint. Run <a href="ollama-mesh.dev/blob/main/ansible/playbooks/register-gpus.yml" target="_blank" rel="noopener"><code>ansible/playbooks/register-gpus.yml</code></a> first for any node not yet registered - see <a href="gpu-node-registration.html">GPU node registration</a>.</p>
+<ul><li>Playbook: <a href="marbor.dev/blob/main/ansible/playbooks/install-node-agent.yml" target="_blank" rel="noopener"><code>ansible/playbooks/install-node-agent.yml</code></a></li><li>Example inventory: <a href="marbor.dev/blob/main/ansible/inventory-agents.example.yml" target="_blank" rel="noopener"><code>ansible/inventory-agents.example.yml</code></a></li><li>Full variable reference, the re-enrollment idempotency policy, and prerequisites:</li></ul>
+<p>  <a href="marbor.dev/blob/main/ansible/README.md" target="_blank" rel="noopener"><code>ansible/README.md</code></a></p>
+<p>This playbook enrolls/installs agents only - it does not register a node's runtime endpoint. Run <a href="marbor.dev/blob/main/ansible/playbooks/register-gpus.yml" target="_blank" rel="noopener"><code>ansible/playbooks/register-gpus.yml</code></a> first for any node not yet registered - see <a href="gpu-node-registration.html">GPU node registration</a>.</p>
 <h2 id="ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)<a class="anchor" href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback" aria-label="Link to section">#</a></h2>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>- name: Log in and capture session cookie
   uri:
@@ -465,7 +465,7 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
 <p>Both are scoped to a single node (or, more precisely, to the physical host it shares with any other node entries on the same machine) and never affect any other host's token.</p>
 
       <div class="doc-foot-edit">
-        <a href="ollama-mesh.dev/blob/main/docs/deploy/node-agent-enrollment.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="marbor.dev/blob/main/docs/deploy/node-agent-enrollment.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>

@@ -13,11 +13,11 @@
 <meta property="og:site_name" content="marbor" />
 <meta property="og:title" content="Deploy marbor on AWS EC2 · marbor docs" />
 <meta property="og:description" content="marbor documentation: Deploy marbor on AWS EC2." />
-<meta property="og:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta property="og:image" content="marbor.dev/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Deploy marbor on AWS EC2 · marbor docs" />
-<meta name="twitter:image" content="ollama-mesh.dev/screenshots/dashboard.png" />
+<meta name="twitter:image" content="marbor.dev/screenshots/dashboard.png" />
 <style>:root {
   --bg: #0f0e0c;
   --bg-elevated: #1a1815;
@@ -301,8 +301,8 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
         <a class="link" href="../../index.html#how">How it works</a>
         <a class="link" href="../../index.html#compare">Compare</a>
         <a class="link active" href="../../docs/index.html">Docs</a>
-        <a class="link" href="ollama-mesh.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
+        <a class="link" href="marbor.dev" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
+        <a class="link" href="marbor.dev/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
       </div>
       <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
         <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
@@ -318,7 +318,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <div class="doc-shell">
   <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
     <a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="ollama-mesh.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
+    <a class="doc-nav-link" href="marbor.dev/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
@@ -362,9 +362,9 @@ ollama pull llama3.2:3b"><svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 <h2 id="2-the-mesh-box">2. The mesh box<a class="anchor" href="#2-the-mesh-box" aria-label="Link to section">#</a></h2>
 <p>A small CPU instance (<code>t3.small</code> is plenty). Pull the release binary and point it at your GPU nodes' <strong>private</strong> IPs:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/marbor \
-  ollama-mesh.dev/releases/latest/download/marbor-linux-amd64
+  marbor.dev/releases/latest/download/marbor-linux-amd64
 chmod +x /usr/local/bin/marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -fL -o /usr/local/bin/marbor \
-  ollama-mesh.dev/releases/latest/download/marbor-linux-amd64
+  marbor.dev/releases/latest/download/marbor-linux-amd64
 chmod +x /usr/local/bin/marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>systemd unit (<code>/etc/systemd/system/marbor.service</code>):</p>
 <div class="code-wrap"><pre class="code" data-lang="ini"><code>[Unit]
@@ -403,7 +403,7 @@ curl -H &quot;Authorization: Bearer &lt;key&gt;&quot; http://&lt;mesh&gt;:11434/
 <p>Only the GPU nodes are expensive. Stop them when idle - the mesh box detects the drop, routes around it, and auto-rejoins them when they come back (verified). Run the mesh box 24/7 for a few dollars a month; scale GPU capacity independently.</p>
 
       <div class="doc-foot-edit">
-        <a href="ollama-mesh.dev/blob/main/docs/deploy/aws-ec2.md" target="_blank" rel="noopener">View on GitHub →</a>
+        <a href="marbor.dev/blob/main/docs/deploy/aws-ec2.md" target="_blank" rel="noopener">View on GitHub →</a>
       </div>
     </article>
   </main>

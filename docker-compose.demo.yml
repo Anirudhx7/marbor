@@ -136,7 +136,7 @@ services:
       ollama-node-b:
         condition: service_healthy
 
-    command: sh -c "cp /demo/mesh.demo.db /root/mesh.db && exec ./ollama-mesh"
+    command: sh -c "cp /demo/mesh.demo.db /root/marbor.db && exec ./marbor"
     volumes:
       - ./mesh.demo.db:/demo/mesh.demo.db:ro
     ports:
@@ -181,7 +181,7 @@ services:
       - "3000:3000"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/ollama-mesh.json:/var/lib/grafana/dashboards/ollama-mesh.json:ro
+      - ./grafana/marbor.json:/var/lib/grafana/dashboards/marbor.json:ro
     depends_on:
       - prometheus
 

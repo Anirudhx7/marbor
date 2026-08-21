@@ -1,4 +1,4 @@
-# Contributing to ollama-mesh
+# Contributing to marbor
 
 ## Build
 
@@ -28,7 +28,7 @@ Every new feature needs tests. Every bug fix needs a failing test that reproduce
 make dev-ui     # Hot-reload UI at :5173, proxies API to :8080
 ```
 
-Run `./ollama-mesh` (or `make backend`) first so there is a backend to hit.
+Run `./marbor` (or `make backend`) first so there is a backend to hit.
 
 ## Pull Requests
 
@@ -42,7 +42,7 @@ Run `./ollama-mesh` (or `make backend`) first so there is a backend to hit.
 
 ## Developer Certificate of Origin (DCO)
 
-ollama-mesh uses the [Developer Certificate of Origin](https://developercertificate.org/) (DCO) rather than a CLA. The DCO is a lightweight, per-commit statement that you wrote the contribution - or otherwise have the right to submit it under the project's license (Apache-2.0).
+marbor uses the [Developer Certificate of Origin](https://developercertificate.org/) (DCO) rather than a CLA. The DCO is a lightweight, per-commit statement that you wrote the contribution - or otherwise have the right to submit it under the project's license (Apache-2.0).
 
 **Every commit must be signed off.** Add the `Signed-off-by` trailer automatically with:
 
@@ -109,7 +109,7 @@ By making a contribution to this project, I certify that:
 
 ## Issues
 
-- **Bug report:** include ollama-mesh version (`./ollama-mesh --version`), OS, config snippet (redact keys/tokens), and the exact error output.
+- **Bug report:** include marbor version (`./marbor --version`), OS, config snippet (redact keys/tokens), and the exact error output.
 - **Feature request:** describe the problem it solves and who it helps. A config snippet showing what the YAML would look like is a bonus.
 
 ## Security

@@ -18,7 +18,7 @@
 #             the Ollama convention and this project's own proxy default -
 #             see internal/config/config.go). REQUIRED for every other
 #             runtime (vllm, tgi, llamacpp, mlx): there is no canonical
-#             default port for these in the ollama-mesh codebase today (only
+#             default port for these in the marbor codebase today (only
 #             an illustrative code comment mentions vLLM commonly using
 #             :8000 - that is not an enforced default anywhere, so this
 #             playbook will not guess it for you). See ansible/README.md.

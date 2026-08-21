@@ -2,6 +2,6 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'ollama-mesh'
+  - job_name: 'marbor'
     static_configs:
-      - targets: ['ollama-mesh:9090', 'mesh:9090']
+      - targets: ['marbor:9090', 'mesh:9090']

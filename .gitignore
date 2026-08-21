@@ -1,5 +1,5 @@
-ollama-mesh
-ollama-mesh.exe
+marbor
+marbor.exe
 ui/node_modules/
 internal/admin/web/dist/
 *.exe
@@ -39,11 +39,11 @@ nul
 
 # Git worktrees
 .worktrees/
-mesh.db
-mesh.db-journal
-mesh.db-wal
-mesh.db-shm
-mesh.db.key
+marbor.db
+marbor.db-journal
+marbor.db-wal
+marbor.db-shm
+marbor.db.key
 
 # Go testing/coverage
 *.test

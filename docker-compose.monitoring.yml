@@ -18,7 +18,7 @@ services:
       - "3000:3000"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/ollama-mesh.json:/var/lib/grafana/dashboards/ollama-mesh.json:ro
+      - ./grafana/marbor.json:/var/lib/grafana/dashboards/marbor.json:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus

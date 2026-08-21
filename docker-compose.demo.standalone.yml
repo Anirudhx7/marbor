@@ -8,7 +8,7 @@
 # that one builds from source so it tests your working tree.
 services:
   ollama-node-a:
-    image: ghcr.io/anirudhx7/ollama-mesh-mocknode:latest
+    image: ghcr.io/anirudhx7/marbor-mocknode:latest
     environment:
       RUNTIME: ollama
       NODE_NAME: node-a
@@ -26,7 +26,7 @@ services:
       start_period: 5s
 
   ollama-node-b:
-    image: ghcr.io/anirudhx7/ollama-mesh-mocknode:latest
+    image: ghcr.io/anirudhx7/marbor-mocknode:latest
     environment:
       RUNTIME: ollama
       NODE_NAME: node-b
@@ -50,7 +50,7 @@ services:
   # started via `make demo` or explicitly with `docker compose -f
   # docker-compose.demo.yml up -d vllm-node tgi-node llamacpp-node`.
   vllm-node:
-    image: ghcr.io/anirudhx7/ollama-mesh-mocknode:latest
+    image: ghcr.io/anirudhx7/marbor-mocknode:latest
     environment:
       RUNTIME: vllm
       NODE_NAME: vllm-node
@@ -66,7 +66,7 @@ services:
       start_period: 5s
 
   tgi-node:
-    image: ghcr.io/anirudhx7/ollama-mesh-mocknode:latest
+    image: ghcr.io/anirudhx7/marbor-mocknode:latest
     environment:
       RUNTIME: tgi
       NODE_NAME: tgi-node
@@ -82,7 +82,7 @@ services:
       start_period: 5s
 
   llamacpp-node:
-    image: ghcr.io/anirudhx7/ollama-mesh-mocknode:latest
+    image: ghcr.io/anirudhx7/marbor-mocknode:latest
     environment:
       RUNTIME: llamacpp
       NODE_NAME: llamacpp-node
@@ -104,14 +104,14 @@ services:
   # The router already handles a configured-but-not-yet-up node gracefully
   # (marks it unhealthy until it responds), so mesh can start without them.
   mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+    image: ghcr.io/anirudhx7/marbor:latest
     depends_on:
       ollama-node-a:
         condition: service_healthy
       ollama-node-b:
         condition: service_healthy
 
-    command: sh -c "cp /demo/mesh.demo.db /root/mesh.db && exec ./ollama-mesh"
+    command: sh -c "cp /demo/mesh.demo.db /root/marbor.db && exec ./marbor"
     volumes:
       - ./mesh.demo.db:/demo/mesh.demo.db:ro
     ports:
@@ -128,7 +128,7 @@ services:
   # Runs the 20-request demo load inside Docker so the demo needs only Docker,
   # never a local Go toolchain. Started on demand via `docker compose run`.
   demotraffic:
-    image: ghcr.io/anirudhx7/ollama-mesh-demotraffic:latest
+    image: ghcr.io/anirudhx7/marbor-demotraffic:latest
     depends_on:
       mesh:
         condition: service_healthy
@@ -159,7 +159,7 @@ services:
       - source: demo_grafana_dashboard_provider
         target: /etc/grafana/provisioning/dashboards/dashboard.yml
       - source: demo_grafana_dashboard_json
-        target: /var/lib/grafana/dashboards/ollama-mesh.json
+        target: /var/lib/grafana/dashboards/marbor.json
     depends_on:
       - prometheus
 
@@ -170,9 +170,9 @@ configs:
         scrape_interval: 15s
       
       scrape_configs:
-        - job_name: 'ollama-mesh'
+        - job_name: 'marbor'
           static_configs:
-            - targets: ['ollama-mesh:9090', 'mesh:9090']
+            - targets: ['marbor:9090', 'mesh:9090']
   demo_grafana_datasource:
     content: |
       apiVersion: 1
@@ -188,7 +188,7 @@ configs:
       apiVersion: 1
       
       providers:
-        - name: 'Ollama Mesh Dashboards'
+        - name: 'Marbor Dashboards'
           orgId: 1
           folder: ''
           type: file
@@ -203,7 +203,7 @@ configs:
           {
             "name": "DS_PROMETHEUS",
             "label": "Prometheus",
-            "description": "ollama-mesh Prometheus datasource",
+            "description": "marbor Prometheus datasource",
             "type": "datasource",
             "pluginId": "prometheus",
             "pluginName": "Prometheus"
@@ -285,7 +285,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "sum(ollamamesh_requests_total)",
+                "expr": "sum(marbor_requests_total)",
                 "legendFormat": "Total Requests",
                 "refId": "A"
               }
@@ -328,7 +328,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "sum(rate(ollamamesh_requests_total[1m]))",
+                "expr": "sum(rate(marbor_requests_total[1m]))",
                 "legendFormat": "Request Rate",
                 "refId": "A"
               }
@@ -371,7 +371,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "100 * sum(rate(ollamamesh_requests_total{status=~\"5..\"}[1m])) / sum(rate(ollamamesh_requests_total[1m]))",
+                "expr": "100 * sum(rate(marbor_requests_total{status=~\"5..\"}[1m])) / sum(rate(marbor_requests_total[1m]))",
                 "legendFormat": "Error Rate %",
                 "refId": "A"
               }
@@ -414,7 +414,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "histogram_quantile(0.99, sum by (le) (rate(ollamamesh_request_duration_seconds_bucket[5m])))",
+                "expr": "histogram_quantile(0.99, sum by (le) (rate(marbor_request_duration_seconds_bucket[5m])))",
                 "legendFormat": "P99 Latency",
                 "refId": "A"
               }
@@ -471,7 +471,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "sum by (model) (rate(ollamamesh_requests_total[1m]))",
+                "expr": "sum by (model) (rate(marbor_requests_total[1m]))",
                 "legendFormat": "{{model}}",
                 "refId": "A"
               }
@@ -521,7 +521,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "sum by (node) (rate(ollamamesh_requests_total[1m]))",
+                "expr": "sum by (node) (rate(marbor_requests_total[1m]))",
                 "legendFormat": "{{node}}",
                 "refId": "A"
               }
@@ -578,19 +578,19 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "histogram_quantile(0.50, sum by (le, model) (rate(ollamamesh_request_duration_seconds_bucket[5m])))",
+                "expr": "histogram_quantile(0.50, sum by (le, model) (rate(marbor_request_duration_seconds_bucket[5m])))",
                 "legendFormat": "P50 - {{model}}",
                 "refId": "A"
               },
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "histogram_quantile(0.95, sum by (le, model) (rate(ollamamesh_request_duration_seconds_bucket[5m])))",
+                "expr": "histogram_quantile(0.95, sum by (le, model) (rate(marbor_request_duration_seconds_bucket[5m])))",
                 "legendFormat": "P95 - {{model}}",
                 "refId": "B"
               },
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "histogram_quantile(0.99, sum by (le, model) (rate(ollamamesh_request_duration_seconds_bucket[5m])))",
+                "expr": "histogram_quantile(0.99, sum by (le, model) (rate(marbor_request_duration_seconds_bucket[5m])))",
                 "legendFormat": "P99 - {{model}}",
                 "refId": "C"
               }
@@ -642,7 +642,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "100 * rate(ollamamesh_cache_hits_total[5m]) / (rate(ollamamesh_cache_hits_total[5m]) + rate(ollamamesh_cache_misses_total[5m]))",
+                "expr": "100 * rate(marbor_cache_hits_total[5m]) / (rate(marbor_cache_hits_total[5m]) + rate(marbor_cache_misses_total[5m]))",
                 "legendFormat": "Warm Hit %",
                 "refId": "A"
               }
@@ -685,7 +685,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "rate(ollamamesh_cache_hits_total[5m])",
+                "expr": "rate(marbor_cache_hits_total[5m])",
                 "legendFormat": "Warm Hits/s",
                 "refId": "A"
               }
@@ -728,7 +728,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "sum(ollamamesh_active_connections)",
+                "expr": "sum(marbor_active_connections)",
                 "legendFormat": "Active Connections",
                 "refId": "A"
               }
@@ -772,7 +772,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "sum(ollamamesh_node_healthy)",
+                "expr": "sum(marbor_node_healthy)",
                 "legendFormat": "Healthy Nodes",
                 "refId": "A"
               }
@@ -822,7 +822,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "ollamamesh_active_connections",
+                "expr": "marbor_active_connections",
                 "legendFormat": "{{node}}",
                 "refId": "A"
               }
@@ -872,7 +872,7 @@ configs:
             "targets": [
               {
                 "datasource": { "type": "prometheus", "uid": "$${datasource}" },
-                "expr": "sum by (key_name) (rate(ollamamesh_tokens_total[5m]))",
+                "expr": "sum by (key_name) (rate(marbor_tokens_total[5m]))",
                 "legendFormat": "{{key_name}}",
                 "refId": "A"
               }
@@ -902,7 +902,7 @@ configs:
         "time": { "from": "now-1h", "to": "now" },
         "timepicker": {},
         "timezone": "browser",
-        "title": "ollama-mesh",
-        "uid": "ollama-mesh-v1",
+        "title": "marbor",
+        "uid": "marbor-v1",
         "version": 1
       }

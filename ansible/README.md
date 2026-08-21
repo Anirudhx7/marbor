@@ -1,7 +1,7 @@
-# ollama-mesh fleet enrollment - Ansible
+# marbor fleet enrollment - Ansible
 
 Automates GPU node registration and Node Agent installation against an
-ollama-mesh Admin API. This does exactly what a human does by hand on the
+marbor Admin API. This does exactly what a human does by hand on the
 dashboard's **GPU Nodes** page - it wraps the same Admin API calls
 (`POST /admin/nodes`, `POST /admin/nodes/{name}/agent`) plus running the
 resulting install command on each GPU host. See
@@ -10,7 +10,7 @@ for the full HTTP contract this automates, including a no-Ansible curl/uri
 walkthrough if you'd rather script it yourself or just understand what's
 happening under the hood.
 
-This is source committed to the ollama-mesh repo for operators to copy and
+This is source committed to the marbor repo for operators to copy and
 run - it is **not** published to Ansible Galaxy or any external registry,
 and is not intended to be. Copy the `ansible/` directory (or clone the repo)
 and run it locally against your own fleet.
@@ -52,7 +52,7 @@ URL without disturbing its already-healthy agent.
   `ansible.cfg`, `group_vars`, or `-e` on the command line).
   `register-gpus.yml` never connects to the GPU hosts over SSH at all - it
   only talks to the mesh's Admin API.
-- An ollama-mesh admin account's username and password. There is no
+- An marbor admin account's username and password. There is no
   separate static "admin API key" for these routes (see
   `docs/deploy/gpu-node-registration.md`).
 
@@ -124,7 +124,7 @@ in plaintext on disk.
 | `port`  | Required for every runtime except `ollama` | `11434` for `ollama` only |
 | `runtime` | No      | `ollama` (matches the Admin API's own default) |
 
-**Port defaults are intentionally narrow.** The ollama-mesh codebase has no
+**Port defaults are intentionally narrow.** The marbor codebase has no
 canonical default-port table for non-Ollama runtimes - `internal/config` and
 `internal/admin` don't define one (searched `isValidRuntime`,
 `internal/config/config.go`, and the node config struct). A code comment

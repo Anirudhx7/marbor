@@ -1,6 +1,6 @@
 services:
-  ollama-mesh:
-    image: ghcr.io/anirudhx7/ollama-mesh:latest
+  marbor:
+    image: ghcr.io/anirudhx7/marbor:latest
     ports:
       - "11434:11434"
       - "9090:9090"
@@ -9,13 +9,13 @@ services:
       - mesh-data:/data
       - mesh-backups:/backups
     environment:
-      - MESH_DB_PATH=/data/mesh.db
+      - MARBOR_DB_PATH=/data/marbor.db
       # Scheduled backups (P49, configurable from the Settings dashboard) go
       # to a SEPARATE named volume from mesh-data on purpose: a `docker
       # volume rm mesh-data` (or `docker-compose down -v`) then still leaves
       # every backup intact, and vice versa - one accidental wipe can't take
       # out both the live database and its backups at once.
-      - MESH_BACKUP_DIR=/backups
+      - MARBOR_BACKUP_DIR=/backups
     # Required for one-click restore (Settings > Backup & Restore): a restore
     # exits the process on purpose, relying on this restart policy to bring
     # it back up with the swapped-in database. Also just good practice for

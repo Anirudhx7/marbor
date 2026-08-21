@@ -9,19 +9,19 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 gorun() {
   # MSYS_NO_PATHCONV=1: disable Git Bash path conversion entirely for Docker args
   # pwd -W: explicit Windows-style path (C:/...) for the bind mount - Docker Desktop requires this
-  # ollama-mesh-gomod: named volume caches Go modules across runs (no re-download each time).
+  # marbor-gomod: named volume caches Go modules across runs (no re-download each time).
   # Mounted at /go/pkg/mod, NOT /root/go/pkg/mod - golang:1.25's default GOPATH is /go
   # (confirmed via `go env GOPATH` in-container), so /root/go/pkg/mod is never read/written
   # and every run silently redownloaded the full module graph from scratch. If this volume
-  # ever needs clearing (disk pressure): `docker volume rm ollama-mesh-gomod`. Safe to
+  # ever needs clearing (disk pressure): `docker volume rm marbor-gomod`. Safe to
   # delete anytime - it's a pure cache, gate.sh repopulates it on the next run.
-  # ollama-mesh-gobuild: named volume caching compiled build objects (GOCACHE) -
-  # same rationale as ollama-mesh-gomod above. Also safe to `docker volume rm`
+  # marbor-gobuild: named volume caching compiled build objects (GOCACHE) -
+  # same rationale as marbor-gomod above. Also safe to `docker volume rm`
   # anytime; it's rebuilt from scratch on the next run.
   MSYS_NO_PATHCONV=1 docker run --rm \
     -v "$(pwd -W):/app" \
-    -v "ollama-mesh-gomod:/go/pkg/mod" \
-    -v "ollama-mesh-gobuild:/root/.cache/go-build" \
+    -v "marbor-gomod:/go/pkg/mod" \
+    -v "marbor-gobuild:/root/.cache/go-build" \
     -w /app \
     -e GOFLAGS=-buildvcs=false \
     golang:1.25.12 "$@"

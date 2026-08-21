@@ -1,4 +1,4 @@
-// bench/loadtest/main.go - SQLite write-path throughput sweep for ollama-mesh.
+// bench/loadtest/main.go - SQLite write-path throughput sweep for marbor.
 //
 // Fires a sustained request rate at the mesh proxy for a fixed duration per
 // step (concurrent in-flight requests capped at --max-inflight, so a step
@@ -33,7 +33,7 @@
 // Usage:
 //
 //	./bench/loadtest --url http://localhost:11434 --model llama3.2:3b \
-//	  --api-key <key> --db mesh.db --rates 5,10,20,40,80 --step-duration 30s
+//	  --api-key <key> --db marbor.db --rates 5,10,20,40,80 --step-duration 30s
 package main
 
 import (
@@ -56,7 +56,7 @@ func main() {
 	url := flag.String("url", "http://localhost:11434", "Base URL of the mesh proxy")
 	model := flag.String("model", "llama3.2:3b", "Model name to request (must be warm on the target node - see README)")
 	apiKey := flag.String("api-key", "", "Bearer API key for the mesh")
-	dbPath := flag.String("db", "mesh.db", "Path to the mesh's SQLite database, for passive .db/-wal file size sampling")
+	dbPath := flag.String("db", "marbor.db", "Path to the mesh's SQLite database, for passive .db/-wal file size sampling")
 	ratesFlag := flag.String("rates", "5,10,20,40,80", "Comma-separated list of target request rates (req/s) to sweep, ascending")
 	stepDuration := flag.Duration("step-duration", 20*time.Second, "How long to sustain each rate before moving to the next")
 	endpoint := flag.String("endpoint", "chat", "API endpoint: generate or chat")

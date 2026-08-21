@@ -405,7 +405,7 @@ func TestHandleUploadBackup_ValidFileIsSavedAndListed(t *testing.T) {
 	dir := t.TempDir()
 	setBackupTargetDir(s, dir)
 
-	req := newUploadRequest(t, "my-old-mesh.db", validSQLiteBytes(t))
+	req := newUploadRequest(t, "my-old-marbor.db", validSQLiteBytes(t))
 	rec := httptest.NewRecorder()
 	s.handleUploadBackup(rec, req)
 	if rec.Code != http.StatusOK {

@@ -1,30 +1,30 @@
 #!/usr/bin/env sh
-# ollama-mesh uninstaller
+# marbor uninstaller
 # Usage: sh uninstall.sh   (run from the directory install.sh was run in, so
-#                           it can find mesh.db / the pidfile)
+#                           it can find marbor.db / the pidfile)
 #
 # Env vars:
 #   INSTALL_DIR   binary location to remove (default /usr/local/bin, must
 #                 match whatever install.sh used)
-#   KEEP_DB=1     keep mesh.db without prompting
-#   KEEP_DB=0     remove mesh.db without prompting
+#   KEEP_DB=1     keep marbor.db without prompting
+#   KEEP_DB=0     remove marbor.db without prompting
 #
 # When run non-interactively (e.g. piped via curl, where stdin isn't a
-# terminal) mesh.db is kept by default unless the env var above says
+# terminal) marbor.db is kept by default unless the env var above says
 # otherwise - an uninstall should never silently destroy data.
 
 set -e
 
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-BIN_NAME="ollama-mesh"
+BIN_NAME="marbor"
 BIN_PATH="$INSTALL_DIR/$BIN_NAME"
 WORKDIR="$(pwd)"
-PIDFILE="$WORKDIR/ollama-mesh.pid"
-UNIT_PATH="/etc/systemd/system/ollama-mesh.service"
-DB_FILE="$WORKDIR/mesh.db"
-LOG_FILE="$WORKDIR/ollama-mesh.log"
+PIDFILE="$WORKDIR/marbor.pid"
+UNIT_PATH="/etc/systemd/system/marbor.service"
+DB_FILE="$WORKDIR/marbor.db"
+LOG_FILE="$WORKDIR/marbor.log"
 
-echo "ollama-mesh uninstaller"
+echo "marbor uninstaller"
 echo "------------------------"
 
 # 1. Remove the systemd service, if one was installed.
@@ -32,13 +32,13 @@ if [ -f "$UNIT_PATH" ]; then
   if command -v systemctl >/dev/null 2>&1; then
     echo "Removing systemd service ($UNIT_PATH)..."
     if [ "$(id -u)" = "0" ]; then
-      systemctl stop ollama-mesh >/dev/null 2>&1 || true
-      systemctl disable ollama-mesh >/dev/null 2>&1 || true
+      systemctl stop marbor >/dev/null 2>&1 || true
+      systemctl disable marbor >/dev/null 2>&1 || true
       rm -f "$UNIT_PATH"
       systemctl daemon-reload
     elif command -v sudo >/dev/null 2>&1; then
-      sudo systemctl stop ollama-mesh >/dev/null 2>&1 || true
-      sudo systemctl disable ollama-mesh >/dev/null 2>&1 || true
+      sudo systemctl stop marbor >/dev/null 2>&1 || true
+      sudo systemctl disable marbor >/dev/null 2>&1 || true
       sudo rm -f "$UNIT_PATH"
       sudo systemctl daemon-reload
     else
@@ -81,14 +81,14 @@ fi
 # above; a missing man dir or missing pages is not an error, just a no-op.
 #
 # install_man_pages (Fix 4/5 of the P83+ CLI hardening code review) drops a
-# local marker file, .ollama-mesh-installed-manifest, listing exactly which
+# local marker file, .marbor-installed-manifest, listing exactly which
 # filenames IT placed in MAN_DIR - uninstall.sh has no source tree and no
 # release manifest of its own, so that marker is the only place this exact
 # list is ever recorded. Prefer it when present (removes exactly what a
 # Fix-4-or-later install created); the wildcard below survives only as a
 # fallback for an install that predates this fix and never wrote a marker.
 MAN_DIR="/usr/local/share/man/man1"
-MAN_MANIFEST="$MAN_DIR/.ollama-mesh-installed-manifest"
+MAN_MANIFEST="$MAN_DIR/.marbor-installed-manifest"
 if [ -f "$MAN_MANIFEST" ]; then
   MAN_PAGES_TO_REMOVE="$(cat "$MAN_MANIFEST" 2>/dev/null || true)"
   if [ -n "$MAN_PAGES_TO_REMOVE" ]; then
@@ -108,19 +108,19 @@ if [ -f "$MAN_MANIFEST" ]; then
       echo "  [!] Cannot remove man pages in $MAN_DIR (no write permission, no sudo). Remove them manually."
     fi
   fi
-elif ls "$MAN_DIR"/ollama-mesh*.1 >/dev/null 2>&1; then
+elif ls "$MAN_DIR"/marbor*.1 >/dev/null 2>&1; then
   if [ -w "$MAN_DIR" ]; then
-    rm -f "$MAN_DIR"/ollama-mesh*.1
-    echo "Removed man pages: $MAN_DIR/ollama-mesh*.1"
+    rm -f "$MAN_DIR"/marbor*.1
+    echo "Removed man pages: $MAN_DIR/marbor*.1"
   elif command -v sudo >/dev/null 2>&1; then
-    sudo rm -f "$MAN_DIR"/ollama-mesh*.1
-    echo "Removed man pages: $MAN_DIR/ollama-mesh*.1"
+    sudo rm -f "$MAN_DIR"/marbor*.1
+    echo "Removed man pages: $MAN_DIR/marbor*.1"
   else
     echo "  [!] Cannot remove man pages in $MAN_DIR (no write permission, no sudo). Remove them manually."
   fi
 fi
 
-# 4. mesh.db holds real state (nodes, API keys, warm-state history) - ask
+# 4. marbor.db holds real state (nodes, API keys, warm-state history) - ask
 # before deleting, and default to keeping it when not on a terminal.
 ask_keep() {
   # ask_keep <label> <file> <env override>  -> prints "yes" or "no"
@@ -162,4 +162,4 @@ if [ -f "$LOG_FILE" ]; then
 fi
 
 echo ""
-echo "ollama-mesh has been uninstalled."
+echo "marbor has been uninstalled."

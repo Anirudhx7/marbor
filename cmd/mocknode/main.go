@@ -4,7 +4,7 @@
 // "vllm", "tgi", "llamacpp", or "mlx". Configurable via env vars: RUNTIME,
 // NODE_NAME, MODEL_ID, WARM_MODELS, ALL_MODELS, PORT, LATENCY_MS.
 //
-// The non-Ollama runtimes deliberately implement only what ollama-mesh
+// The non-Ollama runtimes deliberately implement only what marbor
 // itself actually calls (internal/runtime's detect/health probes, verified
 // against that package's source and tests) rather than each project's full
 // real API surface - this is a mock of the mesh's integration contract, not
