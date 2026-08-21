@@ -11,7 +11,7 @@ groups:
         annotations:
           summary: "Marbor node {{ $labels.node }} is down"
           description: "Node {{ $labels.node }} has been unhealthy for more than 5 minutes. Check Ollama is running and reachable from the mesh host."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#node-down"
+          runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#node-down"
 
       # All nodes are unhealthy - every request will fall back to cloud or return 503.
       - alert: MarborAllNodesDown
@@ -22,7 +22,7 @@ groups:
         annotations:
           summary: "All Marbor GPU nodes are down"
           description: "No healthy Ollama nodes. All traffic is hitting cost-aware cloud overflow (if configured) or returning 503. Investigate node connectivity immediately."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#all-nodes-down"
+          runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#all-nodes-down"
 
       # Request queue is backing up - nodes are saturated, clients are waiting.
       - alert: MarborHighQueueDepth
@@ -33,7 +33,7 @@ groups:
         annotations:
           summary: "Marbor queue depth is {{ $value }}"
           description: "More than 10 requests are queued waiting for a GPU node for over 2 minutes. Consider adding nodes or increasing queue_timeout_ms to fail fast."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#high-queue-depth"
+          runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#high-queue-depth"
 
       # Cost-aware cloud overflow is firing more than 50% of the time - local GPUs are not keeping up.
       - alert: MarborHighCloudFallbackRate
@@ -48,7 +48,7 @@ groups:
         annotations:
           summary: "Marbor cloud fallback rate is {{ $value | humanizePercentage }}"
           description: "More than 50% of requests have overflowed to cloud providers for 10+ minutes. Local GPU capacity is insufficient for current load. Check node health and consider adding GPU nodes."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#high-cloud-overflow"
+          runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#high-cloud-overflow"
 
       # Queue timeouts are occurring - requests are being dropped after waiting.
       - alert: MarborQueueTimeouts
@@ -59,7 +59,7 @@ groups:
         annotations:
           summary: "Marbor queue timeouts occurring at {{ $value | humanize }}/s"
           description: "Requests are timing out in the queue before reaching a GPU node. Increase queue_timeout_ms, add more nodes, or reduce request load."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#queue-timeouts"
+          runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#queue-timeouts"
 
       # Panic in the control plane - should never fire; if it does, something is seriously wrong.
       - alert: MarborPanic
@@ -69,7 +69,7 @@ groups:
         annotations:
           summary: "Marbor control plane panic detected"
           description: "A panic was recovered in the request handler. The request returned a 500 but the process survived. Check logs for the stack trace and open a bug report."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#panic"
+          runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#panic"
 
       # High p99 latency - end-to-end latency is unusually high.
       - alert: MarborHighLatency
@@ -80,5 +80,5 @@ groups:
         annotations:
           summary: "Marbor p99 latency is {{ $value | humanizeDuration }}"
           description: "The 99th percentile end-to-end request latency exceeds 5 seconds. This includes model inference time. Check if a node is overloaded or if models need warming."
-          runbook_url: "https://github.com/ollama-mesh/ollama-mesh/blob/main/docs/runbooks.md#high-latency"
+          runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#high-latency"
 

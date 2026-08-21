@@ -26,7 +26,7 @@ The control plane for self-hosted AI inference - a GPU-aware scheduler and OpenA
 ## Install
 
 ```
-curl -fsSL https://raw.githubusercontent.com/Anirudhx7/ollama-mesh/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
 ```
 
 Or download a binary from: https://github.com/Anirudhx7/ollama-mesh/releases

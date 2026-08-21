@@ -97,15 +97,15 @@ jobs:
             --data '{
               "host": "anirudh.social",
               "key": "66f428c36813423b9f86e3cdb81b26bd",
-              "keyLocation": "https://anirudh.social/ollama-mesh/66f428c36813423b9f86e3cdb81b26bd.txt",
+              "keyLocation": "https://anirudh.social/marbor/66f428c36813423b9f86e3cdb81b26bd.txt",
               "urlList": [
-                "https://anirudh.social/ollama-mesh/",
-                "https://anirudh.social/ollama-mesh/docs/",
-                "https://anirudh.social/ollama-mesh/docs/USE-CASES.html",
-                "https://anirudh.social/ollama-mesh/docs/INTEGRATIONS.html",
-                "https://anirudh.social/ollama-mesh/docs/PRODUCTION.html",
-                "https://anirudh.social/ollama-mesh/docs/SAVINGS-MATH.html",
-                "https://anirudh.social/ollama-mesh/docs/LIMITATIONS.html"
+                "https://anirudh.social/marbor/",
+                "https://anirudh.social/marbor/docs/",
+                "https://anirudh.social/marbor/docs/USE-CASES.html",
+                "https://anirudh.social/marbor/docs/INTEGRATIONS.html",
+                "https://anirudh.social/marbor/docs/PRODUCTION.html",
+                "https://anirudh.social/marbor/docs/SAVINGS-MATH.html",
+                "https://anirudh.social/marbor/docs/LIMITATIONS.html"
               ]
             }' || true
 
