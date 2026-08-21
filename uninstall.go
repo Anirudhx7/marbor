@@ -29,10 +29,14 @@ const meshPidfile = "marbor.pid"
 
 // runUninstall implements "marbor uninstall": the Go-native counterpart
 // to uninstall.sh. Only ever touches this host's mesh service/process - a
-// Node Agent service (if any) is removed via "marbor-agent service
-// uninstall" on its own host instead (post control-plane/Node-Agent binary
-// split, marbor no longer imports internal/nodeagent at all, so it has
-// no Manager to drive even if it wanted to). Never touches marbor.db - matches
+// marbor agent service (if any) is removed via "marbor-agent service
+// uninstall" on its own host instead (post control-plane/Marbor-Agent binary
+// split, marbor has no code path into the agent's runtime/service-manager
+// logic - cmd/marbor-agent is the only entry point for it, so there is no
+// Manager here to drive even if it wanted to; internal/admin does still use
+// marboragent's shared R9 wire types and scope constants, which is a frozen
+// protocol boundary, not an agent-runtime capability). Never touches
+// marbor.db - matches
 // uninstall.sh's default of always asking before deleting real state, and
 // this subcommand has no interactive prompt to ask with, so the safe default
 // is "never" rather than guessing.
@@ -42,7 +46,7 @@ func runUninstall(args []string) {
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "marbor uninstall - remove the mesh's own service registration (if any) from this host\n\n")
 		fmt.Fprintf(w, "Usage:\n  marbor uninstall [--purge]\n\n")
-		fmt.Fprintf(w, "To remove a Node Agent, run \"marbor-agent service uninstall\" on the agent's own host instead.\n")
+		fmt.Fprintf(w, "To remove a marbor agent, run \"marbor-agent service uninstall\" on the agent's own host instead.\n")
 		fmt.Fprintf(w, "Never deletes marbor.db - remove it yourself if you also want the database gone.\n")
 		fmt.Fprintf(w, "Run from the same directory the mesh was started from, so a nohup-mode\n%s is found.\n\nFlags:\n", meshPidfile)
 		fs.SetOutput(w)

@@ -322,7 +322,7 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		// drives factor 3 (inverse_queue_depth) as the "capacity to accept
 		// another request" signal instead; no runtime today reports a
 		// usable queue-depth or declared-concurrency telemetry field
-		// (nodeagent.RuntimeInfo.QueueDepth is never populated - R1).
+		// (marboragent.RuntimeInfo.QueueDepth is never populated - R1).
 		conns := atomic.LoadInt32(&n.ActiveConns)
 		freeVRAM = 1.0 / (1.0 + float64(conns))
 	} else if n.VRAMTotalMB > 0 {

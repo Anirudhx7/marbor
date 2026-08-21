@@ -11,8 +11,8 @@ import (
 // buildAgentBinary compiles cmd/marbor-agent into t.TempDir() once per
 // test and returns the resulting path, so TestMain_Version/TestMain_ServiceUsage
 // exercise the real compiled binary (argv dispatch, -version interception,
-// delegation to internal/nodeagent.Run) rather than re-testing internal
-// package functions already covered by internal/nodeagent's own tests.
+// delegation to internal/marboragent.Run) rather than re-testing internal
+// package functions already covered by internal/marboragent's own tests.
 func buildAgentBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "marbor-agent")
@@ -38,7 +38,7 @@ func TestMain_VersionFlag(t *testing.T) {
 }
 
 // TestMain_DelegatesUnknownSubcommandToNodeagent proves main() actually
-// forwards argv into internal/nodeagent.Run (rather than, say, silently
+// forwards argv into internal/marboragent.Run (rather than, say, silently
 // exiting 0) by triggering a subcommand-shaped error only nodeagent.Run
 // itself can produce (agent.go's "unknown agent subcommand" check) - the
 // same error a pre-split "marbor agent bogus" would have hit, now one

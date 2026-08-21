@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 )
 
 // agentTLSTelemetryServer returns a minimal /v1/status TLS server, mirroring
@@ -20,8 +20,8 @@ func agentTLSTelemetryServer() *httptest.Server {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent: nodeagent.Agent{
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{
 				NodeID:          "node-id-1",
 				Version:         "v0.17.0",
 				ProtocolVersion: 1,
@@ -136,8 +136,8 @@ func TestMixedTLSAndPlaintextFleet_BothPollCorrectly(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(nodeagent.Telemetry{
-			Agent:        nodeagent.Agent{NodeID: "node-id-2", Version: "v0.17.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent:        marboragent.Agent{NodeID: "node-id-2", Version: "v0.17.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
 			Capabilities: []string{"status"},
 		})
 	}))

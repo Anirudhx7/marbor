@@ -9,21 +9,21 @@ import (
 	"testing"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
 
 // TestGenerateNodeAgentTokenEmbedsScope verifies generateNodeAgentToken (P54)
-// produces a token whose scope round-trips through nodeagent.TokenScope -
+// produces a token whose scope round-trips through marboragent.TokenScope -
 // the same parsing the agent binary itself uses to enforce per-route scope.
 func TestGenerateNodeAgentTokenEmbedsScope(t *testing.T) {
-	for _, scope := range []string{nodeagent.ScopeReadonly, nodeagent.ScopeOperator, nodeagent.ScopeAdmin} {
+	for _, scope := range []string{marboragent.ScopeReadonly, marboragent.ScopeOperator, marboragent.ScopeAdmin} {
 		token, err := generateNodeAgentToken(scope)
 		if err != nil {
 			t.Fatalf("generateNodeAgentToken(%q): %v", scope, err)
 		}
-		if got := nodeagent.TokenScope(token); got != scope {
+		if got := marboragent.TokenScope(token); got != scope {
 			t.Errorf("TokenScope(generateNodeAgentToken(%q)) = %q, want %q", scope, got, scope)
 		}
 	}
@@ -69,8 +69,8 @@ func TestEnableNodeAgentPersistsAdminScope(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got := nodeagent.TokenScope(resp.Token); got != nodeagent.ScopeAdmin {
-		t.Errorf("returned token scope = %q, want %q", got, nodeagent.ScopeAdmin)
+	if got := marboragent.TokenScope(resp.Token); got != marboragent.ScopeAdmin {
+		t.Errorf("returned token scope = %q, want %q", got, marboragent.ScopeAdmin)
 	}
 
 	host, _ := r.NodeHost("test-node")
@@ -81,8 +81,8 @@ func TestEnableNodeAgentPersistsAdminScope(t *testing.T) {
 	if !found {
 		t.Fatal("GetNodeAgent: record not found after enable")
 	}
-	if rec.Scope != nodeagent.ScopeAdmin {
-		t.Errorf("persisted NodeAgentRecord.Scope = %q, want %q", rec.Scope, nodeagent.ScopeAdmin)
+	if rec.Scope != marboragent.ScopeAdmin {
+		t.Errorf("persisted NodeAgentRecord.Scope = %q, want %q", rec.Scope, marboragent.ScopeAdmin)
 	}
 	if rec.Token != resp.Token {
 		t.Errorf("persisted token %q does not match returned token %q", rec.Token, resp.Token)
@@ -136,8 +136,8 @@ func TestRegenerateNodeAgentTokenPersistsAdminScope(t *testing.T) {
 	if err := json.Unmarshal(regenW.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got := nodeagent.TokenScope(resp.Token); got != nodeagent.ScopeAdmin {
-		t.Errorf("regenerated token scope = %q, want %q", got, nodeagent.ScopeAdmin)
+	if got := marboragent.TokenScope(resp.Token); got != marboragent.ScopeAdmin {
+		t.Errorf("regenerated token scope = %q, want %q", got, marboragent.ScopeAdmin)
 	}
 
 	host, _ := r.NodeHost("test-node")
@@ -148,8 +148,8 @@ func TestRegenerateNodeAgentTokenPersistsAdminScope(t *testing.T) {
 	if !found {
 		t.Fatal("GetNodeAgent: record not found after regenerate")
 	}
-	if rec.Scope != nodeagent.ScopeAdmin {
-		t.Errorf("persisted NodeAgentRecord.Scope after regenerate = %q, want %q", rec.Scope, nodeagent.ScopeAdmin)
+	if rec.Scope != marboragent.ScopeAdmin {
+		t.Errorf("persisted NodeAgentRecord.Scope after regenerate = %q, want %q", rec.Scope, marboragent.ScopeAdmin)
 	}
 	if rec.Token != resp.Token {
 		t.Errorf("persisted token %q does not match regenerated token %q", rec.Token, resp.Token)

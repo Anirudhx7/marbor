@@ -27,7 +27,7 @@
 # artifact from the control-plane marbor.exe - a GPU host running this
 # role never has a control-plane-capable executable on disk) and
 # registers+starts it as a native Windows Service via the binary's own
-# "service install" subcommand (internal/nodeagent/service) - this script's
+# "service install" subcommand (internal/marboragent/service) - this script's
 # job for that role is just "download the right binary, then hand off to
 # it," the same split install.sh uses for Linux/macOS.
 #

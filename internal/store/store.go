@@ -65,7 +65,7 @@ type Store interface {
 	NodeDrainStates() (map[string]NodeDrainState, error)
 
 	// Node Agent (per-node opaque bearer token + enable/port, encrypted at
-	// rest - see internal/nodeagent and .local/specs/node-agent.md section 5).
+	// rest - see internal/marboragent and .local/specs/node-agent.md section 5).
 	// GetNodeAgent's error may be returned as-is by callers (single-node
 	// lookup, blast radius is that one node's telemetry falling back to "-");
 	// AllNodeAgents must never fail the whole list on one bad row (drop and
@@ -359,11 +359,11 @@ type NodeAgentRecord struct {
 	Enabled bool   `json:"enabled"`
 	Port    int    `json:"port"`
 	Token   string `json:"-"`
-	// Scope is the tier (nodeagent.ScopeReadonly/ScopeOperator/ScopeAdmin)
+	// Scope is the tier (marboragent.ScopeReadonly/ScopeOperator/ScopeAdmin)
 	// embedded in Token's prefix (P54: per-action token scoping). Stored
 	// alongside Token purely for observability/API responses - the agent
 	// enforces scope by parsing its own configured Token directly
-	// (nodeagent.TokenScope), not by trusting this column, so a mismatch
+	// (marboragent.TokenScope), not by trusting this column, so a mismatch
 	// between the two is a display-staleness issue, never a security one.
 	// Defaults to "admin" for rows created before this field existed,
 	// matching those rows' actual (unprefixed, full-scope-by-fallback)

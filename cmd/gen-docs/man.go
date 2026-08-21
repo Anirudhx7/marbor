@@ -109,9 +109,9 @@ func genRootMan(root *cli.Command) string {
 	b.WriteString(".SH DESCRIPTION\n")
 	b.WriteString(roffEscape(
 		"Marbor is a single static binary that is three tools in one - the mesh "+
-			"server, a Node Agent, and this thin CLI client of the Admin API - selected "+
+			"server, a marbor agent, and this thin CLI client of the Admin API - selected "+
 			"by the first argument. As a CLI, every subcommand below is exactly one Admin "+
-			"API request; it never talks to a Node Agent directly.") + "\n")
+			"API request; it never talks to a marbor agent directly.") + "\n")
 
 	groups := groupPageCommands(root)
 	groupSet := map[string]bool{}

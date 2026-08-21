@@ -39,7 +39,7 @@ import (
 	"github.com/ollama-mesh/ollama-mesh/internal/auth"
 	"github.com/ollama-mesh/ollama-mesh/internal/bench"
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 	"github.com/ollama-mesh/ollama-mesh/internal/router"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
@@ -511,7 +511,7 @@ type nodeResp struct {
 	TokensTotal      int64              `json:"tokensTotal"`
 	AvgLatencyMs     float64            `json:"avgLatencyMs"`
 	WarmHitRatio     float64            `json:"warmHitRatio"`
-	// Node Agent-derived fields (internal/nodeagent). AgentPresent is false
+	// Node Agent-derived fields (internal/marboragent). AgentPresent is false
 	// (and every other field below zero-value) whenever no agent is
 	// configured for this node, or the most recent agent poll failed - the
 	// UI must check AgentPresent before displaying FanPercent/RAMUsedMB/
@@ -524,7 +524,7 @@ type nodeResp struct {
 	DiskFreeGB   float64  `json:"diskFreeGB"`
 	// AgentCapabilities/AgentPlatform/AgentArchitecture/AgentGPUVendor/
 	// AgentRuntime are the agent's self-reported metadata (see
-	// internal/nodeagent Telemetry.Capabilities/Platform/Architecture/
+	// internal/marboragent Telemetry.Capabilities/Platform/Architecture/
 	// GPUVendor/Runtime) - lets the UI gate agent-dependent features on
 	// what this specific node's agent build actually supports, and helps
 	// debug a mixed-version/mixed-vendor/mixed-runtime fleet. Cleared
@@ -535,7 +535,7 @@ type nodeResp struct {
 	AgentGPUVendor    string   `json:"agentGpuVendor,omitempty"`
 	AgentRuntime      string   `json:"agentRuntime,omitempty"`
 	// AgentNodeID is the agent's self-persisted node_id (a stable UUID
-	// surviving agent upgrades/hostname changes - internal/nodeagent
+	// surviving agent upgrades/hostname changes - internal/marboragent
 	// identity.go). AgentGPUCount/AgentGPUs/DriverVersion/CUDAVersion are the
 	// multi-GPU array + driver-stack metadata; RAMTotalMB/DiskTotalGB/
 	// Hostname/UptimeSeconds/BootTime are host capacity/identity;
@@ -568,7 +568,7 @@ type warmupStateEntry struct {
 }
 
 // agentGPUDevice is the admin API's camelCase projection of
-// nodeagent.GPUInfo (whose own JSON tags are snake_case, matching the
+// marboragent.GPUInfo (whose own JSON tags are snake_case, matching the
 // Node Agent Protocol wire format, not this admin API's convention) - one
 // entry per physical GPU device in a node's multi-GPU array.
 type agentGPUDevice struct {
@@ -585,7 +585,7 @@ type agentGPUDevice struct {
 // toAgentGPUDevices converts the agent-protocol GPU array into the admin
 // API's camelCase projection above. Returns nil (omitted via omitempty) for
 // a nil/empty input, never an empty-but-present array.
-func toAgentGPUDevices(devices []nodeagent.GPUInfo) []agentGPUDevice {
+func toAgentGPUDevices(devices []marboragent.GPUInfo) []agentGPUDevice {
 	if len(devices) == 0 {
 		return nil
 	}
@@ -2058,7 +2058,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // it as a persistent, auto-restarting OS service - install.sh/install.ps1's
 // ROLE=agent path (see .local/specs/node-agent.md section 12), which
 // downloads the binary then hands off to its own "marbor-agent service
-// install" self-registration subcommand (internal/nodeagent/service). unix
+// install" self-registration subcommand (internal/marboragent/service). unix
 // covers Linux/macOS; windows is the PowerShell equivalent for Windows
 // nodes, since a POSIX sh script can't run there. Safe to re-run for an
 // upgrade or to rotate the token - install.sh/service install are both
@@ -2102,7 +2102,7 @@ func requestBaseURL(r *http.Request) string {
 // .local/specs/node-agent-capabilities.md section 7). The agent has no DB
 // access, only the bare token string it's configured with, so the scope
 // travels embedded in the token itself and is parsed agent-side by
-// nodeagent.scopeOf/TokenScope. scope must be one of nodeagent.ScopeReadonly/
+// marboragent.scopeOf/TokenScope. scope must be one of marboragent.ScopeReadonly/
 // ScopeOperator/ScopeAdmin.
 func generateNodeAgentToken(scope string) (string, error) {
 	b := make([]byte, 32)
@@ -2142,7 +2142,7 @@ func (s *Server) handleGetNodeAgent(w http.ResponseWriter, r *http.Request) {
 	// comment) - every node on this host reads/writes the same record.
 	rec, found, err := s.st.GetNodeAgent(host)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to read node agent config")
+		writeJSONError(w, http.StatusInternalServerError, "failed to read marbor agent config")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -2236,12 +2236,12 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 			sameHost, fp := n.Host == host, n.TLSFingerprint
 			n.RUnlock()
 			if sameHost && fp != "" {
-				writeJSONError(w, http.StatusConflict, fmt.Sprintf("node agent host %q has a pinned TLS fingerprint (node %q) - clear it first (PATCH /admin/nodes/%s with tls_fingerprint: null) before switching the Agent back to http://", host, n.Name, n.Name))
+				writeJSONError(w, http.StatusConflict, fmt.Sprintf("marbor agent host %q has a pinned TLS fingerprint (node %q) - clear it first (PATCH /admin/nodes/%s with tls_fingerprint: null) before switching the Agent back to http://", host, n.Name, n.Name))
 				return
 			}
 		}
 	}
-	token, err := generateNodeAgentToken(nodeagent.ScopeAdmin)
+	token, err := generateNodeAgentToken(marboragent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
@@ -2251,9 +2251,9 @@ func (s *Server) handleEnableNodeAgent(w http.ResponseWriter, r *http.Request) {
 	// and is polled by the same single agent process (see SetNodeAgent's doc
 	// comment). Enabling from any one node's UI panel enables it for all of
 	// them.
-	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: nodeagent.ScopeAdmin, Scheme: scheme}
+	rec := store.NodeAgentRecord{Name: host, Enabled: true, Port: body.Port, Token: token, Scope: marboragent.ScopeAdmin, Scheme: scheme}
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist marbor agent config")
 		return
 	}
 	s.router.SetNodeAgent(host, true, body.Port, token, scheme)
@@ -2314,7 +2314,7 @@ func (s *Server) handleDisableNodeAgent(w http.ResponseWriter, r *http.Request) 
 	// Disables for the whole shared host, not just this one node row - see
 	// SetNodeAgent's doc comment.
 	if err := s.st.DeleteNodeAgent(host); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to delete node agent config")
+		writeJSONError(w, http.StatusInternalServerError, "failed to delete marbor agent config")
 		return
 	}
 	s.router.SetNodeAgent(host, false, 0, "", "")
@@ -2336,22 +2336,22 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 	}
 	rec, found, err := s.st.GetNodeAgent(host)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to read node agent config")
+		writeJSONError(w, http.StatusInternalServerError, "failed to read marbor agent config")
 		return
 	}
 	if !found || !rec.Enabled {
-		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node agent not enabled for %q", name))
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("marbor agent not enabled for %q", name))
 		return
 	}
-	token, err := generateNodeAgentToken(nodeagent.ScopeAdmin)
+	token, err := generateNodeAgentToken(marboragent.ScopeAdmin)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 	rec.Token = token
-	rec.Scope = nodeagent.ScopeAdmin
+	rec.Scope = marboragent.ScopeAdmin
 	if err := s.st.UpsertNodeAgent(rec); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to persist node agent config")
+		writeJSONError(w, http.StatusInternalServerError, "failed to persist marbor agent config")
 		return
 	}
 	s.router.SetNodeAgent(host, true, rec.Port, token, rec.Scheme)
@@ -2375,7 +2375,7 @@ func (s *Server) handleRegenerateNodeAgentToken(w http.ResponseWriter, r *http.R
 
 // validControlDrivers are the only driver names an operator may Accept
 // (P43 v1 set - node-agent-capabilities.md section 5.4). Kept in sync with
-// internal/nodeagent/control's driver Name() constants.
+// internal/marboragent/control's driver Name() constants.
 var validControlDrivers = map[string]bool{
 	"systemd": true, "docker": true, "process": true, "launchd": true, "windows_service": true,
 }
@@ -2519,7 +2519,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	// nodeIsHealthy's runtime reachability, or "stop" ever succeeding once
 	// would permanently block "start" from working again on this node.
 	if !nodeAgentIsPresent(s.router.Nodes(), nodeName) {
-		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the Node Agent process/service on that host before running runtime %s", nodeName, action))
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the marbor agent process/service on that host before running runtime %s", nodeName, action))
 		return
 	}
 
@@ -2635,7 +2635,7 @@ func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 	// Agent, and are exactly what an operator needs while the runtime itself
 	// is stopped - gate on agent reachability, not runtime reachability.
 	if !nodeAgentIsPresent(s.router.Nodes(), nodeName) {
-		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the Node Agent process/service on that host before running runtime logs", nodeName))
+		writeJSONError(w, http.StatusServiceUnavailable, fmt.Sprintf("node %q's agent is currently unreachable - check the marbor agent process/service on that host before running runtime logs", nodeName))
 		return
 	}
 
@@ -3651,7 +3651,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	if resultingFP != "" {
 		agentCfg, hasAgent := s.router.NodeAgentSettingByHost(resultingHost)
 		if !hasAgent || !agentCfg.Enabled || agentCfg.Scheme != "https" {
-			return fmt.Errorf("node %q would have a pinned TLS fingerprint but its Node Agent (host %q) is not configured for https:// - enable Agent HTTPS (POST /admin/nodes/%s/agent with scheme:\"https\") before pinning, or clear the pin (tls_fingerprint: null)", name, resultingHost, name)
+			return fmt.Errorf("node %q would have a pinned TLS fingerprint but its marbor agent (host %q) is not configured for https:// - enable Agent HTTPS (POST /admin/nodes/%s/agent with scheme:\"https\") before pinning, or clear the pin (tls_fingerprint: null)", name, resultingHost, name)
 		}
 	}
 
@@ -3688,7 +3688,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 			siblingFP := n.TLSFingerprint
 			n.RUnlock()
 			if sameHost && siblingFP != "" && siblingFP != resultingFP {
-				return fmt.Errorf("node %q would share Node Agent host %q with node %q, which is already pinned to a different fingerprint - every node sharing one physical Node Agent must share the same pin (see .local/specs/node-agent-tls.md section 15)", name, resultingHost, n.Name)
+				return fmt.Errorf("node %q would share Marbor Agent host %q with node %q, which is already pinned to a different fingerprint - every node sharing one physical Marbor Agent must share the same pin (see .local/specs/node-agent-tls.md section 15)", name, resultingHost, n.Name)
 			}
 		}
 	}
@@ -6392,7 +6392,7 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 			// environment (actions.go runDownload). A 401 here almost always
 			// means a gated/token-required HF model on a node without an
 			// agent, not a mesh misconfiguration.
-			errMsg += " (this node has no Node Agent capable of pull_model - token-gated Hugging Face pulls require one; install/enable the Node Agent on this node or use a non-gated model)"
+			errMsg += " (this node has no marbor agent capable of pull_model - token-gated Hugging Face pulls require one; install/enable the marbor agent on this node or use a non-gated model)"
 		}
 		job.finish("failed", errMsg)
 		return
@@ -6689,7 +6689,7 @@ type nodeModelEntry struct {
 	Source    string `json:"source"`
 	// Family is Ollama's own architecture classification (e.g. "llama",
 	// "bert") when the agent's source could report it (ollama-tags only;
-	// hf-cache scans have no such metadata) - see nodeagent.modelEntry.
+	// hf-cache scans have no such metadata) - see marboragent.modelEntry.
 	Family string `json:"family,omitempty"`
 }
 
@@ -6872,7 +6872,7 @@ func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg
 
 // containerDiskStatsViaAgent asks nodeURL's Node Agent for the real disk
 // stats of the container ctrl identifies (POST /v1/runtime/disk, capability
-// "runtime.disk") - see internal/nodeagent's handleRuntimeDisk for why this
+// "runtime.disk") - see internal/marboragent's handleRuntimeDisk for why this
 // can differ from the host-level DiskFreeGB/DiskTotalGB the periodic
 // telemetry poll already reports for a Docker-controlled node.
 func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string, agentCfg router.NodeAgentConfig, ctrl router.ControlConfig) (freeBytes, totalBytes int64, err error) {
@@ -7089,7 +7089,7 @@ func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 	}
 	agentCfg, ok := s.router.NodeAgentSetting(name)
 	if !ok || !agentCfg.Enabled {
-		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q has no Node Agent configured - enable the Agent before probing", name))
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q has no marbor agent configured - enable the Agent before probing", name))
 		return
 	}
 	if agentCfg.Scheme != "https" {
@@ -7136,7 +7136,7 @@ func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 // shape (camelCase field names aside), never re-derived or fabricated (R1).
 // LatencyMs has no omitempty - a genuinely fast (0ms) probe is a real
 // measurement, not an absent one (see healthCheckResult's doc comment,
-// internal/nodeagent/actions.go, for the same reasoning on the agent side).
+// internal/marboragent/actions.go, for the same reasoning on the agent side).
 type nodeHealthCheckResult struct {
 	OK        bool   `json:"ok"`
 	Error     string `json:"error,omitempty"`
@@ -7758,7 +7758,7 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 }
 
 // vramAgentVendorToolLabel maps a Node Agent's detected GPU vendor
-// (nodeagent.GPUBlock.Vendor - "nvidia"/"rocm"/"intel"/"apple") to the actual
+// (marboragent.GPUBlock.Vendor - "nvidia"/"rocm"/"intel"/"apple") to the actual
 // command-line tool it read from, mirroring ui/src/components/VramBar.tsx's
 // AGENT_VENDOR_LABEL so the admin API and the GPU Nodes card never disagree
 // about what an agent-sourced reading's real source was.
@@ -7830,7 +7830,7 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 		nodeName := n.Name
 		nodeRuntime := n.Runtime
 		vramTotalMB := n.VRAMTotalMB
-		agentGPUs := append([]nodeagent.GPUInfo(nil), n.AgentGPUs...)
+		agentGPUs := append([]marboragent.GPUInfo(nil), n.AgentGPUs...)
 		declaredGPUIndices := append([]int(nil), n.DeclaredGPUIndices...)
 		vramUsedMBFromPS := int64(0)
 		rawVramSource := n.VRAMSource

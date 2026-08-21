@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/ollama-mesh/ollama-mesh/internal/config"
-	"github.com/ollama-mesh/ollama-mesh/internal/nodeagent"
+	"github.com/ollama-mesh/ollama-mesh/internal/marboragent"
 	runtimepkg "github.com/ollama-mesh/ollama-mesh/internal/runtime"
 	"github.com/ollama-mesh/ollama-mesh/internal/store"
 )
@@ -169,7 +169,7 @@ type NodeState struct {
 	LastErrorAt        time.Time
 	SuccessHistory     []bool
 
-	// Node Agent-derived telemetry (see internal/nodeagent, .local/specs/node-agent.md).
+	// Node Agent-derived telemetry (see internal/marboragent, .local/specs/node-agent.md).
 	// AgentPresent is true only after a successful poll of this node's agent
 	// on the most recent poll cycle; it is set back to false on any failure
 	// or when no agent is configured, so a stale AgentVersion/FanPercent
@@ -198,7 +198,7 @@ type NodeState struct {
 	AgentGPUVendor    string
 	AgentRuntime      string
 	// AgentRuntimeID pins this node row to one entry of the shared host's
-	// polled nodeagent.Telemetry.Runtimes array (see agent_poll.go's
+	// polled marboragent.Telemetry.Runtimes array (see agent_poll.go's
 	// pollAgentHost) - stable across a port edit to this node's URL, since
 	// it's matched by the agent's own opaque runtime_id, not by port. Empty
 	// until the first successful match; in-memory only (not persisted to
@@ -207,7 +207,7 @@ type NodeState struct {
 	// directly in the admin API/UI - it's routing plumbing, not a
 	// fleet-debugging fact like AgentNodeID below.
 	AgentRuntimeID string
-	// AgentNodeID is the agent's self-persisted node_id (internal/nodeagent
+	// AgentNodeID is the agent's self-persisted node_id (internal/marboragent
 	// identity.go) - a stable UUID surviving agent binary upgrades and
 	// hostname/IP/DNS changes. Not yet used to re-identify a node across a
 	// URL change (NodeState is still keyed by URL/Name); surfaced for
@@ -216,16 +216,16 @@ type NodeState struct {
 	AgentNodeID string
 	// AgentGPUCount/AgentGPUs/DriverVersion/CUDAVersion are the multi-GPU
 	// array and driver-stack metadata from the agent's gpu resource
-	// (nodeagent.GPUBlock) - AgentGPUs holds the full per-device snapshot
+	// (marboragent.GPUBlock) - AgentGPUs holds the full per-device snapshot
 	// for admin API serialization; the mesh's own routing/placement fields
 	// above (VRAMTotalMB etc.) stay the single-value aggregate they always
 	// were, unaffected by this addition.
 	AgentGPUCount int
-	AgentGPUs     []nodeagent.GPUInfo
+	AgentGPUs     []marboragent.GPUInfo
 	DriverVersion string
 	CUDAVersion   string
 	// RAMTotalMB/DiskTotalGB/Hostname/UptimeSeconds/BootTime are the agent's
-	// host capacity/identity fields (nodeagent.HostTelemetry) - same
+	// host capacity/identity fields (marboragent.HostTelemetry) - same
 	// AgentPresent-gated discipline as every other agent-derived field here.
 	RAMTotalMB    int64
 	DiskTotalGB   float64
@@ -233,12 +233,12 @@ type NodeState struct {
 	UptimeSeconds int64
 	BootTime      int64
 	// RuntimeVersion/RuntimeStatus are the agent-detected runtime's own
-	// reported version and live reachability (nodeagent.RuntimeInfo) -
+	// reported version and live reachability (marboragent.RuntimeInfo) -
 	// distinct from AgentRuntime (just the runtime name, already above).
 	RuntimeVersion string
 	RuntimeStatus  string
 	// AgentControlDiscovered* is what the agent's most recent ControlDriver
-	// probe found (nodeagent.ControlDiscovery, P43) - purely informational
+	// probe found (marboragent.ControlDiscovery, P43) - purely informational
 	// for the admin API's probe/accept UI. The operator-accepted value
 	// lifecycle actions actually read lives in ControlConfig (SetNodeControl/
 	// NodeControlSetting below), never here - this is never substituted in
@@ -263,7 +263,7 @@ type NodeState struct {
 	UnloadErrors map[string]string
 	// agentProtocolWarned latches once a poll observes an agent reporting a
 	// protocol_version newer than this mesh binary's own
-	// nodeagent.ProtocolVersion - logged once per node (not every poll
+	// marboragent.ProtocolVersion - logged once per node (not every poll
 	// cycle) purely for operator visibility during a rolling upgrade where
 	// an agent got updated ahead of the mesh. Decoding itself never depends
 	// on this - see agent_poll.go.

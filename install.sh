@@ -28,7 +28,7 @@
 #              then registers+starts it as a persistent OS service (systemd
 #              on Linux, launchd on macOS - see install.ps1 for Windows) via
 #              "marbor-agent service install", the binary's own
-#              self-registration subcommand (internal/nodeagent/service - no
+#              self-registration subcommand (internal/marboragent/service - no
 #              separate service-file logic duplicated in this script for the
 #              agent role). Credentials:
 #                MARBOR_ENROLL=<code> MARBOR_SERVER=<url>  (default, shown by the
@@ -275,7 +275,7 @@ fi
 # none of the control-plane logic below (node discovery wizard, mesh's own
 # systemd unit, dashboard) applies to a node running only the agent. The
 # binary's own "service install" subcommand owns the actual
-# systemd/launchd registration (internal/nodeagent/service) - this script's
+# systemd/launchd registration (internal/marboragent/service) - this script's
 # job for this role is just "download the right binary, then hand off to it."
 if [ "$ROLE" = "agent" ]; then
   if [ -z "$MARBOR_AGENT_SECRET" ] && [ -z "$MARBOR_ENROLL" ]; then
