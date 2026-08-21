@@ -18,7 +18,7 @@ func newHealthCheckRequest(t *testing.T, s *Server, node string) *http.Request {
 }
 
 // TestHandleNodeHealthCheck_FallsBackToDirectProbeForAgentlessNode verifies
-// a node with no Node Agent configured gets a real probe result (200, not
+// a node with no Marbor Agent configured gets a real probe result (200, not
 // the old hard 501) and that the on-demand probe never mutates NodeState -
 // Healthy/LastPollAt stay exactly what the periodic poller last set them
 // to, since a one-off admin click must not reset the poller's own

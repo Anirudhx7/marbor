@@ -21,7 +21,7 @@ func newModelsRequest(t *testing.T, s *Server, node string) *http.Request {
 }
 
 // TestHandleNodeModels_DispatchesToAgentWhenCapable verifies the mesh
-// forwards to the node's Node Agent (GET /v1/models, capability
+// forwards to the node's Marbor Agent (GET /v1/models, capability
 // "models.list") and translates its snake_case wire response into this
 // API's camelCase shape.
 func TestHandleNodeModels_DispatchesToAgentWhenCapable(t *testing.T) {

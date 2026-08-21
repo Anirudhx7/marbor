@@ -22,7 +22,7 @@ func newUnloadRequest(t *testing.T, s *Server, node, model string) *http.Request
 	return req
 }
 
-// newAgentUnloadTestServer builds a router with one node whose Node Agent
+// newAgentUnloadTestServer builds a router with one node whose Marbor Agent
 // reports "models.unload", pointed at mockAgent, mirroring
 // TestHandleNodeDeleteModel_DispatchesToAgentWhenCapable's fixture.
 func newAgentUnloadTestServer(t *testing.T, mockAgent *httptest.Server) *Server {
@@ -52,7 +52,7 @@ func newAgentUnloadTestServer(t *testing.T, mockAgent *httptest.Server) *Server 
 }
 
 // TestHandleUnloadModel_DispatchesToAgentWhenCapable verifies the mesh
-// forwards to the node's Node Agent (POST /v1/models/{name}, capability
+// forwards to the node's Marbor Agent (POST /v1/models/{name}, capability
 // "models.unload") instead of Ollama's own keep_alive:0 HTTP trick, when the
 // node reports the capability - mirroring
 // TestHandleNodeDeleteModel_DispatchesToAgentWhenCapable for delete.

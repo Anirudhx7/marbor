@@ -51,7 +51,7 @@
 
 set -e
 
-REPO="Anirudhx7/ollama-mesh"
+REPO="Anirudhx7/marbor"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 ROLE="${ROLE:-mesh}"
 if [ "$ROLE" = "agent" ]; then

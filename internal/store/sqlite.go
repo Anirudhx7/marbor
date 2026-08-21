@@ -481,7 +481,7 @@ func (s *sqliteStore) migrate() error {
 		// NULL means "no override declared" (falls back to
 		// RoutingConfig.MaxInFlightPerNode), distinct from an explicit 0.
 		`ALTER TABLE node_overrides ADD COLUMN max_in_flight INTEGER`,
-		// P24: TOFU-pinned SHA-256 fingerprint of the node agent's TLS cert.
+		// P24: TOFU-pinned SHA-256 fingerprint of the Marbor agent's TLS cert.
 		// Nullable - NULL means "no pin, this node is plaintext or not yet
 		// TLS-enrolled". Not secret material (secretbox.go does not apply):
 		// a cert fingerprint is public, and the private key never leaves the
@@ -490,7 +490,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE node_control ADD COLUMN start_command TEXT NOT NULL DEFAULT ''`,
 		// host groups multiple runtime_nodes rows that live on the same
 		// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one
-		// box) so they can share one Node Agent enrollment/token instead of
+		// box) so they can share one Marbor Agent enrollment/token instead of
 		// each needing its own - see internal/router.AddNode for the
 		// default-from-URL-hostname fallback when this is left empty.
 		`ALTER TABLE runtime_nodes ADD COLUMN host TEXT`,
@@ -1260,7 +1260,7 @@ func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
 	return out, nil
 }
 
-// --- Node Agent (per-node telemetry agent config) ---
+// --- Marbor Agent (per-node telemetry agent config) ---
 
 // UpsertMarborAgent persists rec, encrypting the token at rest. Called both
 // when an operator enables/reconfigures the agent for a node and when a
@@ -1319,7 +1319,7 @@ func (s *sqliteStore) GetMarborAgent(name string) (MarborAgentRecord, bool, erro
 	return rec, true, nil
 }
 
-// AllMarborAgents returns every configured node agent. A row whose token
+// AllMarborAgents returns every configured Marbor agent. A row whose token
 // fails to decrypt (corrupt data, rotated key) is dropped rather than
 // failing the whole read - this list feeds the router's boot-time agent
 // poll wiring, and one bad row must not blank out telemetry for every other

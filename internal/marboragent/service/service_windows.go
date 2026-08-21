@@ -60,7 +60,7 @@ func runSC(args ...string) (string, error) {
 	return buf.String(), err
 }
 
-// agentDataDir/agentCertPath/agentKeyPath are the Node Agent's TLS
+// agentDataDir/agentCertPath/agentKeyPath are the Marbor Agent's TLS
 // certificate/key file locations on Windows (P24). %ProgramData% is always
 // set on every supported Windows version; falling back to a literal
 // C:\ProgramData only guards against the pathological case of it being
@@ -79,7 +79,7 @@ func agentCertKeyPaths() (certPath, keyPath string) {
 	return dir + `\agent.crt`, dir + `\agent.key`
 }
 
-// CertKeyPaths returns this platform's Node Agent TLS certificate/key file
+// CertKeyPaths returns this platform's Marbor Agent TLS certificate/key file
 // paths - used by service_cmd.go's regen-cert subcommand and "agent service
 // status" to locate the files without duplicating the path constants there.
 func CertKeyPaths() (certPath, keyPath string) { return agentCertKeyPaths() }

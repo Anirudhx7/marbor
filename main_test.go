@@ -157,7 +157,7 @@ func TestPrintTopLevelHelp_SourcesFromRegistry(t *testing.T) {
 
 	// The genuinely-non-CLI entrypoints must still be present and are not
 	// part of the registry at all. "agent" is deliberately excluded here -
-	// the Node Agent is a separate binary now (cmd/marbor-agent), not a
+	// the Marbor Agent is a separate binary now (cmd/marbor-agent), not a
 	// subcommand of this one; see TestResolveCommand's "agent" case and
 	// TestAgentSubcommand_RedirectsToDedicatedBinary below.
 	for _, name := range []string{"bench", "uninstall"} {
@@ -180,7 +180,7 @@ func TestResolveCommand_HiddenCommandsReachable(t *testing.T) {
 }
 
 // TestAgentSubcommand_RedirectsToDedicatedBinary proves "marbor agent
-// ..." fails clearly (per the control-plane/Node Agent binary split) rather
+// ..." fails clearly (per the control-plane/Marbor Agent binary split) rather
 // than silently doing something else, and that the message actually names
 // the replacement binary.
 func TestAgentSubcommand_RedirectsToDedicatedBinary(t *testing.T) {

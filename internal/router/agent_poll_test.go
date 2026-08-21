@@ -52,7 +52,7 @@ func nodePSServer() *httptest.Server {
 }
 
 // TestPollAgentTelemetryNoAgentConfigured verifies the R1 contract: a node
-// with no Node Agent configured must report zero-value/"unknown" telemetry
+// with no Marbor Agent configured must report zero-value/"unknown" telemetry
 // (AgentPresent=false, every agent-derived field cleared), never fabricated
 // data, whether or not it was ever enabled in the past.
 func TestPollAgentTelemetryNoAgentConfigured(t *testing.T) {
@@ -538,7 +538,7 @@ func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 }
 
 // TestAgentDownUpWebhookFiresOnTransition verifies an operator gets an
-// agent_down webhook when a configured Node Agent stops responding, and an
+// agent_down webhook when a configured Marbor Agent stops responding, and an
 // agent_up webhook when it recovers - independent of the node's own
 // inference-runtime health webhooks (node_up/node_down), which cover a
 // different failure (Ollama itself, not the agent). The very first poll of a
@@ -785,7 +785,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 // TestPollAgentTelemetryStillPolledWhenAPIPSFails is a regression test for a
 // bug where pollNode returned early on a /api/ps probe failure before ever
 // reaching pollAgentTelemetry - a node whose Ollama process crashed while its
-// Node Agent stayed up would show frozen, stale agent telemetry forever
+// Marbor Agent stayed up would show frozen, stale agent telemetry forever
 // instead of the agent poll continuing to run (they're independent HTTP
 // endpoints; one failing must not freeze the other's last-reported state).
 func TestPollAgentTelemetryStillPolledWhenAPIPSFails(t *testing.T) {

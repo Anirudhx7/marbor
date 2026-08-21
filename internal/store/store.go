@@ -56,7 +56,7 @@ type Store interface {
 
 	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C;
 	// max_in_flight - P64 per-node in-flight cap override; tls_fingerprint -
-	// P24 TOFU-pinned node agent cert fingerprint)
+	// P24 TOFU-pinned Marbor agent cert fingerprint)
 	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
@@ -64,7 +64,7 @@ type Store interface {
 	SetNodeDrain(name string, draining bool, reason string) error
 	NodeDrainStates() (map[string]NodeDrainState, error)
 
-	// Node Agent (per-node opaque bearer token + enable/port, encrypted at
+	// Marbor Agent (per-node opaque bearer token + enable/port, encrypted at
 	// rest - see internal/marboragent and .local/specs/node-agent.md section 5).
 	// GetMarborAgent's error may be returned as-is by callers (single-node
 	// lookup, blast radius is that one node's telemetry falling back to "-");
@@ -318,7 +318,7 @@ type NodeRecord struct {
 	Runtime     string `json:"runtime"`
 	VRAMTotalMB *int64 `json:"vram_total_mb,omitempty"`
 	// Host groups this node with any other node sharing the same physical
-	// machine, so they can share one Node Agent enrollment/token instead of
+	// machine, so they can share one Marbor Agent enrollment/token instead of
 	// each needing its own - empty means "not explicitly grouped," resolved
 	// to a default (the URL's hostname) in internal/router.AddNode, never
 	// left ambiguous in memory.
@@ -347,7 +347,7 @@ type NodeOverride struct {
 	TLSFingerprint *string `json:"tls_fingerprint,omitempty"`
 }
 
-// MarborAgentRecord is the per-node Node Agent configuration: whether the
+// MarborAgentRecord is the per-node Marbor Agent configuration: whether the
 // agent is enabled for this node, which port it listens on, and the opaque
 // bearer token the mesh presents when polling it. Token is encrypted at
 // rest by the sqliteStore implementation (AES-256-GCM, same primitive as
@@ -369,9 +369,9 @@ type MarborAgentRecord struct {
 	// matching those rows' actual (unprefixed, full-scope-by-fallback)
 	// tokens.
 	Scope string `json:"scope"`
-	// Scheme is the Node Agent's OWN transport scheme ("http" or "https") -
+	// Scheme is the Marbor Agent's OWN transport scheme ("http" or "https") -
 	// independent of the node's runtime URL (NodeState.URL/runtime_nodes.url)
-	// scheme. Before this field existed, every Node Agent URL builder
+	// scheme. Before this field existed, every Marbor Agent URL builder
 	// derived its scheme from the runtime URL instead, so enabling HTTPS for
 	// the agent silently switched the runtime endpoint to https:// too and
 	// broke runtimes (Ollama, vLLM, etc.) that only serve plain HTTP. Always
@@ -380,7 +380,7 @@ type MarborAgentRecord struct {
 }
 
 // NodeControlRecord is the per-node ControlDriver configuration (P43) - how
-// the Node Agent starts/stops/restarts the inference runtime process on
+// the Marbor Agent starts/stops/restarts the inference runtime process on
 // this node. Discovered* is what the most recent probe found (evidence, not
 // a bare confidence label - node-agent-capabilities.md section 5.5);
 // Driver/Identifier/Configured is what an operator has explicitly accepted

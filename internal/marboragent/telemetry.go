@@ -1,4 +1,4 @@
-// Package nodeagent implements the Marbor agent Protocol v1: the
+// Package marboragent implements the Marbor agent Protocol v1: the
 // node-local execution point for the mesh. v1 ships a read-only "status"
 // resource (GPU/host/runtime facts reported back to the mesh on its existing
 // poll cycle) plus the first mutating resource (model pull) - future
@@ -13,7 +13,7 @@ package marboragent
 
 import "time"
 
-// ProtocolVersion is the current Node Agent Protocol version served at
+// ProtocolVersion is the current Marbor Agent Protocol version served at
 // GET /v1/status. New fields added to Telemetry/GPUInfo/HostTelemetry/
 // RuntimeInfo must be optional (nil/omitted means "unknown", never
 // fabricated - R1) so an older agent talking to a newer mesh, or vice versa,
@@ -41,7 +41,7 @@ const ProtocolVersion = 1
 var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls"}
 
 // Telemetry is the canonical, versioned JSON payload served at
-// GET /v1/status - the Node Agent Protocol's root resource. GET /metrics
+// GET /v1/status - the Marbor Agent Protocol's root resource. GET /metrics
 // (Prometheus text format, left unversioned per Prometheus's own
 // scrape-target convention) is generated from this same struct, not a second
 // collection path.
@@ -86,7 +86,7 @@ type Agent struct {
 	NodeID string `json:"node_id,omitempty"`
 	// Version is the agent binary's reported build version.
 	Version string `json:"version,omitempty"`
-	// ProtocolVersion is the Node Agent Protocol version this response was
+	// ProtocolVersion is the Marbor Agent Protocol version this response was
 	// produced under (see the package-level ProtocolVersion constant).
 	ProtocolVersion int `json:"protocol_version"`
 	// Build is reserved for a build identifier (commit hash, build date)
@@ -121,7 +121,7 @@ type GPUInfo struct {
 	VRAMTotalMB  int64    `json:"vram_total_mb,omitempty"`
 }
 
-// GPUBlock is the Node Agent Protocol's "gpu" resource: fleet-level metadata
+// GPUBlock is the Marbor Agent Protocol's "gpu" resource: fleet-level metadata
 // (Vendor - which GPUCollector was selected; DriverVersion/CUDAVersion -
 // properties of the host's driver stack, not any one card) plus one GPUInfo
 // per physical device. One agent process always reports every GPU on the
@@ -154,7 +154,7 @@ type HostTelemetry struct {
 	BootTime      int64    `json:"boot_time,omitempty"`
 }
 
-// RuntimeInfo is the Node Agent Protocol's "runtime" resource - kept
+// RuntimeInfo is the Marbor Agent Protocol's "runtime" resource - kept
 // deliberately generic (name/version/status/warm_models/queue_depth) so it
 // never becomes vLLM- or Ollama-shaped. A runtime-specific detail (e.g.
 // vLLM's tensor-parallel degree, a future ROCm/TensorRT version) belongs in
@@ -194,7 +194,7 @@ type RuntimeInfo struct {
 	QueueDepth int `json:"queue_depth,omitempty"`
 }
 
-// ControlInfo is the Node Agent Protocol's "control" resource (P43,
+// ControlInfo is the Marbor Agent Protocol's "control" resource (P43,
 // node-agent-capabilities.md section 5.7) - descriptive telemetry of the
 // node's configured ControlDriver, additive and sibling to Runtime/Health.
 // An unconfigured node reports Driver="" (omitted), Configured=false,
@@ -217,7 +217,7 @@ type ControlDiscovery struct {
 	Evidence   []string `json:"evidence,omitempty"`
 }
 
-// Health is the Node Agent Protocol's "health" resource - deliberately
+// Health is the Marbor Agent Protocol's "health" resource - deliberately
 // minimal in v1: one honest boolean, never a fabricated aggregate score.
 // Reserved to grow into per-dimension checks (gpu/disk/memory/network) or an
 // overall+checks[] shape later, without a path/shape break.

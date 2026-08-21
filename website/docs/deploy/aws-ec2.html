@@ -362,9 +362,9 @@ ollama pull llama3.2:3b"><svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 <h2 id="2-the-marbor-box">2. The marbor box<a class="anchor" href="#2-the-marbor-box" aria-label="Link to section">#</a></h2>
 <p>A small CPU instance (<code>t3.small</code> is plenty). Pull the release binary and point it at your GPU nodes' <strong>private</strong> IPs:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fL -o /usr/local/bin/marbor \
-  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/marbor-linux-amd64
+  https://github.com/Anirudhx7/marbor/releases/latest/download/marbor-linux-amd64
 chmod +x /usr/local/bin/marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -fL -o /usr/local/bin/marbor \
-  https://github.com/Anirudhx7/ollama-mesh/releases/latest/download/marbor-linux-amd64
+  https://github.com/Anirudhx7/marbor/releases/latest/download/marbor-linux-amd64
 chmod +x /usr/local/bin/marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>systemd unit (<code>/etc/systemd/system/marbor.service</code>):</p>
 <div class="code-wrap"><pre class="code" data-lang="ini"><code>[Unit]

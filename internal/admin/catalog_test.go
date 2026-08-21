@@ -621,7 +621,7 @@ func TestDetectSafetensorsQuant(t *testing.T) {
 // TestHandleModelCatalog_Capabilities is a regression test for the Model
 // Advisor Pull-button bug: the frontend used to hardcode
 // actualRuntime === 'ollama' to decide whether to show "Pull", ignoring the
-// Node Agent's real "models.pull" capability entirely for vllm/tgi/llamacpp/
+// Marbor Agent's real "models.pull" capability entirely for vllm/tgi/llamacpp/
 // mlx nodes. The fix requires the catalog response to carry the node's
 // effective capability list, computed exactly like handleNodePull's own
 // direct-vs-agent dispatch decision - not the raw agent-advertised list -

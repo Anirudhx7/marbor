@@ -141,7 +141,7 @@ func certAndKeyValid(certPath, keyPath string) (certOK, keyOK bool) {
 // reads via "agent service status" always matches what the mesh's
 // tls-probe endpoint reports for the same certificate. The two are
 // necessarily separate implementations (package service cannot import
-// package router, a mesh-side package, from the node agent binary) - if
+// package router, a mesh-side package, from the Marbor agent binary) - if
 // this computation ever changes, router.CertFingerprintSHA256 must change
 // identically, and vice versa.
 func AgentCertFingerprint(certPath string) (string, error) {

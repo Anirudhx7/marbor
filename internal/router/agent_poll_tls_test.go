@@ -185,7 +185,7 @@ func TestMixedTLSAndPlaintextFleet_BothPollCorrectly(t *testing.T) {
 }
 
 // TestAgentSchemeIndependentOfRuntimeURL is the priority regression test for
-// the bug this fix addresses: enabling https:// for a node's Node Agent must
+// the bug this fix addresses: enabling https:// for a node's Marbor Agent must
 // never change, or depend on, the node's runtime URL scheme. The runtime here
 // stays a plain http:// server the whole test (as most real runtimes -
 // Ollama, vLLM, etc. - are); only the Agent is configured for https://. Both

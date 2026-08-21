@@ -13,7 +13,7 @@ import (
 
 // agentTelemetryServer returns a minimal /v1/status server that always
 // reports AgentPresent-worthy telemetry, for proving pollAgentHosts can
-// still reach a node's Node Agent after UpdateNodeURL runs.
+// still reach a node's Marbor Agent after UpdateNodeURL runs.
 func agentTelemetryServer() *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/status" {
@@ -37,7 +37,7 @@ func agentTelemetryServer() *httptest.Server {
 // a node with no explicit config.NodeConfig.Host had its Host derived from
 // its URL's hostname. After UpdateNodeURL changes the URL to a different
 // host, Host must re-derive from the new hostname - not stay at the old
-// value or go empty - so pollAgentHosts keeps finding the Node Agent
+// value or go empty - so pollAgentHosts keeps finding the Marbor Agent
 // registered under the node's new effective host.
 func TestUpdateNodeURLReDerivesImplicitHost(t *testing.T) {
 	psSrv := nodePSServer()
@@ -71,7 +71,7 @@ func TestUpdateNodeURLReDerivesImplicitHost(t *testing.T) {
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
 	if !r.nodes[0].AgentPresent {
-		t.Fatal("AgentPresent = false, want true: pollAgentHosts must find the Node Agent under the re-derived Host after a URL edit")
+		t.Fatal("AgentPresent = false, want true: pollAgentHosts must find the Marbor Agent under the re-derived Host after a URL edit")
 	}
 }
 
@@ -111,6 +111,6 @@ func TestUpdateNodeURLPreservesExplicitHost(t *testing.T) {
 	r.nodes[0].mu.RLock()
 	defer r.nodes[0].mu.RUnlock()
 	if !r.nodes[0].AgentPresent {
-		t.Fatal("AgentPresent = false, want true: the explicit Host's Node Agent registration must still be found after the URL edit")
+		t.Fatal("AgentPresent = false, want true: the explicit Host's Marbor Agent registration must still be found after the URL edit")
 	}
 }

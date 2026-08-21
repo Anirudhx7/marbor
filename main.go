@@ -241,7 +241,7 @@ func resolveCommand(args []string) string {
 }
 
 // printTopLevelHelp is the single, unified --help output for the merged
-// binary - one command table covering the server, the Node Agent, the
+// binary - one command table covering the server, the Marbor Agent, the
 // benchmark tool, and the Admin API CLI, rather than separate help systems
 // per subcommand family.
 // helpTableRows hand-lists only the 4 genuinely-non-CLI entrypoints (server
@@ -302,9 +302,9 @@ Server flags:
 // instead of "whoami"). Phrasing mirrors dispatch.go's "unknown command
 // %q"/"Did you mean %q?" lines byte-for-byte so the UX is identical whether
 // the typo is top-level or inside the CLI.
-// printAgentRemovedNotice explains where the Node Agent went for anyone
+// printAgentRemovedNotice explains where the Marbor Agent went for anyone
 // still typing "marbor agent ..." out of muscle memory from before the
-// control-plane/Node Agent binary split - it directs them to the dedicated
+// control-plane/Marbor Agent binary split - it directs them to the dedicated
 // marbor-agent binary rather than silently starting the server or
 // failing with an opaque flag-parsing error.
 func printAgentRemovedNotice(w io.Writer) {

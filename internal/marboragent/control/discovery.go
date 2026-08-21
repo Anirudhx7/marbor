@@ -9,7 +9,7 @@ import (
 )
 
 // isSelf reports whether a discovered service/container/unit name is the
-// node agent's own registration (service.Name, e.g.
+// Marbor agent's own registration (service.Name, e.g.
 // "marbor-agent.service" for systemd) rather than the inference
 // runtime it is trying to find. Needed because a naive substring match on
 // runtimeName (e.g. "ollama") also matches the agent's own unit name

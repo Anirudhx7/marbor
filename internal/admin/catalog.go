@@ -324,7 +324,7 @@ type catalogNodeEntry struct {
 	// requires disclosing "unknown" rather than implying a reading that was
 	// never taken.
 	GPUCountUnknown bool `json:"gpu_count_unknown,omitempty"`
-	// Capabilities lists the node's effective Node Agent action capabilities
+	// Capabilities lists the node's effective Marbor Agent action capabilities
 	// (e.g. "models.pull", "runtime.restart") - empty/omitted when there is no
 	// agent, the agent hasn't reported yet, or the agent is disabled in
 	// settings, matching exactly what handleNodePull's dispatch would do
@@ -343,7 +343,7 @@ type catalogNodeEntry struct {
 //   - "ollama-library": a bare "name[:tag]" with no "/" - Ollama's own
 //     official-library shorthand (every compiled catalogModels variant tag
 //     is exactly this shape, e.g. "llama3.2:3b"). Only `ollama pull` resolves
-//     this. The node agent's own pull fallback for every other runtime
+//     this. The Marbor agent's own pull fallback for every other runtime
 //     (internal/marboragent/actions.go pullViaHFHub/pullViaTGI) shells out to
 //     huggingface-cli/text-generation-server with a Hugging Face "org/repo"
 //     id - a bare Ollama library name is not that, and llama.cpp has no

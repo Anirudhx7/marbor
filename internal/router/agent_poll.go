@@ -1,6 +1,6 @@
 package router
 
-// agent_poll.go - polls each physical host's Node Agent (internal/marboragent)
+// agent_poll.go - polls each physical host's Marbor Agent (internal/marboragent)
 // exactly once per refresh interval, on its own goroutine group (see
 // pollAgentHosts, called alongside - not nested inside - the per-node
 // /api/ps health poll in health.go). One poll's Telemetry is fanned out to
@@ -84,7 +84,7 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 	}
 
 	// scheme is the agent's OWN transport scheme (cfg.Scheme) - independent
-	// of any member's runtime URL scheme. Node Agent URL construction used
+	// of any member's runtime URL scheme. Marbor Agent URL construction used
 	// to derive this from the runtime URL instead, which meant enabling
 	// HTTPS for the agent also silently switched the runtime endpoint to
 	// https:// and broke runtimes that only serve plain HTTP. See

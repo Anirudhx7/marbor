@@ -83,7 +83,7 @@ func TestHandlePatchNode_RejectsInvalidTLSFingerprintFormat(t *testing.T) {
 
 // TestHandlePatchNode_URLSchemeAloneDoesNotAffectAgentPin verifies the core
 // behavior this fix's decoupling was built for: section 7's no-downgrade
-// rule is keyed off the Node Agent's OWN scheme for the resulting host, not
+// rule is keyed off the Marbor Agent's OWN scheme for the resulting host, not
 // the node's runtime URL scheme. Before this fix, the pinned fingerprint was
 // (incorrectly) tied to the runtime URL's own https-ness, so flipping the
 // URL to http:// while pinned was rejected as a "downgrade" - even though
@@ -781,7 +781,7 @@ func TestHandleEnableMarborAgent_ReconfigureOmittingSchemeKeepsExisting(t *testi
 }
 
 // TestHandleDisableMarborAgent_ClearsPinnedFingerprint verifies the
-// adversarial-review fix: disabling the Node Agent entirely must clear any
+// adversarial-review fix: disabling the Marbor Agent entirely must clear any
 // pinned TLS fingerprint on that host's nodes, not leave a stale/inert pin
 // that shows as "protected" while nothing ever verifies it again.
 func TestHandleDisableMarborAgent_ClearsPinnedFingerprint(t *testing.T) {
