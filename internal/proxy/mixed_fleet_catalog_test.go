@@ -152,7 +152,7 @@ func TestMixedFleetAPIChatMisroutesVLLMModelToOllamaNode(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	if !hitOllama {
-		t.Error("expected /api/chat for a vLLM-only model to still be forwarded to the Ollama node (runtime filter is protocol-based, not model-aware) - if this now fails at the mesh level instead, update this test and the client guidance that assumes the misroute")
+		t.Error("expected /api/chat for a vLLM-only model to still be forwarded to the Ollama node (runtime filter is protocol-based, not model-aware) - if this now fails at the marbor level instead, update this test and the client guidance that assumes the misroute")
 	}
 	if hitVLLM {
 		t.Error("request for a vLLM-served model reached the vLLM node via /api/chat - the Ollama-native path should never be able to reach a non-Ollama node")

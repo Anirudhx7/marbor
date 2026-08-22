@@ -7,17 +7,17 @@
 // The non-Ollama runtimes deliberately implement only what marbor
 // itself actually calls (internal/runtime's detect/health probes, verified
 // against that package's source and tests) rather than each project's full
-// real API surface - this is a mock of the mesh's integration contract, not
+// real API surface - this is a mock of the marbor's integration contract, not
 // a general-purpose vLLM/TGI/llama.cpp/MLX simulator:
 //   - vllm/llamacpp: GET /health, GET /v1/models (owned_by:"vllm" is what
 //     distinguishes vllm from llamacpp during auto-detection), POST
 //     /v1/chat/completions, POST /v1/completions.
 //   - tgi: GET /health, GET /info ({"model_id":...} is the only field the
-//     mesh reads), POST /v1/chat/completions.
+//     marbor reads), POST /v1/chat/completions.
 //   - mlx: GET /v1/models only (no /health route - matches real
 //     mlx_lm.server, and is exactly what internal/runtime.MLXProbe checks),
 //     POST /v1/chat/completions, POST /v1/completions.
-//   - None of these implement /api/tags: the mesh already treats its
+//   - None of these implement /api/tags: the marbor already treats its
 //     absence as an expected, gracefully-degraded case (see
 //     internal/router/eviction.go's estimateModelSizeBytes comment).
 package main
@@ -213,7 +213,7 @@ func runOllamaMock(nodeName, port string, latencyMs int) {
 		handleChat(w, r, nodeName, latencyMs)
 	})
 
-	// OpenAI-compat passthrough (mesh forwards /v1/* to Ollama)
+	// OpenAI-compat passthrough (marbor forwards /v1/* to Ollama)
 	mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

@@ -12,7 +12,7 @@ import (
 // including one with an empty bearer value ("Authorization: Bearer ") - an
 // agent started without a configured token must reject everything, not fall
 // open (same "never substitute/accept empty-string secret" lesson R8
-// documents for the mesh side, applied here to the agent side of the same
+// documents for the marbor side, applied here to the agent side of the same
 // trust boundary).
 func checkToken(authHeader, expectedToken string) bool {
 	if expectedToken == "" {

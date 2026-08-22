@@ -6,14 +6,14 @@ marbor \- CLI client for the Marbor Admin API
 .I command
 [\fIflags\fR]
 .SH DESCRIPTION
-Marbor is a single static binary that is three tools in one - the mesh server, a marbor agent, and this thin CLI client of the Admin API - selected by the first argument. As a CLI, every subcommand below is exactly one Admin API request; it never talks to a marbor agent directly.
+Marbor is a single static binary that is three tools in one - the marbor server, a marbor agent, and this thin CLI client of the Admin API - selected by the first argument. As a CLI, every subcommand below is exactly one Admin API request; it never talks to a marbor agent directly.
 .SH COMMANDS
 .TP
 .B version
 print CLI and (if reachable) server version
 .TP
 .B status
-print mesh health/status summary
+print marbor health/status summary
 .TP
 .B login
 authenticate once and save the session locally (recommended)
@@ -25,7 +25,7 @@ remove the saved session
 show the CLI's saved identity (live\-verified)
 .TP
 .B nodes
-list nodes known to the mesh. See \fBmarbor-nodes\fR(1).
+list nodes known to the marbor. See \fBmarbor-nodes\fR(1).
 .TP
 .B models
 fleet\-wide list, or pull/delete/unload/list on one node. See \fBmarbor-models\fR(1).

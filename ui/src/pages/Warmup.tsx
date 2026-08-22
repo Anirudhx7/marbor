@@ -634,7 +634,7 @@ export function Warmup() {
   const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   // Which of availableModels actually exist on each node (warm or on-disk) -
-  // NodeCard add/pin options must be scoped to this, not the mesh-wide list,
+  // NodeCard add/pin options must be scoped to this, not the marbor-wide list,
   // or every node's card shows every other node's models as locally present.
   const [modelsByNode, setModelsByNode] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
@@ -1055,7 +1055,7 @@ export function Warmup() {
           </p>
           <p className="text-xs text-muted-foreground">
             {predictiveEnabled
-              ? 'No new predictive warmup decisions will be recorded or acted on across the whole mesh until re-enabled. Manual schedules and live traffic are unaffected.'
+              ? 'No new predictive warmup decisions will be recorded or acted on across the whole marbor until re-enabled. Manual schedules and live traffic are unaffected.'
               : 'The engine will resume auto-preloading next-likely models in background VRAM based on historical model-transition patterns.'}
           </p>
           <div className="flex justify-end gap-3 pt-4 border-t border-border">

@@ -630,7 +630,7 @@ export function Routing() {
             <span className="text-foreground font-semibold">{STRATEGIES.find((s) => s.value === strategyToConfirm)?.label}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            This changes how every request across the entire mesh is load-balanced, effective immediately for all live traffic.
+            This changes how every request across the entire marbor is load-balanced, effective immediately for all live traffic.
           </p>
           {error && (
             <p className="text-sm text-destructive">{error}</p>

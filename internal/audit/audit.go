@@ -83,7 +83,7 @@ func (l *Logger) run() {
 
 // SetEnabled flips audit logging on/off on a running Logger, so toggling the
 // Settings page's audit_enabled control takes effect immediately instead of
-// requiring a mesh restart.
+// requiring a marbor restart.
 func (l *Logger) SetEnabled(enabled bool) {
 	if l == nil {
 		return

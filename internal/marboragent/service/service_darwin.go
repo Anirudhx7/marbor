@@ -122,7 +122,7 @@ func (launchdManager) Install(cfg Config) error {
 	}
 
 	// P24: idempotent - a re-install/upgrade never regenerates an existing
-	// cert (which would invalidate a fingerprint the mesh already pinned).
+	// cert (which would invalidate a fingerprint the marbor already pinned).
 	// MkdirAll first: unlike Linux's /etc, this directory doesn't already
 	// exist by default on a fresh macOS install.
 	if err := os.MkdirAll(agentSupportDir, 0755); err != nil {

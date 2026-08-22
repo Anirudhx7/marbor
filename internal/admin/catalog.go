@@ -300,7 +300,7 @@ type catalogNodeEntry struct {
 	// *host* filesystem reading (host_linux.go's readDiskStatsGB("/")) while
 	// the runtime itself is Docker-controlled - the container's actual model
 	// storage can live on a separate, differently-sized volume the host
-	// reading knows nothing about. The mesh's pre-pull disk-fit gate already
+	// reading knows nothing about. The marbor's pre-pull disk-fit gate already
 	// checks the container's real number before actually pulling
 	// (admin.go's containerDiskStatsViaAgent); this field lets the UI flag
 	// the same caveat on the figure it displays, rather than showing a
@@ -430,7 +430,7 @@ func nodeRuntimeByName(nodes []*router.NodeState, name string) (runtime string, 
 
 // classifyDiskFit reports whether a pull of sizeMB (download size, MiB) would
 // fit in diskFreeGB (decimal GB, from Node.DiskFreeGB) of free disk space.
-// Unlike VRAM fit, disk space is not a transient snapshot the mesh's own
+// Unlike VRAM fit, disk space is not a transient snapshot the marbor's own
 // scheduling causes to fluctuate wrongly - a pull exceeding free disk WILL
 // fail (partial download, or worst case fills the node's disk and disrupts
 // the OS/other running models), so this is a hard yes/no, not a
@@ -591,7 +591,7 @@ func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) strin
 //     model's real ceiling is the combined total (basis "combined") - the
 //     whole-node used figure is the right pair for it, so usedMB is still -1.
 //   - vLLM, TGI, and MLX pin a model to a single device (no built-in
-//     multi-GPU sharding in the mesh's deployment model), so the real
+//     multi-GPU sharding in the marbor's deployment model), so the real
 //     ceiling is whichever single card is biggest (basis "largest") - never
 //     the sum. Summing here would turn a genuine "won't fit on one card"
 //     into a false green, which is strictly worse than the false red it
@@ -898,7 +898,7 @@ func ggufOnlyRuntime(runtime string) bool {
 // always carries this note regardless of download state.
 func ggufAdvisoryRuntimeCaveat(runtime string) string {
 	if runtime == "llamacpp" {
-		return "llama.cpp has no endpoint this mesh can query for the model's real declared context length; this estimate does not account for the model's own trained maximum."
+		return "llama.cpp has no endpoint this marbor can query for the model's real declared context length; this estimate does not account for the model's own trained maximum."
 	}
 	return ""
 }
@@ -1656,7 +1656,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 					// info.ContextLength is the model's own GGUF-declared
 					// trained maximum - not the same thing as Ollama's
 					// per-model num_ctx load parameter, which an operator may
-					// have set lower and which this mesh has no way to read
+					// have set lower and which this marbor has no way to read
 					// back (internal/store's ModelConfig.NumCtx is a
 					// write-only launch setting). Never conflate the two.
 					caveat = "This is the model's own trained maximum context, not necessarily what this node currently has it loaded with (num_ctx may be set lower)."
@@ -1711,7 +1711,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			// above - this codebase has no way to discover that today (P71
 			// plan section D), so it's always flagged as a caveat here,
 			// independent of whether arch was found.
-			caveat := "This runtime's own launch configuration may cap context below the model's declared maximum; the mesh cannot see that setting."
+			caveat := "This runtime's own launch configuration may cap context below the model's declared maximum; the marbor cannot see that setting."
 
 			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, safetensorsOverheadMult, safetensorsPerTokenMBFallback, vramTotalBytes, vramSource, arch, caveat)
 

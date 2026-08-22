@@ -296,7 +296,7 @@ func TestCloudFallbackTokenCountNonZero(t *testing.T) {
 // jsonCloud returns an httptest.Server that answers with a single plain JSON
 // response (not SSE) - matches OpenAI's real /v1/embeddings response shape,
 // which is never streamed. If receivedBody is non-nil, the request body the
-// mesh actually sent to this mock cloud is captured into it.
+// marbor actually sent to this mock cloud is captured into it.
 func jsonCloud(t *testing.T, responseBody string, receivedBody *[]byte) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -396,7 +396,7 @@ func TestCloudFallbackAPIEmbedYieldsOllamaPluralShape(t *testing.T) {
 		t.Errorf("prompt_eval_count = %d, want 8", got.PromptEvalCount)
 	}
 
-	// /api/embed's request body already uses "input" - the mesh must not
+	// /api/embed's request body already uses "input" - the marbor must not
 	// apply the prompt->input rewrite here (that's /api/embeddings-only).
 	// newCloudOnlyHandler's mock cloud has DefaultModel set, so the
 	// pre-existing, unrelated model-field rewrite still applies - assert on

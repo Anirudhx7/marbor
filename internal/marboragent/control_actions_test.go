@@ -104,7 +104,7 @@ func TestHandleRuntimeLogs_ConfiguredSuccess(t *testing.T) {
 }
 
 // TestHandleRuntimeLogs_Unconfigured verifies the same mandated error as
-// start/stop/restart when the mesh sends no driver.
+// start/stop/restart when the marbor sends no driver.
 func TestHandleRuntimeLogs_Unconfigured(t *testing.T) {
 	s := newControlActionTestServer()
 
@@ -174,7 +174,7 @@ func TestHandleRuntimeAction_ConfiguredSuccess(t *testing.T) {
 }
 
 // TestHandleRuntimeAction_Unconfigured verifies the exact error
-// marbor-agent-capabilities.md section 5.6 mandates when the mesh sends no
+// marbor-agent-capabilities.md section 5.6 mandates when the marbor sends no
 // driver (nothing configured for this node) - never a guess.
 func TestHandleRuntimeAction_Unconfigured(t *testing.T) {
 	s := newControlActionTestServer()
@@ -274,7 +274,7 @@ func TestBuildControlDriver_StartCommandRejectedForNonProcessDriver(t *testing.T
 }
 
 // TestParseDFOutput is a regression test for the disk-space check behind
-// handleRuntimeDisk: a real production report had the mesh's pre-pull
+// handleRuntimeDisk: a real production report had the marbor's pre-pull
 // disk-fit gate wave a pull through (host-level disk looked fine) that then
 // failed deep into a multi-GB transfer with "no space left on device" -
 // because the container's actual storage lived on a different, smaller

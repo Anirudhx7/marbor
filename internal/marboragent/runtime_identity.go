@@ -3,7 +3,7 @@ package marboragent
 // runtime_identity.go gives each runtime DetectAll finds a stable RuntimeID,
 // independent of its type name or port - both of those are attributes that
 // can legitimately change (a runtime's listen port can be reconfigured),
-// while the identity a mesh node row pins itself to must not. This mirrors
+// while the identity a marbor node row pins itself to must not. This mirrors
 // identity.go's node_id persistence pattern (a JSON file next to it, same
 // directory, same "best effort, never fail startup over it" posture) one
 // layer down, for the runtimes running *on* this host rather than the host

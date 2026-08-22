@@ -17,7 +17,7 @@ import (
 // (unknown, not fabricated - R1) and every call after that reports the
 // utilization since the previous call. This deliberately avoids sleeping
 // inside a request handler (which would slow every /v1/status poll) -
-// mirrors the mesh's own poll-cycle-driven nvidia-smi cadence.
+// mirrors the marbor's own poll-cycle-driven nvidia-smi cadence.
 var (
 	cpuMu     sync.Mutex
 	prevTotal uint64

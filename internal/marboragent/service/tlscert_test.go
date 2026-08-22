@@ -70,7 +70,7 @@ func TestEnsureAgentCert_GeneratesParsableMatchingPair(t *testing.T) {
 // TestEnsureAgentCert_IdempotentOnValidExistingPair verifies re-running
 // EnsureAgentCert (force=false) against an already-valid cert/key pair is a
 // no-op - the exact requirement that keeps "agent service install" re-runs
-// (upgrades, reinstalls) from silently invalidating a fingerprint the mesh
+// (upgrades, reinstalls) from silently invalidating a fingerprint the marbor
 // already has pinned (spec section 3/7).
 func TestEnsureAgentCert_IdempotentOnValidExistingPair(t *testing.T) {
 	dir := t.TempDir()

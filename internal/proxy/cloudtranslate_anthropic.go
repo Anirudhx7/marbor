@@ -63,7 +63,7 @@ func (t *anthropicTransport) RoundTrip(req *http.Request) (*http.Response, error
 	req.Header.Set("Content-Type", "application/json")
 	// Anthropic authenticates via x-api-key + anthropic-version, not
 	// Authorization: Bearer. R4 (admin token exact-match) is unaffected -
-	// this is the outbound cloud-provider credential, unrelated to mesh
+	// this is the outbound cloud-provider credential, unrelated to marbor
 	// admin auth.
 	req.Header.Del("Authorization")
 	req.Header.Set("x-api-key", t.apiKey)
@@ -124,7 +124,7 @@ type anthropicRequest struct {
 // translateOpenAIRequestToAnthropic converts an OpenAI-shaped chat/completion
 // request body into Anthropic's /v1/messages schema. Unparseable bodies pass
 // through unchanged (Anthropic will reject with a clear error rather than the
-// mesh silently mangling something it doesn't understand).
+// marbor silently mangling something it doesn't understand).
 func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) []byte {
 	var in openAIRequest
 	if err := json.Unmarshal(body, &in); err != nil {

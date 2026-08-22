@@ -176,7 +176,7 @@ export const mockGPUNodes: GPUNode[] = [
     // (see NodeCard in GPUNodes.tsx) - a model repeatedly failing its
     // keep-warm ping, and a separate scheduled unload that failed against
     // this node, both diagnosable from the dashboard instead of only ever
-    // appearing in the mesh's own logs.
+    // appearing in the marbor's own logs.
     warmupErrors: { 'mistralai/Mistral-Small-24B-Instruct-2501': 'node gpu-node-03 unhealthy' },
     unloadErrors: { 'codellama:13b': 'agent unreachable: dial tcp: connect: connection refused' },
   },

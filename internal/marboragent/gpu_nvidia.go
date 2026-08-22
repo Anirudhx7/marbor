@@ -45,13 +45,13 @@ func (nvidiaCollector) Collect(ctx context.Context) (GPUBlock, error) {
 }
 
 // Same query flags and units internal/router/nvidia.go's local-node polling
-// path uses (-q -x, MiB, Celsius, Watts), so the agent and the mesh's own
+// path uses (-q -x, MiB, Celsius, Watts), so the agent and the marbor's own
 // local nvidia-smi reader never disagree on how a number was derived. The
 // two packages don't share the exact function (router's queryAllGPUs is
 // unexported, and this package must not import router to avoid coupling the
-// mesh binary's poller internals to the standalone agent binary), so the
+// marbor binary's poller internals to the standalone agent binary), so the
 // parsing here is a deliberate faithful copy, extended with fan_speed,
-// utilization (core%), and driver/CUDA version since the mesh's own
+// utilization (core%), and driver/CUDA version since the marbor's own
 // local-GPU path doesn't currently report those.
 type nvidiaSMILog struct {
 	DriverVersion string      `xml:"driver_version"`

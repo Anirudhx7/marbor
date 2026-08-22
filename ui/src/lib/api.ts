@@ -786,7 +786,7 @@ export async function triggerBackupNow(): Promise<void> {
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') || '';
   const match = /filename="?([^"]+)"?/.exec(disposition);
-  const filename = match ? match[1] : 'mesh-backup.db';
+  const filename = match ? match[1] : 'marbor-backup.db';
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -804,9 +804,9 @@ export async function fetchBackupList(): Promise<BackupFileInfo[]> {
   if (DEMO) {
     const now = Date.now();
     return demoDelay([
-      { name: 'mesh-backup-20260730-030000.db', size_bytes: 4_812_288, modified_at: new Date(now - 9 * 60 * 60 * 1000).toISOString() },
-      { name: 'mesh-backup-20260729-030000.db', size_bytes: 4_795_904, modified_at: new Date(now - 33 * 60 * 60 * 1000).toISOString() },
-      { name: 'mesh-backup-20260728-030000.db', size_bytes: 4_780_032, modified_at: new Date(now - 57 * 60 * 60 * 1000).toISOString() },
+      { name: 'marbor-backup-20260730-030000.db', size_bytes: 4_812_288, modified_at: new Date(now - 9 * 60 * 60 * 1000).toISOString() },
+      { name: 'marbor-backup-20260729-030000.db', size_bytes: 4_795_904, modified_at: new Date(now - 33 * 60 * 60 * 1000).toISOString() },
+      { name: 'marbor-backup-20260728-030000.db', size_bytes: 4_780_032, modified_at: new Date(now - 57 * 60 * 60 * 1000).toISOString() },
     ]);
   }
   const res = await apiFetch(`${BASE}/backup/list`, { headers: authHeaders() });
@@ -816,11 +816,11 @@ export async function fetchBackupList(): Promise<BackupFileInfo[]> {
 }
 
 // restoreBackup triggers a one-click restore from an already-existing
-// scheduled backup file: the mesh validates it, swaps marbor.db for it, and
+// scheduled backup file: the marbor validates it, swaps marbor.db for it, and
 // exits so the process supervisor (systemd/Docker/Kubernetes) restarts it
 // with the restored database - see docs/backup.md for the supervisor
 // requirement. The connection may drop before a response arrives since the
-// mesh shuts down shortly after responding; callers should treat a network
+// marbor shuts down shortly after responding; callers should treat a network
 // error here as "restore likely proceeding" rather than a hard failure.
 export async function restoreBackup(filename: string): Promise<void> {
   if (DEMO) throw new Error('Restore is not available in demo mode.');
@@ -837,7 +837,7 @@ export async function restoreBackup(filename: string): Promise<void> {
 // Linux, Windows, and macOS, no OS-specific code needed) to the server,
 // which validates it's a genuine SQLite database and saves it into the same
 // target directory scheduled/manual backups use, under a fresh
-// mesh-backup-<timestamp>.db name. On success it returns that name so the
+// marbor-backup-<timestamp>.db name. On success it returns that name so the
 // caller can select it in the restore picker without a second list fetch.
 // If the upload is byte-for-byte identical to a backup already in the pool,
 // the server reuses that existing file instead of adding a duplicate -
@@ -857,7 +857,7 @@ export async function uploadBackup(file: File): Promise<{ filename: string; dupl
 }
 
 // normalizePullTag catches the most common way a pull request is malformed
-// before it ever reaches the mesh: pasting a bare Hugging Face repo id
+// before it ever reaches the marbor: pasting a bare Hugging Face repo id
 // (e.g. "unsloth/gemma-4-26B-A4B-it-GGUF", copied straight off a HF model
 // page) into the free-text "Pull Model from Registry" field. Ollama only
 // resolves a Hugging Face-hosted GGUF repo when the tag is explicitly
@@ -1077,7 +1077,7 @@ export interface HFRepoDetails {
   // agent's own *host* filesystem reading - when the runtime itself is
   // Docker-controlled, its actual model storage can live on a separate,
   // differently-sized container volume the host reading knows nothing
-  // about. The mesh's pull gate already checks the container's real number
+  // about. The marbor's pull gate already checks the container's real number
   // before actually pulling; this flag lets the UI caveat the figure it's
   // displaying instead of silently showing a number that may not match.
   docker_deployed?: boolean;
@@ -1391,7 +1391,7 @@ export async function probeNodeTLS(name: string): Promise<{ fingerprint: string 
 
 // runBenchmark starts an in-dashboard hardware benchmark job (see
 // benchmarkProgress.ts for the SSE progress consumer). node+model must
-// already be known to the mesh; the mesh auto-provisions and later deletes
+// already be known to the marbor; the marbor auto-provisions and later deletes
 // an ephemeral API key server-side, so no key input is required here.
 export async function runBenchmark(node: string, model: string, n: number): Promise<{ job_id: string }> {
   const res = await apiFetch(`${BASE}/benchmark/run`, {

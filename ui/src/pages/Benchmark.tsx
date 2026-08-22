@@ -1,9 +1,9 @@
 // Hidden hardware benchmark page (no Sidebar entry - reached only via the
 // "Hardware Benchmark" card on Settings). Lets an already-authenticated
-// admin pick a node + model already known to the mesh and watch a live
-// cold-vs-warm TTFT run, with zero manual credential entry - the mesh
+// admin pick a node + model already known to the marbor and watch a live
+// cold-vs-warm TTFT run, with zero manual credential entry - the marbor
 // auto-provisions and deletes an ephemeral API key server-side
-// (internal/admin/benchmark.go). Not integral to mesh operation; this is a
+// (internal/admin/benchmark.go). Not integral to marbor operation; this is a
 // self-service validation/diagnostics tool, not a monitored dashboard
 // surface, so it deliberately has no nav-bar presence.
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -73,7 +73,7 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
         </div>
       </div>
       <p className="text-[10px] text-muted-foreground/60 mt-4">
-        n={result.n} samples per phase, measured through this mesh's own proxy. Copy the summary as text, or screenshot this card to share it.
+        n={result.n} samples per phase, measured through this marbor's own proxy. Copy the summary as text, or screenshot this card to share it.
       </p>
     </div>
   );
@@ -198,7 +198,7 @@ export function Benchmark() {
         <h1 className="text-lg font-bold text-foreground">Hardware Benchmark</h1>
       </div>
       <p className="text-sm text-muted-foreground -mt-2">
-        Measures real cold-vs-warm Time-To-First-Token on this mesh's own hardware, through its own proxy.
+        Measures real cold-vs-warm Time-To-First-Token on this marbor's own hardware, through its own proxy.
         Not required for normal operation - a self-service diagnostic, off the main navigation on purpose.
       </p>
 

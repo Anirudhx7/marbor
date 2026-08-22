@@ -234,7 +234,7 @@ func resolveCommand(args []string) string {
 		// A bare word that isn't a known subcommand is almost always a typo
 		// or a missing subcommand (e.g. "uninstall", which has never been a
 		// binary subcommand - see uninstall.sh) - silently starting the full
-		// mesh server in that case is a dangerous footgun, not a reasonable
+		// marbor server in that case is a dangerous footgun, not a reasonable
 		// default.
 		return "unknown"
 	}
@@ -260,9 +260,9 @@ func resolveCommand(args []string) string {
 // before an earlier fix), and both blocks share one tabwriter instance so
 // their columns stay aligned with each other too.
 var helpTableRows = [][2]string{
-	{"marbor [flags]", "run the mesh server (default)"},
+	{"marbor [flags]", "run the marbor server (default)"},
 	{"marbor bench [flags]", "warm-vs-cold first-token latency benchmark"},
-	{"marbor uninstall [--purge]", "remove the mesh's own service registration from this host"},
+	{"marbor uninstall [--purge]", "remove the marbor's own service registration from this host"},
 }
 
 func printTopLevelHelp(w io.Writer) {
@@ -372,7 +372,7 @@ func main() {
 	// MARBOR_BACKUP_DIR seeds the default scheduled-backup target directory
 	// (config.BackupConfig.TargetDir), same env-var pattern as MARBOR_DB_PATH
 	// above. docker-compose.yml sets this to /backups - a distinct named
-	// volume from mesh-data's /data mount - so a scheduled backup survives a
+	// volume from marbor-data's /data mount - so a scheduled backup survives a
 	// docker volume rm/down -v on the data volume, and vice versa. The
 	// bare-metal fallback keeps backups next to the database when no data
 	// volume separation is possible anyway.
@@ -871,7 +871,7 @@ func main() {
 // validated by admin.go's handleRestoreBackup before this was ever reached)
 // and exits the process non-zero so the deployment's process supervisor
 // (systemd Restart=on-failure, Docker restart:unless-stopped, Kubernetes'
-// default restartPolicy) brings the mesh back up with the restored database.
+// default restartPolicy) brings the marbor back up with the restored database.
 // Always calls os.Exit - a bare-metal run with no supervisor configured will
 // simply stay down until started manually; docs/backup.md documents that
 // caveat explicitly rather than leaving it a silent surprise.
@@ -888,14 +888,14 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	src, err := os.Open(backupPath)
 	if err != nil {
 		log.Printf("ERROR: restore aborted - could not open backup file %s: %v", backupPath, err)
-		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		src.Close()
 		log.Printf("ERROR: restore aborted - could not create %s: %v", tmpPath, err)
-		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 	_, copyErr := io.Copy(dst, src)
@@ -904,7 +904,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if copyErr != nil || closeErr != nil {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
-		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 
@@ -918,7 +918,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted - staged copy failed validation: %v", err)
-		log.Println("ERROR: marbor.db was NOT modified - restart the mesh manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 
@@ -934,6 +934,6 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	}
 
 	log.Printf("Restore complete: %s -> %s", backupPath, dbPath)
-	log.Println("Exiting so the process supervisor restarts the mesh with the restored database")
+	log.Println("Exiting so the process supervisor restarts the marbor with the restored database")
 	winexit.Exit(1)
 }

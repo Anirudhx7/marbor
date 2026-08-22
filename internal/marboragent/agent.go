@@ -16,7 +16,7 @@ import (
 // defaultRefreshInterval is how often the background Scheduler re-collects
 // GPU/host telemetry when --refresh-interval isn't set. GPU temperature/VRAM/
 // etc. don't change fast enough to need per-request freshness, so this is
-// independent of (and normally much longer than a fraction of) the mesh's
+// independent of (and normally much longer than a fraction of) the marbor's
 // own node poll interval.
 const defaultRefreshInterval = 5 * time.Second
 
@@ -65,7 +65,7 @@ func runAgent(args []string, version string) {
 	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
 	keyFlag := fs.String("key", "", "TLS private key file path, paired with --cert")
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "marbor-agent - Marbor Agent: node-local execution point for the mesh\n\n")
+		fmt.Fprintf(w, "marbor-agent - Marbor Agent: node-local execution point for the marbor\n\n")
 		fmt.Fprintf(w, "Usage:\n  marbor-agent --port=<port>   (runs in the foreground; set the MARBOR_AGENT_SECRET env var)\n")
 		fmt.Fprintf(w, "  marbor-agent service install --port=<port>\n")
 		fmt.Fprintf(w, "                                                     (installs as a persistent OS service)\n")
@@ -106,7 +106,7 @@ func runAgent(args []string, version string) {
 	// Server.Snapshot() handles the pre-construction window safely: it
 	// returns metadata-only (node_id/version/capabilities/platform) with nil
 	// GPU/Host/Runtime blocks until the Scheduler is wired up and Seed has
-	// run. The mesh poller treats nil blocks as "not yet collected."
+	// run. The marbor poller treats nil blocks as "not yet collected."
 	srv := &Server{Token: token, Version: version}
 	addr := fmt.Sprintf(":%d", *port)
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,4 +1,4 @@
-// cmd/demotraffic/main.go - Sends demo traffic through the mesh proxy to populate dashboard analytics.
+// cmd/demotraffic/main.go - Sends demo traffic through the marbor proxy to populate dashboard analytics.
 // Configurable via env vars: PROXY_URL, API_KEY, REQUEST_COUNT
 package main
 

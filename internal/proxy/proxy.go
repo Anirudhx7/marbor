@@ -175,7 +175,7 @@ func isBlockedManagementPath(path string) bool {
 }
 
 // SetTrustProxyHeaders toggles whether X-Forwarded-For/X-Real-IP are trusted
-// for the admin request log's client IP. Pass true only when the mesh sits
+// for the admin request log's client IP. Pass true only when the marbor sits
 // behind a trusted reverse proxy/load balancer that sets these headers itself
 // and is the sole path to the proxy port; otherwise a direct client can forge
 // them. Default false logs r.RemoteAddr (the real TCP peer) instead.
@@ -229,7 +229,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// unaffected.
 	if !h.allowManagement && isBlockedManagementPath(r.URL.Path) {
 		log.Printf("blocked management endpoint (key=%s path=%s request_id=%s)", keyName, r.URL.Path, requestID)
-		writeAPIError(w, http.StatusForbidden, "endpoint not permitted through the mesh proxy", "invalid_request_error", "endpoint_blocked")
+		writeAPIError(w, http.StatusForbidden, "endpoint not permitted through the marbor proxy", "invalid_request_error", "endpoint_blocked")
 		metrics.RequestsTotal(keyName, "", "none", "403")
 		return
 	}
@@ -791,14 +791,14 @@ func buildLocalProxy(targetURL *url.URL, body []byte, orig *http.Request, transp
 		req.Host = targetURL.Host
 		req.Header = make(http.Header)
 		for k, v := range orig.Header {
-			// Authorization is the mesh's own API-key credential; Cookie carries
+			// Authorization is the marbor's own API-key credential; Cookie carries
 			// the admin dashboard's httpOnly session cookie if this request came
 			// via a browser proxy path. Neither belongs on a backend GPU node.
 			if k != "Authorization" && k != "Cookie" {
 				req.Header[k] = v
 			}
 		}
-		// Forward request ID to upstream so mesh and Ollama logs correlate.
+		// Forward request ID to upstream so marbor and Ollama logs correlate.
 		if requestID != "" {
 			req.Header.Set("X-Request-ID", requestID)
 		}
@@ -1005,7 +1005,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	// Anthropic has no embeddings endpoint. Chat/completions requests are
 	// translated to Anthropic's native /v1/messages schema by
 	// anthropicTransport below; embeddings has no equivalent to translate to,
-	// so return a clear 501 before the request leaves the mesh.
+	// so return a clear 501 before the request leaves the marbor.
 	if strings.EqualFold(cloud.Provider, "anthropic") && path == "/v1/embeddings" {
 		if hasNext {
 			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1)
@@ -1143,7 +1143,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.StatusCode(), latencyMs, logTokens, nil)
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
-			// Model-config rpm/tpm caps are keyed to a specific local mesh
+			// Model-config rpm/tpm caps are keyed to a specific local marbor
 			// node's profile and don't apply to cloud dispatch - cloud spend
 			// already has its own governance via CloudBudgetExceeded and the
 			// runtime_keys daily/monthly USD caps, which is the correct place

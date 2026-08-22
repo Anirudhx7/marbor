@@ -20,7 +20,7 @@ import (
 
 // newBenchTestServer builds a Server with one node (mockNodeURL, standing in
 // for the node's own Ollama API - used only for the eviction call) and a
-// proxy port pointed at mockProxyURL (standing in for the mesh's own
+// proxy port pointed at mockProxyURL (standing in for the marbor's own
 // /v1/chat/completions endpoint - what the benchmark actually measures).
 // model is pre-registered as already loaded on the node, matching what
 // nodeHasModel's LoadedModels fallback checks, so tests don't need to mock

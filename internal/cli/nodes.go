@@ -28,13 +28,13 @@ func isValidTLSFingerprintArg(s string) bool {
 	return true
 }
 
-// runNodesConfirmTLS implements `mesh nodes confirm-tls <node-name>
+// runNodesConfirmTLS implements `marbor nodes confirm-tls <node-name>
 // --fingerprint=SHA256:...` (P24, spec section 11's headless-enrollment
 // exception - the only CLI surface this item adds). fingerprint must come
 // from the operator's own flag value; this command never probes the node or
 // otherwise infers/accepts a certificate on its own - the caller is
 // expected to have already read the value from "agent service status" on
-// the node itself, or from the mesh's tls-probe endpoint via another
+// the node itself, or from the marbor's tls-probe endpoint via another
 // client, and independently confirmed it out of band.
 func runNodesConfirmTLS(flags *globalFlags, name, fingerprint string, stdout, stderr io.Writer) int {
 	if !isValidTLSFingerprintArg(fingerprint) {
@@ -60,7 +60,7 @@ func runNodesConfirmTLS(flags *globalFlags, name, fingerprint string, stdout, st
 	return ExitOK
 }
 
-// runNodes implements `mesh nodes` - GET /admin/v1/nodes, session-authed.
+// runNodes implements `marbor nodes` - GET /admin/v1/nodes, session-authed.
 func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

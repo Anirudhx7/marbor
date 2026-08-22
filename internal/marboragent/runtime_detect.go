@@ -22,7 +22,7 @@ type DetectedRuntime struct {
 // RuntimeDetector identifies which inference runtime(s) (if any) are
 // listening locally on this host, exposed as agent metadata
 // (Telemetry.Runtimes) so an operator debugging a mixed-version/mixed-runtime
-// fleet can see them without a second hop through the mesh's own /api/ps
+// fleet can see them without a second hop through the marbor's own /api/ps
 // poll. A host-scoped agent may have more than one runtime running at once
 // (e.g. Ollama on :11434 and vLLM on :8000 on the same box) - DetectAll scans
 // every candidate port every cycle rather than stopping at the first hit, so

@@ -53,7 +53,7 @@ set -e
 
 REPO="Anirudhx7/marbor"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-ROLE="${ROLE:-mesh}"
+ROLE="${ROLE:-marbor}"
 if [ "$ROLE" = "agent" ]; then
   BIN_NAME="marbor-agent"
 else
@@ -272,7 +272,7 @@ if [ "$ROLE" != "agent" ]; then
 fi
 
 # marbor agent role: register+start as a persistent OS service and stop here -
-# none of the control-plane logic below (node discovery wizard, mesh's own
+# none of the control-plane logic below (node discovery wizard, marbor's own
 # systemd unit, dashboard) applies to a node running only the agent. The
 # binary's own "service install" subcommand owns the actual
 # systemd/launchd registration (internal/marboragent/service) - this script's
@@ -383,9 +383,9 @@ verify_endpoint() {
     fi
     # marbor's own /health returns {"proxy_port":...}; a real TGI or
     # llama.cpp server never does. Rule this out FIRST, before the /info
-    # probe below - the mesh's embedded dashboard SPA answers 200 on any
+    # probe below - the marbor's embedded dashboard SPA answers 200 on any
     # unmatched path (including /info), so checking status code alone would
-    # misidentify a mesh instance (possibly this one) as a TGI node.
+    # misidentify a marbor instance (possibly this one) as a TGI node.
     case "$HEALTH_BODY" in
       *proxy_port*) return ;;
     esac

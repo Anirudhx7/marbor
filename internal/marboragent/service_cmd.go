@@ -51,8 +51,8 @@ func runServiceCommand(args []string, version string) {
 func runServiceInstall(args []string, version string) {
 	fs := flag.NewFlagSet("agent service install", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port for the installed service to serve /v1/status and /metrics on")
-	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the mesh admin UI, exchanged for the real token (or set the MARBOR_ENROLL env var); requires --server")
-	serverFlag := fs.String("server", "", "mesh admin base URL, required together with --enroll (or set the MARBOR_SERVER env var)")
+	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the marbor admin UI, exchanged for the real token (or set the MARBOR_ENROLL env var); requires --server")
+	serverFlag := fs.String("server", "", "marbor admin base URL, required together with --enroll (or set the MARBOR_SERVER env var)")
 	refreshInterval := fs.Duration("refresh-interval", 0, "how often the installed service re-collects telemetry (default: the agent's own built-in default)")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "marbor-agent service install - register the Marbor Agent as a persistent, auto-restarting OS service\n\n")
@@ -93,7 +93,7 @@ func runServiceInstall(args []string, version string) {
 	}
 	if token == "" {
 		if server == "" {
-			winexit.Fatal("marboragent: --enroll requires --server=<mesh admin base URL> (or the MARBOR_SERVER environment variable)")
+			winexit.Fatal("marboragent: --enroll requires --server=<marbor admin base URL> (or the MARBOR_SERVER environment variable)")
 		}
 		exchanged, err := exchangeEnrollmentCode(server, enroll)
 		if err != nil {
@@ -123,12 +123,12 @@ func runServiceInstall(args []string, version string) {
 	log.Printf("marbor-agent %s installed as a persistent service (%s), listening on port %d and enabled to restart on boot/failure.", version, service.Name, *port)
 }
 
-// exchangeEnrollmentCode calls the mesh's POST /admin/agent/enroll endpoint
+// exchangeEnrollmentCode calls the marbor's POST /admin/agent/enroll endpoint
 // to trade a short-lived, single-use enrollment code for the node's real,
 // permanent bearer token (P50). This is the agent's first-ever outbound
-// call to the mesh - normally the mesh polls the agent, never the reverse -
+// call to the marbor - normally the marbor polls the agent, never the reverse -
 // so serverBaseURL must be supplied explicitly by the operator (via --server or
-// the MARBOR_SERVER env var); the agent has no other way to know the mesh's address.
+// the MARBOR_SERVER env var); the agent has no other way to know the marbor's address.
 func exchangeEnrollmentCode(serverBaseURL, code string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -144,11 +144,11 @@ func exchangeEnrollmentCode(serverBaseURL, code string) (string, error) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("could not reach mesh at %s: %w", serverBaseURL, err)
+		return "", fmt.Errorf("could not reach marbor at %s: %w", serverBaseURL, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("mesh rejected enrollment code (HTTP %d)", resp.StatusCode)
+		return "", fmt.Errorf("marbor rejected enrollment code (HTTP %d)", resp.StatusCode)
 	}
 	var out struct {
 		Token string `json:"token"`
@@ -157,7 +157,7 @@ func exchangeEnrollmentCode(serverBaseURL, code string) (string, error) {
 		return "", err
 	}
 	if out.Token == "" {
-		return "", fmt.Errorf("mesh returned an empty token")
+		return "", fmt.Errorf("marbor returned an empty token")
 	}
 	return out.Token, nil
 }
@@ -257,7 +257,7 @@ func runServiceStatus(args []string) {
 	fmt.Println(status)
 
 	// P24: print the TLS certificate's fingerprint if one exists, so the
-	// operator can compare it against what the mesh's tls-probe endpoint
+	// operator can compare it against what the marbor's tls-probe endpoint
 	// shows before confirming a pin (spec section 1 step 3). Silent (not a
 	// fatal error) when no cert exists yet - most nodes are plaintext and
 	// this is a status display, not a requirement.
@@ -277,18 +277,18 @@ func runServiceStatus(args []string) {
 // runServiceRegenCert forcibly regenerates the installed service's TLS
 // certificate/key (P24, spec section 4 - suspected key compromise or
 // planned operator-driven rotation, never automatic). This deliberately
-// invalidates whatever fingerprint the mesh currently has pinned for this
-// node: the operator must re-run the mesh-side confirm-and-pin flow
+// invalidates whatever fingerprint the marbor currently has pinned for this
+// node: the operator must re-run the marbor-side confirm-and-pin flow
 // afterward (spec sections 1/2/6) - regenerating here does not, and must
-// not, notify or update the mesh itself.
+// not, notify or update the marbor itself.
 func runServiceRegenCert(args []string) {
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
 			fmt.Println("Usage: marbor-agent service regen-cert")
 			fmt.Println("\nForcibly regenerates the installed Marbor Agent's TLS certificate and key,")
 			fmt.Println("then restarts the service so the new certificate takes effect. This")
-			fmt.Println("invalidates any fingerprint the mesh has pinned for this node - re-run the")
-			fmt.Println("mesh's confirm-and-pin flow afterward. Takes no flags.")
+			fmt.Println("invalidates any fingerprint the marbor has pinned for this node - re-run the")
+			fmt.Println("marbor's confirm-and-pin flow afterward. Takes no flags.")
 			return
 		}
 	}
@@ -320,5 +320,5 @@ func runServiceRegenCert(args []string) {
 		log.Printf("marbor-agent service (%s) TLS certificate regenerated and service restarted, but could not read back the new fingerprint: %v", service.Name, err)
 		return
 	}
-	log.Printf("marbor-agent service (%s) TLS certificate regenerated (new fingerprint: %s) and service restarted. Re-confirm and re-pin this node from the mesh admin UI/CLI.", service.Name, fingerprint)
+	log.Printf("marbor-agent service (%s) TLS certificate regenerated (new fingerprint: %s) and service restarted. Re-confirm and re-pin this node from the marbor admin UI/CLI.", service.Name, fingerprint)
 }

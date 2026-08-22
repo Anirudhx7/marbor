@@ -151,7 +151,7 @@ func TestAuthenticatedClient_SavedSessionIgnoredForDifferentServer(t *testing.T)
 
 	// Session saved against a different server entirely - must never be
 	// replayed against srv.URL.
-	if err := saveSession(savedSession{Server: "http://other-mesh.invalid", Token: "saved-tok"}); err != nil {
+	if err := saveSession(savedSession{Server: "http://other-marbor.invalid", Token: "saved-tok"}); err != nil {
 		t.Fatalf("saveSession: %v", err)
 	}
 

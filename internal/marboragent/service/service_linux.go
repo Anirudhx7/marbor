@@ -141,7 +141,7 @@ func (systemdManager) Install(cfg Config) error {
 	}
 
 	// P24: idempotent - a re-install/upgrade never regenerates an existing
-	// cert (which would invalidate a fingerprint the mesh already pinned).
+	// cert (which would invalidate a fingerprint the marbor already pinned).
 	if err := EnsureAgentCert(agentCertPath, agentKeyPath, false); err != nil {
 		return fmt.Errorf("service: %w", err)
 	}

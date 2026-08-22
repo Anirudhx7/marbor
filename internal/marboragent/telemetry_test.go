@@ -161,11 +161,11 @@ func TestTelemetryMarshalSchema(t *testing.T) {
 		t.Errorf("health.runtime_reachable = %v, want true", health["runtime_reachable"])
 	}
 
-	// No "mesh" block anywhere - the agent never reports mesh-owned
+	// No "marbor" block anywhere - the agent never reports marbor-owned
 	// scheduler metrics (prefix/session-affinity hit rate, warm-residency
 	// confidence). See marbor-agent.md's protocol v1 design notes.
-	if _, present := decoded["mesh"]; present {
-		t.Errorf("unexpected mesh block: %v", decoded["mesh"])
+	if _, present := decoded["marbor"]; present {
+		t.Errorf("unexpected marbor block: %v", decoded["marbor"])
 	}
 }
 

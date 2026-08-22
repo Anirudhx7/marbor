@@ -45,7 +45,7 @@ func newRuntimeActionRequest(t *testing.T, s *Server, node, action string) *http
 }
 
 // TestHandleNodeRuntimeAction_DispatchesToAgentWhenConfigured verifies the
-// success path: capability present, control driver accepted, mesh dispatches
+// success path: capability present, control driver accepted, marbor dispatches
 // POST /v1/runtime/{action} to the agent with {driver, identifier}.
 func TestHandleNodeRuntimeAction_DispatchesToAgentWhenConfigured(t *testing.T) {
 	var gotAuth, gotMethod, gotPath string
@@ -228,7 +228,7 @@ func TestHandleNodeRuntimeAction_UnconfiguredNodeReturns422(t *testing.T) {
 }
 
 // TestHandleNodeRuntimeLogs_DispatchesToAgentWhenConfigured verifies the
-// success path: capability present, control driver accepted, mesh dispatches
+// success path: capability present, control driver accepted, marbor dispatches
 // POST /v1/runtime/logs to the agent with {driver, identifier, lines} and
 // relays the returned lines, never audit-logging a pure read.
 func TestHandleNodeRuntimeLogs_DispatchesToAgentWhenConfigured(t *testing.T) {

@@ -13,7 +13,7 @@ import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/S
 
 // Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
 // auth and an OpenAI-compatible /chat/completions schema, matching this
-// mesh's proxy - Azure OpenAI is deliberately excluded (needs an `api-key`
+// marbor's proxy - Azure OpenAI is deliberately excluded (needs an `api-key`
 // header + per-deployment URL, which this proxy doesn't support).
 const CLOUD_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; defaultModel: string }> = {
   openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
@@ -428,7 +428,7 @@ export function SettingsPage() {
       setError(null);
     } catch (err: any) {
       setError(err instanceof TypeError
-        ? 'Could not reach the mesh backend. Check that the process is running and reachable from this browser.'
+        ? 'Could not reach the marbor backend. Check that the process is running and reachable from this browser.'
         : (err.message || 'Failed to save settings'));
     }
   };
@@ -448,7 +448,7 @@ export function SettingsPage() {
       setTimeout(() => setReloaded(false), 2000);
     } catch (err: any) {
       setError(err instanceof TypeError
-        ? 'Could not reach the mesh backend. Check that the process is running and reachable from this browser.'
+        ? 'Could not reach the marbor backend. Check that the process is running and reachable from this browser.'
         : (err.message || 'Reload failed'));
     } finally {
       setReloading(false);
@@ -661,7 +661,7 @@ export function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">Hardware Benchmark</h3>
-              <p className="text-xs font-medium text-muted-foreground">Measure real cold-vs-warm TTFT on your own hardware, through this mesh</p>
+              <p className="text-xs font-medium text-muted-foreground">Measure real cold-vs-warm TTFT on your own hardware, through this marbor</p>
             </div>
           </div>
           <button
@@ -701,7 +701,7 @@ export function SettingsPage() {
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               />
               <p className="text-[10px] text-amber-500/80 mt-1">
-                Requires a mesh restart to take effect - saving here only stores the new port.
+                Requires a marbor restart to take effect - saving here only stores the new port.
               </p>
             </div>
 
@@ -833,7 +833,7 @@ export function SettingsPage() {
                 Use 127.0.0.1:8080 to restrict the dashboard to localhost.
               </p>
               <p className="text-[10px] text-amber-500/80 mt-1">
-                Requires a mesh restart to take effect - changing this can lock you out until you reach it via the new address.
+                Requires a marbor restart to take effect - changing this can lock you out until you reach it via the new address.
               </p>
             </div>
             <div>
@@ -845,14 +845,14 @@ export function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
                 <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
-                <p className="text-[10px] text-amber-500/80 mt-1">Requires a mesh restart to take effect.</p>
+                <p className="text-[10px] text-amber-500/80 mt-1">Requires a marbor restart to take effect.</p>
               </div>
               <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
                 <p className="text-sm font-medium text-foreground">Trust Proxy Headers</p>
-                <p className="text-xs text-muted-foreground">Trust X-Forwarded-For/X-Real-IP for the logged client IP. Only enable if the mesh sits behind a trusted reverse proxy - otherwise these headers are forgeable by any direct client.</p>
+                <p className="text-xs text-muted-foreground">Trust X-Forwarded-For/X-Real-IP for the logged client IP. Only enable if the marbor sits behind a trusted reverse proxy - otherwise these headers are forgeable by any direct client.</p>
               </div>
               <Toggle on={settings.proxyTrustProxyHeaders} onToggle={() => setSettings({ ...settings, proxyTrustProxyHeaders: !settings.proxyTrustProxyHeaders })} />
             </div>
@@ -1734,7 +1734,7 @@ export function SettingsPage() {
                 <p className="text-[10px] text-red-500 mt-1.5">{backupDownloadError}</p>
               )}
               <p className="text-[10px] text-muted-foreground mt-1.5">
-                Downloads a consistent point-in-time copy of marbor.db to your browser, taken while the mesh keeps running.
+                Downloads a consistent point-in-time copy of marbor.db to your browser, taken while the marbor keeps running.
               </p>
               {settings.backupLastAt && (
                 <p className="text-xs text-muted-foreground mt-1.5">
@@ -1798,13 +1798,13 @@ export function SettingsPage() {
           <div className="mt-5 pt-5 border-t border-border">
             <p className="text-sm font-medium text-foreground mb-1">Restore from a backup</p>
             <p className="text-[10px] text-muted-foreground mb-3">
-              Swaps marbor.db for the selected file and restarts the mesh. Requires the deployment to auto-restart
+              Swaps marbor.db for the selected file and restarts the marbor. Requires the deployment to auto-restart
               on exit (systemd, Docker's <code>restart</code> policy, or Kubernetes) - otherwise start it manually
               afterward. This cannot be undone.
             </p>
             {restoreInitiated && (
               <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-3">
-                Restore initiated - the mesh is restarting now. This page will reconnect once it's back up.
+                Restore initiated - the marbor is restarting now. This page will reconnect once it's back up.
               </p>
             )}
             {restoreError && (
@@ -1881,7 +1881,7 @@ export function SettingsPage() {
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          This will stop the mesh, replace the live database with <span className="font-medium text-foreground">{restoreTarget?.name}</span>,
+          This will stop the marbor, replace the live database with <span className="font-medium text-foreground">{restoreTarget?.name}</span>,
           and restart. Everything written since that backup was taken - new nodes, keys, settings, routing history - will be lost.
         </p>
         <p className="text-sm text-destructive font-medium">This cannot be undone.</p>

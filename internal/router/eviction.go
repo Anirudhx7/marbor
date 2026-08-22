@@ -254,14 +254,14 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 	return nil
 }
 
-// recordUnloadSideEffects updates every piece of mesh-side bookkeeping that
+// recordUnloadSideEffects updates every piece of marbor-side bookkeeping that
 // must follow a real, successful eviction, regardless of which path
 // performed the actual eviction (this router's own direct HTTP call above,
 // or a Marbor Agent dispatch - see Router.RecordManualUnload). Skipping this
 // for an agent-dispatched unload would silently undo the operator's action:
 // without suppressWarmup, pingWarmupModels reloads the model straight back
 // into VRAM on its next tick (default 5m later); without DeleteWarmState, a
-// mesh restart before the next background flush would restore it from
+// marbor restart before the next background flush would restore it from
 // SQLite as if it were still resident.
 func (r *Router) recordUnloadSideEffects(nodeName, model, reason string) {
 	metrics.ModelEvicted(nodeName)
@@ -563,7 +563,7 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 // recordUnloadError and clearUnloadError maintain NodeState.UnloadErrors -
 // the scheduled-unload analogue of warmer.go's WarmupErrors bookkeeping, so a
 // failed scheduled/agent unload is diagnosable from the dashboard instead of
-// only ever appearing in the mesh process's own log output.
+// only ever appearing in the marbor process's own log output.
 func recordUnloadError(n *NodeState, model string, err error) {
 	n.Lock()
 	if n.UnloadErrors == nil {

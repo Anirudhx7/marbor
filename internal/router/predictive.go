@@ -110,7 +110,7 @@ func (r *Router) RecordTransition(toModel string, now time.Time) {
 
 // SeedPredictiveHistory replaces the in-memory transition ring buffer with
 // persisted entries loaded at boot, capped at the same 500-entry limit
-// RecordTransition enforces. Called once during startup, before the mesh
+// RecordTransition enforces. Called once during startup, before the marbor
 // serves traffic.
 func (r *Router) SeedPredictiveHistory(entries []TransitionEntry) {
 	if len(entries) > 500 {

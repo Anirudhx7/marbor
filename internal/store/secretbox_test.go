@@ -160,7 +160,7 @@ func TestMigrateEncryptSecretsUpgradesLegacyPlaintext(t *testing.T) {
 		t.Fatalf("seed cloud_providers: %v", err)
 	}
 	if _, err := ss.db.Exec(`INSERT INTO runtime_keys (name, key, rate_limit, daily_limit, monthly_limit, models, revoked) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		"team-a", "sk-mesh-legacy-plaintext", 0, 0, 0, "[]", 0); err != nil {
+		"team-a", "sk-marbor-legacy-plaintext", 0, 0, 0, "[]", 0); err != nil {
 		t.Fatalf("seed runtime_keys: %v", err)
 	}
 	if _, err := ss.db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?)`,
@@ -219,7 +219,7 @@ func TestMigrateEncryptSecretsUpgradesLegacyPlaintext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllKeys: %v", err)
 	}
-	if len(keys) != 1 || keys[0].Key != "sk-mesh-legacy-plaintext" {
+	if len(keys) != 1 || keys[0].Key != "sk-marbor-legacy-plaintext" {
 		t.Fatalf("AllKeys = %+v, want decrypted plaintext key", keys)
 	}
 
@@ -298,7 +298,7 @@ func TestAllKeysDropsUndecryptableRowWithoutBreakingOthers(t *testing.T) {
 	}
 	defer st.Close()
 
-	if err := st.UpsertKey(KeyRecord{Name: "good-key", Key: "sk-mesh-good"}); err != nil {
+	if err := st.UpsertKey(KeyRecord{Name: "good-key", Key: "sk-marbor-good"}); err != nil {
 		t.Fatalf("UpsertKey(good-key): %v", err)
 	}
 
@@ -315,7 +315,7 @@ func TestAllKeysDropsUndecryptableRowWithoutBreakingOthers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AllKeys: want no error from one corrupt row (would zero out every key at auth.go boot), got %v", err)
 	}
-	if len(keys) != 1 || keys[0].Name != "good-key" || keys[0].Key != "sk-mesh-good" {
+	if len(keys) != 1 || keys[0].Name != "good-key" || keys[0].Key != "sk-marbor-good" {
 		t.Fatalf("AllKeys = %+v, want only the good row, decrypted, and the broken row absent", keys)
 	}
 	for _, k := range keys {

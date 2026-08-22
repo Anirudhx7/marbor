@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// Secrets persisted by sqliteStore (cloud provider API keys, mesh-issued
+// Secrets persisted by sqliteStore (cloud provider API keys, marbor-issued
 // runtime API keys, LiteLLM/HuggingFace/webhook tokens) are encrypted at
 // rest with AES-256-GCM. The 32-byte master key comes from MARBOR_ENCRYPTION_KEY
 // (base64-encoded) if set, otherwise from a "<db path>.key" file generated on
