@@ -194,7 +194,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   }[node.health];
 
   return (
-    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors ${node.draining ? 'border-amber-500/60' : 'border-border'}`}>
+    <div className={`bg-card border shadow-sm rounded-xl p-5 transition-colors ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border hover:border-primary/50'}`}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
         <div className="flex items-start gap-3 min-w-0">
