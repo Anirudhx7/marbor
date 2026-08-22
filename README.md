@@ -1,42 +1,46 @@
-<div align="center">
+<p align="center">
+  <img src="ui/public/favicon.svg" alt="Marbor" width="80" />
+</p>
 
-<img src="ui/public/favicon.svg" width="112" alt="marbor logo">
+<h2 align="center">Marbor</h2>
 
-# Marbor
+<p align="center">
+  The private AI inference control plane for self-hosted GPU fleets
+</p>
 
-### The private AI inference control plane for self-hosted GPU fleets
+<p align="center">
+  One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp, and MLX.<br>
+  Local hardware first. Cloud second. Full spend attribution.
+</p>
 
-One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp, and MLX.
-Local hardware first. Cloud second. Full spend attribution.
+<p align="center">
+  <a href="https://anirudh.social/marbor/"><img src="https://img.shields.io/badge/WEBSITE-0a0a0a?style=for-the-badge&logo=firefox&logoColor=d4a853" alt="Website" /></a>
+  <a href="https://anirudh.social/marbor/docs/"><img src="https://img.shields.io/badge/DOCS-0a0a0a?style=for-the-badge&logo=gitbook&logoColor=d4a853" alt="Documentation" /></a>
+  <a href="https://anirudh.social/marbor/demo/"><img src="https://img.shields.io/badge/LIVE_DEMO-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Live Demo" /></a>
+  <a href="https://github.com/Anirudhx7/marbor/releases/latest"><img src="https://img.shields.io/badge/RELEASES-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Releases" /></a>
+  <a href="https://github.com/Anirudhx7/marbor/issues"><img src="https://img.shields.io/badge/ISSUES-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Issues" /></a>
+</p>
 
-<br>
+<p align="center">
+  <strong>Route every request to the GPU node that already holds the model warm in VRAM.</strong><br>
+  Warm-aware GPU routing, an OpenAI-compatible gateway, bearer-token auth with per-key rate limits,<br>
+  and cost-metered cloud overflow to OpenAI or Anthropic that activates only when local capacity is<br>
+  fully saturated — turning your own hardware into a high-availability alternative to cloud LLM APIs.
+</p>
 
-[![Website](https://img.shields.io/badge/WEBSITE-anirudh.social/marbor-0a0a0a?style=for-the-badge&logo=firefox&logoColor=d4a853&labelColor=1f2937)](https://anirudh.social/marbor/)
-[![Docs](https://img.shields.io/badge/DOCS-documentation-1f2937?style=for-the-badge&logo=gitbook&logoColor=d4a853)](https://anirudh.social/marbor/docs/)
-[![Live Demo](https://img.shields.io/badge/LIVE_DEMO-try_it_now-d4a853?style=for-the-badge&labelColor=0a0a0a&logo=github&logoColor=d4a853)](https://anirudh.social/marbor/demo/)
-[![Releases](https://img.shields.io/badge/RELEASES-latest-1f2937?style=for-the-badge&logo=github&logoColor=d4a853)](https://github.com/Anirudhx7/marbor/releases/latest)
-[![Issues](https://img.shields.io/badge/ISSUES-report_a_bug-1f2937?style=for-the-badge&logo=github&logoColor=d4a853)](https://github.com/Anirudhx7/marbor/issues)
+<p align="center">
+  <a href="https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Anirudhx7/marbor/ci.yml?style=for-the-badge&logo=githubactions&logoColor=d4a853&label=BUILD&color=0a0a0a" alt="Build Status" /></a>
+  <a href="https://github.com/Anirudhx7/marbor/releases/latest"><img src="https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases&style=for-the-badge&logo=github&logoColor=d4a853&label=RELEASE&color=0a0a0a" alt="Release" /></a>
+  <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/LICENSE-Apache_2.0-0a0a0a?style=for-the-badge&logo=apache&logoColor=d4a853" alt="License: Apache 2.0" /></a>
+</p>
 
-<br>
+<p align="center">
+  <img src="website/screenshots/dashboard.png" width="820" alt="Marbor dashboard" />
+</p>
 
-**Route every request to the GPU node that already holds the model warm in VRAM.**
-
-Warm-aware GPU routing, an OpenAI-compatible gateway, bearer-token auth with per-key rate limits,
-and cost-metered cloud overflow to OpenAI or Anthropic that activates only when local capacity is
-fully saturated - turning your own hardware into a high-availability alternative to cloud LLM APIs.
-
-[![Build Status](https://img.shields.io/github/actions/workflow/status/Anirudhx7/marbor/ci.yml?style=for-the-badge&logo=githubactions&logoColor=d4a853&label=BUILD&labelColor=0a0a0a&color=1f2937)](https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases&style=for-the-badge&logo=github&logoColor=d4a853&label=RELEASE&labelColor=0a0a0a&color=1f2937)](https://github.com/Anirudhx7/marbor/releases/latest)
-[![License: Apache 2.0](https://img.shields.io/badge/LICENSE-Apache_2.0-1f2937?style=for-the-badge&logo=apache&logoColor=d4a853&labelColor=0a0a0a)](https://www.apache.org/licenses/LICENSE-2.0)
-
-<br>
-
-<img src="website/screenshots/dashboard.png" width="820" alt="marbor dashboard">
-
-*Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings - all from real parsed token counts.*
-
-</div>
-
+<p align="center">
+  <em>Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings — all from real parsed token counts.</em>
+</p>
 ---
 
 > **[Try the live demo](https://anirudh.social/marbor/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
