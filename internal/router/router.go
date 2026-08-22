@@ -1596,8 +1596,8 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 					// autoDetect false with probe still nil - pollNode's
 					// needsDetect guard would then never re-arm detection,
 					// and the next poll dereferences a nil probe and panics
-				// (crashes the whole single-process marbor, R1/architecture
-				// law: one process for the entire marbor).
+					// (crashes the whole single-process marbor, R1/architecture
+					// law: one process for the entire marbor).
 					n.probe = runtimepkg.NewProbe(*patch.Runtime, r.client)
 				}
 			}
