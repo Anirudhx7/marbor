@@ -35,16 +35,16 @@ function MetricCard({ title, value, unit, icon, trend, trendUp, highlight }: Met
     : highlight === 'warning' ? 'bg-warning/10 text-warning'
     : 'bg-primary/10 text-primary';
   return (
-    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors">
-      <div className="flex items-start justify-between">
-        <div>
+    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors h-full flex flex-col justify-between">
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0">
           <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-foreground">{value}</span>
+          <div className="flex items-baseline gap-1 flex-wrap">
+            <span className="text-2xl font-bold text-foreground break-all">{value}</span>
             {unit && <span className="text-sm font-medium text-muted-foreground ml-1">{unit}</span>}
           </div>
         </div>
-        <div className={`p-2 rounded-lg ${iconBg}`}>
+        <div className={`p-2 rounded-lg ${iconBg} shrink-0`}>
           {icon}
         </div>
       </div>
@@ -72,15 +72,15 @@ function SavingsCard({ savings, loading }: SavingsCardProps) {
   const cloudPct = 100 - localPct;
 
   return (
-    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors">
-      <div className="flex items-start justify-between">
-        <div>
+    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors h-full flex flex-col justify-between">
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs Cloud</p>
           <div className="flex items-baseline gap-1">
             {loading ? (
               <span className="text-2xl font-bold text-foreground animate-pulse">--</span>
             ) : savings ? (
-              <span className="text-2xl font-bold text-success">
+              <span className="text-2xl font-bold text-success break-all">
                 {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '-'}
               </span>
             ) : (
@@ -88,14 +88,16 @@ function SavingsCard({ savings, loading }: SavingsCardProps) {
             )}
           </div>
           {savings && !loading ? (
-            <p className="text-xs font-medium text-muted-foreground mt-0.5">
-              {savings.local_requests.toLocaleString()} local / {savings.cloud_requests.toLocaleString()} cloud
+            <p className="text-xs font-medium text-muted-foreground mt-0.5 leading-snug break-words">
+              <span className="whitespace-nowrap">{savings.local_requests.toLocaleString('en-US')} local</span>
+              <span className="mx-1">/</span>
+              <span className="whitespace-nowrap">{savings.cloud_requests.toLocaleString('en-US')} cloud</span>
             </p>
           ) : (
             <p className="text-xs font-medium text-muted-foreground mt-0.5">local / cloud requests</p>
           )}
         </div>
-        <div className="p-2 bg-success/10 rounded-lg text-success">
+        <div className="p-2 bg-success/10 rounded-lg text-success shrink-0">
           <DollarSign className="w-5 h-5" />
         </div>
       </div>
