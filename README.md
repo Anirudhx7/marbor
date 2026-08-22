@@ -11,7 +11,8 @@ Local hardware first. Cloud second. Full spend attribution.
 
 <br>
 
-[![Docs](https://img.shields.io/badge/DOCS-anirudh.social/marbor/docs-1f2937?style=for-the-badge&logo=gitbook&logoColor=d4a853)](https://anirudh.social/marbor/docs/)
+[![Website](https://img.shields.io/badge/WEBSITE-anirudh.social/marbor-0a0a0a?style=for-the-badge&logo=firefox&logoColor=d4a853&labelColor=1f2937)](https://anirudh.social/marbor/)
+[![Docs](https://img.shields.io/badge/DOCS-documentation-1f2937?style=for-the-badge&logo=gitbook&logoColor=d4a853)](https://anirudh.social/marbor/docs/)
 [![Live Demo](https://img.shields.io/badge/LIVE_DEMO-try_it_now-d4a853?style=for-the-badge&labelColor=0a0a0a&logo=github&logoColor=d4a853)](https://anirudh.social/marbor/demo/)
 [![Releases](https://img.shields.io/badge/RELEASES-latest-1f2937?style=for-the-badge&logo=github&logoColor=d4a853)](https://github.com/Anirudhx7/marbor/releases/latest)
 [![Issues](https://img.shields.io/badge/ISSUES-report_a_bug-1f2937?style=for-the-badge&logo=github&logoColor=d4a853)](https://github.com/Anirudhx7/marbor/issues)
