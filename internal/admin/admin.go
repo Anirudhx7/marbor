@@ -56,7 +56,7 @@ const ctxKeyUserID ctxKey = "user_id"
 // The token itself never reaches client-side JS or localStorage (Priority 2,
 // 2026-07-14 audit) - only this cookie carries it, and only the server reads
 // it back.
-const sessionCookieName = "mesh_session"
+const sessionCookieName = "marbor_session"
 
 // sessionTokenFromRequest reads the session token from the httpOnly cookie.
 func sessionTokenFromRequest(r *http.Request) string {
@@ -732,7 +732,7 @@ func (s *Server) Shutdown() {
 
 // StartPeriodicCleanup launches a background goroutine that prunes expired
 // user sessions and audit_log rows past their retention window every 12
-// hours (plus once at startup, so a long-idle mesh doesn't wait 12h for its
+// hours (plus once at startup, so a long-idle marbor doesn't wait 12h for its
 // first prune). Call once after construction; ctx cancellation stops the
 // ticker, mirroring StartCounterFlush.
 func (s *Server) StartPeriodicCleanup(ctx context.Context) {
@@ -799,7 +799,7 @@ func (s *Server) StartBackupScheduler(ctx context.Context) {
 		}
 	}
 	go func() {
-		check() // in case a backup came due while the mesh was stopped
+		check() // in case a backup came due while the marbor was stopped
 		ticker := time.NewTicker(backupCheckInterval)
 		defer ticker.Stop()
 		for {
@@ -859,11 +859,11 @@ func (s *Server) runScheduledBackup(cfg config.BackupConfig) error {
 	return nil
 }
 
-// backupFilename returns the mesh-backup-<UTC timestamp>.db name used by both
+// backupFilename returns the marbor-backup-<UTC timestamp>.db name used by both
 // the manual download endpoint and the scheduled job, so pruneOldBackups can
 // recognize either kind of file left in TargetDir.
 func backupFilename(t time.Time) string {
-	return fmt.Sprintf("mesh-backup-%s.db", t.UTC().Format("20060102-150405"))
+	return fmt.Sprintf("marbor-backup-%s.db", t.UTC().Format("20060102-150405"))
 }
 
 // recordBackupResult updates the in-memory last-backup status and persists it
@@ -892,7 +892,7 @@ func (s *Server) recordBackupResult(err error) {
 	}
 }
 
-// pruneOldBackups deletes the oldest mesh-backup-*.db files in dir beyond
+// pruneOldBackups deletes the oldest marbor-backup-*.db files in dir beyond
 // retentionCount. Filenames are UTC-timestamp-named (backupFilename), so a
 // lexical sort is also a chronological sort. retentionCount <= 0 disables
 // pruning entirely (keep every backup ever made).
@@ -907,7 +907,7 @@ func (s *Server) pruneOldBackups(dir string, retentionCount int) {
 	}
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), "mesh-backup-") && strings.HasSuffix(e.Name(), ".db") {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "marbor-backup-") && strings.HasSuffix(e.Name(), ".db") {
 			names = append(names, e.Name())
 		}
 	}
@@ -1008,7 +1008,7 @@ func hashBackupFile(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// findDuplicateBackup hashes every existing mesh-backup-*.db file in dir and
+// findDuplicateBackup hashes every existing marbor-backup-*.db file in dir and
 // returns the name of one whose content matches hash, or "" if none match.
 // Used by both the scheduled backup job and the upload endpoint so a
 // byte-for-byte duplicate (marbor.db unchanged since the last backup, or an
@@ -2066,26 +2066,26 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 //
 // The command carries a short-lived, single-use enrollment code, never the
 // real permanent token (P50) - a copy-pasted command otherwise leaves the
-// real bearer token in shell history/SSH logs/chat forever. meshBaseURL
+// real bearer token in shell history/SSH logs/chat forever. marborBaseURL
 // tells the agent where to exchange the code for the real token via
 // POST /admin/agent/enroll.
-func marborAgentInstallCommand(meshBaseURL string, port int, enrollCode string) (unix string, windows string) {
+func marborAgentInstallCommand(marborBaseURL string, port int, enrollCode string) (unix string, windows string) {
 	unix = fmt.Sprintf(
 		"curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=%s MARBOR_ENROLL=%s PORT=%d sh",
-		meshBaseURL, enrollCode, port,
+		marborBaseURL, enrollCode, port,
 	)
 	windows = fmt.Sprintf(
 		`$env:ROLE="agent"; $env:MARBOR_SERVER="%s"; $env:MARBOR_ENROLL="%s"; $env:PORT="%d"; irm https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.ps1 | iex`,
-		meshBaseURL, enrollCode, port,
+		marborBaseURL, enrollCode, port,
 	)
 	return unix, windows
 }
 
-// requestBaseURL derives the mesh's own address as reachable from wherever r
+// requestBaseURL derives the marbor's own address as reachable from wherever r
 // came from - the same host:port the operator's browser just used to load
 // the admin dashboard, which is the best available guess for what a GPU
-// node on the same network can reach back to. The mesh has no separate
-// "public URL" setting; this is the first feature that needs the mesh to
+// node on the same network can reach back to. The marbor has no separate
+// "public URL" setting; this is the first feature that needs the marbor to
 // know its own address (P50's enrollment exchange).
 func requestBaseURL(r *http.Request) string {
 	scheme := "http"
@@ -2374,7 +2374,7 @@ func (s *Server) handleRegenerateMarborAgentToken(w http.ResponseWriter, r *http
 }
 
 // validControlDrivers are the only driver names an operator may Accept
-// (P43 v1 set - node-agent-capabilities.md section 5.4). Kept in sync with
+// (P43 v1 set - marbor-agent-capabilities.md section 5.4). Kept in sync with
 // internal/marboragent/control's driver Name() constants.
 var validControlDrivers = map[string]bool{
 	"systemd": true, "docker": true, "process": true, "launchd": true, "windows_service": true,
@@ -2383,7 +2383,7 @@ var validControlDrivers = map[string]bool{
 // handleGetNodeControl returns the node's operator-accepted ControlDriver
 // config (from the store) alongside the most recent discovery result (from
 // the router's live agent-poll cache) - discovered is never substituted for
-// the accepted value (node-agent-capabilities.md section 5.6).
+// the accepted value (marbor-agent-capabilities.md section 5.6).
 // GET /admin/nodes/{name}/control
 func (s *Server) handleGetNodeControl(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -2530,11 +2530,11 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// The mesh constructs {driver, identifier} from its own store-backed
+	// The marbor constructs {driver, identifier} from its own store-backed
 	// cache at dispatch time and hands it to the agent fresh on every
 	// request - the agent never persists control config itself (P43 Step 3
 	// design decision). A node with no operator-accepted driver returns the
-	// exact error node-agent-capabilities.md section 5.6 mandates, never a
+	// exact error marbor-agent-capabilities.md section 5.6 mandates, never a
 	// guess.
 	ctrl, configured := s.router.NodeControlSetting(nodeName)
 	if !configured {
@@ -2726,7 +2726,7 @@ func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentC
 // newEnrollmentCode generates a fresh one-time enrollment code for node,
 // wraps the already-generated real token, and stores it in-memory with an
 // enrollmentCodeTTL expiry (P50). The map holds only ephemeral state and is
-// never persisted - losing an in-flight code on a mesh restart just means
+// never persisted - losing an in-flight code on a marbor restart just means
 // the operator re-generates it from the admin UI.
 func (s *Server) newEnrollmentCode(node, token string) (string, error) {
 	code, err := generateEnrollmentCode()
@@ -3639,7 +3639,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	// host - see MarborAgentSettingByHost's doc comment).
 	resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 
-	// No-downgrade (section 7): once a fingerprint is pinned, the mesh must
+	// No-downgrade (section 7): once a fingerprint is pinned, the marbor must
 	// never end up treating the Marbor Agent as plaintext without an explicit
 	// clear (tls_fingerprint: null/""). This checks the AGENT's own
 	// configured scheme for the RESULTING host (POST /admin/nodes/{name}/agent's
@@ -5961,7 +5961,7 @@ var nodePullTimeout = 2 * time.Hour
 // pullJobMaxAge bounds how long a finished (success/failed) job stays in
 // s.pullJobs after completion - long enough for a client's SSE subscription
 // to catch the terminal event even if it connects a little late, short
-// enough that the map doesn't grow unbounded across a long-running mesh
+// enough that the map doesn't grow unbounded across a long-running marbor
 // process with many pulls over time.
 const pullJobMaxAge = 10 * time.Minute
 
@@ -6000,13 +6000,13 @@ type pullJob struct {
 	Error          string    `json:"error,omitempty"`
 	// cancel aborts the in-flight pull's context - unexported, so it never
 	// appears in the JSON progress payload the UI reads. Canceling the
-	// mesh's own outbound HTTP request (direct path: the streaming pull;
+	// marbor's own outbound HTTP request (direct path: the streaming pull;
 	// agent path: the call to the agent) is real cancellation, not cosmetic:
 	// Go's http.Server cancels the handler's request context when the
 	// client connection drops, and the agent's action handler ties
 	// exec.CommandContext to that same context - so a cancel from the admin
 	// UI actually kills the download subprocess on the node, not just the
-	// mesh's view of it.
+	// marbor's view of it.
 	cancel context.CancelFunc
 	// verifyLoad records whether the client opted into a post-download load
 	// verification (a real chat-completion probe, not a guess - see
@@ -6391,7 +6391,7 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 			// deliver one, via HF_TOKEN in the pull subprocess's own
 			// environment (actions.go runDownload). A 401 here almost always
 			// means a gated/token-required HF model on a node without an
-			// agent, not a mesh misconfiguration.
+			// agent, not a marbor misconfiguration.
 			errMsg += " (this node has no marbor agent capable of pull_model - token-gated Hugging Face pulls require one; install/enable the marbor agent on this node or use a non-gated model)"
 		}
 		job.finish("failed", errMsg)
@@ -6473,7 +6473,7 @@ func (s *Server) completePull(ctx context.Context, job *pullJob) {
 }
 
 // verifyModelLoads sends one minimal chat-completion request through the
-// mesh's own proxy (bench.MeasureChatTTFT - the same probe the Hardware
+// marbor's own proxy (bench.MeasureChatTTFT - the same probe the Hardware
 // Benchmark page uses) to confirm the model actually loads and answers, not
 // just that its blob downloaded successfully. Reuses handleRunBenchmark's
 // exact ephemeral-scoped-key pattern so this probe exercises the real
@@ -6591,7 +6591,7 @@ func (s *Server) handlePullProgress(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCancelPull aborts an in-flight pull job. DELETE .../pull?model=...
-// Cancellation is real, not cosmetic: it cancels the mesh's own outbound
+// Cancellation is real, not cosmetic: it cancels the marbor's own outbound
 // request context (the streaming pull, or the call to the agent), which for
 // the agent path also tears down the download subprocess on the node itself
 // (see pullJob.cancel's doc comment). Returns 200 whether or not a job was
@@ -6653,7 +6653,7 @@ func nodeIsHealthy(nodes []*router.NodeState, name string) bool {
 }
 
 // marborAgentIsPresent reports whether the node named name's Marbor Agent
-// answered the mesh's last poll (router.NodeState.AgentPresent, set by
+// answered the marbor's last poll (router.NodeState.AgentPresent, set by
 // agent_poll.go - independent of runtime reachability, per that file's own
 // "the agent is a fully independent HTTP endpoint from /api/ps" reasoning).
 // Use this, not nodeIsHealthy, to gate any admin handler that dispatches to
@@ -6811,7 +6811,7 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 
 // pullModelViaAgent dispatches a model pull to nodeURL's Marbor Agent
 // (POST /v1/models, capability "models.pull") instead of the node's own
-// runtime HTTP API, forwarding the mesh's configured Hugging Face token
+// runtime HTTP API, forwarding the marbor's configured Hugging Face token
 // per-request - never stored on the agent side, only set in the pull
 // subprocess's own environment for its lifetime (see
 // .local/specs/node-agent.md section 16).
@@ -7423,10 +7423,10 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(entries)
 }
 
-// backupFilenameRE matches exactly the mesh-backup-<UTC timestamp>.db shape
+// backupFilenameRE matches exactly the marbor-backup-<UTC timestamp>.db shape
 // produced by backupFilename - used both to list scheduled backups and to
 // validate a client-supplied filename before restore ever touches disk.
-var backupFilenameRE = regexp.MustCompile(`^mesh-backup-\d{8}-\d{6}\.db$`)
+var backupFilenameRE = regexp.MustCompile(`^marbor-backup-\d{8}-\d{6}\.db$`)
 
 // backupFileInfo is one entry in GET /admin/backup/list's response.
 type backupFileInfo struct {
@@ -7491,7 +7491,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	// filepath.Base + the strict backupFilenameRE together rule out path
 	// traversal (../, absolute paths, subdirectories): only a bare
-	// mesh-backup-<timestamp>.db name already sitting directly in TargetDir
+	// marbor-backup-<timestamp>.db name already sitting directly in TargetDir
 	// is ever accepted - never an arbitrary path the client supplies.
 	name := filepath.Base(req.Filename)
 	if name != req.Filename || !backupFilenameRE.MatchString(name) {
@@ -7522,7 +7522,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logSystemChange(r, "restore_backup", "global", fmt.Sprintf("Restore requested from %s - mesh restarting", name))
+	s.logSystemChange(r, "restore_backup", "global", fmt.Sprintf("Restore requested from %s - marbor restarting", name))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]any{"restarting": true, "file": name})
@@ -7533,7 +7533,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 // job in StartBackupScheduler. Mirrors handleAnalyticsExport's
 // Content-Disposition streaming pattern.
 func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
-	tmp, err := os.CreateTemp("", "mesh-backup-download-*.db")
+	tmp, err := os.CreateTemp("", "marbor-backup-download-*.db")
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to create temp file for backup")
 		return
@@ -7570,7 +7570,7 @@ const maxUploadedBackupSize = 2 << 30 // 2 GiB
 // same store.ValidateBackupFile (PRAGMA quick_check) used everywhere else in
 // this feature, so a non-database file is rejected before it ever becomes a
 // restore candidate. The staged file is then renamed to the standard
-// mesh-backup-<timestamp>.db shape (backupFilename) so it passes
+// marbor-backup-<timestamp>.db shape (backupFilename) so it passes
 // backupFilenameRE and shows up in handleListBackups like any other backup -
 // no separate "uploaded" code path for handleRestoreBackup to special-case.
 func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
@@ -7607,7 +7607,7 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 
 	// Staged inside targetDir (not os.TempDir) so the final rename below is
 	// an atomic same-filesystem move, not a cross-filesystem copy.
-	tmp, err := os.CreateTemp(targetDir, "mesh-backup-upload-*.tmp")
+	tmp, err := os.CreateTemp(targetDir, "marbor-backup-upload-*.tmp")
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to stage upload")
 		return

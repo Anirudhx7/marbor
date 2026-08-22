@@ -42,7 +42,7 @@ services:
   # Multi-runtime demo nodes  --  vLLM/TGI/llama.cpp mocks satisfying exactly
   # what internal/runtime's detect/health probes expect (see cmd/mocknode's
   # package comment), not each project's full real API surface. Part of
-  # smoke.sh's default gate alongside the 2 Ollama nodes + mesh, so CI proves
+  # smoke.sh's default gate alongside the 2 Ollama nodes + marbor, so CI proves
   # routing/auth/streaming across all 4 supported runtimes, not just Ollama.
   vllm-node:
     build:
@@ -118,15 +118,15 @@ services:
       retries: 10
       start_period: 5s
 
-  # mesh deliberately does NOT depend_on the 4 multi-runtime nodes above:
+  # marbor deliberately does NOT depend_on the 4 multi-runtime nodes above:
   # docker compose auto-starts a service's depends_on targets even when they
   # weren't named explicitly in an `up` command, which would make any partial
-  # `up -d` invocation (e.g. bringing up just `mesh` for a manual debug
+  # `up -d` invocation (e.g. bringing up just `marbor` for a manual debug
   # session) silently drag in 4 extra containers. The router already handles
   # a configured-but-not-yet-up node gracefully (marks it unhealthy until it
-  # responds), so mesh can start without them. smoke.sh starts all 6
+  # responds), so marbor can start without them. smoke.sh starts all 6
   # explicitly with `--wait` instead of relying on depends_on for this.
-  mesh:
+  marbor:
     build:
       context: .
       dockerfile: Dockerfile
@@ -136,9 +136,9 @@ services:
       ollama-node-b:
         condition: service_healthy
 
-    command: sh -c "cp /demo/mesh.demo.db /root/marbor.db && exec ./marbor"
+    command: sh -c "cp /demo/marbor.demo.db /root/marbor.db && exec ./marbor"
     volumes:
-      - ./mesh.demo.db:/demo/mesh.demo.db:ro
+      - ./marbor.demo.db:/demo/marbor.demo.db:ro
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -157,10 +157,10 @@ services:
       context: .
       dockerfile: Dockerfile.demotraffic
     depends_on:
-      mesh:
+      marbor:
         condition: service_healthy
     environment:
-      PROXY_URL: http://mesh:11434
+      PROXY_URL: http://marbor:11434
       API_KEY: demo-api-key
       REQUEST_COUNT: "20"
     restart: "no"
@@ -172,7 +172,7 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     depends_on:
-      mesh:
+      marbor:
         condition: service_healthy
 
   grafana:

@@ -338,25 +338,25 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Backup &amp; Restore</span></div>
     <article class="doc-content">
       <h1 id="backup-restore">Backup &amp; Restore<a class="anchor" href="#backup-restore" aria-label="Link to section">#</a></h1>
-<p>marbor is DB-first: <code>marbor.db</code> (SQLite) holds nodes, API keys, routing rules, warm-state history, encrypted secrets, and every setting. Losing it means reconfiguring the mesh from scratch. This page covers taking backups and restoring one, both built into the dashboard's Settings &gt; Backup &amp; Restore card.</p>
+<p>marbor is DB-first: <code>marbor.db</code> (SQLite) holds nodes, API keys, routing rules, warm-state history, encrypted secrets, and every setting. Losing it means reconfiguring the marbor from scratch. This page covers taking backups and restoring one, both built into the dashboard's Settings &gt; Backup &amp; Restore card.</p>
 <hr/>
 <h2 id="taking-backups">Taking backups<a class="anchor" href="#taking-backups" aria-label="Link to section">#</a></h2>
 <ul><li><strong>Download Backup Now</strong> - takes an on-demand, point-in-time-consistent copy of <code>marbor.db</code> (via</li></ul>
-<p>  SQLite's <code>VACUUM INTO</code>, safe to run while the mesh keeps serving requests) and downloads it   straight to your browser as <code>mesh-backup-&lt;UTC timestamp&gt;.db</code>.</p>
+<p>  SQLite's <code>VACUUM INTO</code>, safe to run while the marbor keeps serving requests) and downloads it   straight to your browser as <code>marbor-backup-&lt;UTC timestamp&gt;.db</code>.</p>
 <ul><li><strong>Scheduled Backup</strong> - enable it, then set:</li><li><strong>Interval (hours)</strong> - how often a backup runs.</li><li><strong>Retention (backups kept)</strong> - how many scheduled backup files to keep; older ones are</li></ul>
 <p>    deleted automatically after each successful run. Manually-downloaded backups (via the button     above) are never touched by retention pruning - only the scheduler's own files count.</p>
-<ul><li><strong>Target Directory</strong> - where scheduled backups are written on the machine running the mesh</li></ul>
+<ul><li><strong>Target Directory</strong> - where scheduled backups are written on the machine running the marbor</li></ul>
 <p>    process. In Docker, this defaults to <code>/backups</code>, a <em>separate</em> named volume from the one     holding <code>marbor.db</code> (see <code>docker-compose.yml</code>) - so deleting the container, or even     <code>docker volume rm</code>-ing the data volume, doesn't take the backups down with it. On bare metal /     systemd, it defaults to a <code>backups/</code> directory next to <code>marbor.db</code> unless you set <code>MARBOR_BACKUP_DIR</code>     or change it in Settings.</p>
 <p>The last scheduled-run outcome (timestamp of the last success, or the last error) is shown on the same Settings card - a failed scheduled backup (bad path, full disk, permissions) is never silently swallowed; it's retried on the next check and the error stays visible until a run succeeds.</p>
 <hr/>
 <h2 id="restoring-a-backup">Restoring a backup<a class="anchor" href="#restoring-a-backup" aria-label="Link to section">#</a></h2>
 <p>The Settings &gt; Backup &amp; Restore card lists every scheduled backup file already sitting in the target directory in a dropdown - pick one and click <strong>Restore</strong> next to it. Behind that click:</p>
-<ol><li>The mesh validates the file (<code>PRAGMA quick_check</code>) before touching anything - a corrupt or</li></ol>
+<ol><li>The marbor validates the file (<code>PRAGMA quick_check</code>) before touching anything - a corrupt or</li></ol>
 <p>   unrelated file is rejected here, before the live database is ever at risk.</p>
 <ol><li>It gracefully drains in-flight requests (the same shutdown path a <code>SIGTERM</code> uses).</li><li>It stages the full copy alongside the live <code>marbor.db</code> first, and only swaps it in via an atomic</li></ol>
 <p>   rename once the copy is proven complete - a failure mid-copy leaves the <em>live</em> database    untouched, never truncated or half-written.</p>
 <ol><li>It exits the process on purpose, with a non-zero status.</li></ol>
-<p><strong>That last step is why this requires your deployment to actually restart the process on exit</strong> - the mesh does not restart itself; it relies on whatever already supervises it:</p>
+<p><strong>That last step is why this requires your deployment to actually restart the process on exit</strong> - the marbor does not restart itself; it relies on whatever already supervises it:</p>
 <div class="table-scroll"><table>
 <thead><tr><th>Deployment</th><th>Requirement</th><th>Status in this repo</th></tr></thead>
 <tbody><tr><td>Docker / Docker Compose</td><td>a <code>restart</code> policy</td><td><code>docker-compose.yml</code> ships with <code>restart: unless-stopped</code></td></tr>
@@ -364,29 +364,29 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <tr><td>Kubernetes</td><td>default <code>restartPolicy</code></td><td><code>Always</code> by default for a Deployment - nothing extra needed</td></tr>
 <tr><td>A bare <code>./marbor</code> with no supervisor</td><td>none available</td><td><strong>will not come back on its own</strong> - see below</td></tr></tbody>
 </table></div>
-<p>If you're running the binary directly with nothing supervising it (no systemd unit, no Docker, no Kubernetes), a one-click restore will stop the mesh and it will stay stopped until you start it again by hand. Either run it under one of the supervised setups above, or use the fully manual procedure below instead, where you control every step yourself.</p>
+<p>If you're running the binary directly with nothing supervising it (no systemd unit, no Docker, no Kubernetes), a one-click restore will stop the marbor and it will stay stopped until you start it again by hand. Either run it under one of the supervised setups above, or use the fully manual procedure below instead, where you control every step yourself.</p>
 <h3 id="restoring-from-a-file-that-isnt-already-on-the-server">Restoring from a file that isn't already on the server<a class="anchor" href="#restoring-from-a-file-that-isnt-already-on-the-server" aria-label="Link to section">#</a></h3>
-<p>Next to the dropdown is a <strong>+</strong> button - it opens your browser's normal file picker (works the same in Chrome, Firefox, Safari, and Edge, on Linux, Windows, and macOS) so you can attach any <code>.db</code> file from your own machine, not just files the scheduler already produced on the server. Pick a file and it uploads to the mesh, which validates it's a genuine SQLite database (<code>PRAGMA quick_check</code> - the identical check every other backup path already goes through) and saves it into the same target directory as scheduled/manual backups, under the standard <code>mesh-backup-&lt;timestamp&gt;.db</code> name. It then appears in the dropdown like any other backup and can be restored the same way. A spinner replaces the <strong>+</strong> icon while the upload is in flight; an invalid file (wrong format, corrupt, not a marbor.db backup at all) is rejected with an error and never touches the target directory.</p>
+<p>Next to the dropdown is a <strong>+</strong> button - it opens your browser's normal file picker (works the same in Chrome, Firefox, Safari, and Edge, on Linux, Windows, and macOS) so you can attach any <code>.db</code> file from your own machine, not just files the scheduler already produced on the server. Pick a file and it uploads to the marbor, which validates it's a genuine SQLite database (<code>PRAGMA quick_check</code> - the identical check every other backup path already goes through) and saves it into the same target directory as scheduled/manual backups, under the standard <code>marbor-backup-&lt;timestamp&gt;.db</code> name. It then appears in the dropdown like any other backup and can be restored the same way. A spinner replaces the <strong>+</strong> icon while the upload is in flight; an invalid file (wrong format, corrupt, not a marbor.db backup at all) is rejected with an error and never touches the target directory.</p>
 <h3 id="fully-manual-alternative">Fully manual alternative<a class="anchor" href="#fully-manual-alternative" aria-label="Link to section">#</a></h3>
-<p>Restore doesn't have to go through the dashboard. Stopping the mesh, swapping the file, and starting it again works identically and isn't restricted to files in the scheduled backup directory - <strong>any</strong> <code>.db</code> file that was itself produced by a backup of this mesh (scheduled, manual download, or a straight file copy taken while the process was stopped) can be restored from, regardless of where it currently lives.</p>
+<p>Restore doesn't have to go through the dashboard. Stopping the marbor, swapping the file, and starting it again works identically and isn't restricted to files in the scheduled backup directory - <strong>any</strong> <code>.db</code> file that was itself produced by a backup of this marbor (scheduled, manual download, or a straight file copy taken while the process was stopped) can be restored from, regardless of where it currently lives.</p>
 <p><strong>Bare metal / systemd:</strong></p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo systemctl stop marbor
-sudo cp /path/to/mesh-backup-20260730-140000.db /opt/marbor/marbor.db
+sudo cp /path/to/marbor-backup-20260730-140000.db /opt/marbor/marbor.db
 sudo systemctl start marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo systemctl stop marbor
-sudo cp /path/to/mesh-backup-20260730-140000.db /opt/marbor/marbor.db
+sudo cp /path/to/marbor-backup-20260730-140000.db /opt/marbor/marbor.db
 sudo systemctl start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Replace <code>/opt/marbor/marbor.db</code> with whatever path you actually run with (<code>--db</code> flag or <code>MARBOR_DB_PATH</code>) - not necessarily this exact path.</p>
 <p><strong>Docker / Docker Compose:</strong></p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop marbor
-docker cp ./mesh-backup-20260730-140000.db marbor:/data/marbor.db
+docker cp ./marbor-backup-20260730-140000.db marbor:/data/marbor.db
 docker compose start marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop marbor
-docker cp ./mesh-backup-20260730-140000.db marbor:/data/marbor.db
+docker cp ./marbor-backup-20260730-140000.db marbor:/data/marbor.db
 docker compose start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>If the file is already inside the container (e.g. a scheduled backup under <code>/backups</code>), copy it inside instead of using <code>docker cp</code>:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop marbor
-docker compose run --rm --entrypoint sh marbor -c "cp /backups/mesh-backup-20260730-140000.db /data/marbor.db"
+docker compose run --rm --entrypoint sh marbor -c "cp /backups/marbor-backup-20260730-140000.db /data/marbor.db"
 docker compose start marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop marbor
-docker compose run --rm --entrypoint sh marbor -c &quot;cp /backups/mesh-backup-20260730-140000.db /data/marbor.db&quot;
+docker compose run --rm --entrypoint sh marbor -c &quot;cp /backups/marbor-backup-20260730-140000.db /data/marbor.db&quot;
 docker compose start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Either way, the container must be <strong>stopped</strong> first, since SQLite's WAL sidecar files (<code>marbor.db-wal</code>, <code>marbor.db-shm</code>) would otherwise still be attached to the old database.</p>
 <p><strong>Kubernetes:</strong> scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a temporary debug pod with the same PVC mounted, or <code>kubectl cp</code> into that pod), then scale back to 1.</p>

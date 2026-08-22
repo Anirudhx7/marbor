@@ -338,15 +338,15 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><a href="../docs/index.html">Docs</a><span class="sep">/</span><span class="current">Integrations</span></div>
     <article class="doc-content">
       <h1 id="integrations">Integrations<a class="anchor" href="#integrations" aria-label="Link to section">#</a></h1>
-<p>marbor exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible <code>/v1</code> endpoints unchanged. This means any client that works with Ollama or the OpenAI SDK can point at the mesh with a one-line change.</p>
-<p>Set <code>OPENAI_BASE_URL</code> (or the equivalent in your client) to <code>http://your-mesh-host:11434</code> and set the API key to your <code>sk-mesh-...</code> key.</p>
+<p>marbor exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible <code>/v1</code> endpoints unchanged. This means any client that works with Ollama or the OpenAI SDK can point at the marbor with a one-line change.</p>
+<p>Set <code>OPENAI_BASE_URL</code> (or the equivalent in your client) to <code>http://your-marbor-host:11434</code> and set the API key to your <code>sk-marbor-...</code> key.</p>
 <hr/>
 <h2 id="python---openai-sdk">Python - openai SDK<a class="anchor" href="#python---openai-sdk" aria-label="Link to section">#</a></h2>
 <div class="code-wrap"><pre class="code" data-lang="python"><code>from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:11434/v1",
-    api_key="sk-mesh-abc123",   # your marbor key, not an OpenAI key
+    api_key="sk-marbor-abc123",   # your marbor key, not an OpenAI key
 )
 
 response = client.chat.completions.create(
@@ -358,7 +358,7 @@ print(response.choices[0].message.content)</code></pre><button class="copy-btn" 
 
 client = OpenAI(
     base_url=&quot;http://localhost:11434/v1&quot;,
-    api_key=&quot;sk-mesh-abc123&quot;,   # your marbor key, not an OpenAI key
+    api_key=&quot;sk-marbor-abc123&quot;,   # your marbor key, not an OpenAI key
 )
 
 response = client.chat.completions.create(
@@ -387,8 +387,8 @@ print(response.choices[0].message.content)"><svg viewBox="0 0 24 24" fill="none"
             print(delta, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Environment variable approach (recommended for scripts and agents):</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>export OPENAI_BASE_URL="http://localhost:11434/v1"
-export OPENAI_API_KEY="sk-mesh-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="export OPENAI_BASE_URL=&quot;http://localhost:11434/v1&quot;
-export OPENAI_API_KEY=&quot;sk-mesh-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+export OPENAI_API_KEY="sk-marbor-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="export OPENAI_BASE_URL=&quot;http://localhost:11434/v1&quot;
+export OPENAI_API_KEY=&quot;sk-marbor-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <div class="code-wrap"><pre class="code" data-lang="python"><code># No base_url/api_key needed - SDK reads from environment
 from openai import OpenAI
 client = OpenAI()</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# No base_url/api_key needed - SDK reads from environment
@@ -400,7 +400,7 @@ client = OpenAI()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 const client = new OpenAI({
   baseURL: "http://localhost:11434/v1",
-  apiKey: "sk-mesh-abc123",
+  apiKey: "sk-marbor-abc123",
 });
 
 const response = await client.chat.completions.create({
@@ -412,7 +412,7 @@ console.log(response.choices[0].message.content);</code></pre><button class="cop
 
 const client = new OpenAI({
   baseURL: &quot;http://localhost:11434/v1&quot;,
-  apiKey: &quot;sk-mesh-abc123&quot;,
+  apiKey: &quot;sk-marbor-abc123&quot;,
 });
 
 const response = await client.chat.completions.create({
@@ -442,13 +442,13 @@ for await (const chunk of stream) {
 <hr/>
 <h2 id="curl---openai-compatible-endpoint">curl - OpenAI-compatible endpoint<a class="anchor" href="#curl---openai-compatible-endpoint" aria-label="Link to section">#</a></h2>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
-  -H "Authorization: Bearer sk-mesh-abc123" \
+  -H "Authorization: Bearer sk-marbor-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "messages": [{"role": "user", "content": "Hello"}]
   }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
-  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
@@ -456,14 +456,14 @@ for await (const chunk of stream) {
   }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Streaming (<code>stream: true</code>):</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
-  -H "Authorization: Bearer sk-mesh-abc123" \
+  -H "Authorization: Bearer sk-marbor-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "messages": [{"role": "user", "content": "Count to 5"}],
     "stream": true
   }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
-  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
@@ -472,20 +472,20 @@ for await (const chunk of stream) {
   }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>List available models (aggregated from all nodes):</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/models \
-  -H "Authorization: Bearer sk-mesh-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/models \
-  -H &quot;Authorization: Bearer sk-mesh-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  -H "Authorization: Bearer sk-marbor-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/models \
+  -H &quot;Authorization: Bearer sk-marbor-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="curl---native-ollama-endpoint">curl - Native Ollama endpoint<a class="anchor" href="#curl---native-ollama-endpoint" aria-label="Link to section">#</a></h2>
 <p>marbor also accepts the native Ollama <code>/api/chat</code> format:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/chat \
-  -H "Authorization: Bearer sk-mesh-abc123" \
+  -H "Authorization: Bearer sk-marbor-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "messages": [{"role": "user", "content": "Hello from the Ollama API"}],
     "stream": false
   }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/chat \
-  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
@@ -494,14 +494,14 @@ for await (const chunk of stream) {
   }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Generate endpoint:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/generate \
-  -H "Authorization: Bearer sk-mesh-abc123" \
+  -H "Authorization: Bearer sk-marbor-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
     "prompt": "The capital of France is",
     "stream": false
   }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/generate \
-  -H &quot;Authorization: Bearer sk-mesh-abc123&quot; \
+  -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
@@ -514,7 +514,7 @@ for await (const chunk of stream) {
 
 llm = ChatOpenAI(
     base_url="http://localhost:11434/v1",
-    api_key="sk-mesh-abc123",
+    api_key="sk-marbor-abc123",
     model="llama3.2:8b",
     temperature=0,
 )
@@ -524,7 +524,7 @@ print(response.content)</code></pre><button class="copy-btn" aria-label="Copy co
 
 llm = ChatOpenAI(
     base_url=&quot;http://localhost:11434/v1&quot;,
-    api_key=&quot;sk-mesh-abc123&quot;,
+    api_key=&quot;sk-marbor-abc123&quot;,
     model=&quot;llama3.2:8b&quot;,
     temperature=0,
 )
@@ -537,7 +537,7 @@ print(response.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentCol
     print(chunk.content, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
 <h2 id="notes">Notes<a class="anchor" href="#notes" aria-label="Link to section">#</a></h2>
-<ul><li>Your <code>sk-mesh-...</code> key never leaves the mesh. The client <code>Authorization</code> header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured <code>api_key</code> when a request overflows to cloud. Provider credentials live only in the database (encrypted).</li><li>If your key has a <code>models:</code> allow-list configured, requests for any other model return <code>403 Forbidden</code>.</li><li>Rate limit headers (<code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>) are present on every response and follow the same conventions as the OpenAI API.</li><li><code>GET /v1/models</code> returns the union of models loaded or downloaded across all healthy nodes.</li></ul>
+<ul><li>Your <code>sk-marbor-...</code> key never leaves the marbor. The client <code>Authorization</code> header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured <code>api_key</code> when a request overflows to cloud. Provider credentials live only in the database (encrypted).</li><li>If your key has a <code>models:</code> allow-list configured, requests for any other model return <code>403 Forbidden</code>.</li><li>Rate limit headers (<code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>) are present on every response and follow the same conventions as the OpenAI API.</li><li><code>GET /v1/models</code> returns the union of models loaded or downloaded across all healthy nodes.</li></ul>
 
       <div class="doc-foot-edit">
         <a href="https://github.com/Anirudhx7/marbor/blob/main/docs/INTEGRATIONS.md" target="_blank" rel="noopener">View on GitHub →</a>

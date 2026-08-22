@@ -10,7 +10,7 @@ import (
 // DockerDriver controls a runtime process running as a Docker container,
 // identified by its exact container name or ID. Requires docker.sock access
 // - a real privilege escalation for what is otherwise a lightweight
-// telemetry/action daemon (node-agent-capabilities.md section 5.4 note),
+// telemetry/action daemon (marbor-agent-capabilities.md section 5.4 note),
 // scoped separately from Systemd/Process control at the authorization layer
 // once that is built (section 7).
 type DockerDriver struct {

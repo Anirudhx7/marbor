@@ -12,23 +12,23 @@ import (
 	"syscall"
 )
 
-// meshSystemdUnitPath mirrors uninstall.sh's UNIT_PATH exactly - the mesh's
+// marborSystemdUnitPath mirrors uninstall.sh's UNIT_PATH exactly - the marbor's
 // own systemd unit is only ever written there (install.sh's
 // setup_systemd_service, SERVICE=1). There is no equivalent on darwin/windows:
 // install.sh falls back to a plain nohup+pidfile process on macOS, and
-// install.ps1 never offers a service mode for the mesh role at all (only for
+// install.ps1 never offers a service mode for the marbor role at all (only for
 // ROLE=agent) - so this path, and everything gated on runtime.GOOS == "linux"
 // below, has no counterpart to check on those platforms.
-const meshSystemdUnitPath = "/etc/systemd/system/marbor.service"
+const marborSystemdUnitPath = "/etc/systemd/system/marbor.service"
 
-// meshPidfile mirrors uninstall.sh's PIDFILE: the nohup fallback path writes
+// marborPidfile mirrors uninstall.sh's PIDFILE: the nohup fallback path writes
 // its PID here, resolved relative to the working directory the installer (or
 // operator) was run from - this subcommand must be run from that same
 // directory to find it, exactly as uninstall.sh documents.
-const meshPidfile = "marbor.pid"
+const marborPidfile = "marbor.pid"
 
 // runUninstall implements "marbor uninstall": the Go-native counterpart
-// to uninstall.sh. Only ever touches this host's mesh service/process - a
+// to uninstall.sh. Only ever touches this host's marbor service/process - a
 // marbor agent service (if any) is removed via "marbor-agent service
 // uninstall" on its own host instead (post control-plane/Marbor-Agent binary
 // split, marbor has no code path into the agent's runtime/service-manager
@@ -44,11 +44,11 @@ func runUninstall(args []string) {
 	fs := flag.NewFlagSet("uninstall", flag.ExitOnError)
 	purge := fs.Bool("purge", false, "also delete the installed binary (default: only removes service registrations)")
 	usage := func(w io.Writer) {
-		fmt.Fprintf(w, "marbor uninstall - remove the mesh's own service registration (if any) from this host\n\n")
+		fmt.Fprintf(w, "marbor uninstall - remove the marbor's own service registration (if any) from this host\n\n")
 		fmt.Fprintf(w, "Usage:\n  marbor uninstall [--purge]\n\n")
 		fmt.Fprintf(w, "To remove a marbor agent, run \"marbor-agent service uninstall\" on the agent's own host instead.\n")
 		fmt.Fprintf(w, "Never deletes marbor.db - remove it yourself if you also want the database gone.\n")
-		fmt.Fprintf(w, "Run from the same directory the mesh was started from, so a nohup-mode\n%s is found.\n\nFlags:\n", meshPidfile)
+		fmt.Fprintf(w, "Run from the same directory the marbor server was started from, so a nohup-mode\n%s is found.\n\nFlags:\n", marborPidfile)
 		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
@@ -67,26 +67,26 @@ func runUninstall(args []string) {
 	didSomething := false
 
 	if runtime.GOOS == "linux" {
-		if _, err := os.Stat(meshSystemdUnitPath); err == nil {
-			fmt.Println("Removing mesh systemd service...")
+		if _, err := os.Stat(marborSystemdUnitPath); err == nil {
+			fmt.Println("Removing marbor systemd service...")
 			_ = exec.Command("systemctl", "stop", "marbor").Run()
 			_ = exec.Command("systemctl", "disable", "marbor").Run()
-			if err := os.Remove(meshSystemdUnitPath); err != nil && !os.IsNotExist(err) {
-				fmt.Fprintf(os.Stderr, "  [!] could not remove %s: %v (needs root/sudo?)\n", meshSystemdUnitPath, err)
+			if err := os.Remove(marborSystemdUnitPath); err != nil && !os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "  [!] could not remove %s: %v (needs root/sudo?)\n", marborSystemdUnitPath, err)
 			} else {
 				_ = exec.Command("systemctl", "daemon-reload").Run()
-				fmt.Printf("  Removed %s\n", meshSystemdUnitPath)
+				fmt.Printf("  Removed %s\n", marborSystemdUnitPath)
 				didSomething = true
 			}
 		}
 	}
 
-	if pid, ok := readRunningPidfile(meshPidfile); ok {
-		fmt.Printf("Stopping background mesh process (PID %d)...\n", pid)
+	if pid, ok := readRunningPidfile(marborPidfile); ok {
+		fmt.Printf("Stopping background marbor process (PID %d)...\n", pid)
 		if proc, err := os.FindProcess(pid); err == nil {
 			_ = proc.Signal(syscall.SIGTERM)
 		}
-		_ = os.Remove(meshPidfile)
+		_ = os.Remove(marborPidfile)
 		didSomething = true
 	}
 
@@ -104,7 +104,7 @@ func runUninstall(args []string) {
 	if didSomething {
 		fmt.Println("marbor has been uninstalled from this host.")
 	} else {
-		fmt.Println("Nothing to uninstall on this host: no mesh service and no background mesh process were found.")
+		fmt.Println("Nothing to uninstall on this host: no marbor service and no background marbor process were found.")
 	}
 	fmt.Println("marbor.db was left untouched - remove it yourself if you also want the database gone.")
 }

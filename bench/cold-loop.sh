@@ -14,11 +14,11 @@
 #   MODEL=llama3.2:3b-q4_k_m API_KEY=<key> ./bench/cold-loop.sh [n]
 #
 # ADMIN_USERNAME/ADMIN_PASSWORD default to admin/admin. NODE_NAME is
-# auto-detected when the mesh has exactly one node; set it explicitly if you
+# auto-detected when marbor has exactly one node; set it explicitly if you
 # have more than one.
 set -uo pipefail
 
-: "${MESH_URL:=http://localhost:11434}"
+: "${MARBOR_URL:=${MESH_URL:-http://localhost:11434}}"
 : "${ADMIN_URL:=http://localhost:8080}"
 : "${ADMIN_USERNAME:=admin}"
 : "${ADMIN_PASSWORD:=admin}"
@@ -66,14 +66,14 @@ else:
   case "$node_auto" in
     AUTO*)
       NODE_NAME="${node_auto#AUTO }"
-      echo "NODE_NAME not set - auto-detected the mesh's only node: '${NODE_NAME}'"
+      echo "NODE_NAME not set - auto-detected marbor's only node: '${NODE_NAME}'"
       ;;
     NONE)
       echo "cold-loop.sh: NODE_NAME not set and GET /admin/nodes returned no nodes" >&2
       exit 1
       ;;
     MANY*)
-      echo "cold-loop.sh: NODE_NAME not set and the mesh has multiple nodes (${node_auto#MANY }) - set NODE_NAME explicitly" >&2
+      echo "cold-loop.sh: NODE_NAME not set and marbor has multiple nodes (${node_auto#MANY }) - set NODE_NAME explicitly" >&2
       exit 1
       ;;
   esac
@@ -99,7 +99,7 @@ for i in $(seq 1 "$N"); do
 
   sleep 2  # let the unload actually land before firing the request
 
-  "$TTFT_BIN" -url "${MESH_URL}" -model "${MODEL}" -n 1 -api-key "${API_KEY}" \
+  "$TTFT_BIN" -url "${MARBOR_URL}" -model "${MODEL}" -n 1 -api-key "${API_KEY}" \
     | tee -a "$LOG_FILE"
 done
 

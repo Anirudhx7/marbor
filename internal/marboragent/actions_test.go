@@ -181,7 +181,7 @@ func TestHandleListModels_OllamaReturnsRealTags(t *testing.T) {
 // TestHandleListModels_OllamaCapturesFamily guards against the "does not
 // support chat" benchmark failure caused by embedding-only models (e.g.
 // mxbai-embed, family "bert") being indistinguishable from chat models in
-// the models.list response - a caller (the mesh's Benchmark page) needs
+// the models.list response - a caller (the marbor's Benchmark page) needs
 // Family to filter them out. A chat model with no family reported must stay
 // empty rather than a fabricated guess (R1).
 func TestHandleListModels_OllamaCapturesFamily(t *testing.T) {
@@ -612,7 +612,7 @@ func TestHandleUnloadModel_LlamaCppRouterReportsFailure(t *testing.T) {
 }
 
 // TestHandleUnloadModel_LlamaCppRouterResolvesRepoIDToRouterID covers P34:
-// mesh callers send the "org/repo" Hugging Face identifier (hfRepoID/
+// marbor callers send the "org/repo" Hugging Face identifier (hfRepoID/
 // hfCacheRepoID's format, used everywhere else HF-cache-sourced models are
 // named), but the router's own "id" is a bare filename stem with no
 // substring relationship to "org/repo" - confirmed 2026-07-28 against a real

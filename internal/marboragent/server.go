@@ -12,7 +12,7 @@ import (
 // convention), and the "models" resource - POST /v1/models (pull), GET
 // /v1/models (list), DELETE /v1/models/{name...} (delete), POST
 // /v1/models/{name...} (unload) - all gated by an exact-match bearer token
-// (see auth.go), polled/dispatched by the mesh's existing router poll cycle -
+// (see auth.go), polled/dispatched by the marbor's existing router poll cycle -
 // see .local/specs/node-agent.md section 3.
 //
 // GET /v1/status and GET /metrics serve Scheduler's cached snapshot rather
@@ -85,7 +85,7 @@ func (s *Server) Handler() http.Handler {
 	// The "runtime" resource's lifecycle verbs (P43 Step 3, capabilities
 	// "runtime.start"/"runtime.stop"/"runtime.restart") - the agent builds
 	// the ControlDriver fresh per-request from the {driver, identifier,
-	// start_command} the mesh's Admin API supplies in the body; see
+	// start_command} the marbor's Admin API supplies in the body; see
 	// control_actions.go.
 	mux.HandleFunc("POST /v1/runtime/start", requireScope(s.Token, tierOperator, s.handleRuntimeStart))
 	mux.HandleFunc("POST /v1/runtime/stop", requireScope(s.Token, tierOperator, s.handleRuntimeStop))

@@ -37,13 +37,13 @@ func TestMain_VersionFlag(t *testing.T) {
 	}
 }
 
-// TestMain_DelegatesUnknownSubcommandToNodeagent proves main() actually
+// TestMain_DelegatesUnknownSubcommandToMarboragent proves main() actually
 // forwards argv into internal/marboragent.Run (rather than, say, silently
-// exiting 0) by triggering a subcommand-shaped error only nodeagent.Run
+// exiting 0) by triggering a subcommand-shaped error only marboragent.Run
 // itself can produce (agent.go's "unknown agent subcommand" check) - the
 // same error a pre-split "marbor agent bogus" would have hit, now one
 // argv position earlier.
-func TestMain_DelegatesUnknownSubcommandToNodeagent(t *testing.T) {
+func TestMain_DelegatesUnknownSubcommandToMarboragent(t *testing.T) {
 	bin := buildAgentBinary(t)
 	out, err := exec.Command(bin, "bogus-subcommand").CombinedOutput()
 	if err == nil {

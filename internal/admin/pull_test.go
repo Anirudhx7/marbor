@@ -311,7 +311,7 @@ func TestHandleNodePull_RejectsGGUFTagOnSafetensorsRuntime(t *testing.T) {
 }
 
 // TestHandleNodePull_AllowsCompatibleTagsAcrossRuntimes is the flip side of
-// the two rejection tests above: a tag/runtime pairing the mesh cannot
+// the two rejection tests above: a tag/runtime pairing the marbor cannot
 // confidently call incompatible must still be allowed through to dispatch -
 // including a bare Ollama-library tag on an actual Ollama node, a GGUF tag on
 // llama.cpp, and an ambiguous bare "org/repo" HF id on every non-GGUF
@@ -659,10 +659,10 @@ func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 	}
 }
 
-// TestHandleNodePull_DispatchesToAgentWhenCapable verifies the mesh routes a
+// TestHandleNodePull_DispatchesToAgentWhenCapable verifies the marbor routes a
 // pull to the node's Marbor Agent (not the direct Ollama /api/pull path) when
 // the node has an agent enabled and reporting "models.pull" - and that the
-// mesh's configured Hugging Face token is forwarded per-request (node-agent
+// marbor's configured Hugging Face token is forwarded per-request (marbor-agent
 // spec section 16). The direct-to-Ollama mock is never hit in this
 // scenario, proving dispatch actually took the agent branch.
 func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
@@ -732,7 +732,7 @@ func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 		t.Errorf("agent request Authorization = %q, want Bearer agent-secret-token", gotAuth)
 	}
 	if !strings.Contains(gotBody, "hf_secret123") {
-		t.Errorf("expected mesh's configured HF token forwarded to agent, got body %q", gotBody)
+		t.Errorf("expected marbor's configured HF token forwarded to agent, got body %q", gotBody)
 	}
 }
 
@@ -915,7 +915,7 @@ func TestHandleCancelPull_AlreadyFinishedIsANoOp(t *testing.T) {
 
 // newVerifyLoadTestServer builds a Server with one node (mockOllamaURL,
 // standing in for the node's own Ollama API - handles /api/pull) and a proxy
-// port pointed at mockProxyURL (standing in for the mesh's own
+// port pointed at mockProxyURL (standing in for the marbor's own
 // /v1/chat/completions - what verifyModelLoads actually probes, via
 // bench.MeasureChatTTFT), mirroring newBenchTestServer's setup in
 // benchmark_test.go since this is the same underlying probe.

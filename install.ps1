@@ -33,7 +33,7 @@
 #
 # This script does not yet port install.sh's network-discovery wizard for
 # the control-plane role on Windows - that's a separate, larger piece of
-# work. For ROLE=mesh (the default), it downloads the binary and tells you
+# work. For ROLE=marbor (the default), it downloads the binary and tells you
 # how to run it; for ROLE=agent, it fully installs and starts the service.
 
 $ErrorActionPreference = "Stop"
@@ -41,7 +41,7 @@ $ErrorActionPreference = "Stop"
 # Windows closes the console the instant this script's process exits -
 # whether that's a double-clicked .ps1/.lnk or a one-shot `powershell
 # -Command "...; irm ... | iex"` launch (e.g. the enroll one-liner from the
-# mesh admin UI). Either way the final success/error message flashes and
+# marbor admin UI). Either way the final success/error message flashes and
 # vanishes before anyone can read it. `exit N` inside the try block below
 # still runs this finally block (PowerShell unwinds try/finally on exit), so
 # wrapping the whole script is enough to always pause before the window

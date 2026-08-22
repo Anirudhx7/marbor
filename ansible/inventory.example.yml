@@ -7,12 +7,12 @@
 # pre-existing inventory entry is required for the GPU hosts themselves.
 #
 # Field reference:
-#   name      optional - unique node name registered with the mesh. If
+#   name      optional - unique node name registered with the marbor. If
 #             omitted, the playbook generates "gpu-node-01", "gpu-node-02",
 #             ... from the node's position in this list. Explicit name always
 #             wins.
 #   host      required - IP or hostname of the GPU node. Used both as the
-#             mesh-facing node URL (http://<host>:<port>) and as the SSH
+#             marbor-facing node URL (http://<host>:<port>) and as the SSH
 #             target for installing the marbor agent.
 #   port      optional for runtime "ollama" (defaults to 11434, matching both
 #             the Ollama convention and this project's own proxy default -

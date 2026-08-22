@@ -49,7 +49,7 @@ production-hardened and free for any use under Apache-2.0.
 - Auth, per-key model allow-lists, rate limits, and daily/monthly quotas persisted across restarts (v0.3.x)
 - Observability - embedded admin dashboard, 14 Prometheus metrics, append-only audit log, analytics (v0.2.x–v0.9.x)
 - Day-2 ops - node drain, runtime key/node mutation, SIGHUP + HTTP config reload, structured JSON logging (v0.9.0)
-- `marbor bench` - reproducible cold-vs-warm TTFT measured through the mesh proxy (v0.11–v0.14)
+- `marbor bench` - reproducible cold-vs-warm TTFT measured through the marbor proxy (v0.11–v0.14)
 - Router decomposition - `placement` / `health` / `queue` split behind interfaces, so the next stages extend safely without touching the hot path (v0.11–v0.14)
 
 Full, dated release history lives in [CHANGELOG.md](CHANGELOG.md).
@@ -114,7 +114,7 @@ the product's core simplicity for infrastructure it doesn't need:
 - ❌ etcd or any external datastore (SQLite only)
 - ❌ distributed / shared state between instances
 - ❌ multi-router consensus HA, leader election, gossip protocols, CRDTs - HA is achieved by running independent instances behind an L4 load balancer
-- ❌ federated / multi-region mesh
+- ❌ federated / multi-region marbor
 - ❌ direct KV transport or shared KV between nodes
 - ❌ tenant isolation and compliance packs (HIPAA/SOC 2) - later-stage, not now
 - ❌ prompt-based model selection / policy engine ("small prompts → 7B") - gateway territory
@@ -124,7 +124,7 @@ the product's core simplicity for infrastructure it doesn't need:
 
 ## Design constraints
 
-- **Single mesh instance; SQLite is the only datastore.**
+- **Single marbor instance; SQLite is the only datastore.**
 - One static Go binary, zero runtime dependencies - no CGO, no Python, no Docker required.
 - Multiple heterogeneous GPU backends behind one OpenAI-compatible endpoint.
 - Every number on the dashboard is a real measurement - no fabricated data, ever.

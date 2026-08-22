@@ -168,7 +168,7 @@ func TestAuthenticatedClient_ExplicitUsernamePasswordBeatsSavedSession(t *testin
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/admin/v1/login":
-			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "explicit-tok"})
+			http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "explicit-tok"})
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"role":"admin","username":"admin"}`))
 		case "/admin/v1/nodes":
@@ -216,7 +216,7 @@ func TestRun_Login_WithFlags_SavesSessionWithoutLeakingToken(t *testing.T) {
 		if r.URL.Path != "/admin/v1/login" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "super-secret-token"})
+		http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "super-secret-token"})
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"role":"admin","username":"admin","expires_at":"2030-01-01T00:00:00Z"}`))
 	}))
@@ -252,7 +252,7 @@ func TestRun_Login_UsernameFlagPlusPasswordEnv_BothResolve(t *testing.T) {
 		if body.Username != "admin" || body.Password != "from-env" {
 			t.Fatalf("expected username/password resolved from mixed flag+env sources, got %+v", body)
 		}
-		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "tok"})
+		http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "tok"})
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"role":"admin","username":"admin"}`))
 	}))

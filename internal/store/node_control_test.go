@@ -56,7 +56,7 @@ func TestUpsertNodeControlConfigured(t *testing.T) {
 }
 
 // TestRescanNeverChangesConfigured is the single most important invariant
-// this feature depends on (node-agent-capabilities.md section 5.6): a
+// this feature depends on (marbor-agent-capabilities.md section 5.6): a
 // discovery re-scan must never silently switch what lifecycle actions
 // read, even if it finds a different driver than what's currently accepted.
 func TestRescanNeverChangesConfigured(t *testing.T) {

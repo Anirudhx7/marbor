@@ -37,7 +37,7 @@ const certValidity = 10 * 365 * 24 * time.Hour
 // at certPath/keyPath if they don't already exist as a valid, matching
 // pair, and is a no-op (returns nil immediately) otherwise - so re-running
 // "agent service install" (upgrades, reinstalls) never silently regenerates
-// a cert and invalidates a fingerprint the mesh already has pinned (spec
+// a cert and invalidates a fingerprint the marbor already has pinned (spec
 // section 3's idempotency requirement). Pass force=true (the regen-cert
 // subcommand's forced-regeneration path, spec section 4) to always
 // (re)generate regardless of what's currently on disk.
@@ -67,7 +67,7 @@ func EnsureAgentCert(certPath, keyPath string, force bool) error {
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: Name},
 		// NotBefore backdated 5 minutes: tolerates modest clock skew between
-		// the node generating this cert and the mesh verifying it later,
+		// the node generating this cert and the marbor verifying it later,
 		// without weakening the pin itself (pinning is by fingerprint, not
 		// by validity window).
 		NotBefore:   time.Now().Add(-5 * time.Minute),
@@ -137,11 +137,11 @@ func certAndKeyValid(certPath, keyPath string) (certOK, keyOK bool) {
 // AgentCertFingerprint reads certPath and returns its SHA-256 fingerprint
 // as "SHA256:<64 hex chars>" - deliberately the exact same format and
 // computation (over the certificate's raw DER bytes) as
-// router.CertFingerprintSHA256 on the mesh side, so a value an operator
-// reads via "agent service status" always matches what the mesh's
+// router.CertFingerprintSHA256 on the marbor side, so a value an operator
+// reads via "agent service status" always matches what the marbor's
 // tls-probe endpoint reports for the same certificate. The two are
 // necessarily separate implementations (package service cannot import
-// package router, a mesh-side package, from the Marbor agent binary) - if
+// package router, a marbor-side package, from the Marbor agent binary) - if
 // this computation ever changes, router.CertFingerprintSHA256 must change
 // identically, and vice versa.
 func AgentCertFingerprint(certPath string) (string, error) {

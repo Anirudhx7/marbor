@@ -6,7 +6,7 @@ import "sync"
 // sync.OnceValue (stdlib, no dependency) rather than an init()-time global
 // or a package-level var literal means: (1) buildRoot only runs when
 // something actually asks for the tree - never at server start, since the
-// mesh server binary imports this package but never calls into CLI dispatch
+// marbor server binary imports this package but never calls into CLI dispatch
 // - and (2) tests can still call buildRoot() directly to get a fresh,
 // unmemoized tree for constructing deliberately-malformed variants.
 //
@@ -68,7 +68,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:  "status",
-				Short: "print mesh health/status summary",
+				Short: "print marbor health/status summary",
 				Run:   func(ctx *RunCtx) int { return runStatus(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
@@ -96,7 +96,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "nodes",
-				Short:     "list nodes known to the mesh",
+				Short:     "list nodes known to marbor",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Run:       func(ctx *RunCtx) int { return runNodes(ctx.Flags, ctx.Stdout, ctx.Stderr) },
@@ -337,14 +337,14 @@ func buildRoot() *Command {
 // other command - Hidden means "not advertised", never "unreachable". Its
 // Run (runCompletion, completion.go) is pure and local: the generated script
 // is baked from the current registry tree at generation time, so it never
-// contacts the mesh or requires credentials (plan Implementation section 7).
+// contacts marbor or requires credentials (plan Implementation section 7).
 func completionCmd() *Command {
 	return &Command{
 		Name:  "completion",
 		Short: "generate a shell completion script (bash, zsh, or fish)",
 		Long: "Generates a static completion script for the requested shell by walking\n" +
-			"the current command tree. The script never contacts the mesh or\n" +
-			"requires credentials, so it keeps working even when the mesh is\n" +
+			"the current command tree. The script never contacts marbor or\n" +
+			"requires credentials, so it keeps working even when marbor is\n" +
 			"unreachable or the operator isn't logged in.",
 		Hidden: true,
 		Args:   []ArgSpec{{Name: "shell"}},

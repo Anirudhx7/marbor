@@ -18,9 +18,9 @@
 #
 # Field reference:
 #   name   required - must exactly match a node already registered with the
-#          mesh (via register-gpus.yml or the dashboard's "Add Node"). The
+#          marbor (via register-gpus.yml or the dashboard's "Add Node"). The
 #          playbook fails fast, naming the host, if a name isn't found among
-#          the mesh's current nodes.
+#          the marbor's current nodes.
 #   host   required - IP or hostname of the GPU node. Used as the SSH target
 #          for installing the marbor agent.
 #   port   required - the node's listening port, sent to

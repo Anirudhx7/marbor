@@ -126,7 +126,7 @@ func (c *Client) Login(username, password string) error {
 	_ = json.Unmarshal(bodyBytes, &respBody)
 
 	for _, cookie := range resp.Cookies() {
-		if cookie.Name == "mesh_session" {
+		if cookie.Name == "marbor_session" {
 			c.Token = cookie.Value
 			c.Username = respBody.Username
 			c.Role = respBody.Role

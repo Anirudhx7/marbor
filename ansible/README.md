@@ -22,14 +22,14 @@ deliberately kept as **separate playbooks**, not one combined script:
 
 | Playbook | Does | Inventory |
 |---|---|---|
-| [`playbooks/register-gpus.yml`](playbooks/register-gpus.yml) | Registers each node's runtime endpoint with the mesh (`POST /admin/nodes`) | [`inventory.example.yml`](inventory.example.yml) |
+| [`playbooks/register-gpus.yml`](playbooks/register-gpus.yml) | Registers each node's runtime endpoint with the marbor (`POST /admin/nodes`) | [`inventory.example.yml`](inventory.example.yml) |
 | [`playbooks/install-marbor-agent.yml`](playbooks/install-marbor-agent.yml) | Enrolls and installs the marbor agent on an already-registered node (`POST /admin/nodes/{name}/agent` + install) | [`inventory-agents.example.yml`](inventory-agents.example.yml) |
 
 Each is independently idempotent - re-running `register-gpus.yml` never
 touches agent enrollment, and re-running `install-marbor-agent.yml` never
 re-registers a node's endpoint. Run `register-gpus.yml` first for a new
 node (the agent playbook fails fast, naming the host, if you point it at a
-name the mesh doesn't recognize yet); after that, run either one on its own
+name the marbor doesn't recognize yet); after that, run either one on its own
 whenever you only need to change that one thing - e.g. reinstall/rotate an
 agent without touching the node's registration, or re-point a node's runtime
 URL without disturbing its already-healthy agent.
@@ -40,8 +40,8 @@ URL without disturbing its already-healthy agent.
   external Ansible collections are required - every task uses
   `ansible.builtin` modules (`uri`, `shell`, `assert`, `set_fact`, `debug`),
   matching this project's zero-external-dependency ethos.
-- Network access from wherever you run the playbook to the mesh's Admin API
-  (`mesh_url`, e.g. `https://mesh.example.com`).
+- Network access from wherever you run the playbook to the marbor's Admin API
+  (`marbor_url`, e.g. `https://marbor.example.com`).
 - SSH access from wherever you run `install-marbor-agent.yml` to every GPU
   host in your agent inventory, with a user that can run the install command
   (the marbor agent installer registers a system service - see
@@ -51,7 +51,7 @@ URL without disturbing its already-healthy agent.
   `become` for you - configure those the normal Ansible way (an
   `ansible.cfg`, `group_vars`, or `-e` on the command line).
   `register-gpus.yml` never connects to the GPU hosts over SSH at all - it
-  only talks to the mesh's Admin API.
+  only talks to the marbor's Admin API.
 - An marbor admin account's username and password. There is no
   separate static "admin API key" for these routes (see
   `docs/deploy/gpu-node-registration.md`).
@@ -83,8 +83,8 @@ cp ansible/inventory.example.yml my-fleet.yml
 
 ansible-playbook ansible/playbooks/register-gpus.yml \
   -e @my-fleet.yml \
-  -e mesh_url=https://mesh.example.com \
-  -e mesh_admin_username=admin \
+  -e marbor_url=https://marbor.example.com \
+  -e marbor_admin_username=admin \
   --ask-vault-pass \
   -e @secrets.vault.yml
 ```
@@ -97,8 +97,8 @@ cp ansible/inventory-agents.example.yml my-agent-fleet.yml
 
 ansible-playbook ansible/playbooks/install-marbor-agent.yml \
   -e @my-agent-fleet.yml \
-  -e mesh_url=https://mesh.example.com \
-  -e mesh_admin_username=admin \
+  -e marbor_url=https://marbor.example.com \
+  -e marbor_admin_username=admin \
   --ask-vault-pass \
   -e @secrets.vault.yml
 ```
@@ -107,10 +107,10 @@ Where `secrets.vault.yml` is an Ansible Vault-encrypted file containing at
 least:
 
 ```yaml
-mesh_admin_password: "<your admin password>"
+marbor_admin_password: "<your admin password>"
 ```
 
-Never hardcode `mesh_admin_password` in a plain file committed anywhere -
+Never hardcode `marbor_admin_password` in a plain file committed anywhere -
 use `ansible-vault encrypt secrets.vault.yml` (or `--extra-vars` typed
 interactively / injected by your CI secret store) so the password never sits
 in plaintext on disk.
@@ -141,7 +141,7 @@ standard port.
 
 | Field  | Required? |
 |--------|-----------|
-| `name` | **Yes** - must exactly match a node already registered with the mesh. Nothing is generated here (unlike `gpu_nodes` above) - a guessed name would silently target the wrong node. |
+| `name` | **Yes** - must exactly match a node already registered with the marbor. Nothing is generated here (unlike `gpu_nodes` above) - a guessed name would silently target the wrong node. |
 | `host` | Yes - IP or hostname, used as the SSH target for installing the agent. |
 | `port` | Yes - the node's listening port, sent to `POST /admin/nodes/{name}/agent`. Must match the port the node was registered with. |
 
@@ -174,7 +174,7 @@ never came up healthy.
 1. Logs in once (`POST /admin/login`), reusing the session cookie for every
    node in the run.
 2. Fetches the current fleet (`GET /admin/nodes`) and fails fast, naming any
-   host whose `name` isn't a registered mesh node yet.
+   host whose `name` isn't a registered marbor node yet.
 3. Decides whether the marbor agent needs (re-)enrolling - see **Agent
    re-enrollment policy** below.
 4. If needed, enables the marbor agent (`POST /admin/nodes/{name}/agent`) and

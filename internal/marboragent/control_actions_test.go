@@ -174,7 +174,7 @@ func TestHandleRuntimeAction_ConfiguredSuccess(t *testing.T) {
 }
 
 // TestHandleRuntimeAction_Unconfigured verifies the exact error
-// node-agent-capabilities.md section 5.6 mandates when the mesh sends no
+// marbor-agent-capabilities.md section 5.6 mandates when the mesh sends no
 // driver (nothing configured for this node) - never a guess.
 func TestHandleRuntimeAction_Unconfigured(t *testing.T) {
 	s := newControlActionTestServer()

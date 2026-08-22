@@ -127,7 +127,7 @@ jobs:
           check-latest: true
 
       - name: Stub UI embed dir
-        # smoke.sh's mesh.demo.db drift check does a bare `go build` on the runner (outside
+        # smoke.sh's marbor.demo.db drift check does a bare `go build` on the runner (outside
         # Docker) to trigger migrate() - go:embed web/dist in admin.go needs the dir to exist
         # at compile time on a fresh checkout, same as the go-checks job above.
         run: |

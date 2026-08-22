@@ -12,7 +12,7 @@ The validated topology is **one marbor process on a single host, routing to one 
 No distributed or multi-instance marbor topology has been tested. There is no coordination layer, no distributed lock, and no leader election. Running two instances of marbor pointing at the same SQLite database file is not supported.
 
 ### No high availability or multi-region failover
-marbor is a single process. If the host running it goes down, inference traffic stops until the process restarts. There is no hot standby, no floating IP handoff, and no automatic failover between mesh instances.
+marbor is a single process. If the host running it goes down, inference traffic stops until the process restarts. There is no hot standby, no floating IP handoff, and no automatic failover between marbor instances.
 
 For production HA, the standard approach is to put a layer-4 load balancer (e.g., an AWS NLB) in front of two independent marbor instances, each with their own database file, and accept that in-flight requests to the failed instance are lost. This works because marbor is stateless for the routing path - only the admin session is lost on restart.
 
@@ -90,7 +90,7 @@ Session affinity is implemented and gated by the `routing.session_affinity` flag
 ## Out of Scope
 The following are deliberate non-goals, not gaps to be filled:
 - **TLS termination.** marbor does not handle TLS. Put nginx or a load balancer in front for HTTPS. This keeps the binary simple and puts TLS configuration where operators already manage it.
-- **Auto-deployed remote telemetry.** marbor agent must be manually installed per node - mesh does not auto-deploy it to remote hosts.
+- **Auto-deployed remote telemetry.** marbor agent must be manually installed per node - marbor does not auto-deploy it to remote hosts.
 - **Multi-instance coordination.** No distributed consensus, no Raft, no etcd dependency. Single-host deployment only.
 - **Chat UI, model fine-tuning, or web scraping.** marbor is a proxy and router. These are out of scope.
 - **Cloud provider breadth.** OpenAI-compatible providers are supported via built-in presets (OpenRouter, Groq, Together, Fireworks, DeepSeek, Mistral, xAI, Cerebras, NVIDIA NIM) or a custom base URL; Anthropic gets native translation. LiteLLM's approach of abstracting hundreds of providers behind one client SDK is not a goal.

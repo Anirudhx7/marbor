@@ -42,7 +42,7 @@ Docker: `docker run -p 11434:11434 -p 8080:8080 ghcr.io/anirudhx7/marbor:latest`
 # API key printed on first run
 
 export OPENAI_BASE_URL=http://localhost:11434/v1
-export OPENAI_API_KEY=sk-mesh-<generated>
+export OPENAI_API_KEY=sk-marbor-<generated>
 ```
 
 ## Key facts

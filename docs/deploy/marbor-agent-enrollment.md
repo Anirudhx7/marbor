@@ -19,7 +19,7 @@ section. Every call below reuses that same cookie jar.
 
 Each node gets its own unique agent token, minted server-side and bound to that
 node's host - it is never a shared fleet-wide secret. A token copied to a different
-machine will not authenticate there; the mesh checks it against the specific host it
+machine will not authenticate there; the marbor checks it against the specific host it
 was generated for. Tokens can be rotated or revoked at any time without touching
 other nodes.
 
@@ -97,7 +97,7 @@ first for any node not yet registered - see [GPU node registration](gpu-node-reg
 ```yaml
 - name: Log in and capture session cookie
   uri:
-    url: "https://mesh.example.com/admin/login"
+    url: "https://marbor.example.com/admin/login"
     method: POST
     body_format: json
     body:
@@ -110,7 +110,7 @@ first for any node not yet registered - see [GPU node registration](gpu-node-reg
 
 - name: Enable agent and capture install command
   uri:
-    url: "https://mesh.example.com/admin/nodes/{{ inventory_hostname }}/agent"
+    url: "https://marbor.example.com/admin/nodes/{{ inventory_hostname }}/agent"
     method: POST
     headers:
       Cookie: "{{ mesh_login.set_cookie }}"

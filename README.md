@@ -58,7 +58,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
    * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
 
 3. **Run a manual benchmark**:
-   Test the cold-vs-warm latency gap through the mesh proxy:
+   Test the cold-vs-warm latency gap through the marbor proxy:
    ```bash
    go run ./cmd/bench --target http://localhost:11434
    ```
@@ -115,7 +115,7 @@ docker compose up -d
 ```
 This starts:
 * **marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
-* **Prometheus**: Automatically scraping the mesh metrics endpoint.
+* **Prometheus**: Automatically scraping the marbor metrics endpoint.
 * **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [marbor dashboard](grafana/marbor.json).
 
 ---
@@ -195,7 +195,7 @@ Client Application (Agent / RAG / Copilot)
 | | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
 | | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-syncs state from `marbor.db` in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
-| | GPU metrics | nvidia-smi integration on mesh host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional marbor agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
+| | GPU metrics | nvidia-smi integration on marbor host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional marbor agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
 | **Multi-Backend** | Ollama, vLLM, TGI, llama.cpp, MLX | Declare `runtime: ollama/vllm/tgi/llamacpp/mlx` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. |
 | | Path-aware routing | `/api/*` routes to Ollama nodes only. `/v1/*` routes to any runtime. Non-Ollama nodes are transparent to OpenAI SDK clients. |
@@ -218,20 +218,20 @@ Ollama node, using [`bench/ttft.go`](bench/). Model: an 8B-parameter Q4_K_M mode
 (~9.6 GB on disk). Cold = model evicted from VRAM (`keep_alive: 0`) before each request;
 warm = model already resident.
 
-| Scenario (via mesh) | n | p50 TTFT | min | max |
+| Scenario (via marbor) | n | p50 TTFT | min | max |
 |---|---|---|---|---|
 | Cold (model must load from disk) | 3 | **17.3 s** | 11.5 s | 18.1 s |
 | Warm (model resident) | 10 | **8.1 s** | 1.9 s | 13.8 s |
 
-Fastest warm sample observed through the mesh: **0.4 s** - a 43× improvement over the
+Fastest warm sample observed through the marbor: **0.4 s** - a 43× improvement over the
 median cold start.
 
 Honest context for these numbers: on the benchmark node only ~3.3 GB of the model's
 ~10.6 GB runtime footprint fit in VRAM, so even "warm" first-token latency was partly
 CPU-bound and jittery. On a node where the model fully fits in VRAM, the warm path is
 the GPU's native prompt-eval speed and the cold-vs-warm gap widens further. A control
-run direct-to-node (bypassing the mesh) showed the same warm-latency profile, i.e. the
-mesh's proxy overhead is negligible. Reproduce it on your own hardware with the
+run direct-to-node (bypassing the marbor) showed the same warm-latency profile, i.e. the
+marbor's proxy overhead is negligible. Reproduce it on your own hardware with the
 harness in [`bench/`](bench/).
 
 ---
@@ -337,7 +337,7 @@ There is no config file. marbor is DB-first: everything lives in `marbor.db` (SQ
 ```
 The binary opens (or creates) `marbor.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Log in at `http://localhost:8080` with `admin` / `admin` - you'll be forced to set a new password on first login.
 
-**Secrets at rest:** cloud provider API keys, mesh-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `marbor.db` with AES-256-GCM. The encryption key lives in `marbor.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `marbor.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MARBOR_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `marbor.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
+**Secrets at rest:** cloud provider API keys, marbor-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `marbor.db` with AES-256-GCM. The encryption key lives in `marbor.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `marbor.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MARBOR_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `marbor.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
 
 From there, everything is a dashboard page or an `/admin/v1/...` API call:
 
@@ -415,7 +415,7 @@ Set a provider configuration (JSON format for `POST /admin/v1/cloud/providers` o
 
 Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI response translated back to Ollama NDJSON - clients never see a format difference.
 
-Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API Keys page's edit modal) to forbid that key from ever reaching a cloud provider - a request that would otherwise fall back instead fails closed with a `503 local_only_blocked` error. Every request's local/cloud/blocked outcome is durably counted per key and per provider, readable via `GET /admin/v1/spill` or `mesh spill`, and shown on the Analytics page's Cloud Spill table.
+Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API Keys page's edit modal) to forbid that key from ever reaching a cloud provider - a request that would otherwise fall back instead fails closed with a `503 local_only_blocked` error. Every request's local/cloud/blocked outcome is durably counted per key and per provider, readable via `GET /admin/v1/spill` or `marbor spill`, and shown on the Analytics page's Cloud Spill table.
 
 ---
 
@@ -456,15 +456,15 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 <!-- Generated by `make docs` (cmd/gen-docs) from internal/cli's command registry - do not edit by hand. -->
 | Command | Purpose |
 |---|---|
-| `marbor` | Run the mesh server (default, no argument needed) |
-| `marbor bench` | Benchmark warm-vs-cold first-token latency against a running mesh |
-| `marbor uninstall [--purge]` | Remove the mesh's own service registration from this host |
+| `marbor` | Run the marbor server (default, no argument needed) |
+| `marbor bench` | Benchmark warm-vs-cold first-token latency against a running marbor |
+| `marbor uninstall [--purge]` | Remove the marbor's own service registration from this host |
 | `marbor version` | print CLI and (if reachable) server version |
-| `marbor status` | print mesh health/status summary |
+| `marbor status` | print marbor health/status summary |
 | `marbor login` | authenticate once and save the session locally (recommended) |
 | `marbor logout` | remove the saved session |
 | `marbor whoami` | show the CLI's saved identity (live-verified) |
-| `marbor nodes` | list nodes known to the mesh (requires auth) |
+| `marbor nodes` | list nodes known to the marbor (requires auth) |
 | `marbor nodes confirm-tls <node>` | pin a marbor agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
 | `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
 | `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
@@ -492,8 +492,8 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
 <!-- END CLI TABLE -->
 
-> **Breaking change (beta, no migration shim):** the separate `mesh`/`mesh-cli` binary
-> (`cmd/mesh`) has been merged into the main `marbor` binary above. There were no external
+> **Breaking change (beta, no migration shim):** the separate `marbor`/`marbor-cli` binary
+> (`cmd/marbor`) has been merged into the main `marbor` binary above. There were no external
 > users of the standalone CLI binary, so it was removed outright rather than kept as an alias.
 
 The CLI subcommands never talk to a marbor agent directly - every command is exactly one Admin API
@@ -532,11 +532,11 @@ live-verified against the server; `marbor logout` deletes the saved file. `statu
 `version` never need auth (`GET /health` is unauthenticated).
 
 **Shared Linux accounts are not recommended for administrative use.** The audit log records the
-authenticated mesh user, not necessarily the individual human using a shared operating-system
+authenticated marbor user, not necessarily the individual human using a shared operating-system
 account. If a shared account is unavoidable, prefer a per-shell `MARBOR_USERNAME`/`MARBOR_PASSWORD`
 pair over the persisted session file (env vars are process-scoped and don't collide across
 concurrent sessions on the same account; the saved file is one shared file). For production
-environments, the recommended deployment is one Linux account per administrator and one mesh user
+environments, the recommended deployment is one Linux account per administrator and one marbor user
 per administrator - this gives accurate audit attribution and isolated CLI sessions.
 
 Exit codes: `0` success, `1` user/input error (bad flag, missing credentials, no control driver
@@ -544,13 +544,13 @@ accepted yet), `2` server/Admin API error (unreachable, 5xx, agent dispatch fail
 authentication/authorization failure (401/403, including an expired or invalid saved session).
 
 `runtime start|stop|restart <node>` only works once a control driver has been accepted for that
-node (via `node control accept`, or the GPU Nodes page's "Runtime Control" panel) - the mesh never
+node (via `node control accept`, or the GPU Nodes page's "Runtime Control" panel) - the marbor never
 guesses which service manager controls a node's runtime process.
 
 ### Running the CLI against a container
 
 The Docker image already contains the merged binary, so no image changes are needed to use the
-CLI against a containerized mesh - run it inside the running container:
+CLI against a containerized marbor - run it inside the running container:
 
 ```bash
 docker exec <container> marbor status

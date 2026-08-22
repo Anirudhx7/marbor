@@ -188,7 +188,7 @@ func TestSpineIntegration(t *testing.T) {
 		}
 
 		adminReq := httptest.NewRequest(http.MethodGet, "/admin/requests/live", nil)
-		adminReq.AddCookie(&http.Cookie{Name: "mesh_session", Value: adminSrv.AdminToken()})
+		adminReq.AddCookie(&http.Cookie{Name: "marbor_session", Value: adminSrv.AdminToken()})
 		adminRec := httptest.NewRecorder()
 		adminSrv.Handler().ServeHTTP(adminRec, adminReq)
 		if adminRec.Code != http.StatusOK {

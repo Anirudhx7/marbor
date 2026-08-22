@@ -1,6 +1,6 @@
 // control_actions.go implements P43 Step 3: the agent-side handlers for
 // runtime.start/runtime.stop/runtime.restart (.local/specs/
-// node-agent-capabilities.md section 5). Same map-keyed-by-driver-name style
+// marbor-agent-capabilities.md section 5). Same map-keyed-by-driver-name style
 // as pullCommands/unloadCommands in actions.go, keyed by ControlDriver name
 // instead of runtime name.
 //
@@ -11,7 +11,7 @@
 // the ControlDriver fresh per-request from exactly what the mesh tells it.
 // A request with no driver configured (empty "driver" field) means the mesh
 // itself has nothing configured for this node - the agent returns the exact
-// error node-agent-capabilities.md section 5.6 mandates, never a guess.
+// error marbor-agent-capabilities.md section 5.6 mandates, never a guess.
 //
 // No self-healing (section 5.8): nothing in this file calls a ControlDriver
 // method except in direct response to an incoming HTTP request.
@@ -162,7 +162,7 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 
 	// The agent has no persisted control config of its own - an empty
 	// driver means the mesh itself has nothing configured for this node.
-	// This is the exact error node-agent-capabilities.md section 5.6
+	// This is the exact error marbor-agent-capabilities.md section 5.6
 	// mandates, never a guessed driver.
 	if req.Driver == "" {
 		writeAction(w, http.StatusUnprocessableEntity, actionResponse{Error: "Runtime control unavailable: no control driver configured"})

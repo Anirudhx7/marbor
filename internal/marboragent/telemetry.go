@@ -1,6 +1,6 @@
 // Package marboragent implements the Marbor agent Protocol v1: the
-// node-local execution point for the mesh. v1 ships a read-only "status"
-// resource (GPU/host/runtime facts reported back to the mesh on its existing
+// node-local execution point for the marbor. v1 ships a read-only "status"
+// resource (GPU/host/runtime facts reported back to the marbor on its existing
 // poll cycle) plus the first mutating resource (model pull) - future
 // versions add more node-local resources (runtime restart/drain, more model
 // lifecycle, diagnostics) behind the same protocol, versioned and
@@ -16,13 +16,13 @@ import "time"
 // ProtocolVersion is the current Marbor Agent Protocol version served at
 // GET /v1/status. New fields added to Telemetry/GPUInfo/HostTelemetry/
 // RuntimeInfo must be optional (nil/omitted means "unknown", never
-// fabricated - R1) so an older agent talking to a newer mesh, or vice versa,
+// fabricated - R1) so an older agent talking to a newer marbor, or vice versa,
 // never breaks (R7 discipline extended to this wire protocol). A bump is
 // reserved for a genuinely breaking change - see
 // .local/specs/node-agent.md section 15.
 const ProtocolVersion = 1
 
-// capabilities lists what this agent build actually does, so the mesh (and
+// capabilities lists what this agent build actually does, so the marbor (and
 // its UI) can enable/disable features per node instead of assuming every
 // agent supports everything. Naming convention (binding for every future
 // addition): "resource.verb" - e.g. "models.pull", "models.delete",
@@ -51,8 +51,8 @@ type Telemetry struct {
 	Host         *HostTelemetry `json:"host,omitempty"`
 	GPU          *GPUBlock      `json:"gpu,omitempty"`
 	// Runtime is the first entry of Runtimes, kept for back-compat with a
-	// mesh binary older than this field's introduction (R9 - additive only,
-	// never removed). New mesh code should read Runtimes instead.
+	// marbor binary older than this field's introduction (R9 - additive only,
+	// never removed). New marbor code should read Runtimes instead.
 	Runtime *RuntimeInfo `json:"runtime,omitempty"`
 	// Runtimes is every inference runtime this host-scoped agent detected
 	// this cycle (see runtime_detect.go's DetectAll) - a host can legitimately
@@ -65,7 +65,7 @@ type Telemetry struct {
 	// Scheduler.refresh - NOT the time of the HTTP request that served it,
 	// since /v1/status and /metrics serve a cached background snapshot (see
 	// scheduler.go) rather than collecting fresh on every request. Lets the
-	// mesh (or an operator reading /v1/status directly) tell a
+	// marbor (or an operator reading /v1/status directly) tell a
 	// live-but-slightly-behind reading apart from one that's stopped
 	// updating because the collector loop died.
 	LastUpdated time.Time `json:"last_updated"`
@@ -79,7 +79,7 @@ type Agent struct {
 	// locally (identity.go) - identifies the *machine*, not the agent
 	// software running on it, so it stays the same across an agent binary
 	// upgrade, a hostname/IP/DNS change, or a runtime swap. Not yet used
-	// mesh-side to re-identify a node across a URL change (NodeState is
+	// marbor-side to re-identify a node across a URL change (NodeState is
 	// still keyed by URL) - that's separate, larger future work; this field
 	// exists now so it doesn't have to be bolted on as a breaking addition
 	// later.
@@ -90,7 +90,7 @@ type Agent struct {
 	// produced under (see the package-level ProtocolVersion constant).
 	ProtocolVersion int `json:"protocol_version"`
 	// Build is reserved for a build identifier (commit hash, build date)
-	// beyond the semantic Version - always omitted today since the mesh
+	// beyond the semantic Version - always omitted today since the marbor
 	// binary doesn't currently track a separate build string (only
 	// main.Version, set via ldflags). Never fabricated (R1).
 	Build string `json:"build,omitempty"`
@@ -159,7 +159,7 @@ type HostTelemetry struct {
 // never becomes vLLM- or Ollama-shaped. A runtime-specific detail (e.g.
 // vLLM's tensor-parallel degree, a future ROCm/TensorRT version) belongs in
 // a future runtime-specific resource, never a field here - this is a binding
-// design rule, not a v1-only convenience (node-agent-capabilities.md's
+// design rule, not a v1-only convenience (marbor-agent-capabilities.md's
 // design review).
 type RuntimeInfo struct {
 	// Name is the locally-detected inference runtime ("ollama", "vllm",
@@ -195,7 +195,7 @@ type RuntimeInfo struct {
 }
 
 // ControlInfo is the Marbor Agent Protocol's "control" resource (P43,
-// node-agent-capabilities.md section 5.7) - descriptive telemetry of the
+// marbor-agent-capabilities.md section 5.7) - descriptive telemetry of the
 // node's configured ControlDriver, additive and sibling to Runtime/Health.
 // An unconfigured node reports Driver="" (omitted), Configured=false,
 // Capabilities=nil (omitted) - never a fabricated driver name (R1).

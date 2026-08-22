@@ -67,7 +67,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //
 //   - The dial address Go's http.Transport passes here is always the
 //     request URL's host:port - net.SplitHostPort parses both IPv4 and the
-//     bracketed IPv6 form correctly, and every node-agent request URL in
+//     bracketed IPv6 form correctly, and every marbor-agent request URL in
 //     this codebase is built with an explicit port (buildAgentURL,
 //     buildAgentUnloadURL, admin.go's per-action URLs), so there is never
 //     an implicit default-port case to reconcile.
@@ -89,7 +89,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //     dedicated invalidation needed.
 //   - Redirects: Go's http.Client re-invokes DialTLSContext for whatever
 //     new host:port a redirect targets, going through this exact same
-//     lookup - if the new target isn't a known node-agent endpoint it
+//     lookup - if the new target isn't a known marbor-agent endpoint it
 //     naturally falls through to ordinary verification. Marbor Agent
 //     endpoints do not redirect in practice (R9's protocol is plain JSON
 //     GET/POST), so this is a non-issue in practice but the logic handles

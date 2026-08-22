@@ -20,7 +20,7 @@ func isSelf(name string) bool {
 }
 
 // DiscoveryResult is what a re-scan reports for the operator's Accept/Change
-// decision (node-agent-capabilities.md section 5.5) - Driver/Identifier are
+// decision (marbor-agent-capabilities.md section 5.5) - Driver/Identifier are
 // only a suggestion until explicitly accepted (section 5.6), and Evidence
 // records what was actually observed, never a bare confidence label, so the
 // UI can show the operator why this was suggested.

@@ -189,13 +189,13 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 	// fields are silently ignored by encoding/json's default Decode, and
 	// every field already treats its own zero value as "unknown", not a
 	// measurement). This just tells an operator when an agent build is
-	// ahead of what this mesh binary was compiled understanding, in case a
+	// ahead of what this marbor binary was compiled understanding, in case a
 	// future genuinely-breaking protocol bump ever needs to be diagnosed -
 	// it never gates or changes any decode/routing behavior itself. Logged
 	// once per node, not every poll cycle.
 	if t.Agent.ProtocolVersion > marboragent.ProtocolVersion && !n.agentProtocolWarned {
 		n.agentProtocolWarned = true
-		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this mesh understands (%d) - some new agent fields may not be recognized until the mesh is upgraded", n.Name, t.Agent.ProtocolVersion, marboragent.ProtocolVersion)
+		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this marbor understands (%d) - some new agent fields may not be recognized until the marbor is upgraded", n.Name, t.Agent.ProtocolVersion, marboragent.ProtocolVersion)
 	}
 	if t.Host != nil {
 		n.CPUPercent = derefOr(t.Host.CPUPercent, n.CPUPercent)
@@ -222,7 +222,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.DriverVersion = t.GPU.DriverVersion
 		n.CUDAVersion = t.GPU.CUDAVersion
 		// FanPercent/Temperature/PowerDrawW/VRAM* fall back to the primary
-		// (device 0) reading for the mesh's own single-value routing/UI
+		// (device 0) reading for the marbor's own single-value routing/UI
 		// fields, which predate the multi-GPU array - a node with more than
 		// one GPU still surfaces its full per-device breakdown via
 		// AgentGPUs, just not through these aggregate-shaped fields.
@@ -239,7 +239,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 			n.FanPercent = primary.FanPercent
 			// Only let agent-reported GPU figures override Temperature/
 			// PowerDrawW/VRAM* when this node isn't already sourcing richer
-			// data from the mesh host's OWN local nvidia-smi (hasGPU) - a
+			// data from the marbor host's OWN local nvidia-smi (hasGPU) - a
 			// remote node with an agent is exactly the case this exists for;
 			// a local node polling its own nvidia-smi twice via two
 			// different paths would be the "two disagreeing telemetry
@@ -319,7 +319,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 //  1. pinnedID already set and still present in t.Runtimes -> stays pinned,
 //     stable across a port edit to this node's URL (the whole point of
 //     RuntimeID - see runtime_identity.go).
-//  2. No pin yet (first contact, or a mesh restart) -> bootstrap by port
+//  2. No pin yet (first contact, or a marbor restart) -> bootstrap by port
 //     against this node's own configured URL port.
 //  3. t.Runtimes is empty -> fall back to the legacy singular t.Runtime
 //     field (an agent build older than this change - R9).

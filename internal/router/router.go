@@ -183,7 +183,7 @@ type NodeState struct {
 	RAMUsedMB    int64
 	DiskFreeGB   float64
 	// AgentCapabilities lists what the polled agent build actually supports
-	// (e.g. "status", "models.pull") - the mesh/UI must gate any
+	// (e.g. "status", "models.pull") - the marbor/UI must gate any
 	// agent-dependent feature on this list rather than assuming every agent
 	// supports everything, since a fleet naturally has agents on different
 	// builds over time. AgentPlatform/AgentArchitecture/AgentGPUVendor/
@@ -202,7 +202,7 @@ type NodeState struct {
 	// pollAgentHost) - stable across a port edit to this node's URL, since
 	// it's matched by the agent's own opaque runtime_id, not by port. Empty
 	// until the first successful match; in-memory only (not persisted to
-	// SQLite - a mesh restart simply re-bootstraps the pin via the port
+	// SQLite - a marbor restart simply re-bootstraps the pin via the port
 	// heuristic on the next poll, which is harmless). Never surfaced
 	// directly in the admin API/UI - it's routing plumbing, not a
 	// fleet-debugging fact like AgentNodeID below.
@@ -217,7 +217,7 @@ type NodeState struct {
 	// AgentGPUCount/AgentGPUs/DriverVersion/CUDAVersion are the multi-GPU
 	// array and driver-stack metadata from the agent's gpu resource
 	// (marboragent.GPUBlock) - AgentGPUs holds the full per-device snapshot
-	// for admin API serialization; the mesh's own routing/placement fields
+	// for admin API serialization; the marbor's own routing/placement fields
 	// above (VRAMTotalMB etc.) stay the single-value aggregate they always
 	// were, unaffected by this addition.
 	AgentGPUCount int
@@ -242,7 +242,7 @@ type NodeState struct {
 	// for the admin API's probe/accept UI. The operator-accepted value
 	// lifecycle actions actually read lives in ControlConfig (SetNodeControl/
 	// NodeControlSetting below), never here - this is never substituted in
-	// as a fallback (node-agent-capabilities.md section 5.6).
+	// as a fallback (marbor-agent-capabilities.md section 5.6).
 	AgentControlDiscoveredDriver     string
 	AgentControlDiscoveredIdentifier string
 	AgentControlDiscoveredEvidence   []string
@@ -255,17 +255,17 @@ type NodeState struct {
 	WarmupErrors map[string]string
 	// UnloadErrors mirrors WarmupErrors for the scheduled-unload path (model
 	// -> error string): UnloadModels previously only logged a failed
-	// scheduled/agent unload to the mesh process's own stdout, so a schedule
+	// scheduled/agent unload to the marbor process's own stdout, so a schedule
 	// could report LastStatus "ok" (dispatch succeeded) while every model's
 	// actual unload silently failed with no dashboard-reachable signal.
 	// In-memory only, cleared the moment a later unload of that model
 	// succeeds; never persisted, same lifecycle as WarmupErrors.
 	UnloadErrors map[string]string
 	// agentProtocolWarned latches once a poll observes an agent reporting a
-	// protocol_version newer than this mesh binary's own
+	// protocol_version newer than this marbor binary's own
 	// marboragent.ProtocolVersion - logged once per node (not every poll
 	// cycle) purely for operator visibility during a rolling upgrade where
-	// an agent got updated ahead of the mesh. Decoding itself never depends
+	// an agent got updated ahead of the marbor. Decoding itself never depends
 	// on this - see agent_poll.go.
 	agentProtocolWarned bool
 	// AgentFailures counts consecutive failed agent polls, mirroring
@@ -718,7 +718,7 @@ func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
 
 // MarborAgentConfig is the router's in-memory view of a host's Marbor Agent
 // poll configuration: whether the agent is enabled, which port it listens
-// on, and the bearer token the mesh presents when polling it. One config
+// on, and the bearer token the marbor presents when polling it. One config
 // per physical host, shared by every node row on that host.
 type MarborAgentConfig struct {
 	Enabled bool
@@ -807,7 +807,7 @@ func (r *Router) hostOfLocked(name string) (string, bool) {
 // ControlConfig is the router's in-memory view of a node's accepted
 // ControlDriver configuration (P43) - Driver/Identifier are the operator-
 // accepted values lifecycle actions read; Configured is false until an
-// operator explicitly accepts one (node-agent-capabilities.md section 5.6).
+// operator explicitly accepts one (marbor-agent-capabilities.md section 5.6).
 type ControlConfig struct {
 	Driver     string
 	Identifier string
@@ -1075,11 +1075,11 @@ func (r *Router) localNow(now time.Time) time.Time {
 // safeRun invokes fn, recovering and logging any panic instead of letting it
 // escape. Go has no per-goroutine crash isolation - an unrecovered panic in
 // ANY goroutine (not just main's) terminates the entire process, and this
-// mesh is architecturally a single process for the whole fleet. Start's
+// marbor is architecturally a single process for the whole fleet. Start's
 // background maintenance tasks all run against persisted/live state that can
 // contain surprises (a stale DB row, an unexpected node response); one bad
 // input in any of them must degrade that one task for one cycle, never take
-// the whole mesh down and lock an operator out of everything they run.
+// the whole marbor down and lock an operator out of everything they run.
 func safeRun(label string, fn func()) {
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -1195,7 +1195,7 @@ func (r *Router) Start(ctx context.Context) {
 // this fix, the in-memory router disagreed - it silently appended a SECOND
 // live *NodeState for the same name (independently polled, doubling that
 // node's perceived capacity/routing weight) while the DB still correctly
-// held one row, an inconsistency that self-healed only on the next mesh
+// held one row, an inconsistency that self-healed only on the next marbor
 // restart (DB rehydration produces one node). Reachable today via a plain
 // double-click of "Add Node" in the UI, and would become a routine
 // operation once fleet registration is automated (e.g. a re-run Ansible
@@ -1596,8 +1596,8 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 					// autoDetect false with probe still nil - pollNode's
 					// needsDetect guard would then never re-arm detection,
 					// and the next poll dereferences a nil probe and panics
-					// (crashes the whole single-process mesh, R1/architecture
-					// law: one process for the entire mesh).
+				// (crashes the whole single-process marbor, R1/architecture
+				// law: one process for the entire marbor).
 					n.probe = runtimepkg.NewProbe(*patch.Runtime, r.client)
 				}
 			}

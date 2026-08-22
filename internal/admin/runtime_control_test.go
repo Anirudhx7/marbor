@@ -184,7 +184,7 @@ func TestHandleNodeRuntimeAction_NoAgentCapabilityReturns501(t *testing.T) {
 // TestHandleNodeRuntimeAction_UnconfiguredNodeReturns422 is the safety-
 // critical branch this design exists to protect: a node with a real agent
 // capability but no operator-accepted control driver must return the exact
-// error node-agent-capabilities.md section 5.6 mandates, never guess one.
+// error marbor-agent-capabilities.md section 5.6 mandates, never guess one.
 func TestHandleNodeRuntimeAction_UnconfiguredNodeReturns422(t *testing.T) {
 	mockAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("agent should never be dispatched to for an unconfigured node")

@@ -531,7 +531,7 @@ func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 	r.pollAgentHosts()
 
 	out := logBuf.String()
-	count := strings.Count(out, "newer than this mesh understands")
+	count := strings.Count(out, "newer than this marbor understands")
 	if count != 1 {
 		t.Errorf("protocol-mismatch log appeared %d times across 3 polls, want exactly 1 (latched, not repeated)\nlog output:\n%s", count, out)
 	}
@@ -721,7 +721,7 @@ func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *
 // TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle guards the
 // continuity-bug class (LESSONS.md L22 / commit d6012d8): agentProtocolWarned
 // used to reset on every failed poll (inside clearAgentTelemetry), so a
-// flapping agent re-logged the "protocol newer than mesh understands" warning
+// flapping agent re-logged the "protocol newer than marbor understands" warning
 // on every recovery instead of once per node for the process lifetime. This
 // verifies the warning does NOT re-fire after a down/up cycle.
 func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) {
@@ -776,7 +776,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 	r.pollAgentHosts()
 
 	out := logBuf.String()
-	count := strings.Count(out, "newer than this mesh understands")
+	count := strings.Count(out, "newer than this marbor understands")
 	if count != 1 {
 		t.Errorf("protocol-mismatch log appeared %d times across a down/up cycle, want exactly 1 (latched for the node's lifetime, not reset by clearing telemetry)\nlog output:\n%s", count, out)
 	}
