@@ -29,8 +29,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Anirudhx7/marbor/ci.yml?style=for-the-badge&logo=githubactions&logoColor=d4a853&label=BUILD&color=0a0a0a" alt="Build Status" /></a>
-  <a href="https://github.com/Anirudhx7/marbor/releases/latest"><img src="https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases&style=for-the-badge&logo=github&logoColor=d4a853&label=RELEASE&color=0a0a0a" alt="Release" /></a>
+  <a href="https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/BUILD-0a0a0a?style=for-the-badge&logo=githubactions&logoColor=d4a853" alt="Build Status" /></a>
+  <a href="https://github.com/Anirudhx7/marbor/releases/latest"><img src="https://img.shields.io/badge/RELEASE-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Release" /></a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/LICENSE-Apache_2.0-0a0a0a?style=for-the-badge&logo=apache&logoColor=d4a853" alt="License: Apache 2.0" /></a>
 </p>
 
