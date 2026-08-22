@@ -106,7 +106,7 @@ function SavingsCard({ savings, loading }: SavingsCardProps) {
           Local {loading || !savings ? '--' : `${localPct}%`}
         </span>
         <span className="text-muted-foreground">/</span>
-        <span className="text-amber-500 whitespace-nowrap">
+        <span className="text-amber-700 dark:text-amber-400 whitespace-nowrap">
           Cloud {loading || !savings ? '--' : `${cloudPct}%`}
         </span>
       </div>
@@ -349,7 +349,7 @@ export function Dashboard() {
         <MetricCard
           title="Warm Hit Ratio"
           value={isLive || demoMode ? `${(displayWarmHitRatio * 100).toFixed(0)}%` : '--'}
-          icon={<Flame className="w-5 h-5 text-orange-400" />}
+          icon={<Flame className="w-5 h-5 text-orange-600 dark:text-orange-400" />}
         />
         <MetricCard
           title="Cold Starts"
@@ -364,9 +364,9 @@ export function Dashboard() {
 
       {/* GPU Nodes Panel */}
       <div className="glass-panel rounded-xl p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-6">
           <h3 className="text-sm font-semibold text-foreground">GPU Nodes Status</h3>
-          <div className="flex items-center gap-6 text-xs font-medium">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-success" />
               <span className="text-muted-foreground">Healthy</span>
@@ -382,7 +382,7 @@ export function Dashboard() {
             {summary.nodesDraining > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-amber-500 font-semibold">{summary.nodesDraining} Draining</span>
+                <span className="text-amber-700 dark:text-amber-400 font-semibold">{summary.nodesDraining} Draining</span>
               </div>
             )}
           </div>
@@ -529,7 +529,7 @@ export function Dashboard() {
                     {req.tokensPerSec > 0 ? req.tokensPerSec.toFixed(1) : '-'}
                   </td>
                   <td className="px-6 py-3 text-right font-medium font-mono">
-                    <span className={req.latency > 1000 ? 'text-amber-500' : 'text-primary'}>
+                    <span className={req.latency > 1000 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'}>
                       {req.latency}ms
                     </span>
                   </td>
@@ -579,7 +579,7 @@ export function Dashboard() {
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
-                  <div className={`text-sm font-mono font-medium ${req.latency > 1000 ? 'text-amber-500' : 'text-primary'}`}>
+                  <div className={`text-sm font-mono font-medium ${req.latency > 1000 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'}`}>
                     {req.latency}ms
                   </div>
                 </div>

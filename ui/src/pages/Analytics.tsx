@@ -39,7 +39,7 @@ function StatCard({
   const colors = {
     success: { bg: 'bg-success/10', text: 'text-success', icon: 'text-success' },
     primary: { bg: 'bg-primary/10', text: 'text-primary', icon: 'text-primary' },
-    amber: { bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', icon: 'text-amber-500' },
+    amber: { bg: 'bg-amber-500/10', text: 'text-amber-600 dark:text-amber-400', icon: 'text-amber-700 dark:text-amber-400' },
   };
   const c = colors[accent];
   return (
@@ -253,6 +253,7 @@ export function Analytics() {
               />
               <Legend
                 wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
+                formatter={(value) => <span className="text-muted-foreground">{value}</span>}
               />
               <Area
                 type="monotone"
@@ -318,11 +319,11 @@ export function Analytics() {
                         <td className="px-6 py-3 text-right text-success font-medium">
                           {m.local.toLocaleString()}
                         </td>
-                        <td className="px-6 py-3 text-right text-amber-500 font-medium">
+                        <td className="px-6 py-3 text-right text-amber-700 dark:text-amber-400 font-medium">
                           {m.cloud.toLocaleString()}
                         </td>
                         <td className="px-6 py-3 text-right">
-                          <span className={`font-semibold ${pct >= 90 ? 'text-success' : pct >= 70 ? 'text-primary' : 'text-amber-500'}`}>
+                          <span className={`font-semibold ${pct >= 90 ? 'text-success' : pct >= 70 ? 'text-primary' : 'text-amber-700 dark:text-amber-400'}`}>
                             {pct}%
                           </span>
                         </td>
@@ -361,7 +362,7 @@ export function Analytics() {
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
                           Cloud
                         </p>
-                        <p className="text-sm text-amber-500 font-medium">
+                        <p className="text-sm text-amber-700 dark:text-amber-400 font-medium">
                           {m.cloud.toLocaleString()}
                         </p>
                       </div>
@@ -370,7 +371,7 @@ export function Analytics() {
                           Local %
                         </p>
                         <p
-                          className={`text-sm font-semibold ${pct >= 90 ? 'text-success' : pct >= 70 ? 'text-primary' : 'text-amber-500'}`}
+                          className={`text-sm font-semibold ${pct >= 90 ? 'text-success' : pct >= 70 ? 'text-primary' : 'text-amber-700 dark:text-amber-400'}`}
                         >
                           {pct}%
                         </p>
@@ -432,8 +433,8 @@ export function Analytics() {
                       <td className="px-6 py-3">
                         <span className={
                           row.served_by === 'local' ? 'text-success font-medium' :
-                          row.served_by === 'blocked' ? 'text-destructive font-medium' :
-                          row.served_by ? 'text-amber-500 font-medium' : 'text-muted-foreground'
+                          row.served_by === 'blocked' ? 'text-destructive dark:text-red-400 font-medium' :
+                          row.served_by ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-muted-foreground'
                         }>
                           {row.served_by || '-'}
                         </span>
@@ -461,8 +462,8 @@ export function Analytics() {
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Served By</p>
                       <p className={
                         row.served_by === 'local' ? 'text-sm text-success font-medium' :
-                        row.served_by === 'blocked' ? 'text-sm text-destructive font-medium' :
-                        row.served_by ? 'text-sm text-amber-500 font-medium' : 'text-sm text-muted-foreground'
+                        row.served_by === 'blocked' ? 'text-sm text-destructive dark:text-red-400 font-medium' :
+                        row.served_by ? 'text-sm text-amber-600 dark:text-amber-400 font-medium' : 'text-sm text-muted-foreground'
                       }>
                         {row.served_by || '-'}
                       </p>

@@ -189,7 +189,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
 }) {
   const healthColor = {
     healthy: 'text-primary',
-    degraded: 'text-amber-500',
+    degraded: 'text-amber-700 dark:text-amber-400',
     down: 'text-destructive',
   }[node.health];
 
@@ -225,7 +225,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               {node.tlsFingerprintMismatch && (
                 <span
                   title="The node's agent is presenting a certificate that doesn't match the pinned fingerprint - connections are refused (possible MITM or an unexpected cert rotation). Open Edit Node to review and re-confirm."
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/30 whitespace-nowrap"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
                 >
                   TLS MISMATCH
                 </span>
@@ -233,7 +233,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               {node.warmupErrors && Object.keys(node.warmupErrors).length > 0 && (
                 <span
                   title={Object.entries(node.warmupErrors).map(([model, err]) => `${model}: ${err}`).join('\n')}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/30 whitespace-nowrap"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
                 >
                   WARMUP FAILED ({Object.keys(node.warmupErrors).length})
                 </span>
@@ -241,7 +241,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               {node.unloadErrors && Object.keys(node.unloadErrors).length > 0 && (
                 <span
                   title={Object.entries(node.unloadErrors).map(([model, err]) => `${model}: ${err}`).join('\n')}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/30 whitespace-nowrap"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
                 >
                   UNLOAD FAILED ({Object.keys(node.unloadErrors).length})
                 </span>
@@ -249,7 +249,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               {node.warmupState && node.warmupState.filter(s => s.state === 'suppressed').length > 0 && (
                 <span
                   title={node.warmupState.filter(s => s.state === 'suppressed').map(s => `${s.model}: ${s.reason}`).join('\n')}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/30 whitespace-nowrap"
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
                 >
                   SUPPRESSED ({node.warmupState.filter(s => s.state === 'suppressed').length})
                 </span>
@@ -318,7 +318,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
           </div>
           <span className={`font-mono text-lg font-medium ${
             node.temperature && node.temperature > 80 ? 'text-destructive' : 
-            node.temperature && node.temperature > 70 ? 'text-amber-500' : 'text-primary'
+            node.temperature && node.temperature > 70 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'
           }`}>
             {node.temperature ? `${node.temperature}°C` : 'N/A'}
           </span>
@@ -443,7 +443,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   <button
                     onClick={() => onConfigureModel(model.name, node.name, node.runtime)}
                     title={`Advanced settings for ${model.name}`}
-                    className="ml-1.5 opacity-50 hover:opacity-100 hover:text-primary transition-opacity"
+                    className="tap-expand ml-1.5 opacity-50 hover:opacity-100 hover:text-primary transition-opacity"
                   >
                     <Settings2 className="w-3 h-3" />
                   </button>
@@ -458,7 +458,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                     <button
                       onClick={() => onUnload(node.name, model.name)}
                       title={`Unload ${model.name} from VRAM`}
-                      className="ml-1.5 -mr-0.5 opacity-50 hover:opacity-100 hover:text-destructive transition-opacity"
+                      className="tap-expand ml-1.5 -mr-0.5 opacity-50 hover:opacity-100 hover:text-destructive transition-opacity"
                     >
                       <X className="w-3 h-3" />
                     </button>
