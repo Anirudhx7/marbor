@@ -191,7 +191,7 @@ Client Application (Agent / RAG / Copilot)
 | | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access - enforced at the control plane, not advisory. |
 | | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
 | **Observability** | Prometheus metrics | 20 production metrics: request throughput and TTFT, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, local model degradation, quota rejections, request queue depth/timeouts, warmup pings and residency, schedule fires, model evictions, prewarming accuracy, panic recovery, node health. |
-| | Grafana dashboard | Included JSON (`grafana/marbor.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
+| | Grafana dashboard | Included JSON ([`grafana/marbor.json`](grafana/marbor.json)). One-click import. Request throughput and error rate, latency percentiles, warm-routing hit ratio, connections per node, tokens/s by key. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
 | | Audit trail | Append-only audit trail persisted in SQLite (`audit_log`). Every request recorded with crypto/rand request IDs. |
 | | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (marbor agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
@@ -588,7 +588,7 @@ docker exec <container> marbor status
 
 ### Grafana
 
-Import `grafana/marbor.json` into Grafana. Point the Prometheus datasource at `:9090`. Pre-built panels: VRAM utilization, request throughput, latency percentiles, cloud fallback rate, cost attribution.
+Import [`grafana/marbor.json`](grafana/marbor.json) into Grafana and point its Prometheus datasource at your Prometheus instance - which scrapes marbor's `:9090/metrics`. Pre-built panels: request throughput and error rate, latency percentiles, warm-routing hit ratio, active connections per node, healthy-node count, tokens/s by API key. Running the Docker monitoring overlay provisions the datasource and this dashboard automatically (see [Docker Compose](#docker-compose-production-deployment)).
 
 ### Structured Logging
 
