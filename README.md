@@ -25,7 +25,7 @@
   <strong>Route every request to the GPU node that already holds the model warm in VRAM.</strong><br>
   Warm-aware GPU routing, an OpenAI-compatible gateway, bearer-token auth with per-key rate limits,<br>
   and cost-metered cloud overflow to OpenAI or Anthropic that activates only when local capacity is<br>
-  fully saturated — turning your own hardware into a high-availability alternative to cloud LLM APIs.
+  fully saturated - turning your own hardware into a high-availability alternative to cloud LLM APIs.
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 </p>
 
 <p align="center">
-  <em>Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings — all from real parsed token counts.</em>
+  <em>Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings - all from real parsed token counts.</em>
 </p>
 ---
 

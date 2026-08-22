@@ -16,7 +16,7 @@ import { CustomSelect } from '../components/Select';
 import { useDemoMode } from '../hooks/useDemoMode';
 
 function fmtMs(ms: number): string {
-  if (!Number.isFinite(ms)) return '—';
+  if (!Number.isFinite(ms)) return '-';
   return `${ms.toLocaleString(undefined, { maximumFractionDigits: 0 })} ms`;
 }
 
