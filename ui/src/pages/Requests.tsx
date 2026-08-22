@@ -224,7 +224,7 @@ export function Requests() {
   const [keyFilter, setKeyFilter] = useState('');
   const [nodeFilter, setNodeFilter] = useState('');
 
-  // Known node names / key names for this mesh's current config, so the
+  // Known node names / key names for this marbor's current config, so the
   // filter bar offers a searchable list instead of demanding an exact
   // hand-typed match (nodes/keys are a bounded, dynamic set - not free text).
   const [nodeOptions, setNodeOptions] = useState<string[]>([]);

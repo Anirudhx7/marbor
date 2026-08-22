@@ -32,7 +32,7 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 //     params go into the request's "options" object; system/template/keep_alive
 //     are top-level fields. Ollama itself detects when a resident model's
 //     active options differ from an incoming request's and reloads
-//     automatically - the mesh does not need a separate evict-then-reload step.
+//     automatically - the marbor does not need a separate evict-then-reload step.
 //   - Every other runtime (vllm/tgi/llamacpp/mlx, reached via /v1/chat/completions,
 //     /v1/completions): the subset of inference-time params that exist in the
 //     strict OpenAI schema are always injected at the top level, plus
@@ -337,7 +337,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 }
 
 // modelRateLimiter enforces optional per-(model,node) requests-per-minute
-// and tokens-per-minute caps (store.ModelConfig.RPM/TPM). Single mesh
+// and tokens-per-minute caps (store.ModelConfig.RPM/TPM). Single marbor
 // process, no distributed state - an in-memory rolling-minute counter per
 // (model, node) pair, mirroring the per-key tokenBucket pattern in
 // internal/auth. Keyed by node as well as model since ModelConfig itself is

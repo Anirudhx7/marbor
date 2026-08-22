@@ -28,8 +28,8 @@ const (
 // (cmd/marbor-agent) as of the control-plane/agent split - it is not,
 // and must never again be, a subcommand of this table.
 var nonRegistryRows = [][2]string{
-	{"marbor bench", "Benchmark warm-vs-cold first-token latency against a running mesh"},
-	{"marbor uninstall [--purge]", "Remove the mesh's own service registration from this host"},
+	{"marbor bench", "Benchmark warm-vs-cold first-token latency against a running marbor"},
+	{"marbor uninstall [--purge]", "Remove the marbor's own service registration from this host"},
 }
 
 func generateReadmeTable(root *cli.Command) error {
@@ -62,7 +62,7 @@ func renderReadmeTable(root *cli.Command) string {
 	var b strings.Builder
 	b.WriteString("| Command | Purpose |\n")
 	b.WriteString("|---|---|\n")
-	fmt.Fprintf(&b, "| `%s` | Run the mesh server (default, no argument needed) |\n", root.Name)
+	fmt.Fprintf(&b, "| `%s` | Run the marbor server (default, no argument needed) |\n", root.Name)
 	for _, row := range nonRegistryRows {
 		fmt.Fprintf(&b, "| `%s` | %s |\n", row[0], row[1])
 	}

@@ -73,7 +73,7 @@ func (r *Router) isModelWarm(n *NodeState, modelName string) bool {
 // Ollama is exempt: its runtime can load/pull a requested model on demand, so
 // absence from LoadedModels does not disqualify it (existing cold-start
 // behavior, unchanged). Every other runtime has no such on-demand load path
-// from the mesh's perspective, so a non-Ollama node must already report
+// from the marbor's perspective, so a non-Ollama node must already report
 // modelName in LoadedModels - otherwise a healthy-but-wrong-model node could
 // silently serve output from a different model than the one requested (see
 // req-af404f8a, P79 filing in EXECUTION-QUEUE.md).
@@ -163,7 +163,7 @@ func (r *Router) FlushAffinity() {
 }
 
 // RestoreAffinity seeds the in-memory affinity map from the store at startup,
-// so sticky sessions survive a mesh restart. Entries already past the TTL
+// so sticky sessions survive a marbor restart. Entries already past the TTL
 // window are skipped rather than restored and immediately swept - Route
 // still re-validates health/draining before honoring any restored entry,
 // exactly as it does for one created during normal operation. Returns the
@@ -272,7 +272,7 @@ func (r *Router) stickyNode(sessionID string) (*NodeState, bool) {
 // GPU memory at startup (weights + KV cache), making VRAMUsedMB a
 // by-design constant rather than a live pressure signal (P62). Confirmed
 // today for vLLM only (gpu-memory-utilization); TGI has a static mode too
-// but that is not yet confirmed against this mesh's telemetry, so it is
+// but that is not yet confirmed against this marbor's telemetry, so it is
 // deliberately NOT included here - narrowing to what's verified, not
 // guessing across the runtime matrix (Architecture Law 5). Ollama,
 // llama.cpp, and MLX dynamically allocate and are unaffected.

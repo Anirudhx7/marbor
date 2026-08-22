@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// runRuntimeAction implements `mesh runtime start|stop|restart <node>` -
+// runRuntimeAction implements `marbor runtime start|stop|restart <node>` -
 // POST /admin/nodes/{name}/runtime/{action}, the CLI's first mutating
 // command (P43 Step 3). Exit codes: ExitUserError for a bad/missing node
 // argument or a user-actionable rejection (unconfigured node, unknown node,
@@ -32,7 +32,7 @@ func runRuntimeAction(flags *globalFlags, action, node string, stdout, stderr io
 	return ExitOK
 }
 
-// runRuntimeLogs implements `mesh runtime logs <node> [--lines=N]` - POST
+// runRuntimeLogs implements `marbor runtime logs <node> [--lines=N]` - POST
 // /admin/nodes/{name}/runtime/logs?lines=N (P58). A pure read, same exit-code
 // taxonomy as runRuntimeAction. Lines print raw to stdout (no prefix) so
 // output pipes cleanly into grep/less.
@@ -59,8 +59,8 @@ func runRuntimeLogs(flags *globalFlags, node string, lines int, stdout, stderr i
 	return ExitOK
 }
 
-// runRuntimeDrain implements `mesh runtime drain <node> [--reason=X]` - POST
-// /admin/nodes/{name}/drain. Mesh-internal routing state (never sent to the
+// runRuntimeDrain implements `marbor runtime drain <node> [--reason=X]` - POST
+// /admin/nodes/{name}/drain. Marbor-internal routing state (never sent to the
 // Marbor Agent) - same exit-code taxonomy as runRuntimeAction.
 func runRuntimeDrain(flags *globalFlags, node, reason string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
@@ -81,7 +81,7 @@ func runRuntimeDrain(flags *globalFlags, node, reason string, stdout, stderr io.
 	return ExitOK
 }
 
-// runRuntimeUndrain implements `mesh runtime undrain <node>` - DELETE
+// runRuntimeUndrain implements `marbor runtime undrain <node>` - DELETE
 // /admin/nodes/{name}/drain.
 func runRuntimeUndrain(flags *globalFlags, node string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
@@ -102,10 +102,10 @@ func runRuntimeUndrain(flags *globalFlags, node string, stdout, stderr io.Writer
 	return ExitOK
 }
 
-// runRuntimeHealth implements `mesh runtime health <node>` - GET
+// runRuntimeHealth implements `marbor runtime health <node>` - GET
 // /admin/nodes/{name}/health-check, capability "runtime.health_check" - an
 // on-demand active liveness probe (as opposed to the passive, poll-cycle
-// health already shown on `mesh nodes`). A populated result with ok=false is
+// health already shown on `marbor nodes`). A populated result with ok=false is
 // a successful probe reporting a down runtime, not a CLI failure - it still
 // exits ExitOK, matching the UI's checkNodeHealth, which renders the result
 // rather than treating it as an error.

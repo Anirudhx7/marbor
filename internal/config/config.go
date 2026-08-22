@@ -15,7 +15,7 @@ import (
 // ValidateNodeURL checks that raw is a usable http(s) backend URL and rejects
 // link-local / cloud-metadata hosts (169.254.0.0/16 including the
 // 169.254.169.254 metadata endpoint, and fe80::/10) so an operator- or
-// API-supplied node cannot turn the mesh into an SSRF relay to the host's
+// API-supplied node cannot turn the marbor into an SSRF relay to the host's
 // metadata service. Loopback and RFC1918 private ranges are intentionally
 // ALLOWED: homelab and on-prem fleets legitimately run backends on localhost
 // and LAN addresses (and the test suite uses 127.0.0.1). Hostnames are not
@@ -127,8 +127,8 @@ type HuggingFaceConfig struct {
 // seeded from the MARBOR_BACKUP_DIR env var (or a "backups" dir next to the
 // database) before an operator ever opens Settings, so an out-of-the-box
 // Docker deployment backs up correctly with zero configuration - see
-// docker-compose.yml's separate "mesh-backups" volume, kept distinct from the
-// "mesh-data" volume so wiping one doesn't take out the other.
+// docker-compose.yml's separate "marbor-backups" volume, kept distinct from the
+// "marbor-data" volume so wiping one doesn't take out the other.
 type BackupConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
 	// IntervalHours is how often a scheduled backup runs. Defaults to 24 (see
@@ -195,7 +195,7 @@ type ProxyConfig struct {
 	// TrustProxyHeaders controls whether the proxy trusts client-supplied
 	// X-Forwarded-For/X-Real-IP headers when recording the "source IP" on the
 	// admin request log. Defaults to false: any directly-reachable client can
-	// forge these headers, so the mesh logs r.RemoteAddr (the real TCP peer)
+	// forge these headers, so the marbor logs r.RemoteAddr (the real TCP peer)
 	// unless an operator explicitly confirms requests only ever arrive through
 	// a trusted reverse proxy/load balancer that sets these headers itself.
 	TrustProxyHeaders bool `yaml:"trust_proxy_headers,omitempty" json:"trust_proxy_headers,omitempty"`
@@ -263,7 +263,7 @@ type NodeConfig struct {
 	NvidiaIndex int    `yaml:"nvidia_index" json:"nvidia_index"`
 	// VRAMTotalMB optionally declares this node's total GPU VRAM in MB. Used to
 	// compute headroom for remote nodes where nvidia-smi cannot reach (nvidia-smi
-	// only sees the mesh host). Operator-declared, surfaced as "declared", never
+	// only sees the marbor host). Operator-declared, surfaced as "declared", never
 	// presented as a live measurement. 0 = unknown (UI shows capacity as "-").
 	VRAMTotalMB int64 `yaml:"vram_total_mb" json:"vram_total_mb"`
 	// Runtime identifies the inference backend. Valid: "ollama" (default), "vllm", "tgi", "llamacpp", "mlx".
@@ -333,7 +333,7 @@ type RoutingConfig struct {
 	// NvidiaPollIntervalMs controls how often the router calls nvidia-smi to
 	// refresh VRAM/temperature/power data for local nodes. nvidia-smi forks a
 	// subprocess each call, so the default is 30s rather than the /api/ps
-	// poll rate (2s) to avoid measurable CPU overhead on the mesh host.
+	// poll rate (2s) to avoid measurable CPU overhead on the marbor host.
 	NvidiaPollIntervalMs int `yaml:"nvidia_poll_interval_ms" json:"nvidia_poll_interval_ms"`
 	// QueueMaxDepth is the maximum number of requests that can wait for a local
 	// node to become available. When the cluster is fully saturated, requests

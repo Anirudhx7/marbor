@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// runModels implements `mesh models` - GET /admin/v1/models, session-authed.
+// runModels implements `marbor models` - GET /admin/v1/models, session-authed.
 func runModels(flags *globalFlags, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -40,7 +40,7 @@ func runModels(flags *globalFlags, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-// runModelsPull implements `mesh models pull <node> <model>` - POST
+// runModelsPull implements `marbor models pull <node> <model>` - POST
 // /admin/nodes/{name}/pull, capability "models.pull". The pull runs async
 // server-side; this only confirms the job started (same contract as the UI's
 // Models.tsx pull flow) - it does not block for completion.
@@ -63,7 +63,7 @@ func runModelsPull(flags *globalFlags, node, model string, stdout, stderr io.Wri
 	return ExitOK
 }
 
-// runModelsDelete implements `mesh models delete <node> <model>` - DELETE
+// runModelsDelete implements `marbor models delete <node> <model>` - DELETE
 // /admin/nodes/{name}/models/{model}, capability "models.delete".
 func runModelsDelete(flags *globalFlags, node, model string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
@@ -85,7 +85,7 @@ func runModelsDelete(flags *globalFlags, node, model string, stdout, stderr io.W
 	return ExitOK
 }
 
-// runModelsUnload implements `mesh models unload <node> <model>` - POST
+// runModelsUnload implements `marbor models unload <node> <model>` - POST
 // /admin/nodes/{name}/unload, capability "models.unload".
 func runModelsUnload(flags *globalFlags, node, model string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
@@ -107,9 +107,9 @@ func runModelsUnload(flags *globalFlags, node, model string, stdout, stderr io.W
 	return ExitOK
 }
 
-// runModelsList implements `mesh models list <node>` - GET
+// runModelsList implements `marbor models list <node>` - GET
 // /admin/nodes/{name}/models, capability "models.list" - the per-node local
-// inventory, distinct from the bare `mesh models` fleet-wide summary above.
+// inventory, distinct from the bare `marbor models` fleet-wide summary above.
 func runModelsList(flags *globalFlags, node string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

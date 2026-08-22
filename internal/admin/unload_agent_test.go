@@ -51,7 +51,7 @@ func newAgentUnloadTestServer(t *testing.T, mockAgent *httptest.Server) *Server 
 	return NewServer(r, nil, cfg)
 }
 
-// TestHandleUnloadModel_DispatchesToAgentWhenCapable verifies the mesh
+// TestHandleUnloadModel_DispatchesToAgentWhenCapable verifies the marbor
 // forwards to the node's Marbor Agent (POST /v1/models/{name}, capability
 // "models.unload") instead of Ollama's own keep_alive:0 HTTP trick, when the
 // node reports the capability - mirroring

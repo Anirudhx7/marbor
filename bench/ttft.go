@@ -37,7 +37,7 @@ import (
 const ttftDrainCapBytes = 8 << 20 // 8MB
 
 func main() {
-	url := flag.String("url", "http://localhost:11434", "Base URL of the endpoint to benchmark (mesh or direct Ollama)")
+	url := flag.String("url", "http://localhost:11434", "Base URL of the endpoint to benchmark (marbor or direct Ollama)")
 	model := flag.String("model", "llama3.2:3b", "Model name to request")
 	n := flag.Int("n", 10, "Number of requests to send")
 	apiKey := flag.String("api-key", "", "Bearer API key (required for marbor, omit for direct Ollama)")

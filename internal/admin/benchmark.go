@@ -6,7 +6,7 @@
 // UnloadModel/unloadModelViaAgent path handleUnloadModel already uses for
 // every runtime, and bench.MeasureChatTTFT talks to the OpenAI-compatible
 // /v1/chat/completions surface every runtime (Ollama, vLLM, TGI, llama.cpp,
-// MLX) exposes through the mesh proxy. None of it is GPU-vendor-specific
+// MLX) exposes through the marbor proxy. None of it is GPU-vendor-specific
 // either - VRAM eviction and TTFT timing don't touch vendor-specific
 // telemetry. Covered: all 5 runtimes x all 4 GPU vendors. Deferred: nothing
 // - there is no runtime/vendor-specific branch to add here.
@@ -174,7 +174,7 @@ func aggregateSamples(samples []int64) (p50, min, max float64) {
 }
 
 // handleRunBenchmark starts an in-dashboard hardware benchmark (cold vs warm
-// TTFT) against a node+model already known to the mesh. Accepts:
+// TTFT) against a node+model already known to the marbor. Accepts:
 // {"node":"...","model":"...","n":10}. Returns 202 with a job id immediately;
 // progress is polled via GET /admin/benchmark/{id}/progress (SSE).
 //
@@ -218,7 +218,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.Proxy.Port <= 0 {
-		writeJSONError(w, http.StatusServiceUnavailable, "proxy port is not configured - benchmark requires the mesh proxy to be running")
+		writeJSONError(w, http.StatusServiceUnavailable, "proxy port is not configured - benchmark requires the marbor proxy to be running")
 		return
 	}
 

@@ -101,7 +101,7 @@ export interface GPUNode {
   // Last failed scheduled/agent unload per model (model name -> error
   // string) - mirrors warmupErrors for the unload side, so a schedule that
   // dispatched successfully but whose actual unload failed is still
-  // diagnosable instead of only ever appearing in the mesh's own logs.
+  // diagnosable instead of only ever appearing in the marbor's own logs.
   unloadErrors?: Record<string, string>;
   // Models currently suppressed on this node - a manual or scheduled unload
   // took them cold and they won't be reloaded until an explicit warmup

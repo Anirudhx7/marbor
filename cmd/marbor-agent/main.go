@@ -1,9 +1,9 @@
 // marbor-agent is the Marbor Agent binary: the node-local execution point
-// the mesh polls for GPU/host/runtime telemetry and issues control actions
+// the marbor polls for GPU/host/runtime telemetry and issues control actions
 // through (internal/marboragent). It deliberately imports nothing from the
 // control-plane side of the codebase (internal/admin, internal/router,
 // internal/store, internal/proxy, internal/auth, internal/cli) - a host
-// running only this binary has no code path capable of starting the Mesh
+// running only this binary has no code path capable of starting the Marbor
 // control plane, opening marbor.db, or serving the admin API. See
 // .local/specs/node-agent.md for the agent's design and
 // internal/marboragent/service for how it registers itself as a persistent OS

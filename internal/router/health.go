@@ -96,7 +96,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// including synchronously off AddNode at boot for every persisted node.
 	// One node's bad/unexpected state (a stale DB record, a malformed probe,
 	// anything) must never be able to panic and take down the entire
-	// single-process mesh (architecture law) - that would mean a single bad
+	// single-process marbor (architecture law) - that would mean a single bad
 	// row in marbor.db locks an operator out of their whole fleet, which is
 	// exactly the failure this recovers from. A panic here degrades only
 	// this one node (marked unhealthy for this cycle) instead of crashing
@@ -151,7 +151,7 @@ func (r *Router) pollNode(n *NodeState) {
 		// Defense in depth: every path that clears autoDetect must also set
 		// probe (New/AddNode/PatchNode, and the auto-detect branch above).
 		// A nil probe here would otherwise panic and take down the whole
-		// mesh process (single-process architecture - R1/architecture law).
+		// marbor process (single-process architecture - R1/architecture law).
 		// If this is ever hit, something upstream regressed that invariant;
 		// treat it exactly like an unreachable node instead of crashing.
 		r.markFailure(n)
@@ -171,7 +171,7 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 	psUsedMB := result.VRAMUsedMB
 
-	// nvidia-smi only describes GPUs on the mesh host itself. Read from the
+	// nvidia-smi only describes GPUs on the marbor host itself. Read from the
 	// nvidiaCache populated by pollNvidiaAll() on its own slower ticker (default
 	// 30s) rather than calling queryGPU() here, which would fork nvidia-smi on
 	// every /api/ps poll cycle and cause measurable CPU overhead.
@@ -392,9 +392,9 @@ func localInterfaceAddrs() map[string]struct{} {
 	return set
 }
 
-// isLocalNode reports whether a node URL points at the mesh host itself, so that
+// isLocalNode reports whether a node URL points at the marbor host itself, so that
 // local nvidia-smi telemetry may be attributed to it. Remote nodes must not be
-// given the mesh host's GPU stats.
+// given the marbor host's GPU stats.
 func isLocalNode(rawURL string) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {

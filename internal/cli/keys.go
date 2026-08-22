@@ -14,7 +14,7 @@ import (
 // the P83+ CLI hardening plan, migration step 4.
 func printKeyUsage(w io.Writer) { writeHelp(w, findCommand(root(), "key")) }
 
-// runKeySetLocalOnly implements `mesh key set-local-only <name> <true|false>`
+// runKeySetLocalOnly implements `marbor key set-local-only <name> <true|false>`
 // - PATCH /admin/v1/keys/{name} with local_only.
 func runKeySetLocalOnly(flags *globalFlags, name, value string, stdout, stderr io.Writer) int {
 	var localOnly bool
@@ -47,7 +47,7 @@ func runKeySetLocalOnly(flags *globalFlags, name, value string, stdout, stderr i
 }
 
 // runKeySetAllowLocalDegradation implements
-// `mesh key set-allow-local-degradation <name> <true|false>` - PATCH
+// `marbor key set-allow-local-degradation <name> <true|false>` - PATCH
 // /admin/v1/keys/{name} with allow_local_degradation.
 func runKeySetAllowLocalDegradation(flags *globalFlags, name, value string, stdout, stderr io.Writer) int {
 	var allow bool
@@ -79,7 +79,7 @@ func runKeySetAllowLocalDegradation(flags *globalFlags, name, value string, stdo
 	return ExitOK
 }
 
-// runSpill implements `mesh spill` - GET /admin/v1/spill, session-authed.
+// runSpill implements `marbor spill` - GET /admin/v1/spill, session-authed.
 func runSpill(flags *globalFlags, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

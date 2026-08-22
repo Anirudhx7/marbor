@@ -297,7 +297,7 @@ func TestHandleModelCatalog_GPUCountUnknown(t *testing.T) {
 	defer ollama.Close()
 
 	// newModelFitTestServer's fixture node has VRAMSource="nvidia" (a direct
-	// mesh-host nvidia-smi reading) and no agent - AgentPresent stays false,
+	// marbor-host nvidia-smi reading) and no agent - AgentPresent stays false,
 	// so this is the "no agent at all" case Gap D targets.
 	s := newModelFitTestServer(ollama.URL)
 

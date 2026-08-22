@@ -1,13 +1,13 @@
 // bench/loadtest/main.go - SQLite write-path throughput sweep for marbor.
 //
-// Fires a sustained request rate at the mesh proxy for a fixed duration per
+// Fires a sustained request rate at the marbor proxy for a fixed duration per
 // step (concurrent in-flight requests capped at --max-inflight, so a step
 // the generator can't sustain shows up as a sent-RPS shortfall rather than
 // spawning unbounded goroutines/sockets), sweeping the rate upward across
 // steps, and reports:
 //   - target vs. actual-sent vs. completed vs. failed RPS per step (so a
 //     generator that can't keep up with its own target is caught, not
-//     mistaken for a saturated mesh)
+//     mistaken for a saturated marbor)
 //   - p50/p95/p99 request latency per step
 //   - *.db-wal and .db file size sampled at the start/end of each step
 //     (passive observation only - this tool never issues PRAGMA
@@ -15,7 +15,7 @@
 //     the exact WAL-growth behavior under test)
 //
 // It does NOT compute or print a single "ceiling" number. Read the queue-full
-// drop log lines from the mesh's own stdout/log file during the run
+// drop log lines from the marbor's own stdout/log file during the run
 // ("audit logger: queue full, ...", "async logger: queue full, ...",
 // "async logger: stats queue full, ...") - the first step at which any of
 // those appear is the actual operational limit. If none appear across the
@@ -53,10 +53,10 @@ import (
 )
 
 func main() {
-	url := flag.String("url", "http://localhost:11434", "Base URL of the mesh proxy")
+	url := flag.String("url", "http://localhost:11434", "Base URL of the marbor proxy")
 	model := flag.String("model", "llama3.2:3b", "Model name to request (must be warm on the target node - see README)")
-	apiKey := flag.String("api-key", "", "Bearer API key for the mesh")
-	dbPath := flag.String("db", "marbor.db", "Path to the mesh's SQLite database, for passive .db/-wal file size sampling")
+	apiKey := flag.String("api-key", "", "Bearer API key for the marbor")
+	dbPath := flag.String("db", "marbor.db", "Path to the marbor's SQLite database, for passive .db/-wal file size sampling")
 	ratesFlag := flag.String("rates", "5,10,20,40,80", "Comma-separated list of target request rates (req/s) to sweep, ascending")
 	stepDuration := flag.Duration("step-duration", 20*time.Second, "How long to sustain each rate before moving to the next")
 	endpoint := flag.String("endpoint", "chat", "API endpoint: generate or chat")
@@ -73,7 +73,7 @@ func main() {
 	fmt.Printf("SQLite write-path load sweep: url=%s  model=%s  endpoint=%s  step=%s  rates=%v\n\n",
 		*url, *model, *endpoint, *stepDuration, rates)
 	fmt.Println("This tool reports the latency curve and file-size deltas only. It does NOT")
-	fmt.Println("compute a ceiling for you - watch the mesh's own log output during the run for")
+	fmt.Println("compute a ceiling for you - watch the marbor's own log output during the run for")
 	fmt.Println("\"queue full\" / \"dropped\" lines (audit logger, async logger, stats queue).")
 	fmt.Println("The first step where one of those appears is the real operational limit. If")
 	fmt.Println("none appear across the whole sweep, report \"no drop ceiling observed up to N")
@@ -81,9 +81,9 @@ func main() {
 	fmt.Println()
 
 	// http.DefaultTransport caps at MaxIdleConnsPerHost=2, which serializes
-	// requests through a tiny connection pool well before the mesh itself is
+	// requests through a tiny connection pool well before the marbor itself is
 	// under any real pressure - a client-side bottleneck that would silently
-	// masquerade as mesh latency. Raise it well above any tested rate.
+	// masquerade as marbor latency. Raise it well above any tested rate.
 	transport := &http.Transport{
 		MaxIdleConns:        2000,
 		MaxIdleConnsPerHost: 2000,
@@ -106,7 +106,7 @@ func main() {
 			shortfallPct = (float64(rate) - result.sentPerSec) / float64(rate) * 100
 		}
 		if shortfallPct > *generatorSlackPct {
-			warnFlag = fmt.Sprintf("  [GENERATOR-SATURATED: sent %.1f%% below target, this step's numbers do not reflect mesh capacity]", shortfallPct)
+			warnFlag = fmt.Sprintf("  [GENERATOR-SATURATED: sent %.1f%% below target, this step's numbers do not reflect marbor capacity]", shortfallPct)
 		}
 
 		fmt.Printf("%-8d  %-10d  %-10.1f  %-10.1f  %-10.1f  %-8.1f  %-8.1f  %-8.1f  %-14s  %-14s%s\n",
@@ -116,7 +116,7 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Println("Sweep complete. Cross-reference the mesh's log output for drop lines to find the")
+	fmt.Println("Sweep complete. Cross-reference the marbor's log output for drop lines to find the")
 	fmt.Println("actual first-drop rate. Do not publish a number from this table alone as a")
 	fmt.Println("\"ceiling\" - it is a latency/file-growth curve, not a threshold verdict.")
 }
@@ -178,7 +178,7 @@ type stepResult struct {
 
 // runStep sustains target req/s for duration, recording per-request latency
 // and send/complete/fail counts so a generator that can't keep up is visible
-// in the output rather than silently masquerading as mesh saturation.
+// in the output rather than silently masquerading as marbor saturation.
 // Concurrent in-flight requests are capped at maxInflight via a semaphore -
 // once full, the send loop blocks waiting for a slot rather than spawning an
 // unbounded goroutine/socket per tick, so a step the generator can't sustain

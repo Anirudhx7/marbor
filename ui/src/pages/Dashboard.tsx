@@ -117,7 +117,7 @@ function ArchitectureDiagram() {
     { icon: <Layers className="w-5 h-5" />, label: 'Clients', sublabel: 'API Requests' },
     { icon: <Shield className="w-5 h-5" />, label: 'Auth Layer', sublabel: 'API Key Validation' },
     { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
-    { icon: <Server className="w-5 h-5" />, label: 'Mesh Router', sublabel: 'Warm-First Balancer' },
+    { icon: <Server className="w-5 h-5" />, label: 'Marbor Router', sublabel: 'Warm-First Balancer' },
     { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
     { icon: <Zap className="w-5 h-5" />, label: 'GPU Nodes', sublabel: 'Ollama Instances' },
     { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },

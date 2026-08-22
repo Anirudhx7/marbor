@@ -371,7 +371,7 @@ func main() {
 	// Build in-memory config (no config.yaml needed).
 	cfg := buildDemoConfig(node1.addr, node2.addr, apiKey)
 
-	// Wire up the mesh stack.
+	// Wire up the marbor stack.
 	authMw := auth.NewMiddleware(cfg.Auth)
 
 	r := router.New(cfg.Routing, cfg.Nodes, cfg.CloudProviders)

@@ -30,7 +30,7 @@ func (r *Router) warmStore() store.Store {
 }
 
 // persistResidencyDiff records a model-residency change to the store the moment
-// the mesh observes it (Tier 1, lifecycle events): models newly resident on the
+// the marbor observes it (Tier 1, lifecycle events): models newly resident on the
 // node are recorded as loads (bumping load_count); models that vanished are
 // deleted. Persistence is best-effort - a store error must never disturb polling
 //

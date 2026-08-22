@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// runStatus implements `mesh status` - GET /health, unauthenticated.
+// runStatus implements `marbor status` - GET /health, unauthenticated.
 func runStatus(flags *globalFlags, stdout, stderr io.Writer) int {
 	client := NewClient(flags.server, "")
 	health, err := client.Health()

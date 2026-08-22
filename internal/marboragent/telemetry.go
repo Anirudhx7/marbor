@@ -169,7 +169,7 @@ type RuntimeInfo struct {
 	// ID is this runtime's stable identity (see runtime_identity.go),
 	// independent of Name/Port - both of those are attributes that can
 	// change (a port gets reconfigured) without the runtime becoming a
-	// "different" one. Mesh-side, a node row pins itself to this ID once
+	// "different" one. Marbor-side, a node row pins itself to this ID once
 	// matched and never re-derives identity from Port after that (Port is
 	// only ever used as a one-time bootstrap heuristic).
 	ID string `json:"id,omitempty"`

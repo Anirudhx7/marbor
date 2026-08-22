@@ -1,10 +1,10 @@
 // Package bench implements the "marbor bench" subcommand.
 //
-// It measures cold vs warm Time-To-First-Token (TTFT) through the mesh proxy
+// It measures cold vs warm Time-To-First-Token (TTFT) through the marbor proxy
 // using the OpenAI-compatible /v1/chat/completions streaming endpoint.
-// The --target flag must point at the mesh proxy port (e.g.
+// The --target flag must point at the marbor proxy port (e.g.
 // http://localhost:11435), NOT at an Ollama backend directly - we measure
-// what the mesh adds, not raw Ollama speed.
+// what the marbor adds, not raw Ollama speed.
 //
 // Usage:
 //
@@ -39,17 +39,17 @@ func Run(args []string) {
 	fs := flag.NewFlagSet("bench", flag.ExitOnError)
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "Usage: marbor bench [flags]\n\n")
-		fmt.Fprintf(w, "Measures cold vs warm Time-To-First-Token (TTFT) through the mesh proxy.\n")
-		fmt.Fprintf(w, "--target must point at the mesh proxy port, not an Ollama backend directly.\n\n")
+		fmt.Fprintf(w, "Measures cold vs warm Time-To-First-Token (TTFT) through the marbor proxy.\n")
+		fmt.Fprintf(w, "--target must point at the marbor proxy port, not an Ollama backend directly.\n\n")
 		fmt.Fprintf(w, "Flags:\n")
 		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
 	fs.Usage = func() { usage(os.Stderr) }
 
-	target := fs.String("target", "http://localhost:11435", "Mesh proxy base URL (not the Ollama backend)")
+	target := fs.String("target", "http://localhost:11435", "Marbor proxy base URL (not the Ollama backend)")
 	model := fs.String("model", "", "Model to benchmark (auto-detected from /v1/models if omitted)")
-	apiKey := fs.String("key", "", "Bearer API key (required if auth is enabled on the mesh)")
+	apiKey := fs.String("key", "", "Bearer API key (required if auth is enabled on the marbor)")
 	jsonOut := fs.Bool("json", false, "Emit JSON output instead of the human-readable table")
 	timeout := fs.Duration("timeout", 300*time.Second, "Per-request timeout (cold load can take minutes on a large model)")
 
@@ -174,7 +174,7 @@ func roundTo1(v float64) float64 {
 	return float64(int64(v*10+0.5)) / 10
 }
 
-// detectModel calls GET /v1/models on the mesh and returns the first model ID.
+// detectModel calls GET /v1/models on the marbor and returns the first model ID.
 func detectModel(client *http.Client, target, apiKey string) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, target+"/v1/models", nil)
 	if err != nil {
@@ -201,19 +201,19 @@ func detectModel(client *http.Client, target, apiKey string) (string, error) {
 		return "", fmt.Errorf("decode /v1/models: %w", err)
 	}
 	if len(list.Data) == 0 {
-		return "", fmt.Errorf("no models available on the mesh (is any Ollama node healthy?)")
+		return "", fmt.Errorf("no models available on the marbor (is any Ollama node healthy?)")
 	}
 	return list.Data[0].ID, nil
 }
 
 // MeasureChatTTFT sends a single streaming /v1/chat/completions request
-// through the mesh and returns the milliseconds until the first non-empty
+// through the marbor and returns the milliseconds until the first non-empty
 // token arrives in the SSE stream. Exported so internal/admin's in-dashboard
 // hardware benchmark page can reuse the exact same measurement logic instead
 // of duplicating it.
 //
 // Using the OpenAI-compatible endpoint ensures the request travels through
-// the full mesh routing stack (proxy → router → backend), not a direct hop
+// the full marbor routing stack (proxy → router → backend), not a direct hop
 // to an Ollama node.
 //
 // ctx bounds the whole call, not just a client.Timeout: internal/admin's
@@ -290,5 +290,5 @@ func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, ap
 	if err := scanner.Err(); err != nil {
 		return 0, fmt.Errorf("read stream: %w", err)
 	}
-	return 0, fmt.Errorf("no tokens received - model may have failed to load, or the mesh has no healthy nodes")
+	return 0, fmt.Errorf("no tokens received - model may have failed to load, or the marbor has no healthy nodes")
 }

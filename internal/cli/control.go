@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-// runNodeControlProbe implements `mesh node control probe <node>` - GET
+// runNodeControlProbe implements `marbor node control probe <node>` - GET
 // /admin/nodes/{name}/control, read-only.
 func runNodeControlProbe(flags *globalFlags, node string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
@@ -38,7 +38,7 @@ func runNodeControlProbe(flags *globalFlags, node string, stdout, stderr io.Writ
 	return ExitOK
 }
 
-// runNodeControlAccept implements `mesh node control accept <node>
+// runNodeControlAccept implements `marbor node control accept <node>
 // --driver X --identifier Y [--start-command Z]` - POST /admin/nodes/{name}
 // /control/accept, the operator's explicit confirmation of a control driver
 // (never automatic - marbor-agent-capabilities.md section 5.6). Flag parsing

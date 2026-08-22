@@ -86,7 +86,7 @@ func TestPollAgentTelemetryNoAgentConfigured(t *testing.T) {
 }
 
 // TestPollAgentTelemetrySuccess verifies a configured, reachable agent's
-// telemetry is applied to the node, and that the mesh presents the
+// telemetry is applied to the node, and that the marbor presents the
 // configured bearer token when polling it.
 func TestPollAgentTelemetrySuccess(t *testing.T) {
 	psSrv := nodePSServer()
@@ -243,7 +243,7 @@ func TestPollAgentTelemetryFillsGPUModelWhenUnset(t *testing.T) {
 }
 
 // TestPollAgentTelemetryWrongTokenClearsFields verifies that a configured
-// agent rejecting the mesh's token (401) is treated the same as an
+// agent rejecting the marbor's token (401) is treated the same as an
 // unreachable agent: fields are cleared, not left at a stale prior value.
 func TestPollAgentTelemetryWrongTokenClearsFields(t *testing.T) {
 	psSrv := nodePSServer()
@@ -324,7 +324,7 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 // TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings is a regression
 // test: when a GPU backend is selected (vendor known) but a cycle's
 // Collect() failed - reported as gpu.vendor set with an empty devices array,
-// not a nil gpu block - the mesh must NOT keep showing the previous poll's
+// not a nil gpu block - the marbor must NOT keep showing the previous poll's
 // VRAM/temperature/power as current. AgentPresent stays true (the agent
 // itself is reachable) but every per-device reading must clear, the same way
 // a fully-absent gpu block already does (R1: a stale reading must never
@@ -397,8 +397,8 @@ func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
 }
 
 // TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored proves the rolling-
-// upgrade contract for a NEWER agent talking to an OLDER mesh: extra JSON
-// fields this mesh binary's marboragent.Telemetry struct doesn't define must
+// upgrade contract for a NEWER agent talking to an OLDER marbor: extra JSON
+// fields this marbor binary's marboragent.Telemetry struct doesn't define must
 // be silently ignored (Go's default json.Decoder behavior - no
 // DisallowUnknownFields anywhere in this path), never cause the poll to be
 // treated as a failure. Every currently-known field must still populate
@@ -409,7 +409,7 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Hand-built JSON (not marboragent.Telemetry) so it can include fields
-		// that don't exist in this mesh binary's struct yet - simulating a
+		// that don't exist in this marbor binary's struct yet - simulating a
 		// future agent build's response.
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{
@@ -446,8 +446,8 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 		t.Errorf("AgentVersion = %q, want v99.0.0", r.nodes[0].AgentVersion)
 	}
 	// capabilities lists a future feature ("diagnostics"/"actions") this
-	// mesh doesn't implement anything for yet - it must still be stored
-	// verbatim, not truncated/rejected, so a future mesh build that DOES
+	// marbor doesn't implement anything for yet - it must still be stored
+	// verbatim, not truncated/rejected, so a future marbor build that DOES
 	// understand those capabilities doesn't need the agent to re-report.
 	if len(r.nodes[0].AgentCapabilities) != 3 {
 		t.Errorf("AgentCapabilities = %v, want 3 entries preserved as-is", r.nodes[0].AgentCapabilities)
@@ -458,8 +458,8 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 }
 
 // TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown proves the
-// rolling-upgrade contract for an OLDER agent talking to a NEWER mesh: a
-// response missing fields this mesh's Telemetry struct now defines
+// rolling-upgrade contract for an OLDER agent talking to a NEWER marbor: a
+// response missing fields this marbor's Telemetry struct now defines
 // (capabilities/platform/architecture/gpu vendor/runtime) must decode to
 // their zero value and be treated as "not reported" - never crash the poll,
 // never be displayed as a real (empty-string/nil) measurement instead of
@@ -501,7 +501,7 @@ func TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown(t *testing.T) {
 
 // TestPollAgentTelemetryNewerProtocolVersionLoggedOnce verifies the operator-
 // visibility log fires exactly once per node (not every poll cycle) when an
-// agent reports a protocol_version ahead of what this mesh binary
+// agent reports a protocol_version ahead of what this marbor binary
 // understands - purely informational, per agent_poll.go's comment: decoding
 // above already works regardless, this never gates behavior.
 func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {

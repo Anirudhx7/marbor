@@ -228,7 +228,7 @@ func TestPrintUnknownCommand_SuggestsTopLevelTypo(t *testing.T) {
 }
 
 // controlPlaneOnlyPackages are the packages that give a binary the capability
-// to start the Mesh control plane (admin API, router, SQLite store, proxy,
+// to start the Marbor control plane (admin API, router, SQLite store, proxy,
 // auth middleware) or the Admin API CLI. cmd/marbor-agent must never
 // depend on any of them - see TestAgentBinary_HasNoControlPlaneCapability.
 var controlPlaneOnlyPackages = []string{
@@ -265,14 +265,14 @@ func goListDeps(t *testing.T, importPath string) map[string]bool {
 // TestAgentBinary_HasNoControlPlaneCapability is the primary acceptance
 // criterion for the control-plane/Marbor-Agent binary split: a GPU/marbor-agent
 // host running only cmd/marbor-agent must have no code path capable of
-// starting the Mesh control plane, opening marbor.db, or serving the admin
+// starting the Marbor control plane, opening marbor.db, or serving the admin
 // API - proven here by showing the capability isn't even compiled into the
 // binary, not merely unreachable at runtime.
 func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
 	deps := goListDeps(t, "./cmd/marbor-agent")
 	for _, forbidden := range controlPlaneOnlyPackages {
 		if deps[forbidden] {
-			t.Errorf("cmd/marbor-agent depends on %s - the agent binary must never be capable of starting the Mesh control plane", forbidden)
+			t.Errorf("cmd/marbor-agent depends on %s - the agent binary must never be capable of starting the Marbor control plane", forbidden)
 		}
 	}
 }

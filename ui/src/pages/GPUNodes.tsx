@@ -25,7 +25,7 @@ function formatBytes(bytes: number): string {
 
 // LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
 // (admin.go) can report for a value read straight from a vendor tool -
-// "nvidia-smi" for the mesh's own local card, or whatever tool the Node
+// "nvidia-smi" for the marbor's own local card, or whatever tool the Node
 // Agent detected ("rocm-smi"/"xpu-smi"/"system_profiler"), plus its generic
 // "agent" fallback when the vendor itself somehow wasn't reported. All of
 // these get the same "live reading" badge color; only "declared"/"inferred"/
@@ -216,7 +216,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               )}
               {node.prewarmDisabled && (
                 <span
-                  title="Predictive engine will not warm new models onto this node until re-enabled or the mesh restarts"
+                  title="Predictive engine will not warm new models onto this node until re-enabled or the marbor restarts"
                   className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border whitespace-nowrap"
                 >
                   PREWARM OFF
@@ -1772,7 +1772,7 @@ export function GPUNodes() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Changing host or port re-points the mesh at a different address and resets this node's live health/warm state - you'll be asked to confirm.
+            Changing host or port re-points the marbor at a different address and resets this node's live health/warm state - you'll be asked to confirm.
           </p>
           <label className="flex items-center gap-2 -mt-2 cursor-pointer">
             <input
@@ -1917,7 +1917,7 @@ export function GPUNodes() {
             <span className="text-foreground font-semibold">{pendingPatch?.url}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            The mesh will re-point at this new address immediately. This node's live health and warm-model state reset, since it's now treated as a different physical backend.
+            The marbor will re-point at this new address immediately. This node's live health and warm-model state reset, since it's now treated as a different physical backend.
           </p>
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
@@ -1957,7 +1957,7 @@ export function GPUNodes() {
             Clear the pinned TLS certificate fingerprint for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            This node reverts to requiring re-enrollment: the mesh will refuse to connect over HTTPS again until you probe and confirm a fingerprint for it. Not reversible from here - you'll need to re-pin afterward. In-flight requests are not affected.
+            This node reverts to requiring re-enrollment: the marbor will refuse to connect over HTTPS again until you probe and confirm a fingerprint for it. Not reversible from here - you'll need to re-pin afterward. In-flight requests are not affected.
           </p>
           {agentError && (
             <p className="text-sm text-destructive">{agentError}</p>
@@ -1989,7 +1989,7 @@ export function GPUNodes() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to remove the node <span className="text-foreground font-semibold">{nodeToDelete}</span> from the mesh?
+            Are you sure you want to remove the node <span className="text-foreground font-semibold">{nodeToDelete}</span> from the marbor?
           </p>
           <p className="text-xs text-muted-foreground">
             This deletes the node's configuration. In-flight requests to it will fail over, and any warm models on it will need a cold start elsewhere.
@@ -2110,7 +2110,7 @@ export function GPUNodes() {
           </p>
           <p className="text-xs text-muted-foreground">
             {prewarmToToggle?.disabled
-              ? 'The predictive engine will not warm new models onto this node until re-enabled or the mesh restarts. Live traffic and warm-state routing are unaffected.'
+              ? 'The predictive engine will not warm new models onto this node until re-enabled or the marbor restarts. Live traffic and warm-state routing are unaffected.'
               : 'The predictive engine will resume warming models onto this node based on usage patterns.'}
           </p>
           {actionError && (
@@ -2150,7 +2150,7 @@ export function GPUNodes() {
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            The marbor agent is an optional process you run on this GPU node to report CPU usage, fan speed, RAM usage, and free disk space back to the mesh. Everything else (VRAM, temperature, power) is already collected without it.
+            The marbor agent is an optional process you run on this GPU node to report CPU usage, fan speed, RAM usage, and free disk space back to the marbor. Everything else (VRAM, temperature, power) is already collected without it.
           </p>
 
           {agentNode && (() => {
@@ -2227,7 +2227,7 @@ export function GPUNodes() {
                   className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Port the agent process listens on for the mesh to poll (default 9200).
+                  Port the agent process listens on for the marbor to poll (default 9200).
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2243,7 +2243,7 @@ export function GPUNodes() {
                 </label>
               </div>
               <p className="text-xs text-muted-foreground -mt-2">
-                Encrypts the mesh's connection to this node's Agent only - this node's inference
+                Encrypts the marbor's connection to this node's Agent only - this node's inference
                 runtime endpoint is unaffected and keeps its own URL/scheme. Once enabled, this
                 panel shows a "Probe &amp; Pin" control to verify and pin the Agent's certificate
                 fingerprint (required - an unpinned Agent connection will be rejected).
@@ -2271,7 +2271,7 @@ export function GPUNodes() {
                   read-only restatement of the same two values shown (and
                   editable) right underneath it. */}
               <div className="space-y-2 p-3 bg-secondary/40 border border-border rounded-lg">
-                {/* The mesh REJECTS an HTTPS Agent connection with no pinned
+                {/* The marbor REJECTS an HTTPS Agent connection with no pinned
                     (or a mismatched) fingerprint - see the TLS Certificate
                     card below - so this pill must not read "Enabled" in
                     plain green when that's true, or it contradicts the
@@ -2343,7 +2343,7 @@ export function GPUNodes() {
                 {!agentUseHttps ? (
                   <p className="text-xs text-muted-foreground">
                     Enable HTTPS above to pin this Agent's certificate. Pinning secures the
-                    mesh-to-Agent connection only - it is unrelated to this node's runtime
+                    marbor-to-Agent connection only - it is unrelated to this node's runtime
                     URL/scheme in the Edit Node modal.
                   </p>
                 ) : (
@@ -2752,7 +2752,7 @@ export function GPUNodes() {
             <span className="text-foreground font-semibold">{agentUseHttps ? 'https' : 'http'}://{agentNode?.host}:{agentPort}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            The mesh will use this address to reach the Agent going forward. This does not change this node's inference runtime endpoint. This also issues a new Agent token and invalidates the current one - you'll need to run the install command shown next on the node to re-enroll it before the mesh can reach it again.
+            The marbor will use this address to reach the Agent going forward. This does not change this node's inference runtime endpoint. This also issues a new Agent token and invalidates the current one - you'll need to run the install command shown next on the node to re-enroll it before the marbor can reach it again.
           </p>
           {agentError && (
             <p className="text-sm text-destructive">{agentError}</p>
@@ -2799,7 +2799,7 @@ export function GPUNodes() {
             Regenerate the Agent token for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            This immediately invalidates the currently-running agent's token - the mesh will refuse its connection until you run the new install command (shown next) on the node to re-enroll it. This does not change this node's inference runtime endpoint.
+            This immediately invalidates the currently-running agent's token - the marbor will refuse its connection until you run the new install command (shown next) on the node to re-enroll it. This does not change this node's inference runtime endpoint.
           </p>
           {agentError && (
             <p className="text-sm text-destructive">{agentError}</p>
@@ -2844,7 +2844,7 @@ export function GPUNodes() {
           </p>
           <p className="text-xs text-muted-foreground">
             {runtimeActionConfirm === 'start' && 'Reversible: the runtime is idle before this. Any currently-loaded models stay unloaded until requests warm them back up. No in-flight requests are at risk since the runtime is not serving traffic yet.'}
-            {runtimeActionConfirm === 'stop' && 'Disruptive and immediate: any in-flight requests on this node fail right now, and all warm/loaded models are evicted from VRAM. The mesh routes new requests to other nodes, but this node serves nothing until you start it again.'}
+            {runtimeActionConfirm === 'stop' && 'Disruptive and immediate: any in-flight requests on this node fail right now, and all warm/loaded models are evicted from VRAM. The marbor routes new requests to other nodes, but this node serves nothing until you start it again.'}
             {runtimeActionConfirm === 'restart' && 'Disruptive and immediate: the runtime process is killed and relaunched. In-flight requests on this node fail, and all warm/loaded models are evicted and must reload from cold on next use. The process comes back up on its own once restarted - no separate start needed.'}
           </p>
           {runtimeActionError && (
@@ -2937,7 +2937,7 @@ export function GPUNodes() {
             Clear the configured control driver (<span className="font-mono text-foreground">{controlStatus?.driver}</span> / <span className="font-mono text-foreground">{controlStatus?.identifier}</span>) for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            Start/Stop/Restart/Logs will stop working on this node until a driver is configured again (via Accept or Set Manually). This does not stop the runtime itself - it only removes the mesh's ability to control it.
+            Start/Stop/Restart/Logs will stop working on this node until a driver is configured again (via Accept or Set Manually). This does not stop the runtime itself - it only removes the marbor's ability to control it.
           </p>
           {controlError && <p className="text-sm text-destructive">{controlError}</p>}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">

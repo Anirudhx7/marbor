@@ -153,7 +153,7 @@ function NodeVramCard({ node }: { node: any }) {
         </>
       ) : (
         <p className="text-xs text-muted-foreground font-medium">
-          VRAM totals unavailable - nvidia-smi reads the mesh host only.
+          VRAM totals unavailable - nvidia-smi reads the marbor host only.
         </p>
       )}
     </div>
@@ -298,7 +298,7 @@ function ModelDetailPanel({
   const handlePull = (variant: ModelVariantFit) => {
     if (!nodeName) return;
     // Disk space is a hard block, no override (unlike VRAM's confirm-anyway
-    // above) - unlike VRAM, free disk isn't a transient snapshot the mesh's
+    // above) - unlike VRAM, free disk isn't a transient snapshot the marbor's
     // own scheduling causes to fluctuate wrongly; a pull exceeding free disk
     // WILL fail. The Pull button is already disabled for this case (see
     // render below); this is a defense-in-depth guard against any stale-prop
@@ -418,7 +418,7 @@ function ModelDetailPanel({
           <div className="space-y-2">
             {details.docker_deployed && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 leading-normal">
-                This node's runtime runs in Docker - the disk figures below reflect the host machine, not necessarily the container's own storage volume. The mesh checks the container's real free space before actually pulling, so a pull is never started if it would genuinely run out of room.
+                This node's runtime runs in Docker - the disk figures below reflect the host machine, not necessarily the container's own storage volume. The marbor checks the container's real free space before actually pulling, so a pull is never started if it would genuinely run out of room.
               </p>
             )}
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
@@ -945,7 +945,7 @@ export function ModelAdvisor() {
 
       {sysInfo && (
         <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs shadow-sm">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Mesh Host</span>
+          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Marbor Host</span>
           <span className="flex items-center gap-1.5">
             <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-foreground font-semibold">{sysInfo.cpu_cores} cores</span>

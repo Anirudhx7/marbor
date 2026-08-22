@@ -5,11 +5,11 @@
 // instead of runtime name.
 //
 // The agent never persists control config itself (P43 Step 3 design
-// decision): the mesh's Admin API constructs {driver, identifier,
+// decision): the marbor's Admin API constructs {driver, identifier,
 // start_command} from its own store-backed router.NodeControlSetting cache
 // at dispatch time and includes it in the POST body, and the agent builds
-// the ControlDriver fresh per-request from exactly what the mesh tells it.
-// A request with no driver configured (empty "driver" field) means the mesh
+// the ControlDriver fresh per-request from exactly what the marbor tells it.
+// A request with no driver configured (empty "driver" field) means the marbor
 // itself has nothing configured for this node - the agent returns the exact
 // error marbor-agent-capabilities.md section 5.6 mandates, never a guess.
 //
@@ -37,7 +37,7 @@ import (
 var controlActionTimeout = 30 * time.Second
 
 // controlActionRequest is the body POST /v1/runtime/{start,stop,restart}
-// expects - constructed by the mesh's Admin API from its own store-backed
+// expects - constructed by the marbor's Admin API from its own store-backed
 // config, never read from any agent-local state (there is none).
 type controlActionRequest struct {
 	Driver     string `json:"driver"`
@@ -161,7 +161,7 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 	}
 
 	// The agent has no persisted control config of its own - an empty
-	// driver means the mesh itself has nothing configured for this node.
+	// driver means the marbor itself has nothing configured for this node.
 	// This is the exact error marbor-agent-capabilities.md section 5.6
 	// mandates, never a guessed driver.
 	if req.Driver == "" {
@@ -200,7 +200,7 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 
 // handleRuntimeLogs is the POST /v1/runtime/logs handler, capability
 // "runtime.logs". Unlike start/stop/restart this is a pure read - it never
-// mutates the node - but still needs the mesh to inject driver/identifier on
+// mutates the node - but still needs the marbor to inject driver/identifier on
 // every call, same as the other three actions, since the agent holds no
 // persisted control config of its own.
 func (s *Server) handleRuntimeLogs(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +247,7 @@ func (s *Server) handleRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 // differently-sized volume/mount than wherever the container actually
 // persists its data. That gap is exactly what let a disk-full pull fail deep
 // into a multi-GB transfer instead of being caught before it started - the
-// mesh's pre-pull disk-fit gate (admin.go's handleNodePull) was already
+// marbor's pre-pull disk-fit gate (admin.go's handleNodePull) was already
 // correct, it just had no way to see the container's real numbers before
 // this endpoint existed.
 type diskStatsResponse struct {

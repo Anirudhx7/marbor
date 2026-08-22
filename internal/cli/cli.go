@@ -63,7 +63,7 @@ func resolveCred(flagVal, envKey string) string {
 
 // normalizeServerURL strips a trailing slash, matching NewClient's own
 // normalization (client.go) - without this, a session saved against
-// "http://mesh:8080/" would never match a later "--server http://mesh:8080"
+// "http://marbor:8080/" would never match a later "--server http://marbor:8080"
 // (or vice versa), silently missing the saved-session fallback with no
 // indication why.
 func normalizeServerURL(s string) string {
@@ -185,11 +185,11 @@ func envOr(key, def string) string {
 }
 
 // authenticatedClient builds a Client for a command that requires a session
-// (mesh nodes, mesh models). Missing credentials is a user error (1), not an
+// (marbor nodes, marbor models). Missing credentials is a user error (1), not an
 // auth error (4) - auth was never attempted against the server. Resolution
 // priority: --username/--password flag/env > the saved session file written
 // by "marbor login" (lowest priority, and only used when it was saved
-// against this same --server - a saved session for one mesh must never be
+// against this same --server - a saved session for one marbor must never be
 // silently replayed against a different one). There is deliberately no
 // --token/MARBOR_TOKEN path - see newFlagSet's doc comment.
 func authenticatedClient(flags *globalFlags) (*Client, error) {
