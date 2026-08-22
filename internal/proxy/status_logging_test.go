@@ -45,7 +45,7 @@ type requestLogEntry struct {
 func fetchRequestEntries(t *testing.T, a *admin.Server) []requestLogEntry {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/admin/requests", nil)
-	req.AddCookie(&http.Cookie{Name: "mesh_session", Value: a.AdminToken()})
+	req.AddCookie(&http.Cookie{Name: "marbor_session", Value: a.AdminToken()})
 	rec := httptest.NewRecorder()
 	a.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {

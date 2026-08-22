@@ -231,7 +231,7 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		// node_control holds the per-node ControlDriver configuration (P43,
-		// node-agent-capabilities.md section 5.5) - none of these columns
+		// marbor-agent-capabilities.md section 5.5) - none of these columns
 		// are secrets (no token/key here), unlike marbor_agent, so no
 		// secretbox encryption applies. discovered_evidence is a JSON array
 		// stored as TEXT, same convention as other JSON-in-TEXT columns in
@@ -426,7 +426,7 @@ func (s *sqliteStore) migrate() error {
 
 		// benchmark_runs is the history table for the in-dashboard hardware
 		// benchmark page (evict -> N cold samples -> N warm samples via the
-		// mesh's own /v1/chat/completions). No secrets here - R8 doesn't apply.
+		// marbor's own /v1/chat/completions). No secrets here - R8 doesn't apply.
 		// spill_counters is a durable, increment-in-place count of requests
 		// per key x served_by ("local", a cloud provider name, or "blocked"
 		// for a local_only policy rejection). Bounded by keys x providers -
@@ -1028,7 +1028,7 @@ func (s *sqliteStore) DeleteNode(name string) error {
 			return nil
 		}
 	}
-	// A stale node-agent token for a deleted node is a real dangling-secret
+	// A stale marbor-agent token for a deleted node is a real dangling-secret
 	// concern (R8), so it is cleaned up here even though node_overrides/
 	// node_drain rows for a deleted node are left behind by the existing
 	// pattern - don't invent broader cleanup discipline beyond this.
@@ -1095,7 +1095,7 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // whole row, so any column this statement doesn't name reverts to its
 // column default - the exact mechanism by which an older binary's write
 // (naming only the columns its own compiled code knows about) would
-// silently NULL a newer column like tls_fingerprint on a mesh-binary
+// silently NULL a newer column like tls_fingerprint on a marbor-binary
 // downgrade. DO UPDATE SET only ever touches the columns it explicitly
 // names; a column outside that list keeps its current stored value
 // regardless of what the calling binary knows about, which is what makes
@@ -1371,7 +1371,7 @@ func (s *sqliteStore) DeleteMarborAgent(name string) error {
 // UpsertNodeControlDiscovered records what the most recent probe found,
 // without touching the operator-accepted configured/driver/identifier
 // columns - a re-scan must never silently change what lifecycle actions
-// read (node-agent-capabilities.md section 5.6).
+// read (marbor-agent-capabilities.md section 5.6).
 func (s *sqliteStore) UpsertNodeControlDiscovered(name, driver, identifier string, evidence []string) error {
 	evJSON, err := json.Marshal(evidence)
 	if err != nil {
@@ -1643,7 +1643,7 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 //
 // Caveat: request_log is trimmed to the last 1000 rows (see AppendRequest),
 // unlike the global check which sums from untrimmed hourly_buckets. On a
-// very busy mesh with many keys, a key's true monthly spend could exceed
+// very busy marbor with many keys, a key's true monthly spend could exceed
 // what's summed here if older rows already fell out of the 1000-row window.
 // Acceptable for now (daily caps are the primary use case and rarely see
 // 1000+ requests across all keys in a day); revisit with a per-key hourly

@@ -226,7 +226,7 @@ func TestRun_Nodes_WithLogin_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/admin/v1/login":
-			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "good-token"})
+			http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "good-token"})
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"role":"admin","username":"admin"}`))
 		case "/admin/v1/nodes":
@@ -261,7 +261,7 @@ func TestRun_Nodes_LoginFlow(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/admin/v1/login":
-			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "session-abc"})
+			http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "session-abc"})
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"role":"admin","username":"admin"}`))
 		case "/admin/v1/nodes":
@@ -303,7 +303,7 @@ func TestRun_Models_WithLogin_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/admin/v1/login":
-			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "good-token"})
+			http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "good-token"})
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"role":"admin","username":"admin"}`))
 		case "/admin/v1/models":
@@ -338,7 +338,7 @@ func TestRun_Models_Table(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/admin/v1/login":
-			http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "abc"})
+			http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "abc"})
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"role":"admin","username":"admin"}`))
 		default:

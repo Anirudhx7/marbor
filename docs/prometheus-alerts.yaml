@@ -10,7 +10,7 @@ groups:
           severity: warning
         annotations:
           summary: "Marbor node {{ $labels.node }} is down"
-          description: "Node {{ $labels.node }} has been unhealthy for more than 5 minutes. Check Ollama is running and reachable from the mesh host."
+          description: "Node {{ $labels.node }} has been unhealthy for more than 5 minutes. Check Ollama is running and reachable from the marbor host."
           runbook_url: "https://github.com/Anirudhx7/marbor/blob/main/docs/runbooks.md#node-down"
 
       # All nodes are unhealthy - every request will fall back to cloud or return 503.

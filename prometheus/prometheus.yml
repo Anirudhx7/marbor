@@ -4,4 +4,4 @@ global:
 scrape_configs:
   - job_name: 'marbor'
     static_configs:
-      - targets: ['marbor:9090', 'mesh:9090']
+      - targets: ['marbor:9090']

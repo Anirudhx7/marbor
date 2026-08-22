@@ -60,8 +60,8 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>/dev/null || true)
           CHANGED=""
           [ -n "$PREV_TAG" ] && CHANGED=$(git diff --name-only "$PREV_TAG" "${{ github.ref_name }}")
-          echo "mocknode=$(check_changed ollama-mesh-mocknode '^(cmd/mocknode/|Dockerfile\.mocknode$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
-          echo "demotraffic=$(check_changed ollama-mesh-demotraffic '^(cmd/demotraffic/|Dockerfile\.demotraffic$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
+          echo "mocknode=$(check_changed marbor-mocknode '^(cmd/mocknode/|Dockerfile\.mocknode$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
+          echo "demotraffic=$(check_changed marbor-demotraffic '^(cmd/demotraffic/|Dockerfile\.demotraffic$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push mocknode image
         if: steps.demo-changes.outputs.mocknode == 'true'
@@ -71,8 +71,8 @@ jobs:
           file: Dockerfile.mocknode
           push: true
           tags: |
-            ghcr.io/anirudhx7/ollama-mesh-mocknode:latest
-            ghcr.io/anirudhx7/ollama-mesh-mocknode:${{ github.ref_name }}
+            ghcr.io/anirudhx7/marbor-mocknode:latest
+            ghcr.io/anirudhx7/marbor-mocknode:${{ github.ref_name }}
 
       - name: Build and push demotraffic image
         if: steps.demo-changes.outputs.demotraffic == 'true'
@@ -82,8 +82,8 @@ jobs:
           file: Dockerfile.demotraffic
           push: true
           tags: |
-            ghcr.io/anirudhx7/ollama-mesh-demotraffic:latest
-            ghcr.io/anirudhx7/ollama-mesh-demotraffic:${{ github.ref_name }}
+            ghcr.io/anirudhx7/marbor-demotraffic:latest
+            ghcr.io/anirudhx7/marbor-demotraffic:${{ github.ref_name }}
 
       - name: Trigger Pages Deploy
         run: |

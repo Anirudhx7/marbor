@@ -5,11 +5,11 @@ Usage:
 
 Commands:
   version   print CLI and (if reachable) server version
-  status    print mesh health/status summary
+  status    print marbor health/status summary
   login     authenticate once and save the session locally (recommended)
   logout    remove the saved session
   whoami    show the CLI's saved identity (live-verified)
-  nodes     list nodes known to the mesh
+  nodes     list nodes known to marbor
   models    fleet-wide list, or pull/delete/unload/list on one node
   runtime   start/stop/restart/logs/drain/undrain/health on one node
   node      node control driver operations

@@ -6,13 +6,13 @@ services:
       - "9090:9090"
       - "8080:8080"
     volumes:
-      - mesh-data:/data
-      - mesh-backups:/backups
+      - marbor-data:/data
+      - marbor-backups:/backups
     environment:
       - MARBOR_DB_PATH=/data/marbor.db
       # Scheduled backups (P49, configurable from the Settings dashboard) go
-      # to a SEPARATE named volume from mesh-data on purpose: a `docker
-      # volume rm mesh-data` (or `docker-compose down -v`) then still leaves
+      # to a SEPARATE named volume from marbor-data on purpose: a `docker
+      # volume rm marbor-data` (or `docker-compose down -v`) then still leaves
       # every backup intact, and vice versa - one accidental wipe can't take
       # out both the live database and its backups at once.
       - MARBOR_BACKUP_DIR=/backups
@@ -29,5 +29,5 @@ services:
       start_period: 10s
 
 volumes:
-  mesh-data:
-  mesh-backups:
+  marbor-data:
+  marbor-backups:

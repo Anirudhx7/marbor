@@ -349,7 +349,7 @@ type NodeOverride struct {
 
 // MarborAgentRecord is the per-node Marbor Agent configuration: whether the
 // agent is enabled for this node, which port it listens on, and the opaque
-// bearer token the mesh presents when polling it. Token is encrypted at
+// bearer token the marbor presents when polling it. Token is encrypted at
 // rest by the sqliteStore implementation (AES-256-GCM, same primitive as
 // secretbox.go) - see .local/specs/node-agent.md section 5 for why this is
 // a distinct protocol/table from the client-facing API-key mechanism, not a
@@ -382,7 +382,7 @@ type MarborAgentRecord struct {
 // NodeControlRecord is the per-node ControlDriver configuration (P43) - how
 // the Marbor Agent starts/stops/restarts the inference runtime process on
 // this node. Discovered* is what the most recent probe found (evidence, not
-// a bare confidence label - node-agent-capabilities.md section 5.5);
+// a bare confidence label - marbor-agent-capabilities.md section 5.5);
 // Driver/Identifier/Configured is what an operator has explicitly accepted
 // and the only value lifecycle actions ever read. Configured is false
 // until an operator accepts a value - a node with no ControlDriver
@@ -555,7 +555,7 @@ type WarmStateRecord struct {
 }
 
 // AffinityRecord is one persisted sticky-session entry: which node a session
-// was last pinned to and when it was last seen. Persisted so a mesh restart
+// was last pinned to and when it was last seen. Persisted so a marbor restart
 // doesn't drop every in-flight sticky session and force a cold KV-cache
 // round-trip on the next request (see .local/audit-fixes-2026-08-03.md #7).
 // Still only ever a soft preference at restore time - Route always
@@ -585,7 +585,7 @@ type ModelConfig struct {
 	// Load-time / engine parameters - Ollama only. Injected into every routed
 	// request's Ollama "options" object; Ollama reloads the model automatically
 	// when a resident instance's options differ from an incoming request's, so
-	// no separate evict-then-reload step is needed on the mesh side. This list
+	// no separate evict-then-reload step is needed on the marbor side. This list
 	// is verified against Ollama's current api/types.go Options/Runner structs
 	// (github.com/ollama/ollama) - flash_attention, offload_kv_cache_to_gpu,
 	// rope_frequency_base/scale, use_mlock, and tensor_parallelism were removed
@@ -656,7 +656,7 @@ type ModelConfig struct {
 	System   *string `json:"system,omitempty"`
 	Template *string `json:"template,omitempty"`
 	// RPM/TPM cap requests/tokens per minute for this model across all keys.
-	// Enforced in-process (single mesh instance, no distributed state) by the
+	// Enforced in-process (single marbor instance, no distributed state) by the
 	// proxy; nil means unlimited.
 	RPM *int `json:"rpm,omitempty"`
 	TPM *int `json:"tpm,omitempty"`
@@ -664,7 +664,7 @@ type ModelConfig struct {
 
 // BenchmarkRun is one completed in-dashboard hardware benchmark run: N cold
 // samples (model evicted before each) and N warm samples (model resident
-// throughout) measured via the mesh's own /v1/chat/completions, same
+// throughout) measured via the marbor's own /v1/chat/completions, same
 // methodology as bench/ttft.go and bench/cold-loop.sh.
 type BenchmarkRun struct {
 	ID        int64     `json:"id"`

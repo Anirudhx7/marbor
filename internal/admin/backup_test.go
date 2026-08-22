@@ -161,7 +161,7 @@ func TestPruneOldBackups(t *testing.T) {
 			t.Fatalf("WriteFile: %v", err)
 		}
 	}
-	// A file that doesn't match the mesh-backup-*.db naming must survive
+	// A file that doesn't match the marbor-backup-*.db naming must survive
 	// pruning untouched - pruneOldBackups only manages its own files.
 	unrelated := filepath.Join(dir, "notes.txt")
 	if err := os.WriteFile(unrelated, []byte("keep me"), 0o644); err != nil {
@@ -208,7 +208,7 @@ func setBackupTargetDir(s *Server, dir string) {
 }
 
 // TestHandleListBackups_FiltersAndSortsNewestFirst verifies only
-// mesh-backup-*.db files are listed, newest first, ignoring unrelated files.
+// marbor-backup-*.db files are listed, newest first, ignoring unrelated files.
 func TestHandleListBackups_FiltersAndSortsNewestFirst(t *testing.T) {
 	s := newRealStoreTestServer(t)
 	dir := t.TempDir()
@@ -252,7 +252,7 @@ func TestHandleRestoreBackup_RejectsPathTraversal(t *testing.T) {
 	s.SetRestoreChannel(make(chan string, 1))
 	setBackupTargetDir(s, t.TempDir())
 
-	for _, bad := range []string{"../../etc/passwd", "sub/mesh-backup-20260730-120000.db", "/etc/passwd", "not-a-backup.db"} {
+	for _, bad := range []string{"../../etc/passwd", "sub/marbor-backup-20260730-120000.db", "/etc/passwd", "not-a-backup.db"} {
 		body, _ := json.Marshal(map[string]string{"filename": bad})
 		req := httptest.NewRequest(http.MethodPost, "/admin/backup/restore", bytes.NewReader(body))
 		rec := httptest.NewRecorder()
@@ -397,7 +397,7 @@ func validSQLiteBytes(t *testing.T) []byte {
 
 // TestHandleUploadBackup_ValidFileIsSavedAndListed verifies a genuine
 // SQLite file uploaded through the "+" attach control is saved under the
-// standard mesh-backup-<timestamp>.db name (so it passes backupFilenameRE
+// standard marbor-backup-<timestamp>.db name (so it passes backupFilenameRE
 // and shows up in the restore picker like any scheduled/manual backup) and
 // is reported back to the caller.
 func TestHandleUploadBackup_ValidFileIsSavedAndListed(t *testing.T) {

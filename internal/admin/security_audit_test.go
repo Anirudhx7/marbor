@@ -75,7 +75,7 @@ func TestLogin_SetsHttpOnlyCookie_NoTokenInBody(t *testing.T) {
 		}
 	}
 	if found == nil {
-		t.Fatal("no mesh_session cookie set on successful login")
+		t.Fatal("no marbor_session cookie set on successful login")
 	}
 	if !found.HttpOnly {
 		t.Error("session cookie must be HttpOnly")

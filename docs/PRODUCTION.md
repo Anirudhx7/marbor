@@ -75,7 +75,7 @@ services:
       - "8080:8080"
       - "9090:9090"
     volumes:
-      - mesh-data:/data       # persists marbor.db across restarts
+      - marbor-data:/data       # persists marbor.db across restarts
       - marbor-backups:/backups # scheduled backups (Settings > Backup & Restore)
     environment:
       - MARBOR_DB_PATH=/data/marbor.db
@@ -83,13 +83,13 @@ services:
     restart: unless-stopped
 
 volumes:
-  mesh-data:
+  marbor-data:
   marbor-backups:
 ```
 
-The `mesh-data` volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate `marbor.db` inside the volume - configure it via the dashboard at `http://localhost:8080` (`admin`/`admin`, forced password change on first login).
+The `marbor-data` volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate `marbor.db` inside the volume - configure it via the dashboard at `http://localhost:8080` (`admin`/`admin`, forced password change on first login).
 
-`marbor-backups` is a **separate** volume from `mesh-data`, on purpose: enable scheduled backups from the dashboard's Settings > Backup & Restore card (interval + retention count are configurable there), and a `docker volume rm mesh-data` or `docker-compose down -v` that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point `marbor-backups` at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as `mesh-data`. A manual "Download Backup Now" button on the same Settings card streams an on-demand copy straight to your browser at any time. The same card also lists scheduled backups and can restore one with a click - which stops and restarts the mesh process, so it requires `restart: unless-stopped` (already set above) or an equivalent supervisor. See [`backup.md`](backup.md) for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under `/backups` - any `.db` file works, on Docker or bare metal alike).
+`marbor-backups` is a **separate** volume from `marbor-data`, on purpose: enable scheduled backups from the dashboard's Settings > Backup & Restore card (interval + retention count are configurable there), and a `docker volume rm marbor-data` or `docker-compose down -v` that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point `marbor-backups` at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as `marbor-data`. A manual "Download Backup Now" button on the same Settings card streams an on-demand copy straight to your browser at any time. The same card also lists scheduled backups and can restore one with a click - which stops and restarts the marbor process, so it requires `restart: unless-stopped` (already set above) or an equivalent supervisor. See [`backup.md`](backup.md) for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under `/backups` - any `.db` file works, on Docker or bare metal alike).
 
 ---
 
@@ -269,7 +269,7 @@ marbor is intentionally lightweight. It does not buffer request/response bodies 
 | 50 concurrent streaming requests | ~80-120 MB RSS | 1-5% of one core |
 | 200 concurrent streaming requests | ~200-300 MB RSS | 5-15% of one core |
 
-The bottleneck at high concurrency is almost always the upstream Ollama nodes or the network, not the mesh process itself.
+The bottleneck at high concurrency is almost always the upstream Ollama nodes or the network, not the marbor process itself.
 
 ---
 
@@ -294,7 +294,7 @@ goroutine (`internal/audit/audit.go`, `internal/admin/admin.go`). Under sustaine
 design absorbs a burst without adding request latency until a queue actually fills, at which
 point new entries for that table are dropped (and logged) rather than blocking requests.
 
-_Measured 2026-08-13 with `bench/loadtest` (see `bench/README.md`) against a single mesh process,
+_Measured 2026-08-13 with `bench/loadtest` (see `bench/README.md`) against a single marbor process,
 a single `cmd/mocknode` backend (warm model, `LATENCY_MS=20`), on a Windows dev workstation - not
 production server hardware. Reproduced across two independent, isolated sweeps._
 
@@ -305,7 +305,7 @@ production server hardware. Reproduced across two independent, isolated sweeps._
 | First observed queue-full drop | ~500 req/s sustained, reproduced in both isolated test runs (`async logger: queue full`, `audit logger: queue full`, `async logger: stats queue full` all fired within the same run). |
 | Node-count sensitivity | Not yet tested - this measurement used the single-node baseline only, which is the primary claim for the SQLite write path itself. A secondary multi-node run is still open (see `bench/README.md`). |
 
-**Important caveat on what this number does and doesn't isolate:** this test setup (one mesh
+**Important caveat on what this number does and doesn't isolate:** this test setup (one marbor
 process, one mock backend node) could not cleanly separate "the 5000-slot async queues filled up"
 from "the single backend node's own per-request service time became the bottleneck first." Both
 plausibly contribute at the ~400-500 req/s knee. Treat "~500 req/s" as *this setup's* observed

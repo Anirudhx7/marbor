@@ -73,7 +73,7 @@ func TestClient_Login(t *testing.T) {
 			w.Write([]byte(`{"error":"invalid credentials"}`))
 			return
 		}
-		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "test-session-token"})
+		http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "test-session-token"})
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"role":"admin","username":"admin","must_change_password":false}`))
 	}))
@@ -90,7 +90,7 @@ func TestClient_Login(t *testing.T) {
 
 func TestClient_Login_MustChangePassword(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "fresh-session-token"})
+		http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "fresh-session-token"})
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"role":"admin","username":"admin","must_change_password":true}`))
 	}))
@@ -115,7 +115,7 @@ func TestClient_Login_ControlCharacterInPassword(t *testing.T) {
 		if !json.Valid(receivedBody) {
 			t.Fatalf("login request body is not valid JSON: %q", receivedBody)
 		}
-		http.SetCookie(w, &http.Cookie{Name: "mesh_session", Value: "tok"})
+		http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "tok"})
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"role":"admin","username":"admin"}`))
 	}))

@@ -14,11 +14,11 @@
 #
 # ADMIN_USERNAME/ADMIN_PASSWORD default to admin/admin (the demo-mode and
 # most-common first-admin-account default) - override if your account uses
-# something else. NODE_NAME is auto-detected when the mesh has exactly one
+# something else. NODE_NAME is auto-detected when marbor has exactly one
 # node; set it explicitly if you have more than one.
 set -uo pipefail
 
-: "${MESH_URL:=http://localhost:11434}"
+: "${MARBOR_URL:=${MESH_URL:-http://localhost:11434}}"
 : "${ADMIN_URL:=http://localhost:8080}"
 : "${ADMIN_USERNAME:=admin}"
 : "${ADMIN_PASSWORD:=admin}"
@@ -71,13 +71,13 @@ else:
   case "$node_auto" in
     AUTO*)
       NODE_NAME="${node_auto#AUTO }"
-      ok "NODE_NAME not set - auto-detected the mesh's only node: '${NODE_NAME}'"
+      ok "NODE_NAME not set - auto-detected marbor's only node: '${NODE_NAME}'"
       ;;
     NONE)
       fail "NODE_NAME not set and GET /admin/nodes returned no nodes - add a node first (dashboard's GPU Nodes page or POST /admin/nodes)"
       ;;
     MANY*)
-      fail "NODE_NAME not set and the mesh has multiple nodes (${node_auto#MANY }) - set NODE_NAME to the one you want to benchmark"
+      fail "NODE_NAME not set and marbor has multiple nodes (${node_auto#MANY }) - set NODE_NAME to the one you want to benchmark"
       ;;
   esac
 fi
@@ -134,7 +134,7 @@ if [[ "$model_check" == LOADED* ]]; then
 else
   echo "  WARN: model '${MODEL}' not currently resident (warm) on '${NODE_NAME}' (${model_check})."
   echo "  Not necessarily fatal - it may just not be warm yet. Checking whether it's at least"
-  echo "  pulled, via the mesh's own GET /admin/nodes/${NODE_NAME}/models (marbor agent"
+  echo "  pulled, via marbor's own GET /admin/nodes/${NODE_NAME}/models (marbor agent"
   echo "  'models.list' capability - runtime-agnostic across Ollama/vLLM/TGI/llama.cpp/MLX,"
   echo "  unlike hitting the node's raw API directly)..."
 
@@ -162,7 +162,7 @@ sys.exit(0 if model in names else 1)
     echo "  Ollama node: curl http://<node-ip>:11434/api/tags; for vLLM/TGI/llama.cpp/MLX,"
     echo "  check however that runtime reports its local model cache)."
   else
-    fail "GET ${ADMIN_URL}/admin/nodes/${NODE_NAME}/models returned HTTP ${models_resp} - check the mesh and node are up"
+    fail "GET ${ADMIN_URL}/admin/nodes/${NODE_NAME}/models returned HTTP ${models_resp} - check marbor and the node are up"
   fi
 fi
 

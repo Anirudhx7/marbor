@@ -4,10 +4,10 @@ package marboragent
 // (see .local/specs/node-agent.md section 16, node-agent-capabilities.md
 // Group 2): POST /v1/models, capability "models.pull". The agent runs the
 // locally-detected runtime's own model-download mechanism directly on the
-// node, rather than the mesh reaching the node's runtime HTTP API itself
+// node, rather than the marbor reaching the node's runtime HTTP API itself
 // (admin.go's handleNodePull, the pre-existing path kept for nodes without
 // an agent or an agent build predating this capability). This avoids two
-// real problems with the old path: the mesh's own outbound HTTP client
+// real problems with the old path: the marbor's own outbound HTTP client
 // timeout being the wrong thing to bound a transfer it isn't a party to,
 // and having no way to hand a Hugging Face token to the download at all.
 
@@ -44,7 +44,7 @@ type pullModelRequest struct {
 	// environment.
 	HFToken string `json:"hf_token,omitempty"`
 	// Driver/Identifier mirror controlActionRequest's fields (control_actions.go)
-	// - the mesh constructs them fresh from its own store-backed
+	// - the marbor constructs them fresh from its own store-backed
 	// router.ControlConfig cache on every request, same as it does for
 	// runtime.start/stop/restart. Empty when the node has no control driver
 	// configured (the common systemd/native-process case), in which case
@@ -310,7 +310,7 @@ type listModelsResponse struct {
 
 // listCommands maps a locally-detected runtime name to how this agent
 // enumerates models already downloaded on this node (not just currently
-// loaded - node.loadedModels, sourced from the mesh's own runtime probe,
+// loaded - node.loadedModels, sourced from the marbor's own runtime probe,
 // already covers that). Only Ollama exposes a real "everything downloaded"
 // primitive over HTTP (GET /api/tags); tgi/vllm/llamacpp/mlx have no such
 // endpoint - their own /v1/models (OpenAI-compat) reports only the
@@ -510,7 +510,7 @@ var deleteCommands = map[string]func(ctx context.Context, model, driver, identif
 
 // controlRequest carries the same Driver/Identifier fields as
 // pullModelRequest (actions.go)/controlActionRequest (control_actions.go) -
-// the mesh's per-request {driver, identifier} injection, threaded through
+// the marbor's per-request {driver, identifier} injection, threaded through
 // delete/unload the same way pull already is. A DELETE/POST with no body (or
 // an empty one) decodes to the zero value, which is exactly the pre-existing
 // behavior (native/no-driver-configured), so this is additive-only for every
@@ -741,7 +741,7 @@ func unloadViaOllama(ctx context.Context, _, model, driver, identifier string) e
 // "unloaded","args":["/app/llama-server",...,"--model","<full path>"]}}]}.
 // Args is what resolveLlamaCppRouterModelID matches against - the router's
 // own "id" is a bare filename stem (e.g. "Qwen2.5-0.5B-Instruct-Q4_K_M"),
-// never the Hugging Face "org/repo" every other mesh code path (hfRepoID,
+// never the Hugging Face "org/repo" every other marbor code path (hfRepoID,
 // hfCacheRepoID) uses to name an HF-cache-sourced model, so an org/repo
 // unload request can never exact-match "id" directly - see
 // resolveLlamaCppRouterModelID's doc comment for the resulting fix.
@@ -789,7 +789,7 @@ func fetchLlamaCppRouterModels(ctx context.Context, runtimeURL string) (*llamaCp
 	return &list, nil
 }
 
-// resolveLlamaCppRouterModelID maps model (as sent by mesh callers - either
+// resolveLlamaCppRouterModelID maps model (as sent by marbor callers - either
 // an already-exact router id, or the "org/repo" Hugging Face identifier
 // hfRepoID/hfCacheRepoID use for every other HF-cache-sourced model name in
 // this codebase) to the exact router "id" POST /models/unload requires.
@@ -857,7 +857,7 @@ func resolveLlamaCppRouterModelID(list *llamaCppRouterModelList, model string) (
 // detection cannot distinguish it from a plain single-model instance, so
 // this always confirms router mode via fetchLlamaCppRouterModels first and
 // refuses cleanly rather than guessing when it isn't there. model is then
-// resolved from mesh's own naming (org/repo, or an already-exact id) to the
+// resolved from marbor's own naming (org/repo, or an already-exact id) to the
 // router's own id via resolveLlamaCppRouterModelID before the real POST -
 // see that function's doc comment for why "org/repo" alone cannot be sent
 // to the router directly (P34).

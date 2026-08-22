@@ -12,8 +12,8 @@
 # Usage:
 #   ansible-playbook ansible/playbooks/register-gpus.yml \
 #     -e @my-inventory.yml \
-#     -e mesh_url=https://mesh.example.com \
-#     -e mesh_admin_username=admin \
+#     -e marbor_url=https://marbor.example.com \
+#     -e marbor_admin_username=admin \
 #     --ask-vault-pass \
 #     -e @secrets.vault.yml
 #
@@ -26,7 +26,7 @@
 
   vars:
     # Override on the command line (-e) or in a vars file included with -e @file.
-    mesh_admin_username: admin
+    marbor_admin_username: admin
     poll_retries: 10
     poll_delay: 5
     default_ollama_port: 11434
@@ -42,13 +42,13 @@
       ansible.builtin.assert:
         that:
           - mesh_url is defined
-          - mesh_url | length > 0
-          - mesh_admin_password is defined
-          - mesh_admin_password | length > 0
+          - marbor_url | length > 0
+          - marbor_admin_password is defined
+          - marbor_admin_password | length > 0
           - gpu_nodes is defined
           - gpu_nodes | length > 0
         fail_msg: >-
-          mesh_url, mesh_admin_password, and a non-empty gpu_nodes list are
+          marbor_url, marbor_admin_password, and a non-empty gpu_nodes list are
           required. See ansible/README.md.
 
     - name: Resolve node name, port, and runtime defaults
@@ -84,22 +84,22 @@
 
     - name: Log in to marbor Admin API (session reused for all nodes)
       ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/login"
+        url: "{{ marbor_url }}/admin/login"
         method: POST
         body_format: json
         body:
-          username: "{{ mesh_admin_username }}"
-          password: "{{ mesh_admin_password }}"
+          username: "{{ marbor_admin_username }}"
+          password: "{{ marbor_admin_password }}"
         status_code: 200
-      register: mesh_login
+      register: marbor_login
       no_log: true
 
-    - name: Register each node with the mesh (idempotent upsert by name)
+    - name: Register each node with marbor (idempotent upsert by name)
       ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/nodes"
+        url: "{{ marbor_url }}/admin/nodes"
         method: POST
         headers:
-          Cookie: "{{ mesh_login.set_cookie }}"
+          Cookie: "{{ marbor_login.set_cookie }}"
         body_format: json
         body:
           name: "{{ node.name }}"
@@ -114,10 +114,10 @@
 
     - name: Wait for each node's runtime endpoint to report healthy
       ansible.builtin.uri:
-        url: "{{ mesh_url }}/admin/nodes/{{ node.name }}"
+        url: "{{ marbor_url }}/admin/nodes/{{ node.name }}"
         method: GET
         headers:
-          Cookie: "{{ mesh_login.set_cookie }}"
+          Cookie: "{{ marbor_login.set_cookie }}"
         status_code: 200
         return_content: true
       register: node_poll

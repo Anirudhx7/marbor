@@ -681,7 +681,7 @@ SPCS-FEATURE-END */
   border-color: var(--text-muted);
   color: var(--text);
 }
-.stack-node.mesh {
+.stack-node.marbor {
   border-color: var(--accent);
   background: var(--accent-bg);
   color: var(--accent);
@@ -1162,10 +1162,10 @@ marbor <span class="b">--seed-node</span> <span class="g">"name=ollama-gpu,url=h
         <div class="num">3</div>
         <div>
           <h3>Send traffic to one URL</h3>
-          <p>Repoint your apps to the mesh. Same OpenAI-compatible endpoint - the routing happens behind it.</p>
+          <p>Repoint your apps to the marbor. Same OpenAI-compatible endpoint - the routing happens behind it.</p>
           <div class="code-wrap"><pre class="code"><span class="c"># your app, unchanged otherwise</span>
-base_url = <span class="g">"http://mesh:11434/v1"</span>
-<span class="c"># warm node picked automatically</span></pre><button class="copy-btn" aria-label="Copy" data-copy='base_url = "http://mesh:11434/v1"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+base_url = <span class="g">"http://marbor:11434/v1"</span>
+<span class="c"># warm node picked automatically</span></pre><button class="copy-btn" aria-label="Copy" data-copy='base_url = "http://marbor:11434/v1"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
         </div>
       </div>
     </div>
@@ -1249,7 +1249,7 @@ base_url = <span class="g">"http://mesh:11434/v1"</span>
         <div class="stack-arrow">→</div>
         <div class="stack-node litellm">LiteLLM<br><span style="font-size: 10px; color: var(--text-muted)">Auth & Provider Abstraction</span></div>
         <div class="stack-arrow">→</div>
-        <div class="stack-node mesh">marbor<br><span style="font-size: 10px; opacity: 0.85">GPU Scheduling & VRAM Routing</span></div>
+        <div class="stack-node marbor">marbor<br><span style="font-size: 10px; opacity: 0.85">GPU Scheduling & VRAM Routing</span></div>
         <div class="stack-arrow">→</div>
         <div class="stack-node runtime">Runtimes<br><span style="font-size: 10px; opacity: 0.85">Ollama, vLLM, TGI, llama.cpp, MLX</span></div>
         <div class="stack-arrow">→</div>

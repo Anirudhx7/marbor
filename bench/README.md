@@ -66,7 +66,7 @@ docker run --rm -v "${PWD}:/app" -w /app -e GOFLAGS=-buildvcs=false \
 - Two machines (or VMs) each running `ollama serve`
 - marbor configured with both nodes added via the dashboard's **GPU Nodes** page (or `--seed-node`)
 - The model you want to test pulled on both nodes (`ollama pull llama3.2:3b`)
-- A client API key issued from your running mesh instance (dashboard's API Keys page, or the admin API) - not a config file, marbor is fully DB-based
+- A client API key issued from your running marbor instance (dashboard's API Keys page, or the admin API) - not a config file, marbor is fully DB-based
 
 **Step 1 - Record cold TTFT (Scenario A)**
 
@@ -82,26 +82,26 @@ Restart Ollama to guarantee a cold state, then immediately run:
 
 The first request will be slow (model load + generation).  Record p50.
 
-**Step 2 - Warm the model on node-a via the mesh**
+**Step 2 - Warm the model on node-a via the marbor**
 
 Send one request through marbor to node-a so it loads the model:
 
 ```bash
 ./bench/ttft \
-  --url http://<mesh-ip>:11434 \
+  --url http://<marbor-ip>:11434 \
   --model llama3.2:3b \
   --n 1 \
   --api-key <your-key>
 ```
 
 Wait a few seconds for `/api/ps` to confirm the model is warm (visible in the
-dashboard's GPU Nodes page or via `curl http://<mesh-ip>:8080/admin/v1/nodes`).
+dashboard's GPU Nodes page or via `curl http://<marbor-ip>:8080/admin/v1/nodes`).
 
-**Step 3 - Record warm TTFT via mesh (Scenario B)**
+**Step 3 - Record warm TTFT via marbor (Scenario B)**
 
 ```bash
 ./bench/ttft \
-  --url http://<mesh-ip>:11434 \
+  --url http://<marbor-ip>:11434 \
   --model llama3.2:3b \
   --n 10 \
   --api-key <your-key>
@@ -131,7 +131,7 @@ cold first request).
 - `bash`, `curl`, and `python3` on PATH
 - `bench/ttft` built (see "Build the benchmark tool" above)
 - An admin account (default `admin`/`admin`) and a client API key from that
-  mesh instance
+  marbor instance
 - Real GPU hardware, not the demo/mock stack - see the honesty caveat above
 
 ### `bench/preflight.sh` - run this first
@@ -153,11 +153,11 @@ MODEL="llama3.2:3b-q4_k_m" ./bench/preflight.sh
 ```
 
 `ADMIN_USERNAME`/`ADMIN_PASSWORD` default to `admin`/`admin`, and `NODE_NAME`
-is auto-detected when the mesh has exactly one node. Only `MODEL` (the exact
+is auto-detected when the marbor has exactly one node. Only `MODEL` (the exact
 tag you're about to benchmark) can't be guessed - the script won't silently
 pick a model for you, since a wrong guess would produce misleading numbers.
 
-**Full form** (multi-node mesh, non-default admin account, or the optional
+**Full form** (multi-node marbor, non-default admin account, or the optional
 VRAM-fit check):
 
 ```bash
@@ -174,8 +174,8 @@ NODE_VRAM_GB=24 \
 
 | Env var | Required? | What it's for |
 |---|---|---|
-| `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
-| `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
+| `MESH_URL` | no (defaults to `http://localhost:11434`) | marbor proxy base URL |
+| `ADMIN_URL` | no (defaults to `http://localhost:8080`) | marbor admin API base URL |
 | `ADMIN_USERNAME` | no (defaults to `admin`) | an admin-role account's username |
 | `ADMIN_PASSWORD` | no (defaults to `admin`) | that account's password |
 | `NODE_NAME` | no (auto-detected if only one node exists) | exact node name, from `GET /admin/nodes` |
@@ -183,7 +183,7 @@ NODE_VRAM_GB=24 \
 | `MODEL_SIZE_GB` | no | enables the automatic 80%-VRAM fit check |
 | `NODE_VRAM_GB` | no | enables the automatic 80%-VRAM fit check |
 
-The model-pulled check goes through the mesh's own
+The model-pulled check goes through the marbor's own
 `GET /admin/nodes/{name}/models` API (via the node's marbor agent), so it works
 the same way regardless of which runtime that node is running - Ollama, vLLM,
 TGI, llama.cpp, or MLX. If the node has no marbor agent `models.list`
@@ -211,7 +211,7 @@ Same defaults/auto-detection as `preflight.sh` above (`admin`/`admin`,
 auto-detected `NODE_NAME`). `MODEL` and `API_KEY` are the two things that
 can't be guessed for you.
 
-**Full form** (multi-node mesh or non-default admin account):
+**Full form** (multi-node marbor or non-default admin account):
 
 ```bash
 MESH_URL="http://localhost:11434" \
@@ -229,8 +229,8 @@ The trailing `10` is the sample count (n) - omit it to default to 10. Requires
 
 | Env var | Required? | What it's for |
 |---|---|---|
-| `MESH_URL` | no (defaults to `http://localhost:11434`) | mesh proxy base URL |
-| `ADMIN_URL` | no (defaults to `http://localhost:8080`) | mesh admin API base URL |
+| `MESH_URL` | no (defaults to `http://localhost:11434`) | marbor proxy base URL |
+| `ADMIN_URL` | no (defaults to `http://localhost:8080`) | marbor admin API base URL |
 | `ADMIN_USERNAME` | no (defaults to `admin`) | an admin-role account's username, used to log in before each eviction |
 | `ADMIN_PASSWORD` | no (defaults to `admin`) | that account's password |
 | `NODE_NAME` | no (auto-detected if only one node exists) | exact node name to evict from |
@@ -253,7 +253,7 @@ current directory (overwritten on each run) if you need to inspect anything.
 | Scenario | Hardware | Model | n | p50 TTFT | p95 TTFT |
 |----------|----------|-------|---|----------|----------|
 | A - Cold direct | _your GPU + disk_ | _model_ | _n_ | ___ ms | ___ ms |
-| B - Warm via mesh | _your GPU_ | _model_ | _n_ | ___ ms | ___ ms |
+| B - Warm via marbor | _your GPU_ | _model_ | _n_ | ___ ms | ___ ms |
 | **Savings (A-B)** | | | | ___ ms | |
 
 Fill this table in from a real run and paste the numbers into the README or a
@@ -269,12 +269,12 @@ preceded by a real `keep_alive: 0` eviction confirmed via `/api/ps`.
 
 | Scenario | n | p50 TTFT | min | max |
 |----------|---|----------|-----|-----|
-| Cold via mesh | 3 | 17,325 ms | 11,466 ms | 18,128 ms |
-| Warm via mesh (spaced 20 s apart) | 10 | 8,079 ms | 1,915 ms | 13,785 ms |
+| Cold via marbor | 3 | 17,325 ms | 11,466 ms | 18,128 ms |
+| Warm via marbor (spaced 20 s apart) | 10 | 8,079 ms | 1,915 ms | 13,785 ms |
 | Warm direct-to-node (control) | 5 | 8,595 ms | 1,921 ms | 15,842 ms |
 
-Fastest warm sample via mesh: 401 ms.  The direct-to-node control shows the same
-warm profile as via-mesh, i.e. mesh proxy overhead is negligible.
+Fastest warm sample via marbor: 401 ms.  The direct-to-node control shows the same
+warm profile as via-marbor, i.e. marbor proxy overhead is negligible.
 
 Measurement notes: back-to-back `--n 10` runs overlap with the previous request's
 still-draining generation (the tool drains responses in a background goroutine),
@@ -301,7 +301,7 @@ bounded (5000-slot) buffered channels with drop-on-full, not the request gorouti
 (`internal/audit/audit.go`, `internal/admin/admin.go`'s `logChan`/`statsChan`). Nobody has
 measured what request rate that async design can actually absorb before it starts dropping
 entries, or how the SQLite WAL file grows under sustained write pressure. `bench/loadtest`
-sweeps request rate against the real mesh + real SQLite store and reports a latency/file-growth
+sweeps request rate against the real marbor + real SQLite store and reports a latency/file-growth
 curve - it does **not** compute a single "ceiling" number for you.
 
 **Honesty caveat - what this tool measures vs. doesn't:** unlike `bench/ttft`, mock nodes
@@ -316,7 +316,7 @@ capacity and inference-capacity claims separate.
 - It never issues `PRAGMA wal_checkpoint` during a run - that pragma actively forces a
   checkpoint rather than passively reading state, which would perturb the exact WAL-growth
   behavior under test. File sizes are the only signal used.
-- **The real ceiling is not in this table.** Watch the mesh's own log output (stdout or wherever
+- **The real ceiling is not in this table.** Watch the marbor's own log output (stdout or wherever
   it's redirected) during the run for the queue-full drop lines:
   - `audit logger: queue full, dropped audit entry for request ...`
   - `async logger: queue full, dropped request log ...`
@@ -329,8 +329,8 @@ capacity and inference-capacity claims separate.
   tested - never present the highest tested rate as if it were a proven ceiling.
 - **Check the `GENERATOR-SATURATED` flag** on every row before trusting it. If the tool's own
   sent RPS falls more than `--generator-slack-pct` (default 10%) short of the target RPS for a
-  step, that step's numbers reflect the load generator's own limits, not the mesh's - don't cite
-  a saturated-generator step as evidence of a mesh ceiling.
+  step, that step's numbers reflect the load generator's own limits, not the marbor's - don't cite
+  a saturated-generator step as evidence of a marbor ceiling.
 
 ## Setup
 
@@ -340,21 +340,21 @@ capacity and inference-capacity claims separate.
    RUNTIME=ollama NODE_NAME=loadtest-node PORT=21434 LATENCY_MS=20 \
      WARM_MODELS=llama3.2:3b ALL_MODELS=llama3.2:3b go run ./cmd/mocknode
    ```
-2. Register that node with the mesh (dashboard's GPU Nodes page, or `POST /admin/nodes` -
+2. Register that node with the marbor (dashboard's GPU Nodes page, or `POST /admin/nodes` -
    same auth as `bench/preflight.sh` uses, session login via `/admin/login`).
 3. Build the tool:
    ```bash
    go build -o bench/loadtest ./bench/loadtest
    ```
-4. Run the sweep, pointing `--db` at the mesh's actual database file - the same path the mesh
+4. Run the sweep, pointing `--db` at the marbor's actual database file - the same path the marbor
    itself was started with (its own `--db` flag or `MARBOR_DB_PATH` env var, default `marbor.db` in
    its working directory; `bench/loadtest`'s own `--db` flag is a separate, read-only pointer to
-   that same file for passive size sampling, not a shared setting with the mesh process):
+   that same file for passive size sampling, not a shared setting with the marbor process):
    ```bash
    ./bench/loadtest --url http://localhost:11434 --model llama3.2:3b \
      --api-key <your-key> --db marbor.db --rates 5,10,20,40,80,160 --step-duration 30s
    ```
-5. **Establish the single-node baseline first** - one mesh process, one mock backend. P53 is
+5. **Establish the single-node baseline first** - one marbor process, one mock backend. P53 is
    about the SQLite write path itself, which doesn't necessarily scale with inference node count,
    so treating "N nodes" as the primary axis would mislabel what's being measured. Only after the
    single-node baseline is recorded, optionally repeat with more registered mock nodes (e.g. 20)
@@ -367,10 +367,10 @@ capacity and inference-capacity claims separate.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--url` | `http://localhost:11434` | Base URL of the mesh proxy |
+| `--url` | `http://localhost:11434` | Base URL of the marbor proxy |
 | `--model` | `llama3.2:3b` | Model to request (must be warm on the target node) |
-| `--api-key` | _(empty)_ | Bearer API key for the mesh |
-| `--db` | `marbor.db` | Path to the mesh's SQLite database, for passive `.db`/`-wal` size sampling |
+| `--api-key` | _(empty)_ | Bearer API key for the marbor |
+| `--db` | `marbor.db` | Path to the marbor's SQLite database, for passive `.db`/`-wal` size sampling |
 | `--rates` | `5,10,20,40,80` | Comma-separated ascending list of target req/s to sweep |
 | `--step-duration` | `20s` | How long to sustain each rate before moving to the next |
 | `--endpoint` | `chat` | `generate` or `chat` |
