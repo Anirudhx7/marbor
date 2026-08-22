@@ -8,5 +8,5 @@
 - [ ] `go test ./...` passes
 - [ ] New code has tests (happy path + one failure case)
 - [ ] No fake/mock/random data in production paths
-- [ ] `config.example.yaml` updated if config fields changed
+- [ ] New settings fields wired DB-first: default in `config.go Validate()`, `settings` KV entry, admin API + UI control (see CONTRIBUTING.md)
 - [ ] Streaming stays unbuffered if `proxy.go` was touched

@@ -5,7 +5,6 @@ marbor-agent.exe
 ui/node_modules/
 internal/admin/web/dist/
 *.exe
-config.yaml
 
 # Audit logs
 *.log
