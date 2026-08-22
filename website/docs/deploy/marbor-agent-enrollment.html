@@ -345,20 +345,20 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h2 id="how-enrollment-actually-works">How enrollment actually works<a class="anchor" href="#how-enrollment-actually-works" aria-label="Link to section">#</a></h2>
 <p>Each node gets its own unique agent token, minted server-side and bound to that node's host - it is never a shared fleet-wide secret. A token copied to a different machine will not authenticate there; the marbor checks it against the specific host it was generated for. Tokens can be rotated or revoked at any time without touching other nodes.</p>
 <p>The install command the API hands back does <strong>not</strong> embed the real permanent token directly. It embeds a short-lived, single-use enrollment code instead (<code>MARBOR_ENROLL=</code>), which the agent exchanges for the real token via <code>POST /admin/agent/enroll</code> at install time - so the permanent bearer token never sits in shell history, SSH logs, or chat. (<code>install.sh</code> also accepts a raw <code>MARBOR_AGENT_SECRET=</code> as a manual path, but <code>MARBOR_ENROLL=</code> is what the API generates and what you should script against.)</p>
-<p><code>POST /admin/nodes/{name}/agent</code> - enables the marbor agent for an already-registered node and returns a ready-to-run install command with the enrollment code embedded:</p>
+<p><code>POST /admin/nodes/{name}/agent</code> - enables the marbor agent for an already-registered node and returns a ready-to-run install command with the enrollment code embedded. The <code>port</code> in the request body is <strong>the agent's own listening port</strong> (the binary's default is <code>9200</code>) - not the node's runtime endpoint port:</p>
 <div class="code-wrap"><pre class="code" data-lang="json"><code>{
   "node": "gpu01",
   "enabled": true,
-  "port": 11434,
+  "port": 9200,
   "token": "admin.&lt;opaque-permanent-token&gt;",
-  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=11434 sh",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=9200 sh",
   "install_command_windows": "..."
 }</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
   &quot;node&quot;: &quot;gpu01&quot;,
   &quot;enabled&quot;: true,
-  &quot;port&quot;: 11434,
+  &quot;port&quot;: 9200,
   &quot;token&quot;: &quot;admin.&lt;opaque-permanent-token&gt;&quot;,
-  &quot;install_command&quot;: &quot;curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=11434 sh&quot;,
+  &quot;install_command&quot;: &quot;curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=9200 sh&quot;,
   &quot;install_command_windows&quot;: &quot;...&quot;
 }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Run the returned <code>install_command</code> on the target host (via Ansible, SSH, whatever you use) and the agent exchanges the code for its real token and registers itself.</p>
@@ -375,7 +375,7 @@ for host in gpu01 gpu02 gpu03; do
   # Enable the agent, capture the install command
   INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes/$host/agent" \
     -H "Content-Type: application/json" \
-    -d '{"port":11434}' | jq -r '.install_command')
+    -d '{"port":9200}' | jq -r '.install_command')
 
   # Run it on the target host (SSH shown here; swap for your Ansible task)
   ssh "$host" "$INSTALL_CMD"
@@ -390,7 +390,7 @@ for host in gpu01 gpu02 gpu03; do
   # Enable the agent, capture the install command
   INSTALL_CMD=$(curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MARBOR_SERVER/admin/nodes/$host/agent&quot; \
     -H &quot;Content-Type: application/json&quot; \
-    -d '{&quot;port&quot;:11434}' | jq -r '.install_command')
+    -d '{&quot;port&quot;:9200}' | jq -r '.install_command')
 
   # Run it on the target host (SSH shown here; swap for your Ansible task)
   ssh &quot;$host&quot; &quot;$INSTALL_CMD&quot;

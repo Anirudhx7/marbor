@@ -143,10 +143,10 @@ drop-in compatibility.
 |--------|-----------|
 | `name` | **Yes** - must exactly match a node already registered with the marbor. Nothing is generated here (unlike `gpu_nodes` above) - a guessed name would silently target the wrong node. |
 | `host` | Yes - IP or hostname, used as the SSH target for installing the agent. |
-| `port` | Yes - the node's listening port, sent to `POST /admin/nodes/{name}/agent`. Must match the port the node was registered with. |
+| `agent_port` | No - defaults to `9200`. This is the port the marbor **agent itself** listens on - its own port, *not* the node's runtime endpoint port (11434/8000/...). The Admin API requires a port explicitly (`POST /admin/nodes/{name}/agent` rejects an absent/invalid one), so the playbook sends this value; override per entry with an `agent_port:` field or globally with `-e agent_port=....` |
 
 There's no `runtime` field here - agent enrollment doesn't need to know the
-node's runtime, only its name, host, and port.
+node's runtime, only its name and host.
 
 ## What `register-gpus.yml` does, per node
 
