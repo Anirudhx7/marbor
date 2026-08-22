@@ -1183,7 +1183,7 @@ export function SettingsPage() {
                 </p>
               </div>
             </div>
-            {!demoMode && !settings.liteLLMEnabled && (
+            {!settings.liteLLMEnabled && (
               <button
                 onClick={openAddCloudProvider}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
@@ -1223,22 +1223,20 @@ export function SettingsPage() {
                       <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
                         {provider.provider}
                       </Badge>
-                      {!demoMode && (
-                        <>
-                          <button onClick={() => moveCloudProvider(index, -1)} disabled={index === 0} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
-                            <ChevronUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => moveCloudProvider(index, 1)} disabled={index === cloudProviders.length - 1} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => openEditCloudProvider(provider)} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => setProviderToDelete(provider.name)} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
+                      <>
+                        <button onClick={() => moveCloudProvider(index, -1)} disabled={index === 0} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => moveCloudProvider(index, 1)} disabled={index === cloudProviders.length - 1} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => openEditCloudProvider(provider)} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setProviderToDelete(provider.name)} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
                     </div>
                   </div>
                 ))}
