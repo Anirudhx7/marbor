@@ -214,7 +214,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
       {/* Sidebar - desktop always visible, mobile slide-in */}
       <aside
         className={`
-          fixed left-0 top-0 z-50 w-64 bg-card border-r border-border flex flex-col h-screen
+          fixed left-0 top-0 z-50 w-64 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh
           transition-transform duration-300 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
