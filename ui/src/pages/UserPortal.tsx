@@ -114,7 +114,7 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
             )}
           </div>
           {pwSuccess && !showPwForm && (
-            <p className="text-sm text-green-500">Password changed successfully.</p>
+            <p className="text-sm text-green-600 dark:text-green-400">Password changed successfully.</p>
           )}
           {showPwForm && (
             <form onSubmit={handleChangePw} className="space-y-3">

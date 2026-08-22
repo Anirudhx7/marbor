@@ -67,10 +67,10 @@
     --destructive: 346.8 60% 40%; /* Softer red */
     --destructive-foreground: 45 23% 92%;
 
-    --success: 142.1 40% 35%; /* Softer green */
+    --success: 142.1 45% 31%; /* Softer green - AA on card for 10-12px text */
     --success-foreground: 45 23% 92%;
 
-    --warning: 24 75% 42%; /* Softer orange */
+    --warning: 24 80% 37%; /* Softer orange - AA on card for 10-12px text */
     --warning-foreground: 45 23% 92%;
 
     --info: 221.2 55% 40%; /* Softer blue */
@@ -322,6 +322,39 @@ input[type="checkbox"]:disabled {
 input[type="checkbox"]:focus-visible {
   outline: 2px solid hsl(var(--primary) / 0.4);
   outline-offset: 2px;
+}
+
+/* Mobile tap-target floor (375px sweep): icon-only buttons get a usable hit
+   area without changing desktop layout. Unlayered so it wins over utilities. */
+@media (max-width: 767px) {
+  button[class~="p-1"],
+  button[class~="p-1.5"],
+  button[class~="p-0.5"],
+  button[class~="p-2"] {
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Toggle switches (h-6 w-11): keep visual size, expand hit area */
+  button[class~="h-6"][class~="w-11"]::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
+  }
+
+  /* Tiny inline icons inside chips/badges: expand the hit area around them
+     instead of resizing, so the chip layout is untouched. */
+  .tap-expand {
+    position: relative;
+  }
+  .tap-expand::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
+  }
 }
 
 

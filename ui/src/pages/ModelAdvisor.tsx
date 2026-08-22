@@ -345,7 +345,7 @@ function ModelDetailPanel({
           <span className="text-xs text-muted-foreground block truncate">{model.id}</span>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1.5">
             <span className="flex items-center gap-1">
-              <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+              <Star className="w-3 h-3 text-amber-700 dark:text-amber-400 fill-amber-500" /> {formattedLikes}
             </span>
             <span className="flex items-center gap-1">
               <ArrowDown className="w-3.5 h-3.5" /> {formattedDownloads} downloads
@@ -593,7 +593,7 @@ function ModelCard({
         </div>
         <div className="flex items-center gap-1.5 shrink-0 ml-2">
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary text-[11px] font-medium text-foreground">
-            <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {formattedLikes}
+            <Star className="w-3 h-3 text-amber-700 dark:text-amber-400 fill-amber-500" /> {formattedLikes}
           </span>
           <button
             onClick={onToggleFavorite}
@@ -886,7 +886,7 @@ export function ModelAdvisor() {
         </div>
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${demoMode ? 'bg-success' : (loading && !isLive) ? 'bg-blue-500 animate-pulse' : isLive ? 'bg-success' : 'bg-amber-500'}`} />
-          <span className={`text-xs font-semibold ${demoMode ? 'text-success' : (loading && !isLive) ? 'text-blue-500 animate-pulse' : isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
+          <span className={`text-xs font-semibold ${demoMode ? 'text-success' : (loading && !isLive) ? 'text-blue-600 dark:text-blue-400 animate-pulse' : isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
             {demoMode ? 'Demo Mode' : (loading && !isLive) ? 'Connecting...' : isLive ? 'Live Data' : 'Disconnected'}
           </span>
         </div>

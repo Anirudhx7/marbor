@@ -700,7 +700,7 @@ export function SettingsPage() {
                 onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) || settings.proxyPort })}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               />
-              <p className="text-[10px] text-amber-500/80 mt-1">
+              <p className="text-[10px] text-amber-800 dark:text-amber-400 mt-1">
                 Requires a marbor restart to take effect - saving here only stores the new port.
               </p>
             </div>
@@ -832,7 +832,7 @@ export function SettingsPage() {
               <p className="text-[10px] text-muted-foreground mt-1">
                 Use 127.0.0.1:8080 to restrict the dashboard to localhost.
               </p>
-              <p className="text-[10px] text-amber-500/80 mt-1">
+              <p className="text-[10px] text-amber-800 dark:text-amber-400 mt-1">
                 Requires a marbor restart to take effect - changing this can lock you out until you reach it via the new address.
               </p>
             </div>
@@ -845,7 +845,7 @@ export function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
                 <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
-                <p className="text-[10px] text-amber-500/80 mt-1">Requires a marbor restart to take effect.</p>
+                <p className="text-[10px] text-amber-800 dark:text-amber-400 mt-1">Requires a marbor restart to take effect.</p>
               </div>
               <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
             </div>
@@ -1332,7 +1332,7 @@ export function SettingsPage() {
           <div className="mt-4 pt-4 border-t border-border">
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-orange-500" />
+                <Flame className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                 <div>
                   <p className="text-sm font-medium text-foreground">Thermal Watchdog</p>
                   <p className="text-xs text-muted-foreground">Auto-drain a node after sustained overheat (recovery requires manual undrain)</p>
@@ -1731,7 +1731,7 @@ export function SettingsPage() {
                 {backupDownloading ? 'Preparing download...' : 'Download Backup Now'}
               </button>
               {backupDownloadError && (
-                <p className="text-[10px] text-red-500 mt-1.5">{backupDownloadError}</p>
+                <p className="text-[10px] text-red-600 dark:text-red-400 mt-1.5">{backupDownloadError}</p>
               )}
               <p className="text-[10px] text-muted-foreground mt-1.5">
                 Downloads a consistent point-in-time copy of marbor.db to your browser, taken while the marbor keeps running.
@@ -1742,7 +1742,7 @@ export function SettingsPage() {
                 </p>
               )}
               {settings.backupLastError && (
-                <p className="text-xs text-red-500 mt-1.5">Last scheduled backup failed: {settings.backupLastError}</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">Last scheduled backup failed: {settings.backupLastError}</p>
               )}
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
@@ -1808,10 +1808,10 @@ export function SettingsPage() {
               </p>
             )}
             {restoreError && (
-              <p className="text-xs text-red-500 mb-3">{restoreError}</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mb-3">{restoreError}</p>
             )}
             {uploadError && (
-              <p className="text-xs text-red-500 mb-3">{uploadError}</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mb-3">{uploadError}</p>
             )}
             {uploadNotice && (
               <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{uploadNotice}</p>
