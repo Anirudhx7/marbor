@@ -34,6 +34,10 @@
     marbor_admin_username: admin
     poll_retries: 10
     poll_delay: 5
+    # The port the marbor AGENT listens on - its own port, NOT the node's
+    # runtime endpoint port (the agent binary's default is 9200). Override
+    # globally with -e agent_port=... or per entry with an agent_port: field.
+    agent_port: 9200
 
   vars_files:
     # Points at the example list by default so the playbook is runnable
@@ -55,19 +59,18 @@
           marbor_url, marbor_admin_password, and a non-empty agent_nodes list are
           required. See ansible/README.md.
 
-    - name: Verify every agent_nodes entry has name, host, and port
+    - name: Verify every agent_nodes entry has a name and host
       ansible.builtin.assert:
         that:
           - item.name is defined
           - item.name | length > 0
           - item.host is defined
           - item.host | length > 0
-          - item.port is defined
         fail_msg: >-
           agent_nodes entries require an explicit name (must match an
-          already-registered node), host, and port - none of these are
-          generated/defaulted here, unlike register-gpus.yml's gpu_nodes.
-          See ansible/README.md.
+          already-registered node) and host - neither is generated/defaulted
+          here, unlike register-gpus.yml's gpu_nodes. The agent port defaults
+          to 9200; set agent_port per entry to override. See ansible/README.md.
       loop: "{{ agent_nodes }}"
       loop_control:
         label: "{{ item.host }}"
@@ -131,7 +134,7 @@
           Cookie: "{{ marbor_login.set_cookie }}"
         body_format: json
         body:
-          port: "{{ node.port }}"
+          port: "{{ node.agent_port | default(agent_port) }}"
         status_code: 200
         return_content: true
       loop: "{{ agent_nodes }}"
@@ -179,7 +182,7 @@
         node_results: "{{ node_results | default([]) + [ {
           'name': presult.node.name,
           'host': presult.node.host,
-          'port': presult.node.port,
+          'agent_port': presult.node.agent_port | default(agent_port),
           'agent_enrolled_this_run': presult.node.name not in already_enrolled_names,
           'status': ('failed' if presult.failed | default(false) else 'healthy')
           } ] }}"
@@ -191,7 +194,7 @@
     - name: Agent enrollment summary
       ansible.builtin.debug:
         msg: >-
-          {{ item.status | upper }} - {{ item.name }} ({{ item.host }}:{{ item.port }}),
+          {{ item.status | upper }} - {{ item.name }} ({{ item.host }}, agent port {{ item.agent_port }}),
           agent (re-)enrolled this run: {{ item.agent_enrolled_this_run }}
       loop: "{{ node_results }}"
       loop_control:

@@ -371,9 +371,9 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 </table></div>
 <hr/>
 <h2 id="where-does-litellm-fit">Where does LiteLLM fit?<a class="anchor" href="#where-does-litellm-fit" aria-label="Link to section">#</a></h2>
-<p>LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting. </p>
-<p>Rather than a competitor, <strong>marbor operates as a complementary layer beneath LiteLLM</strong>. </p>
-<p>When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while <strong>marbor slots in directly below it as the physical scheduling and GPU orchestration layer</strong>. </p>
+<p>LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting.</p>
+<p>Rather than a competitor, <strong>marbor operates as a complementary layer beneath LiteLLM</strong>.</p>
+<p>When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while <strong>marbor slots in directly below it as the physical scheduling and GPU orchestration layer</strong>.</p>
 <p>This stack offers the best of both worlds:</p>
 <ol><li><strong>LiteLLM (Gateway)</strong>: Manages developer authentication, user quotas, and application-level routing.</li><li><strong>marbor (Scheduler)</strong>: Interacts directly with local GPU nodes, tracking <code>/api/ps</code> model warm-residency, managing queue depths, and executing cost-aware cloud overflow.</li></ol>
 <hr/>
