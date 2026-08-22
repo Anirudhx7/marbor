@@ -41,7 +41,7 @@
     - name: Verify required variables are set
       ansible.builtin.assert:
         that:
-          - mesh_url is defined
+          - marbor_url is defined
           - marbor_url | length > 0
           - marbor_admin_password is defined
           - marbor_admin_password | length > 0
