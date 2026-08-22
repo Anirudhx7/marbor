@@ -58,7 +58,7 @@ show the CLI's saved identity (live-verified)
 
 ### `nodes`
 
-list nodes known to the marbor
+list nodes known to marbor
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -241,8 +241,8 @@ _Hidden from `--help` output, but fully reachable._
 generate a shell completion script (bash, zsh, or fish)
 
 Generates a static completion script for the requested shell by walking
-the current command tree. The script never contacts the marbor or
-requires credentials, so it keeps working even when the marbor is
+the current command tree. The script never contacts marbor or
+requires credentials, so it keeps working even when marbor is
 unreachable or the operator isn't logged in.
 
 Examples:
