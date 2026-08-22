@@ -133,9 +133,9 @@ not an enforced default anywhere in the router or admin API. Rather than
 inventing a number that might silently point at the wrong port, this
 playbook **requires an explicit `port` for `vllm`, `tgi`, `llamacpp`, and
 `mlx`** and fails fast with a clear message if one is missing. Only
-`ollama` gets a default (`11434`), because that default already exists in
-the Admin API's own `POST /admin/nodes` behavior and matches Ollama's own
-standard port.
+`ollama` gets a default (`11434`), because that is Ollama's own standard
+port - the same number marbor's proxy deliberately listens on for
+drop-in compatibility.
 
 ## What each `agent_nodes` entry needs (`install-marbor-agent.yml`)
 
@@ -156,7 +156,7 @@ node's runtime, only its name, host, and port.
    defaults.
 3. Registers the node (`POST /admin/nodes`) - safe to always call. This
    endpoint upserts by name, confirmed idempotent (see
-   `internal/router/router.go` `AddNode`, `internal/admin/admin.go:1954`
+   `internal/router/router.go` `AddNode`, `internal/admin/admin.go:1970`
    `handleAddNode` - repeat calls with the same name update in place and
    return `200`, first call returns `201`).
 4. Polls `GET /admin/nodes/{name}` (10 attempts, 5 seconds apart by default -
