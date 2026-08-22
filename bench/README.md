@@ -95,7 +95,8 @@ Send one request through marbor to node-a so it loads the model:
 ```
 
 Wait a few seconds for `/api/ps` to confirm the model is warm (visible in the
-dashboard's GPU Nodes page or via `curl http://<marbor-ip>:8080/admin/v1/nodes`).
+dashboard's GPU Nodes page, or via `curl http://<marbor-ip>:8080/admin/v1/nodes`
+with an admin session cookie).
 
 **Step 3 - Record warm TTFT via marbor (Scenario B)**
 
@@ -161,7 +162,7 @@ pick a model for you, since a wrong guess would produce misleading numbers.
 VRAM-fit check):
 
 ```bash
-MESH_URL="http://localhost:11434" \
+MARBOR_URL="http://localhost:11434" \
 ADMIN_URL="http://localhost:8080" \
 ADMIN_USERNAME="admin" \
 ADMIN_PASSWORD="<that account's password>" \
@@ -174,7 +175,7 @@ NODE_VRAM_GB=24 \
 
 | Env var | Required? | What it's for |
 |---|---|---|
-| `MESH_URL` | no (defaults to `http://localhost:11434`) | marbor proxy base URL |
+| `MARBOR_URL` | no (defaults to `http://localhost:11434`) | marbor proxy base URL (the legacy `MESH_URL` spelling is still accepted as a fallback) |
 | `ADMIN_URL` | no (defaults to `http://localhost:8080`) | marbor admin API base URL |
 | `ADMIN_USERNAME` | no (defaults to `admin`) | an admin-role account's username |
 | `ADMIN_PASSWORD` | no (defaults to `admin`) | that account's password |
@@ -193,7 +194,8 @@ of failing outright.
 A clean run ends with:
 
 ```
-=== Preflight passed - safe to proceed with BENCH-RUNBOOK.md Step 2 ===
+=== [5/5] Preflight passed ===
+Safe to proceed with bench/cold-loop.sh.
 ```
 
 ### `bench/cold-loop.sh` - real n≥10 cold samples
@@ -214,7 +216,7 @@ can't be guessed for you.
 **Full form** (multi-node marbor or non-default admin account):
 
 ```bash
-MESH_URL="http://localhost:11434" \
+MARBOR_URL="http://localhost:11434" \
 ADMIN_URL="http://localhost:8080" \
 ADMIN_USERNAME="admin" \
 ADMIN_PASSWORD="<that account's password>" \
@@ -229,7 +231,7 @@ The trailing `10` is the sample count (n) - omit it to default to 10. Requires
 
 | Env var | Required? | What it's for |
 |---|---|---|
-| `MESH_URL` | no (defaults to `http://localhost:11434`) | marbor proxy base URL |
+| `MARBOR_URL` | no (defaults to `http://localhost:11434`) | marbor proxy base URL (the legacy `MESH_URL` spelling is still accepted as a fallback) |
 | `ADMIN_URL` | no (defaults to `http://localhost:8080`) | marbor admin API base URL |
 | `ADMIN_USERNAME` | no (defaults to `admin`) | an admin-role account's username, used to log in before each eviction |
 | `ADMIN_PASSWORD` | no (defaults to `admin`) | that account's password |
@@ -265,7 +267,7 @@ Measured 2026-07-02 through a deployed marbor v0.13.1 routing to a single
 consumer-GPU Ollama node.  Model: 8B Q4_K_M (~9.6 GB on disk; only ~3.3 GB of its
 ~10.6 GB runtime footprint fit in VRAM, so warm TTFT was partly CPU-bound - expect
 tighter warm numbers on a GPU that fully fits the model).  Cold samples each
-preceded by a real `keep_alive: 0` eviction confirmed via `/api/ps`.
+followed a real eviction of the model from VRAM, confirmed via `/api/ps`.
 
 | Scenario | n | p50 TTFT | min | max |
 |----------|---|----------|-----|-----|
