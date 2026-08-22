@@ -2,7 +2,7 @@
 
 <img src="ui/public/favicon.svg" width="112" alt="marbor logo">
 
-# marbor
+# Marbor
 
 ### The private AI inference control plane for self-hosted GPU fleets
 
@@ -11,10 +11,10 @@ Local hardware first. Cloud second. Full spend attribution.
 
 <br>
 
-[![Docs](https://img.shields.io/badge/DOCS-anirudh.social%2Fmarbor-1f2937?style=for-the-badge)](https://anirudh.social/marbor/)
-[![Live Demo](https://img.shields.io/badge/LIVE_DEMO-try_it_now-d4a853?style=for-the-badge&labelColor=0a0a0a)](https://anirudh.social/marbor/demo/)
-[![Releases](https://img.shields.io/badge/RELEASES-latest-1f2937?style=for-the-badge)](https://github.com/Anirudhx7/marbor/releases/latest)
-[![Issues](https://img.shields.io/badge/ISSUES-report_a_bug-1f2937?style=for-the-badge)](https://github.com/Anirudhx7/marbor/issues)
+[![Docs](https://img.shields.io/badge/DOCS-anirudh.social/marbor/docs-1f2937?style=for-the-badge&logo=gitbook&logoColor=d4a853)](https://anirudh.social/marbor/docs/)
+[![Live Demo](https://img.shields.io/badge/LIVE_DEMO-try_it_now-d4a853?style=for-the-badge&labelColor=0a0a0a&logo=github&logoColor=d4a853)](https://anirudh.social/marbor/demo/)
+[![Releases](https://img.shields.io/badge/RELEASES-latest-1f2937?style=for-the-badge&logo=github&logoColor=d4a853)](https://github.com/Anirudhx7/marbor/releases/latest)
+[![Issues](https://img.shields.io/badge/ISSUES-report_a_bug-1f2937?style=for-the-badge&logo=github&logoColor=d4a853)](https://github.com/Anirudhx7/marbor/issues)
 
 <br>
 
@@ -24,9 +24,9 @@ Warm-aware GPU routing, an OpenAI-compatible gateway, bearer-token auth with per
 and cost-metered cloud overflow to OpenAI or Anthropic that activates only when local capacity is
 fully saturated - turning your own hardware into a high-availability alternative to cloud LLM APIs.
 
-[![Build Status](https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml/badge.svg)](https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases)](https://github.com/Anirudhx7/marbor/releases/latest)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Anirudhx7/marbor/ci.yml?style=for-the-badge&logo=githubactions&logoColor=d4a853&label=BUILD&labelColor=0a0a0a&color=1f2937)](https://github.com/Anirudhx7/marbor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Anirudhx7/marbor?include_prereleases&style=for-the-badge&logo=github&logoColor=d4a853&label=RELEASE&labelColor=0a0a0a&color=1f2937)](https://github.com/Anirudhx7/marbor/releases/latest)
+[![License: Apache 2.0](https://img.shields.io/badge/LICENSE-Apache_2.0-1f2937?style=for-the-badge&logo=apache&logoColor=d4a853&labelColor=0a0a0a)](https://www.apache.org/licenses/LICENSE-2.0)
 
 <br>
 
@@ -54,7 +54,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
    This spins up `marbor`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
 
 2. **Access the dashboards**:
-   * **marbor Dashboard**: [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`)
+   * **Marbor Dashboard**: [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`)
    * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
 
 3. **Run a manual benchmark**:
@@ -114,9 +114,9 @@ git clone https://github.com/Anirudhx7/marbor && cd marbor
 docker compose up -d
 ```
 This starts:
-* **marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
-* **Prometheus**: Automatically scraping the marbor metrics endpoint.
-* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [marbor dashboard](grafana/marbor.json).
+* **Marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
+* **Prometheus**: Automatically scraping the Marbor metrics endpoint.
+* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [Marbor dashboard](grafana/marbor.json).
 
 ---
 
@@ -128,7 +128,7 @@ Enterprise teams deploying LLM-powered applications - coding agents, RAG pipelin
 - **Invisible cloud egress.** Without a local-first routing layer, traffic silently overflows to OpenAI/Anthropic at $0.15–$60/M tokens. Platform teams discover the bill at month-end.
 - **No GPU utilization visibility.** Ops teams have Grafana for CPU and memory. They have nothing for per-node VRAM residency, model warm state, or inference cost attribution across API keys.
 
-**marbor eliminates all three.** It sits between your applications and your GPU fleet, routing every request to the node that already has the model loaded in VRAM. Cloud overflow is explicit, metered, and off by default. Every token is counted, attributed to an API key, and valued against your configured cloud reference rate.
+**Marbor eliminates all three.** It sits between your applications and your GPU fleet, routing every request to the node that already has the model loaded in VRAM. Cloud overflow is explicit, metered, and off by default. Every token is counted, attributed to an API key, and valued against your configured cloud reference rate.
 
 ---
 
@@ -139,7 +139,7 @@ Client Application (Agent / RAG / Copilot)
     │
     ▼
 ┌───────────────────────────────────────────────────────┐
-│  marbor endpoint (:11434)                        │
+│  Marbor endpoint (:11434)                        │
 │                                                       │
 │  Auth ─► Rate Limit ─► Quota Check ─► Model Allow     │
 │    │                                                  │
@@ -209,36 +209,36 @@ Client Application (Agent / RAG / Copilot)
 
 The single most impactful metric for LLM infrastructure is **Time-to-First-Token (TTFT)**. Every cold model load adds tens of seconds of latency before the first token appears. In a multi-agent workflow making hundreds of calls per hour, this compounds into minutes of wasted wall-clock time per pipeline execution.
 
-marbor's warm-first routing avoids this: the router knows which models are resident in VRAM on which nodes at sub-3-second granularity and sends each request to a node that already has the model loaded.
+Marbor's warm-first routing avoids this: the router knows which models are resident in VRAM on which nodes at sub-3-second granularity and sends each request to a node that already has the model loaded.
 
 ### Measured numbers (real hardware, not estimates)
 
-Measured through a deployed marbor v0.13.1 instance routing to a single consumer-GPU
+Measured through a deployed Marbor v0.13.1 instance routing to a single consumer-GPU
 Ollama node, using [`bench/ttft.go`](bench/). Model: an 8B-parameter Q4_K_M model
 (~9.6 GB on disk). Cold = model evicted from VRAM (`keep_alive: 0`) before each request;
 warm = model already resident.
 
-| Scenario (via marbor) | n | p50 TTFT | min | max |
+| Scenario (via Marbor) | n | p50 TTFT | min | max |
 |---|---|---|---|---|
 | Cold (model must load from disk) | 3 | **17.3 s** | 11.5 s | 18.1 s |
 | Warm (model resident) | 10 | **8.1 s** | 1.9 s | 13.8 s |
 
-Fastest warm sample observed through the marbor: **0.4 s** - a 43× improvement over the
+Fastest warm sample observed through Marbor: **0.4 s** - a 43× improvement over the
 median cold start.
 
 Honest context for these numbers: on the benchmark node only ~3.3 GB of the model's
 ~10.6 GB runtime footprint fit in VRAM, so even "warm" first-token latency was partly
 CPU-bound and jittery. On a node where the model fully fits in VRAM, the warm path is
 the GPU's native prompt-eval speed and the cold-vs-warm gap widens further. A control
-run direct-to-node (bypassing the marbor) showed the same warm-latency profile, i.e. the
-marbor's proxy overhead is negligible. Reproduce it on your own hardware with the
+run direct-to-node (bypassing Marbor) showed the same warm-latency profile, i.e. the
+Marbor's proxy overhead is negligible. Reproduce it on your own hardware with the
 harness in [`bench/`](bench/).
 
 ---
 
 ## The Savings Angle
 
-This is the dashboard screenshot that sells itself: marbor tracks every token you served locally vs in the cloud, and shows you exactly how much that local inference saved compared to routing everything to OpenAI.
+This is the dashboard screenshot that sells itself: Marbor tracks every token you served locally vs in the cloud, and shows you exactly how much that local inference saved compared to routing everything to OpenAI.
 
 The math uses real parsed token counts from each response (`eval_count` from Ollama, `usage.total_tokens` from cloud), valued at your configured reference rate. When token data is unavailable, the dashboard shows "-" rather than a fabricated number. No fake math.
 
@@ -248,7 +248,7 @@ Platform engineers with a team routing through local GPU hardware typically see 
 
 ## Supported Backends
 
-marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the correct health probe and model-discovery call for each backend.
+Marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the correct health probe and model-discovery call for each backend.
 
 | Backend | `runtime:` value | Health check | Model discovery | Path routing |
 |---------|-----------------|--------------|-----------------|--------------|
@@ -321,7 +321,7 @@ make build
 ./marbor
 ```
 
-Point your LLM clients at `:11434`. marbor speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints - both `ollama` clients and OpenAI SDKs work unchanged.
+Point your LLM clients at `:11434`. Marbor speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints - both `ollama` clients and OpenAI SDKs work unchanged.
 
 **Integration guides:** [Open WebUI](docs/integrations/open-webui.md) · [Continue](docs/integrations/continue.md) · [LibreChat](docs/integrations/librechat.md) · [AWS EC2 deploy](docs/deploy/aws-ec2.md) · [GPU node registration (Ansible)](docs/deploy/gpu-node-registration.md) · [marbor agent enrollment (Ansible)](docs/deploy/marbor-agent-enrollment.md)
 
@@ -329,7 +329,7 @@ Point your LLM clients at `:11434`. marbor speaks the Ollama API and passes thro
 
 ## Configuration
 
-There is no config file. marbor is DB-first: everything lives in `marbor.db` (SQLite), and you configure it entirely through the admin dashboard or the REST API - nothing to hand-edit, nothing to redeploy for a settings change.
+There is no config file. Marbor is DB-first: everything lives in `marbor.db` (SQLite), and you configure it entirely through the admin dashboard or the REST API - nothing to hand-edit, nothing to redeploy for a settings change.
 
 **First boot:**
 ```bash
@@ -391,7 +391,7 @@ The router polls `/api/ps` on each node every 2 seconds. State is real-time, not
 
 ## Model Warmup
 
-marbor proactively keeps priority models loaded in VRAM between requests. Without this, idle models get evicted and the next request pays the cold-start tax.
+Marbor proactively keeps priority models loaded in VRAM between requests. Without this, idle models get evicted and the next request pays the cold-start tax.
 
 Configure it in the dashboard's **Settings → Global Warmup** card: enable it, set the interval (default every 5 minutes), and list your highest-traffic models. Per-node warmup overrides live on the **Warmup** page.
 
@@ -591,7 +591,7 @@ Import `grafana/marbor.json` into Grafana. Point the Prometheus datasource at `:
 
 ## Competitive Positioning
 
-| | marbor | LiteLLM | nginx/HAProxy | Portkey/Helicone |
+| | Marbor | LiteLLM | nginx/HAProxy | Portkey/Helicone |
 |---|---|---|---|---|
 | **GPU-aware routing** | ✅ Polls VRAM state every 2s | ❌ Treats Ollama as a dumb URL | ❌ No GPU visibility | ❌ Cloud-only |
 | **Warm-model routing** | ✅ Routes to node with model in VRAM | ❌ | ❌ | ❌ |
@@ -605,7 +605,7 @@ Import `grafana/marbor.json` into Grafana. Point the Prometheus datasource at `:
 | **Prometheus + Grafana** | ✅ 14 metrics + included dashboard | ✅ | Partial | ❌ |
 | **Local-first architecture** | ✅ GPU traffic never leaves your network | ❌ Cloud-centric | ✅ | ❌ |
 
-### Use marbor when:
+### Use Marbor when:
 
 - You have on-premises GPU hardware running Ollama, vLLM, TGI, llama.cpp, or MLX (Apple Silicon) and want to maximize utilization before paying for cloud tokens.
 - You need per-key auth, rate limiting, cost attribution, and a usage dashboard without standing up a Python service.

@@ -3,6 +3,7 @@ import { fetchCloudBudgetStatus, fetchSettings } from '../lib/api';
 import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
 import type { BudgetEntry, CloudBudgetStatus } from '../types';
+import { X, AlertTriangle, TrendingUp } from 'lucide-react';
 
 const POLL_MS = 30_000;
 
@@ -48,9 +49,6 @@ export function BudgetBanner() {
       fetchCloudBudgetStatus()
         .then(s => {
           if (!active) return;
-          // Skip the setState entirely when the payload is unchanged - an
-          // unnecessary re-render here is exactly the kind of update that
-          // can interrupt a pending route transition (see LESSONS.md L11).
           setStatus(prev => JSON.stringify(prev) === JSON.stringify(s) ? prev : s);
         })
         .catch(() => { if (active) setStatus(prev => prev === null ? prev : null); });
@@ -71,17 +69,43 @@ export function BudgetBanner() {
   const cap = period === 'daily' ? entry.dailyCap : entry.monthlyCap;
   const scope = entry.name ? `key "${entry.name}"` : 'global cloud budget';
 
+  const handleDismiss = () => {
+    setDismissed(true);
+    fetchSettings().then(s => {
+      const updated = { ...s, hide_budget_banner: true };
+      localStorage.setItem('demo_settings', JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('marbor-settings-change'));
+    });
+  };
+
   return (
-    <div className="relative bg-orange-500 text-black text-sm font-medium text-center py-1.5 px-9">
-      Cloud spend warning: {scope} at {Math.round(pct * 100)}% of its {period} cap
-      ({currency.symbol}{toDisplay(spent).toFixed(2)} / {currency.symbol}{toDisplay(cap).toFixed(2)}).
-      <button
-        onClick={() => setDismissed(true)}
-        aria-label="Dismiss warning"
-        className="absolute right-2 top-1/2 -translate-y-1/2 text-black/70 hover:text-black text-lg leading-none px-1"
-      >
-        &times;
-      </button>
+    <div className="relative animate-fade-in">
+      <div className="bg-warning/10 border border-warning/30 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center">
+            <AlertTriangle className="w-4 h-4 text-warning" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              Cloud spend warning
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {scope} at {Math.round(pct * 100)}% of its {period} cap
+              ({currency.symbol}{toDisplay(spent).toFixed(2)} / {currency.symbol}{toDisplay(cap).toFixed(2)})
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-warning/80" />
+          <button
+            onClick={handleDismiss}
+            aria-label="Dismiss warning"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
