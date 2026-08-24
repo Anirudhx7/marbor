@@ -44,40 +44,53 @@ func (r *Router) recordModelDigest(name, digest string) {
 // replaced with that new one. This is a targeted reconciliation, not a
 // change to the routing/scoring formula.
 func (r *Router) reconcileModelDigests(nodes []*NodeState) {
-	// Snapshot every currently-loaded (name -> digest) pair under each node's
-	// own lock first, then apply reconciliation under digestMu alone - never
-	// holding both at once. isModelWarm already locks n.mu before calling
+	// Snapshot the current reference digests first, so the node scan below
+	// can check each observed digest against them without holding digestMu
+	// and n.mu at once. isModelWarm already locks n.mu before calling
 	// digestMismatch (which takes digestMu); locking digestMu first here
 	// would invert that order and risk deadlock under concurrent access.
-	seenDigests := map[string]map[string]struct{}{} // name -> set of observed digests
+	r.digestMu.RLock()
+	oldDigests := make(map[string]string, len(r.modelDigests))
+	for name, digest := range r.modelDigests {
+		oldDigests[name] = digest
+	}
+	r.digestMu.RUnlock()
+	if len(oldDigests) == 0 {
+		return
+	}
+
+	// oldSeen[name] is only ever consulted for presence; replacement[name]
+	// only ever needs any one non-empty digest that differs from the old
+	// one - a full per-name set of every distinct digest observed is never
+	// otherwise used, so it isn't built.
+	oldSeen := make(map[string]bool, len(oldDigests))
+	replacement := make(map[string]string, len(oldDigests))
 	for _, n := range nodes {
 		n.mu.RLock()
 		for _, m := range n.LoadedModels {
 			if m.Name == "" || m.Digest == "" {
 				continue
 			}
-			if seenDigests[m.Name] == nil {
-				seenDigests[m.Name] = map[string]struct{}{}
+			old, tracked := oldDigests[m.Name]
+			if !tracked {
+				continue
 			}
-			seenDigests[m.Name][m.Digest] = struct{}{}
+			if m.Digest == old {
+				oldSeen[m.Name] = true
+			} else {
+				replacement[m.Name] = m.Digest
+			}
 		}
 		n.mu.RUnlock()
 	}
 
 	r.digestMu.Lock()
 	defer r.digestMu.Unlock()
-	for name, oldDigest := range r.modelDigests {
-		digests := seenDigests[name]
-		if len(digests) == 0 {
+	for name, newDigest := range replacement {
+		if oldSeen[name] {
 			continue
 		}
-		if _, oldSeen := digests[oldDigest]; oldSeen {
-			continue
-		}
-		for newDigest := range digests {
-			r.modelDigests[name] = newDigest
-			break
-		}
+		r.modelDigests[name] = newDigest
 	}
 }
 
