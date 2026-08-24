@@ -225,6 +225,19 @@ func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
 	}
 
+	// Anthropic error responses are a distinct envelope shape
+	// ({"type":"error","error":{...}}), not a zero-valued success body -
+	// unmarshaling one into anthropicResponse below would silently produce a
+	// translated {"message":{"content":""},"done":true}-shaped "success" with
+	// the real failure lost. Detect it up front and pass the raw error body
+	// through unchanged, same as the unparseable-shape branch just below.
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err == nil && envelope.Type == "error" {
+		return io.NopCloser(bytes.NewReader(raw))
+	}
+
 	var resp anthropicResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return io.NopCloser(bytes.NewReader(raw))
