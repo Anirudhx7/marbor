@@ -766,7 +766,7 @@ func main() {
 		go func() {
 			log.Printf("Metrics server listening on :%d/metrics", cfg.Metrics.Port)
 			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("Metrics server error: %v", err)
+				log.Fatalf("Metrics server error: %v", err)
 			}
 		}()
 	}
@@ -781,14 +781,14 @@ func main() {
 	go func() {
 		log.Printf("Admin dashboard listening on %s", cfg.Admin.BindAddress)
 		if err := adminHttpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Admin server error: %v", err)
+			log.Fatalf("Admin server error: %v", err)
 		}
 	}()
 
 	go func() {
 		log.Printf("Proxy listening on :%d", cfg.Proxy.Port)
 		if err := proxySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Proxy server error: %v", err)
+			log.Fatalf("Proxy server error: %v", err)
 		}
 	}()
 
