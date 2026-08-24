@@ -425,25 +425,38 @@ export function ModelConfigModal({
   const metaFields = META_FIELDS.filter((f) => isSupported(String(f.key)));
   const logitBiasSupported = isSupported('logit_bias');
 
-  const load = useCallback(async () => {
+  // isCancelled lets a node-switch mid-load discard the in-flight response
+  // instead of applying it - without this, switching the selected node while
+  // a load is in-flight could let a stale response overwrite the current
+  // form with the previous node's data, so a subsequent Save would silently
+  // target the wrong node while the UI still shows the newly-selected one.
+  // Mirrors the cancelled-flag pattern already used by the capabilities
+  // effect above.
+  const load = useCallback(async (isCancelled: () => boolean) => {
     if (!model || !selectedNode) return;
     setLoading(true);
     setError(null);
     setSuccess(false);
     try {
       const cfg = demoMode ? getMockModelConfig(model, selectedNode) : await fetchModelConfig(model, selectedNode);
+      if (isCancelled()) return;
       const fs = toFormState(model, selectedNode, cfg);
       if (!cfg && presetNumCtx !== undefined) fs.num_ctx = presetNumCtx;
       setForm(fs);
     } catch (e: unknown) {
+      if (isCancelled()) return;
       setError(e instanceof Error ? e.message : 'Failed to load model config');
       setForm(toFormState(model, selectedNode, null));
     } finally {
-      setLoading(false);
+      if (!isCancelled()) setLoading(false);
     }
   }, [model, selectedNode, demoMode, presetNumCtx]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load(() => cancelled);
+    return () => { cancelled = true; };
+  }, [load]);
 
   const setField = (key: FieldDef['key'], v: unknown) => {
     setForm((f) => (f ? { ...f, [key]: v } : f));
