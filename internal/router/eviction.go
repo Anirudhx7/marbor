@@ -939,6 +939,16 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	if est <= 0 {
 		return // unknown size
 	}
+	if est > totalBytes {
+		// This model can never fit on this node no matter what gets evicted -
+		// without this check, EvictForHeadroom's loop below would wipe every
+		// eligible non-pinned model trying to satisfy a condition that can
+		// never be met, and since this re-runs on every subsequent warmup
+		// tick (gated only by the cooldown), that full wipe would repeat
+		// indefinitely for as long as this oversized model is requested.
+		log.Printf("ensureHeadroom: model %s (%d bytes) exceeds node %s's total capacity (%d bytes) - skipping", model, est, nodeName, totalBytes)
+		return
+	}
 
 	// Reserve this model's estimated footprint now, and pick up whatever other
 	// models on this node are still mid-warmup (started, not yet poll-confirmed).
