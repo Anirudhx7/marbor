@@ -3235,6 +3235,11 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
+		if errors.Is(err, router.ErrUnloadUnsupported) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
 		if err != nil {
 			writeCorrelatedError(w, r, http.StatusBadGateway, "failed to unload model on node", err)
 			return
