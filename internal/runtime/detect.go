@@ -32,7 +32,17 @@ func DetectRuntime(ctx context.Context, nodeURL string, client *http.Client) (ru
 		return "tgi", true
 	}
 
-	// vLLM vs llama.cpp: both have /v1/models
+	// vLLM vs llama.cpp: both have /v1/models. MLX's /v1/models response is
+	// byte-for-byte identical to llama.cpp's here (same shape, no owned_by or
+	// other distinguishing field) - there is no signature to probe for, so an
+	// MLX node is unavoidably detected as "llamacpp" and then stays
+	// permanently unhealthy (llama.cpp's health probe needs a /health
+	// endpoint MLX doesn't expose). MLX must be set manually via an explicit
+	// runtime (never "auto") - router.go's PatchNode/AddNode set
+	// autoDetect=false whenever the runtime is set explicitly, and
+	// health.go's needsDetect only re-probes when autoDetect is true AND
+	// Runtime=="auto", so a manually-tagged mlx runtime is never silently
+	// overwritten by a later auto-detect re-run guessing llamacpp.
 	// vLLM sets owned_by to "vllm"; llama.cpp omits it or sets different value
 	detected, ok := probeV1Models(ctx, base+"/v1/models", client)
 	reached = reached || ok
