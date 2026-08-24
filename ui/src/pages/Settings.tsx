@@ -280,7 +280,7 @@ export function SettingsPage() {
     if (active && currentAppPath() === '/settings') {
       setCloudLoading(true);
     }
-    Promise.all([fetchSettings(), fetchCloudProviders().catch(() => mockCloudProviders)])
+    Promise.all([fetchSettings(), fetchCloudProviders()])
       .then(([settingsData, providersData]) => {
         if (!active || currentAppPath() !== '/settings') return;
         setSettings({
