@@ -1187,7 +1187,13 @@ func (r *Router) Start(ctx context.Context) {
 		case <-warmupTickerC:
 			go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) })
 		case <-scheduleTicker.C:
-			safeRun("runSchedules", func() { r.runSchedules(ctx, time.Now()) })
+			// Backgrounded like pingWarmupModels/FlushWarmState above - a
+			// warmup/unload schedule's WarmModels/UnloadModels call blocks
+			// synchronously on each model's HTTP round trip (up to
+			// warmupPingTimeout each), and running it inline on this select
+			// loop would delay every other periodic tick (health polling,
+			// discovery, warm-state flush) for as long as a slow node takes.
+			go safeRun("runSchedules", func() { r.runSchedules(ctx, time.Now()) })
 		case <-warmStateTicker.C:
 			go safeRun("FlushWarmState", r.FlushWarmState)
 		case <-predictiveTicker.C:
