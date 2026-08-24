@@ -418,7 +418,12 @@ verify_endpoint() {
 # TGI/llama.cpp :8080) and print each hit as it's found. Results land in
 # $TEMP_FOUND (one "ip:port:runtime" line per hit, deduped by the caller).
 probe_network() {
-  echo "Scanning local subnet for active GPU nodes (Ollama, vLLM, TGI, llama.cpp)..."
+  # Informational only - must go to stderr, not stdout: the caller captures
+  # this function's stdout wholesale (FOUND_IPS=$(probe_network)) and
+  # word-splits/cuts it expecting only "ip:port:runtime" data lines. A banner
+  # on stdout becomes bogus numbered entries in the node picker, corrupting
+  # the real discovered-node list and its indices.
+  echo "Scanning local subnet for active GPU nodes (Ollama, vLLM, TGI, llama.cpp)..." >&2
   PRIMARY_IP=$(get_primary_ip)
   IP_LIST=""
   if [ -n "$PRIMARY_IP" ]; then
