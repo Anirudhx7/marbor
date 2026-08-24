@@ -45,7 +45,15 @@ export function APIKeys() {
   const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
   const [editKey, setEditKey] = useState<APIKey | null>(null);
-  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCap: string; monthlyUsdCap: string; models: string[]; expiresAt: string; localOnly: boolean; allowLocalDegradation: boolean }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCap: '', monthlyUsdCap: '', models: [], expiresAt: '', localOnly: false, allowLocalDegradation: false });
+  // dailyUsdCapDisplay/monthlyUsdCapDisplay hold exactly what the admin typed,
+  // in the display currency - unlike the other numeric fields, these can't
+  // bind directly to the wire USD value, since the field is shown in
+  // whatever currency the admin has selected. They must NOT be recomputed
+  // from a stored USD value on every render (P106): parseFloat silently
+  // drops a trailing decimal point, so a round-trip through currency math on
+  // every keystroke turned typing "10.00" into "100+" purely from typing
+  // order. Converted to USD only once, at save time.
+  const [editForm, setEditForm] = useState<{ rateLimit: string; dailyLimit: string; monthlyLimit: string; dailyUsdCapDisplay: string; monthlyUsdCapDisplay: string; models: string[]; expiresAt: string; localOnly: boolean; allowLocalDegradation: boolean }>({ rateLimit: '', dailyLimit: '', monthlyLimit: '', dailyUsdCapDisplay: '', monthlyUsdCapDisplay: '', models: [], expiresAt: '', localOnly: false, allowLocalDegradation: false });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -55,8 +63,8 @@ export function APIKeys() {
       rateLimit: key.rateLimit != null ? String(key.rateLimit) : '',
       dailyLimit: key.dailyLimit != null ? String(key.dailyLimit) : '',
       monthlyLimit: key.monthlyLimit != null ? String(key.monthlyLimit) : '',
-      dailyUsdCap: key.dailyUsdCap != null ? String(key.dailyUsdCap) : '',
-      monthlyUsdCap: key.monthlyUsdCap != null ? String(key.monthlyUsdCap) : '',
+      dailyUsdCapDisplay: key.dailyUsdCap != null ? String(roundDisplay(toDisplay(key.dailyUsdCap))) : '',
+      monthlyUsdCapDisplay: key.monthlyUsdCap != null ? String(roundDisplay(toDisplay(key.monthlyUsdCap))) : '',
       models: key.allowedModels ?? [],
       expiresAt: key.expiresAt ?? '',
       localOnly: key.localOnly ?? false,
@@ -83,13 +91,13 @@ export function APIKeys() {
       if (isNaN(v) || v < 0) { setEditError('Monthly limit must be a non-negative integer'); return; }
       patch.monthly_limit = v;
     }
-    if (editForm.dailyUsdCap.trim()) {
-      const v = parseFloat(editForm.dailyUsdCap);
+    if (editForm.dailyUsdCapDisplay.trim()) {
+      const v = toUSD(parseFloat(editForm.dailyUsdCapDisplay));
       if (isNaN(v) || v < 0) { setEditError('Daily USD cap must be a non-negative number'); return; }
       patch.daily_usd_cap = v;
     }
-    if (editForm.monthlyUsdCap.trim()) {
-      const v = parseFloat(editForm.monthlyUsdCap);
+    if (editForm.monthlyUsdCapDisplay.trim()) {
+      const v = toUSD(parseFloat(editForm.monthlyUsdCapDisplay));
       if (isNaN(v) || v < 0) { setEditError('Monthly USD cap must be a non-negative number'); return; }
       patch.monthly_usd_cap = v;
     }
@@ -756,8 +764,8 @@ export function APIKeys() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5 sm:h-10 flex sm:items-end">Daily Cloud Spend Cap ({currency.code})</label>
               <input type="number" min="0" step="0.01"
-                value={editForm.dailyUsdCap.trim() === '' ? '' : roundDisplay(toDisplay(parseFloat(editForm.dailyUsdCap) || 0))}
-                onChange={e => setEditForm({ ...editForm, dailyUsdCap: e.target.value.trim() === '' ? '' : String(toUSD(parseFloat(e.target.value) || 0)) })}
+                value={editForm.dailyUsdCapDisplay}
+                onChange={e => setEditForm({ ...editForm, dailyUsdCapDisplay: e.target.value })}
                 placeholder="0 = unlimited"
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
@@ -765,8 +773,8 @@ export function APIKeys() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5 sm:h-10 flex sm:items-end">Monthly Cloud Spend Cap ({currency.code})</label>
               <input type="number" min="0" step="0.01"
-                value={editForm.monthlyUsdCap.trim() === '' ? '' : roundDisplay(toDisplay(parseFloat(editForm.monthlyUsdCap) || 0))}
-                onChange={e => setEditForm({ ...editForm, monthlyUsdCap: e.target.value.trim() === '' ? '' : String(toUSD(parseFloat(e.target.value) || 0)) })}
+                value={editForm.monthlyUsdCapDisplay}
+                onChange={e => setEditForm({ ...editForm, monthlyUsdCapDisplay: e.target.value })}
                 placeholder="0 = unlimited"
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
