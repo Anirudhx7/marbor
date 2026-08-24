@@ -1,6 +1,6 @@
 # Open WebUI
 
-Point Open WebUI at marbor instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; the marbor handles which node actually runs the model.
+Point Open WebUI at marbor instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; marbor handles which node actually runs the model.
 
 > **Open WebUI versions**
 >
@@ -126,7 +126,7 @@ Menu locations shift between releases, so configure by value rather than by foll
 1. Open Open WebUI and go to **Admin Panel > Settings > Connections**.
 2. Under the OpenAI-compatible connections section, click **Add Connection** (the `+` button).
 3. Enter the **Base URL** and **API Key** from the table above and save.
-4. Open WebUI calls `GET /v1/models` - the marbor returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.
+4. Open WebUI calls `GET /v1/models` - marbor returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.
 
 To use the Ollama-native connection type instead (only when marbor auth is disabled), go to **Connections > Ollama** and enter `http://<marbor-host>:11434` as the URL - no API key field is available in most current Open WebUI releases for this connection type.
 
@@ -165,7 +165,7 @@ If this fails, in order, check:
 
 **401 Unauthorized**
 
-Your API key is missing or wrong. Verify the key matches one of the keys shown on the marbor dashboard's **API Keys** page. The marbor requires the exact key string as a `Bearer` token - no substring matching.
+Your API key is missing or wrong. Verify the key matches one of the keys shown on the marbor dashboard's **API Keys** page. Marbor requires the exact key string as a `Bearer` token - no substring matching.
 
 **403 Forbidden on a specific model**
 

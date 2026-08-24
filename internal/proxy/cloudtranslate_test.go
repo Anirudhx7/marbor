@@ -396,7 +396,7 @@ func TestCloudFallbackAPIEmbedYieldsOllamaPluralShape(t *testing.T) {
 		t.Errorf("prompt_eval_count = %d, want 8", got.PromptEvalCount)
 	}
 
-	// /api/embed's request body already uses "input" - the marbor must not
+	// /api/embed's request body already uses "input" - marbor must not
 	// apply the prompt->input rewrite here (that's /api/embeddings-only).
 	// newCloudOnlyHandler's mock cloud has DefaultModel set, so the
 	// pre-existing, unrelated model-field rewrite still applies - assert on

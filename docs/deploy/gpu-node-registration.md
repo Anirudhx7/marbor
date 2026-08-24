@@ -1,6 +1,6 @@
 # GPU node registration (Ansible or any script)
 
-Register many GPU nodes' runtime endpoints with the marbor at once, without clicking
+Register many GPU nodes' runtime endpoints with marbor at once, without clicking
 through the dashboard per node. Every step below is a plain REST call against the
 Admin API - the GPU Nodes dashboard page is a thin wrapper over the same endpoint,
 so anything the UI can do, a script with an authenticated admin session can do

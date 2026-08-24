@@ -37,7 +37,7 @@ const certValidity = 10 * 365 * 24 * time.Hour
 // at certPath/keyPath if they don't already exist as a valid, matching
 // pair, and is a no-op (returns nil immediately) otherwise - so re-running
 // "agent service install" (upgrades, reinstalls) never silently regenerates
-// a cert and invalidates a fingerprint the marbor already has pinned (spec
+// a cert and invalidates a fingerprint marbor already has pinned (spec
 // section 3's idempotency requirement). Pass force=true (the regen-cert
 // subcommand's forced-regeneration path, spec section 4) to always
 // (re)generate regardless of what's currently on disk.
@@ -67,7 +67,7 @@ func EnsureAgentCert(certPath, keyPath string, force bool) error {
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: Name},
 		// NotBefore backdated 5 minutes: tolerates modest clock skew between
-		// the node generating this cert and the marbor verifying it later,
+		// the node generating this cert and marbor verifying it later,
 		// without weakening the pin itself (pinning is by fingerprint, not
 		// by validity window).
 		NotBefore:   time.Now().Add(-5 * time.Minute),

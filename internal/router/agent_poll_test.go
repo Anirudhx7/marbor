@@ -86,7 +86,7 @@ func TestPollAgentTelemetryNoAgentConfigured(t *testing.T) {
 }
 
 // TestPollAgentTelemetrySuccess verifies a configured, reachable agent's
-// telemetry is applied to the node, and that the marbor presents the
+// telemetry is applied to the node, and that marbor presents the
 // configured bearer token when polling it.
 func TestPollAgentTelemetrySuccess(t *testing.T) {
 	psSrv := nodePSServer()
@@ -324,7 +324,7 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 // TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings is a regression
 // test: when a GPU backend is selected (vendor known) but a cycle's
 // Collect() failed - reported as gpu.vendor set with an empty devices array,
-// not a nil gpu block - the marbor must NOT keep showing the previous poll's
+// not a nil gpu block - marbor must NOT keep showing the previous poll's
 // VRAM/temperature/power as current. AgentPresent stays true (the agent
 // itself is reachable) but every per-device reading must clear, the same way
 // a fully-absent gpu block already does (R1: a stale reading must never

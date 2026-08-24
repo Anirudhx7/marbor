@@ -263,7 +263,7 @@ func (c *Client) RuntimeAction(node, action string) error {
 }
 
 // RuntimeLogs calls POST /admin/nodes/{name}/runtime/logs?lines=N - a pure
-// read (P58), still a POST since the marbor injects driver/identifier into
+// read (P58), still a POST since marbor injects driver/identifier into
 // the agent-side request body, same as start/stop/restart. lines<=0 means
 // "use the server-side default" - omitted from the query string.
 func (c *Client) RuntimeLogs(node string, lines int) ([]string, error) {

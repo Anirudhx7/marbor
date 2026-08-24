@@ -4,7 +4,7 @@ package marboragent
 // (see .local/specs/node-agent.md section 16, node-agent-capabilities.md
 // Group 2): POST /v1/models, capability "models.pull". The agent runs the
 // locally-detected runtime's own model-download mechanism directly on the
-// node, rather than the marbor reaching the node's runtime HTTP API itself
+// node, rather than marbor reaching the node's runtime HTTP API itself
 // (admin.go's handleNodePull, the pre-existing path kept for nodes without
 // an agent or an agent build predating this capability). This avoids two
 // real problems with the old path: the marbor's own outbound HTTP client
@@ -44,7 +44,7 @@ type pullModelRequest struct {
 	// environment.
 	HFToken string `json:"hf_token,omitempty"`
 	// Driver/Identifier mirror controlActionRequest's fields (control_actions.go)
-	// - the marbor constructs them fresh from its own store-backed
+	// - marbor constructs them fresh from its own store-backed
 	// router.ControlConfig cache on every request, same as it does for
 	// runtime.start/stop/restart. Empty when the node has no control driver
 	// configured (the common systemd/native-process case), in which case

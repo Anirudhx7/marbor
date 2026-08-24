@@ -545,7 +545,7 @@ accepted yet), `2` server/Admin API error (unreachable, 5xx, agent dispatch fail
 authentication/authorization failure (401/403, including an expired or invalid saved session).
 
 `runtime start|stop|restart <node>` only works once a control driver has been accepted for that
-node (via `node control accept`, or the GPU Nodes page's "Runtime Control" panel) - the marbor never
+node (via `node control accept`, or the GPU Nodes page's "Runtime Control" panel) - marbor never
 guesses which service manager controls a node's runtime process.
 
 ### Running the CLI against a container

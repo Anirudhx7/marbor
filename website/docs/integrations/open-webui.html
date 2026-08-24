@@ -338,7 +338,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
     <div class="breadcrumb" aria-label="Breadcrumb"><a href="../../index.html">Home</a><span class="sep">/</span><a href="../../docs/index.html">Docs</a><span class="sep">/</span><span>integrations</span><span class="sep">/</span><span class="current">Open WebUI</span></div>
     <article class="doc-content">
       <h1 id="open-webui">Open WebUI<a class="anchor" href="#open-webui" aria-label="Link to section">#</a></h1>
-<p>Point Open WebUI at marbor instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; the marbor handles which node actually runs the model.</p>
+<p>Point Open WebUI at marbor instead of a single Ollama box and you get warm-first routing across all your GPU nodes, cost-aware cloud overflow when every node is busy, per-key auth and rate limits, and a usage dashboard - all with zero changes to Open WebUI itself. Open WebUI sends the same API calls it always has; marbor handles which node actually runs the model.</p>
 <blockquote><strong>Open WebUI versions</strong>  Menu names and connection screens change frequently between Open WebUI releases. This guide has been tested against Open WebUI 0.10.x. If your interface looks different, look for <strong>Admin Panel &gt; Settings &gt; Connections</strong>, or configure the provider using the Docker environment variables shown below - those values don't change between UI versions.</blockquote>
 <hr/>
 <h2 id="recommended-openai-compatible-connection">Recommended: OpenAI-compatible connection<a class="anchor" href="#recommended-openai-compatible-connection" aria-label="Link to section">#</a></h2>
@@ -452,7 +452,7 @@ volumes:
 <tbody><tr><td><strong>Base URL</strong></td><td><code>http://&lt;marbor-host&gt;:11434/v1</code></td></tr>
 <tr><td><strong>API Key</strong></td><td>Your <code>sk-marbor-...</code> key from the marbor dashboard's <strong>API Keys</strong> page</td></tr></tbody>
 </table></div>
-<ol><li>Open Open WebUI and go to <strong>Admin Panel &gt; Settings &gt; Connections</strong>.</li><li>Under the OpenAI-compatible connections section, click <strong>Add Connection</strong> (the <code>+</code> button).</li><li>Enter the <strong>Base URL</strong> and <strong>API Key</strong> from the table above and save.</li><li>Open WebUI calls <code>GET /v1/models</code> - the marbor returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.</li></ol>
+<ol><li>Open Open WebUI and go to <strong>Admin Panel &gt; Settings &gt; Connections</strong>.</li><li>Under the OpenAI-compatible connections section, click <strong>Add Connection</strong> (the <code>+</code> button).</li><li>Enter the <strong>Base URL</strong> and <strong>API Key</strong> from the table above and save.</li><li>Open WebUI calls <code>GET /v1/models</code> - marbor returns the union of models across all healthy nodes. Models appear in the model dropdown immediately.</li></ol>
 <p>To use the Ollama-native connection type instead (only when marbor auth is disabled), go to <strong>Connections &gt; Ollama</strong> and enter <code>http://&lt;marbor-host&gt;:11434</code> as the URL - no API key field is available in most current Open WebUI releases for this connection type.</p>
 <hr/>
 <h2 id="verifying-the-connection">Verifying the connection<a class="anchor" href="#verifying-the-connection" aria-label="Link to section">#</a></h2>
@@ -467,7 +467,7 @@ volumes:
 <p><strong>Models not appearing in the dropdown</strong></p>
 <ul><li>Confirm at least one node is reachable and has models loaded.</li><li>Check the marbor admin dashboard to verify nodes show as healthy.</li><li>The OpenAI connection type calls <code>/v1/models</code>; the Ollama connection type calls <code>/api/tags</code>. Both are served by the marbor.</li><li>If you configured the connection via Docker env var and models still don't appear, see the <code>ConfigVar</code> note above - a persisted value from a previous run may be overriding your env var.</li></ul>
 <p><strong>401 Unauthorized</strong></p>
-<p>Your API key is missing or wrong. Verify the key matches one of the keys shown on the marbor dashboard's <strong>API Keys</strong> page. The marbor requires the exact key string as a <code>Bearer</code> token - no substring matching.</p>
+<p>Your API key is missing or wrong. Verify the key matches one of the keys shown on the marbor dashboard's <strong>API Keys</strong> page. Marbor requires the exact key string as a <code>Bearer</code> token - no substring matching.</p>
 <p><strong>403 Forbidden on a specific model</strong></p>
 <p>The key you are using has a model allow-list set (edit it from the <strong>API Keys</strong> page) that does not include the requested model. Either add the model to the key's allow-list or use a key with no allow-list ("All models" - allow all).</p>
 <p><strong>Slow model list on startup</strong></p>

@@ -175,7 +175,7 @@ func isBlockedManagementPath(path string) bool {
 }
 
 // SetTrustProxyHeaders toggles whether X-Forwarded-For/X-Real-IP are trusted
-// for the admin request log's client IP. Pass true only when the marbor sits
+// for the admin request log's client IP. Pass true only when marbor sits
 // behind a trusted reverse proxy/load balancer that sets these headers itself
 // and is the sole path to the proxy port; otherwise a direct client can forge
 // them. Default false logs r.RemoteAddr (the real TCP peer) instead.

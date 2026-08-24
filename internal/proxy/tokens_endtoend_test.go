@@ -81,7 +81,7 @@ func TestTokenCountLargeEmbeddingResponseExceedsOldTailBuffer(t *testing.T) {
 // oversized embeddings response through the full proxy handler and checks
 // the marbor's own request_log (via /admin/requests/live), not just the
 // tokenCount() unit. This is the exact path P80 was filed against: the
-// backend genuinely reports a token count, but the marbor recorded tokens:0.
+// backend genuinely reports a token count, but marbor recorded tokens:0.
 func TestEmbeddingsLargeResponseTokenCountLoggedEndToEnd(t *testing.T) {
 	floats := make([]string, 2000)
 	for i := range floats {

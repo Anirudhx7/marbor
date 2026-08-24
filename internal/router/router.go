@@ -718,7 +718,7 @@ func (r *Router) NodeWarmupSetting(name string) NodeWarmup {
 
 // MarborAgentConfig is the router's in-memory view of a host's Marbor Agent
 // poll configuration: whether the agent is enabled, which port it listens
-// on, and the bearer token the marbor presents when polling it. One config
+// on, and the bearer token marbor presents when polling it. One config
 // per physical host, shared by every node row on that host.
 type MarborAgentConfig struct {
 	Enabled bool

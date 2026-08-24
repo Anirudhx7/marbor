@@ -299,7 +299,7 @@ export function PullProgressWidget() {
   const jobs = useSyncExternalStore(subscribe, getSnapshot);
 
   // Reload wipes pullProgress.ts's in-memory job map, even for pulls still
-  // running server-side - ask the marbor what's still in flight and resubscribe,
+  // running server-side - ask marbor what's still in flight and resubscribe,
   // once, the first time the app shell mounts.
   useEffect(() => {
     restoreActivePulls();

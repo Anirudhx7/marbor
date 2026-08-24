@@ -852,7 +852,7 @@ export function SettingsPage() {
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
                 <p className="text-sm font-medium text-foreground">Trust Proxy Headers</p>
-                <p className="text-xs text-muted-foreground">Trust X-Forwarded-For/X-Real-IP for the logged client IP. Only enable if the marbor sits behind a trusted reverse proxy - otherwise these headers are forgeable by any direct client.</p>
+                <p className="text-xs text-muted-foreground">Trust X-Forwarded-For/X-Real-IP for the logged client IP. Only enable if marbor sits behind a trusted reverse proxy - otherwise these headers are forgeable by any direct client.</p>
               </div>
               <Toggle on={settings.proxyTrustProxyHeaders} onToggle={() => setSettings({ ...settings, proxyTrustProxyHeaders: !settings.proxyTrustProxyHeaders })} />
             </div>
@@ -1732,7 +1732,7 @@ export function SettingsPage() {
                 <p className="text-[10px] text-red-600 dark:text-red-400 mt-1.5">{backupDownloadError}</p>
               )}
               <p className="text-[10px] text-muted-foreground mt-1.5">
-                Downloads a consistent point-in-time copy of marbor.db to your browser, taken while the marbor keeps running.
+                Downloads a consistent point-in-time copy of marbor.db to your browser, taken while marbor keeps running.
               </p>
               {settings.backupLastAt && (
                 <p className="text-xs text-muted-foreground mt-1.5">
@@ -1802,7 +1802,7 @@ export function SettingsPage() {
             </p>
             {restoreInitiated && (
               <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-3">
-                Restore initiated - the marbor is restarting now. This page will reconnect once it's back up.
+                Restore initiated - marbor is restarting now. This page will reconnect once it's back up.
               </p>
             )}
             {restoreError && (

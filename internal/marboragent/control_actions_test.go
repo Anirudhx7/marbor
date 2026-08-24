@@ -104,7 +104,7 @@ func TestHandleRuntimeLogs_ConfiguredSuccess(t *testing.T) {
 }
 
 // TestHandleRuntimeLogs_Unconfigured verifies the same mandated error as
-// start/stop/restart when the marbor sends no driver.
+// start/stop/restart when marbor sends no driver.
 func TestHandleRuntimeLogs_Unconfigured(t *testing.T) {
 	s := newControlActionTestServer()
 
@@ -174,7 +174,7 @@ func TestHandleRuntimeAction_ConfiguredSuccess(t *testing.T) {
 }
 
 // TestHandleRuntimeAction_Unconfigured verifies the exact error
-// marbor-agent-capabilities.md section 5.6 mandates when the marbor sends no
+// marbor-agent-capabilities.md section 5.6 mandates when marbor sends no
 // driver (nothing configured for this node) - never a guess.
 func TestHandleRuntimeAction_Unconfigured(t *testing.T) {
 	s := newControlActionTestServer()

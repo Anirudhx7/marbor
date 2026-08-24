@@ -216,7 +216,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               )}
               {node.prewarmDisabled && (
                 <span
-                  title="Predictive engine will not warm new models onto this node until re-enabled or the marbor restarts"
+                  title="Predictive engine will not warm new models onto this node until re-enabled or marbor restarts"
                   className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border whitespace-nowrap"
                 >
                   PREWARM OFF
@@ -1772,7 +1772,7 @@ export function GPUNodes() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Changing host or port re-points the marbor at a different address and resets this node's live health/warm state - you'll be asked to confirm.
+            Changing host or port re-points marbor at a different address and resets this node's live health/warm state - you'll be asked to confirm.
           </p>
           <label className="flex items-center gap-2 -mt-2 cursor-pointer">
             <input
@@ -1917,7 +1917,7 @@ export function GPUNodes() {
             <span className="text-foreground font-semibold">{pendingPatch?.url}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            The marbor will re-point at this new address immediately. This node's live health and warm-model state reset, since it's now treated as a different physical backend.
+            Marbor will re-point at this new address immediately. This node's live health and warm-model state reset, since it's now treated as a different physical backend.
           </p>
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
@@ -1957,7 +1957,7 @@ export function GPUNodes() {
             Clear the pinned TLS certificate fingerprint for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            This node reverts to requiring re-enrollment: the marbor will refuse to connect over HTTPS again until you probe and confirm a fingerprint for it. Not reversible from here - you'll need to re-pin afterward. In-flight requests are not affected.
+            This node reverts to requiring re-enrollment: marbor will refuse to connect over HTTPS again until you probe and confirm a fingerprint for it. Not reversible from here - you'll need to re-pin afterward. In-flight requests are not affected.
           </p>
           {agentError && (
             <p className="text-sm text-destructive">{agentError}</p>
@@ -2110,7 +2110,7 @@ export function GPUNodes() {
           </p>
           <p className="text-xs text-muted-foreground">
             {prewarmToToggle?.disabled
-              ? 'The predictive engine will not warm new models onto this node until re-enabled or the marbor restarts. Live traffic and warm-state routing are unaffected.'
+              ? 'The predictive engine will not warm new models onto this node until re-enabled or marbor restarts. Live traffic and warm-state routing are unaffected.'
               : 'The predictive engine will resume warming models onto this node based on usage patterns.'}
           </p>
           {actionError && (
@@ -2227,7 +2227,7 @@ export function GPUNodes() {
                   className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Port the agent process listens on for the marbor to poll (default 9200).
+                  Port the agent process listens on for marbor to poll (default 9200).
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -2752,7 +2752,7 @@ export function GPUNodes() {
             <span className="text-foreground font-semibold">{agentUseHttps ? 'https' : 'http'}://{agentNode?.host}:{agentPort}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            The marbor will use this address to reach the Agent going forward. This does not change this node's inference runtime endpoint. This also issues a new Agent token and invalidates the current one - you'll need to run the install command shown next on the node to re-enroll it before the marbor can reach it again.
+            Marbor will use this address to reach the Agent going forward. This does not change this node's inference runtime endpoint. This also issues a new Agent token and invalidates the current one - you'll need to run the install command shown next on the node to re-enroll it before marbor can reach it again.
           </p>
           {agentError && (
             <p className="text-sm text-destructive">{agentError}</p>
@@ -2799,7 +2799,7 @@ export function GPUNodes() {
             Regenerate the Agent token for <span className="text-foreground font-semibold">{agentNode?.name}</span>?
           </p>
           <p className="text-xs text-muted-foreground">
-            This immediately invalidates the currently-running agent's token - the marbor will refuse its connection until you run the new install command (shown next) on the node to re-enroll it. This does not change this node's inference runtime endpoint.
+            This immediately invalidates the currently-running agent's token - marbor will refuse its connection until you run the new install command (shown next) on the node to re-enroll it. This does not change this node's inference runtime endpoint.
           </p>
           {agentError && (
             <p className="text-sm text-destructive">{agentError}</p>
@@ -2844,7 +2844,7 @@ export function GPUNodes() {
           </p>
           <p className="text-xs text-muted-foreground">
             {runtimeActionConfirm === 'start' && 'Reversible: the runtime is idle before this. Any currently-loaded models stay unloaded until requests warm them back up. No in-flight requests are at risk since the runtime is not serving traffic yet.'}
-            {runtimeActionConfirm === 'stop' && 'Disruptive and immediate: any in-flight requests on this node fail right now, and all warm/loaded models are evicted from VRAM. The marbor routes new requests to other nodes, but this node serves nothing until you start it again.'}
+            {runtimeActionConfirm === 'stop' && 'Disruptive and immediate: any in-flight requests on this node fail right now, and all warm/loaded models are evicted from VRAM. Marbor routes new requests to other nodes, but this node serves nothing until you start it again.'}
             {runtimeActionConfirm === 'restart' && 'Disruptive and immediate: the runtime process is killed and relaunched. In-flight requests on this node fail, and all warm/loaded models are evicted and must reload from cold on next use. The process comes back up on its own once restarted - no separate start needed.'}
           </p>
           {runtimeActionError && (

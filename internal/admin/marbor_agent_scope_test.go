@@ -33,7 +33,7 @@ func TestGenerateMarborAgentTokenEmbedsScope(t *testing.T) {
 // handleEnableMarborAgent must mint an admin-scope token (today's default -
 // no Group 3 action exists yet to justify a lower tier) and persist that
 // scope alongside the token, and it must round-trip through GetMarborAgent -
-// the same record the marbor reads back on every subsequent admin request.
+// the same record marbor reads back on every subsequent admin request.
 func TestEnableMarborAgentPersistsAdminScope(t *testing.T) {
 	tmpDB := filepath.Join(t.TempDir(), "marbor-agent-scope.db")
 	st, err := store.Open(tmpDB)

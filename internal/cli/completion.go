@@ -14,9 +14,9 @@ import (
 // subcommand, and flag names into plain shell text.
 //
 // Deliberately no dynamic behavior: no network call, no Admin API request, no
-// authentication, ever. A completion script that requires the marbor to be
+// authentication, ever. A completion script that requires marbor to be
 // reachable would defeat its own purpose (tab-completing "marbor
-// runtime start <TAB>" must still work when the marbor is down or the operator
+// runtime start <TAB>" must still work when marbor is down or the operator
 // isn't logged in).
 //
 // Determinism: every walk below iterates root.Sub (and nested Sub) in

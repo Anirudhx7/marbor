@@ -8,7 +8,7 @@
 // decision): the marbor's Admin API constructs {driver, identifier,
 // start_command} from its own store-backed router.NodeControlSetting cache
 // at dispatch time and includes it in the POST body, and the agent builds
-// the ControlDriver fresh per-request from exactly what the marbor tells it.
+// the ControlDriver fresh per-request from exactly what marbor tells it.
 // A request with no driver configured (empty "driver" field) means the marbor
 // itself has nothing configured for this node - the agent returns the exact
 // error marbor-agent-capabilities.md section 5.6 mandates, never a guess.
@@ -161,7 +161,7 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 	}
 
 	// The agent has no persisted control config of its own - an empty
-	// driver means the marbor itself has nothing configured for this node.
+	// driver means marbor itself has nothing configured for this node.
 	// This is the exact error marbor-agent-capabilities.md section 5.6
 	// mandates, never a guessed driver.
 	if req.Driver == "" {
@@ -200,7 +200,7 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 
 // handleRuntimeLogs is the POST /v1/runtime/logs handler, capability
 // "runtime.logs". Unlike start/stop/restart this is a pure read - it never
-// mutates the node - but still needs the marbor to inject driver/identifier on
+// mutates the node - but still needs marbor to inject driver/identifier on
 // every call, same as the other three actions, since the agent holds no
 // persisted control config of its own.
 func (s *Server) handleRuntimeLogs(w http.ResponseWriter, r *http.Request) {

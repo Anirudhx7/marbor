@@ -1,6 +1,6 @@
 // Hidden hardware benchmark page (no Sidebar entry - reached only via the
 // "Hardware Benchmark" card on Settings). Lets an already-authenticated
-// admin pick a node + model already known to the marbor and watch a live
+// admin pick a node + model already known to marbor and watch a live
 // cold-vs-warm TTFT run, with zero manual credential entry - the marbor
 // auto-provisions and deletes an ephemeral API key server-side
 // (internal/admin/benchmark.go). Not integral to marbor operation; this is a

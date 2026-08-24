@@ -888,14 +888,14 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	src, err := os.Open(backupPath)
 	if err != nil {
 		log.Printf("ERROR: restore aborted - could not open backup file %s: %v", backupPath, err)
-		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		src.Close()
 		log.Printf("ERROR: restore aborted - could not create %s: %v", tmpPath, err)
-		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 	_, copyErr := io.Copy(dst, src)
@@ -904,7 +904,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if copyErr != nil || closeErr != nil {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
-		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 
@@ -918,7 +918,7 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
 		log.Printf("ERROR: restore aborted - staged copy failed validation: %v", err)
-		log.Println("ERROR: marbor.db was NOT modified - restart the marbor manually; it resumes with the existing database")
+		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 
@@ -934,6 +934,6 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	}
 
 	log.Printf("Restore complete: %s -> %s", backupPath, dbPath)
-	log.Println("Exiting so the process supervisor restarts the marbor with the restored database")
+	log.Println("Exiting so the process supervisor restarts marbor with the restored database")
 	winexit.Exit(1)
 }

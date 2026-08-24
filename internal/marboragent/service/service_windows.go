@@ -172,7 +172,7 @@ func (windowsManager) Install(cfg Config) error {
 	}
 
 	// P24: idempotent - a re-install/upgrade never regenerates an existing
-	// cert (which would invalidate a fingerprint the marbor already pinned).
+	// cert (which would invalidate a fingerprint marbor already pinned).
 	dataDir := agentDataDir()
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return fmt.Errorf("service: creating %s: %w", dataDir, err)

@@ -174,7 +174,7 @@ func roundTo1(v float64) float64 {
 	return float64(int64(v*10+0.5)) / 10
 }
 
-// detectModel calls GET /v1/models on the marbor and returns the first model ID.
+// detectModel calls GET /v1/models on marbor and returns the first model ID.
 func detectModel(client *http.Client, target, apiKey string) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, target+"/v1/models", nil)
 	if err != nil {
@@ -207,7 +207,7 @@ func detectModel(client *http.Client, target, apiKey string) (string, error) {
 }
 
 // MeasureChatTTFT sends a single streaming /v1/chat/completions request
-// through the marbor and returns the milliseconds until the first non-empty
+// through marbor and returns the milliseconds until the first non-empty
 // token arrives in the SSE stream. Exported so internal/admin's in-dashboard
 // hardware benchmark page can reuse the exact same measurement logic instead
 // of duplicating it.
@@ -290,5 +290,5 @@ func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, ap
 	if err := scanner.Err(); err != nil {
 		return 0, fmt.Errorf("read stream: %w", err)
 	}
-	return 0, fmt.Errorf("no tokens received - model may have failed to load, or the marbor has no healthy nodes")
+	return 0, fmt.Errorf("no tokens received - model may have failed to load, or marbor has no healthy nodes")
 }

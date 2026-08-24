@@ -195,7 +195,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 	// once per node, not every poll cycle.
 	if t.Agent.ProtocolVersion > marboragent.ProtocolVersion && !n.agentProtocolWarned {
 		n.agentProtocolWarned = true
-		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this marbor understands (%d) - some new agent fields may not be recognized until the marbor is upgraded", n.Name, t.Agent.ProtocolVersion, marboragent.ProtocolVersion)
+		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this marbor understands (%d) - some new agent fields may not be recognized until marbor is upgraded", n.Name, t.Agent.ProtocolVersion, marboragent.ProtocolVersion)
 	}
 	if t.Host != nil {
 		n.CPUPercent = derefOr(t.Host.CPUPercent, n.CPUPercent)

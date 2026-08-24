@@ -1711,7 +1711,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			// above - this codebase has no way to discover that today (P71
 			// plan section D), so it's always flagged as a caveat here,
 			// independent of whether arch was found.
-			caveat := "This runtime's own launch configuration may cap context below the model's declared maximum; the marbor cannot see that setting."
+			caveat := "This runtime's own launch configuration may cap context below the model's declared maximum; marbor cannot see that setting."
 
 			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, safetensorsOverheadMult, safetensorsPerTokenMBFallback, vramTotalBytes, vramSource, arch, caveat)
 
