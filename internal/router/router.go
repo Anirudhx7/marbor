@@ -432,6 +432,15 @@ type Router struct {
 	// and persisted in the KV store. Merged with warmupCfg by the warm loop.
 	// Guarded by r.mu.
 	nodeWarmup map[string]NodeWarmup
+	// warmupInProgress guards against overlapping pingWarmupModels cycles for
+	// the same node (P97): the periodic ticker, the startup ping, and a
+	// manual TriggerWarmup all fire the same per-node goroutine from
+	// independent, uncoordinated call sites with no other coordination. A
+	// node still mid-cycle when a new cycle starts is skipped rather than
+	// dispatching a second overlapping warm request for the same (node,
+	// model) pairs.
+	warmupInProgress   map[string]bool
+	warmupInProgressMu sync.Mutex
 	// marborAgents holds per-HOST Marbor Agent poll configuration (enabled,
 	// port, bearer token), keyed by NodeState.Host - not by node name - so
 	// every node sharing a physical machine polls the same agent process

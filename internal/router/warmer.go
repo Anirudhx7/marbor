@@ -26,6 +26,28 @@ const warmupPingTimeout = 5 * time.Minute
 // abort every cold warmup at 5s and silently defeat warmup entirely.
 var warmupHTTPClient = &http.Client{}
 
+// tryStartWarmup claims the warmup slot for nodeName, returning false if
+// another cycle is already mid-warm for it (see warmupInProgress on Router).
+func (r *Router) tryStartWarmup(nodeName string) bool {
+	r.warmupInProgressMu.Lock()
+	defer r.warmupInProgressMu.Unlock()
+	if r.warmupInProgress == nil {
+		r.warmupInProgress = map[string]bool{}
+	}
+	if r.warmupInProgress[nodeName] {
+		return false
+	}
+	r.warmupInProgress[nodeName] = true
+	return true
+}
+
+// finishWarmup releases the warmup slot claimed by tryStartWarmup.
+func (r *Router) finishWarmup(nodeName string) {
+	r.warmupInProgressMu.Lock()
+	delete(r.warmupInProgress, nodeName)
+	r.warmupInProgressMu.Unlock()
+}
+
 // pingWarmupModels sends a zero-token /api/generate with keep_alive to every
 // configured (model, node) pair. Each node warms in its own goroutine so a
 // slow node can't block others, but multiple models on the same node are
@@ -130,7 +152,14 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			metrics.WarmupResident(model, n.Name, resident)
 			nodeModels = append(nodeModels, model)
 		}
+		if !r.tryStartWarmup(nodeName) {
+			// A prior cycle (ticker, startup ping, or a manual TriggerWarmup)
+			// is still mid-warm for this node - skip rather than dispatch a
+			// second overlapping request for the same (node, model) pairs.
+			continue
+		}
 		go func() {
+			defer r.finishWarmup(nodeName)
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("[router] panic in goroutine: %v", r)
