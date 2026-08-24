@@ -64,7 +64,23 @@ $AgentSecret = $env:MARBOR_AGENT_SECRET
 $Enroll = $env:MARBOR_ENROLL
 $Server = $env:MARBOR_SERVER
 $Port = if ($env:PORT) { [int]$env:PORT } else { 9200 }
-$InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:ProgramFiles "marbor" }
+
+# Computed here, ahead of $InstallDir, so the default install path itself can
+# depend on it - a non-admin user running the documented default one-liner
+# must not hit an unhandled "Access denied" from New-Item against
+# $env:ProgramFiles (no elevation check previously ran before that directory
+# was created). Re-used below by the PATH-scope selection instead of being
+# recomputed there.
+$currentPrincipalForPath = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+$IsElevated = $currentPrincipalForPath.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+$InstallDir = if ($env:INSTALL_DIR) {
+    $env:INSTALL_DIR
+} elseif ($IsElevated) {
+    Join-Path $env:ProgramFiles "marbor"
+} else {
+    Join-Path $env:LOCALAPPDATA "marbor"
+}
 
 if (-not [Environment]::Is64BitOperatingSystem) {
     Write-Error "Unsupported architecture: 32-bit Windows is not supported."
@@ -130,8 +146,6 @@ Write-Host "Installed marbor $NewVersion to $BinPath"
 # this closes. Machine scope needs elevation; fall back to User scope
 # (still PATH-effective for this account, no admin required) otherwise -
 # both scopes are additive with the built-in PATH, never overwritten.
-$currentPrincipalForPath = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-$IsElevated = $currentPrincipalForPath.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $PathScope = if ($IsElevated) { "Machine" } else { "User" }
 $ExistingPath = [Environment]::GetEnvironmentVariable("Path", $PathScope)
 if (-not $ExistingPath) { $ExistingPath = "" }
