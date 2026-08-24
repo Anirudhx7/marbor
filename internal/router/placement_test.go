@@ -304,6 +304,60 @@ func TestIsModelWarm_MissingDigestNeverFlagged(t *testing.T) {
 	}
 }
 
+// TestReconcileModelDigests_FleetConvergesOnNewDigest is the P99 regression:
+// once the entire fleet has moved on to a new digest for a model name (e.g.
+// every node re-pulled it), the stored reference digest must follow, so
+// isModelWarm stops permanently flagging every node as mismatched.
+func TestReconcileModelDigests_FleetConvergesOnNewDigest(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+
+	r.recordModelDigest("model-x", "sha256:aaa")
+	// The whole fleet has since re-pulled and moved on to a new digest - no
+	// node reports the old one anymore.
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-x", Digest: "sha256:bbb"}}
+	r.nodes[1].LoadedModels = []ModelInfo{{Name: "model-x", Digest: "sha256:bbb"}}
+
+	if r.isModelWarm(r.nodes[0], "model-x") {
+		t.Fatal("precondition: expected isModelWarm=false before reconciliation")
+	}
+
+	r.reconcileModelDigests(r.nodes)
+
+	if !r.isModelWarm(r.nodes[0], "model-x") {
+		t.Error("node-a: isModelWarm = false after reconciliation, want true (fleet converged on the new digest)")
+	}
+	if !r.isModelWarm(r.nodes[1], "model-x") {
+		t.Error("node-b: isModelWarm = false after reconciliation, want true (fleet converged on the new digest)")
+	}
+}
+
+// TestReconcileModelDigests_PartialMigrationKeepsOldReference: while only
+// SOME nodes have moved to a new digest and at least one node still reports
+// the old one, the reference digest must NOT flip - flipping mid-migration
+// would flag the not-yet-migrated node as mismatched instead.
+func TestReconcileModelDigests_PartialMigrationKeepsOldReference(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+
+	r.recordModelDigest("model-x", "sha256:aaa")
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-x", Digest: "sha256:aaa"}}
+	r.nodes[1].LoadedModels = []ModelInfo{{Name: "model-x", Digest: "sha256:bbb"}}
+
+	r.reconcileModelDigests(r.nodes)
+
+	if !r.isModelWarm(r.nodes[0], "model-x") {
+		t.Error("node-a: isModelWarm = false, want true (old reference digest must be preserved mid-migration)")
+	}
+	if r.isModelWarm(r.nodes[1], "model-x") {
+		t.Error("node-b: isModelWarm = true, want false (still genuinely mismatched against the preserved reference)")
+	}
+}
+
 // TestScoreComponentsSumEqualsComputeNodeScore is the P41 hard acceptance
 // criterion: the exposed component breakdown must sum to exactly the score
 // computeNodeScore actually used to pick a winner, for both unpenalized and

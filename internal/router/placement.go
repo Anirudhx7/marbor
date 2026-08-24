@@ -33,6 +33,54 @@ func (r *Router) recordModelDigest(name, digest string) {
 	r.digestMu.Unlock()
 }
 
+// reconcileModelDigests re-syncs the stored reference digest for every model
+// name once per full poll cycle (P99), fixing the permanent warm-detection
+// loss recordModelDigest's first-observation-wins policy otherwise leaves
+// behind: without this, once any node reports a second digest for a name,
+// digestMismatch returns true forever, even after the entire fleet later
+// converges on that new digest (e.g. a re-pull). For each recorded model
+// name where no node currently reports the OLD stored digest and at least
+// one node reports a new non-empty digest, the stored reference digest is
+// replaced with that new one. This is a targeted reconciliation, not a
+// change to the routing/scoring formula.
+func (r *Router) reconcileModelDigests(nodes []*NodeState) {
+	// Snapshot every currently-loaded (name -> digest) pair under each node's
+	// own lock first, then apply reconciliation under digestMu alone - never
+	// holding both at once. isModelWarm already locks n.mu before calling
+	// digestMismatch (which takes digestMu); locking digestMu first here
+	// would invert that order and risk deadlock under concurrent access.
+	seenDigests := map[string]map[string]struct{}{} // name -> set of observed digests
+	for _, n := range nodes {
+		n.mu.RLock()
+		for _, m := range n.LoadedModels {
+			if m.Name == "" || m.Digest == "" {
+				continue
+			}
+			if seenDigests[m.Name] == nil {
+				seenDigests[m.Name] = map[string]struct{}{}
+			}
+			seenDigests[m.Name][m.Digest] = struct{}{}
+		}
+		n.mu.RUnlock()
+	}
+
+	r.digestMu.Lock()
+	defer r.digestMu.Unlock()
+	for name, oldDigest := range r.modelDigests {
+		digests := seenDigests[name]
+		if len(digests) == 0 {
+			continue
+		}
+		if _, oldSeen := digests[oldDigest]; oldSeen {
+			continue
+		}
+		for newDigest := range digests {
+			r.modelDigests[name] = newDigest
+			break
+		}
+	}
+}
+
 // digestMismatch reports whether digest is known to differ from the
 // first-observed digest recorded for name. Always false when either side is
 // empty - a runtime that doesn't report a digest (anything but Ollama today,
