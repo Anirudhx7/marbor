@@ -89,6 +89,7 @@ func (r *Router) pollAll() {
 		}(n)
 	}
 	wg.Wait()
+	r.reconcileModelDigests(nodes)
 }
 
 func (r *Router) pollNode(n *NodeState) {
