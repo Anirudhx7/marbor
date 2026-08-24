@@ -570,6 +570,18 @@ WantedBy=multi-user.target
     return 0
   else
     echo "  [!] marbor.service failed to start. Check: journalctl -u marbor -n 50"
+    # A crash-looping unit reports "activating," not "active," one second
+    # after restart - the check above alone doesn't distinguish that from a
+    # real failure, so this branch is also reached with the unit installed
+    # and enabled but still retrying in the background. Without disabling it
+    # here, the caller's nohup fallback below would start a second instance
+    # of the same binary against the same ports/DB while the enabled unit
+    # keeps fighting it for those resources.
+    if [ "$(id -u)" = "0" ]; then
+      systemctl disable --now marbor >/dev/null 2>&1 || true
+    elif command -v sudo >/dev/null 2>&1; then
+      sudo systemctl disable --now marbor >/dev/null 2>&1 || true
+    fi
     return 1
   fi
 }
