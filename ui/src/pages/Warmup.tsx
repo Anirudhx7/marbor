@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, ChevronUp, PauseCircle, PlayCircle, Pencil, BrainCircuit, CheckCircle2, XCircle, Zap } from 'lucide-react';
 import {
@@ -152,6 +152,12 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   const [selectedModels, setSelectedModels] = useState<string[]>(initial.models || []);
   const [saving, setSaving] = useState(false);
   const [showModels, setShowModels] = useState(false);
+  // dirty tracks an in-progress, unsaved edit (checkbox toggle or model list
+  // change) - the page's 10s poll rebuilds `initial` from scratch every
+  // cycle with a new object reference regardless of whether server data
+  // actually changed, so without this guard the sync effect below silently
+  // discards any unsaved edit mid-cycle.
+  const dirty = useRef(false);
 
   // Pinned state
   const [pinnedModels, setPinnedModels] = useState<string[]>([]);
@@ -162,6 +168,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   const [showPinned, setShowPinned] = useState(false);
 
   useEffect(() => {
+    if (dirty.current) return;
     setEnabled(initial.enabled);
     setSelectedModels(initial.models || []);
   }, [initial]);
@@ -177,6 +184,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   async function saveWarmup() {
     setSaving(true);
     await onSave(node.name, { enabled, models: selectedModels });
+    dirty.current = false;
     setSaving(false);
   }
 
@@ -214,7 +222,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
         </div>
         <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-            <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)}
+            <input type="checkbox" checked={enabled} onChange={e => { dirty.current = true; setEnabled(e.target.checked); }}
               className="rounded border-border bg-background text-primary focus:ring-primary/20" />
             Warmup
           </label>
@@ -240,13 +248,13 @@ function NodeCard({ node, initial, availableModels, onSave }: {
         </button>
         {showModels && (
           <div className="px-4 pb-3">
-            <KeepWarmList models={selectedModels} onChange={setSelectedModels} warmupErrors={node.warmupErrors} warmupState={node.warmupState} />
+            <KeepWarmList models={selectedModels} onChange={m => { dirty.current = true; setSelectedModels(m); }} warmupErrors={node.warmupErrors} warmupState={node.warmupState} />
             {selectedModels.length > 1 && (
               <p className="text-[10px] text-muted-foreground/60 mb-2.5">Order sets priority - if this node can't fit them all, #1 always stays warm first.</p>
             )}
             <AddModelPills
               options={allModels.filter(m => !selectedModels.includes(m))}
-              onAdd={model => setSelectedModels(prev => [...prev, model])}
+              onAdd={model => { dirty.current = true; setSelectedModels(prev => [...prev, model]); }}
             />
             {allModels.length === 0 && <p className="text-xs text-muted-foreground">No models available.</p>}
           </div>
