@@ -120,8 +120,7 @@
           Cookie: "{{ marbor_login.set_cookie }}"
         status_code: 200
         return_content: true
-      register: node_poll
-      until: (node_poll.json.health | default('down')) == 'healthy'
+      until: (poll_results.json.health | default('down')) == 'healthy'
       retries: "{{ poll_retries }}"
       delay: "{{ poll_delay }}"
       loop: "{{ resolved_nodes }}"
