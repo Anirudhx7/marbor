@@ -3,6 +3,7 @@ import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown, Tr
 import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, restoreActivePulls, isPullActive, PullProgressState } from '../lib/pullProgress';
 import { deleteNodeModel } from '../lib/api';
 import { formatDurationShort } from '../lib/time';
+import { Modal } from './Modal';
 
 function formatBytes(n: number): string {
   if (n <= 0) return '0 B';
@@ -73,6 +74,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!isPullActive(job.status)) return;
@@ -105,6 +107,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
     try {
       await deleteNodeModel(job.node, job.model);
       setDeleted(true);
+      setDeleteConfirmOpen(false);
     } catch (e: unknown) {
       setDeleteError(e instanceof Error ? e.message : 'Failed to delete model');
     } finally {
@@ -268,7 +271,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
               )}
               {job.status === 'load_failed' && !deleted && (
                 <button
-                  onClick={handleDelete}
+                  onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
                   disabled={deleting}
                   className="flex items-center gap-1 px-2.5 py-1 text-xs bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 text-destructive rounded-lg cursor-pointer"
                 >
@@ -286,6 +289,42 @@ function PullJobCard({ job }: { job: PullProgressState }) {
           )}
         </div>
       )}
+
+      <Modal
+        isOpen={deleteConfirmOpen}
+        onClose={() => { if (!deleting) setDeleteConfirmOpen(false); }}
+        title="Delete Local Model"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Delete <span className="text-foreground font-semibold break-all">{job.model}</span> from{' '}
+            <span className="text-foreground font-semibold">{job.node}</span>'s local storage?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This removes the downloaded model files from disk - not just from VRAM. Re-pulling it later will re-download the full model.
+          </p>
+          {deleteError && (
+            <p className="text-sm text-destructive">{deleteError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setDeleteConfirmOpen(false)}
+              disabled={deleting}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              {deleting ? 'Deleting...' : 'Delete Model'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

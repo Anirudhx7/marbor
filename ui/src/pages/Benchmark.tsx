@@ -14,6 +14,7 @@ import { mockGPUNodes, mockBenchmarkRuns } from '../lib/mockData';
 import type { GPUNode, BenchmarkRun } from '../types';
 import { CustomSelect } from '../components/Select';
 import { useDemoMode } from '../hooks/useDemoMode';
+import { Modal } from '../components/Modal';
 
 function fmtMs(ms: number): string {
   if (!Number.isFinite(ms)) return '-';
@@ -91,6 +92,7 @@ export function Benchmark() {
   const [n, setN] = useState(10);
   const [loading, setLoading] = useState(true);
   const [runError, setRunError] = useState<string | null>(null);
+  const [runConfirmOpen, setRunConfirmOpen] = useState(false);
   const [history, setHistory] = useState<BenchmarkRun[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
@@ -174,6 +176,11 @@ export function Benchmark() {
   async function handleRun() {
     setRunError(null);
     if (!selectedNode || !selectedModel) { setRunError('Pick a node and a model.'); return; }
+    setRunConfirmOpen(true);
+  }
+
+  function confirmRun() {
+    setRunConfirmOpen(false);
     start(selectedNode, selectedModel, n, demoMode);
   }
 
@@ -320,6 +327,39 @@ export function Benchmark() {
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={runConfirmOpen}
+        onClose={() => setRunConfirmOpen(false)}
+        title="Run Hardware Benchmark"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Benchmark <span className="text-foreground font-semibold break-all">{selectedModel}</span> on{' '}
+            <span className="text-foreground font-semibold">{selectedNode}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This evicts the model from VRAM if it's currently warm on this node, to measure a genuine
+            cold-start TTFT - any other traffic to this node relying on that model being warm will see
+            a cold load until the benchmark finishes.
+          </p>
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setRunConfirmOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmRun}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Run Benchmark
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
