@@ -70,7 +70,7 @@ If you prefer the OpenAI provider (useful when using cloud fallback models):
 }
 ```
 
-The `/v1` path accepts OpenAI-format requests. The marbor routes them the same way as Ollama-native requests.
+The `/v1` path accepts OpenAI-format requests. Marbor routes them the same way as Ollama-native requests.
 
 ---
 

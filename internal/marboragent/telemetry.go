@@ -1,6 +1,6 @@
 // Package marboragent implements the Marbor agent Protocol v1: the
 // node-local execution point for the marbor. v1 ships a read-only "status"
-// resource (GPU/host/runtime facts reported back to the marbor on its existing
+// resource (GPU/host/runtime facts reported back to marbor on its existing
 // poll cycle) plus the first mutating resource (model pull) - future
 // versions add more node-local resources (runtime restart/drain, more model
 // lifecycle, diagnostics) behind the same protocol, versioned and

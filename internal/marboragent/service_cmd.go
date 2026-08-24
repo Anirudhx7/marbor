@@ -126,7 +126,7 @@ func runServiceInstall(args []string, version string) {
 // exchangeEnrollmentCode calls the marbor's POST /admin/agent/enroll endpoint
 // to trade a short-lived, single-use enrollment code for the node's real,
 // permanent bearer token (P50). This is the agent's first-ever outbound
-// call to the marbor - normally the marbor polls the agent, never the reverse -
+// call to the marbor - normally marbor polls the agent, never the reverse -
 // so serverBaseURL must be supplied explicitly by the operator (via --server or
 // the MARBOR_SERVER env var); the agent has no other way to know the marbor's address.
 func exchangeEnrollmentCode(serverBaseURL, code string) (string, error) {
@@ -280,14 +280,14 @@ func runServiceStatus(args []string) {
 // invalidates whatever fingerprint the marbor currently has pinned for this
 // node: the operator must re-run the marbor-side confirm-and-pin flow
 // afterward (spec sections 1/2/6) - regenerating here does not, and must
-// not, notify or update the marbor itself.
+// not, notify or update marbor itself.
 func runServiceRegenCert(args []string) {
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
 			fmt.Println("Usage: marbor-agent service regen-cert")
 			fmt.Println("\nForcibly regenerates the installed Marbor Agent's TLS certificate and key,")
 			fmt.Println("then restarts the service so the new certificate takes effect. This")
-			fmt.Println("invalidates any fingerprint the marbor has pinned for this node - re-run the")
+			fmt.Println("invalidates any fingerprint marbor has pinned for this node - re-run the")
 			fmt.Println("marbor's confirm-and-pin flow afterward. Takes no flags.")
 			return
 		}

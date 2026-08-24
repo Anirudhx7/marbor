@@ -311,7 +311,7 @@ func TestHandleNodePull_RejectsGGUFTagOnSafetensorsRuntime(t *testing.T) {
 }
 
 // TestHandleNodePull_AllowsCompatibleTagsAcrossRuntimes is the flip side of
-// the two rejection tests above: a tag/runtime pairing the marbor cannot
+// the two rejection tests above: a tag/runtime pairing marbor cannot
 // confidently call incompatible must still be allowed through to dispatch -
 // including a bare Ollama-library tag on an actual Ollama node, a GGUF tag on
 // llama.cpp, and an ambiguous bare "org/repo" HF id on every non-GGUF
@@ -659,7 +659,7 @@ func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 	}
 }
 
-// TestHandleNodePull_DispatchesToAgentWhenCapable verifies the marbor routes a
+// TestHandleNodePull_DispatchesToAgentWhenCapable verifies marbor routes a
 // pull to the node's Marbor Agent (not the direct Ollama /api/pull path) when
 // the node has an agent enabled and reporting "models.pull" - and that the
 // marbor's configured Hugging Face token is forwarded per-request (marbor-agent

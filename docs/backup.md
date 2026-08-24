@@ -1,7 +1,7 @@
 # Backup & Restore
 
 marbor is DB-first: `marbor.db` (SQLite) holds nodes, API keys, routing rules, warm-state
-history, encrypted secrets, and every setting. Losing it means reconfiguring the marbor from
+history, encrypted secrets, and every setting. Losing it means reconfiguring marbor from
 scratch. This page covers taking backups and restoring one, both built into the dashboard's
 Settings > Backup & Restore card.
 
@@ -10,7 +10,7 @@ Settings > Backup & Restore card.
 ## Taking backups
 
 - **Download Backup Now** - takes an on-demand, point-in-time-consistent copy of `marbor.db` (via
-  SQLite's `VACUUM INTO`, safe to run while the marbor keeps serving requests) and downloads it
+  SQLite's `VACUUM INTO`, safe to run while marbor keeps serving requests) and downloads it
   straight to your browser as `marbor-backup-<UTC timestamp>.db`.
 - **Scheduled Backup** - enable it, then set:
   - **Interval (hours)** - how often a backup runs.
@@ -36,7 +36,7 @@ succeeds.
 The Settings > Backup & Restore card lists every scheduled backup file already sitting in the
 target directory in a dropdown - pick one and click **Restore** next to it. Behind that click:
 
-1. The marbor validates the file (`PRAGMA quick_check`) before touching anything - a corrupt or
+1. Marbor validates the file (`PRAGMA quick_check`) before touching anything - a corrupt or
    unrelated file is rejected here, before the live database is ever at risk.
 2. It gracefully drains in-flight requests (the same shutdown path a `SIGTERM` uses).
 3. It stages the full copy alongside the live `marbor.db` first, and only swaps it in via an atomic
@@ -45,7 +45,7 @@ target directory in a dropdown - pick one and click **Restore** next to it. Behi
 4. It exits the process on purpose, with a non-zero status.
 
 **That last step is why this requires your deployment to actually restart the process on exit** -
-the marbor does not restart itself; it relies on whatever already supervises it:
+marbor does not restart itself; it relies on whatever already supervises it:
 
 | Deployment | Requirement | Status in this repo |
 |---|---|---|
@@ -55,7 +55,7 @@ the marbor does not restart itself; it relies on whatever already supervises it:
 | A bare `./marbor` with no supervisor | none available | **will not come back on its own** - see below |
 
 If you're running the binary directly with nothing supervising it (no systemd unit, no Docker, no
-Kubernetes), a one-click restore will stop the marbor and it will stay stopped until you start it
+Kubernetes), a one-click restore will stop marbor and it will stay stopped until you start it
 again by hand. Either run it under one of the supervised setups above, or use the fully manual
 procedure below instead, where you control every step yourself.
 

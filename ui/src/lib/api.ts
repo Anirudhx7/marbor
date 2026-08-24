@@ -853,7 +853,7 @@ export async function fetchBackupList(): Promise<BackupFileInfo[]> {
 }
 
 // restoreBackup triggers a one-click restore from an already-existing
-// scheduled backup file: the marbor validates it, swaps marbor.db for it, and
+// scheduled backup file: marbor validates it, swaps marbor.db for it, and
 // exits so the process supervisor (systemd/Docker/Kubernetes) restarts it
 // with the restored database - see docs/backup.md for the supervisor
 // requirement. The connection may drop before a response arrives since the

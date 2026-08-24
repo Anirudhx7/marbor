@@ -32,7 +32,7 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 //     params go into the request's "options" object; system/template/keep_alive
 //     are top-level fields. Ollama itself detects when a resident model's
 //     active options differ from an incoming request's and reloads
-//     automatically - the marbor does not need a separate evict-then-reload step.
+//     automatically - marbor does not need a separate evict-then-reload step.
 //   - Every other runtime (vllm/tgi/llamacpp/mlx, reached via /v1/chat/completions,
 //     /v1/completions): the subset of inference-time params that exist in the
 //     strict OpenAI schema are always injected at the top level, plus

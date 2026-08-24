@@ -218,7 +218,7 @@ func TestProxyFallsBackToCloud(t *testing.T) {
 // TestProxyCloudBudgetExceededBlocksFallback verifies that once cumulative
 // cloud spend has reached the configured daily cap, a request that would
 // otherwise overflow to cloud gets a clean 503 instead of reaching the
-// provider - the marbor must never keep spending past an operator-set cap.
+// provider - marbor must never keep spending past an operator-set cap.
 func TestProxyCloudBudgetExceededBlocksFallback(t *testing.T) {
 	hit := false
 	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -816,7 +816,7 @@ func TestLocalDegradation_RespectsPerKeyAllowList(t *testing.T) {
 // translated to Anthropic's /v1/messages schema and actually proxied there
 // (see cloudtranslate_anthropic_test.go for the translation's own coverage),
 // rather than being rejected - Anthropic has no /v1/completions endpoint, but
-// the marbor now speaks Messages on the provider's behalf.
+// marbor now speaks Messages on the provider's behalf.
 func TestAnthropicCompletionsTranslatedToMessages(t *testing.T) {
 	var gotPath string
 	cloudSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

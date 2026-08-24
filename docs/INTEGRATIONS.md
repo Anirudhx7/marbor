@@ -1,6 +1,6 @@
 # Integrations
 
-marbor exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible `/v1` endpoints unchanged. This means any client that works with Ollama or the OpenAI SDK can point at the marbor with a one-line change.
+marbor exposes an Ollama-compatible API on port 11434 and passes through Ollama's OpenAI-compatible `/v1` endpoints unchanged. This means any client that works with Ollama or the OpenAI SDK can point at marbor with a one-line change.
 
 Set `OPENAI_BASE_URL` (or the equivalent in your client) to `http://your-marbor-host:11434` and set the API key to your `sk-marbor-...` key.
 

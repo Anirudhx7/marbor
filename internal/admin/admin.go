@@ -799,7 +799,7 @@ func (s *Server) StartBackupScheduler(ctx context.Context) {
 		}
 	}
 	go func() {
-		check() // in case a backup came due while the marbor was stopped
+		check() // in case a backup came due while marbor was stopped
 		ticker := time.NewTicker(backupCheckInterval)
 		defer ticker.Stop()
 		for {
@@ -2084,8 +2084,8 @@ func marborAgentInstallCommand(marborBaseURL string, port int, enrollCode string
 // requestBaseURL derives the marbor's own address as reachable from wherever r
 // came from - the same host:port the operator's browser just used to load
 // the admin dashboard, which is the best available guess for what a GPU
-// node on the same network can reach back to. The marbor has no separate
-// "public URL" setting; this is the first feature that needs the marbor to
+// node on the same network can reach back to. Marbor has no separate
+// "public URL" setting; this is the first feature that needs marbor to
 // know its own address (P50's enrollment exchange).
 func requestBaseURL(r *http.Request) string {
 	scheme := "http"
@@ -2530,7 +2530,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// The marbor constructs {driver, identifier} from its own store-backed
+	// Marbor constructs {driver, identifier} from its own store-backed
 	// cache at dispatch time and hands it to the agent fresh on every
 	// request - the agent never persists control config itself (P43 Step 3
 	// design decision). A node with no operator-accepted driver returns the
@@ -3639,7 +3639,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	// host - see MarborAgentSettingByHost's doc comment).
 	resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 
-	// No-downgrade (section 7): once a fingerprint is pinned, the marbor must
+	// No-downgrade (section 7): once a fingerprint is pinned, marbor must
 	// never end up treating the Marbor Agent as plaintext without an explicit
 	// clear (tls_fingerprint: null/""). This checks the AGENT's own
 	// configured scheme for the RESULTING host (POST /admin/nodes/{name}/agent's

@@ -29,7 +29,7 @@ Each is independently idempotent - re-running `register-gpus.yml` never
 touches agent enrollment, and re-running `install-marbor-agent.yml` never
 re-registers a node's endpoint. Run `register-gpus.yml` first for a new
 node (the agent playbook fails fast, naming the host, if you point it at a
-name the marbor doesn't recognize yet); after that, run either one on its own
+name marbor doesn't recognize yet); after that, run either one on its own
 whenever you only need to change that one thing - e.g. reinstall/rotate an
 agent without touching the node's registration, or re-point a node's runtime
 URL without disturbing its already-healthy agent.

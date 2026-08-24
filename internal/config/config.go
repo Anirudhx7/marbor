@@ -15,7 +15,7 @@ import (
 // ValidateNodeURL checks that raw is a usable http(s) backend URL and rejects
 // link-local / cloud-metadata hosts (169.254.0.0/16 including the
 // 169.254.169.254 metadata endpoint, and fe80::/10) so an operator- or
-// API-supplied node cannot turn the marbor into an SSRF relay to the host's
+// API-supplied node cannot turn marbor into an SSRF relay to the host's
 // metadata service. Loopback and RFC1918 private ranges are intentionally
 // ALLOWED: homelab and on-prem fleets legitimately run backends on localhost
 // and LAN addresses (and the test suite uses 127.0.0.1). Hostnames are not

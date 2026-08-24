@@ -154,7 +154,7 @@ MODEL="llama3.2:3b-q4_k_m" ./bench/preflight.sh
 ```
 
 `ADMIN_USERNAME`/`ADMIN_PASSWORD` default to `admin`/`admin`, and `NODE_NAME`
-is auto-detected when the marbor has exactly one node. Only `MODEL` (the exact
+is auto-detected when marbor has exactly one node. Only `MODEL` (the exact
 tag you're about to benchmark) can't be guessed - the script won't silently
 pick a model for you, since a wrong guess would produce misleading numbers.
 

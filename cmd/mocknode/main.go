@@ -17,7 +17,7 @@
 //   - mlx: GET /v1/models only (no /health route - matches real
 //     mlx_lm.server, and is exactly what internal/runtime.MLXProbe checks),
 //     POST /v1/chat/completions, POST /v1/completions.
-//   - None of these implement /api/tags: the marbor already treats its
+//   - None of these implement /api/tags: marbor already treats its
 //     absence as an expected, gracefully-degraded case (see
 //     internal/router/eviction.go's estimateModelSizeBytes comment).
 package main

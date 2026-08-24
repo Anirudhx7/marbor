@@ -81,7 +81,7 @@ func main() {
 	fmt.Println()
 
 	// http.DefaultTransport caps at MaxIdleConnsPerHost=2, which serializes
-	// requests through a tiny connection pool well before the marbor itself is
+	// requests through a tiny connection pool well before marbor itself is
 	// under any real pressure - a client-side bottleneck that would silently
 	// masquerade as marbor latency. Raise it well above any tested rate.
 	transport := &http.Transport{

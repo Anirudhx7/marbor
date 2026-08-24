@@ -145,7 +145,7 @@ marbor aggregates loaded models across all healthy GPU nodes dynamically and res
        "messages": [{"role": "user", "content": "Test fallback"}]
      }'
    ```
-3. Check the LiteLLM logs: the request should be logged as incoming from the marbor and forwarded to the cloud provider.
+3. Check the LiteLLM logs: the request should be logged as incoming from marbor and forwarded to the cloud provider.
 
 ---
 

@@ -447,7 +447,7 @@ volumes:
 <h3 id="fallback-marbor-rarr-litellm">Fallback (marbor &amp;rarr; LiteLLM)<a class="anchor" href="#fallback-marbor-rarr-litellm" aria-label="Link to section">#</a></h3>
 <ol><li>Drain or set all local nodes to offline via the marbor dashboard.</li><li>Send a request to marbor for a cloud model (e.g. <code>gpt-4o-mini</code>):</li></ol>
 <p>   ``<code>bash    curl http://localhost:11434/v1/chat/completions \      -H "Authorization: Bearer sk-marbor-abc123" \      -H "Content-Type: application/json" \      -d '{        "model": "gpt-4o-mini",        "messages": [{"role": "user", "content": "Test fallback"}]      }'    </code>``</p>
-<ol><li>Check the LiteLLM logs: the request should be logged as incoming from the marbor and forwarded to the cloud provider.</li></ol>
+<ol><li>Check the LiteLLM logs: the request should be logged as incoming from marbor and forwarded to the cloud provider.</li></ol>
 <hr/>
 <h2 id="troubleshooting">Troubleshooting<a class="anchor" href="#troubleshooting" aria-label="Link to section">#</a></h2>
 <h3 id="401-unauthorized">401 Unauthorized<a class="anchor" href="#401-unauthorized" aria-label="Link to section">#</a></h3>

@@ -19,7 +19,7 @@ section. Every call below reuses that same cookie jar.
 
 Each node gets its own unique agent token, minted server-side and bound to that
 node's host - it is never a shared fleet-wide secret. A token copied to a different
-machine will not authenticate there; the marbor checks it against the specific host it
+machine will not authenticate there; marbor checks it against the specific host it
 was generated for. Tokens can be rotated or revoked at any time without touching
 other nodes.
 

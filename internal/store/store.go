@@ -349,7 +349,7 @@ type NodeOverride struct {
 
 // MarborAgentRecord is the per-node Marbor Agent configuration: whether the
 // agent is enabled for this node, which port it listens on, and the opaque
-// bearer token the marbor presents when polling it. Token is encrypted at
+// bearer token marbor presents when polling it. Token is encrypted at
 // rest by the sqliteStore implementation (AES-256-GCM, same primitive as
 // secretbox.go) - see .local/specs/node-agent.md section 5 for why this is
 // a distinct protocol/table from the client-facing API-key mechanism, not a
