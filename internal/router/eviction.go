@@ -25,6 +25,15 @@ import (
 // force-unload bypass.
 var ErrModelPinned = errors.New("model is pinned; unpin before unloading")
 
+// ErrUnloadUnsupported is returned by unloadModel for a node whose runtime is
+// known and is not Ollama - keep_alive:0 is Ollama-specific, so no unload
+// call is made. Distinct from nil (success): a nil return here was
+// previously indistinguishable from a genuine successful unload to every
+// caller (the manual unload admin endpoint, UnloadModels' direct-path
+// fallback, and EvictForHeadroom's free-byte accounting), silently booking
+// a phantom eviction that never actually freed any VRAM.
+var ErrUnloadUnsupported = errors.New("unload not supported for this runtime")
+
 // modelKey composes the lastUsed map key for a (node, model) pair.
 func modelKey(node, model string) string { return node + "\x00" + model }
 
@@ -232,7 +241,7 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 	nodeURL, rt := n.URL, n.Runtime
 	n.mu.RUnlock()
 	if rt != "ollama" && rt != "" {
-		return nil
+		return ErrUnloadUnsupported
 	}
 	body, _ := json.Marshal(map[string]any{"model": model, "keep_alive": 0, "stream": false})
 	reqCtx, cancel := context.WithTimeout(ctx, warmupPingTimeout)

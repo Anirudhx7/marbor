@@ -337,6 +337,31 @@ func TestUnloadModelSendsKeepAliveZero(t *testing.T) {
 	}
 }
 
+// TestUnloadModelNonOllamaReturnsSentinelError is the P101 regression: a
+// known non-Ollama runtime must return ErrUnloadUnsupported, not nil - a nil
+// return was indistinguishable from a genuine successful unload to every
+// caller (manual unload endpoint, UnloadModels' direct-path fallback,
+// EvictForHeadroom's free-byte accounting), silently booking a phantom
+// eviction that never freed any VRAM.
+func TestUnloadModelNonOllamaReturnsSentinelError(t *testing.T) {
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{}
+	n := &NodeState{Name: "n1", URL: srv.URL, Healthy: true, Runtime: "vllm"}
+	err := r.unloadModel(context.Background(), n, "llama3", "test")
+	if !errors.Is(err, ErrUnloadUnsupported) {
+		t.Errorf("unloadModel err = %v, want ErrUnloadUnsupported", err)
+	}
+	if called {
+		t.Error("unloadModel should not contact a non-Ollama node's HTTP endpoint at all")
+	}
+}
+
 // TestEvictForHeadroomEvictsColdestNonPinned verifies coldest-first eviction,
 // pinned protection, and stopping once enough VRAM is free.
 func TestEvictForHeadroomEvictsColdestNonPinned(t *testing.T) {
