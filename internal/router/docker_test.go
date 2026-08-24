@@ -65,8 +65,8 @@ func TestContainerNodeName(t *testing.T) {
 func TestContainerHost(t *testing.T) {
 	// No NetworkSettings at all (zero value) - falls back to loopback.
 	c := dockerContainer{}
-	if got := containerHost(c); got != "127.0.0.1" {
-		t.Errorf("containerHost(no networks) = %q, want 127.0.0.1", got)
+	if host, isContainerIP := containerHost(c); host != "127.0.0.1" || isContainerIP {
+		t.Errorf("containerHost(no networks) = (%q, %v), want (127.0.0.1, false)", host, isContainerIP)
 	}
 
 	// Bridge network with a container IP - must use the container IP,
@@ -77,8 +77,8 @@ func TestContainerHost(t *testing.T) {
 	}{
 		"bridge": {IPAddress: "172.17.0.5"},
 	}
-	if got := containerHost(c2); got != "172.17.0.5" {
-		t.Errorf("containerHost(bridge) = %q, want 172.17.0.5", got)
+	if host, isContainerIP := containerHost(c2); host != "172.17.0.5" || !isContainerIP {
+		t.Errorf("containerHost(bridge) = (%q, %v), want (172.17.0.5, true)", host, isContainerIP)
 	}
 
 	// Network present but IPAddress empty (e.g. --network host: container
@@ -90,12 +90,16 @@ func TestContainerHost(t *testing.T) {
 	}{
 		"host": {IPAddress: ""},
 	}
-	if got := containerHost(c3); got != "127.0.0.1" {
-		t.Errorf("containerHost(host network, empty IP) = %q, want 127.0.0.1", got)
+	if host, isContainerIP := containerHost(c3); host != "127.0.0.1" || isContainerIP {
+		t.Errorf("containerHost(host network, empty IP) = (%q, %v), want (127.0.0.1, false)", host, isContainerIP)
 	}
 }
 
 func TestParseDockerContainersUsesContainerIP(t *testing.T) {
+	// A container's own IP is only reachable at its private (in-namespace)
+	// port, never the host's NAT-mapped public port (P98) - so even though
+	// the host publishes 32100, the discovered URL must use the fixed
+	// private port 11434 once a container IP is known.
 	c := dockerContainer{
 		ID:    "abc123",
 		Names: []string{"/ollama-bridge"},
@@ -119,7 +123,7 @@ func TestParseDockerContainersUsesContainerIP(t *testing.T) {
 	if len(nodes) != 1 {
 		t.Fatalf("expected 1 node, got %d", len(nodes))
 	}
-	want := "http://172.18.0.7:32100"
+	want := "http://172.18.0.7:11434"
 	if nodes[0].URL != want {
 		t.Errorf("URL = %q, want %q", nodes[0].URL, want)
 	}

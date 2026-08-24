@@ -39,13 +39,24 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 		if !isOllamaContainer(c) {
 			continue
 		}
-		port := findPublicPort(c, 11434)
-		if port == 0 {
-			continue
+		host, isContainerIP := containerHost(c)
+		// A container's own IP is only reachable at its private (in-namespace)
+		// port, never the host's NAT-mapped public port - the two only happen
+		// to match under an identity mapping (-p 11434:11434). The looked-up
+		// PublicPort is only meaningful for the 127.0.0.1 host-network
+		// fallback, where the container shares the host's port space.
+		var port int
+		if isContainerIP {
+			port = 11434
+		} else {
+			port = findPublicPort(c, 11434)
+			if port == 0 {
+				continue
+			}
 		}
 		nodes = append(nodes, config.NodeConfig{
 			Name:     containerNodeName(c),
-			URL:      fmt.Sprintf("http://%s:%d", containerHost(c), port),
+			URL:      fmt.Sprintf("http://%s:%d", host, port),
 			GPUModel: "docker",
 		})
 	}
@@ -54,18 +65,19 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 
 // containerHost returns the address marbor should use to reach the
 // container: the container's own IP address on the first Docker network it
-// reports, if one is present. This is correct whether marbor runs on
-// bare metal (routable via the bridge network) or inside another container
-// on the same Docker network (container-to-container traffic on a bridge
-// network uses container IPs, not 127.0.0.1).
+// reports, if one is present (isContainerIP=true). This is correct whether
+// marbor runs on bare metal (routable via the bridge network) or inside
+// another container on the same Docker network (container-to-container
+// traffic on a bridge network uses container IPs, not 127.0.0.1).
 //
-// Falls back to 127.0.0.1 only when no container IP can be determined  --
-// e.g. the container was started with --network host, where it shares the
-// host's network namespace and the mapped port is genuinely reachable via
-// loopback. We do not attempt to detect marbor's own network mode here;
-// this is a best-effort choice based only on what the Docker API reports for
-// the discovered container, not a guarantee of reachability in every topology.
-func containerHost(c dockerContainer) string {
+// Falls back to 127.0.0.1 (isContainerIP=false) only when no container IP
+// can be determined -- e.g. the container was started with --network host,
+// where it shares the host's network namespace and the mapped port is
+// genuinely reachable via loopback. We do not attempt to detect marbor's own
+// network mode here; this is a best-effort choice based only on what the
+// Docker API reports for the discovered container, not a guarantee of
+// reachability in every topology.
+func containerHost(c dockerContainer) (host string, isContainerIP bool) {
 	// Iterate networks in sorted name order for a deterministic choice: Go map
 	// iteration is randomized, so a multi-network container could otherwise
 	// resolve to a different IP on each discovery poll and be registered as two
@@ -77,10 +89,10 @@ func containerHost(c dockerContainer) string {
 	sort.Strings(names)
 	for _, name := range names {
 		if ip := c.NetworkSettings.Networks[name].IPAddress; ip != "" {
-			return ip
+			return ip, true
 		}
 	}
-	return "127.0.0.1"
+	return "127.0.0.1", false
 }
 
 // isOllamaContainer returns true if the container's image name contains "ollama".
