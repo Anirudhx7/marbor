@@ -24,6 +24,18 @@ import (
 type ProcessDriver struct {
 	PIDFile      string
 	StartCommand []string
+
+	// liveProc, when non-nil, is the exact *os.Process handle returned by a
+	// preceding Start() call on THIS SAME driver instance (P104's
+	// smallest-step fix for PID reuse). Preferring it over re-reading the pid
+	// from disk and looking the process up fresh closes the
+	// same-process-lifecycle reuse window: as long as this process hasn't
+	// been Wait()'d/reaped, the kernel cannot recycle its pid to an unrelated
+	// process. Full cross-invocation identity verification (surviving a
+	// fresh driver instance, e.g. across a restart of marbor-agent itself)
+	// needs platform-specific logic (no /proc on Windows) and is tracked
+	// separately as BACKLOG.
+	liveProc *os.Process
 }
 
 func (d *ProcessDriver) Name() string       { return "process" }
@@ -40,6 +52,7 @@ func (d *ProcessDriver) Start(ctx context.Context) error {
 	if err := writePIDFile(d.PIDFile, proc.Pid); err != nil {
 		return fmt.Errorf("process: launched pid %d but failed to write pid file %q: %w", proc.Pid, d.PIDFile, err)
 	}
+	d.liveProc = proc
 	return nil
 }
 
@@ -48,13 +61,17 @@ func (d *ProcessDriver) Stop(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("process: %w", err)
 	}
-	proc, err := findProcess(pid)
-	if err != nil {
-		return fmt.Errorf("process: pid %d not running: %w", pid, err)
+	proc := d.liveProc
+	if proc == nil || proc.Pid != pid {
+		proc, err = findProcess(pid)
+		if err != nil {
+			return fmt.Errorf("process: pid %d not running: %w", pid, err)
+		}
 	}
 	if err := proc.Kill(); err != nil {
 		return fmt.Errorf("process: kill pid %d: %w", pid, err)
 	}
+	d.liveProc = nil
 	return nil
 }
 
