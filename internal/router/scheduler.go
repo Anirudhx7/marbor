@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/metrics"
@@ -181,45 +180,35 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 	// override any suppression a prior manual/scheduled unload left behind,
 	// else the model would stay cold forever despite this schedule firing.
 	r.clearWarmupSuppress(target.Name, models...)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
+	// Models on the same node are warmed one at a time, not fired
+	// concurrently - see pingWarmupModels (warmer.go) for why: concurrent
+	// cold /api/generate loads against one node race ensureHeadroom's
+	// capacity check (each sees the identical pre-warmup snapshot) and hand
+	// the real runtime multiple competing loads it must arbitrate itself.
 	var failures []string
 	for _, m := range models {
 		if m == "" {
 			continue
 		}
-		m := m
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("[router] panic in goroutine: %v", r)
-				}
-			}()
-			r.ensureHeadroom(ctx, target, m)
-			status := "ok"
-			err := r.pingNode(ctx, target, m, keepAlive)
-			if err != nil {
-				status = "error"
-				mu.Lock()
-				failures = append(failures, fmt.Sprintf("%s: %v", m, err))
-				mu.Unlock()
+		r.ensureHeadroom(ctx, target, m)
+		status := "ok"
+		err := r.pingNode(ctx, target, m, keepAlive)
+		if err != nil {
+			status = "error"
+			failures = append(failures, fmt.Sprintf("%s: %v", m, err))
+		}
+		target.Lock()
+		if err != nil {
+			if target.WarmupErrors == nil {
+				target.WarmupErrors = map[string]string{}
 			}
-			target.Lock()
-			if err != nil {
-				if target.WarmupErrors == nil {
-					target.WarmupErrors = map[string]string{}
-				}
-				target.WarmupErrors[m] = err.Error()
-			} else {
-				delete(target.WarmupErrors, m)
-			}
-			target.Unlock()
-			metrics.WarmupPing(m, target.Name, status)
-		}()
+			target.WarmupErrors[m] = err.Error()
+		} else {
+			delete(target.WarmupErrors, m)
+		}
+		target.Unlock()
+		metrics.WarmupPing(m, target.Name, status)
 	}
-	wg.Wait()
 	if len(failures) > 0 {
 		return fmt.Errorf("%d model(s) failed to warm: %s", len(failures), strings.Join(failures, "; "))
 	}
