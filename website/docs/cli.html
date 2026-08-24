@@ -361,7 +361,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h3 id="whoami"><code>whoami</code><a class="anchor" href="#whoami" aria-label="Link to section">#</a></h3>
 <p>show the CLI's saved identity (live-verified)</p>
 <h3 id="nodes"><code>nodes</code><a class="anchor" href="#nodes" aria-label="Link to section">#</a></h3>
-<p>list nodes known to the marbor</p>
+<p>list nodes known to marbor</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="confirm-tls-node"><code>confirm-tls &lt;node&gt;</code><a class="anchor" href="#confirm-tls-node" aria-label="Link to section">#</a></h4>
@@ -451,7 +451,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h3 id="completion-shell"><code>completion &lt;shell&gt;</code><a class="anchor" href="#completion-shell" aria-label="Link to section">#</a></h3>
 <p>_Hidden from <code>--help</code> output, but fully reachable._</p>
 <p>generate a shell completion script (bash, zsh, or fish)</p>
-<p>Generates a static completion script for the requested shell by walking the current command tree. The script never contacts the marbor or requires credentials, so it keeps working even when the marbor is unreachable or the operator isn't logged in.</p>
+<p>Generates a static completion script for the requested shell by walking the current command tree. The script never contacts marbor or requires credentials, so it keeps working even when marbor is unreachable or the operator isn't logged in.</p>
 <p>Examples:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>source &lt;(marbor completion bash)
 marbor completion zsh &gt; "${fpath[1]}/_marbor"

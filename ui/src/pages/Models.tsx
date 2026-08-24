@@ -104,7 +104,7 @@ function ModelCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEn
           </button>
           {model.digest_mismatch && (
             <span title="Nodes disagree on this model's content - different digests reported for the same name">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
             </span>
           )}
           <Badge variant={isWarm ? 'success' : 'muted'} size="sm">

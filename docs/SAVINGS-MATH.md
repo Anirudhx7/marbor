@@ -195,7 +195,7 @@ Each cloud provider's `cost_per_1k_tokens` (along with `name`, `provider`, and `
 
 ## Audit Trail for Financial Verification
 
-Every routed request is recorded in the JSON-lines audit log (when enabled) with:
+Every routed request is recorded in the SQLite audit trail (when enabled) with:
 
 - Request ID (crypto/rand generated)
 - Timestamp

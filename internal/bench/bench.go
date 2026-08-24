@@ -3,12 +3,12 @@
 // It measures cold vs warm Time-To-First-Token (TTFT) through the marbor proxy
 // using the OpenAI-compatible /v1/chat/completions streaming endpoint.
 // The --target flag must point at the marbor proxy port (e.g.
-// http://localhost:11435), NOT at an Ollama backend directly - we measure
+// http://localhost:11434), NOT at an Ollama backend directly - we measure
 // what the marbor adds, not raw Ollama speed.
 //
 // Usage:
 //
-//	marbor bench --target http://localhost:11435 [--model llama3:8b] [--json] [--key <api-key>] [--timeout 120s]
+//	marbor bench --target http://localhost:11434 [--model llama3:8b] [--json] [--key <api-key>] [--timeout 120s]
 package bench
 
 import (
@@ -47,7 +47,7 @@ func Run(args []string) {
 	}
 	fs.Usage = func() { usage(os.Stderr) }
 
-	target := fs.String("target", "http://localhost:11435", "Marbor proxy base URL (not the Ollama backend)")
+	target := fs.String("target", "http://localhost:11434", "Marbor proxy base URL (not the Ollama backend)")
 	model := fs.String("model", "", "Model to benchmark (auto-detected from /v1/models if omitted)")
 	apiKey := fs.String("key", "", "Bearer API key (required if auth is enabled on the marbor)")
 	jsonOut := fs.Bool("json", false, "Emit JSON output instead of the human-readable table")

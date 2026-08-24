@@ -109,8 +109,8 @@ By making a contribution to this project, I certify that:
 
 ## Issues
 
-- **Bug report:** include marbor version (`./marbor --version`), OS, config snippet (redact keys/tokens), and the exact error output.
-- **Feature request:** describe the problem it solves and who it helps. A config snippet showing what the YAML would look like is a bonus.
+- **Bug report:** include marbor version (`./marbor --version`), OS, the relevant Settings values from the admin dashboard (redact keys/tokens), and the exact error output.
+- **Feature request:** describe the problem it solves and who it helps. A JSON payload for the relevant `/admin/v1/...` endpoint showing how you'd expect to configure it is a bonus.
 
 ## Security
 

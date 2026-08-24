@@ -169,7 +169,7 @@ fi
 echo "=== [4/5] Model fits under 80% of node VRAM (Step 1's rule) ==="
 if [ -z "${MODEL_SIZE_GB:-}" ] || [ -z "${NODE_VRAM_GB:-}" ]; then
   echo "  SKIPPED: set MODEL_SIZE_GB and NODE_VRAM_GB env vars to enforce this check automatically."
-  echo "  Manual reminder (BENCH-RUNBOOK.md Step 1): model's on-disk size + ~20% runtime overhead"
+  echo "  Manual reminder: model's on-disk size + ~20% runtime overhead"
   echo "  must be under 80% of the node's total VRAM. Get total VRAM via:"
   echo "    nvidia-smi --query-gpu=memory.total --format=csv,noheader"
   echo "  (or the node's declared vramTotalMB, visible in GET /admin/nodes, for a Mac mini /"
@@ -190,4 +190,4 @@ print(f'OK model footprint with ~20% overhead ({overhead:.1f}GB) is {pct:.0f}% o
 fi
 
 echo "=== [5/5] Preflight passed ==="
-echo "Safe to proceed with BENCH-RUNBOOK.md Step 2 (bench/cold-loop.sh)."
+echo "Safe to proceed with bench/cold-loop.sh."

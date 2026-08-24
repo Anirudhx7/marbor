@@ -67,7 +67,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
   }, [isOpen]);
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+    `flex items-center gap-3 px-3 py-2 min-h-[44px] text-sm font-medium rounded-md transition-colors ${
       isActive
         ? 'bg-primary/10 text-primary'
         : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
@@ -94,7 +94,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
         </div>
         <button
           onClick={() => setIsOpen(false)}
-          className="md:hidden p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+          className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
           aria-label="Close menu"
         >
           <X className="w-5 h-5" />
@@ -143,7 +143,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
         {forcedDemo && (
           <a
             href="/marbor/"
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 min-h-[44px] text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <ArrowLeft className="w-4 h-4 shrink-0" />
             <span>Back to website</span>
@@ -151,7 +151,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
         )}
         <button
           onClick={toggleTheme}
-          className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 min-h-[44px] text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           {theme === 'dark' ? (
             <><Sun className="w-4 h-4 shrink-0" /><span>Light Mode</span></>
@@ -162,7 +162,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
         {onLogout && (
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 min-h-[44px] text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
           >
             <LogOut className="w-4 h-4 shrink-0" />
             <span>Logout</span>
@@ -179,7 +179,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsOpen(true)}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
             aria-label="Open menu"
           >
             <Menu className="w-5 h-5" />
@@ -214,7 +214,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0 }: SidebarProps) {
       {/* Sidebar - desktop always visible, mobile slide-in */}
       <aside
         className={`
-          fixed left-0 top-0 z-50 w-64 bg-card border-r border-border flex flex-col h-screen
+          fixed left-0 top-0 z-50 w-64 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh
           transition-transform duration-300 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
