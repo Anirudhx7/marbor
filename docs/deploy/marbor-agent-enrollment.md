@@ -31,15 +31,17 @@ or chat. (`install.sh` also accepts a raw `MARBOR_AGENT_SECRET=` as a manual pat
 `MARBOR_ENROLL=` is what the API generates and what you should script against.)
 
 `POST /admin/nodes/{name}/agent` - enables the marbor agent for an already-registered
-node and returns a ready-to-run install command with the enrollment code embedded:
+node and returns a ready-to-run install command with the enrollment code embedded.
+The `port` in the request body is **the agent's own listening port** (the binary's
+default is `9200`) - not the node's runtime endpoint port:
 
 ```json
 {
   "node": "gpu01",
   "enabled": true,
-  "port": 11434,
+  "port": 9200,
   "token": "admin.<opaque-permanent-token>",
-  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=<short-lived-code> PORT=11434 sh",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=<short-lived-code> PORT=9200 sh",
   "install_command_windows": "..."
 }
 ```
@@ -68,7 +70,7 @@ for host in gpu01 gpu02 gpu03; do
   # Enable the agent, capture the install command
   INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes/$host/agent" \
     -H "Content-Type: application/json" \
-    -d '{"port":11434}' | jq -r '.install_command')
+    -d '{"port":9200}' | jq -r '.install_command')
 
   # Run it on the target host (SSH shown here; swap for your Ansible task)
   ssh "$host" "$INSTALL_CMD"

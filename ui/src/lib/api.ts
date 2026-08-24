@@ -1,4 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision } from '../types';
+import { mockCloudProviders } from './mockData';
 
 const BASE = '/admin';
 
@@ -612,13 +613,28 @@ export async function fetchSavings(): Promise<Savings> {
   return res.json();
 }
 
+// In-memory demo provider store so Settings > Cloud Providers is fully
+// interactive on the static demo (add/edit/delete/reorder); resets on reload.
+let demoCloudProviders: CloudProvider[] | null = null;
+function demoProviderStore(): CloudProvider[] {
+  if (!demoCloudProviders) {
+    demoCloudProviders = mockCloudProviders.map(p => ({ ...p }));
+  }
+  return demoCloudProviders;
+}
+
 export async function fetchCloudProviders(): Promise<CloudProvider[]> {
+  if (DEMO) return demoDelay(demoProviderStore().map(p => ({ ...p })));
   const res = await apiFetch(`${BASE}/cloud/providers`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch cloud providers');
   return res.json();
 }
 
 export async function addCloudProvider(data: CloudProviderInput): Promise<void> {
+  if (DEMO) {
+    demoProviderStore().push({ ...(data as CloudProvider) });
+    return demoDelay(undefined);
+  }
   const res = await apiFetch(`${BASE}/cloud/providers`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -628,6 +644,12 @@ export async function addCloudProvider(data: CloudProviderInput): Promise<void> 
 }
 
 export async function updateCloudProvider(name: string, data: CloudProviderInput): Promise<void> {
+  if (DEMO) {
+    const s = demoProviderStore();
+    const i = s.findIndex(p => p.name === name);
+    if (i >= 0) s[i] = { ...s[i], name: (data as CloudProvider).name || name, ...(data as Partial<CloudProvider>) };
+    return demoDelay(undefined);
+  }
   const res = await apiFetch(`${BASE}/cloud/providers/${encodeURIComponent(name)}`, {
     method: 'PUT',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -637,6 +659,7 @@ export async function updateCloudProvider(name: string, data: CloudProviderInput
 }
 
 export async function testCloudProvider(provider: string, base_url: string, api_key: string): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
   const res = await apiFetch(`${BASE}/cloud/providers/test`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -646,6 +669,12 @@ export async function testCloudProvider(provider: string, base_url: string, api_
 }
 
 export async function deleteCloudProvider(name: string): Promise<void> {
+  if (DEMO) {
+    const s = demoProviderStore();
+    const i = s.findIndex(p => p.name === name);
+    if (i >= 0) s.splice(i, 1);
+    return demoDelay(undefined);
+  }
   const res = await apiFetch(`${BASE}/cloud/providers/${encodeURIComponent(name)}`, {
     method: 'DELETE',
     headers: authHeaders(),
@@ -654,6 +683,14 @@ export async function deleteCloudProvider(name: string): Promise<void> {
 }
 
 export async function reorderCloudProviders(order: string[]): Promise<void> {
+  if (DEMO) {
+    const s = demoProviderStore();
+    const byName = new Map(s.map(p => [p.name, p] as const));
+    const next = order.map(n => byName.get(n)).filter((p): p is CloudProvider => !!p);
+    s.forEach(p => { if (!order.includes(p.name)) next.push(p); });
+    demoCloudProviders = next;
+    return demoDelay(undefined);
+  }
   const res = await apiFetch(`${BASE}/cloud/providers/reorder`, {
     method: 'PUT',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

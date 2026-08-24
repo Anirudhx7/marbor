@@ -92,6 +92,12 @@ export function useLiveRequests(maxRequests: number = 20) {
   useEffect(() => {
     if (currentAppPath() !== '/') return;
     let active = true;
+    // Seed immediately on mount instead of waiting for the first 2s tick -
+    // in demo mode the API always fails, so without this the Live Requests
+    // table sits empty ("No requests yet") for the first poll interval,
+    // making a fresh demo look broken.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    poll(active);
     const interval = setInterval(() => {
       if (active && currentAppPath() === '/') {
         poll(active);

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# cold-loop.sh - BENCH-RUNBOOK.md Step 2: n>=10 cold TTFT samples, evicting the
+# cold-loop.sh - n>=10 genuine cold TTFT samples, evicting the
 # model from VRAM before every single sample (bench/ttft.go's own -n loop only
 # evicts before sample #1, not before each one).
 #
-# Requires bench/ttft already built (see BENCH-RUNBOOK.md Step 2's docker build
-# command, or `go build -o bench/ttft ./bench` if Go is installed locally).
+# Requires bench/ttft already built (docker build command below, or
+# `go build -o bench/ttft ./bench` if Go is installed locally).
 #
 # marbor is fully DB-based (marbor.db) - there is no config.yaml. Admin
 # auth is session-based (POST /admin/login with an admin-role account's
@@ -34,7 +34,7 @@ trap cleanup EXIT
 
 if [ ! -x "$TTFT_BIN" ]; then
   echo "cold-loop.sh: ${TTFT_BIN} not found or not executable." >&2
-  echo "Build it first (BENCH-RUNBOOK.md Step 2), e.g.:" >&2
+  echo "Build it first, e.g.:" >&2
   echo "  docker run --rm -v \"\${PWD}:/app\" -w /app -e GOFLAGS=-buildvcs=false golang:1.25.12 go build -o bench/ttft ./bench" >&2
   exit 1
 fi

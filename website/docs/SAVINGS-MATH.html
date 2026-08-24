@@ -464,7 +464,7 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 </table></div>
 <hr/>
 <h2 id="audit-trail-for-financial-verification">Audit Trail for Financial Verification<a class="anchor" href="#audit-trail-for-financial-verification" aria-label="Link to section">#</a></h2>
-<p>Every routed request is recorded in the JSON-lines audit log (when enabled) with:</p>
+<p>Every routed request is recorded in the SQLite audit trail (when enabled) with:</p>
 <ul><li>Request ID (crypto/rand generated)</li><li>Timestamp</li><li>API key name (never the key value)</li><li>Model requested</li><li>Target node (or cloud provider)</li><li>Token counts (prompt + completion)</li><li>Calculated cost (saved or spent)</li><li>HTTP status and latency</li></ul>
 <p>This log is the source of truth for financial reconciliation. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.</p>
 

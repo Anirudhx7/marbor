@@ -133,9 +133,9 @@ not an enforced default anywhere in the router or admin API. Rather than
 inventing a number that might silently point at the wrong port, this
 playbook **requires an explicit `port` for `vllm`, `tgi`, `llamacpp`, and
 `mlx`** and fails fast with a clear message if one is missing. Only
-`ollama` gets a default (`11434`), because that default already exists in
-the Admin API's own `POST /admin/nodes` behavior and matches Ollama's own
-standard port.
+`ollama` gets a default (`11434`), because that is Ollama's own standard
+port - the same number marbor's proxy deliberately listens on for
+drop-in compatibility.
 
 ## What each `agent_nodes` entry needs (`install-marbor-agent.yml`)
 
@@ -143,10 +143,10 @@ standard port.
 |--------|-----------|
 | `name` | **Yes** - must exactly match a node already registered with the marbor. Nothing is generated here (unlike `gpu_nodes` above) - a guessed name would silently target the wrong node. |
 | `host` | Yes - IP or hostname, used as the SSH target for installing the agent. |
-| `port` | Yes - the node's listening port, sent to `POST /admin/nodes/{name}/agent`. Must match the port the node was registered with. |
+| `agent_port` | No - defaults to `9200`. This is the port the marbor **agent itself** listens on - its own port, *not* the node's runtime endpoint port (11434/8000/...). The Admin API requires a port explicitly (`POST /admin/nodes/{name}/agent` rejects an absent/invalid one), so the playbook sends this value; override per entry with an `agent_port:` field or globally with `-e agent_port=....` |
 
 There's no `runtime` field here - agent enrollment doesn't need to know the
-node's runtime, only its name, host, and port.
+node's runtime, only its name and host.
 
 ## What `register-gpus.yml` does, per node
 
@@ -156,7 +156,7 @@ node's runtime, only its name, host, and port.
    defaults.
 3. Registers the node (`POST /admin/nodes`) - safe to always call. This
    endpoint upserts by name, confirmed idempotent (see
-   `internal/router/router.go` `AddNode`, `internal/admin/admin.go:1954`
+   `internal/router/router.go` `AddNode`, `internal/admin/admin.go:1970`
    `handleAddNode` - repeat calls with the same name update in place and
    return `200`, first call returns `201`).
 4. Polls `GET /admin/nodes/{name}` (10 attempts, 5 seconds apart by default -

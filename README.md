@@ -65,7 +65,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
 3. **Run a manual benchmark**:
    Test the cold-vs-warm latency gap through the marbor proxy:
    ```bash
-   go run ./cmd/bench --target http://localhost:11434
+   go run ./cmd/bench -endpoint http://localhost:11434
    ```
 
 4. **Clean up**:
@@ -113,15 +113,16 @@ To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying o
 
 ### Docker Compose (Production Deployment)
 
-Run a production-ready gateway + metrics stack scraping the proxy:
+Run a production-ready gateway, optionally with the metrics stack scraping the proxy:
 ```bash
 git clone https://github.com/Anirudhx7/marbor && cd marbor
-docker compose up -d
+docker compose up -d                                                        # gateway only
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d # gateway + Prometheus + Grafana
 ```
 This starts:
 * **Marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
-* **Prometheus**: Automatically scraping the Marbor metrics endpoint.
-* **Grafana** ([http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [Marbor dashboard](grafana/marbor.json).
+* **Prometheus** (with the monitoring overlay): Automatically scraping the Marbor metrics endpoint.
+* **Grafana** (with the monitoring overlay, [http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [Marbor dashboard](grafana/marbor.json).
 
 ---
 
@@ -170,7 +171,7 @@ Client Application (Agent / RAG / Copilot)
    llama.cpp/MLX)
 ```
 
-**Single static Go binary. Zero runtime dependencies. No Python. No JVM. No Node.js.**
+**Single static Go binary. Zero runtime dependencies. No Python. No JVM. No Node.js.** GPU nodes run an optional second, equally-static companion binary - the [marbor agent](#marbor-agent) - for live telemetry, model pulls, and runtime control.
 
 ---
 
@@ -189,10 +190,10 @@ Client Application (Agent / RAG / Copilot)
 | **Multi-Tenant Auth** | Per-key rate limiting | Token-bucket rate limiter per API key. `X-RateLimit-Limit/Remaining/Reset` headers on every response. |
 | | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access - enforced at the control plane, not advisory. |
 | | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
-| **Observability** | Prometheus metrics | 14 production metrics: request throughput, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, quota rejections, request queue depth/timeouts, warmup pings, panic recovery, node health. |
-| | Grafana dashboard | Included JSON (`grafana/marbor.json`). One-click import. VRAM utilization, request throughput, latency percentiles, cloud fallback rate. |
+| **Observability** | Prometheus metrics | 20 production metrics: request throughput and TTFT, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, local model degradation, quota rejections, request queue depth/timeouts, warmup pings and residency, schedule fires, model evictions, prewarming accuracy, panic recovery, node health. |
+| | Grafana dashboard | Included JSON ([`grafana/marbor.json`](grafana/marbor.json)). One-click import. Request throughput and error rate, latency percentiles, warm-routing hit ratio, connections per node, tokens/s by key. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
-| | Audit trail | Append-only JSON-lines audit log. Every request recorded with crypto/rand request IDs. |
+| | Audit trail | Append-only audit trail persisted in SQLite (`audit_log`). Every request recorded with crypto/rand request IDs. |
 | | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (marbor agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
@@ -219,9 +220,9 @@ Marbor's warm-first routing avoids this: the router knows which models are resid
 ### Measured numbers (real hardware, not estimates)
 
 Measured through a deployed Marbor v0.13.1 instance routing to a single consumer-GPU
-Ollama node, using [`bench/ttft.go`](bench/). Model: an 8B-parameter Q4_K_M model
-(~9.6 GB on disk). Cold = model evicted from VRAM (`keep_alive: 0`) before each request;
-warm = model already resident.
+Ollama node, using the harnesses in [`bench/`](bench/). Model: an 8B-parameter Q4_K_M model
+(~9.6 GB on disk). Cold = model evicted from VRAM before each request; warm = model
+already resident.
 
 | Scenario (via Marbor) | n | p50 TTFT | min | max |
 |---|---|---|---|---|
@@ -265,44 +266,22 @@ Marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the 
 
 `/api/*` paths (Ollama-native) route only to Ollama nodes. `/v1/*` paths route to any runtime - OpenAI SDK clients work unchanged against a mixed fleet.
 
-**Mixed-fleet configuration payload (JSON structure for `POST /admin/v1/nodes` or dashboard config):**
+**Adding nodes:** nodes are written straight to `marbor.db` from the admin dashboard's **GPU Nodes** page, or via one `POST /admin/nodes` call per node - repeat the call per backend (for whole-fleet registration use the [GPU node registration Ansible playbook](docs/deploy/gpu-node-registration.md) or `install.sh`'s network-discovery wizard):
 
 ```json
-[
-  {
-    "name": "ollama-local",
-    "url": "http://localhost:11434",
-    "runtime": "ollama"
-  },
-  {
-    "name": "vllm-gpu",
-    "url": "http://10.0.1.20:8000",
-    "runtime": "vllm",
-    "vram_total_mb": 81920
-  },
-  {
-    "name": "tgi-server",
-    "url": "http://10.0.1.21:8080",
-    "runtime": "tgi"
-  },
-  {
-    "name": "llamacpp-server",
-    "url": "http://10.0.1.22:8080",
-    "runtime": "llamacpp"
-  },
-  {
-    "name": "mlx-mac-studio",
-    "url": "http://10.0.1.23:8080",
-    "runtime": "mlx"
-  }
-]
+{
+  "name": "vllm-gpu",
+  "url": "http://10.0.1.20:8000",
+  "runtime": "vllm",
+  "vram_total_mb": 81920
+}
 ```
 
 ---
 
 
 
-**Supported platforms** (single static binary per target + multi-arch Docker image):
+**Supported platforms** (single static binary per target + Docker image):
 
 | Platform | Architecture | Asset | Typical hardware |
 |----------|-------------|-------|------------------|
@@ -311,7 +290,7 @@ Marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the 
 | macOS | Apple Silicon | `marbor-darwin-arm64` | Mac Studio, Mac Pro, M-series dev machines |
 | macOS | Intel | `marbor-darwin-amd64` | Intel Macs |
 | Windows | amd64 | `marbor-windows-amd64.exe` | Windows GPU workstations |
-| Docker | multi-arch | `ghcr.io/anirudhx7/marbor` | Any container orchestrator |
+| Docker | linux/amd64 image | `ghcr.io/anirudhx7/marbor` | x86_64 Linux hosts |
 
 > **macOS Gatekeeper:** binaries are not yet Apple-notarized. Clear the quarantine flag once: `xattr -d com.apple.quarantine marbor`.
 
@@ -404,7 +383,7 @@ Configure it in the dashboard's **Settings → Global Warmup** card: enable it, 
 
 ## Cloud Fallback Setup
 
-Set a provider configuration (JSON format for `POST /admin/v1/cloud/providers` or dashboard):
+Add a cloud overflow provider from the dashboard's **Settings → Cloud Providers** card, or via one `POST /admin/v1/cloud/providers` call per provider - providers are persisted to `marbor.db`:
 
 ```json
 {
@@ -434,6 +413,23 @@ Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API 
 
 ---
 
+## Marbor Agent
+
+`marbor-agent` is an optional second binary installed on each GPU node: `install.sh ROLE=agent` for a single host, or the [agent enrollment Ansible playbook](docs/deploy/marbor-agent-enrollment.md) for mass enrollment - one inventory-driven run (`ansible/playbooks/install-marbor-agent.yml`) enrolls and installs the agent on every already-registered node at once, idempotently skipping any that are already enrolled and healthy. It serves `GET /v1/status` and `GET /metrics` on **`:9200`** (default) and is polled by marbor - clients never talk to it, and it contains no control-plane code, so a compromised agent host cannot start the gateway.
+
+One agent covers an entire physical host: multiple runtimes on the same box (e.g. Ollama on `:11434` plus vLLM on `:8000`) share one enrollment instead of needing one per node. Its bearer tokens are scope-tiered (`readonly` / `operator` / `admin`), and its TLS certificate can be pinned TOFU-style for headless enrollment (`marbor nodes confirm-tls`).
+
+The fleet runs without it - remote nodes fall back to operator-declared `vram_total_mb`, always labelled `declared`. What the agent adds:
+
+| Capability | Without agent | With agent |
+|---|---|---|
+| Remote node telemetry | Declared capacity only, labelled `declared` | Live fan/temp/power/disk/CPU/RAM and per-model residency, labelled `agent` |
+| Model pulls on nodes | Proxied through marbor's own HTTP client | Dispatched to the node, with your HuggingFace token injected for gated downloads |
+| Runtime process control | Not available | Start/stop/restart/logs of the node's runtime via an accepted control driver (systemd unit, Docker container, launchd label, Windows service, or bare PID file) |
+| Node health | Passive HTTP polling from marbor | On-demand active liveness probe (`marbor runtime health <node>`) |
+
+---
+
 ## Admin API
 
 | Method | Path | Description |
@@ -447,7 +443,7 @@ Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API 
 | POST | `/admin/nodes/{name}/drain` | Drain node for maintenance |
 | PATCH | `/admin/keys/{name}` | Mutate key rate limits, quotas, model allow-lists at runtime |
 | PATCH | `/admin/nodes/{name}` | Override `vram_total_mb`, `gpu_model`, `gpu_indices` at runtime |
-| POST | `/admin/v1/config/reload` | Hot-reload config without SIGHUP |
+| POST | `/admin/v1/config/reload` | Re-sync live settings from `marbor.db` without SIGHUP |
 
 ---
 
@@ -469,7 +465,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor login` | authenticate once and save the session locally (recommended) |
 | `marbor logout` | remove the saved session |
 | `marbor whoami` | show the CLI's saved identity (live-verified) |
-| `marbor nodes` | list nodes known to the marbor (requires auth) |
+| `marbor nodes` | list nodes known to marbor (requires auth) |
 | `marbor nodes confirm-tls <node>` | pin a marbor agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
 | `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
 | `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
@@ -567,26 +563,32 @@ docker exec <container> marbor status
 
 ### Prometheus
 
-14 metrics exported at `:9090/metrics`:
+20 metrics exported at `:9090/metrics`:
 
-- `marbor_requests_total` - total proxied requests (labels: key, model, node, status)
+- `marbor_requests_total` - total proxied requests (labels: key_name, model, node, status)
 - `marbor_request_duration_seconds` - histogram of request latency
+- `marbor_request_ttft_seconds` - histogram of time-to-first-token
 - `marbor_active_connections` - active connections per node
 - `marbor_node_healthy` - health gauge per node (1=healthy, 0=unhealthy)
+- `marbor_warmup_model_resident` - warmup-target model residency per model/node (1=warm, 0=cold)
+- `marbor_schedule_fires_total` - scheduled actions fired (labels: action, node)
+- `marbor_model_evictions_total` - models unloaded from VRAM to free headroom, per node
 - `marbor_cache_hits_total` - warm-model cache hits
 - `marbor_cache_misses_total` - cold-start cache misses
-- `marbor_tokens_total` - tokens processed (labels: key, node)
+- `marbor_tokens_total` - tokens processed (labels: key_name, node)
 - `marbor_retries_total` - upstream failover retries per node
 - `marbor_cloud_fallbacks_total` - cloud overflow events per provider
-- `marbor_quota_rejections_total` - 429 quota enforcement events (labels: key, period)
+- `marbor_local_degradation_total` - requests substituted to a declared local alternate (labels: from, to)
+- `marbor_quota_rejections_total` - 429 quota enforcement events (labels: key_name, period)
 - `marbor_panics_total` - recovered handler panics
 - `marbor_queue_depth` - current request queue depth
 - `marbor_queue_timeouts_total` - queued requests that timed out before getting a node
 - `marbor_warmup_pings_total` - proactive keepalive pings per model/node
+- `marbor_prediction_accuracy_ratio` - rolling prewarming prediction accuracy (0.0-1.0)
 
 ### Grafana
 
-Import `grafana/marbor.json` into Grafana. Point the Prometheus datasource at `:9090`. Pre-built panels: VRAM utilization, request throughput, latency percentiles, cloud fallback rate, cost attribution.
+Import [`grafana/marbor.json`](grafana/marbor.json) into Grafana and point its Prometheus datasource at your Prometheus instance - which scrapes marbor's `:9090/metrics`. Pre-built panels: request throughput and error rate, latency percentiles, warm-routing hit ratio, active connections per node, healthy-node count, tokens/s by API key. Running the Docker monitoring overlay provisions the datasource and this dashboard automatically (see [Docker Compose](#docker-compose-production-deployment)).
 
 ### Structured Logging
 
@@ -607,7 +609,7 @@ Import `grafana/marbor.json` into Grafana. Point the Prometheus datasource at `:
 | **Per-key cost attribution** | ✅ Tokens + USD per key per month | ✅ | ❌ | ✅ |
 | **Single binary, zero deps** | ✅ Go static binary | ❌ Python + deps | ✅ | ❌ SaaS |
 | **Embedded dashboard** | ✅ React UI in the binary | Separate UI | ❌ | SaaS dashboard |
-| **Prometheus + Grafana** | ✅ 14 metrics + included dashboard | ✅ | Partial | ❌ |
+| **Prometheus + Grafana** | ✅ 20 metrics + included dashboard | ✅ | Partial | ❌ |
 | **Local-first architecture** | ✅ GPU traffic never leaves your network | ❌ Cloud-centric | ✅ | ❌ |
 
 ### Use Marbor when:

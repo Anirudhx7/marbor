@@ -90,7 +90,7 @@ function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
               {!error && suppressed && (
                 <span
                   title={`Suppressed since ${new Date(suppressed.since).toLocaleString()} - ${SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}`}
-                  className="text-[10px] text-amber-500 truncate block"
+                  className="text-[10px] text-amber-700 dark:text-amber-400 truncate block"
                 >
                   Suppressed - {SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}, resumes on next warmup
                 </span>
@@ -922,7 +922,7 @@ export function Warmup() {
           {/* Predictive engine disabled banner */}
           {!predictiveEnabled && (
             <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
-              <BrainCircuit className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <BrainCircuit className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Predictive Warmup Engine is disabled</p>
                 <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
@@ -976,7 +976,7 @@ export function Warmup() {
             predictiveEnabled ? 'border-border' : 'border-amber-500/40 bg-amber-500/5'
           }`}>
             <div className="flex items-center gap-3">
-              <BrainCircuit className={`w-5 h-5 shrink-0 ${predictiveEnabled ? 'text-primary' : 'text-amber-500'}`} />
+              <BrainCircuit className={`w-5 h-5 shrink-0 ${predictiveEnabled ? 'text-primary' : 'text-amber-700 dark:text-amber-400'}`} />
               <div>
                 <h4 className="text-sm font-semibold text-foreground">Predictive Warmup Engine</h4>
                 <p className="text-xs text-muted-foreground">
@@ -1006,7 +1006,7 @@ export function Warmup() {
           <div className={`space-y-2 transition-opacity duration-200 ${!predictiveEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
             <p className="text-xs text-muted-foreground">
               Last {decisions.length} predictive-warmup decisions. Newest first - this is a log of what the engine actually did on each tick, not a schedule.
-              {!predictiveEnabled && <span className="text-amber-500/80"> (engine paused - list is frozen)</span>}
+              {!predictiveEnabled && <span className="text-amber-800 dark:text-amber-400"> (engine paused - list is frozen)</span>}
             </p>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading...</p>
