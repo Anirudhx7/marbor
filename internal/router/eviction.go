@@ -482,9 +482,10 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 // scheduled "unload"/drain-at-night action). Each unload runs in its own
 // goroutine so a slow node can't block the scheduler tick. Unknown nodes are
 // skipped. Pinned models are skipped (not unloaded) with a log line, same
-// policy as the manual UnloadModel path. Non-Ollama backends are still
-// skipped (unloadModel's own no-op guard) when this falls through to the
-// direct path below - only the agent branch makes them work for real.
+// policy as the manual UnloadModel path. A known non-Ollama backend that
+// falls through to the direct path below fails with ErrUnloadUnsupported
+// (recorded as an UnloadError, same as any other failure) instead of
+// silently no-op-ing - only the agent branch makes it work for real.
 //
 // Dispatches through the node's Marbor Agent (capability "models.unload") when
 // ShouldUseAgentForUnload says so - same decision handleUnloadModel makes for
@@ -965,6 +966,17 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	// identical pre-warmup snapshot and each independently - and wrongly  --
 	// concludes it has the entire node's free VRAM to itself.
 	reservedByOthers := r.reserveWarmBytes(nodeName, model, est)
+
+	// The single-model check above doesn't account for other in-flight
+	// reservations - est alone can fit while est+reservedByOthers can't, and
+	// EvictForHeadroom has no bound check of its own, so an unsatisfiable
+	// neededBytes here would wipe every evictable model on the node on every
+	// tick, same failure mode as the est>totalBytes case above.
+	if est+reservedByOthers > totalBytes {
+		log.Printf("ensureHeadroom: model %s (%d bytes) plus %d bytes reserved by other in-flight warmups exceeds node %s's total capacity (%d bytes) - skipping", model, est, reservedByOthers, nodeName, totalBytes)
+		r.clearWarmReservation(nodeName, model)
+		return
+	}
 
 	if totalBytes-usedBytes-reservedByOthers >= est {
 		return // fits alongside real usage and any other in-flight loads
