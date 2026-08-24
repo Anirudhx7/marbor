@@ -103,6 +103,14 @@ func readPIDFile(path string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("pid file %q does not contain a valid pid: %w", path, err)
 	}
+	if pid <= 0 {
+		// pid<=0 has special meaning to the OS's kill/signal syscalls (0 signals
+		// the whole process group, -1 signals every process the caller can
+		// signal) - a corrupted/misconfigured pid file must never reach
+		// Stop/Restart's proc.Kill()/proc.Signal() unguarded, or a single-node
+		// operation could become a group- or fleet-wide kill.
+		return 0, fmt.Errorf("pid file %q contains an invalid pid %d", path, pid)
+	}
 	return pid, nil
 }
 
