@@ -175,6 +175,50 @@ function AgentBadge({ present, version }: { present?: boolean; version?: string 
   );
 }
 
+// DrainConfirmModal is the shared shape behind both the Drain and Undrain
+// confirmation modals (same Modal wrapper, two-paragraph body, error block,
+// and Cancel/Confirm button pair) - only title, copy, target node name,
+// confirm handler/label, and the confirm button's color class differ.
+function DrainConfirmModal({ nodeName, title, question, explanation, actionError, onClose, onConfirm, confirmLabel, confirmClassName }: {
+  nodeName: string | null;
+  title: string;
+  question: string;
+  explanation: string;
+  actionError: string | null;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+  confirmLabel: string;
+  confirmClassName: string;
+}) {
+  return (
+    <Modal isOpen={nodeName !== null} onClose={onClose} title={title} maxWidth="sm">
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {question} <span className="text-foreground font-semibold">{nodeName}</span>?
+        </p>
+        <p className="text-xs text-muted-foreground">{explanation}</p>
+        {actionError && (
+          <p className="text-sm text-destructive">{actionError}</p>
+        )}
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={confirmClassName}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent }: {
   node: GPUNode;
   pinnedModels: string[];
@@ -2120,82 +2164,40 @@ export function GPUNodes() {
 
 
       {/* Drain Node Confirmation Modal */}
-      <Modal
-        isOpen={nodeToDrain !== null}
-        onClose={() => setNodeToDrain(null)}
+      <DrainConfirmModal
+        nodeName={nodeToDrain}
         title="Drain Node"
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Are you sure you want to drain <span className="text-foreground font-semibold">{nodeToDrain}</span>?
-          </p>
-          <p className="text-xs text-muted-foreground">
-            This stops new requests from being routed to this node. In-flight requests are unaffected. You can undrain it again at any time.
-          </p>
-          {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
-          )}
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <button
-              onClick={() => setNodeToDrain(null)}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={async () => {
-                if (!nodeToDrain) return;
-                const ok = await handleDrainNode(nodeToDrain);
-                if (ok) setNodeToDrain(null);
-              }}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
-            >
-              Drain Node
-            </button>
-          </div>
-        </div>
-      </Modal>
+        question="Are you sure you want to drain"
+        explanation="This stops new requests from being routed to this node. In-flight requests are unaffected. You can undrain it again at any time."
+        actionError={actionError}
+        onClose={() => setNodeToDrain(null)}
+        onConfirm={async () => {
+          if (!nodeToDrain) return;
+          const ok = await handleDrainNode(nodeToDrain);
+          if (ok) setNodeToDrain(null);
+        }}
+        confirmLabel="Drain Node"
+        confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+      />
 
       {/* Undrain Node Confirmation Modal (R10: reverses a safety decision -
           e.g. a thermal-watchdog auto-drain - so gets the same confirm as
           Drain, not a single-click action). */}
-      <Modal
-        isOpen={nodeToUndrain !== null}
-        onClose={() => setNodeToUndrain(null)}
+      <DrainConfirmModal
+        nodeName={nodeToUndrain}
         title="Undrain Node"
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Are you sure you want to undrain <span className="text-foreground font-semibold">{nodeToUndrain}</span>?
-          </p>
-          <p className="text-xs text-muted-foreground">
-            This resumes routing new requests to this node. If it was drained automatically (e.g. by the thermal watchdog), confirm the underlying condition has actually cleared first.
-          </p>
-          {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
-          )}
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <button
-              onClick={() => setNodeToUndrain(null)}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={async () => {
-                if (!nodeToUndrain) return;
-                const ok = await handleUndrainNode(nodeToUndrain);
-                if (ok) setNodeToUndrain(null);
-              }}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-            >
-              Undrain Node
-            </button>
-          </div>
-        </div>
-      </Modal>
+        question="Are you sure you want to undrain"
+        explanation="This resumes routing new requests to this node. If it was drained automatically (e.g. by the thermal watchdog), confirm the underlying condition has actually cleared first."
+        actionError={actionError}
+        onClose={() => setNodeToUndrain(null)}
+        onConfirm={async () => {
+          if (!nodeToUndrain) return;
+          const ok = await handleUndrainNode(nodeToUndrain);
+          if (ok) setNodeToUndrain(null);
+        }}
+        confirmLabel="Undrain Node"
+        confirmClassName="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+      />
 
       {/* Toggle Predictive Prewarm Confirmation Modal */}
       <Modal
