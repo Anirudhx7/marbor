@@ -127,16 +127,28 @@ func runAgent(args []string, version string) {
 	// two set): that combination falls through to the plaintext branch
 	// exactly like neither being set, since the listener can't serve HTTPS
 	// with only one of a cert/key pair anyway.
+	// Explicit timeouts close a slowloris exposure on a listener bound to all
+	// interfaces: no ReadHeaderTimeout/ReadTimeout/IdleTimeout otherwise.
+	// WriteTimeout stays unset - long pull responses are already bounded by
+	// pullTimeout in actions.go.
+	httpSrv := &http.Server{
+		Addr:              addr,
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	if *certFlag != "" && *keyFlag != "" {
 		log.Printf("marbor-agent %s listening on %s over HTTPS (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
-		if err := http.ListenAndServeTLS(addr, *certFlag, *keyFlag, srv.Handler()); err != nil {
+		if err := httpSrv.ListenAndServeTLS(*certFlag, *keyFlag); err != nil {
 			winexit.Fatalf("marboragent: %v", err)
 		}
 		return
 	}
 
 	log.Printf("marbor-agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
-	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
+	if err := httpSrv.ListenAndServe(); err != nil {
 		winexit.Fatalf("marboragent: %v", err)
 	}
 }
