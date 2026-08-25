@@ -97,7 +97,36 @@ for i in $(seq 1 "$N"); do
     exit 1
   fi
 
-  sleep 2  # let the unload actually land before firing the request
+  # Poll until the model is actually confirmed absent from the node's warm
+  # set instead of trusting a fixed sleep - an unload POST returning 200/204
+  # only means the request was accepted, not that VRAM was actually freed
+  # yet, and a sample fired too early would be silently mislabeled "cold"
+  # while really warm (R1: no estimated/simulated figures presented as
+  # measurements, extended to bench numbers here too).
+  evicted=0
+  for _ in $(seq 1 20); do
+    still_warm="$(curl -sS -b "$COOKIEJAR" "${ADMIN_URL}/admin/nodes" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+nodes = data if isinstance(data, list) else data.get('nodes', data)
+for n in nodes:
+    if n.get('name') == '${NODE_NAME}':
+        names = [m.get('name') for m in (n.get('loadedModels') or [])]
+        print('warm' if '${MODEL}' in names else 'cold')
+        break
+else:
+    print('unknown')
+")"
+    if [ "$still_warm" = "cold" ]; then
+      evicted=1
+      break
+    fi
+    sleep 0.5
+  done
+  if [ "$evicted" != "1" ]; then
+    echo "cold-loop.sh: model '${MODEL}' still warm on '${NODE_NAME}' 10s after unload for sample ${i} - aborting" >&2
+    exit 1
+  fi
 
   "$TTFT_BIN" -url "${MARBOR_URL}" -model "${MODEL}" -n 1 -api-key "${API_KEY}" \
     | tee -a "$LOG_FILE"
