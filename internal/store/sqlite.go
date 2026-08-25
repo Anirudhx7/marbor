@@ -1117,9 +1117,11 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 	var existingGPU, existingRuntime, existingFingerprint sql.NullString
 	var existingIndices string
 	var existingMaxInFlight sql.NullInt64
-	_ = s.db.QueryRow(
+	if err := s.db.QueryRow(
 		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint)
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint); err != nil && err != sql.ErrNoRows {
+		return err
+	}
 
 	vram := existingVRAM
 	if vramTotalMB != nil {
@@ -1639,7 +1641,10 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 		k.Revoked = revoked != 0
 		if strings.TrimSpace(modelsJSON) != "" && modelsJSON != "null" {
 			if err := json.Unmarshal([]byte(modelsJSON), &k.Models); err != nil {
-				return nil, fmt.Errorf("store: AllKeys unmarshal models: %w", err)
+				// Same reasoning as the decrypt-failure branch above: one
+				// malformed models cell must not take every key down with it.
+				log.Printf("store: AllKeys: dropping %s: malformed models JSON: %v", k.Name, err)
+				continue
 			}
 		}
 		keys = append(keys, k)
