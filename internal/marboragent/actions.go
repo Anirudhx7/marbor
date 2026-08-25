@@ -84,6 +84,7 @@ var pullCommands = map[string]func(ctx context.Context, model, hfToken, driver, 
 // per-node bearer token as /v1/status and /metrics (see server.go/auth.go -
 // no new auth mechanism for this action).
 func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req pullModelRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing or invalid model field"})
@@ -528,11 +529,12 @@ type controlRequest struct {
 // tolerating a missing/empty body (io.EOF) since neither delete nor unload
 // required a request body before this field existed - only a genuinely
 // malformed non-empty body is an error.
-func decodeControlRequest(r *http.Request) (controlRequest, error) {
+func decodeControlRequest(w http.ResponseWriter, r *http.Request) (controlRequest, error) {
 	var req controlRequest
 	if r.Body == nil {
 		return req, nil
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
 		return controlRequest{}, err
 	}
@@ -555,7 +557,7 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid model name"})
 		return
 	}
-	ctrl, err := decodeControlRequest(r)
+	ctrl, err := decodeControlRequest(w, r)
 	if err != nil {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid request body"})
 		return
@@ -710,7 +712,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid model name"})
 		return
 	}
-	ctrl, err := decodeControlRequest(r)
+	ctrl, err := decodeControlRequest(w, r)
 	if err != nil {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid request body"})
 		return
