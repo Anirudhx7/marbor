@@ -26,7 +26,7 @@ import { CustomDatePicker } from '../components/DateTimePicker';
 // LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
 // (admin.go) can report for a value read straight from a vendor tool - see
 // the identical constant in GPUNodes.tsx for the full reasoning.
-const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent']);
+const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent', 'api']);
 
 // ContextFeasibilityNote renders P71's context-length feasibility advice for
 // one variant. confidence is always shown (derived vs. estimated) so an
