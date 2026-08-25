@@ -143,7 +143,10 @@ export const mockGPUNodes: GPUNode[] = [
     port: 8080,
     runtime: 'tgi',
     vramTotalMB: 24 * GB,
-    vramUsedMB: Math.round(18.5 * GB),
+    // Fleet Capacity / Fleet Health demo example: this node sits at ~95%
+    // used (weights + KV cache on a full TGI box) so the dashboard's
+    // "VRAM pressure" alert badge has a live example.
+    vramUsedMB: Math.round(22.8 * GB),
     vramSource: 'nvidia',
     powerDrawW: 185,
     cpuPercent: 27,
@@ -156,6 +159,11 @@ export const mockGPUNodes: GPUNode[] = [
     uptime: '8d 2h',
     loadedModels: [
       { name: 'mistralai/Mistral-Small-24B-Instruct-2501', sizeVram: Math.round(14.8 * GiB) },
+      // Also warm here despite living on gpu-node-01 - the Fleet Capacity
+      // card's "duplicated models" figure needs a demo instance (the same
+      // 7B warm twice is exactly the placement waste that figure exists to
+      // surface).
+      { name: 'qwen2.5', sizeVram: Math.round(4.8 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 88 + Math.random() * 10),
     coldStarts: 5,
@@ -263,6 +271,35 @@ export const mockGPUNodes: GPUNode[] = [
     agentArchitecture: 'arm64',
     agentGpuVendor: 'apple',
     agentRuntime: 'mlx',
+  },
+  {
+    id: 'node-6',
+    name: 'gpu-node-06',
+    host: '10.0.0.16',
+    gpuModel: 'NVIDIA RTX 3090 24GB',
+    port: 11434,
+    runtime: 'ollama',
+    // Capacity was declared at add time, so it still counts toward the Fleet
+    // Capacity card's cluster total; usage reads zero because the node is
+    // down and its last live reading was cleared (R1: no stale figures).
+    vramTotalMB: 24 * GB,
+    vramUsedMB: 0,
+    vramSource: 'declared',
+    powerDrawW: 0,
+    temperature: null,
+    health: 'down',
+    draining: false,
+    activeConns: 0,
+    prewarmDisabled: false,
+    pendingPrewarmMB: 0,
+    uptime: 'N/A',
+    loadedModels: [],
+    healthHistory: Array(60).fill(0).map(() => Math.random() < 0.8 ? 0 : 1),
+    // Fleet Health demo example of the "agent stale" badge: an agent IS
+    // enrolled for this host but stopped answering - distinct from a node
+    // that simply runs agentless by choice (agentStale stays false there).
+    agentPresent: false,
+    agentStale: true,
   },
 ];
 

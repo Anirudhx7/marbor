@@ -1,5 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision } from '../types';
-import { mockCloudProviders } from './mockData';
+import { mockCloudProviders, mockSavings } from './mockData';
 
 const BASE = '/admin';
 
@@ -608,6 +608,7 @@ export async function fetchSettings() {
 }
 
 export async function fetchSavings(): Promise<Savings> {
+  if (DEMO) return demoDelay(mockSavings);
   const res = await apiFetch(`${BASE}/metrics/savings`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch savings');
   return res.json();

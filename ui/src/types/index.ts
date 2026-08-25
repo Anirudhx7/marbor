@@ -124,6 +124,13 @@ export interface GPUNode {
   // measurements (R1), rendering '-' instead.
   agentPresent?: boolean;
   agentVersion?: string;
+  // True when an enabled marbor agent IS configured for this node's physical
+  // host but stopped answering past the poll-failure threshold (telemetry
+  // cleared). Deliberately absent/false both when the agent is healthy AND
+  // when no agent was ever configured - so a fleet-health alert can flag
+  // "your enrolled agent went dark" without nagging nodes that run agentless
+  // by choice. Mirrors nodeResp.agentStale / router.NodeState.AgentStale.
+  agentStale?: boolean;
   fanPercent?: number | null;
   cpuPercent?: number;
   ramUsedMB?: number;

@@ -6,19 +6,18 @@ import {
   Zap,
   Server,
   ArrowRight,
-  Shield,
-  Layers,
-  Database,
-  DollarSign,
-  Flame
+  Flame,
+  AlertTriangle,
+  MemoryStick
 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
 import { useLiveRequests } from '../hooks/useLiveRequests';
-import { mockGPUNodes, mockSavings } from '../lib/mockData';
-import { fetchNodes, fetchSummary, fetchSavings, fetchHealth } from '../lib/api';
-import { GPUNode, Savings } from '../types';
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
+import { mockGPUNodes } from '../lib/mockData';
+import { fetchNodes, fetchSummary, fetchHealth } from '../lib/api';
+import { GPUNode } from '../types';
 
 interface MetricCardProps {
   title: string;
@@ -28,23 +27,27 @@ interface MetricCardProps {
   trend?: string;
   trendUp?: boolean;
   highlight?: 'warning' | 'danger';
+  // compact renders the demoted traffic-metric card: tighter padding and a
+  // smaller headline number, since fleet health/capacity now own the top of
+  // the page and these are secondary signals.
+  compact?: boolean;
 }
 
-function MetricCard({ title, value, unit, icon, trend, trendUp, highlight }: MetricCardProps) {
+function MetricCard({ title, value, unit, icon, trend, trendUp, highlight, compact }: MetricCardProps) {
   const iconBg = highlight === 'danger' ? 'bg-destructive/10 text-destructive'
     : highlight === 'warning' ? 'bg-warning/10 text-warning'
     : 'bg-primary/10 text-primary';
   return (
-    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors h-full min-w-0">
+    <div className={`glass-panel rounded-xl hover:border-primary/50 transition-colors h-full min-w-0 ${compact ? 'p-3.5' : 'p-5'}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
+          <p className={`font-medium text-muted-foreground mb-1 ${compact ? 'text-xs' : 'text-sm'}`}>{title}</p>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-foreground">{value}</span>
+            <span className={`font-bold text-foreground ${compact ? 'text-lg' : 'text-2xl'}`}>{value}</span>
             {unit && <span className="text-sm font-medium text-muted-foreground ml-1">{unit}</span>}
           </div>
         </div>
-        <div className={`p-2 rounded-lg ${iconBg} shrink-0`}>
+        <div className={`rounded-lg shrink-0 ${compact ? 'p-1.5' : 'p-2'} ${iconBg}`}>
           {icon}
         </div>
       </div>
@@ -60,101 +63,204 @@ function MetricCard({ title, value, unit, icon, trend, trendUp, highlight }: Met
   );
 }
 
-interface SavingsCardProps {
-  savings: Savings | null;
-  loading: boolean;
+// VRAM_PRESSURE_THRESHOLD matches VramBar's red band (>90%): a node whose
+// real measured used/total ratio crosses it is flagged here too.
+const VRAM_PRESSURE_THRESHOLD = 0.9;
+
+// MAX_DOWN_BADGES caps per-node down badges in the strip so a large outage
+// degrades to "+N more" instead of wrapping the strip into a wall of red.
+const MAX_DOWN_BADGES = 3;
+
+interface FleetHealth {
+  total: number;
+  healthy: number;
+  degraded: number;
+  draining: number;
+  downNodes: GPUNode[];
+  staleAgents: GPUNode[];
+  vramPressure: GPUNode[];
 }
 
-function SavingsCard({ savings, loading }: SavingsCardProps) {
-  const localPct = savings && savings.total_requests > 0
-    ? Math.round((savings.local_requests / savings.total_requests) * 100)
-    : 0;
-  const cloudPct = 100 - localPct;
+// computeFleetHealth derives every figure from the live node list the
+// dashboard already polls (/admin/v1/nodes) - counts of real states, never
+// estimates (R1).
+function computeFleetHealth(nodes: GPUNode[]): FleetHealth {
+  const downNodes = nodes.filter(n => n.health === 'down');
+  return {
+    total: nodes.length,
+    healthy: nodes.filter(n => n.health === 'healthy' && !n.draining).length,
+    degraded: nodes.filter(n => n.health === 'degraded' && !n.draining).length,
+    draining: nodes.filter(n => n.draining).length,
+    downNodes,
+    // agentStale means an enabled agent IS configured for that host but
+    // stopped answering past the poll-failure threshold - deliberately not
+    // set for hosts that simply run agentless (see NodeState.AgentStale).
+    staleAgents: nodes.filter(n => !!n.agentStale),
+    vramPressure: nodes.filter(n =>
+      n.vramSource !== 'none' && n.vramTotalMB > 0 &&
+      n.vramUsedMB / n.vramTotalMB >= VRAM_PRESSURE_THRESHOLD
+    ),
+  };
+}
+
+function HealthSegment({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
+      <span className="text-muted-foreground">{children}</span>
+    </span>
+  );
+}
+
+function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
+  const f = computeFleetHealth(nodes);
+  const shownDown = f.downNodes.slice(0, MAX_DOWN_BADGES);
+  const extraDown = f.downNodes.length - shownDown.length;
 
   return (
-    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors h-full min-w-0">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs Cloud</p>
-          <div className="flex items-baseline gap-1">
-            {loading ? (
-              <span className="text-2xl font-bold text-foreground animate-pulse">--</span>
-            ) : savings ? (
-              <span className="text-2xl font-bold text-success">
-                {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '-'}
-              </span>
-            ) : (
-              <span className="text-2xl font-bold text-muted-foreground">--</span>
-            )}
-          </div>
-          {savings && !loading ? (
-            <p className="text-xs font-medium text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1 leading-snug">
-              <span className="whitespace-nowrap">{savings.local_requests.toLocaleString('en-US')} local</span>
-              <span>/</span>
-              <span className="whitespace-nowrap">{savings.cloud_requests.toLocaleString('en-US')} cloud</span>
-            </p>
+    <div className="glass-panel rounded-xl px-5 py-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 min-w-0">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 min-w-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+            Fleet Health
+          </span>
+          {f.total === 0 ? (
+            <span className="text-sm text-muted-foreground">No nodes registered yet.</span>
           ) : (
-            <p className="text-xs font-medium text-muted-foreground mt-0.5">local / cloud requests</p>
+            <>
+              <HealthSegment color="bg-success">
+                <span className="text-foreground font-semibold font-mono">{f.healthy}/{f.total}</span> healthy
+              </HealthSegment>
+              {f.degraded > 0 && (
+                <HealthSegment color="bg-warning">
+                  <span className="text-foreground font-semibold font-mono">{f.degraded}</span> degraded
+                </HealthSegment>
+              )}
+              <HealthSegment color={f.draining > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'}>
+                <span className="text-foreground font-semibold font-mono">{f.draining}</span> draining
+              </HealthSegment>
+              <HealthSegment color={f.downNodes.length > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}>
+                <span className="text-foreground font-semibold font-mono">{f.downNodes.length}</span> down
+              </HealthSegment>
+            </>
           )}
         </div>
-        <div className="p-2 bg-success/10 rounded-lg text-success shrink-0">
-          <DollarSign className="w-5 h-5" />
-        </div>
-      </div>
-      <div className="mt-3 flex items-center flex-wrap gap-x-1.5 text-xs font-medium">
-        <span className="text-success whitespace-nowrap">
-          Local {loading || !savings ? '--' : `${localPct}%`}
-        </span>
-        <span className="text-muted-foreground">/</span>
-        <span className="text-amber-700 dark:text-amber-400 whitespace-nowrap">
-          Cloud {loading || !savings ? '--' : `${cloudPct}%`}
-        </span>
-      </div>
-    </div>
-  );
-}
 
-function ArchitectureDiagram() {
-  const steps = [
-    { icon: <Layers className="w-5 h-5" />, label: 'Clients', sublabel: 'API Requests' },
-    { icon: <Shield className="w-5 h-5" />, label: 'Auth Layer', sublabel: 'API Key Validation' },
-    { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
-    { icon: <Server className="w-5 h-5" />, label: 'Marbor Router', sublabel: 'Warm-First Balancer' },
-    { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
-    { icon: <Zap className="w-5 h-5" />, label: 'GPU Nodes', sublabel: 'Ollama Instances' },
-    { icon: <ArrowRight className="w-4 h-4 text-muted-foreground/50" /> },
-    { icon: <Database className="w-5 h-5" />, label: 'Cloud Fallback', sublabel: 'Optional', dashed: true },
-  ];
-
-  return (
-    <div className="glass-panel rounded-xl p-6">
-      <h3 className="text-sm font-semibold text-foreground mb-6">Architecture Flow</h3>
-      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2">
-        {steps.map((step, index) => (
-          <div key={index} className="flex items-center gap-2">
-            {'icon' in step && !('label' in step) ? (
-              step.icon
-            ) : (
-              <div className={`flex flex-col items-center p-3 rounded-lg border ${
-                'dashed' in step && step.dashed
-                  ? 'border-dashed border-border bg-secondary/30'
-                  : 'border-border bg-secondary'
-              } min-w-[120px]`}>
-                <div className="text-primary mb-2">{step.icon}</div>
-                <span className="text-xs font-semibold text-foreground">{step.label}</span>
-                {'sublabel' in step && (
-                  <span className="text-[10px] font-medium text-muted-foreground">{step.sublabel}</span>
-                )}
-              </div>
+        {f.total > 0 && (f.downNodes.length > 0 || f.staleAgents.length > 0 || f.vramPressure.length > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            {shownDown.map(n => (
+              <Badge key={n.id} variant="destructive" size="sm" className="max-w-full">
+                <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
+                <span className="truncate">{n.name} down</span>
+              </Badge>
+            ))}
+            {extraDown > 0 && (
+              <Badge variant="destructive" size="sm">+{extraDown} more down</Badge>
+            )}
+            {f.staleAgents.length > 0 && (
+              <Badge variant="warning" size="sm">
+                <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
+                {f.staleAgents.length} agent{f.staleAgents.length > 1 ? 's' : ''} stale
+              </Badge>
+            )}
+            {f.vramPressure.length > 0 && (
+              <Badge variant="warning" size="sm">
+                <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
+                {f.vramPressure.length} VRAM pressure
+              </Badge>
             )}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
 }
 
-import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
+function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
+  const reporting = nodes.filter(n => n.vramTotalMB > 0);
+  const usedKnown = nodes.filter(n => n.vramSource !== 'none');
+  // Cluster sums over real per-node readings only (R1): used VRAM is each
+  // node's own live measurement, capacity comes from nodes that report a
+  // total. Nodes missing either figure are excluded from that sum and the
+  // caption says how many report - never padded with an estimate.
+  const usedGB = usedKnown.reduce((s, n) => s + n.vramUsedMB, 0) / 1024;
+  const totalGB = reporting.reduce((s, n) => s + n.vramTotalMB, 0) / 1024;
+  const freeGB = totalGB - usedGB;
+
+  const nameCounts = new Map<string, number>();
+  for (const n of nodes) {
+    for (const m of n.loadedModels ?? []) {
+      nameCounts.set(m.name, (nameCounts.get(m.name) ?? 0) + 1);
+    }
+  }
+  const uniqueWarm = nameCounts.size;
+  const warmInstances = [...nameCounts.values()].reduce((s, c) => s + c, 0);
+  const duplicated = [...nameCounts.values()].filter(c => c > 1).length;
+
+  const capacityPartial = nodes.length > 0 && reporting.length < nodes.length;
+
+  return (
+    <div className="glass-panel rounded-xl p-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-4">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <MemoryStick className="w-4 h-4 text-primary" />
+          Fleet Capacity
+        </h3>
+        <span className="text-[10px] text-muted-foreground/70 font-medium">
+          {nodes.length === 0
+            ? 'no nodes'
+            : capacityPartial
+              ? `summed across ${reporting.length}/${nodes.length} nodes reporting capacity`
+              : `summed across ${nodes.length} node${nodes.length > 1 ? 's' : ''}`}
+        </span>
+      </div>
+
+      {nodes.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-2">Register a GPU node to see cluster capacity.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="min-w-0">
+            <VramBar used={usedGB} total={totalGB} size="md" />
+            <div className="flex items-center justify-between text-xs mt-2">
+              <span className="text-muted-foreground font-medium">Free VRAM</span>
+              <span className="text-success font-mono font-semibold">
+                {totalGB > 0 ? `${freeGB.toFixed(1)} GB` : '-'}
+              </span>
+            </div>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Warm Models</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-foreground font-mono">
+                {uniqueWarm > 0 || warmInstances > 0 ? uniqueWarm : '-'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                unique · {warmInstances} resident
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 mt-1">
+              loaded in VRAM across the fleet right now
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Duplicated Models</p>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-2xl font-bold font-mono ${duplicated > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
+                {nodes.some(n => (n.loadedModels ?? []).length > 0) ? duplicated : '-'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                on multiple nodes
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 mt-1">
+              the same model warm twice costs VRAM another model could use
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Dashboard() {
   const { demoMode } = useDemoMode();
@@ -162,15 +268,15 @@ export function Dashboard() {
   const { requests, newRequestId, isLive: requestsLive } = useLiveRequests(10);
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [summary, setSummary] = useState(demoMode ? {
-    activeRequests: 1,
-    avgLatency: 145.2,
-    tokensPerMin: 12450,
-    coldStarts: 19,
-    queueDepth: 0,
-    nodesOnline: 3,
-    nodesDraining: 1,
-    totalNodes: 4,
-    warmHitRatio: 0.94,
+        activeRequests: 1,
+        avgLatency: 145.2,
+        tokensPerMin: 12450,
+        coldStarts: 19,
+        queueDepth: 0,
+        nodesOnline: 4,
+        nodesDraining: 1,
+        totalNodes: 6,
+        warmHitRatio: 0.94,
   } : {
     activeRequests: 0,
     avgLatency: 0,
@@ -182,8 +288,6 @@ export function Dashboard() {
     totalNodes: 0,
     warmHitRatio: 0,
   });
-  const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
-  const [savingsLoading, setSavingsLoading] = useState(!demoMode);
   const [isLive, setIsLive] = useState(!demoMode);
   const [error, setError] = useState<string | null>(null);
   const [proxyPort, setProxyPort] = useState<number>(11434);
@@ -208,18 +312,16 @@ export function Dashboard() {
         if (!active || currentAppPath() !== '/') return;
         setNodes(mockGPUNodes);
         setSummary({
-          activeRequests: 1,
-          avgLatency: 145.2,
-          tokensPerMin: 12450,
-          coldStarts: 19,
-          queueDepth: 0,
-          nodesOnline: 3,
-          nodesDraining: 1,
-          totalNodes: 4,
-          warmHitRatio: 0.94,
-        });
-        setSavings(mockSavings);
-        setSavingsLoading(false);
+    activeRequests: 1,
+    avgLatency: 145.2,
+    tokensPerMin: 12450,
+    coldStarts: 19,
+    queueDepth: 0,
+    nodesOnline: 4,
+    nodesDraining: 1,
+    totalNodes: 6,
+    warmHitRatio: 0.94,
+  });
         setIsLive(false);
         setError(null);
         return;
@@ -244,41 +346,6 @@ export function Dashboard() {
     loadData();
     if (demoMode) return () => { active = false; };
     const interval = setInterval(loadData, 10000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [demoMode, location.pathname]);
-
-  useEffect(() => {
-    if (currentAppPath() !== '/') return;
-    let active = true;
-    // Tracked locally (not read from the savings state directly) since this
-    // effect's deps don't include savings - reading React state here would
-    // be a stale closure over whatever savings was when the effect mounted,
-    // never reflecting a later successful load within the same interval.
-    let hasData = savings !== null;
-    const loadSavings = async () => {
-      if (demoMode) return;
-      if (active && currentAppPath() === '/' && !hasData) {
-        setSavingsLoading(true);
-      }
-      try {
-        const data = await fetchSavings();
-        if (!active || currentAppPath() !== '/') return;
-        setSavings(data);
-        hasData = true;
-      } catch {
-        if (!active || currentAppPath() !== '/') return;
-        setSavings(null);
-      } finally {
-        if (active && currentAppPath() === '/') {
-          setSavingsLoading(false);
-        }
-      }
-    };
-    loadSavings();
-    const interval = setInterval(loadSavings, 5000);
     return () => {
       active = false;
       clearInterval(interval);
@@ -327,46 +394,55 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+      {/* Fleet Health strip - first operational answer: is my fleet OK? */}
+      <FleetHealthStrip nodes={nodes} />
+
+      {/* Fleet Capacity - pain #5: do I need another GPU, or am I placing badly? */}
+      <FleetCapacityCard nodes={nodes} />
+
+      {/* Traffic metrics - demoted to a compact secondary row below the fleet views */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <MetricCard
+          compact
           title="Active Requests"
           value={displayActive.toString()}
-          icon={<Activity className="w-5 h-5" />}
+          icon={<Activity className="w-4 h-4" />}
         />
         <MetricCard
+          compact
           title="Queued"
           value={displayQueue.toString()}
           unit="waiting"
-          icon={<Clock className="w-5 h-5" />}
+          icon={<Clock className="w-4 h-4" />}
           highlight={displayQueue > 0 ? 'warning' : undefined}
         />
         <MetricCard
+          compact
           title="Avg Latency"
           value={isLive || demoMode ? displayLatency.toFixed(0) : '--'}
           unit={isLive || demoMode ? 'ms' : undefined}
-          icon={<Clock className="w-5 h-5" />}
+          icon={<Clock className="w-4 h-4" />}
         />
         <MetricCard
+          compact
           title="Tokens/min"
           value={displayTokens.toString()}
-          icon={<Zap className="w-5 h-5" />}
+          icon={<Zap className="w-4 h-4" />}
         />
         <MetricCard
+          compact
           title="Warm Hit Ratio"
           value={isLive || demoMode ? `${(displayWarmHitRatio * 100).toFixed(0)}%` : '--'}
-          icon={<Flame className="w-5 h-5 text-orange-600 dark:text-orange-400" />}
+          icon={<Flame className="w-4 h-4 text-orange-600 dark:text-orange-400" />}
         />
         <MetricCard
+          compact
           title="Cold Starts"
           value={displayColdStarts.toString()}
           unit="events"
-          icon={<Server className="w-5 h-5" />}
+          icon={<Server className="w-4 h-4" />}
         />
-        <SavingsCard savings={savings} loading={savingsLoading} />
       </div>
-
-      <ArchitectureDiagram />
 
       {/* GPU Nodes Panel */}
       <div className="glass-panel rounded-xl p-6">
