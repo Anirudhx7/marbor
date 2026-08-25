@@ -212,6 +212,14 @@ type Server struct {
 	// node-list lock already protects individual reads/writes; this mutex
 	// only prevents two full PATCH transactions from interleaving).
 	nodePatchMu sync.Mutex
+	// settingsMu serializes handleUpdateSettings' entire read-validate-write
+	// sequence. s.mu itself is only held briefly (snapshot, then final swap)
+	// so a slow/large request body can't stall cors()/LogRequest on every
+	// other request, but that means two concurrent settings updates could
+	// otherwise both validate against the same stale snapshot and the second
+	// write would silently discard the first's changes (lost update) -
+	// same nodePatchMu discipline as handlePatchNode above.
+	settingsMu sync.Mutex
 }
 
 // enrollmentCode is a short-lived, single-use credential exchanged by a Node
@@ -5057,7 +5065,15 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
+	// s.mu also guards cors() (every admin request) and LogRequest (every
+	// proxied inference request) - decode the body before taking the lock so
+	// a slow/large client body can't stall the entire admin UI and data plane.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+
+	s.mu.RLock()
 	// Start from the current config so any field the request body omits (the
 	// Settings page only ever sends a partial payload - most Routing/Auth/
 	// CloudProviders fields are managed via their own dedicated endpoints)
@@ -5078,8 +5094,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		v := *s.cfg.Proxy.AccessLog
 		incoming.Proxy.AccessLog = &v
 	}
+	current := s.cfg
+	s.mu.RUnlock()
+
 	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
-		s.mu.Unlock()
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -5087,21 +5105,21 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// entirely) when the operator didn't change it; preserve the real token in
 	// both cases instead of clobbering it with the mask.
 	if incoming.HuggingFace.Token == "" || incoming.HuggingFace.Token == "***" {
-		incoming.HuggingFace.Token = s.cfg.HuggingFace.Token
+		incoming.HuggingFace.Token = current.HuggingFace.Token
 	}
 	if incoming.Webhook.Secret == "" || incoming.Webhook.Secret == "***" {
-		incoming.Webhook.Secret = s.cfg.Webhook.Secret
+		incoming.Webhook.Secret = current.Webhook.Secret
 	}
 	if incoming.LiteLLM.APIKey == "" || incoming.LiteLLM.APIKey == "***" {
-		incoming.LiteLLM.APIKey = s.cfg.LiteLLM.APIKey
+		incoming.LiteLLM.APIKey = current.LiteLLM.APIKey
 	}
 
 	if err := incoming.Validate(); err != nil {
-		s.mu.Unlock()
 		http.Error(w, fmt.Sprintf("validation failed: %v", err), http.StatusBadRequest)
 		return
 	}
 
+	s.mu.Lock()
 	s.cfg = incoming
 	s.mu.Unlock()
 
