@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -51,6 +52,29 @@ func (d *LaunchdDriver) Status(ctx context.Context) (Status, error) {
 		return Status{}, fmt.Errorf("launchd: list %s: %s", d.Label, firstNonEmptyLine(out, err))
 	}
 	trimmed := strings.TrimSpace(out)
+
+	// Modern macOS often emits a dict-style block (starting with "{") rather
+	// than the legacy three-column summary line - the column heuristic below
+	// never sees a leading "-" in that form, so it would report Running=true
+	// even for a loaded-but-crashed job with no PID. Look for a `"PID" = n;`
+	// pair first, matching parseLaunchctlListStatus in service_darwin.go.
+	if strings.HasPrefix(trimmed, "{") {
+		for _, line := range strings.Split(trimmed, "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.Contains(line, `"PID"`) {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				pidStr := strings.TrimSpace(strings.Trim(strings.TrimSpace(parts[1]), ";"))
+				if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
+					return Status{Running: true, Detail: trimmed}, nil
+				}
+			}
+		}
+		return Status{Running: false, Detail: trimmed}, nil
+	}
+
 	fields := strings.Fields(trimmed)
 	running := len(fields) > 0 && fields[0] != "-"
 	return Status{Running: running, Detail: trimmed}, nil

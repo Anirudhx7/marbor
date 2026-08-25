@@ -225,10 +225,13 @@ func (processProber) probe(ctx context.Context, runtimeName string) (DiscoveryRe
 	}
 	for _, path := range processCandidatePIDFiles(runtimeName) {
 		if pid, err := readPIDFile(path); err == nil {
+			if !processAlive(pid) {
+				continue
+			}
 			return DiscoveryResult{
 				Driver:     "process",
 				Identifier: path,
-				Evidence:   []string{fmt.Sprintf("pid file %q found (pid %d)", path, pid)},
+				Evidence:   []string{fmt.Sprintf("pid file %q found (pid %d, confirmed alive)", path, pid)},
 			}, true
 		}
 	}
