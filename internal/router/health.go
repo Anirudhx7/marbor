@@ -122,6 +122,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// of this poll operates on one consistent URL instead of racing.
 	n.mu.RLock()
 	nodeURL := n.URL
+	nvidiaIndex := n.NvidiaIndex
 	needsDetect := n.autoDetect && n.Runtime == "auto"
 	n.mu.RUnlock()
 	if needsDetect {
@@ -180,7 +181,7 @@ func (r *Router) pollNode(n *NodeState) {
 	hasGPU := false
 	if isLocalNode(nodeURL) {
 		r.nvidiaMu.RLock()
-		gpu, hasGPU = r.nvidiaCache[n.NvidiaIndex]
+		gpu, hasGPU = r.nvidiaCache[nvidiaIndex]
 		r.nvidiaMu.RUnlock()
 	}
 
