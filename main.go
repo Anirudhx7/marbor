@@ -692,7 +692,9 @@ func main() {
 
 	// Periodically flush usage counters so a restart preserves quota/usage
 	// state (crash loses at most one interval).
+	usageFlushDone := make(chan struct{})
 	go func() {
+		defer close(usageFlushDone)
 		t := time.NewTicker(30 * time.Second)
 		defer t.Stop()
 		for {
@@ -839,6 +841,15 @@ func main() {
 		log.Printf("Admin shutdown error: %v", err)
 	}
 	cancel()
+
+	// Wait for the usage-flush goroutine to actually exit before the final
+	// save below, so its own in-flight SaveToStore can't race the final save
+	// or run against the store after it closes (deferred earlier in main).
+	select {
+	case <-usageFlushDone:
+	case <-time.After(2 * time.Second):
+		log.Printf("WARNING: usage-flush goroutine did not exit within 2s of shutdown")
+	}
 
 	// Drain the async request-log queue before the store closes (deferred
 	// above), so the logger goroutine can't write through a closed store.
