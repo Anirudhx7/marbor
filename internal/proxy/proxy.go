@@ -522,6 +522,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var nextNode *router.NodeState
 		var nextDecision *router.RoutingDecision
 		var retryErr error
+		// clientDisconnected is set when ErrorHandler detects the client
+		// already left before any response was written - no WriteHeader call
+		// follows, so rec.statusCode stays 0 and would otherwise be reported
+		// as a fabricated 200 by StatusCode()'s unset-maps-to-200 fallback.
+		var clientDisconnected bool
 		// errHandled is set when ErrorHandler fired and already released this
 		// node's connection slot, so the post-loop DecrConn must not run again
 		// (a double decrement skews least-connections toward the failed node).
@@ -542,6 +547,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// or a cloud call on a request nobody is waiting for.
 			if origReq.Context().Err() != nil {
 				retryErr = origReq.Context().Err()
+				clientDisconnected = true
 				return
 			}
 
@@ -607,7 +613,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		rec = &statusRecorder{ResponseWriter: w, start: start}
-		aborted = serveAndRecoverAbort(proxy, rec, r)
+		aborted = serveAndRecoverAbort(proxy, rec, r) || clientDisconnected
 
 		if retryErr == errCloudHandled {
 			// Cloud path handled the response and did its own logging.
@@ -996,6 +1002,13 @@ func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r
 }
 
 func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, clouds []config.CloudProvider, idx int) {
+	// Same guard as the local retry loop's ErrorHandler: don't spend a
+	// billable metered cloud API call on a request nobody is waiting for.
+	// Checked here (not just at each call site) so it also covers the
+	// next-provider recursion inside this function's own ErrorHandler below.
+	if r.Context().Err() != nil {
+		return
+	}
 	cloud := &clouds[idx]
 	hasNext := idx+1 < len(clouds)
 	delegated := false
@@ -1272,7 +1285,15 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 		} else {
 			r.tail = append(r.tail, b[:n]...)
 			if len(r.tail) > tailMax {
-				r.tail = r.tail[len(r.tail)-tailMax:]
+				cut := r.tail[len(r.tail)-tailMax:]
+				// Align to the next full line boundary after the hard cut,
+				// rather than trimming mid-line - a cut landing inside the
+				// final usage-bearing JSON line would otherwise make the
+				// token-count parser silently see no counts at all (R1).
+				if idx := bytes.IndexByte(cut, '\n'); idx >= 0 {
+					cut = cut[idx+1:]
+				}
+				r.tail = cut
 			}
 		}
 	}
