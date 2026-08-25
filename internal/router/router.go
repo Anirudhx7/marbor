@@ -524,6 +524,17 @@ type Router struct {
 	// past its 5s timeout, the next ticker tick skips rather than stacking a
 	// second concurrent pollAll goroutine.
 	pollInFlight atomic.Bool
+	// dockerInFlight/nvidiaInFlight/predictiveInFlight guard discoverAndAddDockerNodes/
+	// pollNvidiaAll/RunPredictionCycle the same way pollInFlight guards pollAll -
+	// each of these calls out to something that can hang (Docker socket,
+	// nvidia-smi subprocess, SQLite), and since Start's select loop now
+	// backgrounds them with `go safeRun(...)` (P127) instead of calling them
+	// synchronously, a hung dependency would otherwise let the ticker stack an
+	// unbounded number of overlapping goroutines instead of the old implicit
+	// single-flight behavior the synchronous call provided for free.
+	dockerInFlight     atomic.Bool
+	nvidiaInFlight     atomic.Bool
+	predictiveInFlight atomic.Bool
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -1178,9 +1189,19 @@ func (r *Router) Start(ctx context.Context) {
 			// per-node /api/ps health poll's own in-flight guard above.
 			go safeRun("pollAgentHosts", r.pollAgentHosts)
 		case <-dockerTicker.C:
-			go safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
+			if r.dockerInFlight.CompareAndSwap(false, true) {
+				go func() {
+					defer r.dockerInFlight.Store(false)
+					safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
+				}()
+			}
 		case <-nvidiaTicker.C:
-			go safeRun("pollNvidiaAll", r.pollNvidiaAll)
+			if r.nvidiaInFlight.CompareAndSwap(false, true) {
+				go func() {
+					defer r.nvidiaInFlight.Store(false)
+					safeRun("pollNvidiaAll", r.pollNvidiaAll)
+				}()
+			}
 		case <-sweepTicker.C:
 			safeRun("sweepAffinity", r.sweepAffinity)
 			safeRun("FlushAffinity", r.FlushAffinity)
@@ -1197,7 +1218,12 @@ func (r *Router) Start(ctx context.Context) {
 		case <-warmStateTicker.C:
 			go safeRun("FlushWarmState", r.FlushWarmState)
 		case <-predictiveTicker.C:
-			go safeRun("RunPredictionCycle", func() { r.RunPredictionCycle(ctx, time.Now()) })
+			if r.predictiveInFlight.CompareAndSwap(false, true) {
+				go func() {
+					defer r.predictiveInFlight.Store(false)
+					safeRun("RunPredictionCycle", func() { r.RunPredictionCycle(ctx, time.Now()) })
+				}()
+			}
 		}
 	}
 }
