@@ -13,11 +13,12 @@ import {
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
+import { SavingsCard } from '../components/SavingsCard';
 import { useLiveRequests } from '../hooks/useLiveRequests';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { mockGPUNodes } from '../lib/mockData';
-import { fetchNodes, fetchSummary, fetchHealth } from '../lib/api';
-import { GPUNode } from '../types';
+import { mockGPUNodes, mockSavings } from '../lib/mockData';
+import { fetchNodes, fetchSummary, fetchSavings, fetchHealth } from '../lib/api';
+import { GPUNode, Savings } from '../types';
 
 interface MetricCardProps {
   title: string;
@@ -290,6 +291,8 @@ export function Dashboard() {
   });
   const [isLive, setIsLive] = useState(!demoMode);
   const [error, setError] = useState<string | null>(null);
+  const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
+  const [savingsLoading, setSavingsLoading] = useState(!demoMode);
   const [proxyPort, setProxyPort] = useState<number>(11434);
   const [version, setVersion] = useState<string>('');
 
@@ -352,6 +355,42 @@ export function Dashboard() {
     };
   }, [demoMode, location.pathname]);
 
+  useEffect(() => {
+    if (currentAppPath() !== '/') return;
+    let active = true;
+    // Tracked locally (not read from the savings state directly) since this
+    // effect's deps don't include savings - reading React state here would
+    // be a stale closure over whatever savings was when the effect mounted,
+    // never reflecting a later successful load within the same interval.
+    let hasData = savings !== null;
+    const loadSavings = async () => {
+      if (demoMode) return;
+      if (active && currentAppPath() === '/' && !hasData) {
+        setSavingsLoading(true);
+      }
+      try {
+        const data = await fetchSavings();
+        if (!active || currentAppPath() !== '/') return;
+        setSavings(data);
+        hasData = true;
+      } catch {
+        if (!active || currentAppPath() !== '/') return;
+        setSavings(null);
+      } finally {
+        if (active && currentAppPath() === '/') {
+          setSavingsLoading(false);
+        }
+      }
+    };
+    loadSavings();
+    if (demoMode) return () => { active = false; };
+    const interval = setInterval(loadSavings, 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname]);
+
   const activeFromRequests = requests.filter(r => r.status === 'loading').length;
   const displayActive = (isLive || demoMode) ? summary.activeRequests : activeFromRequests;
   const displayLatency = (isLive || demoMode) ? summary.avgLatency : 0;
@@ -397,8 +436,18 @@ export function Dashboard() {
       {/* Fleet Health strip - first operational answer: is my fleet OK? */}
       <FleetHealthStrip nodes={nodes} />
 
-      {/* Fleet Capacity - pain #5: do I need another GPU, or am I placing badly? */}
-      <FleetCapacityCard nodes={nodes} />
+      {/* Fleet Capacity + fleet ROI, one screen: is my fleet healthy, do I
+          need another GPU or am I placing badly, and what is it saving me.
+          Capacity owns two-thirds; the savings figure sits beside it above
+          the fold (it also lives on Routing next to the strategy picker). */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+        <div className="lg:col-span-2 min-w-0">
+          <FleetCapacityCard nodes={nodes} />
+        </div>
+        <div className="min-w-0">
+          <SavingsCard savings={savings} loading={savingsLoading} />
+        </div>
+      </div>
 
       {/* Traffic metrics - demoted to a compact secondary row below the fleet views */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
