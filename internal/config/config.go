@@ -59,7 +59,16 @@ func parseNumericIP(host string) net.IP {
 			return nil
 		}
 	}
-	n, err := strconv.ParseUint(host, 0, 32)
+	// Parse explicitly as base 16 (0x-prefixed, stripped since ParseUint's
+	// explicit-base form doesn't strip it itself) or base 10 (plain digits) -
+	// never base 0, which would silently reinterpret a leading-zero all-digit
+	// string (e.g. "0250000000") as octal instead of the decimal value an
+	// operator or attacker actually intended.
+	digits, base := host, 10
+	if len(host) > 1 && host[0] == '0' && (host[1] == 'x' || host[1] == 'X') {
+		digits, base = host[2:], 16
+	}
+	n, err := strconv.ParseUint(digits, base, 32)
 	if err != nil {
 		return nil
 	}
