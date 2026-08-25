@@ -743,7 +743,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 // already understands its model-name/tag format. runtimeURL is unused here
 // (part of unloadCommands' shared signature) - Ollama's CLI needs no address.
 func unloadViaOllama(ctx context.Context, _, model, driver, identifier string) error {
-	return runDownload(ctx, driver, identifier, "", "ollama", "stop", model)
+	return runDownload(ctx, driver, identifier, "", "ollama", "stop", "--", model)
 }
 
 // llamaCppRouterModelList is GET {runtimeURL}/models' response shape in
