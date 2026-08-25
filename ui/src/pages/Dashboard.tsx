@@ -253,15 +253,21 @@ export function Dashboard() {
   useEffect(() => {
     if (currentAppPath() !== '/') return;
     let active = true;
+    // Tracked locally (not read from the savings state directly) since this
+    // effect's deps don't include savings - reading React state here would
+    // be a stale closure over whatever savings was when the effect mounted,
+    // never reflecting a later successful load within the same interval.
+    let hasData = savings !== null;
     const loadSavings = async () => {
       if (demoMode) return;
-      if (active && currentAppPath() === '/') {
+      if (active && currentAppPath() === '/' && !hasData) {
         setSavingsLoading(true);
       }
       try {
         const data = await fetchSavings();
         if (!active || currentAppPath() !== '/') return;
         setSavings(data);
+        hasData = true;
       } catch {
         if (!active || currentAppPath() !== '/') return;
         setSavings(null);
