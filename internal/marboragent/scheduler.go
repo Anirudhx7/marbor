@@ -2,8 +2,10 @@ package marboragent
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -146,6 +148,12 @@ func (s *Scheduler) metadata() Telemetry {
 // backend is selected, not a live reading - is still visible (R1: never
 // fabricate a *reading*, but don't discard a fact that didn't fail).
 func (s *Scheduler) refresh() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("marboragent: recovered panic in refresh cycle: %v\n%s", r, debug.Stack())
+		}
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -254,9 +262,11 @@ func (s *Scheduler) runtimeVersion(id, name string) string {
 	vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
 	v = detectRuntimeVersion(vctx, name)
 	vcancel()
-	s.runtimeMu.Lock()
-	s.versionCache[id] = v
-	s.runtimeMu.Unlock()
+	if v != "" {
+		s.runtimeMu.Lock()
+		s.versionCache[id] = v
+		s.runtimeMu.Unlock()
+	}
 	return v
 }
 
