@@ -170,9 +170,13 @@ export function Routing() {
   const handleCreateRule = async () => {
     const errors: string[] = [];
     if (!newRuleForm.priority) errors.push('Priority is required');
+    const parsedPriority = parseInt(newRuleForm.priority, 10);
+    if (newRuleForm.priority && !(Number.isInteger(parsedPriority) && parsedPriority >= 1)) {
+      errors.push('Priority must be a positive integer');
+    }
     if (!newRuleForm.condition) errors.push('Condition is required');
     if (!newRuleForm.targetNode) errors.push('Target node is required');
-    
+
     if (errors.length > 0) {
       setFormErrors(errors);
       return;
@@ -180,7 +184,7 @@ export function Routing() {
 
     const newRule: RoutingRule = {
       id: `rule-${Date.now()}`,
-      priority: parseInt(newRuleForm.priority),
+      priority: parsedPriority,
       condition: newRuleForm.condition,
       targetNode: newRuleForm.targetNode,
       strategy: newRuleForm.strategy,
