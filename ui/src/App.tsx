@@ -99,7 +99,14 @@ const Benchmark    = lazy(() => import('./pages/Benchmark').then(m => ({ default
 // client-side navigation.
 // ---------------------------------------------------------------------------
 const RouterComponent = forcedDemo ? HashRouter : BrowserRouter;
-const basename = forcedDemo ? '/marbor/demo' : '/';
+// The demo artifact is path-independent (relative asset base) and can be
+// mounted at any first path segment - /marbor/demo/, /marbor1/demo/, etc.
+// Derive the mount root from where the app actually loaded instead of
+// hardcoding one deployment's path, so basename and the login-success URL
+// reset stay correct everywhere.
+const basename = forcedDemo
+  ? window.location.pathname.replace(/\/+$/, '')
+  : '/';
 
 // ---------------------------------------------------------------------------
 // AppShell - rendered inside the Router so it can call useLocation.
