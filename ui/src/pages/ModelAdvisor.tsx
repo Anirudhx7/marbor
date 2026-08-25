@@ -194,6 +194,13 @@ function ModelDetailPanel({
   const [verifyLoad, setVerifyLoad] = useState(true);
   const [vramConfirmVariant, setVramConfirmVariant] = useState<ModelVariantFit | null>(null);
   const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
+  // Mirrors the node-identity guard pattern used in GPUNodes.tsx - a slower
+  // fetchDetails response for a previously-selected node can otherwise land
+  // after a newer node's response and overwrite its displayed VRAM-fit
+  // badge, which an operator could act on to pull a model sized for the
+  // wrong GPU.
+  const currentNodeRef = useRef(nodeName);
+  useEffect(() => { currentNodeRef.current = nodeName; }, [nodeName]);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -281,15 +288,18 @@ function ModelDetailPanel({
       }
       return;
     }
+    const targetNode = nodeName;
     setLoading(true);
     setError(null);
     try {
-      const resp = await getHFRepoDetails(model.id, nodeName || undefined, len, nodeRuntime || undefined);
+      const resp = await getHFRepoDetails(model.id, targetNode || undefined, len, nodeRuntime || undefined);
+      if (currentNodeRef.current !== targetNode) return;
       setDetails(resp);
     } catch (e: unknown) {
+      if (currentNodeRef.current !== targetNode) return;
       setError(e instanceof Error ? e.message : 'Failed to load variants');
     } finally {
-      setLoading(false);
+      if (currentNodeRef.current === targetNode) setLoading(false);
     }
   }, [demoMode, model.id, model.downloads, model.likes, model.tags, model.lastModified, nodeName, nodeRuntime]);
 
@@ -652,6 +662,7 @@ export function ModelAdvisor() {
   const [tab, setTab] = useState<'browse' | 'favourites'>('browse');
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteDetails, setFavoriteDetails] = useState<Record<string, HFModel>>({});
+  const searchSeqRef = useRef(0);
 
   const activeNode = useMemo(
     () => (!selectedNode || nodes.length === 0) ? null : nodes.find(n => n.name === selectedNode) || null,
@@ -724,6 +735,11 @@ export function ModelAdvisor() {
   useEffect(() => { loadSystemInfo(); }, [demoMode]);
 
   useEffect(() => {
+    // A stale response applying after a newer one would show results
+    // matching none of the currently-visible filters on a page used to
+    // decide GPU-affecting pulls - guard with a monotonic sequence number.
+    searchSeqRef.current += 1;
+    const seq = searchSeqRef.current;
     const doSearch = async () => {
       const minDl = minDownloads ? Number(minDownloads) : undefined;
       const minLk = minLikes ? Number(minLikes) : undefined;
@@ -741,6 +757,7 @@ export function ModelAdvisor() {
           if (sortBy === 'oldest') return a.lastModified.localeCompare(b.lastModified);
           return b.downloads - a.downloads;
         });
+        if (searchSeqRef.current !== seq) return;
         setModels(sorted);
         return;
       }
@@ -754,12 +771,14 @@ export function ModelAdvisor() {
           minLikes: minLk,
           createdAfter: createdAfter || undefined,
         });
+        if (searchSeqRef.current !== seq) return;
         setModels(resp || []);
       } catch (e: unknown) {
+        if (searchSeqRef.current !== seq) return;
         setSearchError(e instanceof Error ? e.message : 'Failed to search Hugging Face models. Make sure the backend has internet access.');
         setModels([]);
       } finally {
-        setSearching(false);
+        if (searchSeqRef.current === seq) setSearching(false);
       }
     };
     doSearch();
