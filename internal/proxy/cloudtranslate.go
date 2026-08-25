@@ -193,7 +193,7 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 			if err == nil {
 				err = io.ErrUnexpectedEOF
 			}
-			pw.Write(append(buildErrorNDJSON(err.Error()), '\n')) //nolint:errcheck -- CloseWithError below reports it
+			pw.Write(append(buildErrorNDJSON("upstream stream ended unexpectedly"), '\n')) //nolint:errcheck -- CloseWithError below reports it
 			pw.CloseWithError(err)
 			return
 		}
