@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchCloudBudgetStatus, fetchSettings } from '../lib/api';
+import { fetchCloudBudgetStatus, fetchSettings, updateSettings } from '../lib/api';
 import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
 import type { BudgetEntry, CloudBudgetStatus } from '../types';
@@ -73,9 +73,10 @@ export function BudgetBanner() {
     setDismissed(true);
     fetchSettings().then(s => {
       const updated = { ...s, hide_budget_banner: true };
-      localStorage.setItem('demo_settings', JSON.stringify(updated));
+      return updateSettings(updated);
+    }).then(() => {
       window.dispatchEvent(new CustomEvent('marbor-settings-change'));
-    });
+    }).catch(() => {});
   };
 
   return (
