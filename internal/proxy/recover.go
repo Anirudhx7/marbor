@@ -63,9 +63,9 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 
 			metrics.Panic()
 
-			requestID := r.Header.Get("X-Request-ID")
+			requestID := w.Header().Get("X-Request-ID")
 			if requestID == "" {
-				requestID = w.Header().Get("X-Request-ID")
+				requestID = r.Header.Get("X-Request-ID")
 			}
 
 			log.Printf("PANIC recovered: method=%s path=%s request_id=%s panic=%v\n%s",
