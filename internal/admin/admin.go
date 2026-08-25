@@ -524,7 +524,15 @@ type nodeResp struct {
 	// configured for this node, or the most recent agent poll failed - the
 	// UI must check AgentPresent before displaying FanPercent/RAMUsedMB/
 	// DiskFreeGB/AgentVersion, never treat a zero as a real measurement (R1).
-	AgentPresent bool     `json:"agentPresent"`
+	AgentPresent bool `json:"agentPresent"`
+	// AgentStale is true when an enabled Marbor Agent IS configured for this
+	// node's host but its consecutive poll failures crossed the health
+	// failure threshold (telemetry cleared) - i.e. the enrolled agent went
+	// dark. Deliberately false both when the agent is healthy AND when no
+	// agent was ever configured for this host, so a UI can alert on the
+	// former without nagging fleets that run some nodes agentless by choice.
+	// See router.NodeState.AgentStale for where the distinction is made.
+	AgentStale   bool     `json:"agentStale,omitempty"`
 	AgentVersion string   `json:"agentVersion,omitempty"`
 	FanPercent   *float64 `json:"fanPercent"`
 	CPUPercent   float64  `json:"cpuPercent"`
@@ -1419,6 +1427,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		HealthHistory:          hist,
 		PendingPrewarmMB:       s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
 		AgentPresent:           n.AgentPresent,
+		AgentStale:             n.AgentStale,
 		AgentVersion:           n.AgentVersion,
 		FanPercent:             n.FanPercent,
 		CPUPercent:             n.CPUPercent,

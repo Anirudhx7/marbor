@@ -830,3 +830,96 @@ func TestPollAgentTelemetryStillPolledWhenAPIPSFails(t *testing.T) {
 		t.Errorf("FanPercent = %v, want 61 - agent telemetry must be collected independently of /api/ps health", r.nodes[0].FanPercent)
 	}
 }
+
+// TestAgentStale_DistinguishesConfiguredDownFromNeverConfigured guards
+// NodeState.AgentStale's contract: true only when an enabled agent IS
+// configured for the host but its consecutive failures crossed
+// healthFailureThreshold (an enrolled agent went dark); false while healthy,
+// false for a host with no agent configured, and false again once the agent
+// is disabled (a deliberate operator choice, not a failure). The dashboard's
+// fleet-health strip alerts on exactly this flag, so blurring either false
+// case would nag fleets running some nodes agentless by choice.
+func TestAgentStale_DistinguishesConfiguredDownFromNeverConfigured(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	up := true
+	var upMu sync.Mutex
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upMu.Lock()
+		ok := up
+		upMu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+		})
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		// gpu-0 shares agentSrv's 127.0.0.1 host; gpu-1 declares an explicit
+		// different Host with no agent ever enrolled for it.
+		{Name: "gpu-0", URL: psSrv.URL},
+		{Name: "gpu-1", URL: psSrv.URL, Host: "agentless-host"},
+	}, nil)
+	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
+
+	stale := func(name string) bool {
+		t.Helper()
+		for _, n := range r.nodes {
+			if n.Name != name {
+				continue
+			}
+			n.mu.RLock()
+			v := n.AgentStale
+			n.mu.RUnlock()
+			return v
+		}
+		t.Fatalf("node %q not found", name)
+		return false
+	}
+
+	// Healthy baseline: configured node reports fresh telemetry, agentless
+	// node is not stale.
+	r.pollAgentHosts()
+	if stale("gpu-0") {
+		t.Fatal("AgentStale = true after a successful poll, want false")
+	}
+	if stale("gpu-1") {
+		t.Fatal("AgentStale = true for a node whose host has no agent configured, want false")
+	}
+
+	// The configured agent goes dark past the threshold.
+	upMu.Lock()
+	up = false
+	upMu.Unlock()
+	for i := 0; i < r.healthFailureThreshold; i++ {
+		r.pollAgentHosts()
+	}
+	if !stale("gpu-0") {
+		t.Error("AgentStale = false after crossing healthFailureThreshold consecutive failures, want true")
+	}
+	if stale("gpu-1") {
+		t.Error("AgentStale = true for an agentless node after its neighbor's agent went dark, want false")
+	}
+
+	// Recovery clears the flag.
+	upMu.Lock()
+	up = true
+	upMu.Unlock()
+	r.pollAgentHosts()
+	if stale("gpu-0") {
+		t.Error("AgentStale = true after the agent recovered, want false")
+	}
+
+	// Disabling the agent is a deliberate operator choice - not staleness.
+	r.SetMarborAgent(r.nodes[0].Host, false, 0, "", "http")
+	r.pollAgentHosts()
+	if stale("gpu-0") {
+		t.Error("AgentStale = true after the agent was disabled, want false (deliberately agentless, not down)")
+	}
+}

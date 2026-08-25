@@ -178,6 +178,16 @@ type NodeState struct {
 	// only meaningful when AgentPresent is true - consumers must check the
 	// flag rather than treating a zero value as a measurement.
 	AgentPresent bool
+	// AgentStale is true only when an enabled marbor agent IS configured for
+	// this node's host but its consecutive poll failures have crossed
+	// healthFailureThreshold (the same hysteresis agentUnreachable uses
+	// before clearing telemetry) - i.e. an enrolled agent went dark. It stays
+	// false both while the agent answers AND when no agent was ever
+	// configured for this host, so "configured but stopped responding" is
+	// distinguishable from "deliberately agentless" - that difference is the
+	// whole point; the dashboard's fleet-health strip alerts on the former
+	// only, never nagging fleets that chose to run without agents.
+	AgentStale   bool
 	AgentVersion string
 	FanPercent   *float64
 	RAMUsedMB    int64
