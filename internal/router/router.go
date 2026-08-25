@@ -1178,9 +1178,9 @@ func (r *Router) Start(ctx context.Context) {
 			// per-node /api/ps health poll's own in-flight guard above.
 			go safeRun("pollAgentHosts", r.pollAgentHosts)
 		case <-dockerTicker.C:
-			safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
+			go safeRun("discoverAndAddDockerNodes", r.discoverAndAddDockerNodes)
 		case <-nvidiaTicker.C:
-			safeRun("pollNvidiaAll", r.pollNvidiaAll)
+			go safeRun("pollNvidiaAll", r.pollNvidiaAll)
 		case <-sweepTicker.C:
 			safeRun("sweepAffinity", r.sweepAffinity)
 			safeRun("FlushAffinity", r.FlushAffinity)
@@ -1197,7 +1197,7 @@ func (r *Router) Start(ctx context.Context) {
 		case <-warmStateTicker.C:
 			go safeRun("FlushWarmState", r.FlushWarmState)
 		case <-predictiveTicker.C:
-			safeRun("RunPredictionCycle", func() { r.RunPredictionCycle(ctx, time.Now()) })
+			go safeRun("RunPredictionCycle", func() { r.RunPredictionCycle(ctx, time.Now()) })
 		}
 	}
 }
@@ -1408,38 +1408,54 @@ func (r *Router) SyncNodes(newNodes []config.NodeConfig) (added, removed int) {
 // Returns false if not found.
 func (r *Router) DrainNode(name string, reason string) bool {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	var nodeURL string
+	found := false
 	for _, n := range r.nodes {
 		if n.Name == name {
 			n.mu.Lock()
 			n.Draining = true
 			n.DrainedReason = reason
-			nodeURL := n.URL
+			nodeURL = n.URL
 			n.mu.Unlock()
-			r.fireWebhook("node_drain", name, nodeURL)
-			return true
+			found = true
+			break
 		}
 	}
-	return false
+	r.mu.RUnlock()
+	if !found {
+		return false
+	}
+	// fireWebhook takes r.mu.RLock() itself - it must never nest inside an
+	// already-held RLock, since a writer queued between the two RLocks (e.g.
+	// SetStrategy, AddNode) can deadlock the whole single-process gateway.
+	r.fireWebhook("node_drain", name, nodeURL)
+	return true
 }
 
 // UndrainNode clears the draining flag, returning the node to the active pool.
 // Returns false if not found.
 func (r *Router) UndrainNode(name string) bool {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	var nodeURL string
+	found := false
 	for _, n := range r.nodes {
 		if n.Name == name {
 			n.mu.Lock()
 			n.Draining = false
 			n.DrainedReason = ""
-			nodeURL := n.URL
+			nodeURL = n.URL
 			n.mu.Unlock()
-			r.fireWebhook("node_undrain", name, nodeURL)
-			return true
+			found = true
+			break
 		}
 	}
-	return false
+	r.mu.RUnlock()
+	if !found {
+		return false
+	}
+	// See DrainNode: fireWebhook must never nest inside an already-held RLock.
+	r.fireWebhook("node_undrain", name, nodeURL)
+	return true
 }
 
 // SetPrewarmDisabled toggles whether the predictive engine may warm new
@@ -1772,7 +1788,7 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 	var tagsResp struct {
 		Models []TagModel `json:"models"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&tagsResp); err != nil {
 		entry.err = fmt.Errorf("decode tags: %w", err)
 		return nil, entry.err
 	}
