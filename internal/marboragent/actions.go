@@ -89,6 +89,10 @@ func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing or invalid model field"})
 		return
 	}
+	if strings.HasPrefix(req.Model, "-") {
+		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid model field"})
+		return
+	}
 
 	var runtimeName string
 	if rt := s.snapshot().Runtime; rt != nil {
@@ -117,7 +121,7 @@ func (s *Server) handlePullModel(w http.ResponseWriter, r *http.Request) {
 // as given (e.g. "hf.co/org/repo:Q4_K_M" or an official library tag like
 // "llama3:8b"), since Ollama's own CLI is what resolves that tag format.
 func pullViaOllama(ctx context.Context, model, hfToken, driver, identifier string) error {
-	return runDownload(ctx, driver, identifier, hfToken, "ollama", "pull", model)
+	return runDownload(ctx, driver, identifier, hfToken, "ollama", "pull", "--", model)
 }
 
 // pullViaTGI runs `text-generation-server download-weights <repo>`. TGI's
@@ -133,7 +137,7 @@ func pullViaTGI(ctx context.Context, model, hfToken, driver, identifier string) 
 			return errors.New("unsupported: text-generation-server not found on PATH")
 		}
 	}
-	return runDownload(ctx, driver, identifier, hfToken, "text-generation-server", "download-weights", hfRepoID(model))
+	return runDownload(ctx, driver, identifier, hfToken, "text-generation-server", "download-weights", "--", hfRepoID(model))
 }
 
 // pullViaHFHub is the fallback for runtimes (vLLM, llama.cpp) with no
@@ -152,7 +156,7 @@ func pullViaHFHub(ctx context.Context, model, hfToken, driver, identifier string
 			return errors.New("unsupported: huggingface-cli not found on PATH (required to pull models for this runtime)")
 		}
 	}
-	return runDownload(ctx, driver, identifier, hfToken, "huggingface-cli", "download", hfRepoID(model))
+	return runDownload(ctx, driver, identifier, hfToken, "huggingface-cli", "download", "--", hfRepoID(model))
 }
 
 // hfRepoID strips an Ollama-style "hf.co/" prefix and ":quant" suffix down
@@ -547,6 +551,10 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing model name in path"})
 		return
 	}
+	if strings.HasPrefix(model, "-") {
+		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid model name"})
+		return
+	}
 	ctrl, err := decodeControlRequest(r)
 	if err != nil {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid request body"})
@@ -578,7 +586,7 @@ func (s *Server) handleDeleteModel(w http.ResponseWriter, r *http.Request) {
 // understands its model-name/tag format, so there is no benefit to
 // reimplementing that against its HTTP DELETE /api/delete instead.
 func deleteViaOllama(ctx context.Context, model, driver, identifier string) error {
-	return runDownload(ctx, driver, identifier, "", "ollama", "rm", model)
+	return runDownload(ctx, driver, identifier, "", "ollama", "rm", "--", model)
 }
 
 // deleteViaHFCache removes a model's directory from the local Hugging Face
@@ -696,6 +704,10 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	model := r.PathValue("name")
 	if model == "" {
 		writeAction(w, http.StatusBadRequest, actionResponse{Error: "missing model name in path"})
+		return
+	}
+	if strings.HasPrefix(model, "-") {
+		writeAction(w, http.StatusBadRequest, actionResponse{Error: "invalid model name"})
 		return
 	}
 	ctrl, err := decodeControlRequest(r)
