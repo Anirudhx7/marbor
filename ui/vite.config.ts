@@ -12,7 +12,13 @@ const appVersion = process.env.VITE_APP_VERSION || pkg.version;
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: isPages ? '/marbor/demo/' : '/',
+  // Demo builds use a RELATIVE base ('./') so one artifact works under any
+  // mount point - /marbor/demo/, /marbor1/demo/, wherever this repo's Pages
+  // site gets served from. A hardcoded absolute base made every asset
+  // request 404 when a fork deployed under a different first path segment
+  // (the white-screen demo bug of 2026-08-25): the HTML loaded, but its
+  // script/link tags pointed at the other deployment's asset URLs.
+  base: isPages ? './' : '/',
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
   },
