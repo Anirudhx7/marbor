@@ -124,6 +124,17 @@ export function SettingsPage() {
   const { currency, setCurrency, toDisplay, toUSD } = useCurrency();
   const roundDisplay = (n: number) => Math.round(n * 100) / 100;
   const [settings, setSettings] = useState<Settings>(defaultSettings);
+  // Tracks unsaved edits so the settings-load effect (re-triggered by a
+  // Demo Mode toggle, among other things) never silently discards them.
+  // lastLoadedSettingsRef holds the exact object reference just applied by
+  // a load; any onChange handler replaces settings with a brand-new object
+  // (spread syntax), so a reference mismatch in the effect below means the
+  // operator has an in-progress edit.
+  const dirtyRef = useRef(false);
+  const lastLoadedSettingsRef = useRef<Settings>(defaultSettings);
+  useEffect(() => {
+    if (settings !== lastLoadedSettingsRef.current) dirtyRef.current = true;
+  }, [settings]);
   const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>(demoMode ? mockCloudProviders : []);
   const [cloudLoading, setCloudLoading] = useState(!demoMode);
   const [saved, setSaved] = useState(false);
@@ -283,7 +294,7 @@ export function SettingsPage() {
     Promise.all([fetchSettings(), fetchCloudProviders()])
       .then(([settingsData, providersData]) => {
         if (!active || currentAppPath() !== '/settings') return;
-        setSettings({
+        const loaded: Settings = {
           proxyPort: settingsData.proxy?.port || 11434,
           authMode: settingsData.auth?.enabled ? 'api-key' : 'no-auth',
           liteLLMEnabled: settingsData.litellm?.enabled || false,
@@ -348,7 +359,17 @@ export function SettingsPage() {
           backupTargetDir: settingsData.backup?.target_dir || '',
           backupLastAt: settingsData.backup?.last_backup_at || undefined,
           backupLastError: settingsData.backup?.last_backup_error || '',
-        });
+        };
+        if (dirtyRef.current) {
+          // An edit is in progress (e.g. this reload was triggered by a
+          // Demo Mode toggle mid-edit) - never clobber it silently. The
+          // fresh server-side values are simply not applied; the operator's
+          // pending edits stay on screen until they save or reload manually.
+          lastLoadedSettingsRef.current = loaded;
+        } else {
+          lastLoadedSettingsRef.current = loaded;
+          setSettings(loaded);
+        }
         setCloudProviders(demoMode ? mockCloudProviders : (providersData || []));
         setError(null);
       })
@@ -423,6 +444,11 @@ export function SettingsPage() {
 
       await updateSettings(payload);
       window.dispatchEvent(new Event('marbor-settings-change'));
+      // The just-saved values are now the pristine baseline - clear the
+      // dirty flag so a subsequent settings reload (e.g. a Demo Mode
+      // toggle) is free to apply fresh server-side values again.
+      lastLoadedSettingsRef.current = settings;
+      dirtyRef.current = false;
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setError(null);
