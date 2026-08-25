@@ -8,12 +8,13 @@ import {
   Check, 
   Route,
   Shield,
-  Server
+  Server,
+  DollarSign
 } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
-import { mockGPUNodes } from '../lib/mockData';
+import { mockGPUNodes, mockSavings } from '../lib/mockData';
 import {
   fetchRoutingRules,
   addRoutingRule,
@@ -21,9 +22,64 @@ import {
   toggleRoutingRule,
   setRoutingStrategy,
   fetchRoutingStrategy,
-  fetchNodes
+  fetchNodes,
+  fetchSavings
 } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
+import { Savings } from '../types';
+
+// SavingsCard moved here from the dashboard headline (2026-08 dashboard
+// restructure): local-vs-cloud split is a routing/cost story and belongs next
+// to the strategy controls that influence it. Same live endpoint as before
+// (GET /admin/metrics/savings), same "-" when no real token counts exist (R1).
+function SavingsCard({ savings, loading }: { savings: Savings | null; loading: boolean }) {
+  const localPct = savings && savings.total_requests > 0
+    ? Math.round((savings.local_requests / savings.total_requests) * 100)
+    : 0;
+  const cloudPct = 100 - localPct;
+
+  return (
+    <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors h-full min-w-0">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs Cloud</p>
+          <div className="flex items-baseline gap-1">
+            {loading ? (
+              <span className="text-2xl font-bold text-foreground animate-pulse">--</span>
+            ) : savings ? (
+              <span className="text-2xl font-bold text-success">
+                {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '-'}
+              </span>
+            ) : (
+              <span className="text-2xl font-bold text-muted-foreground">--</span>
+            )}
+          </div>
+          {savings && !loading ? (
+            <p className="text-xs font-medium text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1 leading-snug">
+              <span className="whitespace-nowrap">{savings.local_requests.toLocaleString('en-US')} local</span>
+              <span>/</span>
+              <span className="whitespace-nowrap">{savings.cloud_requests.toLocaleString('en-US')} cloud</span>
+            </p>
+          ) : (
+            <p className="text-xs font-medium text-muted-foreground mt-0.5">local / cloud requests</p>
+          )}
+        </div>
+        <div className="p-2 bg-success/10 rounded-lg text-success shrink-0">
+          <DollarSign className="w-5 h-5" />
+        </div>
+      </div>
+      <div className="mt-3 flex items-center flex-wrap gap-x-1.5 text-xs font-medium">
+        <span className="text-success whitespace-nowrap">
+          Local {loading || !savings ? '--' : `${localPct}%`}
+        </span>
+        <span className="text-muted-foreground">/</span>
+        <span className="text-amber-700 dark:text-amber-400 whitespace-nowrap">
+          Cloud {loading || !savings ? '--' : `${cloudPct}%`}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 const STRATEGIES = [
   { 
@@ -79,6 +135,8 @@ export function Routing() {
   const [currentStrategy, setCurrentStrategyState] = useState('');
   const [rules, setRules] = useState<RoutingRule[]>(demoMode ? MOCK_RULES : []);
   const [availableNodes, setAvailableNodes] = useState<any[]>([]);
+  const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
+  const [savingsLoading, setSavingsLoading] = useState(!demoMode);
   const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -100,6 +158,8 @@ export function Routing() {
       setRules(MOCK_RULES);
       setAvailableNodes(mockGPUNodes);
       setCurrentStrategyState('warm-first');
+      setSavings(mockSavings);
+      setSavingsLoading(false);
       setError(null);
       setLoading(false);
       return;
@@ -132,6 +192,31 @@ export function Routing() {
 
   useEffect(() => {
     loadData();
+  }, [demoMode]);
+
+  // Savings poll (5s), mirroring the cadence the card had on the dashboard.
+  // Demo mode's fetchSavings already returns static data, but the interval is
+  // still skipped there so the page makes zero network calls offline.
+  useEffect(() => {
+    if (demoMode) return;
+    let active = true;
+    const loadSavings = async () => {
+      if (active) setSavingsLoading(true);
+      try {
+        const data = await fetchSavings();
+        if (active) setSavings(data);
+      } catch {
+        if (active) setSavings(null);
+      } finally {
+        if (active) setSavingsLoading(false);
+      }
+    };
+    loadSavings();
+    const interval = setInterval(loadSavings, 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [demoMode]);
 
   const handleStrategyChange = async (strategy: string) => {
@@ -243,6 +328,12 @@ export function Routing() {
           {error}
         </div>
       )}
+
+      {/* Local vs cloud savings - moved from the dashboard headline; it is a
+          routing outcome, so it lives next to the strategy that drives it. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <SavingsCard savings={savings} loading={savingsLoading} />
+      </div>
 
       {/* Global Strategy Selection */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
