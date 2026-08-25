@@ -500,6 +500,7 @@ export function GPUNodes() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
   const [nodeToDrain, setNodeToDrain] = useState<string | null>(null);
+  const [nodeToUndrain, setNodeToUndrain] = useState<string | null>(null);
   const [prewarmToToggle, setPrewarmToToggle] = useState<{ name: string; disabled: boolean } | null>(null);
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
@@ -1205,19 +1206,21 @@ export function GPUNodes() {
     }
   };
 
-  const handleUndrainNode = async (name: string) => {
+  const handleUndrainNode = async (name: string): Promise<boolean> => {
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === name ? { ...n, draining: false } : n));
       setActionError(null);
-      return;
+      return true;
     }
-    if (!isLive) return;
+    if (!isLive) return false;
     try {
       await undrainNode(name);
       await loadNodes();
       setActionError(null);
+      return true;
     } catch (err: any) {
       setActionError(err?.message || `Failed to undrain node ${name}`);
+      return false;
     }
   };
 
@@ -1434,7 +1437,10 @@ export function GPUNodes() {
       return;
     }
 
-    if (!isLive) return;
+    if (!isLive) {
+      setEditError('Backend disconnected - changes were not saved.');
+      return;
+    }
     setEditSaving(true);
     setEditError('');
     try {
@@ -1508,7 +1514,10 @@ export function GPUNodes() {
       onSuccess?.();
       return;
     }
-    if (!isLive) return;
+    if (!isLive) {
+      setAgentError('Backend disconnected - changes were not saved.');
+      return;
+    }
     const targetNodeName = agentNode.name;
     try {
       await sendNodePatch(targetNodeName, patch);
@@ -1611,7 +1620,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={handleUndrainNode} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} />
         ))}
       </div>
 
@@ -2143,6 +2152,46 @@ export function GPUNodes() {
               className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Drain Node
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Undrain Node Confirmation Modal (R10: reverses a safety decision -
+          e.g. a thermal-watchdog auto-drain - so gets the same confirm as
+          Drain, not a single-click action). */}
+      <Modal
+        isOpen={nodeToUndrain !== null}
+        onClose={() => setNodeToUndrain(null)}
+        title="Undrain Node"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to undrain <span className="text-foreground font-semibold">{nodeToUndrain}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This resumes routing new requests to this node. If it was drained automatically (e.g. by the thermal watchdog), confirm the underlying condition has actually cleared first.
+          </p>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setNodeToUndrain(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!nodeToUndrain) return;
+                const ok = await handleUndrainNode(nodeToUndrain);
+                if (ok) setNodeToUndrain(null);
+              }}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+            >
+              Undrain Node
             </button>
           </div>
         </div>
