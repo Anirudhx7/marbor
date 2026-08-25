@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
-import { fetchSettings } from '../lib/api';
+import { fetchSettings, updateSettings } from '../lib/api';
 import { X, AlertCircle } from 'lucide-react';
 
 export function DemoBanner() {
@@ -33,9 +33,10 @@ export function DemoBanner() {
     setHidden(true);
     fetchSettings().then(s => {
       const updated = { ...s, hide_demo_banner: true };
-      localStorage.setItem('demo_settings', JSON.stringify(updated));
+      return updateSettings(updated);
+    }).then(() => {
       window.dispatchEvent(new CustomEvent('marbor-settings-change'));
-    });
+    }).catch(() => {});
   };
 
   return (
