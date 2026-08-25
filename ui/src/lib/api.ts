@@ -459,7 +459,7 @@ export async function createKey(data: { name: string; rate_limit: number; models
 }
 
 export async function revokeKey(name: string) {
-  const res = await apiFetch(`${BASE}/keys/${name}`, {
+  const res = await apiFetch(`${BASE}/keys/${encodeURIComponent(name)}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
@@ -476,7 +476,7 @@ export async function addNode(data: Record<string, unknown>) {
 }
 
 export async function removeNode(name: string) {
-  const res = await apiFetch(`${BASE}/nodes/${name}`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
