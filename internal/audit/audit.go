@@ -41,6 +41,28 @@ type Logger struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	wg        sync.WaitGroup
+
+	// lastAppendErrLog rate-limits the "audit append failed" log line (see
+	// logAppendErr) - only run() touches it, so no lock is needed.
+	lastAppendErrLog time.Time
+}
+
+// appendErrLogInterval bounds how often a persistently-failing
+// AppendAuditLog is logged, so a sustained DB outage produces one line per
+// interval instead of one per request.
+const appendErrLogInterval = 30 * time.Second
+
+// logAppendErr logs err at most once per appendErrLogInterval, so a
+// persistently failing store write produces a visible, bounded log trail
+// instead of either silence (the audit trail going dark with zero operator
+// signal) or a line per dropped entry.
+func (l *Logger) logAppendErr(err error) {
+	now := time.Now()
+	if now.Sub(l.lastAppendErrLog) < appendErrLogInterval {
+		return
+	}
+	l.lastAppendErrLog = now
+	log.Printf("audit logger: AppendAuditLog failed: %v", err)
 }
 
 // New returns a Logger backed by st. When enabled is false every Log call is
@@ -62,7 +84,9 @@ func (l *Logger) run() {
 	for {
 		select {
 		case e := <-l.writes:
-			_ = l.st.AppendAuditLog(e)
+			if err := l.st.AppendAuditLog(e); err != nil {
+				l.logAppendErr(err)
+			}
 		case <-l.done:
 			// Drain whatever is already buffered, then stop. writes is never
 			// closed (Log keeps sending on it via a non-blocking select even
@@ -72,7 +96,9 @@ func (l *Logger) run() {
 			for {
 				select {
 				case e := <-l.writes:
-					_ = l.st.AppendAuditLog(e)
+					if err := l.st.AppendAuditLog(e); err != nil {
+						l.logAppendErr(err)
+					}
 				default:
 					return
 				}
