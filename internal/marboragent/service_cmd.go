@@ -91,7 +91,11 @@ func runServiceInstall(args []string, version string) {
 	if token == "" && enroll == "" {
 		winexit.Fatal("marboragent: a token is required: set the MARBOR_AGENT_SECRET env var, or --enroll=<code>/MARBOR_ENROLL env var with --server=<url>/MARBOR_SERVER env var")
 	}
-	if token == "" {
+	// An explicit enrollment code always takes precedence over an existing
+	// MARBOR_AGENT_SECRET - an operator running --enroll is deliberately
+	// rotating the token, and silently keeping the old one instead would
+	// burn the single-use code while reporting success (P280).
+	if enroll != "" {
 		if server == "" {
 			winexit.Fatal("marboragent: --enroll requires --server=<marbor admin base URL> (or the MARBOR_SERVER environment variable)")
 		}
