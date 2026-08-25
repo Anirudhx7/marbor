@@ -40,22 +40,22 @@ type nvidiaPower struct {
 	PowerDraw string `xml:"power_draw"`
 }
 
-func parseMiB(s string) int64 {
+func parseMiB(s string) (int64, bool) {
 	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "MiB"))
-	v, _ := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-	return v
+	v, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	return v, err == nil
 }
 
-func parseCelsius(s string) float64 {
+func parseCelsius(s string) (float64, bool) {
 	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "C"))
-	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return v
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return v, err == nil
 }
 
-func parseWatts(s string) float64 {
+func parseWatts(s string) (float64, bool) {
 	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "W"))
-	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	return v
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return v, err == nil
 }
 
 // queryGPU returns GPU stats from nvidia-smi for the given GPU index.
@@ -96,15 +96,29 @@ func parseAllNvidiaSMIXML(data []byte) (map[int]GPUStats, bool) {
 	}
 	statsMap := make(map[int]GPUStats)
 	for i, gpu := range log.GPUs {
-		stats := GPUStats{
-			VRAMTotalMB: parseMiB(gpu.FBMemory.Total),
-			VRAMUsedMB:  parseMiB(gpu.FBMemory.Used),
-			TempCelsius: parseCelsius(gpu.Temperature.GPUTemp),
+		total, totalOK := parseMiB(gpu.FBMemory.Total)
+		used, usedOK := parseMiB(gpu.FBMemory.Used)
+		temp, tempOK := parseCelsius(gpu.Temperature.GPUTemp)
+		if !totalOK || !usedOK || !tempOK {
+			continue
 		}
-		if gpu.PowerReadings.PowerDraw != "" && gpu.PowerReadings.PowerDraw != "N/A" {
-			stats.PowerDrawW = parseWatts(gpu.PowerReadings.PowerDraw)
-		} else {
-			stats.PowerDrawW = parseWatts(gpu.GPUPowerReadings.PowerDraw)
+		stats := GPUStats{
+			VRAMTotalMB: total,
+			VRAMUsedMB:  used,
+			TempCelsius: temp,
+		}
+		// Power draw may be legitimately absent ("" or "N/A") on some cards -
+		// only a present-but-unparseable value is treated as a parse failure.
+		raw := gpu.PowerReadings.PowerDraw
+		if raw == "" || raw == "N/A" {
+			raw = gpu.GPUPowerReadings.PowerDraw
+		}
+		if raw != "" && raw != "N/A" {
+			watts, powerOK := parseWatts(raw)
+			if !powerOK {
+				continue
+			}
+			stats.PowerDrawW = watts
 		}
 		statsMap[i] = stats
 	}
