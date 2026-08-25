@@ -758,12 +758,17 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			if vramFreeBytes < 0 {
 				vramFreeBytes = 0
 			}
-			if rawVramSource == "nvidia" {
+			switch rawVramSource {
+			case "nvidia":
 				vramSource = "nvidia-smi"
-			} else if rawVramSource == "declared" {
+			case "declared":
 				vramSource = "declared"
-			} else {
-				vramSource = "nvidia-smi" // fallback
+			case "agent":
+				vramSource = "agent"
+			case "api":
+				vramSource = "api"
+			default:
+				vramSource = "unknown"
 			}
 		} else if vramUsedMBFromPS > 0 {
 			vramSource = "inferred"
