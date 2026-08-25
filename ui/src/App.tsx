@@ -226,9 +226,12 @@ function App() {
     setSession(updated);
   }
 
-  // Detect if visitor is on the user portal path (/login but not /admin/login)
+  // Detect if visitor is on the user portal path (/login but not /admin/login).
+  // A plain endsWith('/login') check also matches '/admin/login', which
+  // misrouted an admin's re-auth to the user-portal login form.
   const isUserPath = typeof window !== 'undefined' &&
-    window.location.pathname.endsWith('/login');
+    window.location.pathname.endsWith('/login') &&
+    !window.location.pathname.endsWith('/admin/login');
 
   if (!session) {
     return (
