@@ -174,7 +174,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
           <button onClick={onClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
             Cancel
           </button>
-          <button onClick={handleApprove} disabled={saving}
+          <button onClick={handleApprove} disabled={saving || (mode === 'assign' && existingKeyName === '')}
             className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm">
             {saving ? 'Approving...' : 'Approve'}
           </button>
