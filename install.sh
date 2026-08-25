@@ -178,6 +178,52 @@ if [ "$DOWNLOAD_OK" = false ] || [ ! -s "$TMP" ]; then
   exit 1
 fi
 
+# Verify the downloaded binary against goreleaser's published checksums.txt
+# before chmod+x/execution (this is the primary Linux/macOS install path, run
+# via `curl | sh`). checksums.txt is fetched from the same release tag as the
+# binary itself, so this also catches a release published mid-install.
+CHECKSUMS_URL="https://github.com/${REPO}/releases/latest/download/checksums.txt"
+CHECKSUMS_TMP="$(mktemp)"
+CHECKSUMS_OK=true
+if command -v curl > /dev/null 2>&1; then
+  curl -fsSL "$CHECKSUMS_URL" -o "$CHECKSUMS_TMP" || CHECKSUMS_OK=false
+elif command -v wget > /dev/null 2>&1; then
+  wget -qO "$CHECKSUMS_TMP" "$CHECKSUMS_URL" || CHECKSUMS_OK=false
+fi
+
+if [ "$CHECKSUMS_OK" = false ] || [ ! -s "$CHECKSUMS_TMP" ]; then
+  echo "Error: failed to download checksums.txt for verification"
+  rm -f "$TMP" "$CHECKSUMS_TMP"
+  exit 1
+fi
+
+EXPECTED_HASH="$(grep -E "  \*?${BINARY}\$" "$CHECKSUMS_TMP" | awk '{print $1}')"
+if [ -z "$EXPECTED_HASH" ]; then
+  echo "Error: checksums.txt has no entry for $BINARY - refusing to run an unverified binary"
+  rm -f "$TMP" "$CHECKSUMS_TMP"
+  exit 1
+fi
+
+if command -v sha256sum > /dev/null 2>&1; then
+  ACTUAL_HASH="$(sha256sum "$TMP" | awk '{print $1}')"
+elif command -v shasum > /dev/null 2>&1; then
+  ACTUAL_HASH="$(shasum -a 256 "$TMP" | awk '{print $1}')"
+else
+  echo "Error: neither sha256sum nor shasum is available to verify the download"
+  rm -f "$TMP" "$CHECKSUMS_TMP"
+  exit 1
+fi
+rm -f "$CHECKSUMS_TMP"
+
+if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+  echo "Error: checksum mismatch for $BINARY"
+  echo "  expected: $EXPECTED_HASH"
+  echo "  actual:   $ACTUAL_HASH"
+  echo "Refusing to run this binary."
+  rm -f "$TMP"
+  exit 1
+fi
+
 chmod +x "$TMP"
 
 # Install
