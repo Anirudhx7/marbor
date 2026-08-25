@@ -156,7 +156,7 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowPwForm(false); setPwError(''); }}
+                  onClick={() => { setShowPwForm(false); setPwError(''); setCurrentPw(''); setNewPw(''); setConfirmPw(''); }}
                   className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm hover:bg-secondary/80 transition-colors cursor-pointer"
                 >
                   Cancel
