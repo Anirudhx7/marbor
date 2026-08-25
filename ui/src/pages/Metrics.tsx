@@ -134,15 +134,17 @@ export function Metrics() {
       return;
     }
     let active = true;
+    let hasData = analytics !== null;
     const load = () => {
       if (active && currentAppPath() === '/metrics') {
-        setLoading(true);
+        if (!hasData) setLoading(true);
         setError(null);
       }
       fetchAnalytics()
         .then(data => {
           if (!active || currentAppPath() !== '/metrics') return;
           setAnalytics(data);
+          hasData = true;
           setLoading(false);
         })
         .catch(err => {
