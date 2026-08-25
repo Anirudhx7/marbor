@@ -134,6 +134,32 @@ try {
     exit 1
 }
 
+# Verify the downloaded binary against goreleaser's published checksums.txt
+# before ever executing it (this is the primary Windows install path, run via
+# `irm | iex`). checksums.txt is published from the same release tag as the
+# binary itself, so this also catches a release published mid-download.
+$ChecksumsUrl = "https://github.com/$Repo/releases/latest/download/checksums.txt"
+try {
+    $ChecksumsContent = (Invoke-WebRequest -Uri $ChecksumsUrl -UseBasicParsing).Content
+} catch {
+    Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
+    Write-Error "Failed to download checksums.txt for verification: $_"
+    exit 1
+}
+$ExpectedLine = ($ChecksumsContent -split "`r?`n") | Where-Object { $_ -match "\s+\*?$([regex]::Escape($BinaryAsset))$" } | Select-Object -First 1
+if (-not $ExpectedLine) {
+    Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
+    Write-Error "checksums.txt has no entry for $BinaryAsset - refusing to run an unverified binary."
+    exit 1
+}
+$ExpectedHash = ($ExpectedLine -split '\s+')[0].ToLower()
+$ActualHash = (Get-FileHash -Path $BinPath -Algorithm SHA256).Hash.ToLower()
+if ($ActualHash -ne $ExpectedHash) {
+    Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
+    Write-Error "Checksum mismatch for $BinaryAsset - expected $ExpectedHash, got $ActualHash. Refusing to run this binary."
+    exit 1
+}
+
 $VersionOutput = & $BinPath -version 2>$null
 $NewVersion = ($VersionOutput -split '\s+')[-1]
 Write-Host "Installed marbor $NewVersion to $BinPath"
