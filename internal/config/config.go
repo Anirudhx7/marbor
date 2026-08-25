@@ -606,6 +606,7 @@ func (c *Config) Validate() error {
 	}
 	if c.Auth.IsEnabled() {
 		seen := make(map[string]bool)
+		seenValues := make(map[string]bool)
 		for _, k := range c.Auth.Keys {
 			if k.Name == "" || k.Key == "" {
 				return fmt.Errorf("auth key must have name and key")
@@ -614,6 +615,10 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("duplicate auth key name: %s", k.Name)
 			}
 			seen[k.Name] = true
+			if seenValues[k.Key] {
+				return fmt.Errorf("duplicate auth key value (key %q shares its token with another key)", k.Name)
+			}
+			seenValues[k.Key] = true
 		}
 	}
 
@@ -717,6 +722,15 @@ func (c *Config) Validate() error {
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 				return fmt.Errorf("cloud provider %d (%s) base_url must be http(s) with a host: %s", i, cp.Name, cp.BaseURL)
 			}
+			if err := ValidateNodeURL(cp.BaseURL); err != nil {
+				return fmt.Errorf("cloud provider %d (%s) base_url: %w", i, cp.Name, err)
+			}
+		}
+	}
+
+	if c.Webhook.Enabled && c.Webhook.URL != "" {
+		if err := ValidateNodeURL(c.Webhook.URL); err != nil {
+			return fmt.Errorf("webhook url: %w", err)
 		}
 	}
 
