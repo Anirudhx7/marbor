@@ -266,6 +266,10 @@ export function APIKeys() {
     if (!newKeyForm.name.trim()) {
       errors.push('Name is required');
     }
+    const parsedRateLimit = parseInt(newKeyForm.rateLimit, 10);
+    if (isNaN(parsedRateLimit) || parsedRateLimit < 0) {
+      errors.push('Rate limit must be a non-negative integer');
+    }
 
     if (errors.length > 0) {
       setFormErrors(errors);
@@ -283,7 +287,7 @@ export function APIKeys() {
         requestsThisMonth: 0,
         tokensThisMonth: 0,
         estimatedCostUsd: 0,
-        rateLimit: parseInt(newKeyForm.rateLimit) || 0,
+        rateLimit: parsedRateLimit,
         status: 'active',
         allowedModels: newKeyForm.allowedModels.length > 0 ? newKeyForm.allowedModels : ['all'],
         expiresAt: newKeyForm.expiresAt || null,
@@ -297,7 +301,7 @@ export function APIKeys() {
 
     const newKeyData = {
       name: newKeyForm.name,
-      rate_limit: parseInt(newKeyForm.rateLimit) || 0,
+      rate_limit: parsedRateLimit,
       models: newKeyForm.allowedModels,
       expires_at: newKeyForm.expiresAt || "",
     };
