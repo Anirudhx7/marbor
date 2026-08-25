@@ -1,6 +1,7 @@
 package control
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"syscall"
@@ -37,7 +38,17 @@ var processAlive = func(pid int) bool {
 	if err == nil {
 		return true
 	}
-	return isUnsupportedSignal(err)
+	if isUnsupportedSignal(err) {
+		return true
+	}
+	// EPERM means the pid exists but the caller lacks permission to signal it
+	// (e.g. a non-root agent probing a root-owned runtime's PID file) - that
+	// is proof of life, not death.
+	var errno syscall.Errno
+	if errors.As(err, &errno) && errno == syscall.EPERM {
+		return true
+	}
+	return false
 }
 
 func isUnsupportedSignal(err error) bool {
