@@ -2315,7 +2315,9 @@ func (s *Server) handleDisableMarborAgent(w http.ResponseWriter, r *http.Request
 		n.RUnlock()
 		if sameHost && fp != "" {
 			s.router.PatchNode(nodeName, router.NodePatch{TLSFingerprint: &empty})
-			_ = s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty)
+			if err := s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty); err != nil {
+				log.Printf("admin: failed to persist cleared TLS fingerprint override for %s: %v", nodeName, err)
+			}
 		}
 	}
 
@@ -3576,7 +3578,9 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 				return false
 			}
-			_ = s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint)
+			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint); err != nil {
+				log.Printf("admin: failed to persist node override for %s: %v", name, err)
+			}
 		}
 		return true
 	}()
@@ -5074,6 +5078,23 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	defer s.settingsMu.Unlock()
 
 	s.mu.RLock()
+	// Snapshot s.cfg as JSON bytes rather than a struct copy: Config has
+	// several map/slice fields (ContextWindows, Routing.LocalDegradationChains,
+	// Nodes, CloudProviders, ...) whose headers a plain `incoming := s.cfg`
+	// copies by reference - decoding the request body into that shallow copy
+	// with no lock held would then write straight into the SAME backing
+	// map/slice s.cfg still points to, racing any concurrent reader (a
+	// concurrent map write while a reader ranges the same map panics the
+	// whole process, not just a logic bug). Marshal-then-unmarshal into two
+	// independent structs below gives incoming/current their own maps and
+	// slices with no aliasing at all.
+	snapshot, err := json.Marshal(s.cfg)
+	s.mu.RUnlock()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	// Start from the current config so any field the request body omits (the
 	// Settings page only ever sends a partial payload - most Routing/Auth/
 	// CloudProviders fields are managed via their own dedicated endpoints)
@@ -5082,20 +5103,16 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// the body, which also makes explicit "false"/zero values (e.g.
 	// disabling routing.session_affinity) apply correctly instead of being
 	// mistaken for "unset".
-	incoming := s.cfg
-	// Auth.Enabled and Proxy.AccessLog are *bool: deep-copy them so decoding
-	// into incoming can't mutate the value s.cfg's pointer still points to
-	// if validation below fails and the update is discarded.
-	if s.cfg.Auth.Enabled != nil {
-		v := *s.cfg.Auth.Enabled
-		incoming.Auth.Enabled = &v
+	var incoming config.Config
+	if err := json.Unmarshal(snapshot, &incoming); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
-	if s.cfg.Proxy.AccessLog != nil {
-		v := *s.cfg.Proxy.AccessLog
-		incoming.Proxy.AccessLog = &v
+	var current config.Config
+	if err := json.Unmarshal(snapshot, &current); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
-	current := s.cfg
-	s.mu.RUnlock()
 
 	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -5120,6 +5137,18 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
+	// Auth.Keys/CloudProviders/Nodes are never part of the Settings page's
+	// payload (see the comment above incoming's construction) - they're
+	// mutated independently by ReloadFromStore (SIGHUP / POST /admin/config/
+	// reload) and handleUpdateCloudProviders, both of which take s.mu.Lock()
+	// directly and can run during the window this handler had s.mu released
+	// for (body decode/validate). Re-read them fresh right here, under the
+	// same lock as the final write, so a concurrent reload's change is never
+	// silently reverted by this handler overwriting the whole struct with an
+	// older snapshot.
+	incoming.Auth.Keys = s.cfg.Auth.Keys
+	incoming.CloudProviders = s.cfg.CloudProviders
+	incoming.Nodes = s.cfg.Nodes
 	s.cfg = incoming
 	s.mu.Unlock()
 
