@@ -632,17 +632,24 @@ export function GPUNodes() {
       });
       return;
     }
+    const targetNodeName = node.name;
     try {
-      const status = await getMarborAgent(node.name);
+      const status = await getMarborAgent(targetNodeName);
+      // Same node-identity guard as handleCheckNodeHealth/handleEnableAgent -
+      // a slower response for a previously-opened node can otherwise land
+      // after a newer node's response and overwrite it.
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setAgentStatus(status);
       setAgentPort(String(status.port || 9200));
       setAgentUseHttps(status.scheme === 'https');
     } catch (e: any) {
-      setAgentStatus({ node: node.name, enabled: false, port: 0 });
+      if (agentNodeRef.current?.name !== targetNodeName) return;
+      setAgentStatus({ node: targetNodeName, enabled: false, port: 0 });
       setAgentError(e?.message || 'Failed to fetch marbor agent status');
     }
     try {
-      const control = await getNodeControl(node.name);
+      const control = await getNodeControl(targetNodeName);
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setControlStatus(control);
       // Deliberately never pre-fill the manual Driver/Identifier fields from
       // control.discovered here: the Discovered section above already has
@@ -652,6 +659,7 @@ export function GPUNodes() {
       // whatever was discovered) let an operator submit a mismatched
       // combination without ever touching the fields themselves.
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setControlError(e?.message || 'Failed to fetch control driver status');
     }
   };
@@ -665,10 +673,14 @@ export function GPUNodes() {
       setControlBusy(false);
       return;
     }
+    const targetNodeName = agentNode.name;
     try {
-      await acceptNodeControl(agentNode.name, controlStatus.discovered.driver, controlStatus.discovered.identifier);
-      setControlStatus(await getNodeControl(agentNode.name));
+      await acceptNodeControl(targetNodeName, controlStatus.discovered.driver, controlStatus.discovered.identifier);
+      const refreshed = await getNodeControl(targetNodeName);
+      if (agentNodeRef.current?.name !== targetNodeName) return;
+      setControlStatus(refreshed);
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setControlError(e?.message || 'Failed to accept control driver');
     } finally {
       setControlBusy(false);
@@ -685,10 +697,14 @@ export function GPUNodes() {
       setControlBusy(false);
       return;
     }
+    const targetNodeName = agentNode.name;
     try {
-      await acceptNodeControl(agentNode.name, controlManualDriver, controlManualIdentifier.trim(), startCommand || undefined);
-      setControlStatus(await getNodeControl(agentNode.name));
+      await acceptNodeControl(targetNodeName, controlManualDriver, controlManualIdentifier.trim(), startCommand || undefined);
+      const refreshed = await getNodeControl(targetNodeName);
+      if (agentNodeRef.current?.name !== targetNodeName) return;
+      setControlStatus(refreshed);
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setControlError(e?.message || 'Failed to accept control driver');
     } finally {
       setControlBusy(false);
@@ -757,10 +773,14 @@ export function GPUNodes() {
       setControlBusy(false);
       return;
     }
+    const targetNodeName = agentNode.name;
     try {
-      await clearNodeControl(agentNode.name);
-      setControlStatus(await getNodeControl(agentNode.name));
+      await clearNodeControl(targetNodeName);
+      const refreshed = await getNodeControl(targetNodeName);
+      if (agentNodeRef.current?.name !== targetNodeName) return;
+      setControlStatus(refreshed);
     } catch (e: any) {
+      if (agentNodeRef.current?.name !== targetNodeName) return;
       setControlError(e?.message || 'Failed to clear control driver');
     } finally {
       setControlBusy(false);
@@ -1288,6 +1308,38 @@ export function GPUNodes() {
     setEditMaxInFlight(node.maxInFlight && node.maxInFlight > 0 ? String(node.maxInFlight) : '');
     setEditError('');
   };
+
+  // Keeps the open Edit Node modal synced with the polled nodes list, same
+  // reasoning as the agentNode sync effect above - editNode otherwise stays
+  // frozen at whatever it was when the modal opened, so buildPatch's
+  // "changed from editNode" comparisons silently revert a field that
+  // changed server-side (another admin's edit, auto-discovery) while this
+  // modal stayed open with that field left untouched. A field is only
+  // refreshed when its current form value still equals what openEditModal
+  // would have derived from the PRIOR editNode snapshot - i.e. the operator
+  // hasn't touched it since the last sync - so an in-progress edit is never
+  // clobbered.
+  useEffect(() => {
+    if (!editNode) return;
+    const fresh = nodes.find(n => n.name === editNode.name);
+    if (!fresh || fresh === editNode) return;
+    const prev = editNode;
+    if (editHost === (prev.host ?? '')) setEditHost(fresh.host ?? '');
+    if (editPort === (prev.port ? String(prev.port) : '')) setEditPort(fresh.port ? String(fresh.port) : '');
+    if (editUseHttps === (prev.scheme === 'https')) setEditUseHttps(fresh.scheme === 'https');
+    if (editVRAM === (prev.vramTotalMB > 0 ? String(prev.vramTotalMB) : '')) {
+      setEditVRAM(fresh.vramTotalMB > 0 ? String(fresh.vramTotalMB) : '');
+    }
+    if (editGPUModel === (prev.gpuModel ?? '')) setEditGPUModel(fresh.gpuModel ?? '');
+    if (editRuntime === (prev.runtime || 'ollama')) setEditRuntime(fresh.runtime || 'ollama');
+    if (editGPUIndices === (prev.gpuIndices ?? []).join(', ')) {
+      setEditGPUIndices((fresh.gpuIndices ?? []).join(', '));
+    }
+    if (editMaxInFlight === (prev.maxInFlight && prev.maxInFlight > 0 ? String(prev.maxInFlight) : '')) {
+      setEditMaxInFlight(fresh.maxInFlight && fresh.maxInFlight > 0 ? String(fresh.maxInFlight) : '');
+    }
+    setEditNode(fresh);
+  }, [nodes, editNode, editHost, editPort, editUseHttps, editVRAM, editGPUModel, editRuntime, editGPUIndices, editMaxInFlight]);
 
   const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | 'invalid' | null => {
     if (!editNode) return null;
