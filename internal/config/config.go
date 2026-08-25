@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata"
@@ -29,12 +30,40 @@ func ValidateNodeURL(raw string) error {
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("URL must be http(s) with a host: %s", raw)
 	}
-	if ip := net.ParseIP(u.Hostname()); ip != nil {
+	ip := net.ParseIP(u.Hostname())
+	if ip == nil {
+		// Not a literal dotted-decimal/IPv6 string, but OS resolvers (Windows
+		// getaddrinfo, macOS, cgo) still resolve a bare integer or 0x-prefixed
+		// hex hostname (e.g. "2852039166" for 169.254.169.254) to a real
+		// address - decode it the same way before concluding this isn't a
+		// literal IP at all.
+		ip = parseNumericIP(u.Hostname())
+	}
+	if ip != nil {
 		if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 			return fmt.Errorf("URL host %q is a link-local/metadata address, which is not allowed", u.Hostname())
 		}
 	}
 	return nil
+}
+
+// parseNumericIP decodes an all-digit decimal or 0x-prefixed hex hostname
+// (e.g. "2852039166" or "0xA9FEA9FE", both meaning 169.254.169.254) into a
+// 4-byte IPv4 address, or returns nil if host isn't purely numeric/hex.
+func parseNumericIP(host string) net.IP {
+	if host == "" {
+		return nil
+	}
+	for _, c := range host {
+		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') && !(c >= 'A' && c <= 'F') && c != 'x' && c != 'X' {
+			return nil
+		}
+	}
+	n, err := strconv.ParseUint(host, 0, 32)
+	if err != nil {
+		return nil
+	}
+	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
 }
 
 // NormalizeNodeURL returns a canonical form of a node backend URL suitable for
