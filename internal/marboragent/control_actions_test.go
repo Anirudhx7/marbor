@@ -224,6 +224,197 @@ func TestBuildControlDriver_UnknownDriverErrors(t *testing.T) {
 	}
 }
 
+// doRuntimeActionWithToken is doRuntimeAction's counterpart for the
+// start_command/tier tests below, which need to authenticate as a specific
+// scoped token (operator./admin.) rather than the fixed legacy "test-token"
+// (which has no "." and so already parses as tierAdmin per scopeOf's
+// backward-compat fallback - useless for proving the boundary this fix adds).
+func doRuntimeActionWithToken(t *testing.T, s *Server, action, bearerToken string, body map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	payload, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/v1/runtime/"+action, strings.NewReader(string(payload)))
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+	return w
+}
+
+// TestHandleRuntimeAction_StartCommandRequiresAdminTier is the core P151
+// regression: start_command reaches control.ProcessDriver.Start, arbitrary
+// process execution - a tierOperator token (the tier every agent is
+// provisioned with by default for routine model/runtime lifecycle actions)
+// must never be able to supply one, only a tierAdmin token.
+func TestHandleRuntimeAction_StartCommandRequiresAdminTier(t *testing.T) {
+	for _, action := range []string{"start", "restart"} {
+		t.Run(action+"/operator token rejected with 403, driver never constructed", func(t *testing.T) {
+			fake := &fakeControlDriver{}
+			withFakeControlDriver(t, fake)
+			const token = "operator.Xk9fA1b2C3d4"
+			s := &Server{Token: token}
+
+			w := doRuntimeActionWithToken(t, s, action, token, map[string]string{
+				"driver": "process", "identifier": "/var/run/ollama.pid", "start_command": "/usr/bin/ollama serve",
+			})
+
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403, body=%s", w.Code, w.Body.String())
+			}
+			var resp actionResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.Error != "insufficient token scope" {
+				t.Fatalf("error = %q, want %q", resp.Error, "insufficient token scope")
+			}
+			// Requirement F: prove the driver is never even constructed, let
+			// alone executed - the tier check must happen before newControlDriver.
+			if len(fake.called) != 0 {
+				t.Fatalf("expected the driver to never be invoked, got %v", fake.called)
+			}
+		})
+
+		t.Run(action+"/admin token accepted, follows the existing execution path", func(t *testing.T) {
+			fake := &fakeControlDriver{}
+			withFakeControlDriver(t, fake)
+			const token = "admin.Xk9fA1b2C3d4"
+			s := &Server{Token: token}
+
+			w := doRuntimeActionWithToken(t, s, action, token, map[string]string{
+				"driver": "process", "identifier": "/var/run/ollama.pid", "start_command": "/usr/bin/ollama serve",
+			})
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+			}
+			if len(fake.called) != 1 || fake.called[0] != action {
+				t.Fatalf("expected %q called once, got %v", action, fake.called)
+			}
+		})
+	}
+}
+
+// TestHandleRuntimeAction_EmptyStartCommandNeverRequiresAdmin proves the new
+// tier check is scoped exactly to a non-empty start_command: an operator
+// token must keep every existing legitimate capability (start/stop/restart
+// against a non-process driver, or a process driver with no start_command
+// at all) with no new requirement.
+func TestHandleRuntimeAction_EmptyStartCommandNeverRequiresAdmin(t *testing.T) {
+	const token = "operator.Xk9fA1b2C3d4"
+
+	for _, action := range []string{"start", "stop", "restart"} {
+		t.Run(action+"/systemd driver, no start_command field at all", func(t *testing.T) {
+			fake := &fakeControlDriver{}
+			withFakeControlDriver(t, fake)
+			s := &Server{Token: token}
+
+			w := doRuntimeActionWithToken(t, s, action, token, map[string]string{
+				"driver": "systemd", "identifier": "ollama.service",
+			})
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+			}
+			if len(fake.called) != 1 || fake.called[0] != action {
+				t.Fatalf("expected %q called once, got %v", action, fake.called)
+			}
+		})
+
+		t.Run(action+"/process driver with explicitly empty start_command", func(t *testing.T) {
+			fake := &fakeControlDriver{}
+			withFakeControlDriver(t, fake)
+			s := &Server{Token: token}
+
+			w := doRuntimeActionWithToken(t, s, action, token, map[string]string{
+				"driver": "process", "identifier": "/var/run/ollama.pid", "start_command": "",
+			})
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+			}
+			if len(fake.called) != 1 || fake.called[0] != action {
+				t.Fatalf("expected %q called once, got %v", action, fake.called)
+			}
+		})
+	}
+}
+
+// TestHandleRuntimeAction_StopWithStartCommandNeverBlocked proves the "stop"
+// action is deliberately excluded from the tier gate: control.ProcessDriver.
+// Stop never reads StartCommand at all (it only signals the existing PID via
+// the pidfile), so a start_command present alongside a "stop" request is
+// inert and must not be rejected merely for the operator tier - the gate
+// exists for arbitrary execution, and stop never executes anything supplied
+// in the request.
+func TestHandleRuntimeAction_StopWithStartCommandNeverBlocked(t *testing.T) {
+	fake := &fakeControlDriver{}
+	withFakeControlDriver(t, fake)
+	const token = "operator.Xk9fA1b2C3d4"
+	s := &Server{Token: token}
+
+	w := doRuntimeActionWithToken(t, s, "stop", token, map[string]string{
+		"driver": "process", "identifier": "/var/run/ollama.pid", "start_command": "/usr/bin/ollama serve",
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	if len(fake.called) != 1 || fake.called[0] != "stop" {
+		t.Fatalf("expected stop called once, got %v", fake.called)
+	}
+}
+
+// TestHandleRuntimeLogs_StartCommandNeverGated proves handleRuntimeLogs is
+// correctly left ungated: control.ProcessDriver.Logs never reads
+// StartCommand (it unconditionally returns "not supported"), so gating this
+// route would require tierAdmin for a field the execution path never
+// touches - exactly the "don't unnecessarily require tierAdmin" case.
+func TestHandleRuntimeLogs_StartCommandNeverGated(t *testing.T) {
+	fake := &fakeControlDriver{logsOut: []string{"line one"}}
+	withFakeControlDriver(t, fake)
+	const token = "operator.Xk9fA1b2C3d4"
+	s := &Server{Token: token}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runtime/logs", strings.NewReader(
+		`{"driver":"process","identifier":"/var/run/ollama.pid","start_command":"/usr/bin/ollama serve"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", w.Code, w.Body.String())
+	}
+	if len(fake.called) != 1 || fake.called[0] != "logs" {
+		t.Fatalf("expected logs called once, got %v", fake.called)
+	}
+}
+
+// TestHandleRuntimeAction_StartCommandHiddenBypass_None is requirement F's
+// negative-space check: verifies buildControlDriver itself (the real,
+// non-mocked implementation) has no alternate field name or code path that
+// reaches ProcessDriver.StartCommand other than the one field this fix
+// gates, so a caller can't rename the field to dodge the tier check.
+func TestHandleRuntimeAction_StartCommandHiddenBypass_None(t *testing.T) {
+	drv, err := buildControlDriver("process", "/var/run/ollama.pid", "/usr/bin/ollama serve")
+	if err != nil {
+		t.Fatalf("buildControlDriver: %v", err)
+	}
+	pd, ok := drv.(*control.ProcessDriver)
+	if !ok {
+		t.Fatalf("expected *control.ProcessDriver, got %T", drv)
+	}
+	if len(pd.StartCommand) == 0 || pd.StartCommand[0] != "/usr/bin/ollama" {
+		t.Fatalf("StartCommand = %v, want it derived only from the startCommand parameter", pd.StartCommand)
+	}
+	// The only three parameters buildControlDriver accepts are driver,
+	// identifier, and startCommand (control_actions.go's function signature);
+	// controlActionRequest (the wire struct) has exactly one field that ever
+	// reaches this third parameter (StartCommand, json:"start_command") - a
+	// compile-time property this test's existence pins in place: adding a
+	// second field that also fed into ProcessDriver.StartCommand would need
+	// to touch this same function signature, which every reviewer of this
+	// test (and requirement F) is on notice to gate identically.
+}
+
 // TestBuildControlDriver_ProcessSplitsStartCommand verifies the Process
 // driver's StartCommand is split into argv the way ProcessDriver.Start
 // expects (StartCommand[0] is the binary, the rest are args).

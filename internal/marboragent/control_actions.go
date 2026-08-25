@@ -160,6 +160,26 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 		return
 	}
 
+	// start_command is the one thing reachable from this route that resolves
+	// to arbitrary process execution: control.ProcessDriver.Start (reached
+	// directly by "start", and by "restart" via its own Stop-then-Start) execs
+	// req.StartCommand[0] with req.StartCommand[1:] as argv, no allowlist -
+	// qualitatively different from every other action/driver combination on
+	// this route (systemctl/docker/launchctl/sc, or the process driver's own
+	// PID-based Stop, all bounded to fixed commands). "stop" never reads
+	// StartCommand (ProcessDriver.Stop only signals the existing PID), so it's
+	// deliberately excluded here. tierOperator is the tier every agent is
+	// provisioned with by default (P54) for routine model/runtime lifecycle
+	// actions - this route is registered at tierOperator (server.go) so a
+	// caller already cleared that bar; arbitrary command execution is exactly
+	// the reserved-for-Group-3 "Maintain" capability tierAdmin exists for
+	// (auth.go's tier doc comment), so require it specifically here rather
+	// than promoting the whole route.
+	if req.StartCommand != "" && (action == "start" || action == "restart") && scopeOf(s.Token) < tierAdmin {
+		writeAction(w, http.StatusForbidden, actionResponse{Error: "insufficient token scope"})
+		return
+	}
+
 	// The agent has no persisted control config of its own - an empty
 	// driver means marbor itself has nothing configured for this node.
 	// This is the exact error marbor-agent-capabilities.md section 5.6
