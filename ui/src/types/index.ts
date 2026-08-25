@@ -520,7 +520,7 @@ export interface NodeFit {
   url: string;
   vram_free_bytes: number;
   vram_total_bytes: number;
-  vram_source: 'nvidia-smi' | 'rocm-smi' | 'xpu-smi' | 'system_profiler' | 'agent' | 'inferred' | 'unknown' | 'declared';
+  vram_source: 'nvidia-smi' | 'rocm-smi' | 'xpu-smi' | 'system_profiler' | 'agent' | 'api' | 'inferred' | 'unknown' | 'declared';
   models: ModelFit[];
 }
 
@@ -570,7 +570,7 @@ export interface CatalogNodeEntry {
   vram_free_bytes: number;
   vram_total_bytes: number;
   vram_used_bytes?: number;
-  vram_source: 'nvidia-smi' | 'rocm-smi' | 'xpu-smi' | 'system_profiler' | 'agent' | 'inferred' | 'unknown' | 'declared';
+  vram_source: 'nvidia-smi' | 'rocm-smi' | 'xpu-smi' | 'system_profiler' | 'agent' | 'api' | 'inferred' | 'unknown' | 'declared';
   disk_free_gb: number;
   disk_total_gb: number;
   disk_known: boolean;

@@ -30,7 +30,7 @@ function formatBytes(bytes: number): string {
 // "agent" fallback when the vendor itself somehow wasn't reported. All of
 // these get the same "live reading" badge color; only "declared"/"inferred"/
 // "unknown" are visually distinct.
-const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent']);
+const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent', 'api']);
 
 function FitBadge({ fit }: { fit: FitStatus }) {
   const styles: Record<FitStatus, string> = {
