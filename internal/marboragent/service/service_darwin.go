@@ -114,6 +114,9 @@ func xmlEscape(s string) string {
 }
 
 func (launchdManager) Install(cfg Config) error {
+	if err := validateCertKeyConfig(cfg); err != nil {
+		return err
+	}
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("service: installing requires root - re-run with sudo")
 	}

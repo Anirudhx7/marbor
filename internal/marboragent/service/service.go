@@ -74,6 +74,20 @@ type Config struct {
 // process environment (it has no legacy TOKEN fallback; see
 // marboragent.Run / runServiceInstall), so no agent-side change was needed to
 // support this.
+// validateCertKeyConfig rejects a Config where exactly one of CertPath/KeyPath
+// is set. Both empty is the documented intentional-plaintext case; both set
+// is the documented TLS case; exactly one set is never intentional (a
+// platform-wiring bug upstream of here) and must not silently fall through to
+// plaintext with no operator signal - args() only emits --cert/--key when
+// both are present, so that failure mode is otherwise invisible. Called at
+// the top of each platform's Install, before args() is used.
+func validateCertKeyConfig(c Config) error {
+	if (c.CertPath == "") != (c.KeyPath == "") {
+		return fmt.Errorf("marboragent: exactly one of CertPath/KeyPath is set (cert=%q key=%q) - both or neither is required", c.CertPath, c.KeyPath)
+	}
+	return nil
+}
+
 func (c Config) args() []string {
 	a := []string{fmt.Sprintf("--port=%d", c.Port)}
 	if c.RefreshInterval > 0 {

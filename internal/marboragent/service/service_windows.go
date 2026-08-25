@@ -167,6 +167,9 @@ func serviceExists() bool {
 }
 
 func (windowsManager) Install(cfg Config) error {
+	if err := validateCertKeyConfig(cfg); err != nil {
+		return err
+	}
 	if !isElevated() {
 		return fmt.Errorf("service: installing requires Administrator - re-run this command from an elevated (Run as Administrator) terminal")
 	}
