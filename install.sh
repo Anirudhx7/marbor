@@ -189,6 +189,9 @@ if command -v curl > /dev/null 2>&1; then
   curl -fsSL "$CHECKSUMS_URL" -o "$CHECKSUMS_TMP" || CHECKSUMS_OK=false
 elif command -v wget > /dev/null 2>&1; then
   wget -qO "$CHECKSUMS_TMP" "$CHECKSUMS_URL" || CHECKSUMS_OK=false
+else
+  echo "Error: curl or wget required"
+  CHECKSUMS_OK=false
 fi
 
 if [ "$CHECKSUMS_OK" = false ] || [ ! -s "$CHECKSUMS_TMP" ]; then
