@@ -381,7 +381,8 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 	newKeys := make(map[string]*keyState, len(cfg.Keys))
 	newByName := make(map[string]*keyState, len(cfg.Keys))
 
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	oldByName := m.byName
 
 	for _, k := range cfg.Keys {
@@ -424,13 +425,9 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 			newByName[k.Name] = ks
 		}
 	}
-	m.mu.RUnlock()
-
-	m.mu.Lock()
 	m.enabled = cfg.IsEnabled()
 	m.keys = newKeys
 	m.byName = newByName
-	m.mu.Unlock()
 }
 
 func (m *Middleware) RevokeKey(name string) {
