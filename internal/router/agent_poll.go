@@ -55,6 +55,7 @@ func (r *Router) pollAgentHosts() {
 		// transition based on whatever the agent's state was before it was
 		// disabled.
 		clearAgentTelemetry(n)
+		r.setAgentStale(n, false)
 		r.mu.Lock()
 		delete(r.prevAgentPresent, n.Name)
 		r.mu.Unlock()
@@ -164,6 +165,17 @@ func (r *Router) setAgentTLSMismatch(n *NodeState, mismatch bool) {
 	n.mu.Unlock()
 }
 
+// setAgentStale updates n's AgentStale flag under its own lock - same
+// one-line-helper pattern as setAgentTLSMismatch. True only on the
+// crossed-threshold path of agentUnreachable ("configured but went dark");
+// false on a successful poll and in the no-agent-configured branch, so the
+// flag always means exactly "enrolled agent stopped answering".
+func (r *Router) setAgentStale(n *NodeState, stale bool) {
+	n.mu.Lock()
+	n.AgentStale = stale
+	n.mu.Unlock()
+}
+
 // applyAgentTelemetry writes one member's share of a host-level Telemetry
 // snapshot: the shared host/GPU/capability fields identically, and this
 // member's own runtime-specific fields matched out of t.Runtimes.
@@ -179,6 +191,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 	n.mu.Lock()
 	n.AgentFailures = 0
 	n.AgentPresent = true
+	n.AgentStale = false
 	n.AgentNodeID = t.Agent.NodeID
 	n.AgentVersion = t.Agent.Version
 	n.AgentCapabilities = append([]string(nil), t.Capabilities...)
@@ -387,6 +400,11 @@ func (r *Router) agentUnreachable(n *NodeState) {
 	}
 
 	clearAgentTelemetry(n)
+	// Past the same threshold that clears telemetry, the agent is genuinely
+	// dark (not a single dropped poll) - mark it stale so the admin API can
+	// alert "configured agent stopped answering" distinctly from "no agent
+	// was ever configured for this host" (router.NodeState.AgentStale).
+	r.setAgentStale(n, true)
 	r.mu.Lock()
 	nodeName := n.Name
 	exists := r.nodeExistsLocked(nodeName)
