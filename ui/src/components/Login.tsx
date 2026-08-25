@@ -23,8 +23,8 @@ export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
 
     try {
       const data = mode === 'user'
-        ? await userLogin(username.trim(), password.trim())
-        : await login(username.trim(), password.trim());
+        ? await userLogin(username.trim(), password)
+        : await login(username.trim(), password);
       saveSession(data);
       onSuccess({
         role: data.role,
