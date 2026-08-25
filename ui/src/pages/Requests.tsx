@@ -266,27 +266,29 @@ export function Requests() {
     return () => clearTimeout(t);
   }, [nodeInput]);
 
-  const activeFilters = useMemo(
-    () => ({
-      model: modelFilter || undefined,
-      key: keyFilter || undefined,
-      node: nodeFilter || undefined,
-      status: statusFilter === 'all' ? undefined : statusFilter,
-      cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
-      since: sinceInput ? new Date(sinceInput).toISOString() : sinceIso(sincePreset),
-      until: untilInput ? new Date(untilInput).toISOString() : undefined,
-      // No pagination UI on this page yet, so request the server's max page
-      // size (admin.go caps at 1000) rather than silently truncating to the
-      // client default of 50 - "all requests" means all within that cap.
-      limit: 1000,
-    }),
-    [modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput]
-  );
+  // Deliberately NOT memoized: a "since" quick-range preset (e.g. "Last
+  // hour") must mean a rolling window computed at request time, not a value
+  // frozen once and reused on every 3s poll tick - see the poll() call site
+  // below, which calls this fresh on every tick instead of closing over a
+  // stale memoized object.
+  const buildActiveFilters = () => ({
+    model: modelFilter || undefined,
+    key: keyFilter || undefined,
+    node: nodeFilter || undefined,
+    status: statusFilter === 'all' ? undefined : statusFilter,
+    cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
+    since: sinceInput ? new Date(sinceInput).toISOString() : sinceIso(sincePreset),
+    until: untilInput ? new Date(untilInput).toISOString() : undefined,
+    // No pagination UI on this page yet, so request the server's max page
+    // size (admin.go caps at 1000) rather than silently truncating to the
+    // client default of 50 - "all requests" means all within that cap.
+    limit: 1000,
+  });
 
   useEffect(() => {
     if (currentAppPath() !== '/requests') return;
     if (isDemoMode) {
-      setEntries(filterMockRequests(activeFilters));
+      setEntries(filterMockRequests(buildActiveFilters()));
       setLoading(false);
       return;
     }
@@ -295,7 +297,7 @@ export function Requests() {
 
     async function poll() {
       try {
-        const data = await fetchAuditLog(activeFilters);
+        const data = await fetchAuditLog(buildActiveFilters());
         if (!cancelled && currentAppPath() === '/requests') {
           setEntries(Array.isArray(data) ? data : []);
           setFetchError(null);
