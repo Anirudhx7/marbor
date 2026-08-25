@@ -628,7 +628,8 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	if sessionID != "" {
 		node, hadEntry := r.stickyNode(sessionID)
 		if node != nil {
-			if (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName) && r.isUnderCapacity(node) {
+			hardValid := (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName)
+			if hardValid && r.isUnderCapacity(node) {
 				r.RecordTransition(modelName, time.Now())
 				warm := r.isModelWarm(node, modelName)
 				if !warm {
@@ -644,9 +645,11 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 				}
 				return node, warm, decision
 			}
-			r.affinityMu.Lock()
-			delete(r.affinity, sessionID)
-			r.affinityMu.Unlock()
+			if !hardValid {
+				r.affinityMu.Lock()
+				delete(r.affinity, sessionID)
+				r.affinityMu.Unlock()
+			}
 			affinityLost = true
 		} else if hadEntry {
 			affinityLost = true
