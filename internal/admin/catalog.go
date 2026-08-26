@@ -1197,6 +1197,36 @@ func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfCon
 	if cfg.NumHiddenLayers <= 0 || cfg.NumAttentionHeads <= 0 || cfg.NumKeyValueHeads <= 0 || cfg.HiddenSize <= 0 || cfg.MaxPositionEmbeddings <= 0 {
 		return hfConfigJSON{}, false
 	}
+	// Bound each field at implausible-but-technically-valid magnitudes (P131):
+	// no real transformer architecture approaches these limits (the largest
+	// published models today have low hundreds of layers/heads and low tens
+	// of thousands of hidden_size), but a malformed/adversarial config.json
+	// value in that range can overflow kvCacheBytesPerToken's int64 multiply
+	// chain into a wrapped/negative estimate that classifyFit can then label
+	// a false "green" fit with Confidence "derived" (R1). Rejecting here and
+	// falling back to the arch==nil estimated path is simpler and more
+	// robust than threading overflow checks through the multiply chain.
+	//
+	// The bound must also survive computeContextFeasibility's further
+	// multiply by requestedCtx (kvBytes := perTokenBytes * requestedCtx,
+	// requestedCtx capped at maxAdvisorCtxLen = 10_000_000) - code review
+	// caught that the original limits alone (2_000/2_000/200_000) left room
+	// for perTokenBytes*maxAdvisorCtxLen to still overflow int64 (worst case
+	// numAttnHeads=1 makes headDim=hiddenSize, so
+	// perTokenBytes=4*layers*kvHeads*hiddenSize). These tighter limits keep
+	// 4*maxPlausibleLayers*maxPlausibleHeads*maxPlausibleHiddenDim*maxAdvisorCtxLen
+	// (4e11 * 1e7 = 4e18) safely under math.MaxInt64 (~9.22e18) with margin.
+	const (
+		maxPlausibleLayers    = 1_000
+		maxPlausibleHeads     = 1_000
+		maxPlausibleHiddenDim = 100_000
+		maxPlausibleContext   = 100_000_000
+	)
+	if cfg.NumHiddenLayers > maxPlausibleLayers || cfg.NumAttentionHeads > maxPlausibleHeads ||
+		cfg.NumKeyValueHeads > maxPlausibleHeads || cfg.HiddenSize > maxPlausibleHiddenDim ||
+		cfg.MaxPositionEmbeddings > maxPlausibleContext {
+		return hfConfigJSON{}, false
+	}
 	if cfg.HiddenSize < cfg.NumAttentionHeads {
 		// hidden_size/num_attention_heads (head_dim) would truncate to 0 via
 		// integer division, silently zeroing the entire KV-cache term while
