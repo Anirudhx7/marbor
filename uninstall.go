@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -82,9 +83,27 @@ func runUninstall(args []string) {
 	}
 
 	if pid, ok := readRunningPidfile(marborPidfile); ok {
-		fmt.Printf("Stopping background marbor process (PID %d)...\n", pid)
-		if proc, err := os.FindProcess(pid); err == nil {
-			_ = proc.Signal(syscall.SIGTERM)
+		// PID-reuse hazard (P172): readRunningPidfile only confirms pid is
+		// alive, not that it's still the marbor process the pidfile
+		// originally named - on a long-lived host, PID recycling can point
+		// a stale pidfile at an unrelated process. Verify identity via
+		// /proc/<pid>/cmdline before signaling; skip the signal (with a
+		// warning) if identity can't be confirmed, rather than SIGTERMing
+		// whatever currently owns that PID. Only implemented on Linux -
+		// other platforms have no /proc to check, matching the pre-P172
+		// signal-unconditionally behavior there.
+		identityConfirmed := true
+		if runtime.GOOS == "linux" {
+			matches, err := pidCmdlineNamesMarbor(pid)
+			identityConfirmed = err == nil && matches
+		}
+		if identityConfirmed {
+			fmt.Printf("Stopping background marbor process (PID %d)...\n", pid)
+			if proc, err := os.FindProcess(pid); err == nil {
+				_ = proc.Signal(syscall.SIGTERM)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "  [!] %s names PID %d, but its identity could not be confirmed as marbor (stale pidfile + PID reuse?) - skipping signal to avoid killing an unrelated process.\n", marborPidfile, pid)
 		}
 		_ = os.Remove(marborPidfile)
 		didSomething = true
@@ -131,4 +150,20 @@ func readRunningPidfile(path string) (pid int, ok bool) {
 		return 0, false
 	}
 	return pid, true
+}
+
+// pidCmdlineNamesMarbor reports whether pid's argv[0] (read from
+// /proc/<pid>/cmdline) names the marbor binary (P172), guarding against a
+// stale pidfile whose PID has since been recycled by the OS for an
+// unrelated process. Linux-only - there is no /proc on other platforms.
+func pidCmdlineNamesMarbor(pid int) (bool, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil {
+		return false, err
+	}
+	argv0 := string(data)
+	if i := strings.IndexByte(argv0, 0); i >= 0 {
+		argv0 = argv0[:i]
+	}
+	return strings.Contains(filepath.Base(argv0), "marbor"), nil
 }
