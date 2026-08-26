@@ -1,0 +1,524 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Activity as ActivityIcon, Search, RefreshCw, Eye, Calendar, User, Globe, Filter, AlertCircle, X, Server, Flame, BrainCircuit } from 'lucide-react';
+import { fetchSystemAudit, fetchPredictiveDecisions } from '../lib/api';
+import type { SystemAuditEntry, PredictiveDecision } from '../types';
+import { Modal } from '../components/Modal';
+import { CustomSelect } from '../components/Select';
+import { currentAppPath } from '../hooks/useDemoMode';
+import { toActivityKind, getActivityKindLabel, getActivityKindColor, type ActivityKind } from '../lib/activityKind';
+
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
+
+function formatDateTime(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return isoString;
+  }
+}
+
+function getActionLabel(action: string): string {
+  return action
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+export function Activity() {
+  const location = useLocation();
+  const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
+  const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [kindFilter, setKindFilter] = useState<ActivityKind | 'all'>('all');
+  const [selectedEntry, setSelectedEntry] = useState<SystemAuditEntry | null>(null);
+  const [refreshSpin, setRefreshSpin] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadActivity = useCallback(async (silent = false, active = true) => {
+    if (currentAppPath() !== '/activity') return;
+    if (!silent && active && currentAppPath() === '/activity') setLoading(true);
+    if (active && currentAppPath() === '/activity') setRefreshSpin(true);
+    try {
+      const [audit, preds] = await Promise.all([
+        fetchSystemAudit(100),
+        fetchPredictiveDecisions().catch(() => [] as PredictiveDecision[]),
+      ]);
+      if (!active || currentAppPath() !== '/activity') return;
+      setEntries(audit);
+      setDecisions(preds);
+      setError(null);
+      setLastRefreshed(new Date());
+    } catch (err: any) {
+      if (!active || currentAppPath() !== '/activity') return;
+      setError(err.message || 'Failed to load activity feed');
+    } finally {
+      if (active && currentAppPath() === '/activity') {
+        if (!silent) setLoading(false);
+        setTimeout(() => {
+          if (active && currentAppPath() === '/activity') {
+            setRefreshSpin(false);
+          }
+        }, 500);
+      }
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (currentAppPath() !== '/activity') return;
+    let active = true;
+    loadActivity(false, active);
+    intervalRef.current = setInterval(() => {
+      if (active && currentAppPath() === '/activity') {
+        loadActivity(true, active);
+      }
+    }, AUTO_REFRESH_INTERVAL_MS);
+    return () => {
+      active = false;
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [loadActivity, location.pathname]);
+
+  useEffect(() => {
+    if (!selectedEntry) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setSelectedEntry(null);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedEntry]);
+
+  const kindOptions: (ActivityKind | 'all')[] = ['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'];
+
+  const filteredEntries = entries.filter((e) => {
+    const kind = toActivityKind(e.action);
+    const matchesKind = kindFilter === 'all' || kind === kindFilter;
+    if (kindFilter === 'predictive') return false;
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch =
+      !q ||
+      e.username.toLowerCase().includes(q) ||
+      e.action.toLowerCase().includes(q) ||
+      e.target.toLowerCase().includes(q) ||
+      e.details.toLowerCase().includes(q) ||
+      (e.source_ip || '').toLowerCase().includes(q) ||
+      kind.toLowerCase().includes(q);
+    return matchesKind && matchesSearch;
+  });
+
+  const filteredDecisions = decisions.filter((d) => {
+    if (kindFilter !== 'all' && kindFilter !== 'predictive') return false;
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      d.predicted_model.toLowerCase().includes(q) ||
+      d.trigger_model.toLowerCase().includes(q) ||
+      d.node.toLowerCase().includes(q)
+    );
+  });
+
+  const hasActiveFilters = searchQuery.trim() !== '' || kindFilter !== 'all';
+
+  const totalFetched = entries.length;
+  const uniqueOperators = new Set(entries.map((e) => e.username)).size;
+  const drainCount = entries.filter((e) => toActivityKind(e.action) === 'drain').length;
+  const warmupCount = entries.filter((e) => toActivityKind(e.action) === 'warmup').length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <ActivityIcon className="w-6 h-6 text-primary" />
+            Activity
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Unified fleet operations timeline - drain, agent, runtime, node, and warmup events with what, when, and who.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {lastRefreshed && (
+            <span className="text-[11px] text-muted-foreground/60 hidden sm:block">
+              Updated {lastRefreshed.toLocaleTimeString()}
+            </span>
+          )}
+          <button
+            onClick={() => loadActivity()}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshSpin ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Events (last {totalFetched})</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{filteredEntries.length}</h3>
+              {hasActiveFilters && kindFilter !== 'predictive' && (
+                <p className="text-[10px] text-muted-foreground/60 mt-0.5">filtered from {totalFetched}</p>
+              )}
+            </div>
+            <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg">
+              <ActivityIcon className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
+            </div>
+            <div className="p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg">
+              <User className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Drain Events</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{drainCount}</h3>
+            </div>
+            <div className="p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg">
+              <Server className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-orange-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{decisions.length} predictive decisions</p>
+            </div>
+            <div className="p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg">
+              <Flame className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Predictive decisions - distinct section, not interleaved */}
+      <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border/60 bg-secondary/30">
+          <div className="flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Predictive Warmup Decisions</h2>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor('predictive')}`}>
+              {filteredDecisions.length} recent
+            </span>
+          </div>
+          <span className="text-[11px] text-muted-foreground hidden sm:block">System-generated, not interleaved with operator timeline</span>
+        </div>
+        {filteredDecisions.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            No predictive decisions recorded yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-border/40">
+            {filteredDecisions.slice(0, 10).map((d, i) => (
+              <div key={`${d.timestamp}-${d.predicted_model}-${i}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-5 py-3 text-sm">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-medium text-foreground">{d.predicted_model}</span>
+                    <span className="text-muted-foreground text-xs">on {d.node}</span>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${d.was_already_warm ? 'bg-secondary text-muted-foreground border-border' : d.warmup_triggered ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20'}`}>
+                      {d.was_already_warm ? 'already warm' : d.warmup_triggered ? 'warmup triggered' : 'skipped'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    triggered by {d.trigger_model} - seen {d.transition_count}x at hour {d.hour}
+                  </p>
+                </div>
+                <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(d.timestamp)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Filters Bar */}
+      <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
+        <div className="relative w-full md:max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search operators, targets, kinds or details..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-150 placeholder:text-muted-foreground/60"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 w-full md:w-80">
+          <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
+          <CustomSelect
+            value={kindFilter}
+            onChange={(v) => setKindFilter(v as ActivityKind | 'all')}
+            options={(['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'] as const).map((k) => ({
+              value: k,
+              label: k === 'all' ? 'All Kinds' : getActivityKindLabel(k as ActivityKind),
+            }))}
+          />
+          {hasActiveFilters && (
+            <button
+              onClick={() => { setSearchQuery(''); setKindFilter('all'); }}
+              title="Clear all filters"
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Main Timeline Table */}
+      <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
+        {loading ? (
+          <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+            Loading fleet activity...
+          </div>
+        ) : error ? (
+          <div className="p-8 text-center text-rose-600 dark:text-rose-400 text-sm flex flex-col items-center justify-center gap-2">
+            <AlertCircle className="w-6 h-6 text-rose-600 dark:text-rose-400" />
+            {error}
+          </div>
+        ) : filteredEntries.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
+            <Search className="w-6 h-6 text-muted-foreground/50" />
+            No activity records found matching your filters.
+            {hasActiveFilters && (
+              <button
+                onClick={() => { setSearchQuery(''); setKindFilter('all'); }}
+                className="text-primary hover:underline text-xs mt-1"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="hidden md:block">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-secondary/40 text-muted-foreground font-medium">
+                  <th className="px-5 py-3.5">Time</th>
+                  <th className="px-5 py-3.5">Kind</th>
+                  <th className="px-5 py-3.5">Action</th>
+                  <th className="px-5 py-3.5">Target</th>
+                  <th className="px-5 py-3.5">Who</th>
+                  <th className="px-5 py-3.5">Details</th>
+                  <th className="px-5 py-3.5 text-right">View</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {filteredEntries.map((e, index) => {
+                  const kind = toActivityKind(e.action);
+                  return (
+                  <tr
+                    key={`${e.time}-${e.action}-${e.username}-${index}`}
+                    className="hover:bg-secondary/20 transition-all duration-150 group cursor-pointer"
+                    onClick={() => setSelectedEntry(e)}
+                  >
+                    <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDateTime(e.time)}
+                    </td>
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
+                        {getActivityKindLabel(kind)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                        {getActionLabel(e.action)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 font-mono text-xs text-foreground max-w-[120px] truncate" title={e.target}>
+                      {e.target}
+                    </td>
+                    <td className="px-5 py-3.5 font-medium text-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                          {e.username.slice(0, 2).toUpperCase()}
+                        </div>
+                        {e.username}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground max-w-[320px] truncate" title={e.details}>
+                      {e.details || '-'}
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <button
+                        onClick={(evt) => {
+                          evt.stopPropagation();
+                          setSelectedEntry(e);
+                        }}
+                        className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-secondary transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          </div>
+        )}
+        {!loading && !error && filteredEntries.length > 0 && (
+          <div className="md:hidden space-y-3 p-3">
+            {filteredEntries.map((e, index) => {
+              const kind = toActivityKind(e.action);
+              return (
+              <div
+                key={`${e.time}-${e.action}-${e.username}-${index}-card`}
+                onClick={() => setSelectedEntry(e)}
+                className="bg-card border border-border/60 rounded-xl p-4 cursor-pointer hover:bg-secondary/20 transition-all duration-150"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
+                      {getActivityKindLabel(kind)}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                      {getActionLabel(e.action)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(evt) => {
+                      evt.stopPropagation();
+                      setSelectedEntry(e);
+                    }}
+                    className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-secondary transition-colors cursor-pointer shrink-0"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-medium text-foreground text-sm">
+                    <div className="w-5 h-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {e.username.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="truncate">{e.username}</span>
+                  </div>
+                  <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                    {formatDateTime(e.time)}
+                  </span>
+                </div>
+                <div className="mt-2 font-mono text-xs text-foreground truncate" title={e.target}>
+                  {e.target}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground truncate" title={e.details}>
+                  {e.details || '-'}
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Details Inspector Modal */}
+      <Modal
+        isOpen={selectedEntry !== null}
+        onClose={() => setSelectedEntry(null)}
+        title="Activity Record Details"
+        maxWidth="lg"
+      >
+        {selectedEntry && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Operator</p>
+                <p className="text-sm font-semibold text-foreground mt-1 flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-primary" />
+                  {selectedEntry.username}
+                </p>
+              </div>
+
+              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Source IP</p>
+                <p className="text-sm font-mono font-semibold text-foreground mt-1 flex items-center gap-1.5">
+                  <Globe className="w-4 h-4 text-primary" />
+                  {selectedEntry.source_ip || '-'}
+                </p>
+              </div>
+
+              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Timestamp</p>
+                <p className="text-sm font-mono text-foreground mt-1 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-primary" />
+                  {formatDateTime(selectedEntry.time)}
+                </p>
+              </div>
+
+              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Kind / Action</p>
+                <p className="mt-1 flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${getActivityKindColor(toActivityKind(selectedEntry.action))}`}>
+                    {getActivityKindLabel(toActivityKind(selectedEntry.action))}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                    {getActionLabel(selectedEntry.action)}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Target Object</p>
+              <div className="p-3 bg-secondary/60 font-mono text-xs text-foreground border border-border/80 rounded-lg select-all">
+                {selectedEntry.target}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Event Payload / Details</p>
+              <div className="p-4 bg-secondary/80 font-mono text-xs text-foreground border border-border rounded-lg whitespace-pre-wrap select-all max-h-60 overflow-y-auto">
+                {selectedEntry.details || '-'}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-border">
+              <button
+                onClick={() => setSelectedEntry(null)}
+                className="px-4 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

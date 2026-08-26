@@ -1184,13 +1184,25 @@ export async function fetchSystemAudit(limit: number = 100): Promise<SystemAudit
   if (DEMO) {
     const now = Date.now();
     const iso = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
-    return [
-      { time: iso(2), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, AuthEnabled: true, DailyCap: 150.00', source_ip: '192.168.1.5' },
-      { time: iso(15), username: 'admin', action: 'add_node', target: 'gpu-node-03', details: 'URL: http://192.168.1.103:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
+    const all: SystemAuditEntry[] = [
+      { time: iso(2), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
+      { time: iso(5), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: qwen2.5:7b', source_ip: '192.168.1.12' },
+      { time: iso(9), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
+      { time: iso(15), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: 'URL: http://10.0.0.17:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
+      { time: iso(18), username: 'admin', action: 'enable_marbor_agent', target: '10.0.0.13', details: 'Port: 9200, Scheme: https', source_ip: '192.168.1.5' },
+      { time: iso(22), username: 'sam.lee', action: 'set_node_warmup', target: 'gpu-node-02', details: 'Enabled: true, Models: ["llama3.3:70b"]', source_ip: '192.168.1.8' },
+      { time: iso(28), username: 'admin', action: 'undrain_node', target: 'gpu-node-04', details: '', source_ip: '192.168.1.5' },
+      { time: iso(35), username: 'admin', action: 'remove_node', target: 'gpu-node-06', details: '', source_ip: '192.168.1.5' },
       { time: iso(45), username: 'admin', action: 'add_routing_rule', target: 'rule-deepseek-r1', details: 'Condition: model == "deepseek-r1", Target: gpu-node-02, Priority: 10, Enabled: true', source_ip: '192.168.1.5' },
-      { time: iso(120), username: 'admin', action: 'set_pinned_models', target: 'gpu-node-01', details: 'Models: ["llama3:8b", "mistral:7b"]', source_ip: '192.168.1.5' },
+      { time: iso(52), username: 'admin', action: 'accept_node_control', target: 'gpu-node-03', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
+      { time: iso(67), username: 'dana.rao', action: 'disable_marbor_agent', target: '10.0.0.14', details: '', source_ip: '192.168.1.12' },
+      { time: iso(74), username: 'admin', action: 'set_pinned_models', target: 'gpu-node-01', details: 'Models: ["llama3:8b", "mistral:7b"]', source_ip: '192.168.1.5' },
+      { time: iso(90), username: 'admin', action: 'patch_node', target: 'gpu-node-03', details: 'URLChanged: false, VRAMTotalMBChanged: true, RuntimeChanged: false', source_ip: '192.168.1.5' },
+      { time: iso(110), username: 'admin', action: 'pull_model', target: 'gpu-node-02', details: 'Model: qwen2.5:14b', source_ip: '192.168.1.5' },
+      { time: iso(135), username: 'admin', action: 'regenerate_marbor_agent_token', target: '10.0.0.11', details: '', source_ip: '192.168.1.5' },
       { time: iso(180), username: 'admin', action: 'add_key', target: 'marketing-team', details: 'RateLimit: 50, DailyLimit: 500, MonthlyLimit: 10000, DailyUsdCap: 50.00, MonthlyUsdCap: 200.00, Models: []', source_ip: '192.168.1.5' },
     ];
+    return all.slice(0, limit);
   }
   const res = await apiFetch(`${BASE}/system-audit?limit=${limit}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch system audit logs');
