@@ -306,6 +306,19 @@ func buildRoot() *Command {
 				Run:       func(ctx *RunCtx) int { return runSpill(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
+				Name:      "activity",
+				Short:     "show unified fleet activity feed (drain, agent, runtime, node, warmup)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Flags: []FlagSpec{
+					{Name: "limit", Kind: FlagInt, DefInt: 100, Usage: "max events to show (1-1000, default 100)"},
+					{Name: "kind", Kind: FlagString, DefString: "", Usage: "filter by kind: drain, agent, runtime, node, warmup, predictive, config, or all (default all)"},
+				},
+				Run: func(ctx *RunCtx) int {
+					return runActivity(ctx.Flags, ctx.Int("limit"), ctx.String("kind"), ctx.Stdout, ctx.Stderr)
+				},
+			},
+			{
 				// NeedsAuth is set on this group (not just its children)
 				// so writeHelp's group-help shape prints authFlagsRows -
 				// matching printRequestsUsage's old output.

@@ -1332,4 +1332,18 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
   };
 }
 
+// Demo parity for Activity unified feed (P389): the live Activity page fetches
+// via ui/src/lib/api.ts fetchSystemAudit DEMO + fetchPredictiveDecisions DEMO
+// and merges client-side. This static slice is kept here as the honest
+// source-of-truth snapshot for docs and for any future direct mock import,
+// never rendered as measurements in production (R1).
+export const mockActivityEntries = [
+  { time: new Date(Date.now() - 2 * 60_000).toISOString(), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 5 * 60_000).toISOString(), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: qwen2.5:7b', source_ip: '192.168.1.12' },
+  { time: new Date(Date.now() - 9 * 60_000).toISOString(), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 15 * 60_000).toISOString(), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: 'URL: http://10.0.0.17:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 18 * 60_000).toISOString(), username: 'admin', action: 'enable_marbor_agent', target: '10.0.0.13', details: 'Port: 9200, Scheme: https', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 28 * 60_000).toISOString(), username: 'admin', action: 'undrain_node', target: 'gpu-node-04', details: '', source_ip: '192.168.1.5' },
+];
+
 
