@@ -179,15 +179,20 @@ func (launchdManager) Uninstall(purge bool) error {
 }
 
 func (launchdManager) Start() error {
-	if err := exec.Command("launchctl", "start", launchdLabel).Run(); err != nil {
-		return fmt.Errorf("service: launchctl start: %w", err)
+	// load/unload -w (P158), not the caller-domain start/stop verbs: the
+	// generated plist sets KeepAlive=true, which launchd honors by
+	// immediately respawning a job stopped via "launchctl stop" - only
+	// unloading the job (as Install/Uninstall already do) actually removes
+	// it from launchd's active set.
+	if err := exec.Command("launchctl", "load", "-w", launchdPlistPath).Run(); err != nil {
+		return fmt.Errorf("service: launchctl load: %w", err)
 	}
 	return nil
 }
 
 func (launchdManager) Stop() error {
-	if err := exec.Command("launchctl", "stop", launchdLabel).Run(); err != nil {
-		return fmt.Errorf("service: launchctl stop: %w", err)
+	if err := exec.Command("launchctl", "unload", "-w", launchdPlistPath).Run(); err != nil {
+		return fmt.Errorf("service: launchctl unload: %w", err)
 	}
 	return nil
 }
