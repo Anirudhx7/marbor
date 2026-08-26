@@ -79,8 +79,8 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
 
   const sidebarContent = (
     <>
-      {/* Header - fixed h-16 so no vertical jump, marbor icon centered when collapsed via padding (justify would snap) - desktop only */}
-      <div className={`h-16 flex items-center border-b border-border shrink-0 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] px-5 ${collapsed ? 'md:px-[18px]' : ''}`}>
+      {/* Header - fixed h-16, desktop collapse centers logo via md: padding, mobile always logo left / X right */}
+      <div className={`h-16 flex items-center justify-between border-b border-border shrink-0 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] px-5 ${collapsed ? 'md:justify-center md:px-[18px]' : ''}`}>
         <div className="flex items-center min-w-0">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#1a1714' }}>
             <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
