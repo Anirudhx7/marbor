@@ -13,23 +13,35 @@ func readSystemMemory() (totalMB, freeMB int64) {
 	if err != nil {
 		return 0, 0
 	}
-	var memTotal, memAvailable int64
+	var memTotal, memFree int64
+	var memAvailable int64
+	haveMemAvailable := false
 	lines := strings.Split(string(data), "\n")
 	for _, line := range lines {
 		parts := strings.Fields(line)
 		if len(parts) >= 2 {
 			key := strings.TrimSuffix(parts[0], ":")
 			val, _ := strconv.ParseInt(parts[1], 10, 64)
-			if key == "MemTotal" {
+			switch key {
+			case "MemTotal":
 				memTotal = val / 1024 // kB to MB
-			} else if key == "MemAvailable" {
+			case "MemFree":
+				memFree = val / 1024 // kB to MB
+			case "MemAvailable":
 				memAvailable = val / 1024 // kB to MB
+				haveMemAvailable = true
 			}
 		}
 	}
 	if memTotal > 0 {
-		if memAvailable == 0 {
-			memAvailable = memTotal
+		// MemAvailable==0 is genuinely ambiguous between "kernel doesn't
+		// report it" and "host is memory-exhausted" - substituting memTotal
+		// in either case fabricated "all RAM free" exactly when memory could
+		// be actually exhausted (R1). MemFree is always reported by the
+		// kernel, so use it whenever MemAvailable itself is absent from the
+		// file; never substitute memTotal for a genuine 0 value.
+		if !haveMemAvailable {
+			return memTotal, memFree
 		}
 		return memTotal, memAvailable
 	}
