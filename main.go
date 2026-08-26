@@ -823,23 +823,36 @@ func main() {
 		log.Println("Shutting down gracefully...")
 	}
 
-	// Derived from proxySrv's own WriteTimeout (not a bare literal) so a
-	// SIGINT/SIGTERM during an active long-running stream isn't cut off
-	// before the request could have finished on its own.
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), proxySrv.WriteTimeout+5*time.Second)
-	defer shutdownCancel()
+	// Each server gets its own fresh timeout budget at the point of its own
+	// Shutdown call (P171), rather than sharing one context/budget across
+	// all three sequential calls - a shared context meant a slow drain on
+	// an earlier server (e.g. proxySrv draining an active long stream)
+	// could leave the later calls an already-expired context, aborting
+	// their own in-flight connections instead of draining them. Each
+	// budget is still derived from proxySrv's own WriteTimeout (not a bare
+	// literal) so a SIGINT/SIGTERM during an active long-running stream
+	// isn't cut off before the request could have finished on its own.
+	shutdownTimeout := proxySrv.WriteTimeout + 5*time.Second
 
-	if err := proxySrv.Shutdown(shutdownCtx); err != nil {
+	proxyShutdownCtx, proxyShutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	if err := proxySrv.Shutdown(proxyShutdownCtx); err != nil {
 		log.Printf("Proxy shutdown error: %v", err)
 	}
+	proxyShutdownCancel()
+
 	if metricsSrv != nil {
-		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+		metricsShutdownCtx, metricsShutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := metricsSrv.Shutdown(metricsShutdownCtx); err != nil {
 			log.Printf("Metrics shutdown error: %v", err)
 		}
+		metricsShutdownCancel()
 	}
-	if err := adminHttpSrv.Shutdown(shutdownCtx); err != nil {
+
+	adminShutdownCtx, adminShutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	if err := adminHttpSrv.Shutdown(adminShutdownCtx); err != nil {
 		log.Printf("Admin shutdown error: %v", err)
 	}
+	adminShutdownCancel()
 	cancel()
 
 	// Wait for the usage-flush goroutine to actually exit before the final
