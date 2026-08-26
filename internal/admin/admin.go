@@ -4096,24 +4096,33 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		return
 	}
 
+	// Password verified before role/status are checked, and every rejection
+	// past this point returns the same generic 401 "invalid credentials" (P128):
+	// an unauthenticated caller must not be able to distinguish "wrong
+	// password" from "right password, wrong role" or "right password, pending/
+	// suspended account" - either distinction is a username/role enumeration
+	// oracle, and every branch here now throttles via recordFailure like any
+	// other rejected attempt.
+	if !verifyPassword(user.PasswordHash, req.Password) {
+		if s.loginLimiter != nil {
+			s.loginLimiter.recordFailure(ip)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"invalid credentials"}`))
+		return
+	}
+
 	if requiredRole != "" && user.Role != requiredRole {
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error":"not an admin account"}`))
+		if s.loginLimiter != nil {
+			s.loginLimiter.recordFailure(ip)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
 	}
 
 	switch user.Status {
-	case "pending":
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error":"account pending approval"}`))
-		return
-	case "suspended":
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error":"account suspended"}`))
-		return
-	}
-
-	if !verifyPassword(user.PasswordHash, req.Password) {
+	case "pending", "suspended":
 		if s.loginLimiter != nil {
 			s.loginLimiter.recordFailure(ip)
 		}
