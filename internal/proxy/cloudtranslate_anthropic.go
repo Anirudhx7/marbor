@@ -105,6 +105,35 @@ type openAIRequest struct {
 	Temperature         *float64        `json:"temperature"`
 	MaxTokens           int             `json:"max_tokens"`
 	MaxCompletionTokens int             `json:"max_completion_tokens"`
+	// Stop mirrors OpenAI's own schema, which accepts either a bare string or
+	// a []string - flexStop's UnmarshalJSON normalizes both to []string.
+	Stop flexStop `json:"stop"`
+	TopP *float64 `json:"top_p"`
+}
+
+// flexStop unmarshals OpenAI's polymorphic "stop" field (a JSON string or an
+// array of strings) into a single []string representation.
+type flexStop []string
+
+func (s *flexStop) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 || string(data) == "null" {
+		*s = nil
+		return nil
+	}
+	if data[0] == '"' {
+		var one string
+		if err := json.Unmarshal(data, &one); err != nil {
+			return err
+		}
+		*s = flexStop{one}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(data, &many); err != nil {
+		return err
+	}
+	*s = flexStop(many)
+	return nil
 }
 
 type anthropicMessage struct {
@@ -113,12 +142,14 @@ type anthropicMessage struct {
 }
 
 type anthropicRequest struct {
-	Model       string             `json:"model"`
-	MaxTokens   int                `json:"max_tokens"`
-	System      string             `json:"system,omitempty"`
-	Messages    []anthropicMessage `json:"messages"`
-	Stream      bool               `json:"stream"`
-	Temperature *float64           `json:"temperature,omitempty"`
+	Model         string             `json:"model"`
+	MaxTokens     int                `json:"max_tokens"`
+	System        string             `json:"system,omitempty"`
+	Messages      []anthropicMessage `json:"messages"`
+	Stream        bool               `json:"stream"`
+	Temperature   *float64           `json:"temperature,omitempty"`
+	StopSequences []string           `json:"stop_sequences,omitempty"`
+	TopP          *float64           `json:"top_p,omitempty"`
 }
 
 // translateOpenAIRequestToAnthropic converts an OpenAI-shaped chat/completion
@@ -132,9 +163,11 @@ func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) []byte {
 	}
 
 	out := anthropicRequest{
-		Model:       in.Model,
-		Stream:      wantsStream,
-		Temperature: in.Temperature,
+		Model:         in.Model,
+		Stream:        wantsStream,
+		Temperature:   in.Temperature,
+		StopSequences: in.Stop,
+		TopP:          in.TopP,
 	}
 
 	switch {
