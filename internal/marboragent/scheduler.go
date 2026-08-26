@@ -59,8 +59,15 @@ type Scheduler struct {
 	// a runtime's own reported version cannot change while its process keeps
 	// running, so re-running the version command (e.g. a forked "ollama
 	// version" subprocess) every refresh tick for every runtime on every
-	// agent-enabled node in the fleet would be pure waste.
-	versionCache  map[string]string
+	// agent-enabled node in the fleet would be pure waste. TTL-expired
+	// (versionCacheTTL, P150): runtime_identity.go's Reconcile pass reuses
+	// the same RuntimeID across a same-port in-place restart/upgrade, so an
+	// unbounded cache would report a stale version indefinitely until the
+	// agent daemon itself restarts. Detection here is HTTP-probe-only (no
+	// local PID/process-start-time is ever observed for a runtime), so a
+	// process-generation token isn't available data - a TTL re-run achieves
+	// the same "don't cache forever" intent without it.
+	versionCache  map[string]versionCacheEntry
 	runtimeClient *http.Client
 	snap          atomic.Pointer[Telemetry]
 }
@@ -95,7 +102,7 @@ func newSchedulerWithBackends(version string, gpu GPUCollector, host HostCollect
 		host:          host,
 		rd:            rd,
 		registry:      loadOrCreateRuntimeRegistry(),
-		versionCache:  make(map[string]string),
+		versionCache:  make(map[string]versionCacheEntry),
 		runtimeClient: &http.Client{Timeout: 5 * time.Second},
 	}
 }
@@ -249,25 +256,48 @@ func (s *Scheduler) refresh() {
 	s.snap.Store(&t)
 }
 
+// versionCacheEntry pairs a cached version string with when it was fetched,
+// so runtimeVersion can expire it after versionCacheTTL (P150) instead of
+// caching forever.
+type versionCacheEntry struct {
+	version   string
+	fetchedAt time.Time
+}
+
+// versionCacheTTL bounds how long a queried runtime version is trusted
+// before runtimeVersion re-runs detectRuntimeVersion (P150) - long enough
+// that this stays effectively free on the common case (a version genuinely
+// never changes for a process's whole lifetime), short enough that a
+// same-port in-place upgrade (which reuses the same RuntimeID, see
+// runtime_identity.go's Reconcile) self-heals within one TTL window instead
+// of reporting the pre-upgrade version until the agent daemon itself
+// restarts.
+const versionCacheTTL = 30 * time.Minute
+
 // runtimeVersion returns id's cached version string, querying (and caching)
-// it on first sight of this RuntimeID - see versionCache's field comment for
-// why this must not re-run the query every cycle.
+// it on first sight of this RuntimeID or after versionCacheTTL has elapsed -
+// see versionCache's field comment for why this must not re-run the query
+// every cycle.
 func (s *Scheduler) runtimeVersion(id, name string) string {
 	s.runtimeMu.RLock()
-	v, ok := s.versionCache[id]
+	entry, ok := s.versionCache[id]
 	s.runtimeMu.RUnlock()
-	if ok {
-		return v
+	if ok && time.Since(entry.fetchedAt) < versionCacheTTL {
+		return entry.version
 	}
 	vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
-	v = detectRuntimeVersion(vctx, name)
+	v := detectRuntimeVersion(vctx, name)
 	vcancel()
 	if v != "" {
 		s.runtimeMu.Lock()
-		s.versionCache[id] = v
+		s.versionCache[id] = versionCacheEntry{version: v, fetchedAt: time.Now()}
 		s.runtimeMu.Unlock()
+		return v
 	}
-	return v
+	// Detection failed this cycle - fall back to the last-known-good version
+	// rather than reporting empty, same as the original unconditional-cache
+	// behavior did for every cycle after the first successful query.
+	return entry.version
 }
 
 // Snapshot returns the most recently collected Telemetry. Before Seed has
