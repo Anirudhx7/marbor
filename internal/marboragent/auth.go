@@ -1,6 +1,7 @@
 package marboragent
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 )
@@ -18,7 +19,15 @@ func checkToken(authHeader, expectedToken string) bool {
 	if expectedToken == "" {
 		return false
 	}
-	return strings.TrimPrefix(authHeader, "Bearer ") == expectedToken
+	presented := strings.TrimPrefix(authHeader, "Bearer ")
+	// Constant-time comparison (P148): a plain == short-circuits on the first
+	// mismatched byte, leaking timing information about how much of the
+	// token an attacker has guessed correctly - the agent-side counterpart
+	// of R4 (control-plane side already uses hashed comparison).
+	// ConstantTimeCompare returns 0 on length mismatch, so an
+	// empty/wrong-length presented token still fails closed exactly as
+	// before.
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(expectedToken)) == 1
 }
 
 // tier is a Marbor Agent token's authorization level (P54). Tiers are ordinal:
