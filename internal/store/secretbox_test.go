@@ -19,7 +19,7 @@ func mustRandomKey(t *testing.T) []byte {
 
 func TestEncryptDecryptSecretRoundTrip(t *testing.T) {
 	key := mustRandomKey(t)
-	enc, err := encryptSecret(key, "sk-super-secret")
+	enc, err := encryptSecret(key, "test.field", "sk-super-secret")
 	if err != nil {
 		t.Fatalf("encryptSecret: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestEncryptDecryptSecretRoundTrip(t *testing.T) {
 	if !strings.HasPrefix(enc, secretEncPrefix) {
 		t.Fatalf("encryptSecret output missing %q prefix: %q", secretEncPrefix, enc)
 	}
-	dec, err := decryptSecret(key, enc)
+	dec, err := decryptSecret(key, "test.field", enc)
 	if err != nil {
 		t.Fatalf("decryptSecret: %v", err)
 	}
@@ -40,14 +40,14 @@ func TestEncryptDecryptSecretRoundTrip(t *testing.T) {
 
 func TestEncryptSecretEmptyStringPassthrough(t *testing.T) {
 	key := mustRandomKey(t)
-	enc, err := encryptSecret(key, "")
+	enc, err := encryptSecret(key, "test.field", "")
 	if err != nil {
 		t.Fatalf("encryptSecret: %v", err)
 	}
 	if enc != "" {
 		t.Fatalf("encryptSecret(\"\") = %q, want empty", enc)
 	}
-	dec, err := decryptSecret(key, "")
+	dec, err := decryptSecret(key, "test.field", "")
 	if err != nil {
 		t.Fatalf("decryptSecret: %v", err)
 	}
@@ -57,12 +57,12 @@ func TestEncryptSecretEmptyStringPassthrough(t *testing.T) {
 }
 
 // TestDecryptSecretLegacyPlaintextPassthrough is the guard that keeps an
-// in-place upgrade from breaking: any value without the enc:v1: prefix must
+// in-place upgrade from breaking: any value without an enc: prefix must
 // come back unchanged, not error out, so old rows work until
 // migrateEncryptSecrets re-encrypts them.
 func TestDecryptSecretLegacyPlaintextPassthrough(t *testing.T) {
 	key := mustRandomKey(t)
-	dec, err := decryptSecret(key, "sk-plaintext-legacy-value")
+	dec, err := decryptSecret(key, "test.field", "sk-plaintext-legacy-value")
 	if err != nil {
 		t.Fatalf("decryptSecret: %v", err)
 	}
@@ -74,12 +74,27 @@ func TestDecryptSecretLegacyPlaintextPassthrough(t *testing.T) {
 func TestDecryptSecretWrongKeyFails(t *testing.T) {
 	keyA := mustRandomKey(t)
 	keyB := mustRandomKey(t)
-	enc, err := encryptSecret(keyA, "sk-secret")
+	enc, err := encryptSecret(keyA, "test.field", "sk-secret")
 	if err != nil {
 		t.Fatalf("encryptSecret: %v", err)
 	}
-	if _, err := decryptSecret(keyB, enc); err == nil {
+	if _, err := decryptSecret(keyB, "test.field", enc); err == nil {
 		t.Fatalf("decryptSecret with wrong key: want error, got nil")
+	}
+}
+
+// TestDecryptSecretWrongAADFails verifies P137's row-scoped binding: a
+// ciphertext sealed for one field must fail GCM authentication (not silently
+// decrypt) when Open is called with a different field's AAD - the guard
+// against a copy-pasted value across rows/columns.
+func TestDecryptSecretWrongAADFails(t *testing.T) {
+	key := mustRandomKey(t)
+	enc, err := encryptSecret(key, "cloud_providers.api_key", "sk-secret")
+	if err != nil {
+		t.Fatalf("encryptSecret: %v", err)
+	}
+	if _, err := decryptSecret(key, "runtime_keys.key", enc); err == nil {
+		t.Fatalf("decryptSecret with mismatched AAD: want error, got nil")
 	}
 }
 
@@ -187,7 +202,7 @@ func TestMigrateEncryptSecretsUpgradesLegacyPlaintext(t *testing.T) {
 		t.Fatalf("cloud_providers.api_key still stored as plaintext after migration")
 	}
 	if !strings.HasPrefix(rawAPIKey, secretEncPrefix) {
-		t.Fatalf("cloud_providers.api_key = %q, want enc:v1: prefix after migration", rawAPIKey)
+		t.Fatalf("cloud_providers.api_key = %q, want %s prefix after migration", rawAPIKey, secretEncPrefix)
 	}
 
 	var rawKey string
@@ -195,7 +210,7 @@ func TestMigrateEncryptSecretsUpgradesLegacyPlaintext(t *testing.T) {
 		t.Fatalf("select raw key: %v", err)
 	}
 	if !strings.HasPrefix(rawKey, secretEncPrefix) {
-		t.Fatalf("runtime_keys.key = %q, want enc:v1: prefix after migration", rawKey)
+		t.Fatalf("runtime_keys.key = %q, want %s prefix after migration", rawKey, secretEncPrefix)
 	}
 
 	var rawSetting string
@@ -203,7 +218,7 @@ func TestMigrateEncryptSecretsUpgradesLegacyPlaintext(t *testing.T) {
 		t.Fatalf("select raw setting: %v", err)
 	}
 	if !strings.HasPrefix(rawSetting, secretEncPrefix) {
-		t.Fatalf("settings litellm_api_key = %q, want enc:v1: prefix after migration", rawSetting)
+		t.Fatalf("settings litellm_api_key = %q, want %s prefix after migration", rawSetting, secretEncPrefix)
 	}
 
 	// Every read path must still hand back the original plaintext.
