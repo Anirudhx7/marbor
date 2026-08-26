@@ -51,7 +51,15 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 		} else {
 			port = findPublicPort(c, 11434)
 			if port == 0 {
-				continue
+				// containerHost already returned isContainerIP=false, meaning
+				// no network entry had a usable IPAddress - the documented
+				// --network host signature (Docker reports a "host" network
+				// entry with an empty IPAddress, not an absent Networks map).
+				// That container shares the host's network namespace and has
+				// no NAT mapping to report, so use the fixed private port
+				// directly via the same 127.0.0.1 fallback rather than
+				// skipping the container outright.
+				port = 11434
 			}
 		}
 		nodes = append(nodes, config.NodeConfig{
