@@ -448,6 +448,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.router.IncrConn(node)
+	h.router.IncrModelInFlight(node, modelName)
 	h.router.RecordModelUse(node.Name, modelName) // LRU signal for model eviction
 
 	// Advanced model configuration overrides (item #20): apply the operator's
@@ -466,6 +467,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if hasModelCfg && (modelCfg.RPM != nil || modelCfg.TPM != nil) {
 		if !h.modelLimiter.allow(modelName, node.Name, modelCfg.RPM, modelCfg.TPM) {
 			h.router.DecrConn(node)
+			h.router.DecrModelInFlight(node, modelName)
 			if h.auth != nil {
 				h.auth.Refund(keyName)
 			}
@@ -485,6 +487,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	targetURL, err := url.Parse(node.URL)
 	if err != nil {
 		h.router.DecrConn(node)
+		h.router.DecrModelInFlight(node, modelName)
 		writeAPIError(w, http.StatusInternalServerError, "invalid node URL", "server_error", "internal_error")
 		return
 	}
@@ -539,6 +542,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, e error) {
 			// Upstream failed before writing any bytes - safe to retry.
 			h.router.DecrConn(node)
+			h.router.DecrModelInFlight(node, modelName)
 			errHandled = true
 			tried[node.URL] = true
 			h.router.RecordRequestOutcome(node.Name, false)
@@ -625,9 +629,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			node = nextNode
 			decision = nextDecision
 			h.router.IncrConn(node)
+			h.router.IncrModelInFlight(node, modelName)
 			targetURL, err = url.Parse(node.URL)
 			if err != nil {
 				h.router.DecrConn(node)
+				h.router.DecrModelInFlight(node, modelName)
 				writeAPIError(w, http.StatusInternalServerError, "invalid node URL", "server_error", "internal_error")
 				return
 			}
@@ -639,6 +645,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// ErrorHandler already released this node's slot.
 		if !errHandled {
 			h.router.DecrConn(node)
+			h.router.DecrModelInFlight(node, modelName)
 			success := rec.StatusCode() < 500 && !aborted
 			h.router.RecordRequestOutcome(node.Name, success)
 		}
