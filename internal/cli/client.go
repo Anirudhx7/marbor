@@ -172,6 +172,22 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	case resp.StatusCode >= 500:
 		defer resp.Body.Close()
 		return nil, serverErrorf("server error (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed ||
+		resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusUnprocessableEntity:
+		// Classifies the same read-path failure class doRequestBody already
+		// separates out (404/422 there; 405/409 added here since a fixed
+		// GET-style CLI request path can hit those too) as a user error
+		// (P163, code review corrected the doc comment: the two functions'
+		// exact status sets aren't identical, doRequestBody has no 405/409
+		// case of its own): a typo'd node name, unknown id, or similar
+		// caller mistake reaches the server fine and gets the correct 4xx
+		// back - that's a user error (exit 1), not a server error (exit 2).
+		// Every read path (NodeControlProbe, NodeModels, HealthCheck,
+		// ExplainRequest, etc.) goes through this function, so without this
+		// branch every one of those wrongly reported "server error" for the
+		// identical failure class.
+		defer resp.Body.Close()
+		return nil, userErrorf("%s", readErrorMessage(resp.Body))
 	case resp.StatusCode >= 400:
 		defer resp.Body.Close()
 		return nil, serverErrorf("unexpected response (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
