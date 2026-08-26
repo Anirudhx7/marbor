@@ -19,12 +19,17 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/bench"
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/store"
 )
+
+// benchJobSeq is a process-lifetime counter appended to every generated
+// jobID (P130) so two rapid POSTs can never collide on UnixNano() alone.
+var benchJobSeq atomic.Int64
 
 // benchmarkJobMaxAge mirrors pullJobMaxAge: how long a finished benchmark job
 // stays in s.benchJobs after completion, long enough for a late-connecting
@@ -232,7 +237,12 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	// each evicting/reloading the model out from under the other and
 	// corrupting both runs' cold/warm numbers.
 	ctx, cancel := context.WithCancel(context.Background())
-	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
+	// A process-lifetime counter suffix makes jobID collision-proof (P130):
+	// UnixNano() alone can repeat across two rapid POSTs (worse on Windows'
+	// coarser clock tick), and a collision silently overwrites a live
+	// benchmarkJob in s.benchJobs, defeating the same-node conflict check
+	// above.
+	jobID := fmt.Sprintf("%d-%d", time.Now().UnixNano(), benchJobSeq.Add(1))
 	job := &benchmarkJob{
 		Node:      body.Node,
 		Model:     body.Model,
