@@ -74,13 +74,13 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
 
   // Label fades via max-width / opacity - stays in DOM so height never changes
   const labelClass = `whitespace-nowrap overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}`;
-  // Fixed height for every row so icons never shift vertically - center when collapsed
-  const linkBase = `group flex items-center h-10 px-3 rounded-lg shrink-0 text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${collapsed ? 'justify-center' : ''}`;
+  // Fixed height for every row so icons never shift vertically - padding animates for smooth centering (justify would snap)
+  const linkBase = `group flex items-center h-10 rounded-lg shrink-0 text-sm font-medium transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${collapsed ? 'px-[17px]' : 'px-3'}`;
 
   const sidebarContent = (
     <>
-      {/* Header - fixed h-16 so no vertical jump, marbor icon centered when collapsed */}
-      <div className={`h-16 flex items-center border-b border-border shrink-0 ${collapsed ? 'justify-center px-2' : 'justify-between px-5'}`}>
+      {/* Header - fixed h-16 so no vertical jump, marbor icon centered when collapsed via padding (justify would snap) */}
+      <div className={`h-16 flex items-center border-b border-border shrink-0 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'px-[18px]' : 'px-5'}`}>
         <div className="flex items-center min-w-0">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#1a1714' }}>
             <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
@@ -214,7 +214,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
               onClick={onToggleCollapsed}
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               aria-expanded={!collapsed}
-              className="hidden md:flex items-center h-10 px-3 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
+              className={`hidden md:flex items-center h-10 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer ${collapsed ? 'px-[17px]' : 'px-3'}`}
             >
               {collapsed ? <PanelLeft className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} /> : <PanelLeftClose className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />}
               <span className={labelClass}>Collapse</span>
@@ -237,7 +237,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
           <div className="relative group/nav">
             <a
               href="../"
-              className="flex items-center h-10 px-3 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors duration-200"
+              className={`flex items-center h-10 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'px-[17px]' : 'px-3'}`}
             >
               <ArrowLeft className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
               <span className={labelClass}>Back to website</span>
@@ -252,7 +252,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
         <div className="relative group/nav">
           <button
             onClick={toggleTheme}
-            className="flex items-center h-10 px-3 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors duration-200"
+            className={`flex items-center h-10 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'px-[17px]' : 'px-3'}`}
           >
             {theme === 'dark' ? <Sun className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} /> : <Moon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />}
             <span className={labelClass}>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
@@ -267,7 +267,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
           <div className="relative group/nav">
             <button
               onClick={onLogout}
-              className="flex items-center h-10 px-3 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-200"
+              className={`flex items-center h-10 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'px-[17px]' : 'px-3'}`}
             >
               <LogOut className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
               <span className={labelClass}>Logout</span>
