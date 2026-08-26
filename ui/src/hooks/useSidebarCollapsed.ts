@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const STORAGE_KEY = 'marbor-sidebar-collapsed';
 
@@ -19,7 +19,7 @@ export function useSidebarCollapsed() {
     }
   }, [collapsed]);
 
-  const toggle = () => setCollapsed((c) => !c);
+  const toggle = useCallback(() => setCollapsed((c) => !c), []);
 
   return { collapsed, setCollapsed, toggle };
 }

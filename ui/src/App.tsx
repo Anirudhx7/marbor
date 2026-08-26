@@ -75,7 +75,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, { error: Error | null 
 }
 
 // ---------------------------------------------------------------------------
-// Lazy page imports
+// Lazy page imports - preloaded on idle to make tab switching instant
 // ---------------------------------------------------------------------------
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const GPUNodes     = lazy(() => import('./pages/GPUNodes').then(m => ({ default: m.GPUNodes })));
@@ -91,6 +91,24 @@ const Warmup       = lazy(() => import('./pages/Warmup').then(m => ({ default: m
 const Users        = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const SystemAudit  = lazy(() => import('./pages/SystemAudit').then(m => ({ default: m.SystemAudit })));
 const Benchmark    = lazy(() => import('./pages/Benchmark').then(m => ({ default: m.Benchmark })));
+
+// Preload all route chunks after first paint so tab switches are instant, not lazy-on-click
+function preloadRoutes() {
+  void import('./pages/Dashboard');
+  void import('./pages/GPUNodes');
+  void import('./pages/APIKeys');
+  void import('./pages/Routing');
+  void import('./pages/Metrics');
+  void import('./pages/Settings');
+  void import('./pages/Analytics');
+  void import('./pages/Models');
+  void import('./pages/ModelAdvisor');
+  void import('./pages/Requests');
+  void import('./pages/Warmup');
+  void import('./pages/Users');
+  void import('./pages/SystemAudit');
+  void import('./pages/Benchmark');
+}
 
 // ---------------------------------------------------------------------------
 // RouterComponent declared at module scope so its identity is stable across
@@ -125,10 +143,22 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
   const pathname = location.pathname;
   const { collapsed, toggle } = useSidebarCollapsed();
 
+  // Preload chunks on idle - makes subsequent tab switches instant
+  useEffect(() => {
+    const id = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+      ? (window as unknown as { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(preloadRoutes)
+      : setTimeout(preloadRoutes, 800);
+    return () => {
+      const ric = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+      if (ric && typeof id === 'number') try { ric(id as number); } catch {}
+      else clearTimeout(id as unknown as number);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
       <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} collapsed={collapsed} onToggleCollapsed={toggle} />
-      <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]`}>
+      <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] [contain:layout_style]`}>
         <DemoBanner />
         <BudgetBanner />
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
