@@ -162,6 +162,26 @@ func generateBashCompletion(root *Command) string {
 		b.WriteString("    fi\n\n")
 	}
 
+	// Reduce cmd to the longest registered command path that is a prefix of
+	// it (P164): the loop above joins every non-flag word before the
+	// cursor, including positional arguments - once one is typed (e.g.
+	// "nodes confirm-tls mynode"), cmd's full literal join matches no case
+	// arm below and flags (including required ones like --fingerprint)
+	// could never complete. Strip trailing words one at a time until what's
+	// left is a key the case statement below actually has an arm for.
+	fmt.Fprintf(&b, "    local known_cmds=%s\n", shellSingleQuote(" "+strings.Join(bashCompletionKeys(nodes), " ")+" "))
+	b.WriteString("    while [[ -n \"$cmd\" && \"$known_cmds\" != *\" $cmd \"* ]]; do\n")
+	// "${cmd% *}" only strips a trailing word when cmd contains a space -
+	// on a single unmatched word (a typo'd top-level command, e.g. "marbor
+	// bogus<TAB>") it returns cmd unchanged, so the while condition above
+	// never becomes false and this loop spins forever (code review caught
+	// this, confirmed by hanging a real generated script). Reduce all the
+	// way to empty once there's no more word left to strip - the case
+	// statement's "" arm (root) or the trailing *) fallback then handles
+	// it correctly, same as any other completely-unmatched input.
+	b.WriteString("        if [[ \"$cmd\" == *\" \"* ]]; then cmd=\"${cmd% *}\"; else cmd=\"\"; fi\n")
+	b.WriteString("    done\n\n")
+
 	b.WriteString("    case \"$cmd\" in\n")
 	for _, node := range nodes {
 		key := strings.Join(node.path, " ")
@@ -171,7 +191,13 @@ func generateBashCompletion(root *Command) string {
 		}
 		words = append(words, ownFlagNames(node.cmd)...)
 		words = append(words, globalFlagNames...)
-		fmt.Fprintf(&b, "    %s)\n", bashCasePattern(key))
+		// bashCasePattern already appends the case pattern's own closing ")"
+		// - no second one here (P387, pre-existing: the doubled ")" was a
+		// real bash/zsh syntax error, e.g. "    \"\"))", caught by code
+		// review while verifying P164; TestRun_Completion_Bash/_Zsh only
+		// did substring checks and never actually sourced the script
+		// through a real shell, so this went undetected).
+		fmt.Fprintf(&b, "    %s\n", bashCasePattern(key))
 		fmt.Fprintf(&b, "        COMPREPLY=( $(compgen -W %s -- \"$cur\") )\n", shellSingleQuote(strings.Join(words, " ")))
 		b.WriteString("        ;;\n")
 	}
@@ -182,6 +208,22 @@ func generateBashCompletion(root *Command) string {
 	b.WriteString("}\n")
 	b.WriteString("complete -F _marbor marbor\n")
 	return b.String()
+}
+
+// bashCompletionKeys returns every non-root command-path key ("models pull",
+// not "") from nodes, space-joined-safe (no key itself contains a space
+// beyond the single separators already in the joined path) - used to build
+// the space-padded lookup string generateBashCompletion's prefix-reduction
+// loop matches against. Root's own "" key needs no entry: the loop's
+// `-n "$cmd"` condition already stops once cmd is reduced to empty.
+func bashCompletionKeys(nodes []completionNode) []string {
+	keys := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if key := strings.Join(node.path, " "); key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 // bashCasePattern renders key ("" for root, "models pull" for a nested
@@ -238,6 +280,23 @@ func generateZshCompletion(root *Command) string {
 	b.WriteString("        esac\n")
 	b.WriteString("    done\n\n")
 
+	// Same prefix-reduction as the bash generator (P164): strip trailing
+	// positional-argument words from cmd until what's left matches a
+	// registered command path with children, so sub-command name
+	// completion still works once a positional has been typed.
+	fmt.Fprintf(&b, "    local known_cmds=%s\n", shellSingleQuote(" "+strings.Join(bashCompletionKeys(nodes), " ")+" "))
+	b.WriteString("    while [[ -n \"$cmd\" && \"$known_cmds\" != *\" $cmd \"* ]]; do\n")
+	// "${cmd% *}" only strips a trailing word when cmd contains a space -
+	// on a single unmatched word (a typo'd top-level command, e.g. "marbor
+	// bogus<TAB>") it returns cmd unchanged, so the while condition above
+	// never becomes false and this loop spins forever (code review caught
+	// this, confirmed by hanging a real generated script). Reduce all the
+	// way to empty once there's no more word left to strip - the case
+	// statement's "" arm (root) or the trailing *) fallback then handles
+	// it correctly, same as any other completely-unmatched input.
+	b.WriteString("        if [[ \"$cmd\" == *\" \"* ]]; then cmd=\"${cmd% *}\"; else cmd=\"\"; fi\n")
+	b.WriteString("    done\n\n")
+
 	b.WriteString("    case \"$cmd\" in\n")
 	for _, node := range nodes {
 		children := visibleChildren(node.cmd)
@@ -245,7 +304,13 @@ func generateZshCompletion(root *Command) string {
 			continue
 		}
 		key := strings.Join(node.path, " ")
-		fmt.Fprintf(&b, "    %s)\n", bashCasePattern(key))
+		// bashCasePattern already appends the case pattern's own closing ")"
+		// - no second one here (P387, pre-existing: the doubled ")" was a
+		// real bash/zsh syntax error, e.g. "    \"\"))", caught by code
+		// review while verifying P164; TestRun_Completion_Bash/_Zsh only
+		// did substring checks and never actually sourced the script
+		// through a real shell, so this went undetected).
+		fmt.Fprintf(&b, "    %s\n", bashCasePattern(key))
 		b.WriteString("        local -a items\n")
 		b.WriteString("        items=(\n")
 		for _, s := range children {
