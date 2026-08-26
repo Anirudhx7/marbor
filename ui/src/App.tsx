@@ -128,7 +128,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
       <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} collapsed={collapsed} onToggleCollapsed={toggle} />
-      <main className={`${collapsed ? 'md:ml-16' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 transition-all duration-200 ease-in-out`}>
+      <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]`}>
         <DemoBanner />
         <BudgetBanner />
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
