@@ -175,44 +175,15 @@ html {
   @apply bg-muted-foreground/40;
 }
 
-/* Sidebar nav - ultra-slim overlay scrollbar (2px, no layout shift) */
+/* Sidebar nav - no visible scrollbar, icons stay perfectly centered */
 .sidebar-nav {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  scrollbar-gutter: stable;
-  /* Prevent any layout shift when scrollbar appears - gutter stays reserved */
-}
-.sidebar-nav:hover {
-  scrollbar-color: hsl(var(--border)) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .sidebar-nav::-webkit-scrollbar {
-  width: 2px;
-  height: 2px;
-}
-.sidebar-nav::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sidebar-nav::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 9999px;
-}
-.sidebar-nav:hover::-webkit-scrollbar-thumb {
-  background: hsl(var(--border) / 0.6);
-}
-.sidebar-nav:hover::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
-}
-/* Keep gutter stable even when collapsed - no width jump, thumb just stays invisible */
-.sidebar-nav.collapsed {
-  scrollbar-width: thin;
-  scrollbar-gutter: stable;
-}
-.sidebar-nav.collapsed::-webkit-scrollbar {
-  width: 2px;
-  height: 2px;
-}
-.sidebar-nav.collapsed::-webkit-scrollbar-thumb {
-  background: transparent;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 @keyframes fade-in {
