@@ -104,7 +104,11 @@ export async function login(username: string, password: string): Promise<LoginRe
         expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       };
     }
-    throw new Error('Invalid credentials');
+    // status:401 so Login.tsx's non-401-passes-through branch (P176)
+    // doesn't show this literal "Invalid credentials" wording instead of
+    // its own generic message - both mean the same thing, but consistency
+    // matters here since Login.tsx branches on this field.
+    throw Object.assign(new Error('Invalid credentials'), { status: 401 });
   }
   const r = await fetch('/admin/login', {
     method: 'POST',
@@ -114,7 +118,11 @@ export async function login(username: string, password: string): Promise<LoginRe
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    throw new Error((j as any).error || 'Invalid credentials');
+    // status is attached (not just the message) so Login.tsx can tell a
+    // real 401 from a 5xx/other server error (P176) - a bare catch{} there
+    // previously showed "Invalid username or password" for every failure
+    // mode, including network errors and server-side bugs.
+    throw Object.assign(new Error((j as any).error || 'Invalid credentials'), { status: r.status });
   }
   return r.json();
 }
@@ -128,7 +136,7 @@ export async function userLogin(username: string, password: string): Promise<Log
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    throw new Error((j as any).error || 'Invalid credentials');
+    throw Object.assign(new Error((j as any).error || 'Invalid credentials'), { status: r.status });
   }
   return r.json();
 }
