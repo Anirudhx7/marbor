@@ -35,12 +35,12 @@ if [ -f "$UNIT_PATH" ]; then
       systemctl stop marbor >/dev/null 2>&1 || true
       systemctl disable marbor >/dev/null 2>&1 || true
       rm -f "$UNIT_PATH"
-      systemctl daemon-reload
+      systemctl daemon-reload || true
     elif command -v sudo >/dev/null 2>&1; then
       sudo systemctl stop marbor >/dev/null 2>&1 || true
       sudo systemctl disable marbor >/dev/null 2>&1 || true
       sudo rm -f "$UNIT_PATH"
-      sudo systemctl daemon-reload
+      sudo systemctl daemon-reload || true
     else
       echo "  [!] Removing $UNIT_PATH requires root, and sudo is not available. Remove it manually."
     fi
