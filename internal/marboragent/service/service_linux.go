@@ -126,8 +126,33 @@ func runSystemctl(args ...string) error {
 	return nil
 }
 
+// validateExecStartSafety rejects a BinaryPath/arg that would corrupt or
+// escape the generated unit file (P159): quoteIfNeeded only guards against
+// unescaped whitespace, but INSTALL_DIR (the source of BinaryPath) is
+// operator-overridable, and an embedded newline/carriage-return/NUL would be
+// written raw into the unit file, letting text after it be parsed as new
+// systemd directives; a "$" inside even a quoted value is still subject to
+// systemd specifier expansion. INSTALL_DIR is operator-supplied, not
+// remote-attacker-supplied, so rejecting the implausible case here is
+// sufficient - full systemd.service(5) escaping is not needed.
+func validateExecStartSafety(cfg Config) error {
+	values := append([]string{cfg.BinaryPath}, cfg.args()...)
+	for _, v := range values {
+		if strings.ContainsAny(v, "\n\r\x00") {
+			return fmt.Errorf("service: value %q contains a newline/carriage-return/NUL byte, refusing to write it into the systemd unit file", v)
+		}
+		if strings.Contains(v, "$") {
+			return fmt.Errorf("service: value %q contains \"$\", which systemd would expand as a unit-file specifier - refusing to write it into the systemd unit file", v)
+		}
+	}
+	return nil
+}
+
 func (systemdManager) Install(cfg Config) error {
 	if err := validateCertKeyConfig(cfg); err != nil {
+		return err
+	}
+	if err := validateExecStartSafety(cfg); err != nil {
 		return err
 	}
 	if os.Geteuid() != 0 {
