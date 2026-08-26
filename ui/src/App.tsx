@@ -3,6 +3,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 
 import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
+import { useSidebarCollapsed } from './hooks/useSidebarCollapsed';
 import { DemoBanner } from './components/DemoBanner';
 import { BudgetBanner } from './components/BudgetBanner';
 import { PullProgressWidget } from './components/PullProgressWidget';
@@ -122,11 +123,12 @@ interface AppShellProps {
 function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
   const location = useLocation();
   const pathname = location.pathname;
+  const { collapsed, toggle } = useSidebarCollapsed();
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-      <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} />
-      <main className="md:ml-64 min-h-screen pt-14 md:pt-0">
+      <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} collapsed={collapsed} onToggleCollapsed={toggle} />
+      <main className={`${collapsed ? 'md:ml-16' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 transition-all duration-200 ease-in-out`}>
         <DemoBanner />
         <BudgetBanner />
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
