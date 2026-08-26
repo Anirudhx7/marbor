@@ -175,18 +175,19 @@ html {
   @apply bg-muted-foreground/40;
 }
 
-/* Sidebar nav - ultra-slim overlay scrollbar, hidden when collapsed */
+/* Sidebar nav - ultra-slim overlay scrollbar (2px, no layout shift) */
 .sidebar-nav {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   scrollbar-gutter: stable;
+  /* Prevent any layout shift when scrollbar appears - gutter stays reserved */
 }
 .sidebar-nav:hover {
   scrollbar-color: hsl(var(--border)) transparent;
 }
 .sidebar-nav::-webkit-scrollbar {
-  width: 3px;
-  height: 3px;
+  width: 2px;
+  height: 2px;
 }
 .sidebar-nav::-webkit-scrollbar-track {
   background: transparent;
@@ -196,20 +197,22 @@ html {
   border-radius: 9999px;
 }
 .sidebar-nav:hover::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
+  background: hsl(var(--border) / 0.6);
 }
 .sidebar-nav:hover::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.4);
+  background: hsl(var(--muted-foreground) / 0.5);
 }
+/* Keep gutter stable even when collapsed - no width jump, thumb just stays invisible */
 .sidebar-nav.collapsed {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
 }
 .sidebar-nav.collapsed::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+  width: 2px;
+  height: 2px;
+}
+.sidebar-nav.collapsed::-webkit-scrollbar-thumb {
+  background: transparent;
 }
 
 @keyframes fade-in {
