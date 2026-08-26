@@ -180,6 +180,17 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 	// 3. For each currently-warm model on each healthy node, predict top-3
 	keepAlive := effectiveKeepAlive(warmupCfg.KeepAlive, time.Duration(warmupCfg.IntervalMs)*time.Millisecond)
 
+	// planned dedups warmup triggers within this single cycle (P122): without
+	// it, two different trigger models both predicting the same (node, P) pair
+	// each independently fire a warmup goroutine, racing ensureHeadroom/pingNode
+	// against each other and double-counting ActivePrediction entries for one
+	// actual warmup.
+	type nodeModelKey struct {
+		node  string
+		model string
+	}
+	planned := make(map[nodeModelKey]struct{})
+
 	for _, n := range healthy {
 		n.mu.RLock()
 		loaded := make(map[string]struct{})
@@ -231,7 +242,9 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				// operator decision, not silently reload it because it also
 				// happens to be a likely-next model. Recorded below as a
 				// normal "skipped" decision, same as any other unmet prediction.
-				if !wasAlreadyWarm && !r.isWarmupSuppressed(n.Name, P) {
+				key := nodeModelKey{n.Name, P}
+				_, alreadyPlanned := planned[key]
+				if !wasAlreadyWarm && !alreadyPlanned && !r.isWarmupSuppressed(n.Name, P) {
 					// Check VRAM headroom
 					estSize := r.estimateModelSizeBytes(n.URL, P, true)
 					n.mu.RLock()
@@ -241,6 +254,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 					// Headroom is only true if size is known and fits in free VRAM
 					if estSize > 0 && freeBytes >= estSize {
 						warmupTriggered = true
+						planned[key] = struct{}{}
 						go func(targetNode *NodeState, modelToWarm string) {
 							r.ensureHeadroom(ctx, targetNode, modelToWarm)
 							if err := r.pingNode(ctx, targetNode, modelToWarm, keepAlive); err == nil {
