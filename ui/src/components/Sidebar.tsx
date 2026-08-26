@@ -126,7 +126,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
                 <span className={labelClass}>{item.label}</span>
               </NavLink>
               {collapsed && (
-                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
                   {item.label}
                 </span>
               )}
@@ -157,12 +157,12 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
                 </span>
               </NavLink>
               {collapsed && (
-                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
                   Users{pendingCount > 0 ? ` (${pendingCount})` : ''}
                 </span>
               )}
               {collapsed && pendingCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-card pointer-events-none" />
+                <span className="absolute -top-1 -right-1 z-10 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-card pointer-events-none" />
               )}
             </div>
             <div className="relative group/nav">
@@ -179,7 +179,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
                 <span className={labelClass}>Audit Trail</span>
               </NavLink>
               {collapsed && (
-                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
                   Audit Trail
                 </span>
               )}
@@ -200,7 +200,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
             <span className={labelClass}>Settings</span>
           </NavLink>
           {collapsed && (
-            <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+            <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
               Settings
             </span>
           )}
@@ -221,7 +221,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
               <span className={labelClass}>Collapse</span>
             </button>
             {collapsed && (
-              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
                 Expand sidebar
               </span>
             )}
@@ -244,7 +244,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
               <span className={labelClass}>Back to website</span>
             </a>
             {collapsed && (
-              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
                 Back to website
               </span>
             )}
@@ -259,7 +259,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
             <span className={labelClass}>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
           </button>
           {collapsed && (
-            <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+            <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
               {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
             </span>
           )}
@@ -274,7 +274,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
               <span className={labelClass}>Logout</span>
             </button>
             {collapsed && (
-              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
                 Logout
               </span>
             )}
@@ -323,10 +323,10 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
         />
       )}
 
-      {/* Sidebar - width (desktop) + transform (mobile drawer) - promote to own layer */}
+      {/* Sidebar - width (desktop) + transform (mobile drawer) - promote to own layer, no contain so tooltips aren't clipped */}
       <aside
         className={`
-          fixed left-0 top-0 z-50 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh will-change-[width,transform] [contain:layout_style] transform-gpu
+          fixed left-0 top-0 z-50 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh will-change-[width,transform] transform-gpu
           transition-[width,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
           w-64 ${collapsed ? 'md:w-[68px]' : 'md:w-64'}
           ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
