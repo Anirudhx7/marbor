@@ -695,6 +695,16 @@ func handleOpenAICompletion(w http.ResponseWriter, r *http.Request, nodeName, mo
 		flusher.Flush()
 		time.Sleep(15 * time.Millisecond)
 	}
+	// Terminal chunk with finish_reason:"stop" (P167), matching the sibling
+	// handleOpenAIChatCompletion above and the real OpenAI streaming
+	// contract - this handler previously jumped straight from the last
+	// per-token chunk (finish_reason:nil) to [DONE] with no stop signal.
+	finalChunk := map[string]interface{}{
+		"id": id, "object": "text_completion", "created": created, "model": req.Model,
+		"choices": []map[string]interface{}{{"index": 0, "text": "", "finish_reason": "stop"}},
+	}
+	fb, _ := json.Marshal(finalChunk)
+	fmt.Fprintf(bw, "data: %s\n\n", fb)
 	fmt.Fprint(bw, "data: [DONE]\n\n")
 	bw.Flush()
 	flusher.Flush()
