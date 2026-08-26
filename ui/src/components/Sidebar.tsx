@@ -74,13 +74,13 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
 
   // Label fades via max-width / opacity - stays in DOM so height never changes
   const labelClass = `whitespace-nowrap overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}`;
-  // Fixed height for every row so icons never shift vertically
-  const linkBase = 'group flex items-center h-10 px-3 rounded-lg shrink-0 text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0';
+  // Fixed height for every row so icons never shift vertically - center when collapsed
+  const linkBase = `group flex items-center h-10 px-3 rounded-lg shrink-0 text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${collapsed ? 'justify-center' : ''}`;
 
   const sidebarContent = (
     <>
-      {/* Header - fixed h-16 so no vertical jump */}
-      <div className="h-16 flex items-center justify-between px-5 border-b border-border shrink-0">
+      {/* Header - fixed h-16 so no vertical jump, marbor icon centered when collapsed */}
+      <div className={`h-16 flex items-center border-b border-border shrink-0 ${collapsed ? 'justify-center px-2' : 'justify-between px-5'}`}>
         <div className="flex items-center min-w-0">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#1a1714' }}>
             <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
