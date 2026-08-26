@@ -74,12 +74,23 @@ func (d *ProcessDriver) Stop(ctx context.Context) error {
 	// async reap, see the old (now-dead) pid as still alive, and silently
 	// skip spawning a replacement process. SIGKILL is uncatchable, so this
 	// loop is bounded by reap scheduling latency, not process shutdown
-	// time - a short poll is sufficient.
+	// time - a short poll is sufficient in the common case.
+	//
+	// Must return an ERROR (not nil) whenever it gives up without
+	// confirming the process is actually gone (code review, round 2): an
+	// unconditional nil here reopens the exact race this wait exists to
+	// close - Restart's Stop-then-Start would report the runtime "stopped"
+	// and then silently skip Start's spawn because the not-yet-reaped pid
+	// still reads as alive. Surfacing an error instead lets Restart's
+	// `if err != nil { return err }` correctly abort rather than proceed.
 	deadline := time.Now().Add(5 * time.Second)
-	for processAlive(pid) && time.Now().Before(deadline) {
+	for processAlive(pid) {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("process: pid %d still alive %s after kill (not yet reaped by the kernel) - refusing to report stopped", pid, 5*time.Second)
+		}
 		select {
 		case <-ctx.Done():
-			return nil
+			return fmt.Errorf("process: %w waiting for pid %d to be reaped after kill", ctx.Err(), pid)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
