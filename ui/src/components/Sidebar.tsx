@@ -70,152 +70,229 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
-  const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 py-2 min-h-[44px] text-sm font-medium rounded-md transition-colors ${
-      isActive
-        ? 'bg-primary/10 text-primary'
-        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-    }`;
-
   const isAdmin = session?.role === 'admin';
+
+  // Smooth label: keep in DOM but collapse width/opacity for ultra-smooth fade
+  const labelClass = `whitespace-nowrap overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'max-w-0 opacity-0 translate-x-1' : 'max-w-[160px] opacity-100 translate-x-0'}`;
+
+  const linkBase = 'group flex items-center rounded-lg text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0';
 
   const sidebarContent = (
     <>
-      <div className={`h-16 flex items-center border-b border-border shrink-0 ${collapsed ? 'justify-center px-2' : 'justify-between px-6'}`}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: '#1a1714' }}>
+      {/* Header */}
+      <div className={`h-16 flex items-center border-b border-border shrink-0 transition-[padding] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'px-2 justify-center' : 'px-5 justify-between'}`}>
+        <div className={`flex items-center transition-all duration-300 ${collapsed ? 'gap-0' : 'gap-3'}`}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-300" style={{ background: '#1a1714' }}>
             <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
               <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round"/>
               <circle cx="75" cy="75" r="8" fill="#a87f3a" />
             </svg>
           </div>
-          {!collapsed && (
-            <div className="flex flex-col">
-              <span className="font-semibold text-foreground text-sm tracking-tight">
-                Marbor
-              </span>
-              <span className="text-[10px] font-medium text-muted-foreground leading-none">v{version}</span>
-            </div>
-          )}
+          <div className={`flex flex-col overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'max-w-0 opacity-0 -ml-2' : 'max-w-[120px] opacity-100 ml-0'}`}>
+            <span className="font-semibold text-foreground text-sm tracking-tight whitespace-nowrap">
+              Marbor
+            </span>
+            <span className="text-[10px] font-medium text-muted-foreground leading-none whitespace-nowrap">v{version}</span>
+          </div>
         </div>
-        {!collapsed && (
-          <button
-            onClick={() => setIsOpen(false)}
-            className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-            aria-label="Close menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-        {collapsed && (
-          <button
-            onClick={() => setIsOpen(false)}
-            className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-            aria-label="Close menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
+        <button
+          onClick={() => setIsOpen(false)}
+          className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer shrink-0"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5" strokeWidth={1.75} />
+        </button>
       </div>
 
-      <nav className={`flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden ${collapsed ? 'px-2' : 'px-3'}`}>
+      {/* Nav - slim overlay scrollbar, hidden when collapsed */}
+      <nav className={`sidebar-nav flex-1 py-3 space-y-1 overflow-y-auto overflow-x-hidden transition-[padding] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'collapsed px-1.5' : 'px-3'}`}>
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={linkClass}
-              title={collapsed ? item.label : undefined}
-              aria-label={collapsed ? item.label : undefined}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {!collapsed && item.label}
-            </NavLink>
+            <div key={item.path} className="relative group/nav">
+              <NavLink
+                to={item.path}
+                title={collapsed ? item.label : undefined}
+                className={({ isActive }) =>
+                  `${linkBase} ${collapsed ? 'justify-center p-2.5 mx-0.5' : 'gap-0 px-3 py-2.5'} ${
+                    isActive
+                      ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
+                  }`
+                }
+              >
+                <span className={`flex items-center justify-center shrink-0 rounded-md transition-all duration-300 ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+                  <Icon className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0 transition-transform duration-300 group-hover/nav:scale-[1.04]`} strokeWidth={1.75} />
+                </span>
+                <span className={labelClass}>{item.label}</span>
+              </NavLink>
+              {/* Premium tooltip when collapsed */}
+              {collapsed && (
+                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                  {item.label}
+                </span>
+              )}
+            </div>
           );
         })}
         {isAdmin && (
           <>
-            <NavLink to="/users" className={linkClass} title={collapsed ? 'Users' : undefined} aria-label={collapsed ? 'Users' : undefined}>
-              <Users className="w-4 h-4 shrink-0" />
-              {!collapsed && (
-                <>
-                  <span className="flex-1">Users</span>
-                  {pendingCount > 0 && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full leading-none">
-                      {pendingCount}
-                    </span>
-                  )}
-                </>
+            <div className="relative group/nav">
+              <NavLink
+                to="/users"
+                title={collapsed ? 'Users' : undefined}
+                className={({ isActive }) =>
+                  `${linkBase} ${collapsed ? 'justify-center p-2.5 mx-0.5' : 'gap-0 px-3 py-2.5'} ${
+                    isActive ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
+                  }`
+                }
+              >
+                <span className={`flex items-center justify-center shrink-0 rounded-md ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+                  <Users className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0`} strokeWidth={1.75} />
+                </span>
+                <span className={`${labelClass} flex-1`}>Users</span>
+                {!collapsed && pendingCount > 0 && (
+                  <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full leading-none border border-amber-500/20">
+                    {pendingCount}
+                  </span>
+                )}
+              </NavLink>
+              {collapsed && (
+                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                  Users{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                </span>
               )}
-            </NavLink>
-            <NavLink to="/system-audit" className={linkClass} title={collapsed ? 'Audit Trail' : undefined} aria-label={collapsed ? 'Audit Trail' : undefined}>
-              <Shield className="w-4 h-4 shrink-0" />
-              {!collapsed && 'Audit Trail'}
-            </NavLink>
+              {collapsed && pendingCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-card pointer-events-none" />
+              )}
+            </div>
+            <div className="relative group/nav">
+              <NavLink
+                to="/system-audit"
+                title={collapsed ? 'Audit Trail' : undefined}
+                className={({ isActive }) =>
+                  `${linkBase} ${collapsed ? 'justify-center p-2.5 mx-0.5' : 'gap-0 px-3 py-2.5'} ${
+                    isActive ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
+                  }`
+                }
+              >
+                <span className={`flex items-center justify-center shrink-0 rounded-md ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+                  <Shield className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0`} strokeWidth={1.75} />
+                </span>
+                <span className={labelClass}>Audit Trail</span>
+              </NavLink>
+              {collapsed && (
+                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                  Audit Trail
+                </span>
+              )}
+            </div>
           </>
         )}
-        <NavLink to="/settings" className={linkClass} title={collapsed ? 'Settings' : undefined} aria-label={collapsed ? 'Settings' : undefined}>
-          <Settings className="w-4 h-4 shrink-0" />
-          {!collapsed && 'Settings'}
-        </NavLink>
+        <div className="relative group/nav">
+          <NavLink
+            to="/settings"
+            title={collapsed ? 'Settings' : undefined}
+            className={({ isActive }) =>
+              `${linkBase} ${collapsed ? 'justify-center p-2.5 mx-0.5' : 'gap-0 px-3 py-2.5'} ${
+                isActive ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
+              }`
+            }
+          >
+            <span className={`flex items-center justify-center shrink-0 rounded-md ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+              <Settings className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0`} strokeWidth={1.75} />
+            </span>
+            <span className={labelClass}>Settings</span>
+          </NavLink>
+          {collapsed && (
+            <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+              Settings
+            </span>
+          )}
+        </div>
       </nav>
 
-      <div className={`border-t border-border shrink-0 space-y-1 ${collapsed ? 'p-2' : 'p-4'}`}>
-        {/* Desktop collapse/expand toggle - hidden on mobile where slide-in drawer applies */}
+      {/* Footer */}
+      <div className={`border-t border-border shrink-0 space-y-1 transition-[padding] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'p-2' : 'p-3'}`}>
+        {/* Desktop collapse/expand toggle */}
         {onToggleCollapsed && (
-          <button
-            onClick={onToggleCollapsed}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-expanded={!collapsed}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={`hidden md:flex items-center min-h-[44px] text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer w-full ${collapsed ? 'justify-center px-2' : 'gap-3 px-3 py-2'}`}
-          >
-            {collapsed ? <PanelLeft className="w-4 h-4 shrink-0" /> : <PanelLeftClose className="w-4 h-4 shrink-0" />}
-            {!collapsed && <span>{'Collapse'}</span>}
-          </button>
+          <div className="relative group/nav">
+            <button
+              onClick={onToggleCollapsed}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-expanded={!collapsed}
+              className={`hidden md:flex items-center w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 cursor-pointer ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'}`}
+            >
+              <span className={`flex items-center justify-center shrink-0 rounded-md ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+                {collapsed ? <PanelLeft className="w-[18px] h-[18px] transition-transform duration-300" strokeWidth={1.75} /> : <PanelLeftClose className="w-[18px] h-[18px] transition-transform duration-300" strokeWidth={1.75} />}
+              </span>
+              <span className={labelClass}>Collapse</span>
+            </button>
+            {collapsed && (
+              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                Expand sidebar
+              </span>
+            )}
+          </div>
         )}
-        {session?.username && !collapsed && (
-          <div className="px-3 py-2 text-xs text-muted-foreground truncate">
-            Signed in as <span className="font-medium text-foreground">{session.username}</span>
+        {session?.username && (
+          <div className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'max-h-0 opacity-0' : 'max-h-10 opacity-100'}`}>
+            <div className="px-3 py-2 text-xs text-muted-foreground truncate">
+              Signed in as <span className="font-medium text-foreground">{session.username}</span>
+            </div>
           </div>
         )}
         {forcedDemo && (
-          <a
-            // Relative on purpose: the demo deploys under whichever first
-            // path segment this repo's Pages site uses, so "../" always
-            // lands on that deployment's own landing page.
-            href="../"
-            title={collapsed ? 'Back to website' : undefined}
-            aria-label={collapsed ? 'Back to website' : undefined}
-            className={`flex items-center min-h-[44px] text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors ${collapsed ? 'justify-center px-2' : 'gap-3 px-3 py-2 w-full'}`}
-          >
-            <ArrowLeft className="w-4 h-4 shrink-0" />
-            {!collapsed && <span>Back to website</span>}
-          </a>
+          <div className="relative group/nav">
+            <a
+              href="../"
+              className={`flex items-center rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors duration-200 ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'}`}
+            >
+              <span className={`flex items-center justify-center shrink-0 ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+                <ArrowLeft className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0`} strokeWidth={1.75} />
+              </span>
+              <span className={labelClass}>Back to website</span>
+            </a>
+            {collapsed && (
+              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                Back to website
+              </span>
+            )}
+          </div>
         )}
-        <button
-          onClick={toggleTheme}
-          title={collapsed ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : undefined}
-          aria-label={collapsed ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : undefined}
-          className={`flex items-center min-h-[44px] text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors w-full ${collapsed ? 'justify-center px-2' : 'gap-3 px-3 py-2'}`}
-        >
-          {theme === 'dark' ? (
-            <><Sun className="w-4 h-4 shrink-0" />{!collapsed && <span>Light Mode</span>}</>
-          ) : (
-            <><Moon className="w-4 h-4 shrink-0" />{!collapsed && <span>Dark Mode</span>}</>
-          )}
-        </button>
-        {onLogout && (
+        <div className="relative group/nav">
           <button
-            onClick={onLogout}
-            title={collapsed ? 'Logout' : undefined}
-            aria-label={collapsed ? 'Logout' : undefined}
-            className={`flex items-center min-h-[44px] text-sm font-medium rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors w-full ${collapsed ? 'justify-center px-2' : 'gap-3 px-3 py-2'}`}
+            onClick={toggleTheme}
+            className={`flex items-center w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors duration-200 ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'}`}
           >
-            <LogOut className="w-4 h-4 shrink-0" />
-            {!collapsed && <span>Logout</span>}
+            <span className={`flex items-center justify-center shrink-0 ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+              {theme === 'dark' ? <Sun className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0`} strokeWidth={1.75} /> : <Moon className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0`} strokeWidth={1.75} />}
+            </span>
+            <span className={labelClass}>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
           </button>
+          {collapsed && (
+            <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+              {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            </span>
+          )}
+        </div>
+        {onLogout && (
+          <div className="relative group/nav">
+            <button
+              onClick={onLogout}
+              className={`flex items-center w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-200 ${collapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'}`}
+            >
+              <span className={`flex items-center justify-center shrink-0 ${collapsed ? 'w-6 h-6' : 'w-5 h-5'}`}>
+                <LogOut className={`${collapsed ? 'w-[18px] h-[18px]' : 'w-[18px] h-[18px]'} shrink-0`} strokeWidth={1.75} />
+              </span>
+              <span className={labelClass}>Logout</span>
+            </button>
+            {collapsed && (
+              <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 transition-opacity duration-150">
+                Logout
+              </span>
+            )}
+          </div>
         )}
       </div>
     </>
@@ -231,7 +308,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
             className="min-w-[44px] min-h-[44px] flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
             aria-label="Open menu"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-5 h-5" strokeWidth={1.75} />
           </button>
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded flex items-center justify-center shrink-0" style={{ background: '#1a1714' }}>
@@ -246,7 +323,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
           </div>
         </div>
         {pendingCount > 0 && (
-          <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full leading-none">
+          <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full leading-none border border-amber-500/20">
             {pendingCount}
           </span>
         )}
@@ -263,9 +340,9 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
       {/* Sidebar - desktop always visible, mobile slide-in */}
       <aside
         className={`
-          fixed left-0 top-0 z-50 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh
-          transition-all duration-200 ease-in-out
-          w-64 ${collapsed ? 'md:w-16' : 'md:w-64'}
+          fixed left-0 top-0 z-50 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh will-change-[width]
+          transition-[width,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
+          w-64 ${collapsed ? 'md:w-[68px]' : 'md:w-64'}
           ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
       >
