@@ -95,7 +95,19 @@ var OllamaInferenceFields = []string{
 // convention.
 func SupportedFieldsFor(runtime string) []string {
 	if runtime == "" || runtime == "ollama" {
-		fields := append([]string{}, OpenAICompatBaseFields...)
+		// Built explicitly rather than reusing OpenAICompatBaseFields wholesale
+		// (P136): that slice includes response_format, but Ollama has no
+		// native "options" equivalent for it and internal/proxy's Ollama
+		// injection branch deliberately never sets it (see model_config.go's
+		// comment beside its options-building code) - advertising it here
+		// showed operators a UI control for Ollama-resident models that
+		// silently did nothing.
+		fields := make([]string, 0, len(OpenAICompatBaseFields))
+		for _, f := range OpenAICompatBaseFields {
+			if f != "response_format" {
+				fields = append(fields, f)
+			}
+		}
 		fields = append(fields, OllamaLoadTimeFields...)
 		fields = append(fields, OllamaInferenceFields...)
 		fields = append(fields, "system", "template", "rpm", "tpm")
