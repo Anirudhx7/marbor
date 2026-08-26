@@ -630,6 +630,10 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 		loaded = append(loaded, lm{m.Name, m.SizeVRAM})
 		usedBytes += m.SizeVRAM
 	}
+	inFlight := make(map[string]int32, len(target.modelInFlight))
+	for name, n := range target.modelInFlight {
+		inFlight[name] = n
+	}
 	target.mu.RUnlock()
 	if totalBytes <= 0 {
 		return 0
@@ -642,6 +646,7 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 	for free < neededBytes {
 		coldIdx := -1
 		var coldTime time.Time
+		sawInFlightOnly := false
 		for i, m := range loaded {
 			if r.isPinned(nodeName, m.name) {
 				continue
@@ -651,13 +656,26 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 					continue // higher-priority keep-warm model: protected
 				}
 			}
+			if inFlight[m.name] > 0 {
+				// Actively serving a request right now: its last-used
+				// timestamp is stamped once at routing time and never
+				// refreshed mid-stream, so it can look coldest and get
+				// evicted out from under a live generation. Skip it and
+				// fall back to a genuinely idle candidate.
+				sawInFlightOnly = true
+				continue
+			}
 			t := r.lastUsedAt(nodeName, m.name)
 			if coldIdx == -1 || t.Before(coldTime) {
 				coldIdx, coldTime = i, t
 			}
 		}
 		if coldIdx == -1 {
-			log.Printf("headroom: node %s needs %d more free bytes for %q but only pinned/higher-priority models remain; cannot make room", nodeName, neededBytes-free, forModel)
+			if sawInFlightOnly {
+				log.Printf("headroom: node %s needs %d more free bytes for %q but only pinned/higher-priority/in-flight models remain; cannot make room", nodeName, neededBytes-free, forModel)
+			} else {
+				log.Printf("headroom: node %s needs %d more free bytes for %q but only pinned/higher-priority models remain; cannot make room", nodeName, neededBytes-free, forModel)
+			}
 			break
 		}
 		victim := loaded[coldIdx]
@@ -990,8 +1008,17 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 		r.evictMu.Unlock()
 		return
 	}
-	r.lastEvictAt[nodeName] = time.Now()
 	r.evictMu.Unlock()
 
-	r.EvictForHeadroom(ctx, nodeName, model, est+reservedByOthers)
+	// Only stamp lastEvictAt (starting the cooldown) once EvictForHeadroom
+	// actually evicted something (P118) - stamping it unconditionally before
+	// the call burns the cooldown even when zero models were evicted (all
+	// pinned/higher-priority/in-flight, or an unload error), blocking further
+	// auto-eviction attempts on this node for the full window while pressure
+	// persists.
+	if evicted := r.EvictForHeadroom(ctx, nodeName, model, est+reservedByOthers); evicted > 0 {
+		r.evictMu.Lock()
+		r.lastEvictAt[nodeName] = time.Now()
+		r.evictMu.Unlock()
+	}
 }

@@ -35,6 +35,40 @@ func (r *Router) DecrConn(node *NodeState) {
 	}
 }
 
+// IncrModelInFlight increments the in-flight request count for a specific
+// model on a node (P117), alongside the per-node IncrConn. Consulted by
+// EvictForHeadroom's victim selection to protect an actively-serving model
+// from being picked as the coldest LRU candidate mid-generation.
+func (r *Router) IncrModelInFlight(node *NodeState, model string) {
+	if node == nil || model == "" {
+		return
+	}
+	node.mu.Lock()
+	if node.modelInFlight == nil {
+		node.modelInFlight = make(map[string]int32)
+	}
+	node.modelInFlight[model]++
+	node.mu.Unlock()
+}
+
+// DecrModelInFlight decrements the in-flight count set by IncrModelInFlight,
+// removing the entry once it reaches zero so modelInFlight doesn't grow
+// unbounded with stale zero-value entries for models no longer in use.
+func (r *Router) DecrModelInFlight(node *NodeState, model string) {
+	if node == nil || model == "" {
+		return
+	}
+	node.mu.Lock()
+	if v, ok := node.modelInFlight[model]; ok {
+		if v <= 1 {
+			delete(node.modelInFlight, model)
+		} else {
+			node.modelInFlight[model] = v - 1
+		}
+	}
+	node.mu.Unlock()
+}
+
 // WaitForNode is the queued variant of Route. It first tries Route() immediately;
 // if no node is available it waits up to queueTimeout for one to free up (signaled
 // by DecrConn). Returns nil after timeout or context cancellation, at which point
