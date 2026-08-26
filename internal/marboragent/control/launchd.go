@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -17,8 +18,32 @@ type LaunchdDriver struct {
 func (d *LaunchdDriver) Name() string       { return "launchd" }
 func (d *LaunchdDriver) Requires() []string { return []string{"launchctl"} }
 
+// resolveTarget probes which launchd domain d.Label is actually loaded
+// under (P154): Start/Stop previously used a bare label (caller-domain) while
+// Restart hardcoded "system/<label>" - if the agent's job runs in a
+// user/GUI-domain (not the system LaunchDaemon domain this product's
+// documented root-run install path expects), Start/Stop would silently
+// succeed against the wrong domain interpretation while Restart failed
+// outright with "Could not find service." Resolving once and using the same
+// domain-qualified target across all three keeps them consistent.
+func (d *LaunchdDriver) resolveTarget(ctx context.Context) string {
+	systemTarget := "system/" + d.Label
+	if _, err := runCommand(ctx, "launchctl", "print", systemTarget); err == nil {
+		return systemTarget
+	}
+	guiTarget := "gui/" + strconv.Itoa(os.Getuid()) + "/" + d.Label
+	if _, err := runCommand(ctx, "launchctl", "print", guiTarget); err == nil {
+		return guiTarget
+	}
+	// Neither probe succeeded (permission issue, or the label genuinely
+	// isn't loaded under either domain) - fall back to the system domain,
+	// preserving the pre-P154 default so the resulting error message is no
+	// less informative than before.
+	return systemTarget
+}
+
 func (d *LaunchdDriver) Start(ctx context.Context) error {
-	out, err := runCommand(ctx, "launchctl", "start", d.Label)
+	out, err := runCommand(ctx, "launchctl", "start", d.resolveTarget(ctx))
 	if err != nil {
 		return fmt.Errorf("launchd: start %s: %s", d.Label, firstNonEmptyLine(out, err))
 	}
@@ -26,7 +51,7 @@ func (d *LaunchdDriver) Start(ctx context.Context) error {
 }
 
 func (d *LaunchdDriver) Stop(ctx context.Context) error {
-	out, err := runCommand(ctx, "launchctl", "stop", d.Label)
+	out, err := runCommand(ctx, "launchctl", "stop", d.resolveTarget(ctx))
 	if err != nil {
 		return fmt.Errorf("launchd: stop %s: %s", d.Label, firstNonEmptyLine(out, err))
 	}
@@ -36,7 +61,7 @@ func (d *LaunchdDriver) Stop(ctx context.Context) error {
 // Restart uses `launchctl kickstart -k`, launchd's own restart primitive
 // (start+stop is not equivalent for a launchd job with KeepAlive set).
 func (d *LaunchdDriver) Restart(ctx context.Context) error {
-	out, err := runCommand(ctx, "launchctl", "kickstart", "-k", "system/"+d.Label)
+	out, err := runCommand(ctx, "launchctl", "kickstart", "-k", d.resolveTarget(ctx))
 	if err != nil {
 		return fmt.Errorf("launchd: kickstart %s: %s", d.Label, firstNonEmptyLine(out, err))
 	}
