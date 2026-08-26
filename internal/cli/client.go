@@ -729,6 +729,65 @@ func (c *Client) Models() (*ModelsResp, error) {
 	return &out, nil
 }
 
+// SystemAuditEntry mirrors the JSON returned by GET /admin/system-audit.
+type SystemAuditEntry struct {
+	Time     string `json:"time"`
+	Username string `json:"username"`
+	Action   string `json:"action"`
+	Target   string `json:"target"`
+	Details  string `json:"details"`
+	SourceIP string `json:"source_ip"`
+}
+
+// SystemAudit calls GET /admin/system-audit?limit=N. N <=0 uses server default.
+func (c *Client) SystemAudit(limit int) ([]SystemAuditEntry, error) {
+	path := "/admin/system-audit"
+	if limit > 0 {
+		path = fmt.Sprintf("/admin/system-audit?limit=%d", limit)
+	}
+	resp, err := c.doRequest(http.MethodGet, path, true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []SystemAuditEntry
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse system audit response: %v", err)
+	}
+	return out, nil
+}
+
+// PredictiveDecision mirrors the shape returned by GET /admin/predictive/decisions.
+type PredictiveDecision struct {
+	Timestamp       string `json:"timestamp"`
+	PredictedModel  string `json:"predicted_model"`
+	TriggerModel    string `json:"trigger_model"`
+	Node            string `json:"node"`
+	WasAlreadyWarm  bool   `json:"was_already_warm"`
+	WarmupTriggered bool   `json:"warmup_triggered"`
+	TransitionCount int    `json:"transition_count"`
+	Hour            int    `json:"hour"`
+}
+
+// PredictiveDecisions calls GET /admin/predictive/decisions.
+func (c *Client) PredictiveDecisions() ([]PredictiveDecision, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/predictive/decisions", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var wrapper struct {
+		Decisions []PredictiveDecision `json:"decisions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		return nil, serverErrorf("could not parse predictive decisions response: %v", err)
+	}
+	if wrapper.Decisions == nil {
+		return []PredictiveDecision{}, nil
+	}
+	return wrapper.Decisions, nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right

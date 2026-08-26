@@ -78,6 +78,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, { error: Error | null 
 // Lazy page imports - preloaded on idle to make tab switching instant
 // ---------------------------------------------------------------------------
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Activity     = lazy(() => import('./pages/Activity').then(m => ({ default: m.Activity })));
 const GPUNodes     = lazy(() => import('./pages/GPUNodes').then(m => ({ default: m.GPUNodes })));
 const APIKeys      = lazy(() => import('./pages/APIKeys').then(m => ({ default: m.APIKeys })));
 const Routing      = lazy(() => import('./pages/Routing').then(m => ({ default: m.Routing })));
@@ -95,6 +96,7 @@ const Benchmark    = lazy(() => import('./pages/Benchmark').then(m => ({ default
 // Preload all route chunks after first paint so tab switches are instant, not lazy-on-click
 function preloadRoutes() {
   void import('./pages/Dashboard');
+  void import('./pages/Activity');
   void import('./pages/GPUNodes');
   void import('./pages/APIKeys');
   void import('./pages/Routing');
@@ -179,6 +181,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
             >
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/activity" element={<Activity />} />
                 <Route path="/gpu-nodes" element={<GPUNodes />} />
                 <Route path="/api-keys" element={<APIKeys />} />
                 <Route path="/routing" element={<Routing />} />
