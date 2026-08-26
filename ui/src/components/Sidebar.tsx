@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -49,7 +49,7 @@ interface SidebarProps {
   onToggleCollapsed?: () => void;
 }
 
-export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
@@ -72,10 +72,12 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
 
   const isAdmin = session?.role === 'admin';
 
-  // Label fades via max-width / opacity - stays in DOM so height never changes
-  const labelClass = `whitespace-nowrap overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}`;
+  // Label: use width (not max-w) + opacity for reliable GPU-accelerated transition.
+  // Keeping height fixed avoids vertical jitter; width 0->140 is layout but isolated to label.
+  const labelClass = `whitespace-nowrap overflow-hidden transition-[width,opacity,transform,margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'w-0 opacity-0 ml-0 translate-x-1' : 'w-[140px] opacity-100 ml-3 translate-x-0'}`;
+  const labelFlexClass = `whitespace-nowrap overflow-hidden transition-[width,opacity,transform,margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${collapsed ? 'w-0 opacity-0 ml-0 translate-x-1' : 'w-auto opacity-100 ml-3 translate-x-0'}`;
   // Fixed height for every row so icons never shift vertically - padding animates for smooth centering (justify would snap)
-  const linkBase = `group flex items-center h-10 rounded-lg shrink-0 text-sm font-medium transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${collapsed ? 'px-[17px]' : 'px-3'}`;
+  const linkBase = `group flex items-center h-10 rounded-lg shrink-0 text-sm font-medium transition-[background-color,color,opacity,padding,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 ${collapsed ? 'px-[17px]' : 'px-3'}`;
 
   const sidebarContent = (
     <>
@@ -145,7 +147,7 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
                 }
               >
                 <Users className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
-                <span className={`${labelClass} flex-1`}>Users</span>
+                <span className={labelClass}>Users</span>
                 {/* Count - only when expanded to avoid row height change */}
                 <span className={`overflow-hidden transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[32px] opacity-100 ml-2'}`}>
                   {pendingCount > 0 && !collapsed && (
@@ -322,10 +324,10 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
         />
       )}
 
-      {/* Sidebar - width only animates, no height change */}
+      {/* Sidebar - width only animates, no height change - promote to own layer */}
       <aside
         className={`
-          fixed left-0 top-0 z-50 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh will-change-[width]
+          fixed left-0 top-0 z-50 bg-card border-r border-border flex flex-col h-screen supports-[height:100dvh]:h-dvh will-change-[width] [contain:layout_style] transform-gpu
           transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
           w-64 ${collapsed ? 'md:w-[68px]' : 'md:w-64'}
           ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
@@ -335,4 +337,4 @@ export function Sidebar({ onLogout, session, pendingCount = 0, collapsed = false
       </aside>
     </>
   );
-}
+})
