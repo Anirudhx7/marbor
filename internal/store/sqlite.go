@@ -524,7 +524,15 @@ func (s *sqliteStore) migrate() error {
 		// scheme - see marbor_agent's table comment above.
 		`ALTER TABLE marbor_agent ADD COLUMN scheme TEXT NOT NULL DEFAULT 'http'`,
 	} {
-		s.db.Exec(col) // ignore error - column may already exist
+		// Idempotent: a rerun against an already-migrated DB hits "duplicate
+		// column name" for every statement here, which is benign and must be
+		// ignored. Any other failure (missing table, I/O error) previously
+		// went unnoticed here (P140) while schema_version was still stamped
+		// as fully current below - propagate it instead so a real failure
+		// aborts startup rather than being recorded as success.
+		if _, err := s.db.Exec(col); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate stmt: %w\nSQL: %s", err, col)
+		}
 	}
 	if err := s.migrateEncryptSecrets(); err != nil {
 		return fmt.Errorf("migrate encrypt secrets: %w", err)
@@ -632,9 +640,12 @@ func (s *sqliteStore) migrateEncryptSecrets() error {
 		return fmt.Errorf("cloud_providers rows: %w", err)
 	}
 	for _, p := range pending {
-		enc, err := encryptSecret(s.secretKey, p.value)
+		enc, changed, err := reencryptIfNeeded(s.secretKey, "cloud_providers.api_key", p.value)
 		if err != nil {
 			return fmt.Errorf("encrypt cloud_providers.api_key for %s: %w", p.name, err)
+		}
+		if !changed {
+			continue
 		}
 		if _, err := s.db.Exec(`UPDATE cloud_providers SET api_key=? WHERE name=?`, enc, p.name); err != nil {
 			return fmt.Errorf("update cloud_providers.api_key for %s: %w", p.name, err)
@@ -661,9 +672,12 @@ func (s *sqliteStore) migrateEncryptSecrets() error {
 		return fmt.Errorf("runtime_keys rows: %w", err)
 	}
 	for _, p := range pending {
-		enc, err := encryptSecret(s.secretKey, p.value)
+		enc, changed, err := reencryptIfNeeded(s.secretKey, "runtime_keys.key", p.value)
 		if err != nil {
 			return fmt.Errorf("encrypt runtime_keys.key for %s: %w", p.name, err)
+		}
+		if !changed {
+			continue
 		}
 		if _, err := s.db.Exec(`UPDATE runtime_keys SET key=? WHERE name=?`, enc, p.name); err != nil {
 			return fmt.Errorf("update runtime_keys.key for %s: %w", p.name, err)
@@ -690,9 +704,12 @@ func (s *sqliteStore) migrateEncryptSecrets() error {
 		return fmt.Errorf("marbor_agent rows: %w", err)
 	}
 	for _, p := range pending {
-		enc, err := encryptSecret(s.secretKey, p.value)
+		enc, changed, err := reencryptIfNeeded(s.secretKey, "marbor_agent.token", p.value)
 		if err != nil {
 			return fmt.Errorf("encrypt marbor_agent.token for %s: %w", p.name, err)
+		}
+		if !changed {
+			continue
 		}
 		if _, err := s.db.Exec(`UPDATE marbor_agent SET token=? WHERE name=?`, enc, p.name); err != nil {
 			return fmt.Errorf("update marbor_agent.token for %s: %w", p.name, err)
@@ -708,12 +725,12 @@ func (s *sqliteStore) migrateEncryptSecrets() error {
 		if err != nil {
 			return fmt.Errorf("select settings %s: %w", settingKey, err)
 		}
-		if value == "" || strings.HasPrefix(value, secretEncPrefix) {
-			continue
-		}
-		enc, err := encryptSecret(s.secretKey, value)
+		enc, changed, err := reencryptIfNeeded(s.secretKey, "settings."+settingKey, value)
 		if err != nil {
 			return fmt.Errorf("encrypt settings %s: %w", settingKey, err)
+		}
+		if !changed {
+			continue
 		}
 		if _, err := s.db.Exec(`UPDATE settings SET value=? WHERE key=?`, enc, settingKey); err != nil {
 			return fmt.Errorf("update settings %s: %w", settingKey, err)
@@ -1280,7 +1297,7 @@ func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
 // when an operator enables/reconfigures the agent for a node and when a
 // token is regenerated.
 func (s *sqliteStore) UpsertMarborAgent(rec MarborAgentRecord) error {
-	enc, err := encryptSecret(s.secretKey, rec.Token)
+	enc, err := encryptSecret(s.secretKey, "marbor_agent.token", rec.Token)
 	if err != nil {
 		return fmt.Errorf("store: UpsertMarborAgent: encrypt token: %w", err)
 	}
@@ -1325,7 +1342,7 @@ func (s *sqliteStore) GetMarborAgent(name string) (MarborAgentRecord, bool, erro
 		return MarborAgentRecord{}, false, fmt.Errorf("store: GetMarborAgent: %w", err)
 	}
 	rec.Enabled = enabled != 0
-	token, err := decryptSecret(s.secretKey, encToken)
+	token, err := decryptSecret(s.secretKey, "marbor_agent.token", encToken)
 	if err != nil {
 		return MarborAgentRecord{}, false, fmt.Errorf("store: GetMarborAgent: decrypt token: %w", err)
 	}
@@ -1357,7 +1374,7 @@ func (s *sqliteStore) AllMarborAgents() ([]MarborAgentRecord, error) {
 		if err := rows.Scan(&rec.Name, &enabled, &rec.Port, &encToken, &rec.Scope, &rec.Scheme); err != nil {
 			return nil, fmt.Errorf("store: AllMarborAgents scan: %w", err)
 		}
-		token, decErr := decryptSecret(s.secretKey, encToken)
+		token, decErr := decryptSecret(s.secretKey, "marbor_agent.token", encToken)
 		if decErr != nil {
 			log.Printf("store: AllMarborAgents: dropping %s: %v (re-enable the agent to restore it)", rec.Name, decErr)
 			continue
@@ -1556,7 +1573,7 @@ func (s *sqliteStore) UpsertKey(k KeyRecord) error {
 	if k.AllowLocalDegradation {
 		allowLocalDegradation = 1
 	}
-	encKey, err := encryptSecret(s.secretKey, k.Key)
+	encKey, err := encryptSecret(s.secretKey, "runtime_keys.key", k.Key)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey: %w", err)
 	}
@@ -1624,7 +1641,7 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 		}
 		k.LocalOnly = localOnly != 0
 		k.AllowLocalDegradation = allowLocalDegradation != 0
-		dec, decErr := decryptSecret(s.secretKey, k.Key)
+		dec, decErr := decryptSecret(s.secretKey, "runtime_keys.key", k.Key)
 		if decErr != nil {
 			// A single undecryptable row (corrupt data, rotated key) must not
 			// take every other key down with it - auth.go loads this whole
@@ -2231,7 +2248,7 @@ func (s *sqliteStore) GetSetting(key string) (string, error) {
 		return "", fmt.Errorf("store: GetSetting: %w", err)
 	}
 	if sensitiveSettingKeys[key] {
-		if value, err = decryptSecret(s.secretKey, value); err != nil {
+		if value, err = decryptSecret(s.secretKey, "settings."+key, value); err != nil {
 			return "", fmt.Errorf("store: GetSetting decrypt %s: %w", key, err)
 		}
 	}
@@ -2240,7 +2257,7 @@ func (s *sqliteStore) GetSetting(key string) (string, error) {
 
 func (s *sqliteStore) SetSetting(key, value string) error {
 	if sensitiveSettingKeys[key] {
-		enc, err := encryptSecret(s.secretKey, value)
+		enc, err := encryptSecret(s.secretKey, "settings."+key, value)
 		if err != nil {
 			return fmt.Errorf("store: SetSetting encrypt %s: %w", key, err)
 		}
@@ -2263,7 +2280,7 @@ func (s *sqliteStore) AppendSystemAuditLog(e SystemAuditEntry) error {
 	_, err := s.db.Exec(
 		`INSERT INTO system_audit_log (ts, username, action, target, details, source_ip)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
-		e.Time.Format(time.RFC3339), e.Username, e.Action, e.Target, e.Details, e.SourceIP,
+		e.Time.UTC().Format(time.RFC3339), e.Username, e.Action, e.Target, e.Details, e.SourceIP,
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendSystemAuditLog: %w", err)
@@ -2346,7 +2363,7 @@ func (s *sqliteStore) UpsertCloudProvider(cp CloudProviderRecord) error {
 	if cp.Enabled {
 		enabled = 1
 	}
-	encKey, err := encryptSecret(s.secretKey, cp.APIKey)
+	encKey, err := encryptSecret(s.secretKey, "cloud_providers.api_key", cp.APIKey)
 	if err != nil {
 		return fmt.Errorf("store: UpsertCloudProvider: %w", err)
 	}
@@ -2392,7 +2409,7 @@ func (s *sqliteStore) AllCloudProviders() ([]CloudProviderRecord, error) {
 			return nil, fmt.Errorf("store: AllCloudProviders scan: %w", err)
 		}
 		cp.Enabled = enabled != 0
-		dec, decErr := decryptSecret(s.secretKey, cp.APIKey)
+		dec, decErr := decryptSecret(s.secretKey, "cloud_providers.api_key", cp.APIKey)
 		if decErr != nil {
 			// Same reasoning as AllKeys: one bad row must not blank out every
 			// other cloud provider for every caller of this list, and an
