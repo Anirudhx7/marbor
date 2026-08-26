@@ -88,6 +88,13 @@ type NodeState struct {
 	NvidiaIndex  int
 	LoadedModels []ModelInfo
 	ActiveConns  int32
+	// modelInFlight counts, per loaded model name, requests currently routed to
+	// it on this node (P117) - incremented in IncrConn's model-aware counterpart
+	// and decremented on completion. Consulted by EvictForHeadroom's victim
+	// selection so a model actively serving a request (last-used timestamp
+	// stale mid-stream) isn't picked as the coldest candidate and evicted out
+	// from under an in-flight generation. Guarded by mu.
+	modelInFlight map[string]int32
 	// MaxInFlight is this node's resolved per-node in-flight cap override
 	// (P64): 0 means "no override - use Router.maxInFlightPerNode". Set at
 	// construction from config.NodeConfig.MaxInFlight and updated live by
@@ -326,6 +333,15 @@ type tagsInflightEntry struct {
 	err    error
 }
 
+// maxShowCacheEntries is the hard cap on the number of live FetchModelShow
+// cache entries (P125), mirroring maxAffinityEntries below: showCache is
+// keyed by "nodeURL|tag" from authenticated callers (Model Advisor), the same
+// unique-keys threat maxAffinityEntries guards against, but unlike
+// tagsCache/affinity it has no purge on RemoveNode/UpdateNodeURL and no sweep
+// of its own - without a cap it grows without bound for the life of the
+// process.
+const maxShowCacheEntries = 10_000
+
 // maxAffinityEntries is the hard cap on the number of live session-affinity
 // entries. When the map is full, new session IDs are routed normally (stateless
 // fallback) rather than pinned, to prevent a memory-exhaustion DoS from
@@ -545,6 +561,10 @@ type Router struct {
 	dockerInFlight     atomic.Bool
 	nvidiaInFlight     atomic.Bool
 	predictiveInFlight atomic.Bool
+	// agentPollInFlight guards pollAgentHosts the same way pollInFlight guards
+	// pollAll (P115): a slow/unreachable agent host can otherwise let 2-3 poll
+	// cycles overlap, each incrementing NodeState.AgentFailures independently.
+	agentPollInFlight atomic.Bool
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -1197,7 +1217,14 @@ func (r *Router) Start(ctx context.Context) {
 			// Runs alongside pollAll, not nested inside it - one poll per
 			// physical host (see pollAgentHosts), independent of the
 			// per-node /api/ps health poll's own in-flight guard above.
-			go safeRun("pollAgentHosts", r.pollAgentHosts)
+			// CAS-guarded (P115) so a slow/unreachable agent host can't let
+			// overlapping cycles race stale telemetry against a newer one.
+			if r.agentPollInFlight.CompareAndSwap(false, true) {
+				go func() {
+					defer r.agentPollInFlight.Store(false)
+					safeRun("pollAgentHosts", r.pollAgentHosts)
+				}()
+			}
 		case <-dockerTicker.C:
 			if r.dockerInFlight.CompareAndSwap(false, true) {
 				go func() {
@@ -1277,8 +1304,16 @@ func (r *Router) AddNode(n config.NodeConfig) {
 	//
 	// While walking r.nodes for that check, also look for an existing node
 	// with the SAME name - if found, this call is an upsert, not a fresh add.
+	// Held as a single write lock through both the existence scan and whichever
+	// branch (upsert-in-place or append) is taken (P124): two concurrent
+	// AddNode calls for the same new name could otherwise both scan under a
+	// released RLock, both find no match, and both append separate NodeStates
+	// with identical names (a check-then-append TOCTOU). r.mu is always the
+	// outer lock relative to a node's own n.mu elsewhere in this file (see
+	// DrainNode/UndrainNode), so nesting existingByName.mu.Lock() inside this
+	// r.mu.Lock() below matches the established ordering.
 	normURL := config.NormalizeNodeURL(n.URL)
-	r.mu.RLock()
+	r.mu.Lock()
 	var existingByName *NodeState
 	for _, existing := range r.nodes {
 		if existing.Name == n.Name {
@@ -1286,12 +1321,11 @@ func (r *Router) AddNode(n config.NodeConfig) {
 			continue
 		}
 		if config.NormalizeNodeURL(existing.URL) == normURL {
-			r.mu.RUnlock()
+			r.mu.Unlock()
 			log.Printf("router: WARNING: rejecting node %q (%s): URL already registered as node %q - refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
 			return
 		}
 	}
-	r.mu.RUnlock()
 
 	if existingByName != nil {
 		// Upsert-by-name: update config fields on the SAME NodeState rather
@@ -1315,6 +1349,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 			existingByName.probe = runtimepkg.NewProbe(n.Runtime, r.client)
 		}
 		existingByName.mu.Unlock()
+		r.mu.Unlock()
 		// Refresh immediately against the (possibly new) URL/runtime, same as
 		// a fresh AddNode. pollNode is a single one-shot probe - it is not a
 		// persistent per-node loop (recurring polling comes from pollAll on
@@ -1343,7 +1378,6 @@ func (r *Router) AddNode(n config.NodeConfig) {
 	} else {
 		node.probe = runtimepkg.NewProbe(n.Runtime, r.client)
 	}
-	r.mu.Lock()
 	r.nodes = append(r.nodes, node)
 	r.mu.Unlock()
 	// Start polling immediately
@@ -1886,7 +1920,9 @@ func (r *Router) FetchModelShow(nodeURL, tag string) (ModelShowInfo, bool) {
 	info, ok := r.fetchModelShowUncached(nodeURL, tag)
 
 	r.showMu.Lock()
-	r.showCache[cacheKey] = modelShowCacheEntry{Info: info, OK: ok, FetchedAt: time.Now()}
+	if _, exists := r.showCache[cacheKey]; exists || len(r.showCache) < maxShowCacheEntries {
+		r.showCache[cacheKey] = modelShowCacheEntry{Info: info, OK: ok, FetchedAt: time.Now()}
+	}
 	r.showMu.Unlock()
 
 	return info, ok
