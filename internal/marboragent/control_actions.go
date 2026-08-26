@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/marboragent/control"
@@ -153,6 +154,23 @@ func (s *Server) handleRuntimeRestart(w http.ResponseWriter, r *http.Request) {
 	s.handleRuntimeAction(w, r, "restart")
 }
 
+// controlActionLocks serializes Start/Stop/Restart dispatch per
+// driver+identifier (P152): handleRuntimeAction had no locking around driver
+// dispatch, so a retry during a slow cold start could race two concurrent
+// calls into ProcessDriver.Start, each overwriting the PID file and
+// orphaning the other's spawned process. Keyed by driver+identifier (not a
+// single global lock) so unrelated nodes/drivers on a multi-runtime host
+// still dispatch concurrently.
+var controlActionLocks sync.Map // map[string]*sync.Mutex
+
+func lockControlAction(driver, identifier string) func() {
+	key := driver + "|" + identifier
+	muAny, _ := controlActionLocks.LoadOrStore(key, &sync.Mutex{})
+	mu := muAny.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
 func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, action string) {
 	var req controlActionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -197,6 +215,9 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 
 	ctx, cancel := context.WithTimeout(r.Context(), controlActionTimeout)
 	defer cancel()
+
+	unlock := lockControlAction(req.Driver, req.Identifier)
+	defer unlock()
 
 	var opErr error
 	switch action {

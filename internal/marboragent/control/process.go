@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ProcessDriver controls a bare process identified by a PID file, the
@@ -33,6 +34,14 @@ func (d *ProcessDriver) Start(ctx context.Context) error {
 	if len(d.StartCommand) == 0 {
 		return errors.New("process: no start command configured for this node")
 	}
+	// Idempotent (P152): a retry during a slow cold start (client timeout,
+	// caller retry logic) would otherwise unconditionally overwrite the PID
+	// file and orphan the process it just launched, double-spawning the
+	// runtime. If the existing PID-file entry already names a live process,
+	// treat this as already-started rather than launching a second instance.
+	if pid, err := readPIDFile(d.PIDFile); err == nil && processAlive(pid) {
+		return nil
+	}
 	proc, err := startDetached(d.StartCommand[0], d.StartCommand[1:]...)
 	if err != nil {
 		return fmt.Errorf("process: start %q: %w", d.StartCommand[0], err)
@@ -54,6 +63,25 @@ func (d *ProcessDriver) Stop(ctx context.Context) error {
 	}
 	if err := proc.Kill(); err != nil {
 		return fmt.Errorf("process: kill pid %d: %w", pid, err)
+	}
+	// Wait for the kernel to actually reap the killed process before
+	// returning (code review, post-P152/P157): Kill() only submits the
+	// signal - on Unix the pid stays "alive" to processAlive's signal-0
+	// probe as a zombie until startDetached's background Wait() goroutine
+	// reaps it. Restart() calls Stop() then Start(), and Start()'s new
+	// idempotency check (P152) reads that same PID file - without this
+	// wait, Restart could race Start's processAlive check against the
+	// async reap, see the old (now-dead) pid as still alive, and silently
+	// skip spawning a replacement process. SIGKILL is uncatchable, so this
+	// loop is bounded by reap scheduling latency, not process shutdown
+	// time - a short poll is sufficient.
+	deadline := time.Now().Add(5 * time.Second)
+	for processAlive(pid) && time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 	return nil
 }
