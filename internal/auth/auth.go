@@ -639,7 +639,7 @@ func keyExpired(expiresAt string, now time.Time) bool {
 	if expiresAt == "" {
 		return false
 	}
-	if t, err := time.Parse("2006-01-02", expiresAt); err == nil {
+	if t, err := time.ParseInLocation("2006-01-02", expiresAt, now.Location()); err == nil {
 		return now.After(t.Add(24 * time.Hour))
 	}
 	if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
