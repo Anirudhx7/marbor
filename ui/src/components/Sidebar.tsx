@@ -30,6 +30,7 @@ import type { SessionData } from '../types';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/activity', label: 'Activity', icon: Activity },
   { path: '/gpu-nodes', label: 'GPU Nodes', icon: Cpu },
   { path: '/warmup', label: 'Warmup', icon: Flame },
   { path: '/models', label: 'Models', icon: Package },
@@ -104,8 +105,8 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
         </button>
       </div>
 
-      {/* Nav - ultra-slim 2px overlay scrollbar, stable gutter so no shift */}
-      <nav className="sidebar-nav flex-1 py-3 px-2 space-y-1 overflow-y-auto overflow-x-hidden">
+      {/* Nav - no scrollbar, overflow-x-visible so collapsed tooltips aren't clipped */}
+      <nav className="sidebar-nav flex-1 py-3 px-2 space-y-1 overflow-y-auto overflow-x-visible">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
