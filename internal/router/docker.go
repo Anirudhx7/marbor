@@ -51,15 +51,22 @@ func parseDockerContainers(containers []dockerContainer) []config.NodeConfig {
 		} else {
 			port = findPublicPort(c, 11434)
 			if port == 0 {
-				// containerHost already returned isContainerIP=false, meaning
-				// no network entry had a usable IPAddress - the documented
-				// --network host signature (Docker reports a "host" network
-				// entry with an empty IPAddress, not an absent Networks map).
-				// That container shares the host's network namespace and has
-				// no NAT mapping to report, so use the fixed private port
-				// directly via the same 127.0.0.1 fallback rather than
-				// skipping the container outright.
-				port = 11434
+				// containerHost returning isContainerIP=false only means no
+				// network entry had a usable IPAddress - true not just for
+				// --network host but also --network none, a disconnected
+				// network, or a bridge container whose IP simply hasn't been
+				// assigned yet when this poll runs (code review caught that
+				// treating all of these as host-network was over-broad,
+				// registering a bogus/misrouted 127.0.0.1 node for the
+				// latter cases). Require the actual --network host signature
+				// specifically: Docker reports a "host"-keyed entry in
+				// NetworkSettings.Networks for that mode (with an empty
+				// IPAddress, which is why isContainerIP came back false).
+				if _, isHostNetwork := c.NetworkSettings.Networks["host"]; isHostNetwork {
+					port = 11434
+				} else {
+					continue
+				}
 			}
 		}
 		nodes = append(nodes, config.NodeConfig{
