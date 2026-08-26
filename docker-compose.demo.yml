@@ -163,6 +163,12 @@ services:
       PROXY_URL: http://marbor:11434
       API_KEY: demo-api-key
       REQUEST_COUNT: "20"
+      # PROXY_URL targets the "marbor" compose service by its Docker DNS
+      # name, not literally "localhost" - but it's still the same
+      # self-contained, ephemeral local stack demotraffic's non-localhost
+      # guard (P165) exists to protect against pointing at a real live
+      # instance. Opt in explicitly for this known-safe topology.
+      ALLOW_NON_LOCALHOST: "1"
     restart: "no"
 
   prometheus:
