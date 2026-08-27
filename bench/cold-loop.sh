@@ -26,6 +26,22 @@ set -uo pipefail
 : "${API_KEY:?API_KEY is required (a valid client API key)}"
 
 N="${1:-10}"
+case "$N" in
+  ''|*[!0-9]*)
+    echo "cold-loop.sh: N must be a positive integer, got '${N}'" >&2
+    exit 1
+    ;;
+esac
+
+if ! command -v curl &>/dev/null; then
+  echo "cold-loop.sh: curl not found on PATH" >&2
+  exit 1
+fi
+if ! command -v python3 &>/dev/null; then
+  echo "cold-loop.sh: python3 not found on PATH (needed to parse JSON responses)" >&2
+  exit 1
+fi
+
 TTFT_BIN="$(dirname "${BASH_SOURCE[0]}")/ttft"
 LOG_FILE="cold_samples.log"
 COOKIEJAR="$(mktemp)"

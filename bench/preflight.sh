@@ -35,7 +35,9 @@ if ! command -v python3 &>/dev/null; then
 fi
 
 COOKIEJAR="$(mktemp)"
-cleanup() { rm -f "$COOKIEJAR"; }
+NODES_TMP="$(mktemp)"
+MODELS_TMP="$(mktemp)"
+cleanup() { rm -f "$COOKIEJAR" "$NODES_TMP" "$MODELS_TMP"; }
 trap cleanup EXIT
 
 echo "=== [1/5] Admin login ==="
@@ -48,9 +50,8 @@ if [ "$login_status" != "200" ]; then
 fi
 ok "logged in as '${ADMIN_USERNAME}'"
 
-nodes_resp="$(curl -sS -o /tmp/preflight_nodes.$$ -w '%{http_code}' -b "$COOKIEJAR" "${ADMIN_URL}/admin/nodes" 2>/dev/null)"
-nodes_json="$(cat /tmp/preflight_nodes.$$ 2>/dev/null)"
-rm -f /tmp/preflight_nodes.$$
+nodes_resp="$(curl -sS -o "$NODES_TMP" -w '%{http_code}' -b "$COOKIEJAR" "${ADMIN_URL}/admin/nodes" 2>/dev/null)"
+nodes_json="$(cat "$NODES_TMP" 2>/dev/null)"
 if [ "$nodes_resp" != "200" ]; then
   fail "GET ${ADMIN_URL}/admin/nodes returned HTTP ${nodes_resp} after a successful login - session cookie not being sent/accepted?"
 fi
@@ -138,20 +139,27 @@ else
   echo "  'models.list' capability - runtime-agnostic across Ollama/vLLM/TGI/llama.cpp/MLX,"
   echo "  unlike hitting the node's raw API directly)..."
 
-  models_resp="$(curl -sS -o /tmp/preflight_models.$$ -w '%{http_code}' -b "$COOKIEJAR" \
+  models_resp="$(curl -sS -o "$MODELS_TMP" -w '%{http_code}' -b "$COOKIEJAR" \
     "${ADMIN_URL}/admin/nodes/${NODE_NAME}/models" 2>/dev/null)"
-  models_body="$(cat /tmp/preflight_models.$$ 2>/dev/null)"
-  rm -f /tmp/preflight_models.$$
+  models_body="$(cat "$MODELS_TMP" 2>/dev/null)"
 
   if [ "$models_resp" = "200" ]; then
-    if printf '%s' "$models_body" | python3 -c "
+    models_check_out="$(printf '%s' "$models_body" | python3 -c "
 import json, sys
 model = sys.argv[1]
-data = json.load(sys.stdin)
+try:
+    data = json.load(sys.stdin)
+except Exception as e:
+    print('PARSE_ERROR', e)
+    sys.exit(2)
 names = [m.get('name') for m in data.get('models', [])]
 sys.exit(0 if model in names else 1)
-" "${MODEL}"; then
+" "${MODEL}")"
+    models_check_status=$?
+    if [ "$models_check_status" = "0" ]; then
       ok "model '${MODEL}' confirmed pulled on node (not yet warm) via /admin/nodes/${NODE_NAME}/models"
+    elif [ "$models_check_status" = "2" ]; then
+      fail "could not parse /admin/nodes/${NODE_NAME}/models response: ${models_check_out}"
     else
       fail "model '${MODEL}' is not pulled on node '${NODE_NAME}' (per /admin/nodes/${NODE_NAME}/models) - pull it first"
     fi
@@ -177,15 +185,25 @@ if [ -z "${MODEL_SIZE_GB:-}" ] || [ -z "${NODE_VRAM_GB:-}" ]; then
 else
   python3 -c "
 import sys
-size_gb = float(sys.argv[1])
-vram_gb = float(sys.argv[2])
+try:
+    size_gb = float(sys.argv[1])
+    vram_gb = float(sys.argv[2])
+except ValueError as e:
+    print(f'FAIL MODEL_SIZE_GB/NODE_VRAM_GB must be numeric ({e})')
+    sys.exit(2)
 overhead = size_gb * 1.2
 pct = overhead / vram_gb * 100
 if pct >= 80:
     print(f'FAIL model footprint with ~20% overhead ({overhead:.1f}GB) is {pct:.0f}% of {vram_gb:.1f}GB VRAM - must be under 80%')
     sys.exit(1)
 print(f'OK model footprint with ~20% overhead ({overhead:.1f}GB) is {pct:.0f}% of {vram_gb:.1f}GB VRAM')
-" "${MODEL_SIZE_GB}" "${NODE_VRAM_GB}" || fail "model does not fit safely under 80% VRAM - pick a smaller quantization (Step 1)"
+" "${MODEL_SIZE_GB}" "${NODE_VRAM_GB}"
+  vram_check_status=$?
+  if [ "$vram_check_status" = "2" ]; then
+    fail "MODEL_SIZE_GB/NODE_VRAM_GB must be numeric - check the env vars"
+  elif [ "$vram_check_status" != "0" ]; then
+    fail "model does not fit safely under 80% VRAM - pick a smaller quantization (Step 1)"
+  fi
   ok "model fits safely under 80% VRAM"
 fi
 
