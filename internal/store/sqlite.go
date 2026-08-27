@@ -51,18 +51,37 @@ func Open(path string) (Store, error) {
 	// spurious SQLITE_BUSY under write contention. DSN pragmas are applied by
 	// modernc.org/sqlite to every connection it opens.
 	dsn := path
-	if path != ":memory:" {
+	memoryDB := path == ":memory:"
+	switch {
+	case memoryDB:
+		// A bare ":memory:" DSN gives each new pooled connection its own
+		// distinct, empty database under standard SQLite semantics - with
+		// SetMaxOpenConns(4) below, different queries could silently land on
+		// different databases. file::memory:?cache=shared makes every
+		// connection opened from this DSN share the same in-memory database
+		// instead (paired with SetMaxOpenConns(1) below, so there's still
+		// never more than one connection to serialize around).
+		dsn = "file::memory:?cache=shared&_pragma=foreign_keys(ON)"
+	default:
 		dsn = path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
 	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
-	// WAL mode allows concurrent readers alongside a single writer; give the
-	// pool enough connections to actually use that (SQLITE_BUSY on write
-	// contention is absorbed by busy_timeout above).
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
+	if memoryDB {
+		// A single connection is both necessary (see the DSN comment above)
+		// and sufficient - :memory: has no concurrent-writer contention to
+		// spread across a pool the way a real WAL-mode file does.
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	} else {
+		// WAL mode allows concurrent readers alongside a single writer; give
+		// the pool enough connections to actually use that (SQLITE_BUSY on
+		// write contention is absorbed by busy_timeout above).
+		db.SetMaxOpenConns(4)
+		db.SetMaxIdleConns(4)
+	}
 
 	secretKey, err := loadOrCreateSecretKey(path)
 	if err != nil {
@@ -1032,13 +1051,25 @@ func (s *sqliteStore) UpdateNodeURL(name string, url string) error {
 }
 
 func (s *sqliteStore) DeleteNode(name string) error {
+	// Wrap the lookup + node delete + agent-delete decision in one
+	// transaction (P252) - previously these ran as separate autocommit
+	// statements, so a concurrent AddNode for a sibling host, or a crash
+	// mid-sequence, could see/leave an inconsistent intermediate state (the
+	// node gone but the still-shared-host check run against stale data, or
+	// vice versa).
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("store: DeleteNode: %w", err)
+	}
+	defer tx.Rollback()
+
 	var nodeURL string
 	var host sql.NullString
-	if err := s.db.QueryRow(`SELECT url, host FROM runtime_nodes WHERE name=?`, name).Scan(&nodeURL, &host); err != nil && err != sql.ErrNoRows {
+	if err := tx.QueryRow(`SELECT url, host FROM runtime_nodes WHERE name=?`, name).Scan(&nodeURL, &host); err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("store: DeleteNode: lookup host: %w", err)
 	}
 
-	if _, err := s.db.Exec(`DELETE FROM runtime_nodes WHERE name=?`, name); err != nil {
+	if _, err := tx.Exec(`DELETE FROM runtime_nodes WHERE name=?`, name); err != nil {
 		return fmt.Errorf("store: DeleteNode: %w", err)
 	}
 
@@ -1048,24 +1079,42 @@ func (s *sqliteStore) DeleteNode(name string) error {
 	// it if no other node still shares that host, since marbor_agent covers
 	// every node on the host, not just the one being removed.
 	agentHost := hostForDelete(host, nodeURL)
-	if agentHost == "" {
-		return nil
-	}
-	remainingNodes, err := s.AllNodes()
-	if err != nil {
-		return fmt.Errorf("store: DeleteNode: list remaining nodes: %w", err)
-	}
-	for _, n := range remainingNodes {
-		if hostForDelete(sql.NullString{String: n.Host, Valid: n.Host != ""}, n.URL) == agentHost {
-			return nil
+	if agentHost != "" {
+		rows, err := tx.Query(`SELECT url, host FROM runtime_nodes`)
+		if err != nil {
+			return fmt.Errorf("store: DeleteNode: list remaining nodes: %w", err)
+		}
+		stillShared := false
+		for rows.Next() {
+			var rURL string
+			var rHost sql.NullString
+			if err := rows.Scan(&rURL, &rHost); err != nil {
+				rows.Close()
+				return fmt.Errorf("store: DeleteNode: list remaining nodes: %w", err)
+			}
+			if hostForDelete(rHost, rURL) == agentHost {
+				stillShared = true
+				break
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("store: DeleteNode: list remaining nodes: %w", err)
+		}
+		if !stillShared {
+			// A stale marbor-agent token for a deleted node is a real
+			// dangling-secret concern (R8), so it is cleaned up here even
+			// though node_overrides/node_drain rows for a deleted node are
+			// left behind by the existing pattern - don't invent broader
+			// cleanup discipline beyond this.
+			if _, err := tx.Exec(`DELETE FROM marbor_agent WHERE name=?`, agentHost); err != nil {
+				return fmt.Errorf("store: DeleteNode: cascade marbor_agent: %w", err)
+			}
 		}
 	}
-	// A stale marbor-agent token for a deleted node is a real dangling-secret
-	// concern (R8), so it is cleaned up here even though node_overrides/
-	// node_drain rows for a deleted node are left behind by the existing
-	// pattern - don't invent broader cleanup discipline beyond this.
-	if err := s.DeleteMarborAgent(agentHost); err != nil {
-		return fmt.Errorf("store: DeleteNode: cascade marbor_agent: %w", err)
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: DeleteNode: %w", err)
 	}
 	return nil
 }
@@ -2382,6 +2431,21 @@ func (s *sqliteStore) AllSettings() (map[string]string, error) {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
 			return nil, fmt.Errorf("store: AllSettings scan: %w", err)
+		}
+		if sensitiveSettingKeys[k] {
+			// Matches GetSetting's transparent decrypt-on-read - without
+			// this, a sensitive key came back as its raw "enc:v1:..."
+			// ciphertext string instead of the real value. R8 discipline: a
+			// row that fails to decrypt is DROPPED (never included with
+			// "" substituted for its value, which auth.go-style key maps
+			// would treat as a trivially-reachable empty credential) rather
+			// than failing this whole list.
+			decrypted, err := decryptSecret(s.secretKey, "settings."+k, v)
+			if err != nil {
+				log.Printf("store: AllSettings: dropping undecryptable setting %q: %v", k, err)
+				continue
+			}
+			v = decrypted
 		}
 		out[k] = v
 	}
