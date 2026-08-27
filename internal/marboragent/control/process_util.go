@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"runtime"
 	"syscall"
 )
 
@@ -41,11 +42,17 @@ var processAlive = func(pid int) bool {
 	if err != nil {
 		return false
 	}
-	err = proc.Signal(syscall.Signal(0))
-	if err == nil {
+	if runtime.GOOS == "windows" {
+		// os.FindProcess itself opens a process handle and fails if the pid
+		// doesn't exist, so a successful FindProcess already answers the
+		// question - Signal(0) isn't meaningfully supported for arbitrary
+		// processes on Windows anyway, so skip the probe entirely rather
+		// than depend on matching its exact "not supported by windows"
+		// error string, an implementation detail, not a stable contract.
 		return true
 	}
-	if isUnsupportedSignal(err) {
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
 		return true
 	}
 	// EPERM means the pid exists but the caller lacks permission to signal it
@@ -56,8 +63,4 @@ var processAlive = func(pid int) bool {
 		return true
 	}
 	return false
-}
-
-func isUnsupportedSignal(err error) bool {
-	return err != nil && err.Error() == "not supported by windows"
 }
