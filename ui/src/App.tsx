@@ -245,7 +245,7 @@ function App() {
   }, [session]);
 
   function handleLogout() {
-    logout();
+    logout().catch(() => {});
     // Demo has no Login screen to fall through to (see DEMO_SESSION above) -
     // reset to the same fake session instead of null so clicking Logout on
     // the public demo doesn't strand the visitor on a real login form.
