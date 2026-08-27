@@ -94,7 +94,17 @@ var OllamaInferenceFields = []string{
 // as "ollama" for backwards compatibility, matching NodeRecord.Runtime's
 // convention.
 func SupportedFieldsFor(runtime string) []string {
-	if runtime == "" || runtime == "ollama" {
+	// Matches internal/runtime's NewProbe: only these four values route to a
+	// non-Ollama probe/field-list; anything else - "", "ollama", "auto", or
+	// any unrecognized/typo'd value - defaults to Ollama on both sides.
+	// Previously this only special-cased the exact strings "" and "ollama",
+	// so an unrecognized value fell through to the OpenAI-compat branch
+	// below while NewProbe still probed it as Ollama - the UI's capability
+	// field list disagreed with what the node was actually treated as.
+	switch runtime {
+	case "vllm", "tgi", "llamacpp", "mlx":
+		// falls through to the OpenAI-compat branch below
+	default:
 		// Built explicitly rather than reusing OpenAICompatBaseFields wholesale
 		// (P136): that slice includes response_format, but Ollama has no
 		// native "options" equivalent for it and internal/proxy's Ollama
