@@ -6177,6 +6177,7 @@ type pullJobSnapshot struct {
 	BytesTotal     int64     `json:"bytes_total,omitempty"`
 	BytesCompleted int64     `json:"bytes_completed,omitempty"`
 	Error          string    `json:"error,omitempty"`
+	VerifyLoad     bool      `json:"verify_load"`
 }
 
 // snapshot returns a copy of j's data safe to JSON-encode without holding
@@ -6188,6 +6189,7 @@ func (j *pullJob) snapshot() pullJobSnapshot {
 		Node: j.Node, Model: j.Model, Method: j.Method, Status: j.Status,
 		StartedAt: j.StartedAt, FinishedAt: j.FinishedAt,
 		BytesTotal: j.BytesTotal, BytesCompleted: j.BytesCompleted, Error: j.Error,
+		VerifyLoad: j.verifyLoad,
 	}
 }
 
