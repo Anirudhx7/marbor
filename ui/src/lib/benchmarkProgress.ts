@@ -36,6 +36,10 @@ const IDLE_STATE: BenchmarkProgressState = {
 let state: BenchmarkProgressState = IDLE_STATE;
 let eventSource: EventSource | null = null;
 const listeners = new Set<() => void>();
+// runId guards start()'s async POST chain against a subsequent start() call
+// re-entering before the first one's response arrives - only the .then/
+// .catch belonging to the current run is allowed to apply its result.
+let runId = 0;
 // Tracks whether the CURRENT job was started in simulated mode (build-time
 // VITE_FORCE_DEMO or the runtime Demo Mode toggle), independent of DEMO -
 // cancel() needs this because a run started with `simulate: true` never gets
@@ -120,6 +124,7 @@ function runDemoBenchmark(node: string, model: string, n: number) {
 // startPull convention.
 export function start(node: string, model: string, n: number, simulate: boolean = false): void {
   closeStream();
+  const thisRun = ++runId;
   state = { ...IDLE_STATE, node, model, n, phase: 'evicting', startedAtMs: Date.now() };
   simulating = DEMO || simulate;
   notify();
@@ -131,15 +136,18 @@ export function start(node: string, model: string, n: number, simulate: boolean 
 
   runBenchmark(node, model, n)
     .then(({ job_id }) => {
+      if (thisRun !== runId) return; // a later start() has already superseded this one
       setState({ jobId: job_id });
       subscribeToProgress(job_id);
     })
     .catch((err) => {
+      if (thisRun !== runId) return;
       setState({ phase: 'error', error: err instanceof Error ? err.message : 'Failed to start benchmark' });
     });
 }
 
 function subscribeToProgress(jobId: string): void {
+  closeStream();
   const es = new EventSource(`${BASE}/benchmark/${encodeURIComponent(jobId)}/progress`, { withCredentials: true });
   eventSource = es;
 
