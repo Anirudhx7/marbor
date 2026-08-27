@@ -285,17 +285,17 @@ export function Models() {
   const setDriftedOnly = (v: boolean) => {
     const next = new URLSearchParams(searchParams);
     if (v) next.set('drifted', '1'); else next.delete('drifted');
-    setSearchParams(next);
+    setSearchParams(next, { replace: true });
   };
   const setWarmOnly = (v: boolean) => {
     const next = new URLSearchParams(searchParams);
     if (v) next.set('warm', '1'); else next.delete('warm');
-    setSearchParams(next);
+    setSearchParams(next, { replace: true });
   };
   const setActiveTab = (v: 'fleet' | 'catalog') => {
     const next = new URLSearchParams(searchParams);
     if (v === 'catalog') next.set('view', 'catalog'); else next.delete('view');
-    setSearchParams(next);
+    setSearchParams(next, { replace: true });
   };
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!demoMode);

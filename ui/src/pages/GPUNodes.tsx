@@ -1191,7 +1191,7 @@ export function GPUNodes() {
         document.getElementById(`node-card-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 150);
     }
-    const t = setTimeout(() => setHighlightedNodes(new Set()), 2200);
+    const t = setTimeout(() => setHighlightedNodes(new Set()), 2000);
     return () => clearTimeout(t);
   }, [searchParams]);
 
