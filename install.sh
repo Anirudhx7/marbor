@@ -369,7 +369,18 @@ if [ "$ROLE" = "agent" ]; then
     # sudo'd process instead of resetting it - required for the
     # MARBOR_AGENT_SECRET env-var value above to actually reach the binary
     # under sudo.
-    if ! sudo -E "$BIN_PATH" "$@"; then
+    # A bare `if ! sudo ...; then SUDO_EXIT=$?` would both (a) capture the
+    # negated status of the `!` test itself (always 0 on this branch, not
+    # sudo's real exit code - silently turning a real failure into a
+    # reported success) and, worse, (b) never even reach here at all if
+    # written as a plain statement instead of an `if` condition, since
+    # set -e aborts the whole script on the first nonzero exit outside an
+    # if/while/until test. The un-negated `if cmd; then ... else $?; fi`
+    # form avoids both problems: the test position is exempt from set -e,
+    # and $? in the else branch reflects sudo's actual exit status.
+    if sudo -E "$BIN_PATH" "$@"; then
+      :
+    else
       SUDO_EXIT=$?
       echo ""
       echo "Error: 'sudo -E' failed (exit $SUDO_EXIT)."
