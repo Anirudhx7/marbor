@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"log"
 	"strconv"
 )
 
@@ -25,7 +26,9 @@ func GetStringSetting(st Store, key, def string) string {
 // absent/empty.
 func GetBoolSetting(st Store, key string, def bool) bool {
 	if v, err := st.GetSetting(key); err == nil && v != "" {
-		return v == "true"
+		if b, convErr := strconv.ParseBool(v); convErr == nil {
+			return b
+		}
 	}
 	return def
 }
@@ -56,9 +59,20 @@ func GetFloatSetting(st Store, key string, def float64) float64 {
 // dst untouched (caller's zero-value/default) if the key is absent/empty/
 // invalid JSON.
 func GetJSONSetting[T any](st Store, key string, dst *T) {
-	if v, err := st.GetSetting(key); err == nil && v != "" {
-		_ = json.Unmarshal([]byte(v), dst)
+	v, err := st.GetSetting(key)
+	if err != nil || v == "" {
+		return
 	}
+	var tmp T
+	if err := json.Unmarshal([]byte(v), &tmp); err != nil {
+		// encoding/json populates fields as it parses before erroring on
+		// malformed trailing content, so unmarshaling directly into dst
+		// could leave it partially mutated - contradicting this function's
+		// own doc comment promise that dst stays untouched on invalid JSON.
+		log.Printf("store: GetJSONSetting(%q): invalid JSON: %v", key, err)
+		return
+	}
+	*dst = tmp
 }
 
 // SetJSONSetting marshals v and persists it under key. Returns the
