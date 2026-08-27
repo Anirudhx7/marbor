@@ -36,7 +36,10 @@ export function BudgetBanner() {
     const load = () => {
       fetchSettings()
         .then(s => setHidden(!!s.hide_budget_banner))
-        .catch(() => {});
+        // A failed fetch must not leave a stale localStorage-derived hidden
+        // value in place - fail toward visibility, not suppression, so a
+        // real overspend warning can't be hidden by a transient fetch error.
+        .catch(() => setHidden(false));
     };
     load();
     window.addEventListener('marbor-settings-change', load);
