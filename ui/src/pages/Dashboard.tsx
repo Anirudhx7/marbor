@@ -301,13 +301,10 @@ export function Dashboard() {
   const [version, setVersion] = useState<string>('');
   const [setupKeys, setSetupKeys] = useState<APIKey[]>([]);
   const [setupRequests, setSetupRequests] = useState<RequestEntry[]>([]);
-  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(STORAGE_DISMISSED) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // isDismissed is session-only — checklist is only gone for good when completed
+  // (enterprise-grade: dismiss is a hurry hide, not a permanent delete; reload
+  // brings it back). Only isCompleted persists via localStorage.
+  const [isDismissed, setIsDismissed] = useState<boolean>(false);
   const [isCompleted, setIsCompleted] = useState<boolean>(() => {
     try {
       return localStorage.getItem(STORAGE_COMPLETED) === 'true';
@@ -315,6 +312,17 @@ export function Dashboard() {
       return false;
     }
   });
+
+  // One-time cleanup of legacy dismissed persistence from earlier builds — those
+  // builds treated dismiss as gone-for-good via localStorage, which violates the
+  // current enterprise rule (only completed is gone for good). Clear it so a
+  // reload after this build correctly restores the checklist for operators who
+  // had dismissed in a hurry before.
+  useEffect(() => {
+    try {
+      localStorage.removeItem(STORAGE_DISMISSED);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     if (currentAppPath() !== '/') return;
@@ -423,23 +431,13 @@ export function Dashboard() {
 
   const handleDismissSetup = () => {
     // Immediate hide, no confirm — per R10 only destructive fleet actions need confirm.
-    // In demo (VITE_FORCE_DEMO) hide for this session only — reload restores 4/5 for screenshots.
-    // In prod persist so reload stays hidden and outage to zero does not resurrect; restore
-    // affordance below lets an accidental dismiss be recovered without clearing storage.
-    if (!demoMode) {
-      try {
-        localStorage.setItem(STORAGE_DISMISSED, 'true');
-      } catch {}
-    }
+    // Dismiss is session-only (not persisted): checklist is only gone for good when
+    // completed (enterprise-grade). Hurry-dismiss can be undone via "Show again"
+    // or simply reload; completed persists via STORAGE_COMPLETED and never reappears.
     setIsDismissed(true);
   };
 
   const handleRestoreSetup = () => {
-    if (!demoMode) {
-      try {
-        localStorage.removeItem(STORAGE_DISMISSED);
-      } catch {}
-    }
     setIsDismissed(false);
   };
 
