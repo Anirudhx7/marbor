@@ -54,10 +54,21 @@ func saveSession(s savedSession) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	// Write to a temp file then rename into place, rather than
+	// os.WriteFile's truncate-then-write, so a crash mid-write can never
+	// leave a torn/empty JSON session file - every authenticated CLI
+	// command starts from loadSession, and a corrupt file used to fail all
+	// of them (including "marbor logout," which could never self-heal
+	// since it also starts from loadSession) with a misleading error.
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
 		return err
 	}
-	return os.Chmod(path, 0600)
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 // loadSession reads the saved session file. A missing file is not an error -
