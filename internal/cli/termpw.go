@@ -2,7 +2,11 @@ package cli
 
 import (
 	"bufio"
+	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 // readPassword reads one line from r (wrapping stdin) with terminal echo
@@ -26,8 +30,49 @@ func readPassword(stdinFd uintptr, r *bufio.Reader) (string, error) {
 	if err != nil {
 		return readLine(r)
 	}
-	defer restore()
-	return readLine(r)
+
+	// P291: echo restoration otherwise only happens via the deferred
+	// restore() below, which a fatal signal/Ctrl+C during the blocked
+	// ReadString call skips entirely - neither the kernel (Unix) nor
+	// Windows reverts console echo mode automatically once the owning
+	// process dies, so the terminal is left silently echo-disabled for
+	// whatever runs next in that same session. Install a synchronous
+	// interrupt handler that restores the terminal state before the
+	// process actually exits. os.Process.Signal only supports re-raising
+	// os.Kill on Windows (os.Interrupt returns "not supported"), so this
+	// exits directly with the conventional SIGINT exit code (130) rather
+	// than trying to re-raise the signal - identical behavior on both
+	// platforms.
+	var once sync.Once
+	safeRestore := func() { once.Do(restore) }
+	// returned guards against a race (caught by code review) where a
+	// signal lands in sigCh at essentially the same instant readLine
+	// already returned successfully - select picks pseudo-randomly among
+	// ready cases, so without this flag the goroutine below could still
+	// take the sigCh branch and os.Exit(130) after a successful read,
+	// discarding a password the caller already has. Set before signaling
+	// done, so the goroutine can check it before hard-exiting.
+	var returned atomic.Bool
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-sigCh:
+			if returned.Load() {
+				return
+			}
+			safeRestore()
+			os.Exit(130)
+		case <-done:
+		}
+	}()
+	line, err := readLine(r)
+	returned.Store(true)
+	close(done)
+	signal.Stop(sigCh)
+	safeRestore()
+	return line, err
 }
 
 func readLine(r *bufio.Reader) (string, error) {

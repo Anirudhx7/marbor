@@ -2,7 +2,12 @@
 
 package cli
 
-import "golang.org/x/sys/unix"
+import (
+	"fmt"
+	"os"
+
+	"golang.org/x/sys/unix"
+)
 
 // disableEcho turns off terminal input echo for fd via termios, returning a
 // restore func. ECHO is cleared but ICANON is left set, so line editing
@@ -22,7 +27,11 @@ func disableEcho(fd uintptr) (restore func(), err error) {
 	if err := unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &newState); err != nil {
 		return nil, err
 	}
-	return func() { unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &original) }, nil
+	return func() {
+		if err := unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &original); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not restore terminal echo: %v (run \"stty echo\" or start a new shell if input stops echoing)\n", err)
+		}
+	}, nil
 }
 
 // isTerminal reports whether fd is a real terminal, used to decide whether
