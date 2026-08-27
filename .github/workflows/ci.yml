@@ -7,6 +7,9 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   # Fastest signal first: vet + gofmt + race tests. Independent of the UI build -
   # Go compiles against the committed internal/admin/web embed, not ui/dist.
@@ -104,7 +107,7 @@ jobs:
           check-latest: true
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
       - name: govulncheck
         # Blocking: a known vuln in a direct dep should fail CI, not be silently skipped.
