@@ -264,9 +264,12 @@ export function CustomCombobox({
           ref={inputRef}
           type="text"
           disabled={disabled}
+          readOnly={isCoarse}
+          inputMode={isCoarse ? 'none' : undefined}
           placeholder={placeholder}
           value={isOpen ? searchTerm : value}
           onChange={(e) => {
+            if (isCoarse) return;
             setSearchTerm(e.target.value);
             onChange(e.target.value);
             if (!isOpen) setIsOpen(true);
@@ -275,8 +278,20 @@ export function CustomCombobox({
             setSearchTerm('');
             setIsOpen(true);
           }}
+          // On coarse pointers tapping the input field should open the menu
+          // without summoning the keyboard - readOnly + inputMode none covers
+          // most browsers, but iOS still shows keyboard on focus for readOnly
+          // in some cases, so intercept touch to open menu without focusing
+          // for keyboard.
+          onTouchEnd={(e) => {
+            if (isCoarse) {
+              e.preventDefault();
+              setSearchTerm('');
+              setIsOpen(true);
+            }
+          }}
           className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
-            disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:bg-secondary/40'
+            disabled ? 'opacity-50 cursor-not-allowed' : isCoarse ? 'cursor-pointer hover:bg-secondary/40' : 'cursor-text hover:bg-secondary/40'
           }`}
         />
         <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 animate-fade-in">
@@ -428,12 +443,23 @@ export function CustomTagCombobox({
           ref={inputRef}
           type="text"
           disabled={disabled}
+          readOnly={isCoarseTag}
+          inputMode={isCoarseTag ? 'none' : undefined}
           placeholder={placeholder}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            if (isCoarseTag) return;
+            onChange(e.target.value);
+          }}
           onFocus={() => setIsOpen(true)}
+          onTouchEnd={(e) => {
+            if (isCoarseTag) {
+              e.preventDefault();
+              setIsOpen(true);
+            }
+          }}
           className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
-            disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-text hover:bg-secondary/40'
+            disabled ? 'opacity-50 cursor-not-allowed' : isCoarseTag ? 'cursor-pointer hover:bg-secondary/40' : 'cursor-text hover:bg-secondary/40'
           }`}
         />
         <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 animate-fade-in">
