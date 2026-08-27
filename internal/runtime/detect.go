@@ -42,8 +42,13 @@ func DetectRuntime(ctx context.Context, nodeURL string, client *http.Client) (ru
 func DetectRuntimeConfirmed(ctx context.Context, nodeURL string, client *http.Client) (runtime string, reached bool, confirmed bool) {
 	base := strings.TrimRight(nodeURL, "/")
 
-	// Ollama: unique /api/ps endpoint
-	matched, ok := probeEndpoint(ctx, base+"/api/ps", client)
+	// Ollama: unique /api/ps endpoint, shape-validated (P260) - a bare HTTP
+	// 200 alone isn't a real signature (any non-Ollama server that happens
+	// to answer 200 on this path would otherwise be misclassified "ollama"
+	// on first probe, and that label is committed permanently by the
+	// router), so also decode the body against the expected
+	// {"models": [...]} shape before declaring a match.
+	matched, ok := probeOllamaPS(ctx, base+"/api/ps", client)
 	reached = reached || ok
 	if matched {
 		return "ollama", true, true
@@ -77,11 +82,13 @@ func DetectRuntimeConfirmed(ctx context.Context, nodeURL string, client *http.Cl
 	return "ollama", reached, false
 }
 
-// probeEndpoint reports (matched, reached): matched is true on HTTP 200;
-// reached is true whenever the request actually got an HTTP response, even a
-// non-200 one, distinguishing "node answered but isn't Ollama" from "node
-// was unreachable."
-func probeEndpoint(ctx context.Context, url string, client *http.Client) (matched, reached bool) {
+// probeOllamaPS probes Ollama's unique /api/ps endpoint and validates the
+// response body shape: a bare HTTP 200 alone isn't a unique signature - any
+// non-Ollama server that happens to answer 200 on this exact path would
+// otherwise be misclassified. Decodes the body against Ollama's real
+// {"models": [...]} response shape (the array itself may legitimately be
+// empty when no model is currently loaded) before declaring a match.
+func probeOllamaPS(ctx context.Context, url string, client *http.Client) (matched, reached bool) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -92,8 +99,23 @@ func probeEndpoint(ctx context.Context, url string, client *http.Client) (matche
 	if err != nil {
 		return false, false
 	}
-	resp.Body.Close()
-	return resp.StatusCode == http.StatusOK, true
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, true
+	}
+	var body struct {
+		Models []json.RawMessage `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return false, true
+	}
+	if body.Models == nil {
+		// The key must actually be present - a 200 response that decodes
+		// cleanly but has no "models" key at all (e.g. an empty JSON object
+		// {} from some other server) is not Ollama's shape either.
+		return false, true
+	}
+	return true, true
 }
 
 func probeTGIInfo(ctx context.Context, url string, client *http.Client) (matched, reached bool) {

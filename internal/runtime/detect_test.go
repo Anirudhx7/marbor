@@ -10,19 +10,54 @@ import (
 func TestDetectRuntime_Ollama(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/ps" {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"models":[]}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
-	got, reached := DetectRuntime(context.Background(), srv.URL, srv.Client())
+	got, reached, confirmed := DetectRuntimeConfirmed(context.Background(), srv.URL, srv.Client())
 	if got != "ollama" {
 		t.Errorf("expected ollama, got %q", got)
 	}
 	if !reached {
 		t.Error("expected reached=true")
+	}
+	if !confirmed {
+		t.Error("expected confirmed=true for a real {\"models\":[...]} shape")
+	}
+}
+
+// TestDetectRuntime_OllamaShapeMismatch is P260's regression case: a bare
+// HTTP 200 on /api/ps with no {"models": [...]} body is not a real Ollama
+// signature - any non-Ollama server answering 200 on that exact path must
+// not be permanently misclassified "ollama" on the strength of the status
+// code alone.
+func TestDetectRuntime_OllamaShapeMismatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/ps" {
+			// 200 with a body, but not Ollama's shape at all.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	got, reached, confirmed := DetectRuntimeConfirmed(context.Background(), srv.URL, srv.Client())
+	if got != "ollama" {
+		t.Errorf("expected fallback runtime ollama (unconfirmed), got %q", got)
+	}
+	if !reached {
+		t.Error("expected reached=true")
+	}
+	if confirmed {
+		t.Error("expected confirmed=false - a bare 200 with the wrong body shape must not count as a real Ollama match")
 	}
 }
 
