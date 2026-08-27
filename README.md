@@ -476,6 +476,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor models delete <node> <model>` | delete a model from a node's local storage (requires auth) |
 | `marbor models unload <node> <model>` | unload a model from a node's warm state (requires auth) |
 | `marbor models list <node>` | list models present on a node's local storage (per-node, not the fleet-wide aggregate above) (requires auth) |
+| `marbor models fleet` | fleet residency with VRAM totals and drift (same live data as bare models, filterable) (requires auth) |
 | `marbor runtime` | start/stop/restart/logs/drain/undrain/health on one node (requires auth) |
 | `marbor runtime start <node>` | start the node's inference runtime process (requires auth) |
 | `marbor runtime stop <node>` | stop the node's inference runtime process (requires auth) |
