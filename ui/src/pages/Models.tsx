@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Package, Download, Settings2, Trash2, AlertTriangle, Layers, Flame, Copy, CheckCircle2, ArrowUpRight } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
@@ -86,7 +86,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
   };
 
   return (
-    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-colors ${isWarm ? 'border-border' : 'border-border opacity-80'}`}>
+    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-all duration-300 ease-out hover:shadow-md hover:scale-[1.01] active:scale-[0.99] ${isWarm ? 'border-border' : 'border-border opacity-80'}`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start gap-3 min-w-0">
@@ -166,7 +166,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
       <div className="border-t border-border pt-3">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-medium text-muted-foreground">Resident on</p>
-          <Link to="/gpu-nodes" className="text-[11px] text-primary hover:text-primary/80 inline-flex items-center gap-1 font-medium">
+          <Link to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}`} className="text-[11px] text-primary hover:text-primary/80 inline-flex items-center gap-1 font-medium">
             View nodes <ArrowUpRight className="w-3 h-3" />
           </Link>
         </div>
@@ -174,9 +174,9 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
           {model.nodes.map((node) => (
             <Link
               key={node.name}
-              to="/gpu-nodes"
+              to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}`}
               title={`${node.name} · ${node.runtime || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
-              className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary hover:bg-secondary/80 border border-transparent hover:border-border rounded-md text-xs font-medium text-foreground transition-colors"
+              className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary hover:bg-secondary/80 border border-transparent hover:border-border rounded-md text-xs font-medium text-foreground transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
             >
               <StatusDot status={node.healthy ? 'healthy' : 'down'} />
               <span className="font-mono">{node.name}</span>
@@ -272,10 +272,31 @@ export function Models() {
   const { demoMode } = useDemoMode();
   const [catalog, setCatalog] = useState<ModelCatalog | null>(demoMode ? mockModelCatalog : null);
   const [isLive, setIsLive] = useState(!demoMode);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [driftedOnly, setDriftedOnly] = useState(false);
-  const [warmOnly, setWarmOnly] = useState(false);
-  const [activeTab, setActiveTab] = useState<'fleet' | 'catalog'>('fleet');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchQuery = searchParams.get('q') || '';
+  const driftedOnly = searchParams.get('drifted') === '1';
+  const warmOnly = searchParams.get('warm') === '1';
+  const activeTab = (searchParams.get('view') === 'catalog' ? 'catalog' : 'fleet') as 'fleet' | 'catalog';
+  const setSearchQuery = (v: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (v) next.set('q', v); else next.delete('q');
+    setSearchParams(next, { replace: true });
+  };
+  const setDriftedOnly = (v: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    if (v) next.set('drifted', '1'); else next.delete('drifted');
+    setSearchParams(next);
+  };
+  const setWarmOnly = (v: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    if (v) next.set('warm', '1'); else next.delete('warm');
+    setSearchParams(next);
+  };
+  const setActiveTab = (v: 'fleet' | 'catalog') => {
+    const next = new URLSearchParams(searchParams);
+    if (v === 'catalog') next.set('view', 'catalog'); else next.delete('view');
+    setSearchParams(next);
+  };
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!demoMode);
 
@@ -456,24 +477,24 @@ export function Models() {
         </div>
       </div>
 
-      {/* Tabs - Fleet first, Catalog secondary */}
+      {/* Tabs - Fleet first, Catalog secondary - smooth like sidenav 200ms ease */}
       <div className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
         <button
           onClick={() => setActiveTab('fleet')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'fleet' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${activeTab === 'fleet' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Fleet
         </button>
         <button
           onClick={() => setActiveTab('catalog')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'catalog' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${activeTab === 'catalog' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Catalog
         </button>
       </div>
 
       {activeTab === 'fleet' ? (
-        <>
+        <div className="space-y-6 animate-fade-in">
           {error && !demoMode && (
             <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
               {error}
@@ -508,9 +529,9 @@ export function Models() {
             </div>
           </div>
 
-          {/* Filters - search + toggles, no horizontal scroll at 375px */}
+          {/* Filters - search + toggles, smooth picking/clearing like sidenav 200ms ease */}
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-            <div className="w-full sm:max-w-md">
+            <div className="w-full sm:max-w-md transition-all duration-200 ease-out">
               <SearchInput
                 value={searchQuery}
                 onChange={setSearchQuery}
@@ -518,46 +539,46 @@ export function Models() {
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-secondary border border-border rounded-lg text-xs font-medium cursor-pointer hover:bg-secondary/80 transition-colors">
+              <label className={`inline-flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${driftedOnly ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' : 'bg-secondary border-border hover:bg-secondary/80'}`}>
                 <input
                   type="checkbox"
                   checked={driftedOnly}
                   onChange={(e) => setDriftedOnly(e.target.checked)}
-                  className="accent-primary cursor-pointer"
+                  className="accent-primary cursor-pointer transition-all duration-200"
                 />
                 Drifted only
               </label>
-              <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-secondary border border-border rounded-lg text-xs font-medium cursor-pointer hover:bg-secondary/80 transition-colors">
+              <label className={`inline-flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${warmOnly ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' : 'bg-secondary border-border hover:bg-secondary/80'}`}>
                 <input
                   type="checkbox"
                   checked={warmOnly}
                   onChange={(e) => setWarmOnly(e.target.checked)}
-                  className="accent-primary cursor-pointer"
+                  className="accent-primary cursor-pointer transition-all duration-200"
                 />
                 Warm only
               </label>
-              {(driftedOnly || warmOnly || searchQuery) && (
+              <div className={`transition-all duration-200 ease-out ${driftedOnly || warmOnly || searchQuery ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-1 scale-95 pointer-events-none w-0 overflow-hidden'}`}>
                 <button
                   onClick={() => { setSearchQuery(''); setDriftedOnly(false); setWarmOnly(false); }}
-                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1"
+                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-secondary transition-all duration-200 ease-out hover:scale-105 active:scale-95 whitespace-nowrap"
                 >
                   Clear filters
                 </button>
-              )}
+              </div>
             </div>
           </div>
 
           {/* Fleet content */}
           {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
             </div>
           ) : filteredModels.length > 0 ? (
-            <>
+            <div className="space-y-6 animate-fade-in">
               {/* Desktop table - hidden on mobile, no horizontal scroll at 375px because hidden */}
-              <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
+              <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden animate-fade-in transition-all duration-300 ease-out">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -610,9 +631,9 @@ export function Models() {
                                 {model.nodes.map((node) => (
                                   <Link
                                     key={node.name}
-                                    to="/gpu-nodes"
+                                    to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}`}
                                     title={`${node.name} ${node.runtime || ''} ${node.warm ? 'warm' : 'cold'} ${node.digest || ''}`}
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary rounded text-xs font-medium hover:bg-secondary/80 transition-colors"
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary rounded text-xs font-medium hover:bg-secondary/80 transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
                                   >
                                     <StatusDot status={node.healthy ? 'healthy' : 'down'} size="sm" />
                                     <span className="font-mono">{node.name}</span>
@@ -626,14 +647,14 @@ export function Models() {
                                 <button
                                   onClick={() => setConfigModel(model.name)}
                                   title={`Settings for ${model.name}`}
-                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-colors"
+                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-all duration-200 ease-out hover:scale-110 active:scale-95"
                                 >
                                   <Settings2 className="w-3.5 h-3.5" />
                                 </button>
                                 <Link
-                                  to="/gpu-nodes"
+                                  to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}`}
                                   title="Manage on GPU Nodes (mutations live there)"
-                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-colors"
+                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-all duration-200 ease-out hover:scale-110 active:scale-95"
                                 >
                                   <ArrowUpRight className="w-3.5 h-3.5" />
                                 </Link>
@@ -648,7 +669,7 @@ export function Models() {
               </div>
 
               {/* Mobile cards - visible only below md, stacked, no horizontal scroll */}
-              <div className="grid grid-cols-1 md:hidden gap-4">
+              <div className="grid grid-cols-1 md:hidden gap-4 animate-fade-in">
                 {filteredModels.map((model) => (
                   <ModelFleetCard key={model.name} model={model} demoMode={demoMode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
                 ))}
@@ -658,9 +679,9 @@ export function Models() {
               <div className="hidden lg:hidden md:grid grid-cols-2 gap-6">
                 {/* This block intentionally empty - table covers md+ */}
               </div>
-            </>
+            </div>
           ) : (
-            <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
+            <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm animate-fade-in">
               <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
               {catalog && catalog.total_nodes === 0 ? (
                 <div className="space-y-1">
@@ -678,10 +699,10 @@ export function Models() {
               )}
             </div>
           )}
-        </>
+        </div>
       ) : (
         /* Catalog secondary - read-only browse, fleet remains headline */
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
           <div className="bg-card border border-border rounded-xl p-6">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Layers className="w-5 h-5 text-primary" />
