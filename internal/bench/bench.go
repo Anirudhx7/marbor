@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -67,6 +68,7 @@ func Run(args []string) {
 	if err := fs.Parse(args); err != nil {
 		os.Exit(1)
 	}
+	*target = strings.TrimRight(*target, "/")
 
 	client := &http.Client{Timeout: *timeout}
 
@@ -141,7 +143,15 @@ func Run(args []string) {
 
 // printTable prints the human-readable results table.
 func printTable(r Result) {
-	improvStr := fmt.Sprintf("%.0fx faster (%.1f%%)", r.ImprovementX, r.ImprovementPct)
+	var improvStr string
+	switch {
+	case r.WarmMs <= 0:
+		improvStr = "n/a (warm TTFT measured as 0ms)"
+	case r.ImprovementPct < 0:
+		improvStr = "n/a (warm was slower than cold - noisy sample?)"
+	default:
+		improvStr = fmt.Sprintf("%.0fx faster (%.1f%%)", r.ImprovementX, r.ImprovementPct)
+	}
 
 	// Column widths for alignment.
 	labelW := 13
@@ -171,7 +181,7 @@ func fmtMs(ms int64) string {
 
 // roundTo1 rounds a float64 to one decimal place.
 func roundTo1(v float64) float64 {
-	return float64(int64(v*10+0.5)) / 10
+	return math.Round(v*10) / 10
 }
 
 // detectModel calls GET /v1/models on marbor and returns the first model ID.
@@ -281,10 +291,11 @@ func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, ap
 			continue
 		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			ttft := time.Since(start).Milliseconds()
-			// Drain the rest so the connection is reusable for the warm request.
-			go io.Copy(io.Discard, resp.Body) //nolint:errcheck
-			return ttft, nil
+			// Return immediately once TTFT is captured; the deferred Body.Close
+			// above closes the stream without draining it, so this connection
+			// isn't reused for the warm request - each MeasureChatTTFT call
+			// dials fresh rather than racing a background drain against Close.
+			return time.Since(start).Milliseconds(), nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
