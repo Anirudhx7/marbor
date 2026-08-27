@@ -93,6 +93,7 @@ func sendRequest(client *http.Client, proxyURL, apiKey string, spec requestSpec,
 	// Drain the streaming response and capture final eval_count
 	var totalTokens int
 	var tokenCountMissing bool
+	var doneObserved bool
 	decoder := json.NewDecoder(resp.Body)
 	for decoder.More() {
 		var chunk map[string]interface{}
@@ -100,6 +101,7 @@ func sendRequest(client *http.Client, proxyURL, apiKey string, spec requestSpec,
 			break
 		}
 		if done, _ := chunk["done"].(bool); done {
+			doneObserved = true
 			if ec, ok := chunk["eval_count"].(float64); ok {
 				totalTokens = int(ec)
 			} else {
@@ -109,10 +111,18 @@ func sendRequest(client *http.Client, proxyURL, apiKey string, spec requestSpec,
 	}
 
 	elapsed := time.Since(start)
-	if tokenCountMissing {
+	switch {
+	case !doneObserved:
+		// The decode loop above breaks silently on error, leaving
+		// totalTokens=0 with neither flag set - previously that printed a
+		// confident "0 tokens" for a truncated stream, indistinguishable
+		// from a genuine zero-token completion.
+		fmt.Printf("  [%2d/%-2d] %-15s  n/a tokens (stream ended before done)  %5dms  HTTP %d\n",
+			idx+1, total, spec.model, elapsed.Milliseconds(), resp.StatusCode)
+	case tokenCountMissing:
 		fmt.Printf("  [%2d/%-2d] %-15s  n/a tokens (eval_count missing)  %5dms  HTTP %d\n",
 			idx+1, total, spec.model, elapsed.Milliseconds(), resp.StatusCode)
-	} else {
+	default:
 		fmt.Printf("  [%2d/%-2d] %-15s  %3d tokens  %5dms  HTTP %d\n",
 			idx+1, total, spec.model, totalTokens, elapsed.Milliseconds(), resp.StatusCode)
 	}
