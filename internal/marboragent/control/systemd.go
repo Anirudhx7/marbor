@@ -68,12 +68,18 @@ func (d *SystemdDriver) Validate(ctx context.Context) error {
 // firstNonEmptyLine extracts the most useful single line from a command's
 // combined output for an error message (systemctl/journalctl/launchctl/sc
 // diagnostics are usually one meaningful line buried in boilerplate) -
-// falls back to the raw error when output carried nothing usable.
+// falls back to the raw error when output carried nothing usable. err == nil
+// isn't reachable via any current caller (all pass the error from a failed
+// runCommand), but guarded rather than dereferenced unconditionally so a
+// future caller passing a nil error can't nil-pointer-panic here.
 func firstNonEmptyLine(out string, err error) string {
 	for _, l := range strings.Split(out, "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			return l
 		}
 	}
-	return err.Error()
+	if err != nil {
+		return err.Error()
+	}
+	return "no output"
 }
