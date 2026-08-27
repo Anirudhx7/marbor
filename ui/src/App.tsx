@@ -193,7 +193,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
                 {/* Hidden - reached only via the Settings page card, no Sidebar entry */}
                 <Route path="/benchmark" element={<Benchmark />} />
                 {session.role === 'admin' && <Route path="/users" element={<Users />} />}
-                <Route path="/system-audit" element={<Navigate to="/activity?view=audit" replace />} />
+                <Route path="/system-audit" element={<Navigate to="/activity" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
