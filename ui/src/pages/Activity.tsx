@@ -203,7 +203,7 @@ export function Activity() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedEntry]);
 
-  const kindOptions: (ActivityKind | 'all')[] = ['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'];
+  const kindOptions: (ActivityKind | 'all')[] = ['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'schedule', 'predictive', 'config'];
 
   const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action))).sort()];
   const uniqueUsers = ['all', ...Array.from(new Set(entries.map((e) => e.username))).sort()];
@@ -430,7 +430,7 @@ export function Activity() {
             <CustomSelect
               value={kindFilter}
               onChange={(v) => setKindFilter(v as ActivityKind | 'all')}
-              options={(['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'] as const).map((k) => ({
+              options={(['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'schedule', 'predictive', 'config'] as const).map((k) => ({
                 value: k,
                 label: k === 'all' ? 'All Kinds' : getActivityKindLabel(k as ActivityKind),
               }))}
