@@ -573,12 +573,12 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=${RUN_USER}
-WorkingDirectory=${WORKDIR}
-ExecStart=${BIN_PATH} --db ${DB_PATH}
+WorkingDirectory="${WORKDIR}"
+ExecStart="${BIN_PATH}" --db "${DB_PATH}"
 Restart=on-failure
 RestartSec=2
-StandardOutput=append:${WORKDIR}/marbor.log
-StandardError=append:${WORKDIR}/marbor.log
+StandardOutput=append:"${WORKDIR}/marbor.log"
+StandardError=append:"${WORKDIR}/marbor.log"
 
 [Install]
 WantedBy=multi-user.target
