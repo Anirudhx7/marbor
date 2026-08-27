@@ -658,40 +658,48 @@ export function Warmup() {
   const [pinging, setPinging] = useState(false);
   const [pingMessage, setPingMessage] = useState<{ text: string; error: boolean } | null>(null);
 
+  // loadRequestId guards against a slower, older poll cycle resolving after
+  // a newer one and overwriting fresher state - each call to load() claims a
+  // new id and every state-set checks it still owns the latest one, mirroring
+  // Settings.tsx's backupListRequestId pattern for the same six-request-deep
+  // waterfall problem.
+  const loadRequestId = useRef(0);
+
   const load = useCallback(async (active: boolean) => {
+    const requestId = ++loadRequestId.current;
     try {
       const ns = await fetchNodes();
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       const safeNs = Array.isArray(ns) ? ns : [];
       setNodes(safeNs);
       const w: Record<string, NodeWarmup> = {};
       await Promise.all(safeNs.map(async n => {
         try {
           const res = await getNodeWarmup(n.name);
-          if (active && currentAppPath() === '/warmup') {
+          if (active && requestId === loadRequestId.current && currentAppPath() === '/warmup') {
             w[n.name] = res;
           }
         } catch {
-          if (active && currentAppPath() === '/warmup') {
+          if (active && requestId === loadRequestId.current && currentAppPath() === '/warmup') {
             w[n.name] = { enabled: false, models: [] };
           }
         }
       }));
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setWarmup(w);
       const schedList = await listSchedules();
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setSchedules(schedList || []);
       const decs = await fetchPredictiveDecisions().catch(() => []);
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setDecisions(decs);
 
       const status = await fetchWarmupStatus().catch(() => ({ predictive_engine_enabled: true }));
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPredictiveEnabled(status.predictive_engine_enabled);
 
       const sys = await fetchSystemInfo().catch(() => null);
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       if (sys && sys.server_time && sys.timezone) {
         const parts = sys.server_time.split(' ');
         if (parts.length === 2) {
@@ -717,7 +725,7 @@ export function Warmup() {
       } else {
         try {
           const data = await fetchModels();
-          if (!active || currentAppPath() !== '/warmup') return;
+          if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
           const entries = data.models || [];
           setAvailableModels(entries.map((m: any) => m.name));
           const byNode: Record<string, string[]> = {};
@@ -728,18 +736,18 @@ export function Warmup() {
           }
           setModelsByNode(byNode);
         } catch {
-          if (!active || currentAppPath() !== '/warmup') return;
+          if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
           setAvailableModels([]);
           setModelsByNode({});
         }
       }
       setError(null);
     } catch (e: any) {
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setError(e.message || 'Failed to load');
     }
     finally {
-      if (active && currentAppPath() === '/warmup') {
+      if (active && requestId === loadRequestId.current && currentAppPath() === '/warmup') {
         setLoading(false);
       }
     }
