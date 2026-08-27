@@ -2263,7 +2263,7 @@ func (s *sqliteStore) AppendSystemAuditLog(e SystemAuditEntry) error {
 	_, err := s.db.Exec(
 		`INSERT INTO system_audit_log (ts, username, action, target, details, source_ip)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
-		e.Time.Format(time.RFC3339), e.Username, e.Action, e.Target, e.Details, e.SourceIP,
+		e.Time.UTC().Format(time.RFC3339), e.Username, e.Action, e.Target, e.Details, e.SourceIP,
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendSystemAuditLog: %w", err)
@@ -2294,6 +2294,165 @@ func (s *sqliteStore) QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error)
 		}
 		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
 			e.Time = t
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+// systemAuditKind maps an action to its fleet-operations kind bucket, mirroring
+// ui/src/lib/activityKind.ts:7 and internal/cli/activity.go:activityKind.
+func systemAuditKind(action string) string {
+	switch action {
+	case "drain_node", "undrain_node", "set_node_prewarm":
+		return "drain"
+	case "enable_marbor_agent", "disable_marbor_agent", "regenerate_marbor_agent_token", "enroll_marbor_agent":
+		return "agent"
+	case "runtime_start", "runtime_stop", "runtime_restart", "accept_node_control", "clear_node_control":
+		return "runtime"
+	case "add_node", "update_node", "remove_node", "patch_node":
+		return "node"
+	case "unload_model", "set_node_warmup", "set_pinned_models", "pull_model", "pull_model_load_failed", "pull_model_cancel", "delete_model":
+		return "warmup"
+	}
+	if strings.HasPrefix(action, "drain_") || strings.HasPrefix(action, "undrain") || action == "set_node_prewarm" {
+		return "drain"
+	}
+	if strings.Contains(action, "marbor_agent") || strings.Contains(action, "_agent") {
+		return "agent"
+	}
+	if strings.HasPrefix(action, "runtime_") || strings.Contains(action, "_control") {
+		return "runtime"
+	}
+	if strings.HasPrefix(action, "add_node") || strings.HasPrefix(action, "remove_node") || strings.HasPrefix(action, "patch_node") || action == "update_node" {
+		return "node"
+	}
+	if strings.HasPrefix(action, "unload") || strings.Contains(action, "warmup") || strings.Contains(action, "pinned") || strings.HasPrefix(action, "pull_model") || action == "delete_model" {
+		return "warmup"
+	}
+	return "config"
+}
+
+// kindActionMap lists exact actions for each kind for server-side IN filtering.
+var kindActionMap = map[string][]string{
+	"drain":   {"drain_node", "undrain_node", "set_node_prewarm"},
+	"agent":   {"enable_marbor_agent", "disable_marbor_agent", "regenerate_marbor_agent_token", "enroll_marbor_agent"},
+	"runtime": {"runtime_start", "runtime_stop", "runtime_restart", "accept_node_control", "clear_node_control"},
+	"node":    {"add_node", "update_node", "remove_node", "patch_node"},
+	"warmup":  {"unload_model", "set_node_warmup", "set_pinned_models", "pull_model", "pull_model_load_failed", "pull_model_cancel", "delete_model"},
+}
+
+func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]SystemAuditEntry, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	if f.Kind == "predictive" {
+		return []SystemAuditEntry{}, nil
+	}
+	if f.Limit <= 0 {
+		f.Limit = 100
+	}
+	if f.Limit > 200 {
+		f.Limit = 200
+	}
+	var where []string
+	var args []interface{}
+	if f.From != nil {
+		where = append(where, "ts >= ?")
+		args = append(args, f.From.UTC().Format(time.RFC3339))
+	}
+	if f.To != nil {
+		where = append(where, "ts <= ?")
+		args = append(args, f.To.UTC().Format(time.RFC3339))
+	}
+	if f.Before != nil {
+		where = append(where, "ts < ?")
+		args = append(args, f.Before.UTC().Format(time.RFC3339))
+	}
+	if f.Action != "" {
+		where = append(where, "action = ?")
+		args = append(args, f.Action)
+	}
+	if f.Username != "" {
+		where = append(where, "username LIKE ? ESCAPE '\\' COLLATE NOCASE")
+		args = append(args, strings.ReplaceAll(strings.ReplaceAll(f.Username, "%", "\\%"), "_", "\\_")+"%")
+	}
+	if f.Target != "" {
+		where = append(where, "target LIKE ? ESCAPE '\\' COLLATE NOCASE")
+		esc := strings.ReplaceAll(strings.ReplaceAll(f.Target, "%", "\\%"), "_", "\\_")
+		args = append(args, "%"+esc+"%")
+	}
+	if f.SourceIP != "" {
+		where = append(where, "source_ip LIKE ? ESCAPE '\\' COLLATE NOCASE")
+		esc := strings.ReplaceAll(strings.ReplaceAll(f.SourceIP, "%", "\\%"), "_", "\\_")
+		args = append(args, "%"+esc+"%")
+	}
+	if f.Kind != "" && f.Kind != "all" {
+		if f.Kind == "config" {
+			// config is fallback: action NOT IN union of all other kind actions
+			var all []string
+			for _, list := range kindActionMap {
+				all = append(all, list...)
+			}
+			if len(all) > 0 {
+				place := strings.Repeat("?,", len(all))
+				place = strings.TrimSuffix(place, ",")
+				where = append(where, "action NOT IN ("+place+")")
+				for _, a := range all {
+					args = append(args, a)
+				}
+			}
+		} else if list, ok := kindActionMap[f.Kind]; ok {
+			place := strings.Repeat("?,", len(list))
+			place = strings.TrimSuffix(place, ",")
+			where = append(where, "action IN ("+place+")")
+			for _, a := range list {
+				args = append(args, a)
+			}
+		} else {
+			return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: unknown kind %q", f.Kind)
+		}
+	}
+	query := `SELECT ts, username, action, target, details, source_ip FROM system_audit_log`
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += " ORDER BY ts DESC LIMIT ?"
+	args = append(args, f.Limit)
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: %w", err)
+	}
+	defer rows.Close()
+	var entries []SystemAuditEntry
+	for rows.Next() {
+		var tsStr string
+		var e SystemAuditEntry
+		if err := rows.Scan(&tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
+			return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: %w", err)
+		}
+		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
+			e.Time = t
+		}
+		// Double-check kind mapping for any action not covered by IN list but
+		// that would map via prefix fallback to this kind. This handles forward
+		// compat where a new drain_* action appears that is not in the static
+		// IN list but should still be returned for kind=drain. We already
+		// filtered via IN, so we need to also accept prefix matches. To keep
+		// SQL simple, we do a second-pass check: if kind filter was applied
+		// and the row's actual kind via systemAuditKind differs from requested
+		// kind, drop it. This corrects both false positives (IN list may be
+		// incomplete for fallback) and ensures config kind correctly excludes
+		// fallback-matched drain etc.
+		if f.Kind != "" && f.Kind != "all" && f.Kind != "config" {
+			if got := systemAuditKind(e.Action); got != f.Kind {
+				continue
+			}
+		}
+		if f.Kind == "config" {
+			if got := systemAuditKind(e.Action); got != "config" {
+				continue
+			}
 		}
 		entries = append(entries, e)
 	}

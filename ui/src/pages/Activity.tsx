@@ -1,14 +1,44 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Activity as ActivityIcon, Search, RefreshCw, Eye, Calendar, User, Globe, Filter, AlertCircle, X, Server, Flame, BrainCircuit } from 'lucide-react';
-import { fetchSystemAudit, fetchPredictiveDecisions } from '../lib/api';
+import { fetchSystemAuditFiltered, fetchPredictiveDecisions } from '../lib/api';
 import type { SystemAuditEntry, PredictiveDecision } from '../types';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
+import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { toActivityKind, getActivityKindLabel, getActivityKindColor, type ActivityKind } from '../lib/activityKind';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
+const PAGE_LIMIT = 100;
+
+function toPickerValue(rfc3339: string): string {
+  try {
+    const d = new Date(rfc3339);
+    if (isNaN(d.getTime())) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  } catch {
+    return '';
+  }
+}
+
+function fromPickerValue(v: string): string {
+  if (!v) return '';
+  try {
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString();
+  } catch {
+    return '';
+  }
+}
+
+type DatePreset = 'all' | '1h' | '24h' | '7d' | '30d' | 'custom';
 
 function formatDateTime(isoString: string): string {
   try {
@@ -36,60 +66,133 @@ function getActionLabel(action: string): string {
 
 export function Activity() {
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const view = searchParams.get('view') === 'audit' ? 'audit' : 'fleet';
+  const isAuditView = view === 'audit';
+
   const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
   const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<ActivityKind | 'all'>('all');
+  const [actionFilter, setActionFilter] = useState('all');
+  const [userFilter, setUserFilter] = useState('all');
+  const [targetInput, setTargetInput] = useState('');
+  const [sourceIpInput, setSourceIpInput] = useState('');
+  const [debouncedTarget, setDebouncedTarget] = useState('');
+  const [debouncedSourceIp, setDebouncedSourceIp] = useState('');
+  const [preset, setPreset] = useState<DatePreset>('all');
+  const [fromPicker, setFromPicker] = useState('');
+  const [toPicker, setToPicker] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<SystemAuditEntry | null>(null);
   const [refreshSpin, setRefreshSpin] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadActivity = useCallback(async (silent = false, active = true) => {
-    if (currentAppPath() !== '/activity') return;
-    if (!silent && active && currentAppPath() === '/activity') setLoading(true);
-    if (active && currentAppPath() === '/activity') setRefreshSpin(true);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedTarget(targetInput), 250);
+    return () => clearTimeout(t);
+  }, [targetInput]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSourceIp(sourceIpInput), 250);
+    return () => clearTimeout(t);
+  }, [sourceIpInput]);
+
+  useEffect(() => {
+    if (preset === 'all') {
+      setFromPicker('');
+      setToPicker('');
+    } else if (preset === 'custom') {
+      // keep current pickers
+    } else {
+      const now = new Date();
+      let from: Date | null = null;
+      if (preset === '1h') from = new Date(now.getTime() - 1 * 3600_000);
+      else if (preset === '24h') from = new Date(now.getTime() - 24 * 3600_000);
+      else if (preset === '7d') from = new Date(now.getTime() - 7 * 86400_000);
+      else if (preset === '30d') from = new Date(now.getTime() - 30 * 86400_000);
+      if (from) {
+        setFromPicker(toPickerValue(from.toISOString()));
+        setToPicker(toPickerValue(now.toISOString()));
+      }
+    }
+  }, [preset]);
+
+  const buildFilter = useCallback((before?: string) => {
+    const f: any = { limit: PAGE_LIMIT };
+    const fromRfc = fromPicker ? fromPickerValue(fromPicker) : '';
+    const toRfc = toPicker ? fromPickerValue(toPicker) : '';
+    if (fromRfc) f.from = fromRfc;
+    if (toRfc) f.to = toRfc;
+    if (before) f.before = before;
+    if (kindFilter !== 'all') f.kind = kindFilter;
+    if (actionFilter !== 'all') f.action = actionFilter;
+    if (userFilter !== 'all') f.user = userFilter;
+    if (debouncedTarget.trim()) f.target = debouncedTarget.trim();
+    if (isAuditView && debouncedSourceIp.trim()) f.source_ip = debouncedSourceIp.trim();
+    return f;
+  }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp, isAuditView]);
+
+  const loadActivity = useCallback(async (opts: { silent?: boolean; append?: boolean; before?: string; active?: boolean } = {}) => {
+    const { silent = false, append = false, before, active = true } = opts;
+    const path = currentAppPath();
+    const isActivityPath = path === '/activity' || path.startsWith('/activity') || path === '/system-audit';
+    if (!isActivityPath) return;
+    if (!silent && active && !append) setLoading(true);
+    if (active) setRefreshSpin(true);
     try {
+      const filter = buildFilter(before);
       const [audit, preds] = await Promise.all([
-        fetchSystemAudit(100),
+        fetchSystemAuditFiltered(filter),
         fetchPredictiveDecisions().catch(() => [] as PredictiveDecision[]),
       ]);
-      if (!active || currentAppPath() !== '/activity') return;
-      setEntries(audit);
+      if (!active) return;
+      const curPath = currentAppPath();
+      if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
+      if (append) {
+        setEntries((prev) => [...prev, ...audit]);
+      } else {
+        setEntries(audit);
+      }
       setDecisions(preds);
+      setHasMore(audit.length === PAGE_LIMIT);
       setError(null);
       setLastRefreshed(new Date());
     } catch (err: any) {
-      if (!active || currentAppPath() !== '/activity') return;
+      if (!active) return;
+      const curPath = currentAppPath();
+      if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
       setError(err.message || 'Failed to load activity feed');
     } finally {
-      if (active && currentAppPath() === '/activity') {
-        if (!silent) setLoading(false);
-        setTimeout(() => {
-          if (active && currentAppPath() === '/activity') {
-            setRefreshSpin(false);
-          }
-        }, 500);
+      if (active) {
+        if (!silent && !append) setLoading(false);
+        setLoadingMore(false);
+        setTimeout(() => setRefreshSpin(false), 500);
       }
     }
-  }, [location.pathname]);
+  }, [buildFilter]);
 
   useEffect(() => {
-    if (currentAppPath() !== '/activity') return;
+    const path = currentAppPath();
+    const isActivityPath = path === '/activity' || path.startsWith('/activity') || path === '/system-audit';
+    if (!isActivityPath) return;
     let active = true;
-    loadActivity(false, active);
+    loadActivity({ silent: false, active });
     intervalRef.current = setInterval(() => {
-      if (active && currentAppPath() === '/activity') {
-        loadActivity(true, active);
+      const cur = currentAppPath();
+      const isCurActivity = cur === '/activity' || cur.startsWith('/activity') || cur === '/system-audit';
+      if (active && isCurActivity) {
+        loadActivity({ silent: true, active });
       }
     }, AUTO_REFRESH_INTERVAL_MS);
     return () => {
       active = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [loadActivity, location.pathname]);
+  }, [loadActivity, location.pathname, location.search]);
 
   useEffect(() => {
     if (!selectedEntry) return;
@@ -102,20 +205,24 @@ export function Activity() {
 
   const kindOptions: (ActivityKind | 'all')[] = ['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'];
 
+  const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action))).sort()];
+  const uniqueUsers = ['all', ...Array.from(new Set(entries.map((e) => e.username))).sort()];
+
   const filteredEntries = entries.filter((e) => {
     const kind = toActivityKind(e.action);
-    const matchesKind = kindFilter === 'all' || kind === kindFilter;
+    // Fleet view hides config when Kind==all
+    if (!isAuditView && kindFilter === 'all' && kind === 'config') return false;
     if (kindFilter === 'predictive') return false;
     const q = searchQuery.toLowerCase().trim();
-    const matchesSearch =
-      !q ||
+    if (!q) return true;
+    return (
       e.username.toLowerCase().includes(q) ||
       e.action.toLowerCase().includes(q) ||
       e.target.toLowerCase().includes(q) ||
       e.details.toLowerCase().includes(q) ||
       (e.source_ip || '').toLowerCase().includes(q) ||
-      kind.toLowerCase().includes(q);
-    return matchesKind && matchesSearch;
+      kind.toLowerCase().includes(q)
+    );
   });
 
   const filteredDecisions = decisions.filter((d) => {
@@ -129,12 +236,32 @@ export function Activity() {
     );
   });
 
-  const hasActiveFilters = searchQuery.trim() !== '' || kindFilter !== 'all';
+  const hasActiveFilters = searchQuery.trim() !== '' || kindFilter !== 'all' || actionFilter !== 'all' || userFilter !== 'all' || debouncedTarget.trim() !== '' || debouncedSourceIp.trim() !== '' || fromPicker !== '' || toPicker !== '' || preset !== 'all';
 
   const totalFetched = entries.length;
   const uniqueOperators = new Set(entries.map((e) => e.username)).size;
   const drainCount = entries.filter((e) => toActivityKind(e.action) === 'drain').length;
   const warmupCount = entries.filter((e) => toActivityKind(e.action) === 'warmup').length;
+
+  const handleLoadMore = () => {
+    if (entries.length === 0 || loadingMore) return;
+    const oldest = entries[entries.length - 1];
+    if (!oldest) return;
+    setLoadingMore(true);
+    loadActivity({ silent: true, append: true, before: oldest.time, active: true });
+  };
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setKindFilter('all');
+    setActionFilter('all');
+    setUserFilter('all');
+    setTargetInput('');
+    setSourceIpInput('');
+    setPreset('all');
+    setFromPicker('');
+    setToPicker('');
+  };
 
   return (
     <div className="space-y-6">
@@ -143,10 +270,12 @@ export function Activity() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <ActivityIcon className="w-6 h-6 text-primary" />
-            Activity
+            {isAuditView ? 'System Audit Trail' : 'Activity'}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Unified fleet operations timeline - drain, agent, runtime, node, and warmup events with what, when, and who.
+            {isAuditView
+              ? 'Compliance view of all administrative actions with enterprise filters.'
+              : 'Unified fleet operations timeline - drain, agent, runtime, node, and warmup events with what, when, and who.'}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -156,7 +285,7 @@ export function Activity() {
             </span>
           )}
           <button
-            onClick={() => loadActivity()}
+            onClick={() => loadActivity({})}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
           >
@@ -264,39 +393,131 @@ export function Activity() {
         )}
       </div>
 
-      {/* Filters Bar */}
-      <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
-        <div className="relative w-full md:max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search operators, targets, kinds or details..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-150 placeholder:text-muted-foreground/60"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 w-full md:w-80">
-          <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
-          <CustomSelect
-            value={kindFilter}
-            onChange={(v) => setKindFilter(v as ActivityKind | 'all')}
-            options={(['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'] as const).map((k) => ({
-              value: k,
-              label: k === 'all' ? 'All Kinds' : getActivityKindLabel(k as ActivityKind),
-            }))}
-          />
-          {hasActiveFilters && (
-            <button
-              onClick={() => { setSearchQuery(''); setKindFilter('all'); }}
-              title="Clear all filters"
-              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
+      {/* Enterprise Filter Bar */}
+      <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 shadow-sm space-y-4">
+        {/* Row 1: Date presets + from/to */}
+        <div className="flex flex-col lg:flex-row gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground mr-1">Range:</span>
+            {(['all', '1h', '24h', '7d', '30d', 'custom'] as DatePreset[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPreset(p)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${preset === p ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}
+              >
+                {p === 'all' ? 'All time' : p === '1h' ? 'Last 1h' : p === '24h' ? 'Last 24h' : p === '7d' ? 'Last 7d' : p === '30d' ? 'Last 30d' : 'Custom'}
+              </button>
+            ))}
+          </div>
+          {preset === 'custom' && (
+            <div className="flex flex-col sm:flex-row gap-2 flex-1">
+              <div className="flex-1 min-w-0">
+                <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">From</label>
+                <CustomDateTimePicker value={fromPicker} onChange={setFromPicker} placeholder="Start time" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">To</label>
+                <CustomDateTimePicker value={toPicker} onChange={setToPicker} placeholder="End time" />
+              </div>
+            </div>
           )}
         </div>
+
+        {/* Row 2: Kind, Action, Operator */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Kind</label>
+            <CustomSelect
+              value={kindFilter}
+              onChange={(v) => setKindFilter(v as ActivityKind | 'all')}
+              options={(['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'] as const).map((k) => ({
+                value: k,
+                label: k === 'all' ? 'All Kinds' : getActivityKindLabel(k as ActivityKind),
+              }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Action</label>
+            <CustomSelect
+              value={actionFilter}
+              onChange={setActionFilter}
+              options={uniqueActions.map((a) => ({
+                value: a,
+                label: a === 'all' ? 'All Actions' : getActionLabel(a),
+              }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Operator</label>
+            <CustomSelect
+              value={userFilter}
+              onChange={setUserFilter}
+              options={uniqueUsers.map((u) => ({
+                value: u,
+                label: u === 'all' ? 'All Operators' : u,
+              }))}
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Target, Source IP, Search */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Target contains</label>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="gpu-node-*, model name..."
+                value={targetInput}
+                onChange={(e) => setTargetInput(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+              />
+            </div>
+          </div>
+          {isAuditView ? (
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Source IP contains</label>
+              <div className="relative">
+                <Globe className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="192.168.1.5"
+                  value={sourceIpInput}
+                  onChange={(e) => setSourceIpInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60 font-mono"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="hidden md:block" />
+          )}
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Search details</label>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search details, payload..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+              />
+            </div>
+          </div>
+        </div>
+
+        {hasActiveFilters && (
+          <div className="flex items-center justify-between pt-2 border-t border-border/40">
+            <span className="text-xs text-muted-foreground">Server-filtered to {totalFetched} events, {filteredEntries.length} after local detail search</span>
+            <button
+              onClick={clearAllFilters}
+              className="px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-xs font-medium"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Timeline Table */}
@@ -317,7 +538,7 @@ export function Activity() {
             No activity records found matching your filters.
             {hasActiveFilters && (
               <button
-                onClick={() => { setSearchQuery(''); setKindFilter('all'); }}
+                onClick={clearAllFilters}
                 className="text-primary hover:underline text-xs mt-1"
               >
                 Clear filters
@@ -335,6 +556,7 @@ export function Activity() {
                   <th className="px-5 py-3.5">Action</th>
                   <th className="px-5 py-3.5">Target</th>
                   <th className="px-5 py-3.5">Who</th>
+                  {isAuditView && <th className="px-5 py-3.5">Source IP</th>}
                   <th className="px-5 py-3.5">Details</th>
                   <th className="px-5 py-3.5 text-right">View</th>
                 </tr>
@@ -372,6 +594,11 @@ export function Activity() {
                         {e.username}
                       </div>
                     </td>
+                    {isAuditView && (
+                      <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                        {e.source_ip || '-'}
+                      </td>
+                    )}
                     <td className="px-5 py-3.5 text-muted-foreground max-w-[320px] truncate" title={e.details}>
                       {e.details || '-'}
                     </td>
@@ -437,12 +664,30 @@ export function Activity() {
                 <div className="mt-2 font-mono text-xs text-foreground truncate" title={e.target}>
                   {e.target}
                 </div>
+                {isAuditView && e.source_ip && (
+                  <div className="mt-1 font-mono text-xs text-muted-foreground">IP: {e.source_ip}</div>
+                )}
                 <div className="mt-1 text-xs text-muted-foreground truncate" title={e.details}>
                   {e.details || '-'}
                 </div>
               </div>
               );
             })}
+          </div>
+        )}
+        {/* Pagination */}
+        {!loading && !error && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-secondary/20 text-xs text-muted-foreground">
+            <span>Showing {filteredEntries.length} of {totalFetched} server-filtered events</span>
+            {hasMore && (
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-xs font-medium disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading...' : 'Load more'}
+              </button>
+            )}
           </div>
         )}
       </div>
