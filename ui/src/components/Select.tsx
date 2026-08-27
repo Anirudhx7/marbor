@@ -228,6 +228,10 @@ export function CustomCombobox({
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRect = useMenuPosition(containerRef, isOpen);
+  // On coarse pointers (phones) the dropdown should open without pulling the
+  // keyboard - keyboard only when the user explicitly taps the text field to
+  // type a filter. Matches CustomSelect behaviour which never pulls keyboard.
+  const isCoarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent) {
@@ -299,10 +303,11 @@ export function CustomCombobox({
               } else {
                 setSearchTerm('');
                 setIsOpen(true);
-                inputRef.current?.focus();
+                if (!isCoarse) inputRef.current?.focus();
               }
             }}
-            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+            aria-label={isOpen ? 'Close options' : 'Open options'}
           >
             <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -383,6 +388,7 @@ export function CustomTagCombobox({
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRect = useMenuPosition(containerRef, isOpen);
+  const isCoarseTag = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent) {
@@ -412,7 +418,7 @@ export function CustomTagCombobox({
 
   const selectOption = (opt: string) => {
     onChange([...completedNames, opt].join(', ') + ', ');
-    inputRef.current?.focus();
+    if (!isCoarseTag) inputRef.current?.focus();
   };
 
   return (
@@ -452,10 +458,11 @@ export function CustomTagCombobox({
                 setIsOpen(false);
               } else {
                 setIsOpen(true);
-                inputRef.current?.focus();
+                if (!isCoarseTag) inputRef.current?.focus();
               }
             }}
-            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+            aria-label={isOpen ? 'Close options' : 'Open options'}
           >
             <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </button>
