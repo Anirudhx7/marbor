@@ -167,6 +167,7 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 	}
 
 	log.Printf("marbor-agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
+	log.Printf("WARNING: marbor-agent is serving plaintext HTTP (no --cert/--key configured) - the bearer token, which unlocks destructive actions, will traverse the network unencrypted. Run \"agent service install\" to provision TLS automatically.")
 	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		winexit.Fatalf("marboragent: %v", err)
 	}
