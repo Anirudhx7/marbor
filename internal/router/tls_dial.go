@@ -109,7 +109,19 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 func (r *Router) dialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("router: dialTLSContext: split %q: %w", addr, err)
+		// A stock http.Transport normalizes a port-less https address to
+		// host:443 before ever reaching a custom DialTLSContext; this one
+		// didn't, so a node configured as "https://gpu.example.com" (no
+		// port) failed every health check with a confusing split error
+		// instead of the port-443 default a plain https:// URL implies.
+		// Retry once against the normalized form before actually failing -
+		// the pinned-lookup/dial logic below is unchanged either way, so
+		// this doesn't weaken the fail-closed-on-ambiguous pinning check.
+		host, portStr, err = net.SplitHostPort(addr + ":443")
+		if err != nil {
+			return nil, fmt.Errorf("router: dialTLSContext: split %q: %w", addr, err)
+		}
+		addr = net.JoinHostPort(host, portStr)
 	}
 
 	fingerprint, matched, ambiguous := r.pinnedFingerprintFor(host, portStr)
