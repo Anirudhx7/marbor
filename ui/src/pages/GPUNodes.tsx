@@ -1181,7 +1181,7 @@ export function GPUNodes() {
     }
   }, [demoMode, location.pathname]);
 
-  // Highlight nodes passed via ?highlight= from Models page - window.scrollTo with header offset, no layout shift
+  // Highlight nodes passed via ?highlight= from Models page - custom 900ms ease-out for lower sections, no instant jump
   useEffect(() => {
     const param = searchParams.get('highlight');
     if (!param) {
@@ -1193,13 +1193,25 @@ export function GPUNodes() {
     if (set.size > 0) {
       const first = Array.from(set)[0] as string;
       const t1 = setTimeout(() => {
-        requestAnimationFrame(() => {
-          const el = document.getElementById(`node-card-${first}`);
-          if (!el) return;
-          const headerOffset = 96; // matches scroll-mt-28 + top bar
-          const top = el.getBoundingClientRect().top + window.scrollY - headerOffset;
-          window.scrollTo({ top, behavior: 'smooth' });
-        });
+        const el = document.getElementById(`node-card-${first}`);
+        if (!el) return;
+        const headerOffset = 96;
+        const targetY = el.getBoundingClientRect().top + window.scrollY - headerOffset;
+        const startY = window.scrollY;
+        const diff = targetY - startY;
+        if (Math.abs(diff) < 8) return;
+        const duration = 900;
+        const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+        let startTime: number | null = null;
+        const step = (now: number) => {
+          if (startTime === null) startTime = now;
+          const elapsed = now - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = easeOutCubic(progress);
+          window.scrollTo(0, startY + diff * eased);
+          if (progress < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
       }, 220);
       const t2 = setTimeout(() => setHighlightedNodes(new Set()), 2000);
       return () => {
