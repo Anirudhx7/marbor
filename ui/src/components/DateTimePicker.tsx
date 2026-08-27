@@ -96,14 +96,18 @@ export function CustomDateTimePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -113,7 +117,11 @@ export function CustomDateTimePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
+    };
   }, []);
 
   const months = [
@@ -510,14 +518,18 @@ export function CustomDatePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -527,7 +539,11 @@ export function CustomDatePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
+    };
   }, []);
 
   const months = [
@@ -817,14 +833,18 @@ export function CustomTimePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -834,7 +854,11 @@ export function CustomTimePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
+    };
   }, []);
 
   const handleHourChange = (h: number) => {

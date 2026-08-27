@@ -50,9 +50,14 @@ function useMenuPosition(containerRef: React.RefObject<HTMLDivElement | null>, i
     update();
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
+    // Mobile keyboard changes visualViewport height without firing window resize on some browsers
+    window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
     return () => {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
     };
   }, [isOpen, containerRef]);
 
@@ -121,7 +126,7 @@ export function CustomSelect({
   const menuRect = useMenuPosition(containerRef, isOpen);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -131,7 +136,11 @@ export function CustomSelect({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const selectedOption = options.find((o) => o.value === value);
@@ -155,8 +164,8 @@ export function CustomSelect({
       {isOpen && menuRect && createPortal(
         <div
           ref={menuRef}
-          style={menuFixedStyle(menuRect)}
-          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
+          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {options.length === 0 ? (
@@ -172,7 +181,13 @@ export function CustomSelect({
                       onChange(o.value);
                       setIsOpen(false);
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary ${
+                    // Touch devices need touchEnd to avoid 300ms delay / ghost mousedown closing before click fires
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      onChange(o.value);
+                      setIsOpen(false);
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary min-h-[40px] sm:min-h-0 ${
                       isSelected ? 'bg-primary/5 text-primary font-medium' : 'text-foreground hover:bg-secondary/40'
                     }`}
                   >
@@ -215,7 +230,7 @@ export function CustomCombobox({
   const menuRect = useMenuPosition(containerRef, isOpen);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -225,7 +240,11 @@ export function CustomCombobox({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const filteredOptions = options.filter((opt) =>
@@ -293,8 +312,8 @@ export function CustomCombobox({
       {isOpen && menuRect && createPortal(
         <div
           ref={menuRef}
-          style={menuFixedStyle(menuRect)}
-          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
+          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {displayOptions.length === 0 ? (
@@ -310,7 +329,12 @@ export function CustomCombobox({
                       onChange(opt);
                       setIsOpen(false);
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary ${
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      onChange(opt);
+                      setIsOpen(false);
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary min-h-[40px] sm:min-h-0 ${
                       isSelected ? 'bg-primary/5 text-primary font-medium' : 'text-foreground hover:bg-secondary/40'
                     }`}
                   >
@@ -361,7 +385,7 @@ export function CustomTagCombobox({
   const menuRect = useMenuPosition(containerRef, isOpen);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -371,7 +395,11 @@ export function CustomTagCombobox({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const segments = value.split(',');
@@ -437,8 +465,8 @@ export function CustomTagCombobox({
       {isOpen && menuRect && createPortal(
         <div
           ref={menuRef}
-          style={menuFixedStyle(menuRect)}
-          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
+          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {filteredOptions.length === 0 ? (
@@ -451,7 +479,11 @@ export function CustomTagCombobox({
                   key={opt}
                   type="button"
                   onClick={() => selectOption(opt)}
-                  className="flex items-center w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-primary/10 hover:text-primary hover:bg-secondary/40"
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    selectOption(opt);
+                  }}
+                  className="flex items-center w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-primary/10 hover:text-primary hover:bg-secondary/40 min-h-[40px] sm:min-h-0"
                 >
                   <span className="truncate">{opt}</span>
                 </button>
