@@ -336,7 +336,11 @@ export function Dashboard() {
         ]);
         if (!active || currentAppPath() !== '/') return;
         setNodes(nodesData || []);
-        setSummary(summaryData || summary);
+        // Functional form, not a closure over `summary` from the effect's
+        // initial render - the plain closure fell back to the mount-time
+        // all-zero object on any single falsy/empty payload during the 10s
+        // poll, overwriting good data instead of preserving the latest.
+        setSummary(prev => summaryData ?? prev);
         setIsLive(true);
         setError(null);
       } catch (err: any) {
