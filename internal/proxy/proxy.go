@@ -450,6 +450,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.router.IncrConn(node)
 	h.router.IncrModelInFlight(node, modelName)
 	h.router.RecordModelUse(node.Name, modelName) // LRU signal for model eviction
+	// initialNode/initialModel let the post-retry-loop code below (P256)
+	// detect whether the request ended up served by a different node/model
+	// than this initial selection (failover retry, or a local-degradation
+	// substitution), so it can refresh the LRU/warmth signal for whichever
+	// node/model actually served the request instead of only the one
+	// initially picked.
+	initialNode, initialModel := node.Name, modelName
 
 	// Advanced model configuration overrides (item #20): apply the operator's
 	// configured default profile for this (model, node) pair, if one exists.
@@ -650,6 +657,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.router.RecordRequestOutcome(node.Name, success)
 		}
 		break
+	}
+
+	// P256: RecordModelUse was only called once, before the retry loop,
+	// against the initially selected node/model - on failover or local-
+	// degradation substitution to a different node/model, no follow-up call
+	// updated LRU/warmth state for the node that actually served the
+	// request. Refresh it now if the final node/model differs.
+	if node.Name != initialNode || modelName != initialModel {
+		h.router.RecordModelUse(node.Name, modelName)
 	}
 
 	// P41: annotate the routing explanation with retry context the router
