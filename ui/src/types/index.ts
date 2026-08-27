@@ -455,10 +455,10 @@ export interface CloudProviderInput {
 export interface RequestEntry {
   id: string;
   time: string;
-  key_name: string;
+  key_name: string | null;
   source_ip?: string;
   model: string;
-  node: string;
+  node: string | null;
   status: number;
   latency_ms: number;
   cloud: boolean;

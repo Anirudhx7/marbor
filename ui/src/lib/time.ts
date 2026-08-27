@@ -7,6 +7,7 @@
 export function formatRelativeTime(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime();
   const diffSecs = Math.floor(diffMs / 1000);
+  if (diffSecs < 0) return 'just now';
   if (diffSecs < 60) return `${diffSecs}s ago`;
   const diffMins = Math.floor(diffSecs / 60);
   if (diffMins < 60) return `${diffMins}m ago`;

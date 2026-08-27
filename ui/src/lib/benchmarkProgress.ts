@@ -6,7 +6,7 @@
 // so the SSE subscription survives whatever re-renders the page does while
 // the job is running.
 
-import { runBenchmark, cancelBenchmarkJob } from './api';
+import { runBenchmark, cancelBenchmarkJob, fetchBenchmarkRuns } from './api';
 import type { BenchmarkRun } from '../types';
 
 const BASE = '/admin';
@@ -179,6 +179,11 @@ function subscribeToProgress(jobId: string): void {
     if (es.readyState === EventSource.CONNECTING) return; // native auto-retry in progress
     closeStream();
     if (state.phase !== 'done' && state.phase !== 'error' && state.phase !== 'cancelled') {
+      // The raw EventSource never runs through apiFetch, so a 401 (session
+      // expired) mid-stream just looks like a generic connection loss here.
+      // Fire one lightweight authenticated GET so apiFetch's own 401 handling
+      // (clearSession + reload) fires when that's the actual cause (P360).
+      fetchBenchmarkRuns().catch(() => {});
       setState({ phase: 'error', error: 'Lost connection to the progress stream.' });
     }
   };

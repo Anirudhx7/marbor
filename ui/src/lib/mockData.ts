@@ -705,8 +705,10 @@ const _hourlyLocal = [51, 43, 38, 42, 56, 74, 119, 194, 300, 420, 481, 458, 385,
 const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,   2,   6,  10,  16,  19,  17,  12,   8,  11,  18,  21,  13,   8,   6,   4,   2,   4,  2];
 
 export const mockAnalytics: Analytics = {
-  local_requests: 5465,
-  cloud_requests: 186,
+  // Derived from the hourly arrays below (not hand-maintained) so the
+  // headline totals can never drift out of sync with what they sum to (P361).
+  local_requests: _hourlyLocal.reduce((a, b) => a + b, 0),
+  cloud_requests: _hourlyCloud.reduce((a, b) => a + b, 0),
   total_saved_usd: 58.95,
   total_spent_usd: 1.86,
   hourly: Array.from({ length: 24 }, (_, i) => ({

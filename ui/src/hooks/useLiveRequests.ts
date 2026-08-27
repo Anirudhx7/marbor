@@ -59,6 +59,19 @@ export function useLiveRequests(maxRequests: number = 20) {
   // faster, newer one and overwriting fresher data - `active` alone only
   // covers unmount, not overlapping ticks within the same 2s interval.
   const generationRef = useRef(0);
+  const prevDemoModeRef = useRef(demoMode);
+
+  // Clear once on the demo-mode rising edge so the poll catch branch below
+  // never layers a generated fake row onto real rows still sitting in state
+  // from before demo mode was turned on (P355) - without this, toggling
+  // demo mode on mid-session (or a transient network error while demo mode
+  // is already on) mixes real and fabricated requests in the same list.
+  useEffect(() => {
+    if (demoMode && !prevDemoModeRef.current) {
+      setRequests([]);
+    }
+    prevDemoModeRef.current = demoMode;
+  }, [demoMode]);
 
   const poll = useCallback(async (active: boolean) => {
     if (currentAppPath() !== '/') return;

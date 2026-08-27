@@ -174,7 +174,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export async function listUsers(): Promise<UserRecord[]> {
   if (DEMO) return demoDelay(demoUserStore().map(u => ({ ...u })));
   const res = await apiFetch(`${BASE}/v1/users`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch users');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch users');
   return res.json();
 }
 
@@ -194,10 +194,7 @@ export async function createUser(data: { username: string; email?: string; role?
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    throw new Error((j as any).error || 'Failed to create user');
-  }
+  if (!res.ok) await throwApiError(res, 'Failed to create user');
   return res.json();
 }
 
@@ -223,10 +220,7 @@ export async function approveUser(id: number, data: {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    throw new Error((j as any).error || 'Failed to approve user');
-  }
+  if (!res.ok) await throwApiError(res, 'Failed to approve user');
   return res.json();
 }
 
@@ -241,7 +235,7 @@ export async function suspendUser(id: number): Promise<void> {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to suspend user');
+  if (!res.ok) await throwApiError(res, 'Failed to suspend user');
 }
 
 export async function deleteUser(id: number): Promise<void> {
@@ -254,7 +248,7 @@ export async function deleteUser(id: number): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to delete user');
+  if (!res.ok) await throwApiError(res, 'Failed to delete user');
 }
 
 export async function resetUserPassword(id: number): Promise<{ initial_password: string }> {
@@ -267,17 +261,14 @@ export async function resetUserPassword(id: number): Promise<{ initial_password:
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    throw new Error((j as any).error || 'Failed to reset password');
-  }
+  if (!res.ok) await throwApiError(res, 'Failed to reset password');
   return res.json();
 }
 
 export async function getPendingUserCount(): Promise<number> {
   if (DEMO) return demoUserStore().filter(u => u.status === 'pending').length;
   const res = await apiFetch(`${BASE}/v1/users/pending-count`, { headers: authHeaders() });
-  if (!res.ok) return 0;
+  if (!res.ok) await throwApiError(res, 'Failed to fetch pending user count');
   const d = await res.json();
   return (d as any).count ?? 0;
 }
@@ -322,7 +313,7 @@ function demoScheduleStore(): Schedule[] {
 export async function getNodeWarmup(name: string): Promise<NodeWarmup> {
   if (DEMO) return demoDelay(demoWarmupStore()[name] ?? { enabled: false, models: [] });
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/warmup`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch warmup');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch warmup');
   return res.json();
 }
 
@@ -331,14 +322,14 @@ export async function setNodeWarmup(name: string, nw: NodeWarmup): Promise<NodeW
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/warmup`, {
     method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(nw),
   });
-  if (!res.ok) throw new Error('Failed to save warmup');
+  if (!res.ok) await throwApiError(res, 'Failed to save warmup');
   return res.json();
 }
 
 export async function getPinned(nodeName: string): Promise<string[]> {
   if (DEMO) return demoDelay(['qwen2.5']);
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(nodeName)}/pinned`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch pinned models');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch pinned models');
   const j = await res.json();
   return j.models ?? [];
 }
@@ -350,7 +341,7 @@ export async function setPinned(nodeName: string, models: string[]): Promise<voi
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ models }),
   });
-  if (!res.ok) throw new Error('Failed to set pinned models');
+  if (!res.ok) await throwApiError(res, 'Failed to set pinned models');
 }
 
 // unloadModel evicts a single model from a node's VRAM immediately (keep_alive:0).
@@ -361,13 +352,13 @@ export async function unloadModel(nodeName: string, model: string): Promise<void
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ model }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to unload model'); }
+  if (!res.ok) await throwApiError(res, 'Failed to unload model');
 }
 
 export async function listSchedules(): Promise<Schedule[]> {
   if (DEMO) return demoDelay(demoScheduleStore().map(s => ({ ...s })));
   const res = await apiFetch(`${BASE}/schedules`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch schedules');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch schedules');
   return res.json();
 }
 
@@ -376,14 +367,14 @@ export async function createSchedule(s: Omit<Schedule, 'id'>): Promise<Schedule>
   const res = await apiFetch(`${BASE}/schedules`, {
     method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(s),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to create schedule'); }
+  if (!res.ok) await throwApiError(res, 'Failed to create schedule');
   return res.json();
 }
 
 export async function deleteSchedule(id: string): Promise<void> {
   if (DEMO) { demoSchedules = demoScheduleStore().filter(s => s.id !== id); return; }
   const res = await apiFetch(`${BASE}/schedules/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to delete schedule');
+  if (!res.ok) await throwApiError(res, 'Failed to delete schedule');
 }
 
 export async function updateSchedule(id: string, patch: Partial<Omit<Schedule, 'id'>>): Promise<Schedule> {
@@ -397,7 +388,7 @@ export async function updateSchedule(id: string, patch: Partial<Omit<Schedule, '
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to update schedule'); }
+  if (!res.ok) await throwApiError(res, 'Failed to update schedule');
   return res.json();
 }
 
@@ -410,7 +401,7 @@ function authHeaders(): Record<string, string> {
 
 let isRedirectingToLogin = false;
 
-async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, { ...init, credentials: 'include' });
   if (res.status === 401) {
     clearSession();
@@ -422,6 +413,15 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   return res;
 }
 
+// throwApiError is the single shared failure-path helper for every apiFetch
+// call site: it surfaces the server's own error message when the response
+// body has one, falling back to a generic per-call message when it doesn't
+// (network-level failure, non-JSON body, or a body with no `error` field).
+async function throwApiError(res: Response, fallback: string): Promise<never> {
+  const body = await res.json().catch(() => ({}));
+  throw new Error((body as any)?.error || fallback);
+}
+
 export async function fetchNodes(): Promise<GPUNode[]> {
   if (DEMO) return demoDelay([
     { id: 'gpu-node-01', name: 'gpu-node-01', host: '10.0.0.11', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 14336, vramSource: 'nvidia', powerDrawW: 280, cpuPercent: 18, temperature: 52, health: 'healthy',  runtime: 'ollama', draining: false, activeConns: 2, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: '12d 6h', loadedModels: [{ name: 'deepseek-r1:8b', sizeVram: 8192 }, { name: 'qwen2.5:7b', sizeVram: 6144 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
@@ -430,25 +430,25 @@ export async function fetchNodes(): Promise<GPUNode[]> {
     { id: 'gpu-node-04', name: 'gpu-node-04', host: '10.0.0.14', gpuModel: 'NVIDIA RTX 3090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 0,   cpuPercent: 0,  temperature: null, health: 'down', runtime: 'ollama', draining: false, activeConns: 0, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: 'N/A',    loadedModels: [],                                                                                                    healthHistory: [1,1,0,0,0,1,0,0,0,0] },
   ]);
   const res = await apiFetch(`${BASE}/nodes`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch nodes');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch nodes');
   return res.json();
 }
 
 export async function fetchKeys(): Promise<APIKey[]> {
   const res = await apiFetch(`${BASE}/keys`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch keys');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch keys');
   return res.json();
 }
 
 export async function fetchLiveRequests(): Promise<LiveRequest[]> {
   const res = await apiFetch(`${BASE}/requests/live`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch requests');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch requests');
   return res.json();
 }
 
 export async function fetchSummary() {
   const res = await apiFetch(`${BASE}/metrics/summary`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch summary');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch summary');
   const d = await res.json();
   return {
     activeRequests: d.active_requests ?? 0,
@@ -469,7 +469,7 @@ export async function createKey(data: { name: string; rate_limit: number; models
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to create key');
+  if (!res.ok) await throwApiError(res, 'Failed to create key');
   return res.json();
 }
 
@@ -478,7 +478,7 @@ export async function revokeKey(name: string) {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to revoke key');
+  if (!res.ok) await throwApiError(res, 'Failed to revoke key');
 }
 
 export async function addNode(data: Record<string, unknown>) {
@@ -487,7 +487,7 @@ export async function addNode(data: Record<string, unknown>) {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to add node'); }
+  if (!res.ok) await throwApiError(res, 'Failed to add node');
 }
 
 export async function removeNode(name: string) {
@@ -495,7 +495,7 @@ export async function removeNode(name: string) {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to remove node');
+  if (!res.ok) await throwApiError(res, 'Failed to remove node');
 }
 
 export async function drainNode(name: string) {
@@ -503,7 +503,7 @@ export async function drainNode(name: string) {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to drain node');
+  if (!res.ok) await throwApiError(res, 'Failed to drain node');
 }
 
 export async function undrainNode(name: string) {
@@ -511,7 +511,7 @@ export async function undrainNode(name: string) {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to undrain node');
+  if (!res.ok) await throwApiError(res, 'Failed to undrain node');
 }
 
 export async function setNodePrewarm(name: string, disabled: boolean) {
@@ -520,7 +520,7 @@ export async function setNodePrewarm(name: string, disabled: boolean) {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ disabled }),
   });
-  if (!res.ok) throw new Error('Failed to toggle node prewarm');
+  if (!res.ok) await throwApiError(res, 'Failed to toggle node prewarm');
 }
 
 export async function patchNode(name: string, data: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string | null }) {
@@ -529,7 +529,7 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to patch node'); }
+  if (!res.ok) await throwApiError(res, 'Failed to patch node');
   return res.json() as Promise<import('../types').GPUNode>;
 }
 
@@ -539,19 +539,19 @@ export async function patchKey(name: string, data: { rate_limit?: number; daily_
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to patch key');
+  if (!res.ok) await throwApiError(res, 'Failed to patch key');
   return res.json();
 }
 
 export async function getSpillCounters(): Promise<SpillCounterRow[]> {
   const res = await apiFetch(`${BASE}/spill`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch spill counters');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch spill counters');
   return res.json();
 }
 
 export async function fetchRoutingRules() {
   const res = await apiFetch(`${BASE}/routing/rules`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch routing rules');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch routing rules');
   return res.json();
 }
 
@@ -561,7 +561,7 @@ export async function addRoutingRule(rule: { id: string; priority: number; condi
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(rule),
   });
-  if (!res.ok) throw new Error('Failed to add routing rule');
+  if (!res.ok) await throwApiError(res, 'Failed to add routing rule');
 }
 
 export async function removeRoutingRule(id: string) {
@@ -569,7 +569,7 @@ export async function removeRoutingRule(id: string) {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to remove routing rule');
+  if (!res.ok) await throwApiError(res, 'Failed to remove routing rule');
 }
 
 export async function toggleRoutingRule(id: string) {
@@ -577,7 +577,7 @@ export async function toggleRoutingRule(id: string) {
     method: 'PUT',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to toggle routing rule');
+  if (!res.ok) await throwApiError(res, 'Failed to toggle routing rule');
 }
 
 export async function setRoutingStrategy(strategy: string) {
@@ -586,12 +586,12 @@ export async function setRoutingStrategy(strategy: string) {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ strategy }),
   });
-  if (!res.ok) throw new Error('Failed to set routing strategy');
+  if (!res.ok) await throwApiError(res, 'Failed to set routing strategy');
 }
 
 export async function fetchRoutingStrategy(): Promise<string> {
   const res = await apiFetch(`${BASE}/routing/strategy`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch routing strategy');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch routing strategy');
   const data = await res.json();
   return data.strategy ?? 'warm-first';
 }
@@ -618,14 +618,14 @@ export async function fetchSettings() {
     };
   }
   const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch settings');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch settings');
   return res.json();
 }
 
 export async function fetchSavings(): Promise<Savings> {
   if (DEMO) return demoDelay(mockSavings);
   const res = await apiFetch(`${BASE}/metrics/savings`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch savings');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch savings');
   return res.json();
 }
 
@@ -642,7 +642,7 @@ function demoProviderStore(): CloudProvider[] {
 export async function fetchCloudProviders(): Promise<CloudProvider[]> {
   if (DEMO) return demoDelay(demoProviderStore().map(p => ({ ...p })));
   const res = await apiFetch(`${BASE}/cloud/providers`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch cloud providers');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch cloud providers');
   return res.json();
 }
 
@@ -656,7 +656,7 @@ export async function addCloudProvider(data: CloudProviderInput): Promise<void> 
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to add cloud provider'); }
+  if (!res.ok) await throwApiError(res, 'Failed to add cloud provider');
 }
 
 export async function updateCloudProvider(name: string, data: CloudProviderInput): Promise<void> {
@@ -671,7 +671,7 @@ export async function updateCloudProvider(name: string, data: CloudProviderInput
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to update cloud provider'); }
+  if (!res.ok) await throwApiError(res, 'Failed to update cloud provider');
 }
 
 export async function testCloudProvider(provider: string, base_url: string, api_key: string): Promise<void> {
@@ -681,7 +681,7 @@ export async function testCloudProvider(provider: string, base_url: string, api_
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider, base_url, api_key }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Could not verify API key'); }
+  if (!res.ok) await throwApiError(res, 'Could not verify API key');
 }
 
 export async function deleteCloudProvider(name: string): Promise<void> {
@@ -695,7 +695,7 @@ export async function deleteCloudProvider(name: string): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to delete cloud provider');
+  if (!res.ok) await throwApiError(res, 'Failed to delete cloud provider');
 }
 
 export async function reorderCloudProviders(order: string[]): Promise<void> {
@@ -712,7 +712,7 @@ export async function reorderCloudProviders(order: string[]): Promise<void> {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ order }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to reorder cloud providers'); }
+  if (!res.ok) await throwApiError(res, 'Failed to reorder cloud providers');
 }
 
 // reloadFromStore re-syncs live nodes/API keys/cloud providers from the
@@ -724,19 +724,19 @@ export async function reloadFromStore(): Promise<{ reloaded: boolean; auth_keys:
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Reload failed');
+  if (!res.ok) await throwApiError(res, 'Reload failed');
   return res.json();
 }
 
 export async function fetchModels(): Promise<ModelCatalog> {
   const res = await apiFetch(`${BASE}/models`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch models');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch models');
   return res.json();
 }
 
 export async function fetchRequests(): Promise<RequestEntry[]> {
   const res = await apiFetch(`${BASE}/requests`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch requests');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch requests');
   return res.json();
 }
 
@@ -779,7 +779,7 @@ export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<Requ
   params.set('limit', String(filters.limit ?? 50));
 
   const res = await apiFetch(`${BASE}/audit?${params.toString()}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch audit log');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch audit log');
   const data = await res.json();
   const entries: AuditLogEntry[] = data.entries ?? [];
   return entries.map((e) => ({
@@ -815,12 +815,12 @@ export async function updateSettings(data: Record<string, unknown>) {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to update settings');
+  if (!res.ok) await throwApiError(res, 'Failed to update settings');
 }
 
 export async function fetchAnalytics(): Promise<Analytics> {
   const res = await apiFetch(`${BASE}/analytics`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch analytics');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch analytics');
   return res.json();
 }
 
@@ -835,7 +835,7 @@ export function analyticsExportUrl(type: 'hourly' | 'models'): string {
 export async function triggerBackupNow(): Promise<void> {
   if (DEMO) throw new Error('Backup download is not available in demo mode.');
   const res = await apiFetch(`${BASE}/backup`, { method: 'POST', headers: authHeaders() });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Backup failed'); }
+  if (!res.ok) await throwApiError(res, 'Backup failed');
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition') || '';
   const match = /filename="?([^"]+)"?/.exec(disposition);
@@ -863,7 +863,7 @@ export async function fetchBackupList(): Promise<BackupFileInfo[]> {
     ]);
   }
   const res = await apiFetch(`${BASE}/backup/list`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to list backups');
+  if (!res.ok) await throwApiError(res, 'Failed to list backups');
   const data = await res.json();
   return data.backups ?? [];
 }
@@ -882,7 +882,7 @@ export async function restoreBackup(filename: string): Promise<void> {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ filename }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Restore failed'); }
+  if (!res.ok) await throwApiError(res, 'Restore failed');
 }
 
 // uploadBackup sends an arbitrary local .db file (picked via a plain
@@ -904,7 +904,7 @@ export async function uploadBackup(file: File): Promise<{ filename: string; dupl
     headers: authHeaders(),
     body: form,
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Upload failed'); }
+  if (!res.ok) await throwApiError(res, 'Upload failed');
   const data = await res.json();
   return { filename: data.filename, duplicate: !!data.duplicate };
 }
@@ -938,7 +938,7 @@ export function normalizePullTag(model: string): string {
 export async function fetchModelConfig(model: string, node: string): Promise<ModelConfig | null> {
   const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}&node=${encodeURIComponent(node)}`, { headers: authHeaders() });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Failed to fetch model config: ${res.statusText}`);
+  if (!res.ok) await throwApiError(res, `Failed to fetch model config: ${res.statusText}`);
   return res.json();
 }
 
@@ -950,10 +950,7 @@ export async function saveModelConfig(cfg: ModelConfig): Promise<ModelConfig> {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Failed to save model config: ${res.statusText}`);
-  }
+  if (!res.ok) await throwApiError(res, `Failed to save model config: ${res.statusText}`);
   return res.json();
 }
 
@@ -963,12 +960,12 @@ export async function deleteModelConfig(model: string, node: string): Promise<vo
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error(`Failed to reset model config: ${res.statusText}`);
+  if (!res.ok) await throwApiError(res, `Failed to reset model config: ${res.statusText}`);
 }
 
 export async function fetchAllModelConfigs(): Promise<ModelConfig[]> {
   const res = await apiFetch(`${BASE}/model-configs`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch model configs');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch model configs');
   const data = await res.json();
   return data.configs ?? [];
 }
@@ -981,19 +978,19 @@ export async function fetchAllModelConfigs(): Promise<ModelConfig[]> {
 // drifted out of sync with the backend before this endpoint existed.
 export async function fetchModelConfigCapabilities(): Promise<Record<string, string[]>> {
   const res = await apiFetch(`${BASE}/model-config/capabilities`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch model config capabilities');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch model config capabilities');
   return res.json();
 }
 
 export async function fetchModelFit(): Promise<ModelFitResponse> {
   const res = await apiFetch(`${BASE}/nodes/model-fit`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch model fit data');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch model fit data');
   return res.json();
 }
 
 export async function fetchModelCatalog(): Promise<ModelCatalogResponse> {
   const res = await apiFetch(`${BASE}/v1/models/catalog`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch model catalog');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch model catalog');
   return res.json();
 }
 
@@ -1007,7 +1004,7 @@ export async function fetchPredictiveDecisions(): Promise<PredictiveDecision[]> 
     ]);
   }
   const res = await apiFetch(`${BASE}/predictive/decisions`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch predictive decisions');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch predictive decisions');
   const j = await res.json();
   return j.decisions ?? [];
 }
@@ -1023,13 +1020,13 @@ export async function fetchCloudBudgetStatus(): Promise<CloudBudgetStatus> {
     });
   }
   const res = await apiFetch(`${BASE}/cloud-budget-status`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch cloud budget status');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch cloud budget status');
   return res.json();
 }
 
 export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {
   const res = await fetch('/health');
-  if (!res.ok) throw new Error('health check failed');
+  if (!res.ok) await throwApiError(res, 'health check failed');
   return res.json();
 }
 
@@ -1073,7 +1070,7 @@ export async function fetchSystemInfo(): Promise<SystemInfo> {
     });
   }
   const res = await apiFetch(`${BASE}/system-info`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch system info');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch system info');
   return res.json();
 }
 
@@ -1158,7 +1155,7 @@ export async function searchHFModels(query: string, filters?: HFSearchFilters): 
   if (filters?.createdBefore) params.set('created_before', filters.createdBefore);
   const url = `${BASE}/v1/models/search?${params.toString()}`;
   const res = await apiFetch(url, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to search Hugging Face models');
+  if (!res.ok) await throwApiError(res, 'Failed to search Hugging Face models');
   return res.json();
 }
 
@@ -1168,13 +1165,13 @@ export async function getHFRepoDetails(repoId: string, nodeName?: string, ctxLen
   if (ctxLen) url += `&ctx=${ctxLen}`;
   if (runtime) url += `&runtime=${encodeURIComponent(runtime)}`;
   const res = await apiFetch(url, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch Hugging Face repository details');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch Hugging Face repository details');
   return res.json();
 }
 
 export async function fetchFavorites(): Promise<string[]> {
   const res = await apiFetch(`${BASE}/favorites`, { headers: authHeaders() });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to fetch favourites'); }
+  if (!res.ok) await throwApiError(res, 'Failed to fetch favourites');
   const data = await res.json();
   return data.model_ids || [];
 }
@@ -1185,7 +1182,7 @@ export async function addFavorite(modelId: string): Promise<void> {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ model_id: modelId }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to add favourite'); }
+  if (!res.ok) await throwApiError(res, 'Failed to add favourite');
 }
 
 export async function removeFavorite(modelId: string): Promise<void> {
@@ -1194,7 +1191,7 @@ export async function removeFavorite(modelId: string): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to remove favourite'); }
+  if (!res.ok) await throwApiError(res, 'Failed to remove favourite');
 }
 
 export async function fetchSystemAudit(limit: number = 100): Promise<SystemAuditEntry[]> {
@@ -1222,7 +1219,7 @@ export async function fetchSystemAudit(limit: number = 100): Promise<SystemAudit
     return all.slice(0, limit);
   }
   const res = await apiFetch(`${BASE}/system-audit?limit=${limit}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch system audit logs');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch system audit logs');
   return res.json();
 }
 
@@ -1237,14 +1234,14 @@ export async function fetchWarmupStatus(): Promise<{ enabled: boolean; interval_
     };
   }
   const res = await apiFetch(`${BASE}/warmup`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch warmup status');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch warmup status');
   return res.json();
 }
 
 export async function triggerWarmupPing(): Promise<{ status: string }> {
   if (DEMO) return demoDelay({ status: 'triggered' });
   const res = await apiFetch(`${BASE}/warmup/ping`, { method: 'POST', headers: authHeaders() });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to trigger warmup'); }
+  if (!res.ok) await throwApiError(res, 'Failed to trigger warmup');
   return res.json();
 }
 
@@ -1275,7 +1272,7 @@ export interface MarborAgentEnableResult {
 
 export async function getMarborAgent(name: string): Promise<MarborAgentStatus> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/agent`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch marbor agent status');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch marbor agent status');
   return res.json();
 }
 
@@ -1285,7 +1282,7 @@ export async function enableMarborAgent(name: string, port: number, scheme: 'htt
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ port, scheme }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to enable marbor agent'); }
+  if (!res.ok) await throwApiError(res, 'Failed to enable marbor agent');
   return res.json();
 }
 
@@ -1294,7 +1291,7 @@ export async function regenerateMarborAgentToken(name: string): Promise<MarborAg
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to regenerate marbor agent token'); }
+  if (!res.ok) await throwApiError(res, 'Failed to regenerate marbor agent token');
   return res.json();
 }
 
@@ -1303,7 +1300,7 @@ export async function disableMarborAgent(name: string): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to disable marbor agent'); }
+  if (!res.ok) await throwApiError(res, 'Failed to disable marbor agent');
 }
 
 // ControlDriver (P43) - how the marbor agent starts/stops/restarts the
@@ -1326,7 +1323,7 @@ export interface NodeControlStatus {
 
 export async function getNodeControl(name: string): Promise<NodeControlStatus> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/control`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch node control status');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch node control status');
   return res.json();
 }
 
@@ -1336,7 +1333,7 @@ export async function acceptNodeControl(name: string, driver: string, identifier
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ driver, identifier, ...(startCommand ? { start_command: startCommand } : {}) }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to accept control driver'); }
+  if (!res.ok) await throwApiError(res, 'Failed to accept control driver');
 }
 
 export async function clearNodeControl(name: string): Promise<void> {
@@ -1344,7 +1341,7 @@ export async function clearNodeControl(name: string): Promise<void> {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to clear control driver'); }
+  if (!res.ok) await throwApiError(res, 'Failed to clear control driver');
 }
 
 // startNodeRuntime/stopNodeRuntime/restartNodeRuntime dispatch P43 Step 3's
@@ -1357,7 +1354,7 @@ export async function startNodeRuntime(name: string): Promise<void> {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to start runtime'); }
+  if (!res.ok) await throwApiError(res, 'Failed to start runtime');
 }
 
 export async function stopNodeRuntime(name: string): Promise<void> {
@@ -1365,7 +1362,7 @@ export async function stopNodeRuntime(name: string): Promise<void> {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to stop runtime'); }
+  if (!res.ok) await throwApiError(res, 'Failed to stop runtime');
 }
 
 export async function restartNodeRuntime(name: string): Promise<void> {
@@ -1373,7 +1370,7 @@ export async function restartNodeRuntime(name: string): Promise<void> {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to restart runtime'); }
+  if (!res.ok) await throwApiError(res, 'Failed to restart runtime');
 }
 
 // getNodeRuntimeLogs fetches a point-in-time snapshot of recent log lines
@@ -1386,7 +1383,7 @@ export async function getNodeRuntimeLogs(name: string, lines?: number): Promise<
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to fetch runtime logs'); }
+  if (!res.ok) await throwApiError(res, 'Failed to fetch runtime logs');
   return res.json();
 }
 
@@ -1397,7 +1394,7 @@ export async function getNodeRuntimeLogs(name: string, lines?: number): Promise<
 // without the capability returns a 501, surfaced here as a thrown error.
 export async function getNodeModels(name: string): Promise<LocalModel[]> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/models`, { headers: authHeaders() });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to fetch locally available models'); }
+  if (!res.ok) await throwApiError(res, 'Failed to fetch locally available models');
   const data = await res.json();
   return data.models || [];
 }
@@ -1418,7 +1415,7 @@ export async function deleteNodeModel(name: string, model: string): Promise<void
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to delete model'); }
+  if (!res.ok) await throwApiError(res, 'Failed to delete model');
 }
 
 export interface NodeHealthCheckResult {
@@ -1438,7 +1435,7 @@ export interface NodeHealthCheckResult {
 // real answer to "is it up right now."
 export async function checkNodeHealth(name: string): Promise<NodeHealthCheckResult> {
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/health-check`, { headers: authHeaders() });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to run health check'); }
+  if (!res.ok) await throwApiError(res, 'Failed to run health check');
   return res.json();
 }
 
@@ -1452,7 +1449,7 @@ export async function probeNodeTLS(name: string): Promise<{ fingerprint: string 
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to probe TLS certificate'); }
+  if (!res.ok) await throwApiError(res, 'Failed to probe TLS certificate');
   return res.json();
 }
 
@@ -1466,7 +1463,7 @@ export async function runBenchmark(node: string, model: string, n: number): Prom
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ node, model, n }),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to start benchmark'); }
+  if (!res.ok) await throwApiError(res, 'Failed to start benchmark');
   return res.json();
 }
 
@@ -1479,7 +1476,7 @@ export async function cancelBenchmarkJob(jobId: string): Promise<void> {
 
 export async function fetchBenchmarkRuns(): Promise<BenchmarkRun[]> {
   const res = await apiFetch(`${BASE}/benchmark/runs`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch benchmark history');
+  if (!res.ok) await throwApiError(res, 'Failed to fetch benchmark history');
   const data = await res.json();
   return data.runs || [];
 }
@@ -1493,6 +1490,6 @@ export async function setPredictiveEngine(enabled: boolean): Promise<{ predictiv
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
   });
-  if (!res.ok) throw new Error('Failed to set predictive engine status');
+  if (!res.ok) await throwApiError(res, 'Failed to set predictive engine status');
   return res.json();
 }
