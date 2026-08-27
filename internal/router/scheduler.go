@@ -195,6 +195,11 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		err := r.pingNode(ctx, target, m, keepAlive)
 		if err != nil {
 			status = "error"
+			// Warmup failed - release the reservation now instead of
+			// letting it block other models' headroom checks for the
+			// remainder of warmReservationTTL (mirrors warmer.go's
+			// pingWarmupModels).
+			r.clearWarmReservation(target.Name, m)
 			failures = append(failures, fmt.Sprintf("%s: %v", m, err))
 		}
 		target.Lock()
