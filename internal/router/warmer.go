@@ -18,13 +18,20 @@ import (
 // generous. Subsequent pings on a warm model complete in <100ms.
 const warmupPingTimeout = 5 * time.Minute
 
-// warmupHTTPClient is used exclusively for warmup pings. It intentionally has
-// NO client-level Timeout: a cold first-load can take minutes, and the actual
-// per-ping deadline is enforced via the request context (warmupPingTimeout).
-// The router's shared r.client has a 5s Timeout for health probing, which is a
-// hard ceiling that overrides any longer request context - using it here would
-// abort every cold warmup at 5s and silently defeat warmup entirely.
-var warmupHTTPClient = &http.Client{}
+// warmupHTTPClient returns the *http.Client used exclusively for warmup
+// pings, sharing the Router's TLS-pinning transport (HTTPClientForNode) like
+// every other node-facing client - previously this was a bare &http.Client{}
+// package-level var, falling back to http.DefaultTransport and bypassing
+// pinning verification entirely, unlike every other router-to-node path.
+// Passing timeout=0 to HTTPClientForNode preserves the original intent: NO
+// client-level Timeout, since a cold first-load can take minutes and the
+// actual per-ping deadline is enforced via the request context
+// (warmupPingTimeout) - the router's other shared client has a 5s Timeout
+// for health probing, a hard ceiling that would abort every cold warmup at
+// 5s and silently defeat warmup entirely if reused here.
+func (r *Router) warmupHTTPClient() *http.Client {
+	return r.HTTPClientForNode(0)
+}
 
 // tryStartWarmup claims the warmup slot for nodeName, returning false if
 // another cycle is already mid-warm for it (see warmupInProgress on Router).
@@ -286,7 +293,7 @@ func (r *Router) pingEndpoint(ctx context.Context, nodeURL, path string, payload
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := warmupHTTPClient.Do(req)
+	resp, err := r.warmupHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
