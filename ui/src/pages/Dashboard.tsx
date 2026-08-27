@@ -154,10 +154,10 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               <Link
                 key={n.id}
                 to={`/gpu-nodes?highlight=${encodeURIComponent(n.name)}`}
-                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
                 title={`View ${n.name} on GPU Nodes`}
               >
-                <Badge variant="destructive" size="sm" className="max-w-full cursor-pointer hover:shadow-md transition-shadow">
+                <Badge variant="destructive" size="sm" className="max-w-full cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-destructive/30 hover:bg-destructive/15">
                   <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
                   <span className="truncate">{n.name} down</span>
                 </Badge>
@@ -167,18 +167,18 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(f.downNodes.map((n) => n.name).join(','))}`}
                 title={`View all ${f.downNodes.length} down nodes`}
-                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
-                <Badge variant="destructive" size="sm" className="cursor-pointer hover:shadow-md transition-shadow">+{extraDown} more down</Badge>
+                <Badge variant="destructive" size="sm" className="cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-destructive/30 hover:bg-destructive/15">+{extraDown} more down</Badge>
               </Link>
             )}
             {f.staleAgents.length > 0 && (
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(f.staleAgents.map((n) => n.name).join(','))}`}
                 title={`View ${f.staleAgents.length} stale agent${f.staleAgents.length > 1 ? 's' : ''}`}
-                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
-                <Badge variant="warning" size="sm" className="cursor-pointer hover:shadow-md transition-shadow">
+                <Badge variant="warning" size="sm" className="cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-warning/30 hover:bg-warning/15">
                   <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
                   {f.staleAgents.length} agent{f.staleAgents.length > 1 ? 's' : ''} stale
                 </Badge>
@@ -188,9 +188,9 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(f.vramPressure.map((n) => n.name).join(','))}`}
                 title={`View ${f.vramPressure.length} VRAM pressured node${f.vramPressure.length > 1 ? 's' : ''}`}
-                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
-                <Badge variant="warning" size="sm" className="cursor-pointer hover:shadow-md transition-shadow">
+                <Badge variant="warning" size="sm" className="cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-warning/30 hover:bg-warning/15">
                   <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
                   {f.vramPressure.length} VRAM pressure
                 </Badge>
@@ -686,7 +686,12 @@ export function Dashboard() {
             </div>
           ) : (
             nodes.map((node) => (
-              <div key={node.id} className="bg-secondary/50 rounded-xl p-5 border border-border hover:border-primary/40 transition-colors">
+              <Link
+                key={node.id}
+                to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}`}
+                title={`View ${node.name} on GPU Nodes`}
+                className="block bg-secondary/50 rounded-xl p-5 border border-border hover:border-primary/30 hover:shadow-md hover:bg-secondary/70 transition-all duration-200 ease-out cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background will-change-transform"
+              >
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2">
@@ -743,7 +748,7 @@ export function Dashboard() {
                     </Badge>
                   ))}
                 </div>
-              </div>
+              </Link>
             ))
           )}
         </div>
