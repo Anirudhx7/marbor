@@ -1121,6 +1121,24 @@ type hfArchFacts struct {
 	MaxContext   int64
 }
 
+// Plausibility bounds for hfArchFacts (P131), package-level so both of its
+// sources - fetchHFConfigJSONUncached (HF config.json) and the GGUF/
+// FetchModelShow path in handleModelRepo - and computeContextFeasibility's
+// own defense-in-depth check below share one definition. No real transformer
+// architecture approaches these limits; the bound exists solely to keep
+// kvCacheBytesPerToken's int64 multiply chain (2*layers*kvHeads*headDim*2,
+// then multiplied again by requestedCtx up to maxAdvisorCtxLen=10_000_000 in
+// computeContextFeasibility) from overflowing into a wrapped/negative
+// estimate that classifyFit could label a false "green" fit (R1). Sized so
+// 4*maxPlausibleLayers*maxPlausibleHeads*maxPlausibleHiddenDim*maxAdvisorCtxLen
+// (4e11 * 1e7 = 4e18) stays safely under math.MaxInt64 (~9.22e18).
+const (
+	maxPlausibleLayers    = 1_000
+	maxPlausibleHeads     = 1_000
+	maxPlausibleHiddenDim = 100_000
+	maxPlausibleContext   = 100_000_000
+)
+
 // hfConfigJSON is the subset of a Hugging Face model repo's config.json this
 // feature needs. Not every repo ships one (pure-GGUF repos rarely do, since
 // GGUF is a self-contained binary format) - fetchHFConfigJSON returns
@@ -1157,6 +1175,14 @@ type hfConfigCacheEntry struct {
 
 const hfConfigCacheTTL = 30 * time.Second
 
+// validHFRepoID matches the "owner/name" shape every real Hugging Face repo
+// ID has (letters, digits, underscore, dot, hyphen in each segment, exactly
+// one slash) - repoID is interpolated unescaped into a huggingface.co URL
+// that carries the HF bearer token, so an unvalidated value (e.g. containing
+// "../" or query/fragment characters) could redirect the authenticated
+// request to an unintended path on that same host.
+var validHFRepoID = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
 func fetchHFConfigJSON(ctx context.Context, repoID, token string) (hfConfigJSON, bool) {
 	hfConfigCacheMu.Lock()
 	if cached, ok := hfConfigCache[repoID]; ok && time.Since(cached.FetchedAt) < hfConfigCacheTTL {
@@ -1169,6 +1195,17 @@ func fetchHFConfigJSON(ctx context.Context, repoID, token string) (hfConfigJSON,
 
 	hfConfigCacheMu.Lock()
 	hfConfigCache[repoID] = hfConfigCacheEntry{Cfg: cfg, OK: ok, FetchedAt: time.Now()}
+	// Opportunistically evict every other expired entry during this locked
+	// insert - hfConfigCache was written on every distinct repoID with
+	// nothing ever deleting an expired one, so the map grew monotonically
+	// for the process lifetime under normal Model Advisor browsing (each
+	// distinct repo a user views leaves a permanent entry).
+	now := time.Now()
+	for id, entry := range hfConfigCache {
+		if now.Sub(entry.FetchedAt) >= hfConfigCacheTTL {
+			delete(hfConfigCache, id)
+		}
+	}
 	hfConfigCacheMu.Unlock()
 
 	return cfg, ok
@@ -1177,6 +1214,9 @@ func fetchHFConfigJSON(ctx context.Context, repoID, token string) (hfConfigJSON,
 // fetchHFConfigJSONUncached does the actual HTTP fetch/decode; see
 // fetchHFConfigJSON for the caching wrapper around it.
 func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfConfigJSON, bool) {
+	if !validHFRepoID.MatchString(repoID) {
+		return hfConfigJSON{}, false
+	}
 	targetURL := fmt.Sprintf("https://huggingface.co/%s/raw/main/config.json", repoID)
 	resp, err := hfAuthedGet(ctx, targetURL, token)
 	if err != nil {
@@ -1197,31 +1237,18 @@ func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfCon
 	if cfg.NumHiddenLayers <= 0 || cfg.NumAttentionHeads <= 0 || cfg.NumKeyValueHeads <= 0 || cfg.HiddenSize <= 0 || cfg.MaxPositionEmbeddings <= 0 {
 		return hfConfigJSON{}, false
 	}
-	// Bound each field at implausible-but-technically-valid magnitudes (P131):
-	// no real transformer architecture approaches these limits (the largest
-	// published models today have low hundreds of layers/heads and low tens
-	// of thousands of hidden_size), but a malformed/adversarial config.json
-	// value in that range can overflow kvCacheBytesPerToken's int64 multiply
-	// chain into a wrapped/negative estimate that classifyFit can then label
-	// a false "green" fit with Confidence "derived" (R1). Rejecting here and
-	// falling back to the arch==nil estimated path is simpler and more
-	// robust than threading overflow checks through the multiply chain.
-	//
-	// The bound must also survive computeContextFeasibility's further
-	// multiply by requestedCtx (kvBytes := perTokenBytes * requestedCtx,
-	// requestedCtx capped at maxAdvisorCtxLen = 10_000_000) - code review
-	// caught that the original limits alone (2_000/2_000/200_000) left room
-	// for perTokenBytes*maxAdvisorCtxLen to still overflow int64 (worst case
-	// numAttnHeads=1 makes headDim=hiddenSize, so
-	// perTokenBytes=4*layers*kvHeads*hiddenSize). These tighter limits keep
-	// 4*maxPlausibleLayers*maxPlausibleHeads*maxPlausibleHiddenDim*maxAdvisorCtxLen
-	// (4e11 * 1e7 = 4e18) safely under math.MaxInt64 (~9.22e18) with margin.
-	const (
-		maxPlausibleLayers    = 1_000
-		maxPlausibleHeads     = 1_000
-		maxPlausibleHiddenDim = 100_000
-		maxPlausibleContext   = 100_000_000
-	)
+	// Bound each field at implausible-but-technically-valid magnitudes (P131,
+	// constants defined package-level alongside hfArchFacts): no real
+	// transformer architecture approaches these limits, but a malformed/
+	// adversarial config.json value in that range can overflow
+	// kvCacheBytesPerToken's int64 multiply chain into a wrapped/negative
+	// estimate that classifyFit can then label a false "green" fit with
+	// Confidence "derived" (R1). Rejecting here and falling back to the
+	// arch==nil estimated path is simpler and more robust than threading
+	// overflow checks through the multiply chain. computeContextFeasibility
+	// applies this same bound to every arch it's given (code review found
+	// the GGUF/FetchModelShow path below fed the identical multiply chain
+	// with no bound of its own - see its own doc comment).
 	if cfg.NumHiddenLayers > maxPlausibleLayers || cfg.NumAttentionHeads > maxPlausibleHeads ||
 		cfg.NumKeyValueHeads > maxPlausibleHeads || cfg.HiddenSize > maxPlausibleHiddenDim ||
 		cfg.MaxPositionEmbeddings > maxPlausibleContext {
@@ -1286,6 +1313,20 @@ func computeContextFeasibility(
 	runtimeCaveat string,
 ) (totalEstBytes int64, fit string, cf ContextFeasibility) {
 	cf = ContextFeasibility{RequestedCtx: requestedCtx, RuntimeCaveat: runtimeCaveat}
+
+	// Defense-in-depth (P131 code review): fetchHFConfigJSONUncached already
+	// bounds the HF config.json path, but arch can also arrive from
+	// FetchModelShow's GGUF metadata (handleModelRepo's Ollama branch),
+	// which has no bound of its own - a corrupted GGUF file or a compromised
+	// node's /api/show response could otherwise reach the same int64
+	// overflow this function's arch!=nil branch is protected against below.
+	// Treat an implausible arch exactly like a nil one (fall back to the
+	// estimated path) rather than trusting it as "derived".
+	if arch != nil && (arch.NumLayers > maxPlausibleLayers || arch.NumAttnHeads > maxPlausibleHeads ||
+		arch.NumKVHeads > maxPlausibleHeads || arch.HiddenSize > maxPlausibleHiddenDim ||
+		arch.MaxContext > maxPlausibleContext) {
+		arch = nil
+	}
 
 	if arch == nil {
 		cf.Confidence = "estimated"
@@ -1476,6 +1517,10 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "missing id parameter")
 		return
 	}
+	if !validHFRepoID.MatchString(repoID) {
+		writeJSONError(w, http.StatusBadRequest, "id must be a valid Hugging Face repo id (owner/name)")
+		return
+	}
 
 	ctxLen := int64(8192) // default to 8k context window
 	if cStr := r.URL.Query().Get("ctx"); cStr != "" {
@@ -1548,7 +1593,17 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		agentPresent = targetNode.AgentPresent
 		diskFreeGB = targetNode.DiskFreeGB
 		diskTotalGB = targetNode.DiskTotalGB
+		nodeDeclaredRuntime := targetNode.Runtime
 		targetNode.RUnlock()
+
+		// runtime came from the client-supplied query string, which can be
+		// stale/absent/wrong relative to what the node actually runs -
+		// default to the node's own declared Runtime when the caller didn't
+		// specify one, so fit sizing reflects the real backend instead of
+		// silently falling through nodeVRAMCapacity's own runtime=="" branch.
+		if runtime == "" {
+			runtime = nodeDeclaredRuntime
+		}
 
 		// The disk figures above are always this agent's *host* filesystem
 		// (host_linux.go's readDiskStatsGB("/")) - for a Docker-controlled

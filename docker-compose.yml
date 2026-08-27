@@ -1,6 +1,10 @@
 services:
   marbor:
-    image: ghcr.io/anirudhx7/marbor:latest
+    # Pinned by default so `docker compose up` doesn't silently pull a newer
+    # (possibly breaking) image on every restart. Override with
+    # `MARBOR_IMAGE_TAG=latest docker compose up` to explicitly opt into
+    # tracking the newest release, or set it to any other released tag.
+    image: ghcr.io/anirudhx7/marbor:${MARBOR_IMAGE_TAG:-v0.19.3}
     ports:
       - "11434:11434"
       - "9090:9090"

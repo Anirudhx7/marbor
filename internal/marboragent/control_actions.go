@@ -213,11 +213,21 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), controlActionTimeout)
-	defer cancel()
-
+	// Acquire the per-driver+identifier lock (P152) before starting
+	// controlActionTimeout's clock (code review): the timeout used to start
+	// counting before the lock was taken, so a request queued behind a
+	// slow/contended prior action (e.g. Stop's own bounded reap-wait above)
+	// could have most or all of its budget consumed just waiting for the
+	// lock, then fail the actual drv.Start/Stop/Restart call with a
+	// misleading "context deadline exceeded" instead of a legitimate result.
+	// Starting the timeout only once this request actually begins its
+	// operation gives every request the same full budget regardless of
+	// queue position.
 	unlock := lockControlAction(req.Driver, req.Identifier)
 	defer unlock()
+
+	ctx, cancel := context.WithTimeout(r.Context(), controlActionTimeout)
+	defer cancel()
 
 	var opErr error
 	switch action {

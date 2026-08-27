@@ -214,8 +214,8 @@ func runDownload(ctx context.Context, driver, identifier, hfToken string, name s
 			cmd.Env = append(cmd.Env, "HF_TOKEN="+hfToken)
 		}
 	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	stderr := &ringWriter{maxLen: stderrRingSize}
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		msg := lastMeaningfulLine(stripANSI(stderr.String()))
 		if msg == "" {
@@ -225,6 +225,33 @@ func runDownload(ctx context.Context, driver, identifier, hfToken string, name s
 	}
 	return nil
 }
+
+// stderrRingSize bounds runDownload's captured stderr to this many bytes
+// regardless of how long the pull runs - lastMeaningfulLine only ever reads
+// the final line, so retaining the full multi-hour progress-tick transcript
+// in a plain bytes.Buffer was unbounded peak memory per concurrent pull for
+// no benefit. 64KB comfortably holds many thousands of the short
+// "pulling <digest>: N%" lines these CLIs emit, far more than needed to
+// reach the last meaningful one.
+const stderrRingSize = 64 * 1024
+
+// ringWriter retains only the most recently written maxLen bytes, dropping
+// older bytes as new ones arrive - the bounded stand-in for bytes.Buffer
+// used by runDownload's stderr capture.
+type ringWriter struct {
+	maxLen int
+	buf    []byte
+}
+
+func (w *ringWriter) Write(p []byte) (int, error) {
+	w.buf = append(w.buf, p...)
+	if len(w.buf) > w.maxLen {
+		w.buf = w.buf[len(w.buf)-w.maxLen:]
+	}
+	return len(p), nil
+}
+
+func (w *ringWriter) String() string { return string(w.buf) }
 
 // lastMeaningfulLine returns the last non-empty, trimmed line of s. A CLI
 // not attached to a real TTY (as every one of these subprocesses is) writes

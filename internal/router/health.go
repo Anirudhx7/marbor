@@ -39,9 +39,12 @@ func (r *Router) pollNvidiaAll() {
 	r.nvidiaMu.Lock()
 	if ok {
 		r.nvidiaCache = gpus
-	} else {
-		r.nvidiaCache = make(map[int]GPUStats)
 	}
+	// On failure, keep the previous cache rather than replacing it with an
+	// empty map - the 30s ticker makes one missed sample cheap to retain,
+	// and wiping the cache nils Temperature/zeros PowerDrawW/demotes
+	// VRAMSource for every local node on a single transient nvidia-smi
+	// failure instead of just letting that one poll be stale.
 	r.nvidiaMu.Unlock()
 }
 
@@ -62,14 +65,21 @@ func (r *Router) discoverAndAddDockerNodes() {
 		return
 	}
 	for _, n := range found {
-		r.mu.Lock()
+		r.mu.RLock()
 		_, exists := r.discoveredURLs[n.URL]
-		if !exists {
-			r.discoveredURLs[n.URL] = struct{}{}
+		r.mu.RUnlock()
+		if exists {
+			continue
 		}
-		r.mu.Unlock()
-		if !exists {
-			r.AddNode(n)
+		// Only mark discoveredURLs after AddNode actually succeeds - if it's
+		// rejected (duplicate URL under a different name, or ValidateNodeURL
+		// failure), marking the URL here would make it permanently "already
+		// handled" with no NodeState to show for it, and RemoveNode never
+		// clears an orphaned entry it doesn't own.
+		if r.AddNode(n) {
+			r.mu.Lock()
+			r.discoveredURLs[n.URL] = struct{}{}
+			r.mu.Unlock()
 		}
 	}
 }

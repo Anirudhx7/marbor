@@ -52,10 +52,15 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
       await skipPasswordChangeThisSession();
       onSuccess({ ...session, mustChangePassword: false });
     } catch (err: any) {
-      const message = err.message || 'Failed to skip password change';
-      setError(message);
-      if (message.includes('Skip limit reached')) {
+      // Match on the structured code, not a copy of the server's message
+      // string - and only ever render that server-provided message for the
+      // one error on this explicit allowlist; any other error gets a
+      // generic fallback instead of showing a raw backend error verbatim.
+      if (err?.code === 'skip_limit_reached') {
+        setError(err.message || 'Skip limit reached - you must set a new password to continue.');
         setSkipLimitReached(true);
+      } else {
+        setError('Failed to skip password change. Please try again.');
       }
       setSaving(false);
     }
