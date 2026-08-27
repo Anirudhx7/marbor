@@ -42,11 +42,38 @@ func windowsBinPath(cfg Config) string {
 // Administrator privileges. There is no portable os.Geteuid()-equivalent on
 // Windows without a new dependency, so this shells out to "net session":
 // it succeeds (exit 0) only when run elevated, and fails (typically exit
-// code 2, "Access is denied") otherwise. Any error from running it is
-// treated as "not elevated."
+// code 2, "Access is denied") otherwise.
+//
+// "net session" depends on the LanmanServer (Server) service, which hardened
+// Windows servers commonly disable - on such a host an elevated
+// Administrator still gets a non-zero exit unrelated to privilege. When "net
+// session" fails, fall back to a "whoami /groups" check for the well-known
+// Administrators SID (S-1-5-32-544) in "Enabled group" state before
+// concluding not-elevated.
 func isElevated() bool {
-	err := exec.Command("net", "session").Run()
-	return err == nil
+	if err := exec.Command("net", "session").Run(); err == nil {
+		return true
+	}
+	return isElevatedViaWhoamiGroups()
+}
+
+// isElevatedViaWhoamiGroups is the fallback probe used by isElevated when
+// "net session" fails for a reason unrelated to privilege (e.g. LanmanServer
+// disabled). "whoami /groups" lists the caller's group SIDs regardless of
+// that service's state; the Administrators group (S-1-5-32-544) appears with
+// "Enabled group" state only when the current process token has it enabled -
+// for an elevated Administrator (UAC's split token) that is always the case.
+func isElevatedViaWhoamiGroups() bool {
+	out, err := exec.Command("whoami", "/groups").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "S-1-5-32-544") && strings.Contains(line, "Enabled group") {
+			return true
+		}
+	}
+	return false
 }
 
 // runSC runs sc.exe with the given arguments and returns combined
@@ -226,14 +253,19 @@ func (windowsManager) Install(cfg Config) error {
 	return nil
 }
 
-// waitForStopped polls "sc query" until Name is no longer RUNNING or the
-// timeout elapses, so a stop-then-start reinstall doesn't race the old
-// process for the same port.
+// waitForStopped polls "sc query" until Name reaches STOPPED or the timeout
+// elapses, so a stop-then-start reinstall doesn't race the old process for
+// the same port. A service mid-teardown (STOP_PENDING) doesn't contain
+// "RUNNING" either, so the old "absence of RUNNING" check returned
+// immediately in exactly the slow-exit case it exists to guard against; a
+// transient query error is likewise treated as "keep waiting" rather than
+// "stopped," since a query failure gives no actual evidence the service has
+// exited.
 func waitForStopped(timeout time.Duration) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		out, err := runSC("query", Name)
-		if err != nil || !strings.Contains(out, "RUNNING") {
+		if err == nil && strings.Contains(out, "STOPPED") {
 			return
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -258,6 +290,15 @@ func (windowsManager) Uninstall(purge bool) error {
 		if err := os.Remove(binPathToRemove); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("service: purge failed to remove binary %q: %w", binPathToRemove, err)
 		}
+	}
+
+	// P284: purge also best-effort removes the agent's TLS cert/key -
+	// otherwise an orphaned private key survives decommissioning, enabling
+	// agent impersonation on a repurposed box.
+	if purge {
+		certPath, keyPath := agentCertKeyPaths()
+		_ = os.Remove(certPath)
+		_ = os.Remove(keyPath)
 	}
 
 	return nil
