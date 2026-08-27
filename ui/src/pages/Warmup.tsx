@@ -326,7 +326,7 @@ function ScheduleRow({ schedule, nodes, modelsByNode, onToggle, onSave, onDelete
   schedule: Schedule;
   nodes: GPUNode[];
   modelsByNode: Record<string, string[]>;
-  onToggle: (enabled: boolean) => void;
+  onToggle: (enabled: boolean) => Promise<void>;
   onSave: (patch: Partial<Omit<Schedule, 'id'>>) => Promise<void>;
   onDelete: () => void;
   isLast?: boolean;
@@ -393,7 +393,18 @@ function ScheduleRow({ schedule, nodes, modelsByNode, onToggle, onSave, onDelete
           )}
         </div>
         <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
-          <button onClick={() => onToggle(!s.enabled)} title={s.enabled ? 'Pause' : 'Resume'}
+          <button onClick={async () => {
+            // Neither this handler nor editSchedule (the underlying update
+            // call, in the parent) previously had a try/catch - a failure
+            // (e.g. an expired session) became an unhandled promise
+            // rejection with zero UI feedback, unlike the row's own Save
+            // action, which already surfaces errors inline via `error`.
+            try {
+              await onToggle(!s.enabled);
+            } catch (e: any) {
+              setError(e.message || 'Failed to update schedule');
+            }
+          }} title={s.enabled ? 'Pause' : 'Resume'}
             className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
             {s.enabled ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
           </button>
