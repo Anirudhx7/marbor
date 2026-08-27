@@ -21,6 +21,7 @@ type nvidiaSMILog struct {
 }
 
 type nvidiaGPU struct {
+	MinorNumber      string      `xml:"minor_number"`
 	FBMemory         nvidiaMem   `xml:"fb_memory_usage"`
 	Temperature      nvidiaTemp  `xml:"temperature"`
 	PowerReadings    nvidiaPower `xml:"power_readings"`
@@ -120,7 +121,18 @@ func parseAllNvidiaSMIXML(data []byte) (map[int]GPUStats, bool) {
 			}
 			stats.PowerDrawW = watts
 		}
-		statsMap[i] = stats
+		// Key by the GPU's own minor_number when present and parseable
+		// (nvidia-smi -q -x's stable per-GPU identifier - the number
+		// operators reference via CUDA_VISIBLE_DEVICES/nvidia-smi -i),
+		// instead of trusting document order to match the
+		// operator-declared NvidiaIndex. Falls back to loop position
+		// only if minor_number is missing/unparseable, preserving the
+		// old behavior rather than dropping the GPU entirely.
+		key := i
+		if mn, err := strconv.Atoi(strings.TrimSpace(gpu.MinorNumber)); err == nil {
+			key = mn
+		}
+		statsMap[key] = stats
 	}
 	return statsMap, true
 }
