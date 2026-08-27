@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Zap, 
   Clock, 
@@ -91,7 +91,22 @@ export function Routing() {
   const [ruleToToggle, setRuleToToggle] = useState<RoutingRule | null>(null);
   const [strategyToConfirm, setStrategyToConfirm] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+  // Scoped separately from the shared `error` banner above, which is also
+  // set by unrelated failures (rule delete/toggle/create, strategy read in
+  // loadData) and never cleared when this modal opens - a stale unrelated
+  // error would otherwise appear to belong to the strategy change.
+  const [strategyError, setStrategyError] = useState<string | null>(null);
+
+  // Guards loadData and the action handlers below against a state-set after
+  // unmount - loadData and handleStrategyChange/handleToggleRule/
+  // handleCreateRule/handleDeleteRule all call setError/setRules post-await
+  // with no guard today.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const [newRuleForm, setNewRuleForm] = useState({
     priority: '',
     condition: '',
@@ -102,6 +117,7 @@ export function Routing() {
 
   const loadData = async () => {
     if (demoMode) {
+      if (!mountedRef.current) return;
       setRules(MOCK_RULES);
       setAvailableNodes(mockGPUNodes);
       setCurrentStrategyState('warm-first');
@@ -117,23 +133,25 @@ export function Routing() {
         fetchRoutingRules(),
         fetchNodes(),
       ]);
+      if (!mountedRef.current) return;
       setRules(Array.isArray(rulesData) ? rulesData : []);
       setAvailableNodes(nodesData || []);
       setError(null);
       // Fetch strategy separately so failure is visible to the user
       try {
         const strategy = await fetchRoutingStrategy();
-        setCurrentStrategyState(strategy);
+        if (mountedRef.current) setCurrentStrategyState(strategy);
       } catch {
-        setCurrentStrategyState('');
+        if (mountedRef.current) setCurrentStrategyState('');
       }
     } catch (err: any) {
+      if (!mountedRef.current) return;
       setError(err.message || 'Failed to connect to backend');
       setRules([]);
       setAvailableNodes([]);
       setCurrentStrategyState('');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
 
@@ -166,18 +184,27 @@ export function Routing() {
     };
   }, [demoMode]);
 
-  const handleStrategyChange = async (strategy: string) => {
+  // Returns whether the change succeeded, so the confirm button below can
+  // close the modal only on success - strategyError is rendered inside that
+  // same modal, so unconditionally closing it on both outcomes (the modal's
+  // own pre-existing behavior) would silently swallow a failure the instant
+  // it's set, with no page-level banner to fall back on since this error is
+  // deliberately scoped away from the shared one (P346).
+  const handleStrategyChange = async (strategy: string): Promise<boolean> => {
     if (demoMode) {
       setCurrentStrategyState(strategy);
-      return;
+      return true;
     }
-    
+
     try {
       await setRoutingStrategy(strategy);
+      if (!mountedRef.current) return true;
       setCurrentStrategyState(strategy);
-      setError(null);
+      setStrategyError(null);
+      return true;
     } catch (err: any) {
-      setError(err.message);
+      if (mountedRef.current) setStrategyError(err.message);
+      return false;
     }
   };
 
@@ -192,11 +219,11 @@ export function Routing() {
         await toggleRoutingRule(id);
         await loadData();
       } catch (err: any) {
-        setError(err.message);
+        if (mountedRef.current) setError(err.message);
       }
     }
 
-    setRuleToToggle(null);
+    if (mountedRef.current) setRuleToToggle(null);
   };
 
   const handleCreateRule = async () => {
@@ -230,11 +257,12 @@ export function Routing() {
         await addRoutingRule(newRule);
         await loadData();
       } catch (err: any) {
-        setFormErrors([err.message]);
+        if (mountedRef.current) setFormErrors([err.message]);
         return;
       }
     }
 
+    if (!mountedRef.current) return;
     setIsCreateModalOpen(false);
     setNewRuleForm({ priority: '', condition: '', targetNode: '', strategy: 'warm-first' });
     setFormErrors([]);
@@ -250,10 +278,11 @@ export function Routing() {
         await removeRoutingRule(ruleToDelete.id);
         await loadData();
       } catch (err: any) {
-        setError(err.message);
+        if (mountedRef.current) setError(err.message);
       }
     }
-    
+
+    if (!mountedRef.current) return;
     setIsDeleteModalOpen(false);
     setRuleToDelete(null);
   };
@@ -288,7 +317,7 @@ export function Routing() {
         {STRATEGIES.map((strategy) => (
           <button
             key={strategy.value}
-            onClick={() => { if (strategy.value !== currentStrategy) setStrategyToConfirm(strategy.value); }}
+            onClick={() => { if (strategy.value !== currentStrategy) { setStrategyError(null); setStrategyToConfirm(strategy.value); } }}
             className={`flex flex-col p-5 rounded-xl border text-left transition-colors ${
               currentStrategy === strategy.value
                 ? 'bg-primary/5 border-primary shadow-sm'
@@ -675,8 +704,8 @@ export function Routing() {
           <p className="text-xs text-muted-foreground">
             This changes how every request across the entire marbor is load-balanced, effective immediately for all live traffic.
           </p>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
+          {strategyError && (
+            <p className="text-sm text-destructive">{strategyError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -688,8 +717,8 @@ export function Routing() {
             <button
               onClick={async () => {
                 if (!strategyToConfirm) return;
-                await handleStrategyChange(strategyToConfirm);
-                setStrategyToConfirm(null);
+                const succeeded = await handleStrategyChange(strategyToConfirm);
+                if (succeeded) setStrategyToConfirm(null);
               }}
               className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
