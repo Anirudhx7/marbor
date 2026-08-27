@@ -94,7 +94,16 @@ func parseROCmSMIJSON(data []byte) (GPUBlock, bool) {
 		if model, ok := rocmField(card, "Card series", "Card Series", "Card model", "Device Name"); ok {
 			info.Model = strings.TrimSpace(model)
 		}
-		if temp, ok := rocmField(card, "Temperature (Sensor edge) (C)", "Temperature (Sensor junction) (C)", "Temperature (edge) (C)"); ok {
+		// Edge-family keys are listed before the junction-family key
+		// deliberately and consistently: edge and junction readings can
+		// differ materially on AMD cards, and TemperatureC is a single
+		// vendor-neutral field with no sensor-kind indicator, so mixing
+		// which sensor wins per-card (as the old order did - junction
+		// outranked the second edge-key spelling) would make the field
+		// mean different things across cards/rocm-smi versions. Junction is
+		// kept only as a last-resort fallback for a card that exposes no
+		// edge reading at all.
+		if temp, ok := rocmField(card, "Temperature (Sensor edge) (C)", "Temperature (edge) (C)", "Temperature (Sensor junction) (C)"); ok {
 			if v, err := strconv.ParseFloat(strings.TrimSpace(temp), 64); err == nil {
 				info.TemperatureC = &v
 			}
