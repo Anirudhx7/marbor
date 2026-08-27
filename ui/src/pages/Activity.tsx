@@ -6,6 +6,7 @@ import type { SystemAuditEntry, PredictiveDecision } from '../types';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
+import { ClearableInput, FilterField } from '../components/FilterField';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { toActivityKind, getActivityKindLabel, getActivityKindColor, type ActivityKind } from '../lib/activityKind';
 
@@ -102,21 +103,31 @@ export function Activity() {
     if (preset === 'all') {
       setFromPicker('');
       setToPicker('');
-    } else if (preset === 'custom') {
-      // keep current pickers
-    } else {
-      const now = new Date();
-      let from: Date | null = null;
-      if (preset === '1h') from = new Date(now.getTime() - 1 * 3600_000);
-      else if (preset === '24h') from = new Date(now.getTime() - 24 * 3600_000);
-      else if (preset === '7d') from = new Date(now.getTime() - 7 * 86400_000);
-      else if (preset === '30d') from = new Date(now.getTime() - 30 * 86400_000);
-      if (from) {
-        setFromPicker(toPickerValue(from.toISOString()));
-        setToPicker(toPickerValue(now.toISOString()));
-      }
+      return;
     }
+    if (preset === 'custom') return; // pickers are the source of truth here
+    const now = new Date();
+    const presetHours: Record<'1h' | '24h' | '7d' | '30d', number> = { '1h': 1, '24h': 24, '7d': 24 * 7, '30d': 24 * 30 };
+    const from = new Date(now.getTime() - presetHours[preset] * 3600_000);
+    setFromPicker(toPickerValue(from.toISOString()));
+    setToPicker(toPickerValue(now.toISOString()));
   }, [preset]);
+
+  // A quick-range preset and a hand-picked custom range are mutually
+  // exclusive, same relationship as Requests.tsx's sincePreset/sinceInput:
+  // typing into From or To always wins and switches the Quick range select
+  // into 'custom' (disabling it, same as ClearableInput's own affordance
+  // pattern), and clearing both fields (via their own inline "x") falls back
+  // to 'all' so the select's displayed value matches what's actually being
+  // sent to the server.
+  const handleFromPickerChange = (val: string) => {
+    setFromPicker(val);
+    setPreset(val || toPicker ? 'custom' : 'all');
+  };
+  const handleToPickerChange = (val: string) => {
+    setToPicker(val);
+    setPreset(val || fromPicker ? 'custom' : 'all');
+  };
 
   const buildFilter = useCallback((before?: string) => {
     const f: any = { limit: PAGE_LIMIT };
@@ -392,32 +403,32 @@ export function Activity() {
 
       {/* Enterprise Filter Bar */}
       <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 shadow-sm space-y-4">
-        {/* Row 1: Date presets + from/to */}
-        <div className="flex flex-col lg:flex-row gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground mr-1">Range:</span>
-            {(['all', '1h', '24h', '7d', '30d', 'custom'] as DatePreset[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setPreset(p)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${preset === p ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary text-muted-foreground border-border hover:bg-secondary/80'}`}
-              >
-                {p === 'all' ? 'All time' : p === '1h' ? 'Last 1h' : p === '24h' ? 'Last 24h' : p === '7d' ? 'Last 7d' : p === '30d' ? 'Last 30d' : 'Custom'}
-              </button>
-            ))}
-          </div>
-          {preset === 'custom' && (
-            <div className="flex flex-col sm:flex-row gap-2 flex-1">
-              <div className="flex-1 min-w-0">
-                <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">From</label>
-                <CustomDateTimePicker value={fromPicker} onChange={setFromPicker} placeholder="Start time" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">To</label>
-                <CustomDateTimePicker value={toPicker} onChange={setToPicker} placeholder="End time" />
-              </div>
-            </div>
-          )}
+        {/* Row 1: Quick range select + always-visible From/To - mirrors
+            Requests.tsx's Quick range / From / Until layout instead of a
+            pill toggle that only reveals the date pickers behind a "Custom"
+            click (that hid affordance and jumped the layout on click). */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <FilterField label="Quick range">
+            <CustomSelect
+              value={preset}
+              onChange={(val) => setPreset(val as DatePreset)}
+              disabled={preset === 'custom'}
+              placeholder="Clear custom range to use preset"
+              options={[
+                { value: 'all', label: 'All time' },
+                { value: '1h', label: 'Last 1h' },
+                { value: '24h', label: 'Last 24h' },
+                { value: '7d', label: 'Last 7d' },
+                { value: '30d', label: 'Last 30d' },
+              ]}
+            />
+          </FilterField>
+          <FilterField label="From (custom)">
+            <CustomDateTimePicker value={fromPicker} onChange={handleFromPickerChange} placeholder="Any start time" />
+          </FilterField>
+          <FilterField label="To (custom)">
+            <CustomDateTimePicker value={toPicker} onChange={handleToPickerChange} placeholder="Any end time" />
+          </FilterField>
         </div>
 
         {/* Row 2: Kind, Action, Operator */}
@@ -457,47 +468,43 @@ export function Activity() {
           </div>
         </div>
 
-        {/* Row 3: Target, Source IP, Search */}
+        {/* Row 3: Target, Source IP, Search - ClearableInput brings the same
+            inline "x" affordance Requests.tsx's text filters already have,
+            so undoing one of these doesn't mean hand-clearing the text. */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Target contains</label>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="gpu-node-*, model name..."
-                value={targetInput}
-                onChange={(e) => setTargetInput(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Source IP contains</label>
-            <div className="relative">
-              <Globe className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="192.168.1.5"
-                value={sourceIpInput}
-                onChange={(e) => setSourceIpInput(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60 font-mono"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Search details</label>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search details, payload..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
-              />
-            </div>
-          </div>
+          <FilterField label="Target contains">
+            <ClearableInput
+              type="text"
+              placeholder="gpu-node-*, model name..."
+              value={targetInput}
+              onChange={(e) => setTargetInput(e.target.value)}
+              onClear={() => setTargetInput('')}
+              icon={<Search className="w-3.5 h-3.5" />}
+              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+            />
+          </FilterField>
+          <FilterField label="Source IP contains">
+            <ClearableInput
+              type="text"
+              placeholder="192.168.1.5"
+              value={sourceIpInput}
+              onChange={(e) => setSourceIpInput(e.target.value)}
+              onClear={() => setSourceIpInput('')}
+              icon={<Globe className="w-3.5 h-3.5" />}
+              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60 font-mono"
+            />
+          </FilterField>
+          <FilterField label="Search details">
+            <ClearableInput
+              type="text"
+              placeholder="Search details, payload..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onClear={() => setSearchQuery('')}
+              icon={<Search className="w-3.5 h-3.5" />}
+              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+            />
+          </FilterField>
         </div>
 
         {hasActiveFilters && (

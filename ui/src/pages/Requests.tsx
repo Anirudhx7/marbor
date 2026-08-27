@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, Fragment, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
+import { ClearableInput, FilterField } from '../components/FilterField';
 import { RequestEntry, RoutingDecision } from '../types';
 import { fetchAuditLog, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
@@ -125,44 +126,6 @@ function SkeletonRow() {
   );
 }
 
-// ClearableInput wraps a text/datetime filter input with an inline "x"
-// button once it has a value, so undoing a filter (including one picked
-// from a datalist) doesn't require manually backspacing the whole thing.
-function ClearableInput(props: InputHTMLAttributes<HTMLInputElement> & { onClear: () => void }) {
-  const { onClear, className, value, ...rest } = props;
-  return (
-    <div className="relative w-full">
-      <input
-        {...rest}
-        value={value}
-        className={`${className ?? ''} w-full ${value ? 'pr-7' : ''}`}
-      />
-      {!!value && (
-        <button
-          type="button"
-          onClick={onClear}
-          title="Clear"
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-// FilterField adds a small label above a filter control - the bare inputs
-// (esp. the two datetime pickers and the tri-state selects) were impossible
-// to tell apart at a glance without one.
-function FilterField({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
-      {children}
-    </div>
-  );
-}
-
 // Cloud filter tri-state: 'all' | 'local' | 'cloud'.
 type CloudFilter = 'all' | 'local' | 'cloud';
 
@@ -170,10 +133,14 @@ type CloudFilter = 'all' | 'local' | 'cloud';
 type StatusFilter = 'all' | 'success' | 'client_error' | 'server_error';
 
 // Since filter presets map to a lookback window; 'all' sends no since param.
-type SincePreset = 'all' | '15m' | '1h' | '24h';
+// 'custom' is not a selectable option - it's an internal marker meaning "a
+// hand-picked From value is active", so the Quick range select's displayed
+// label falls back to its placeholder (no matching option) instead of
+// showing a stale preset name while a custom range is actually in effect.
+type SincePreset = 'all' | '15m' | '1h' | '24h' | 'custom';
 
 function sinceIso(preset: SincePreset): string | undefined {
-  if (preset === 'all') return undefined;
+  if (preset === 'all' || preset === 'custom') return undefined;
   const ms = { '15m': 15 * 60_000, '1h': 60 * 60_000, '24h': 24 * 60 * 60_000 }[preset];
   return new Date(Date.now() - ms).toISOString();
 }
@@ -416,8 +383,8 @@ export function Requests() {
                 setSincePreset(val as SincePreset);
                 setSinceInput(''); // a quick preset always wins over a stale custom "From" value
               }}
-              disabled={!!sinceInput}
-              placeholder={sinceInput ? 'Clear custom date to use preset' : 'Any time'}
+              disabled={sincePreset === 'custom'}
+              placeholder="Clear custom date to use preset"
               options={[
                 { value: 'all', label: 'Any time' },
                 { value: '15m', label: 'Last 15 min' },
@@ -431,7 +398,7 @@ export function Requests() {
               value={sinceInput}
               onChange={(val) => {
                 setSinceInput(val);
-                if (val) setSincePreset('all'); // custom "From" wins over a stale preset
+                setSincePreset(val ? 'custom' : 'all'); // custom "From" wins over a stale preset, clearing it falls back to "Any time"
               }}
               placeholder="Any start time"
             />
