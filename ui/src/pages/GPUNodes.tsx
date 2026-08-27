@@ -241,7 +241,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   return (
     <div
       id={`node-card-${node.name}`}
-      className={`bg-card border shadow-sm rounded-xl p-5 scroll-mt-24 will-change-transform transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${isHighlighted ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background border-primary/50 shadow-xl bg-primary/[0.04] scale-[1.015] -translate-y-0.5' : 'hover:shadow-md'} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border hover:border-primary/30'}`}
+      className={`bg-card border shadow-sm rounded-xl p-5 scroll-mt-28 will-change-transform transition-all duration-500 ease-out ${isHighlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-background border-primary/40 shadow-lg bg-primary/[0.035]' : 'hover:shadow-md hover:border-primary/20'} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border'}`}
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
@@ -1181,7 +1181,7 @@ export function GPUNodes() {
     }
   }, [demoMode, location.pathname]);
 
-  // Highlight nodes passed via ?highlight= from Models page - smooth 200ms ease like sidenav, auto-clear after 2000ms sweet spot
+  // Highlight nodes passed via ?highlight= from Models page - window.scrollTo with header offset, no layout shift
   useEffect(() => {
     const param = searchParams.get('highlight');
     if (!param) {
@@ -1192,14 +1192,15 @@ export function GPUNodes() {
     setHighlightedNodes(set);
     if (set.size > 0) {
       const first = Array.from(set)[0] as string;
-      // double rAF + 180ms lets layout settle, scroll-mt-24 offsets sticky header, center is smooth for lower sections
       const t1 = setTimeout(() => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            document.getElementById(`node-card-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-          });
+          const el = document.getElementById(`node-card-${first}`);
+          if (!el) return;
+          const headerOffset = 96; // matches scroll-mt-28 + top bar
+          const top = el.getBoundingClientRect().top + window.scrollY - headerOffset;
+          window.scrollTo({ top, behavior: 'smooth' });
         });
-      }, 180);
+      }, 220);
       const t2 = setTimeout(() => setHighlightedNodes(new Set()), 2000);
       return () => {
         clearTimeout(t1);
