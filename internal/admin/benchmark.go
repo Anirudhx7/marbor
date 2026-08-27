@@ -269,9 +269,14 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	s.benchMu.Unlock()
 
 	keyName := fmt.Sprintf("benchmark-%s-%s-%s", body.Node, body.Model, jobID)
+	keyValue, err := generateAPIKey(keyName)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	k := config.KeyConfig{
 		Name:      keyName,
-		Key:       generateAPIKey(keyName),
+		Key:       keyValue,
 		Models:    []string{body.Model},
 		ExpiresAt: time.Now().Add(benchmarkKeyTTL).Format(time.RFC3339),
 	}
