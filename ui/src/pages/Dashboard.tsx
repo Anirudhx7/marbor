@@ -426,9 +426,13 @@ export function Dashboard() {
   }, [nodes, setupKeys, setupRequests, requests, demoMode, isCompleted]);
 
   const handleDismissSetup = () => {
-    try {
-      localStorage.setItem(STORAGE_DISMISSED, 'true');
-    } catch {}
+    // In demo (VITE_FORCE_DEMO) hide for this session only — reload restores 4/5 for screenshots.
+    // In prod persist so reload stays hidden and outage to zero does not resurrect.
+    if (!demoMode) {
+      try {
+        localStorage.setItem(STORAGE_DISMISSED, 'true');
+      } catch {}
+    }
     setIsDismissed(true);
   };
 
@@ -487,7 +491,10 @@ export function Dashboard() {
     : nodes.find((n) => (n.loadedModels?.length ?? 0) > 0)?.loadedModels?.[0]?.name;
   const checklistDoneCount = [hasNode, hasAgent, hasKey, hasModel, hasRequest].filter(Boolean).length;
   const checklistAllDone = checklistDoneCount === 5;
-  const showChecklist = demoMode ? true : !isDismissed && !isCompleted && !checklistAllDone;
+  // Demo 4/5 must be visible by default but still dismissible — so demo respects
+  // isDismissed (session hide) but ignores isCompleted/persistence. Prod hides
+  // when dismissed OR completed OR naturally 5/5.
+  const showChecklist = !isDismissed && !checklistAllDone && (demoMode ? true : !isCompleted);
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
