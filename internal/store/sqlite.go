@@ -755,12 +755,15 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	if err != nil {
 		return fmt.Errorf("store: AppendRequest: %w", err)
 	}
-	// Trim to last 1000 rows.
-	_, err = s.db.Exec(
+	// Trim to last 1000 rows, best-effort: the insert above already
+	// succeeded and the record is correctly persisted, so a trim failure
+	// (unlike an insert failure) shouldn't fail the whole call and make the
+	// caller think the request wasn't logged at all - just log it and leave
+	// the trim for the next successful call.
+	if _, err := s.db.Exec(
 		`DELETE FROM request_log WHERE id NOT IN (SELECT id FROM request_log ORDER BY ts DESC LIMIT 1000)`,
-	)
-	if err != nil {
-		return fmt.Errorf("store: AppendRequest trim: %w", err)
+	); err != nil {
+		log.Printf("store: AppendRequest trim: %v", err)
 	}
 	return nil
 }
@@ -1738,7 +1741,7 @@ func (s *sqliteStore) AppendAuditLog(e AuditEntry) error {
 	_, err := s.db.Exec(
 		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.Time.UTC().Format(time.RFC3339Nano), e.RequestID, e.KeyName, e.Model,
+		formatAuditTS(e.Time), e.RequestID, e.KeyName, e.Model,
 		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel, e.RoutingReason,
 	)
 	if err != nil {
@@ -1757,12 +1760,41 @@ func (s *sqliteStore) PruneAuditLog(retentionDays int) error {
 	if retentionDays <= 0 {
 		return nil
 	}
-	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays).Format(time.RFC3339Nano)
+	cutoff := formatAuditTS(time.Now().AddDate(0, 0, -retentionDays))
 	_, err := s.db.Exec(`DELETE FROM audit_log WHERE ts < ?`, cutoff)
 	if err != nil {
 		return fmt.Errorf("store: PruneAuditLog: %w", err)
 	}
 	return nil
+}
+
+// auditTSLayout formats a timestamp with a fixed 9-digit fractional-second
+// field, unlike time.RFC3339Nano (which trims trailing zeros, producing
+// variable-length fractions). audit_log.ts is compared lexicographically as
+// TEXT (prune cutoff, query Since/Until filters, ORDER BY) - a
+// variable-length fraction breaks that comparison whenever one timestamp's
+// fraction is a digit-prefix of another's within the same second (e.g.
+// ".12Z" > ".123Z" as strings, since 'Z' > '3', even though 120ms < 123ms).
+// Fixed-width fractions restore correct lexicographic == chronological
+// ordering. Pre-existing rows written with the old variable-width format
+// still parse fine via time.Parse(time.RFC3339Nano, ...), which accepts any
+// fraction length - only newly written/formatted timestamps get the fix.
+const auditTSLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
+func formatAuditTS(t time.Time) string {
+	return t.UTC().Format(auditTSLayout)
+}
+
+// escapeLikeWildcards backslash-escapes the SQLite LIKE metacharacters
+// (backslash itself, %, _) in a caller-supplied filter value before it's
+// wrapped in "%...%" and bound to a LIKE clause with ESCAPE '\' - without
+// this, a literal % or _ in an operator's filter value acts as a wildcard
+// instead of matching itself, making an exact substring unsearchable.
+func escapeLikeWildcards(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return s
 }
 
 func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
@@ -1776,19 +1808,19 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 
 	if !opts.Since.IsZero() {
 		query += " AND ts > ?"
-		args = append(args, opts.Since.UTC().Format(time.RFC3339Nano))
+		args = append(args, formatAuditTS(opts.Since))
 	}
 	if opts.Model != "" {
-		query += " AND model LIKE ?"
-		args = append(args, "%"+opts.Model+"%")
+		query += " AND model LIKE ? ESCAPE '\\'"
+		args = append(args, "%"+escapeLikeWildcards(opts.Model)+"%")
 	}
 	if opts.Key != "" {
-		query += " AND key_name LIKE ?"
-		args = append(args, "%"+opts.Key+"%")
+		query += " AND key_name LIKE ? ESCAPE '\\'"
+		args = append(args, "%"+escapeLikeWildcards(opts.Key)+"%")
 	}
 	if opts.Node != "" {
-		query += " AND node LIKE ?"
-		args = append(args, "%"+opts.Node+"%")
+		query += " AND node LIKE ? ESCAPE '\\'"
+		args = append(args, "%"+escapeLikeWildcards(opts.Node)+"%")
 	}
 	if opts.Cloud != nil {
 		cloud := 0
@@ -1808,7 +1840,7 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 	}
 	if !opts.Until.IsZero() {
 		query += " AND ts < ?"
-		args = append(args, opts.Until.UTC().Format(time.RFC3339Nano))
+		args = append(args, formatAuditTS(opts.Until))
 	}
 	query += " ORDER BY id DESC LIMIT ?"
 	args = append(args, opts.Limit)
@@ -2314,6 +2346,9 @@ func (s *sqliteStore) QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error)
 		}
 		entries = append(entries, e)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: QuerySystemAuditLog: %w", err)
+	}
 	return entries, nil
 }
 
@@ -2583,7 +2618,7 @@ func warmUnixToUsed(v int64) time.Time {
 	if v == 0 {
 		return time.Time{}
 	}
-	return time.Unix(v, 0)
+	return time.Unix(v, 0).UTC()
 }
 
 func (s *sqliteStore) RecordWarmLoad(w WarmStateRecord) error {
@@ -2858,7 +2893,7 @@ func (s *sqliteStore) ListBenchmarkRuns(limit int) ([]BenchmarkRun, error) {
 		); err != nil {
 			return nil, fmt.Errorf("store: ListBenchmarkRuns scan: %w", err)
 		}
-		run.CreatedAt = time.Unix(createdAt, 0)
+		run.CreatedAt = time.Unix(createdAt, 0).UTC()
 		out = append(out, run)
 	}
 	if err := rows.Err(); err != nil {
