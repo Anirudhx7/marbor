@@ -3341,6 +3341,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	sc.ID = fmt.Sprintf("sched-%d", time.Now().UnixNano())
 	s.persistSchedules(append(s.router.Schedules(), sc))
+	s.logSystemChange(r, "create_schedule", sc.ID, fmt.Sprintf("Action: %s, Node: %s, At: %s, Models: %v, Enabled: %v", sc.Action, sc.Node, sc.At, sc.Models, sc.Enabled))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(sc)
@@ -3416,6 +3417,7 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	cur[idx] = sc
 	s.persistSchedules(cur)
+	s.logSystemChange(r, "patch_schedule", sc.ID, fmt.Sprintf("Action: %s, Node: %s, At: %s, Models: %v, Enabled: %v", sc.Action, sc.Node, sc.At, sc.Models, sc.Enabled))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(sc)
 }
@@ -3437,6 +3439,7 @@ func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.persistSchedules(out)
+	s.logSystemChange(r, "delete_schedule", id, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -7464,15 +7467,99 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
 	limit := 100
-	if v := r.URL.Query().Get("limit"); v != "" {
+	if v := q.Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
-			if n > 0 && n <= 1000 {
+			if n > 0 && n <= 200 {
 				limit = n
+			} else {
+				writeJSONError(w, http.StatusBadRequest, "limit must be 1..200")
+				return
 			}
+		} else {
+			writeJSONError(w, http.StatusBadRequest, "invalid limit")
+			return
 		}
 	}
-	entries, err := s.st.QuerySystemAuditLog(limit)
+	// Enterprise filters - all optional, combined with AND.
+	var fromPtr, toPtr, beforePtr *time.Time
+	if v := q.Get("from"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid from, want RFC3339")
+			return
+		}
+		utc := t.UTC()
+		fromPtr = &utc
+	}
+	if v := q.Get("to"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid to, want RFC3339")
+			return
+		}
+		utc := t.UTC()
+		toPtr = &utc
+	}
+	if fromPtr != nil && toPtr != nil && fromPtr.After(*toPtr) {
+		writeJSONError(w, http.StatusBadRequest, "from must be before to")
+		return
+	}
+	if v := q.Get("before"); v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid before, want RFC3339")
+			return
+		}
+		utc := t.UTC()
+		beforePtr = &utc
+	}
+	kind := q.Get("kind")
+	if kind != "" && kind != "all" {
+		switch kind {
+		case "drain", "agent", "runtime", "node", "warmup", "schedule", "predictive", "config":
+		default:
+			writeJSONError(w, http.StatusBadRequest, "invalid kind, want drain|agent|runtime|node|warmup|schedule|predictive|config|all")
+			return
+		}
+		if kind == "predictive" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode([]store.SystemAuditEntry{})
+			return
+		}
+		if kind == "all" {
+			kind = ""
+		}
+	}
+	if kind == "all" {
+		kind = ""
+	}
+	action := q.Get("action")
+	username := q.Get("user")
+	target := q.Get("target")
+	sourceIP := q.Get("source_ip")
+	// If any enterprise filter is present, use filtered query for correct
+	// pagination and index use. Otherwise keep old simple path for backward
+	// compat and to avoid extra query planning overhead.
+	hasFilter := fromPtr != nil || toPtr != nil || beforePtr != nil || kind != "" || action != "" || username != "" || target != "" || sourceIP != ""
+	var entries []store.SystemAuditEntry
+	var err error
+	if hasFilter {
+		entries, err = s.st.QuerySystemAuditLogFiltered(store.SystemAuditFilter{
+			From:     fromPtr,
+			To:       toPtr,
+			Before:   beforePtr,
+			Limit:    limit,
+			Kind:     kind,
+			Action:   action,
+			Username: username,
+			Target:   target,
+			SourceIP: sourceIP,
+		})
+	} else {
+		entries, err = s.st.QuerySystemAuditLog(limit)
+	}
 	if err != nil {
 		writeServerError(w, r, err)
 		return

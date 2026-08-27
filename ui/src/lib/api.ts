@@ -1180,11 +1180,73 @@ export async function removeFavorite(modelId: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to remove favourite'); }
 }
 
+export interface SystemAuditFilter {
+  from?: string; // RFC3339
+  to?: string;
+  before?: string;
+  limit?: number;
+  kind?: string;
+  action?: string;
+  user?: string;
+  target?: string;
+  source_ip?: string;
+}
+
+function demoFilterSystemAudit(all: SystemAuditEntry[], f: SystemAuditFilter): SystemAuditEntry[] {
+  let filtered = all.slice();
+  if (f.from) {
+    const fromMs = new Date(f.from).getTime();
+    if (!isNaN(fromMs)) filtered = filtered.filter((e) => new Date(e.time).getTime() >= fromMs);
+  }
+  if (f.to) {
+    const toMs = new Date(f.to).getTime();
+    if (!isNaN(toMs)) filtered = filtered.filter((e) => new Date(e.time).getTime() <= toMs);
+  }
+  if (f.before) {
+    const beforeMs = new Date(f.before).getTime();
+    if (!isNaN(beforeMs)) filtered = filtered.filter((e) => new Date(e.time).getTime() < beforeMs);
+  }
+  if (f.action) filtered = filtered.filter((e) => e.action === f.action);
+  if (f.user) filtered = filtered.filter((e) => e.username.toLowerCase().startsWith(f.user!.toLowerCase()));
+  if (f.target) filtered = filtered.filter((e) => e.target.toLowerCase().includes(f.target!.toLowerCase()));
+  if (f.source_ip) filtered = filtered.filter((e) => (e.source_ip || '').toLowerCase().includes(f.source_ip!.toLowerCase()));
+  if (f.kind && f.kind !== 'all') {
+    if (f.kind === 'predictive') return [];
+    // Mirror ui/src/lib/activityKind.ts toActivityKind for DEMO filtering
+    const toKind = (action: string): string => {
+      if (['drain_node', 'undrain_node', 'set_node_prewarm'].includes(action)) return 'drain';
+      if (['enable_marbor_agent', 'disable_marbor_agent', 'regenerate_marbor_agent_token', 'enroll_marbor_agent'].includes(action)) return 'agent';
+      if (['runtime_start', 'runtime_stop', 'runtime_restart', 'accept_node_control', 'clear_node_control'].includes(action)) return 'runtime';
+      if (['add_node', 'update_node', 'remove_node', 'patch_node'].includes(action)) return 'node';
+      if (['unload_model', 'set_node_warmup', 'set_pinned_models', 'pull_model', 'pull_model_load_failed', 'pull_model_cancel', 'delete_model'].includes(action)) return 'warmup';
+      if (['create_schedule', 'patch_schedule', 'delete_schedule'].includes(action) || action.startsWith('scheduled_')) return 'schedule';
+      if (action.startsWith('drain_') || action.startsWith('undrain') || action === 'set_node_prewarm') return 'drain';
+      if (action.includes('marbor_agent') || action.includes('_agent')) return 'agent';
+      if (action.startsWith('runtime_') || action.includes('_control')) return 'runtime';
+      if (action.startsWith('add_node') || action.startsWith('remove_node') || action.startsWith('patch_node') || action === 'update_node') return 'node';
+      if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action === 'delete_model') return 'warmup';
+      return 'config';
+    };
+    filtered = filtered.filter((e) => toKind(e.action) === f.kind);
+  }
+  filtered.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  const lim = f.limit && f.limit > 0 && f.limit <= 200 ? f.limit : 100;
+  return filtered.slice(0, lim);
+}
+
 export async function fetchSystemAudit(limit: number = 100): Promise<SystemAuditEntry[]> {
+  return fetchSystemAuditFiltered({ limit });
+}
+
+export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promise<SystemAuditEntry[]> {
+  const limit = f.limit && f.limit > 0 && f.limit <= 200 ? f.limit : 100;
   if (DEMO) {
     const now = Date.now();
     const iso = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
+    const isoHours = (hoursAgo: number) => new Date(now - hoursAgo * 3600_000).toISOString();
+    const isoDays = (daysAgo: number) => new Date(now - daysAgo * 86400_000).toISOString();
     const all: SystemAuditEntry[] = [
+      // Recent minutes
       { time: iso(2), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
       { time: iso(5), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: qwen2.5:7b', source_ip: '192.168.1.12' },
       { time: iso(9), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
@@ -1201,10 +1263,32 @@ export async function fetchSystemAudit(limit: number = 100): Promise<SystemAudit
       { time: iso(110), username: 'admin', action: 'pull_model', target: 'gpu-node-02', details: 'Model: qwen2.5:14b', source_ip: '192.168.1.5' },
       { time: iso(135), username: 'admin', action: 'regenerate_marbor_agent_token', target: '10.0.0.11', details: '', source_ip: '192.168.1.5' },
       { time: iso(180), username: 'admin', action: 'add_key', target: 'marketing-team', details: 'RateLimit: 50, DailyLimit: 500, MonthlyLimit: 10000, DailyUsdCap: 50.00, MonthlyUsdCap: 200.00, Models: []', source_ip: '192.168.1.5' },
+      { time: iso(200), username: 'admin', action: 'create_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 08:30, Models: [llama3.3:8b], Enabled: true', source_ip: '192.168.1.5' },
+      // Older hours/days to make date presets meaningful
+      { time: isoHours(3), username: 'system', action: 'scheduled_warmup', target: 'gpu-node-01', details: 'Schedule sched-1724170000000000001: action=warmup node=gpu-node-01 models=[llama3.3:8b] status=ok', source_ip: '' },
+      { time: isoHours(8), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [qwen2.5:7b], Enabled: true', source_ip: '192.168.1.5' },
+      { time: isoHours(20), username: 'admin', action: 'runtime_stop', target: 'gpu-node-03', details: 'Driver: docker', source_ip: '192.168.1.5' },
+      { time: isoDays(2), username: 'dana.rao', action: 'add_node', target: 'gpu-node-05', details: 'URL: http://10.0.0.15:11434, Runtime: mlx, VRAM: 0MB', source_ip: '192.168.1.12' },
+      { time: isoDays(3), username: 'system', action: 'scheduled_drain', target: 'gpu-node-03', details: 'Schedule sched-1724100000000000000: action=drain node=gpu-node-03 models=[] status=ok', source_ip: '' },
+      { time: isoDays(5), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, AuthEnabled: true, DailyCap: 150.00', source_ip: '192.168.1.5' },
+      { time: isoDays(7), username: 'admin', action: 'delete_schedule', target: 'sched-1724170000000000001', details: '', source_ip: '192.168.1.5' },
+      { time: isoDays(10), username: 'admin', action: 'add_key', target: 'ci-bot', details: 'RateLimit: 1000', source_ip: '10.0.0.1' },
     ];
-    return all.slice(0, limit);
+    return demoFilterSystemAudit(all, { ...f, limit });
   }
-  const res = await apiFetch(`${BASE}/system-audit?limit=${limit}`, { headers: authHeaders() });
+  const params = new URLSearchParams();
+  if (f.from) params.set('from', f.from);
+  if (f.to) params.set('to', f.to);
+  if (f.before) params.set('before', f.before);
+  if (f.limit) params.set('limit', String(limit));
+  else params.set('limit', '100');
+  if (f.kind) params.set('kind', f.kind);
+  if (f.action) params.set('action', f.action);
+  if (f.user) params.set('user', f.user);
+  if (f.target) params.set('target', f.target);
+  if (f.source_ip) params.set('source_ip', f.source_ip);
+  const qs = params.toString();
+  const res = await apiFetch(`${BASE}/system-audit${qs ? `?${qs}` : ''}`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch system audit logs');
   return res.json();
 }

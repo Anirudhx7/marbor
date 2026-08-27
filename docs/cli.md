@@ -224,14 +224,21 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 ### `activity`
 
-show unified fleet activity feed (drain, agent, runtime, node, warmup)
+show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 Flags:
 
-- `--limit int` - max events to show (1-1000, default 100)
-- `--kind string` - filter by kind: drain, agent, runtime, node, warmup, predictive, config, or all (default all)
+- `--limit int` - max events to show (1-200, default 100)
+- `--kind string` - filter by kind: drain, agent, runtime, node, warmup, schedule, predictive, config, or all (default all)
+- `--from string` - filter from time (RFC3339, e.g. 2026-08-26T00:00:00Z)
+- `--to string` - filter to time (RFC3339, e.g. 2026-08-26T23:59:59Z)
+- `--before string` - paginate before time (RFC3339, exclusive)
+- `--action string` - filter by exact action (e.g. drain_node)
+- `--user string` - filter by operator username (prefix match)
+- `--target string` - filter by target (substring, e.g. gpu-node-02)
+- `--source_ip string` - filter by source IP (substring)
 
 requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
 

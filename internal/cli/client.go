@@ -673,9 +673,12 @@ func (c *Client) PatchKeyAllowLocalDegradation(name string, allow bool) error {
 
 // ModelNodeInfo mirrors handleModels' nested nodeInfo struct.
 type ModelNodeInfo struct {
-	Name    string `json:"name"`
-	Healthy bool   `json:"healthy"`
-	Digest  string `json:"digest,omitempty"`
+	Name      string `json:"name"`
+	Healthy   bool   `json:"healthy"`
+	Digest    string `json:"digest,omitempty"`
+	Warm      bool   `json:"warm"`
+	VRAMBytes int64  `json:"vram_bytes,omitempty"`
+	Runtime   string `json:"runtime,omitempty"`
 }
 
 // ModelEntry mirrors handleModels' modelEntry struct.
@@ -688,6 +691,8 @@ type ModelEntry struct {
 	TotalNodes     int             `json:"total_nodes"`
 	Family         string          `json:"family,omitempty"`
 	DigestMismatch bool            `json:"digest_mismatch,omitempty"`
+	TotalVRAMBytes int64           `json:"total_vram_bytes,omitempty"`
+	DriftDetails   string          `json:"drift_details,omitempty"`
 }
 
 // ModelsResp mirrors GET /admin/v1/models' wrapped response shape.
@@ -723,11 +728,57 @@ type SystemAuditEntry struct {
 	SourceIP string `json:"source_ip"`
 }
 
+// SystemAuditFilter mirrors the query params for GET /admin/system-audit.
+type SystemAuditFilter struct {
+	From     string
+	To       string
+	Before   string
+	Limit    int
+	Kind     string
+	Action   string
+	User     string
+	Target   string
+	SourceIP string
+}
+
 // SystemAudit calls GET /admin/system-audit?limit=N. N <=0 uses server default.
 func (c *Client) SystemAudit(limit int) ([]SystemAuditEntry, error) {
+	return c.SystemAuditFiltered(SystemAuditFilter{Limit: limit})
+}
+
+// SystemAuditFiltered calls GET /admin/system-audit with enterprise filters.
+func (c *Client) SystemAuditFiltered(f SystemAuditFilter) ([]SystemAuditEntry, error) {
+	params := url.Values{}
+	if f.From != "" {
+		params.Set("from", f.From)
+	}
+	if f.To != "" {
+		params.Set("to", f.To)
+	}
+	if f.Before != "" {
+		params.Set("before", f.Before)
+	}
+	if f.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", f.Limit))
+	}
+	if f.Kind != "" {
+		params.Set("kind", f.Kind)
+	}
+	if f.Action != "" {
+		params.Set("action", f.Action)
+	}
+	if f.User != "" {
+		params.Set("user", f.User)
+	}
+	if f.Target != "" {
+		params.Set("target", f.Target)
+	}
+	if f.SourceIP != "" {
+		params.Set("source_ip", f.SourceIP)
+	}
 	path := "/admin/system-audit"
-	if limit > 0 {
-		path = fmt.Sprintf("/admin/system-audit?limit=%d", limit)
+	if len(params) > 0 {
+		path += "?" + params.Encode()
 	}
 	resp, err := c.doRequest(http.MethodGet, path, true)
 	if err != nil {

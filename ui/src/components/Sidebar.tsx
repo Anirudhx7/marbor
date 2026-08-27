@@ -166,25 +166,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
                 <span className="absolute -top-1 -right-1 z-10 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-card pointer-events-none" />
               )}
             </div>
-            <div className="relative group/nav">
-              <NavLink
-                to="/system-audit"
-                title={collapsed ? 'Audit Trail' : undefined}
-                className={({ isActive }) =>
-                  `${linkBase} ${
-                    isActive ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
-                  }`
-                }
-              >
-                <Shield className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
-                <span className={labelClass}>Audit Trail</span>
-              </NavLink>
-              {collapsed && (
-                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
-                  Audit Trail
-                </span>
-              )}
-            </div>
+
           </>
         )}
         <div className="relative group/nav">
