@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Activity and Audit Trail merged into one page.** Both views were already reading the identical `GET /admin/system-audit` feed with only presentation differing (fleet-kind badges vs raw action/IP columns) - `ui/src/pages/Activity.tsx` now renders both via a `Fleet Activity` / `Audit Trail` toggle (`?view=audit` query param), and `ui/src/pages/SystemAudit.tsx` is deleted. The old `/system-audit` route now redirects (still admin-gated, unchanged) to `/activity?view=audit` so bookmarks and external links keep working. Sidebar's "Audit Trail" entry now points at `/activity?view=audit` with its own active-state check so it and "Activity" never both highlight at once. No backend, CLI, or data change - `internal/cli/activity.go`'s `marbor activity --kind` already unified this taxonomy and needed no update. Demo data (`fetchSystemAudit` DEMO branch in `ui/src/lib/api.ts`) already covered every kind/action bucket used by both views.
+
 ## [0.20.0] - 2026-08-27
 
 ### Added
