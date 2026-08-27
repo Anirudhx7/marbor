@@ -142,7 +142,14 @@ func (r *Router) isEligibleForModel(n *NodeState, modelName string) bool {
 	if modelName == "" {
 		return true
 	}
-	if runtime := n.GetRuntime(); runtime == "" || runtime == "ollama" {
+	// "auto" is a pending-detection state, not an actual runtime - it can
+	// legitimately resolve to any of the 5 supported runtimes once pollNode
+	// completes detection. Excluding it here would wrongly disqualify a
+	// healthy auto-detect node from candidacy for any not-yet-warm model
+	// during that window; failing open (like Ollama's own on-demand-load
+	// exemption) is correct since the runtime isn't known yet, not because
+	// this assumes any particular one of the 5.
+	if runtime := n.GetRuntime(); runtime == "" || runtime == "ollama" || runtime == "auto" {
 		return true
 	}
 	return r.isModelWarm(n, modelName)
@@ -301,8 +308,17 @@ func (r *Router) stickyNode(sessionID string) (*NodeState, bool) {
 	r.mu.RUnlock()
 
 	if sticky == nil {
+		// Delete only if the map still holds the exact entry we read above
+		// (pointer identity) - not the old dead TTL guard (line 296's early
+		// return already guarantees the entry was within TTL when read, so
+		// that guard could never be true), but a real guard is still needed:
+		// a concurrent Route() call for the same sessionID can replace this
+		// entry with a brand-new *affinityEntry (a freshly established pin
+		// to a different, now-healthy node) between our RUnlock above and
+		// this Lock - deleting unconditionally would erase that fresh pin
+		// instead of the stale one we actually looked up.
 		r.affinityMu.Lock()
-		if e, ok := r.affinity[sessionID]; ok && time.Since(time.Unix(0, e.lastSeen.Load())) >= r.affinityTTL {
+		if e, ok := r.affinity[sessionID]; ok && e == entry {
 			delete(r.affinity, sessionID)
 		}
 		r.affinityMu.Unlock()
@@ -313,8 +329,9 @@ func (r *Router) stickyNode(sessionID string) (*NodeState, bool) {
 	draining := sticky.Draining
 	sticky.mu.RUnlock()
 	if !healthy || draining {
+		// Same pointer-identity guard as the sticky==nil branch above.
 		r.affinityMu.Lock()
-		if e, ok := r.affinity[sessionID]; ok && time.Since(time.Unix(0, e.lastSeen.Load())) >= r.affinityTTL {
+		if e, ok := r.affinity[sessionID]; ok && e == entry {
 			delete(r.affinity, sessionID)
 		}
 		r.affinityMu.Unlock()
