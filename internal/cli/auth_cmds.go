@@ -99,7 +99,7 @@ func doLogin(flags *globalFlags, username, password string, stdout, stderr io.Wr
 func runLogout(flags *globalFlags, stdout, stderr io.Writer) int {
 	session, err := loadSession()
 	if err != nil {
-		return reportError(serverErrorf("could not read saved session: %v", err), stderr)
+		return reportError(userErrorf("could not read saved session: %v", err), stderr)
 	}
 
 	serverLogout := false
@@ -150,7 +150,7 @@ type whoamiOutput struct {
 func runWhoami(flags *globalFlags, stdout, stderr io.Writer) int {
 	session, err := loadSession()
 	if err != nil {
-		return reportError(serverErrorf("could not read saved session: %v", err), stderr)
+		return reportError(userErrorf("could not read saved session: %v", err), stderr)
 	}
 	if session == nil {
 		return reportError(userErrorf("not logged in - run marbor login"), stderr)

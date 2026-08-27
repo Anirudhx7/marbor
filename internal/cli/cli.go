@@ -205,7 +205,11 @@ func authenticatedClient(flags *globalFlags) (*Client, error) {
 	}
 	session, err := loadSession()
 	if err != nil {
-		return nil, serverErrorf("could not read saved session: %v - run marbor login again", err)
+		// A local-data problem (unreadable/corrupt session file), not a
+		// server/transport failure - the message already says "run marbor
+		// login again," a user action, so this is a user error, not a
+		// server error.
+		return nil, userErrorf("could not read saved session: %v - run marbor login again", err)
 	}
 	if session != nil && normalizeServerURL(session.Server) == normalizeServerURL(flags.server) {
 		client := NewClient(flags.server, session.Token)
