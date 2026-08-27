@@ -2348,6 +2348,13 @@ var kindActionMap = map[string][]string{
 	"schedule": {"create_schedule", "patch_schedule", "delete_schedule", "scheduled_warmup", "scheduled_unload", "scheduled_drain", "scheduled_undrain"},
 }
 
+// maxSystemAuditScan bounds how many raw rows QuerySystemAuditLogFiltered will
+// examine across all paging iterations when kind reconciliation is active. It
+// is a safety valve, not an expected ceiling: normal admin-action volume never
+// gets close to it. If ever hit, the caller gets a shorter-than-requested page
+// rather than an unbounded scan - callers can still page further via `before`.
+const maxSystemAuditScan = 5000
+
 func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]SystemAuditEntry, error) {
 	if s == nil || s.db == nil {
 		return nil, nil
@@ -2361,39 +2368,41 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 	if f.Limit > 200 {
 		f.Limit = 200
 	}
-	var where []string
-	var args []interface{}
+
+	// staticWhere/staticArgs hold every filter that does not change across
+	// paging iterations. The ts cursor (see below) is appended per iteration.
+	var staticWhere []string
+	var staticArgs []interface{}
 	if f.From != nil {
-		where = append(where, "ts >= ?")
-		args = append(args, f.From.UTC().Format(time.RFC3339))
+		staticWhere = append(staticWhere, "ts >= ?")
+		staticArgs = append(staticArgs, f.From.UTC().Format(time.RFC3339))
 	}
 	if f.To != nil {
-		where = append(where, "ts <= ?")
-		args = append(args, f.To.UTC().Format(time.RFC3339))
-	}
-	if f.Before != nil {
-		where = append(where, "ts < ?")
-		args = append(args, f.Before.UTC().Format(time.RFC3339))
+		staticWhere = append(staticWhere, "ts <= ?")
+		staticArgs = append(staticArgs, f.To.UTC().Format(time.RFC3339))
 	}
 	if f.Action != "" {
-		where = append(where, "action = ?")
-		args = append(args, f.Action)
+		staticWhere = append(staticWhere, "action = ?")
+		staticArgs = append(staticArgs, f.Action)
 	}
 	if f.Username != "" {
-		where = append(where, "username LIKE ? ESCAPE '\\' COLLATE NOCASE")
-		args = append(args, strings.ReplaceAll(strings.ReplaceAll(f.Username, "%", "\\%"), "_", "\\_")+"%")
+		staticWhere = append(staticWhere, "username LIKE ? ESCAPE '\\' COLLATE NOCASE")
+		esc := strings.ReplaceAll(strings.ReplaceAll(f.Username, "%", "\\%"), "_", "\\_")
+		staticArgs = append(staticArgs, "%"+esc+"%")
 	}
 	if f.Target != "" {
-		where = append(where, "target LIKE ? ESCAPE '\\' COLLATE NOCASE")
+		staticWhere = append(staticWhere, "target LIKE ? ESCAPE '\\' COLLATE NOCASE")
 		esc := strings.ReplaceAll(strings.ReplaceAll(f.Target, "%", "\\%"), "_", "\\_")
-		args = append(args, "%"+esc+"%")
+		staticArgs = append(staticArgs, "%"+esc+"%")
 	}
 	if f.SourceIP != "" {
-		where = append(where, "source_ip LIKE ? ESCAPE '\\' COLLATE NOCASE")
+		staticWhere = append(staticWhere, "source_ip LIKE ? ESCAPE '\\' COLLATE NOCASE")
 		esc := strings.ReplaceAll(strings.ReplaceAll(f.SourceIP, "%", "\\%"), "_", "\\_")
-		args = append(args, "%"+esc+"%")
+		staticArgs = append(staticArgs, "%"+esc+"%")
 	}
+	needsKindRecheck := false
 	if f.Kind != "" && f.Kind != "all" {
+		needsKindRecheck = true
 		if f.Kind == "config" {
 			// config is fallback: action NOT IN union of all other kind actions
 			var all []string
@@ -2403,64 +2412,100 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 			if len(all) > 0 {
 				place := strings.Repeat("?,", len(all))
 				place = strings.TrimSuffix(place, ",")
-				where = append(where, "action NOT IN ("+place+")")
+				staticWhere = append(staticWhere, "action NOT IN ("+place+")")
 				for _, a := range all {
-					args = append(args, a)
+					staticArgs = append(staticArgs, a)
 				}
 			}
 		} else if list, ok := kindActionMap[f.Kind]; ok {
 			place := strings.Repeat("?,", len(list))
 			place = strings.TrimSuffix(place, ",")
-			where = append(where, "action IN ("+place+")")
+			staticWhere = append(staticWhere, "action IN ("+place+")")
 			for _, a := range list {
-				args = append(args, a)
+				staticArgs = append(staticArgs, a)
 			}
 		} else {
 			return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: unknown kind %q", f.Kind)
 		}
 	}
-	query := `SELECT ts, username, action, target, details, source_ip FROM system_audit_log`
-	if len(where) > 0 {
-		query += " WHERE " + strings.Join(where, " AND ")
-	}
-	query += " ORDER BY ts DESC LIMIT ?"
-	args = append(args, f.Limit)
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: %w", err)
-	}
-	defer rows.Close()
-	var entries []SystemAuditEntry
-	for rows.Next() {
-		var tsStr string
-		var e SystemAuditEntry
-		if err := rows.Scan(&tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
+
+	entries := make([]SystemAuditEntry, 0, f.Limit)
+	cursor := f.Before // exclusive upper bound; advances each iteration once rows are scanned
+	scanned := 0
+	for len(entries) < f.Limit && scanned < maxSystemAuditScan {
+		where := staticWhere
+		args := staticArgs
+		if cursor != nil {
+			where = append(where[:len(where):len(where)], "ts < ?")
+			args = append(args[:len(args):len(args)], cursor.UTC().Format(time.RFC3339))
+		}
+		// The IN/NOT-IN kind clause is a coarse pre-filter only - it can admit
+		// rows that the Go-side systemAuditKind() then rejects (see comment
+		// below), so overfetch when a kind filter is active rather than
+		// requesting exactly the remaining page size, or a page can come back
+		// short even though enough matching rows exist further back.
+		fetchLimit := f.Limit - len(entries)
+		queryLimit := fetchLimit
+		if needsKindRecheck {
+			queryLimit = fetchLimit * 4
+		}
+		if remaining := maxSystemAuditScan - scanned; queryLimit > remaining {
+			queryLimit = remaining
+		}
+		if queryLimit <= 0 {
+			break
+		}
+
+		query := `SELECT ts, username, action, target, details, source_ip FROM system_audit_log`
+		if len(where) > 0 {
+			query += " WHERE " + strings.Join(where, " AND ")
+		}
+		query += " ORDER BY ts DESC LIMIT ?"
+		queryArgs := append(args[:len(args):len(args)], queryLimit)
+
+		rows, err := s.db.Query(query, queryArgs...)
+		if err != nil {
 			return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: %w", err)
 		}
-		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
-			e.Time = t
-		}
-		// Double-check kind mapping for any action not covered by IN list but
-		// that would map via prefix fallback to this kind. This handles forward
-		// compat where a new drain_* action appears that is not in the static
-		// IN list but should still be returned for kind=drain. We already
-		// filtered via IN, so we need to also accept prefix matches. To keep
-		// SQL simple, we do a second-pass check: if kind filter was applied
-		// and the row's actual kind via systemAuditKind differs from requested
-		// kind, drop it. This corrects both false positives (IN list may be
-		// incomplete for fallback) and ensures config kind correctly excludes
-		// fallback-matched drain etc.
-		if f.Kind != "" && f.Kind != "all" && f.Kind != "config" {
-			if got := systemAuditKind(e.Action); got != f.Kind {
-				continue
+		rowCount := 0
+		var lastTs time.Time
+		for rows.Next() {
+			var tsStr string
+			var e SystemAuditEntry
+			if err := rows.Scan(&tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: %w", err)
+			}
+			if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
+				e.Time = t
+				lastTs = t
+			}
+			rowCount++
+			// Second-pass kind check: the IN/NOT-IN pre-filter above can be
+			// incomplete for forward-compat prefix-matched actions (a new
+			// drain_* action not yet in kindActionMap should still count as
+			// kind=drain, and must NOT count as kind=config). systemAuditKind
+			// is the single source of truth here - drop anything it disagrees
+			// with, and keep paging (see queryLimit overfetch above) rather
+			// than silently truncating the page.
+			if needsKindRecheck {
+				if got := systemAuditKind(e.Action); got != f.Kind {
+					continue
+				}
+			}
+			entries = append(entries, e)
+			if len(entries) == f.Limit {
+				break
 			}
 		}
-		if f.Kind == "config" {
-			if got := systemAuditKind(e.Action); got != "config" {
-				continue
-			}
+		rows.Close()
+		scanned += rowCount
+		if rowCount < queryLimit || lastTs.IsZero() {
+			// Fewer rows than requested (or none) means the table is exhausted
+			// for this filter set - no point looping again.
+			break
 		}
-		entries = append(entries, e)
+		cursor = &lastTs
 	}
 	return entries, nil
 }

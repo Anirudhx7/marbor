@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Activity as ActivityIcon, Search, RefreshCw, Eye, Calendar, User, Globe, Filter, AlertCircle, X, Server, Flame, BrainCircuit } from 'lucide-react';
 import { fetchSystemAuditFiltered, fetchPredictiveDecisions } from '../lib/api';
 import type { SystemAuditEntry, PredictiveDecision } from '../types';
@@ -66,9 +66,6 @@ function getActionLabel(action: string): string {
 
 export function Activity() {
   const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const view = searchParams.get('view') === 'audit' ? 'audit' : 'fleet';
-  const isAuditView = view === 'audit';
 
   const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
   const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
@@ -132,9 +129,9 @@ export function Activity() {
     if (actionFilter !== 'all') f.action = actionFilter;
     if (userFilter !== 'all') f.user = userFilter;
     if (debouncedTarget.trim()) f.target = debouncedTarget.trim();
-    if (isAuditView && debouncedSourceIp.trim()) f.source_ip = debouncedSourceIp.trim();
+    if (debouncedSourceIp.trim()) f.source_ip = debouncedSourceIp.trim();
     return f;
-  }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp, isAuditView]);
+  }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp]);
 
   const loadActivity = useCallback(async (opts: { silent?: boolean; append?: boolean; before?: string; active?: boolean } = {}) => {
     const { silent = false, append = false, before, active = true } = opts;
@@ -210,8 +207,10 @@ export function Activity() {
 
   const filteredEntries = entries.filter((e) => {
     const kind = toActivityKind(e.action);
-    // Fleet view hides config when Kind==all
-    if (!isAuditView && kindFilter === 'all' && kind === 'config') return false;
+    // Default to hiding the low-signal config bucket when no kind filter is
+    // set - same default the old fleet view had, now unconditional since
+    // there is only one view.
+    if (kindFilter === 'all' && kind === 'config') return false;
     if (kindFilter === 'predictive') return false;
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
@@ -270,12 +269,10 @@ export function Activity() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <ActivityIcon className="w-6 h-6 text-primary" />
-            {isAuditView ? 'System Audit Trail' : 'Activity'}
+            Activity
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isAuditView
-              ? 'Compliance view of all administrative actions with enterprise filters.'
-              : 'Unified fleet operations timeline - drain, agent, runtime, node, and warmup events with what, when, and who.'}
+            Fleet operations and administrative audit timeline - what changed, when, who, and from where.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -475,23 +472,19 @@ export function Activity() {
               />
             </div>
           </div>
-          {isAuditView ? (
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Source IP contains</label>
-              <div className="relative">
-                <Globe className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="192.168.1.5"
-                  value={sourceIpInput}
-                  onChange={(e) => setSourceIpInput(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60 font-mono"
-                />
-              </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Source IP contains</label>
+            <div className="relative">
+              <Globe className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="192.168.1.5"
+                value={sourceIpInput}
+                onChange={(e) => setSourceIpInput(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60 font-mono"
+              />
             </div>
-          ) : (
-            <div className="hidden md:block" />
-          )}
+          </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Search details</label>
             <div className="relative">
@@ -556,7 +549,7 @@ export function Activity() {
                   <th className="px-5 py-3.5">Action</th>
                   <th className="px-5 py-3.5">Target</th>
                   <th className="px-5 py-3.5">Who</th>
-                  {isAuditView && <th className="px-5 py-3.5">Source IP</th>}
+                  <th className="px-5 py-3.5">Source IP</th>
                   <th className="px-5 py-3.5">Details</th>
                   <th className="px-5 py-3.5 text-right">View</th>
                 </tr>
@@ -594,11 +587,9 @@ export function Activity() {
                         {e.username}
                       </div>
                     </td>
-                    {isAuditView && (
-                      <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                        {e.source_ip || '-'}
-                      </td>
-                    )}
+                    <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                      {e.source_ip || '-'}
+                    </td>
                     <td className="px-5 py-3.5 text-muted-foreground max-w-[320px] truncate" title={e.details}>
                       {e.details || '-'}
                     </td>
@@ -664,7 +655,7 @@ export function Activity() {
                 <div className="mt-2 font-mono text-xs text-foreground truncate" title={e.target}>
                   {e.target}
                 </div>
-                {isAuditView && e.source_ip && (
+                {e.source_ip && (
                   <div className="mt-1 font-mono text-xs text-muted-foreground">IP: {e.source_ip}</div>
                 )}
                 <div className="mt-1 text-xs text-muted-foreground truncate" title={e.details}>
