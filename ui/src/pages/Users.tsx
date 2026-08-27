@@ -42,8 +42,10 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
 
   useEffect(() => {
-    fetchKeys().then(keys => setActiveKeys(keys.filter(k => k.status === 'active'))).catch(() => {});
-    fetchModels().then((cat: ModelCatalog) => setAvailableModels((cat.models ?? []).map(m => m.name))).catch(() => {});
+    let active = true;
+    fetchKeys().then(keys => { if (active) setActiveKeys(keys.filter(k => k.status === 'active')); }).catch(() => {});
+    fetchModels().then((cat: ModelCatalog) => { if (active) setAvailableModels((cat.models ?? []).map(m => m.name)); }).catch(() => {});
+    return () => { active = false; };
   }, []);
 
   function toggleModel(model: string) {
@@ -53,6 +55,19 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
   }
 
   async function handleApprove() {
+    // +e.target.value coerces a cleared field to 0 (documented elsewhere as
+    // "unlimited") - that part is intended. A negative value is the actual
+    // gap: it's truthy/non-zero so no existing check rejects it before it
+    // reaches the create-key request. Validate on submit, consistent with
+    // APIKeys.tsx's existing patch-validation checks.
+    if (mode === 'create') {
+      for (const [label, val] of [['Rate/hr', rateLimit], ['Daily', dailyLimit], ['Monthly', monthlyLimit]] as const) {
+        if (!Number.isInteger(val) || val < 0) {
+          setError(`${label} limit must be a non-negative integer`);
+          return;
+        }
+      }
+    }
     setSaving(true);
     setError(null);
     try {

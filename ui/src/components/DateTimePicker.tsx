@@ -14,6 +14,17 @@ function clampLeft(left: number, panelWidth: number): number {
   return Math.max(POPUP_VIEWPORT_MARGIN, Math.min(left, maxLeft));
 }
 
+// parseValidDate returns null for both an empty value and an unparseable
+// one, so callers have a single check instead of separately guarding
+// !value and isNaN(d.getTime()) - an unparseable value must not silently
+// become NaN-poisoned view state (a garbage next-month grid, "NaN:NaN"
+// time display) the way `new Date(value).getX()` would.
+function parseValidDate(value: string): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 interface CustomDateTimePickerProps {
   value: string; // YYYY-MM-DDTHH:MM
   onChange: (value: string) => void;
@@ -35,28 +46,32 @@ export function CustomDateTimePicker({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Parsing state
-  const initialDate = value ? new Date(value) : new Date();
+  // Parsing state - falls back to the current date for view navigation and
+  // null/0 for the selection itself when value is empty OR unparseable.
+  const initialDate = parseValidDate(value) ?? new Date();
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialDate.getMonth()); // 0-11
-  
+
   // Hour & Minute values
-  const [hours, setHours] = useState(value ? new Date(value).getHours() : 0);
-  const [minutes, setMinutes] = useState(value ? new Date(value).getMinutes() : 0);
+  const [hours, setHours] = useState(parseValidDate(value)?.getHours() ?? 0);
+  const [minutes, setMinutes] = useState(parseValidDate(value)?.getMinutes() ?? 0);
   const [selectedDay, setSelectedDay] = useState<number | null>(
-    value ? new Date(value).getDate() : null
+    parseValidDate(value)?.getDate() ?? null
   );
 
   // Sync state with incoming value changes
   useEffect(() => {
-    if (value) {
-      const d = new Date(value);
+    const d = parseValidDate(value);
+    if (d) {
       setViewYear(d.getFullYear());
       setViewMonth(d.getMonth());
       setSelectedDay(d.getDate());
       setHours(d.getHours());
       setMinutes(d.getMinutes());
     } else {
+      const now = new Date();
+      setViewYear(now.getFullYear());
+      setViewMonth(now.getMonth());
       setSelectedDay(null);
     }
   }, [value]);
@@ -81,14 +96,18 @@ export function CustomDateTimePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -98,7 +117,11 @@ export function CustomDateTimePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
+    };
   }, []);
 
   const months = [
@@ -495,14 +518,18 @@ export function CustomDatePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -512,7 +539,11 @@ export function CustomDatePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
+    };
   }, []);
 
   const months = [
@@ -802,14 +833,18 @@ export function CustomTimePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('resize', updateCoords);
+    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('resize', updateCoords);
+      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -819,7 +854,11 @@ export function CustomTimePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
+    };
   }, []);
 
   const handleHourChange = (h: number) => {
@@ -867,7 +906,17 @@ export function CustomTimePicker({
         {!!value && !disabled && (
           <button
             type="button"
-            onClick={() => onChange('')}
+            onClick={() => {
+              onChange('');
+              // The sync effect above is guarded to skip on an empty string
+              // (so a cleared field doesn't get immediately re-populated by
+              // its own stale value prop), so hours/minutes must be reset
+              // here explicitly - otherwise reopening the picker shows the
+              // previous time still highlighted despite the field looking
+              // empty.
+              setHours(0);
+              setMinutes(0);
+            }}
             className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <X className="w-3.5 h-3.5" />
@@ -1012,7 +1061,7 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
   // notch can report a large deltaY and skip several values at once. Convert
   // wheel input into fixed one-step-per-notch increments instead of letting
   // the browser translate raw deltaY into scroll distance.
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = (e: WheelEvent) => {
     e.preventDefault();
     wheelAccumRef.current += e.deltaY;
     const itemHeight = getItemHeight();
@@ -1033,12 +1082,29 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
     wheelResetTimeoutRef.current = setTimeout(() => { wheelAccumRef.current = 0; }, 200);
   };
 
+  // React attaches wheel listeners passively at the root since React 17, so
+  // a synthetic onWheel handler's e.preventDefault() is a silent no-op -
+  // native scrolling of the snap container then combines with the step-
+  // accumulation logic above to commit a value several steps past what the
+  // user intended. Attach natively with { passive: false } instead. The ref
+  // indirection keeps the listener attached once (no options/onChange
+  // dependency churn) while always calling the current closure.
+  const handleWheelRef = useRef(handleWheel);
+  handleWheelRef.current = handleWheel;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const listener = (e: WheelEvent) => handleWheelRef.current(e);
+    el.addEventListener('wheel', listener, { passive: false });
+    return () => el.removeEventListener('wheel', listener);
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col h-full relative">
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        onWheel={handleWheel}
         aria-label={label}
         className="h-full overflow-y-auto no-scrollbar py-[66px] snap-y snap-mandatory scroll-smooth z-10 relative"
       >

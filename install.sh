@@ -156,6 +156,11 @@ echo "  $URL"
 
 # Download to temp file
 TMP="$(mktemp)"
+# Every exit path already does its own "rm -f $TMP" before exiting - this
+# trap is a safety net for the ones that don't (e.g. an interrupt mid-
+# download), so a failed/aborted install never leaves the downloaded binary
+# behind in /tmp. A no-op once $TMP has already been moved to $BIN_PATH.
+trap 'rm -f "$TMP"' EXIT INT TERM
 DOWNLOAD_OK=true
 if command -v curl > /dev/null 2>&1; then
   curl -fsSL "$URL" -o "$TMP" || DOWNLOAD_OK=false
@@ -227,14 +232,15 @@ if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
   exit 1
 fi
 
-chmod +x "$TMP"
-
-# Install
+# install -m 0755 sets the standard binary permission mode explicitly
+# (rather than inheriting umask via chmod+mv) and installs atomically, in one
+# step - a system-wide binary shouldn't end up with a non-standard mode
+# depending on the installing user's umask.
 if [ -w "$INSTALL_DIR" ]; then
-  mv "$TMP" "$BIN_PATH"
+  install -m 0755 "$TMP" "$BIN_PATH"
 else
   echo "No write permission to $INSTALL_DIR. Trying with sudo..."
-  sudo mv "$TMP" "$BIN_PATH"
+  sudo install -m 0755 "$TMP" "$BIN_PATH"
 fi
 
 NEW_VERSION=$("$BIN_PATH" -version 2>/dev/null | awk '{print $2}')
@@ -363,7 +369,28 @@ if [ "$ROLE" = "agent" ]; then
     # sudo'd process instead of resetting it - required for the
     # MARBOR_AGENT_SECRET env-var value above to actually reach the binary
     # under sudo.
-    sudo -E "$BIN_PATH" "$@"
+    # A bare `if ! sudo ...; then SUDO_EXIT=$?` would both (a) capture the
+    # negated status of the `!` test itself (always 0 on this branch, not
+    # sudo's real exit code - silently turning a real failure into a
+    # reported success) and, worse, (b) never even reach here at all if
+    # written as a plain statement instead of an `if` condition, since
+    # set -e aborts the whole script on the first nonzero exit outside an
+    # if/while/until test. The un-negated `if cmd; then ... else $?; fi`
+    # form avoids both problems: the test position is exempt from set -e,
+    # and $? in the else branch reflects sudo's actual exit status.
+    if sudo -E "$BIN_PATH" "$@"; then
+      :
+    else
+      SUDO_EXIT=$?
+      echo ""
+      echo "Error: 'sudo -E' failed (exit $SUDO_EXIT)."
+      echo "  Some hardened sudoers configurations use 'env_reset' without a matching"
+      echo "  setenv rule, which silently drops -E's environment forwarding - including"
+      echo "  MARBOR_AGENT_SECRET/MARBOR_ENROLL/MARBOR_SERVER above."
+      echo "  Try re-running with an explicit allowlist instead:"
+      echo "    sudo --preserve-env=MARBOR_AGENT_SECRET,MARBOR_ENROLL,MARBOR_SERVER \"$BIN_PATH\" \"\$@\""
+      exit "$SUDO_EXIT"
+    fi
   else
     echo "Error: installing the marbor agent service requires root, and sudo is not available."
     exit 1
@@ -573,12 +600,12 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=${RUN_USER}
-WorkingDirectory=${WORKDIR}
-ExecStart=${BIN_PATH} --db ${DB_PATH}
+WorkingDirectory="${WORKDIR}"
+ExecStart="${BIN_PATH}" --db "${DB_PATH}"
 Restart=on-failure
 RestartSec=2
-StandardOutput=append:${WORKDIR}/marbor.log
-StandardError=append:${WORKDIR}/marbor.log
+StandardOutput=append:"${WORKDIR}/marbor.log"
+StandardError=append:"${WORKDIR}/marbor.log"
 
 [Install]
 WantedBy=multi-user.target
@@ -589,14 +616,19 @@ WantedBy=multi-user.target
     if [ "$RUN_USER" != "root" ]; then
       chown "$RUN_USER" "$DB_PATH" 2>/dev/null || true
     fi
-    systemctl daemon-reload
-    systemctl enable marbor >/dev/null 2>&1
-    systemctl restart marbor
+    # Guarded with `|| true` (not left to abort under set -e): a
+    # daemon-reload failure caused by some unrelated broken unit already on
+    # the host, or a transient enable/restart hiccup, must let the function's
+    # own "is-active" check below decide success/failure and drive the
+    # nohup-fallback path - not silently kill the whole installer here.
+    systemctl daemon-reload || true
+    systemctl enable marbor >/dev/null 2>&1 || true
+    systemctl restart marbor || true
   elif command -v sudo >/dev/null 2>&1; then
     printf '%s' "$UNIT_CONTENT" | sudo tee "$UNIT_PATH" >/dev/null
-    sudo systemctl daemon-reload
-    sudo systemctl enable marbor >/dev/null 2>&1
-    sudo systemctl restart marbor
+    sudo systemctl daemon-reload || true
+    sudo systemctl enable marbor >/dev/null 2>&1 || true
+    sudo systemctl restart marbor || true
   else
     echo "  [!] Writing $UNIT_PATH requires root, and sudo is not available."
     return 1

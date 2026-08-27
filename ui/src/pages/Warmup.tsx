@@ -326,7 +326,7 @@ function ScheduleRow({ schedule, nodes, modelsByNode, onToggle, onSave, onDelete
   schedule: Schedule;
   nodes: GPUNode[];
   modelsByNode: Record<string, string[]>;
-  onToggle: (enabled: boolean) => void;
+  onToggle: (enabled: boolean) => Promise<void>;
   onSave: (patch: Partial<Omit<Schedule, 'id'>>) => Promise<void>;
   onDelete: () => void;
   isLast?: boolean;
@@ -393,7 +393,18 @@ function ScheduleRow({ schedule, nodes, modelsByNode, onToggle, onSave, onDelete
           )}
         </div>
         <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
-          <button onClick={() => onToggle(!s.enabled)} title={s.enabled ? 'Pause' : 'Resume'}
+          <button onClick={async () => {
+            // Neither this handler nor editSchedule (the underlying update
+            // call, in the parent) previously had a try/catch - a failure
+            // (e.g. an expired session) became an unhandled promise
+            // rejection with zero UI feedback, unlike the row's own Save
+            // action, which already surfaces errors inline via `error`.
+            try {
+              await onToggle(!s.enabled);
+            } catch (e: any) {
+              setError(e.message || 'Failed to update schedule');
+            }
+          }} title={s.enabled ? 'Pause' : 'Resume'}
             className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
             {s.enabled ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
           </button>
@@ -658,40 +669,48 @@ export function Warmup() {
   const [pinging, setPinging] = useState(false);
   const [pingMessage, setPingMessage] = useState<{ text: string; error: boolean } | null>(null);
 
+  // loadRequestId guards against a slower, older poll cycle resolving after
+  // a newer one and overwriting fresher state - each call to load() claims a
+  // new id and every state-set checks it still owns the latest one, mirroring
+  // Settings.tsx's backupListRequestId pattern for the same six-request-deep
+  // waterfall problem.
+  const loadRequestId = useRef(0);
+
   const load = useCallback(async (active: boolean) => {
+    const requestId = ++loadRequestId.current;
     try {
       const ns = await fetchNodes();
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       const safeNs = Array.isArray(ns) ? ns : [];
       setNodes(safeNs);
       const w: Record<string, NodeWarmup> = {};
       await Promise.all(safeNs.map(async n => {
         try {
           const res = await getNodeWarmup(n.name);
-          if (active && currentAppPath() === '/warmup') {
+          if (active && requestId === loadRequestId.current && currentAppPath() === '/warmup') {
             w[n.name] = res;
           }
         } catch {
-          if (active && currentAppPath() === '/warmup') {
+          if (active && requestId === loadRequestId.current && currentAppPath() === '/warmup') {
             w[n.name] = { enabled: false, models: [] };
           }
         }
       }));
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setWarmup(w);
       const schedList = await listSchedules();
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setSchedules(schedList || []);
       const decs = await fetchPredictiveDecisions().catch(() => []);
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setDecisions(decs);
 
       const status = await fetchWarmupStatus().catch(() => ({ predictive_engine_enabled: true }));
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPredictiveEnabled(status.predictive_engine_enabled);
 
       const sys = await fetchSystemInfo().catch(() => null);
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       if (sys && sys.server_time && sys.timezone) {
         const parts = sys.server_time.split(' ');
         if (parts.length === 2) {
@@ -717,7 +736,7 @@ export function Warmup() {
       } else {
         try {
           const data = await fetchModels();
-          if (!active || currentAppPath() !== '/warmup') return;
+          if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
           const entries = data.models || [];
           setAvailableModels(entries.map((m: any) => m.name));
           const byNode: Record<string, string[]> = {};
@@ -728,18 +747,18 @@ export function Warmup() {
           }
           setModelsByNode(byNode);
         } catch {
-          if (!active || currentAppPath() !== '/warmup') return;
+          if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
           setAvailableModels([]);
           setModelsByNode({});
         }
       }
       setError(null);
     } catch (e: any) {
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setError(e.message || 'Failed to load');
     }
     finally {
-      if (active && currentAppPath() === '/warmup') {
+      if (active && requestId === loadRequestId.current && currentAppPath() === '/warmup') {
         setLoading(false);
       }
     }
@@ -860,20 +879,20 @@ export function Warmup() {
             <span className={`text-xs ${pingMessage.error ? 'text-destructive' : 'text-success'}`}>{pingMessage.text}</span>
           )}
         </div>
-        <div className="flex items-center bg-secondary rounded-lg p-0.5 text-sm w-full sm:w-auto">
+        <div className="flex items-center bg-secondary rounded-lg p-0.5 text-sm w-full sm:w-auto overflow-x-auto no-scrollbar">
           <button onClick={() => setTab('warmup')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'warmup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            <Flame className="w-3.5 h-3.5" /> Warmup
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'warmup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Flame className="w-3.5 h-3.5 shrink-0" /> Warmup
           </button>
           <button onClick={() => setTab('schedules')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'schedules' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
-            <Clock className="w-3.5 h-3.5" /> Schedules
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'schedules' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Clock className="w-3.5 h-3.5 shrink-0" /> Schedules
             {schedules.length > 0 && (
-              <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-mono">{schedules.length}</span>
+              <span className="px-1 py-0.5 sm:px-1.5 bg-primary/10 text-primary rounded text-[10px] font-mono shrink-0">{schedules.length}</span>
             )}
           </button>
           <button onClick={() => setTab('predictions')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${tab === 'predictions' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'predictions' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <BrainCircuit className="w-3.5 h-3.5" /> Predictions
           </button>
         </div>
