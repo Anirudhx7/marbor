@@ -77,6 +77,9 @@ func runServiceInstall(args []string, version string) {
 	if err := fs.Parse(args); err != nil {
 		winexit.Fatalf("marboragent: %v", err)
 	}
+	if *port < 1 || *port > 65535 {
+		winexit.Fatalf("marboragent: --port must be between 1 and 65535, got %d", *port)
+	}
 
 	token := os.Getenv("MARBOR_AGENT_SECRET")
 	enroll := *enrollFlag
@@ -152,7 +155,12 @@ func exchangeEnrollmentCode(serverBaseURL, code string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("marbor rejected enrollment code (HTTP %d)", resp.StatusCode)
+		reason, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		reasonStr := strings.TrimSpace(string(reason))
+		if reasonStr == "" {
+			return "", fmt.Errorf("marbor rejected enrollment code (HTTP %d) - the code may already be spent; request a new one from the admin UI", resp.StatusCode)
+		}
+		return "", fmt.Errorf("marbor rejected enrollment code (HTTP %d): %s - the code may already be spent; request a new one from the admin UI", resp.StatusCode, reasonStr)
 	}
 	var out struct {
 		Token string `json:"token"`

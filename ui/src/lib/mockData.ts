@@ -705,8 +705,10 @@ const _hourlyLocal = [51, 43, 38, 42, 56, 74, 119, 194, 300, 420, 481, 458, 385,
 const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,   2,   6,  10,  16,  19,  17,  12,   8,  11,  18,  21,  13,   8,   6,   4,   2,   4,  2];
 
 export const mockAnalytics: Analytics = {
-  local_requests: 5465,
-  cloud_requests: 186,
+  // Derived from the hourly arrays below (not hand-maintained) so the
+  // headline totals can never drift out of sync with what they sum to (P361).
+  local_requests: _hourlyLocal.reduce((a, b) => a + b, 0),
+  cloud_requests: _hourlyCloud.reduce((a, b) => a + b, 0),
   total_saved_usd: 58.95,
   total_spent_usd: 1.86,
   hourly: Array.from({ length: 24 }, (_, i) => ({
@@ -745,6 +747,7 @@ export const mockSystemInfo: SystemInfo = {
   arch: 'x86_64',
   ram_total_mb: 65536,
   ram_free_mb: 40960,
+  ram_known: true,
   gpus: [
     {
       name: 'NVIDIA RTX 4090',
@@ -1331,5 +1334,19 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
     ],
   };
 }
+
+// Demo parity for Activity unified feed (P389): the live Activity page fetches
+// via ui/src/lib/api.ts fetchSystemAudit DEMO + fetchPredictiveDecisions DEMO
+// and merges client-side. This static slice is kept here as the honest
+// source-of-truth snapshot for docs and for any future direct mock import,
+// never rendered as measurements in production (R1).
+export const mockActivityEntries = [
+  { time: new Date(Date.now() - 2 * 60_000).toISOString(), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 5 * 60_000).toISOString(), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: qwen2.5:7b', source_ip: '192.168.1.12' },
+  { time: new Date(Date.now() - 9 * 60_000).toISOString(), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 15 * 60_000).toISOString(), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: 'URL: http://10.0.0.17:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 18 * 60_000).toISOString(), username: 'admin', action: 'enable_marbor_agent', target: '10.0.0.13', details: 'Port: 9200, Scheme: https', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 28 * 60_000).toISOString(), username: 'admin', action: 'undrain_node', target: 'gpu-node-04', details: '', source_ip: '192.168.1.5' },
+];
 
 

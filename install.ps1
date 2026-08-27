@@ -97,6 +97,20 @@ if ($isArm64) {
 }
 $Arch = "amd64"
 
+# Older Windows Server baselines (2016/2019 unpatched) default
+# ServicePointManager.SecurityProtocol to SSL3/TLS1.0, which GitHub's
+# download endpoints reject outright - force TLS 1.2 explicitly rather than
+# relying on the system default. Bitwise-OR'd in (not overwritten) so any
+# TLS 1.3 support the runtime already negotiates is preserved. Wrapped in
+# try/catch since [Net.SecurityProtocolType]::Tls12 itself throws on very old
+# .NET Framework builds that predate the enum value - falling through to the
+# system default there is the only option anyway.
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {
+    Write-Host "Could not force TLS 1.2 ($_) - continuing with the system default security protocol."
+}
+
 $BinaryAsset = if ($Role -eq "agent") { "marbor-agent-windows-$Arch.exe" } else { "marbor-windows-$Arch.exe" }
 $Url = "https://github.com/$Repo/releases/latest/download/$BinaryAsset"
 $BinPath = Join-Path $InstallDir $BinName

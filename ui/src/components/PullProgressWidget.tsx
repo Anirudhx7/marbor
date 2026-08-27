@@ -124,7 +124,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
   );
 
   return (
-    <div className="w-auto min-w-80 max-w-[min(28rem,calc(100vw-2rem))] bg-card border border-border shadow-lg rounded-xl overflow-hidden">
+    <div className="w-auto min-w-0 sm:min-w-80 max-w-[min(28rem,calc(100vw-1.5rem))] sm:max-w-[min(28rem,calc(100vw-2rem))] bg-card border border-border shadow-lg rounded-xl overflow-hidden">
       {/* Collapsed header - always visible, click toggles expand/collapse */}
       <button
         onClick={() => setExpanded((v) => !v)}
@@ -347,7 +347,7 @@ export function PullProgressWidget() {
   if (jobs.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-2 items-end">
+    <div className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-50 flex flex-col-reverse gap-2 items-end max-w-[calc(100vw-1.5rem)] sm:max-w-none">
       {jobs.map((job) => (
         <PullJobCard key={job.key} job={job} />
       ))}

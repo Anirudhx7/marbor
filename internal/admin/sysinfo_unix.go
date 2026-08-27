@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-func readSystemMemory() (totalMB, freeMB int64) {
+func readSystemMemory() (totalMB, freeMB int64, ok bool) {
 	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return 0, 0
+		return 0, 0, false
 	}
 	var memTotal, memFree int64
 	var memAvailable int64
@@ -41,9 +41,12 @@ func readSystemMemory() (totalMB, freeMB int64) {
 		// kernel, so use it whenever MemAvailable itself is absent from the
 		// file; never substitute memTotal for a genuine 0 value.
 		if !haveMemAvailable {
-			return memTotal, memFree
+			return memTotal, memFree, true
 		}
-		return memTotal, memAvailable
+		return memTotal, memAvailable, true
 	}
-	return 0, 0
+	// memTotal<=0 means the file parsed but didn't contain a usable
+	// MemTotal line - no distinguishable "0 MB machine" case exists in
+	// practice, so this is "couldn't read," not "read a real zero."
+	return 0, 0, false
 }

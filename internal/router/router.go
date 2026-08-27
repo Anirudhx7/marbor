@@ -348,6 +348,13 @@ const maxShowCacheEntries = 10_000
 // authenticated callers sending unique session IDs at high rate.
 const maxAffinityEntries = 10_000
 
+// defaultPollInterval is New()'s fallback for a non-positive
+// cfg.PollIntervalMs, matching config.Validate()'s own production default
+// (2000ms) so a Router built directly bypassing Validate() (tests,
+// embedding) gets the same effective interval rather than panicking in
+// Start's time.NewTicker(r.interval).
+const defaultPollInterval = 2 * time.Second
+
 // affinityEntry records which node a session was last routed to and when,
 // so the router can honour the sticky-session contract for the TTL window.
 type affinityEntry struct {
@@ -647,6 +654,15 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	if nvidiaPollInterval <= 0 {
 		nvidiaPollInterval = 30 * time.Second
 	}
+	// r.interval has no <=0 fallback below unlike every sibling ticker in
+	// this function - time.NewTicker(r.interval) in Start panics on a
+	// non-positive duration, only reachable by a Router built directly with
+	// PollIntervalMs unset (bypassing config.Validate(), which defaults it
+	// to 2000ms - tests, embedding).
+	pollInterval := time.Duration(cfg.PollIntervalMs) * time.Millisecond
+	if pollInterval <= 0 {
+		pollInterval = defaultPollInterval
+	}
 	// Queue config: 0 means disabled (immediate fallthrough to cloud/503).
 	// config.Validate() sets the production defaults (30s, depth 100).
 	// Tests that construct RoutingConfig{} directly bypass Validate() and get
@@ -669,7 +685,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		nodes:                    nodes,
 		strategy:                 cfg.Strategy,
 		fallback:                 cfg.Fallback,
-		interval:                 time.Duration(cfg.PollIntervalMs) * time.Millisecond,
+		interval:                 pollInterval,
 		client:                   client,
 		tlsTransport:             transport,
 		rules:                    cfg.Rules,
@@ -1281,13 +1297,19 @@ func (r *Router) Start(ctx context.Context) {
 // (never replacing the pointer), so telemetry/health/warm-residency/session-
 // affinity tracked against this node's identity survive the upsert for free
 // - there is no separate "preserve vs. reset" step to get wrong.
-func (r *Router) AddNode(n config.NodeConfig) {
+// AddNode registers n as a new node, or upserts config fields onto an
+// existing node of the same name. Returns true if the node was actually
+// added/upserted, false if it was rejected (invalid URL, or a URL collision
+// with a differently-named existing node) - callers that track discovered
+// URLs (health.go's Docker auto-discovery) need this signal so a rejected
+// node's URL isn't marked as "already handled" forever.
+func (r *Router) AddNode(n config.NodeConfig) bool {
 	// Defense-in-depth: reject invalid or link-local/metadata node URLs even when
 	// they arrive from the store overlay or Docker discovery, which bypass
 	// config.Validate. Prevents an SSRF relay from a persisted/discovered node.
 	if err := config.ValidateNodeURL(n.URL); err != nil {
 		log.Printf("router: rejecting node %q: %v", n.Name, err)
-		return
+		return false
 	}
 	// Reject a node whose URL already resolves to an existing, differently-named
 	// node. config.Validate() only catches duplicate URLs within a single
@@ -1323,7 +1345,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		if config.NormalizeNodeURL(existing.URL) == normURL {
 			r.mu.Unlock()
 			log.Printf("router: WARNING: rejecting node %q (%s): URL already registered as node %q - refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
-			return
+			return false
 		}
 	}
 
@@ -1334,6 +1356,25 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		// on a same-name POST with zero protection, so matching that is the
 		// correct minimal fix, not a new restriction.
 		existingByName.mu.Lock()
+		if existingByName.URL != n.URL {
+			// URL is actually changing - the upsert previously mutated it
+			// in place while leaving Healthy/Failures/SuccessHistory/
+			// HealthHistory/ThermalBreaches/LoadedModels/LastErrorAt/
+			// AgentTLSMismatch untouched, contradicting UpdateNodeURL's
+			// explicit design (it builds a brand-new NodeState) that a URL
+			// change means prior live state is stale and must not carry
+			// over. Draining is left alone: that's an explicit operator
+			// choice, not telemetry, and a URL fix shouldn't silently
+			// un-drain a node.
+			existingByName.Healthy = true
+			existingByName.Failures = 0
+			existingByName.SuccessHistory = nil
+			existingByName.HealthHistory = nil
+			existingByName.ThermalBreaches = 0
+			existingByName.LoadedModels = nil
+			existingByName.LastErrorAt = time.Time{}
+			existingByName.AgentTLSMismatch = false
+		}
 		existingByName.URL = n.URL
 		existingByName.Host = hostOrDefault(n.Host, n.URL)
 		existingByName.GPUModel = n.GPUModel
@@ -1357,7 +1398,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		// calling it again here cannot leak a goroutine or race a prior
 		// invocation for this node past its own single pass.
 		go r.pollNode(existingByName)
-		return
+		return true
 	}
 
 	node := &NodeState{
@@ -1382,6 +1423,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 	r.mu.Unlock()
 	// Start polling immediately
 	go r.pollNode(node)
+	return true
 }
 
 func (r *Router) RemoveNode(name string) {
@@ -1418,8 +1460,58 @@ func (r *Router) RemoveNode(name string) {
 		delete(r.tagsCache, urlToRemove)
 		r.tagsMu.Unlock()
 	}
+	// pinned is guarded by r.mu itself (see its field doc comment) - clear
+	// here while still holding it.
+	delete(r.pinned, name)
 	st := r.store
 	r.mu.Unlock()
+
+	// P230: the remaining per-node state below is each guarded by its own
+	// mutex, not r.mu, so it's cleaned up after releasing r.mu rather than
+	// nesting a new lock inside r.mu (avoids introducing a new lock-ordering
+	// dependency). Previously RemoveNode left affinity/lastUsed/
+	// warmReserved/lastKnownVRAM/lastEvictAt entirely untouched - e.g.
+	// affinity pins kept steering sessions to the removed/dead node's
+	// address until natural TTL expiry (default 10m).
+
+	// affinity is keyed by session ID with a nodeURL field, not by node
+	// name - sweep for entries pointing at the removed node's URL.
+	if urlToRemove != "" {
+		r.affinityMu.Lock()
+		for sessionID, entry := range r.affinity {
+			if entry.nodeURL == urlToRemove {
+				delete(r.affinity, sessionID)
+			}
+		}
+		r.affinityMu.Unlock()
+	}
+
+	// lastUsed/lastKnownVRAM are keyed by modelKey(node, model), where node
+	// is the node's Name (same convention as SetPinnedModels/IsPinned's
+	// `node string` param) - delete every key with this node's prefix. The
+	// "\x00" separator in modelKey means a prefix match can't collide with
+	// a different node whose name happens to start with this one's.
+	prefix := name + "\x00"
+	r.lruMu.Lock()
+	for k := range r.lastUsed {
+		if strings.HasPrefix(k, prefix) {
+			delete(r.lastUsed, k)
+		}
+	}
+	r.lruMu.Unlock()
+
+	r.vramSeenMu.Lock()
+	for k := range r.lastKnownVRAM {
+		if strings.HasPrefix(k, prefix) {
+			delete(r.lastKnownVRAM, k)
+		}
+	}
+	r.vramSeenMu.Unlock()
+
+	r.evictMu.Lock()
+	delete(r.lastEvictAt, name)
+	delete(r.warmReserved, name)
+	r.evictMu.Unlock()
 
 	// Drop the removed node's warm state immediately (Tier 1): its residency is
 	// no longer meaningful and must not be restored on the next start.

@@ -31,6 +31,23 @@ func isOllamaPath(path string) bool {
 	return strings.HasPrefix(path, "/api/")
 }
 
+// isTranslatedOllamaPath reports whether path is one of the four Ollama
+// endpoints this file actually translates (chat/generate/embeddings/embed
+// response bodies). isOllamaPath alone is too broad: it matches every
+// /api/* path, including passthrough endpoints like /api/tags whose
+// response body is never rewritten - gating RoundTrip's Content-Type/
+// Content-Length rewrite on this instead means an untranslated passthrough
+// response keeps its real Content-Type/Content-Length rather than being
+// mislabeled application/x-ndjson.
+func isTranslatedOllamaPath(path string) bool {
+	switch path {
+	case "/api/chat", "/api/generate", "/api/embeddings", "/api/embed":
+		return true
+	default:
+		return false
+	}
+}
+
 // translatingTransport wraps an inner RoundTripper and, for responses to
 // Ollama-native requests, replaces the response body with an Ollama NDJSON
 // stream translated from the OpenAI SSE (or JSON) response.
@@ -59,7 +76,7 @@ func (t *translatingTransport) RoundTrip(req *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, err
 	}
-	if !isOllamaPath(t.origPath) {
+	if !isTranslatedOllamaPath(t.origPath) {
 		return resp, nil
 	}
 

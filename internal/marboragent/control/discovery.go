@@ -40,6 +40,47 @@ type prober interface {
 	probe(ctx context.Context, runtimeName string) (DiscoveryResult, bool)
 }
 
+// discoveryCandidate is one substring-matching hit within a single tier's
+// probe, before selectBestCandidate's two-pass scoring picks a winner
+// (P270): a naive first-match-wins scan lets a decoy unit (e.g. an
+// "ollama-backup" service) shadow the real "ollama" unit whenever it happens
+// to be listed first.
+type discoveryCandidate struct {
+	identifier string
+	// exactMatch is true when identifier equals runtimeName exactly
+	// (case-insensitively, service-manager-suffix-stripped where
+	// applicable) rather than merely containing it as a substring.
+	exactMatch bool
+	active     bool
+	evidence   []string
+}
+
+// selectBestCandidate scores candidates as: exact-match+active > exact-match
+// > substring-match+active > first substring match (the original
+// first-match-wins order, kept as the final fallback so a tier still
+// resolves something when nothing scores higher).
+func selectBestCandidate(candidates []discoveryCandidate) (discoveryCandidate, bool) {
+	if len(candidates) == 0 {
+		return discoveryCandidate{}, false
+	}
+	for _, c := range candidates {
+		if c.exactMatch && c.active {
+			return c, true
+		}
+	}
+	for _, c := range candidates {
+		if c.exactMatch {
+			return c, true
+		}
+	}
+	for _, c := range candidates {
+		if c.active {
+			return c, true
+		}
+	}
+	return candidates[0], true
+}
+
 // Discover runs the confidence-ordered probe sequence: service manager (any
 // of systemd/launchd/windows_service - whichever tool is actually present
 // on this host) -> Docker container inspect -> PID file convention -> port
@@ -77,31 +118,73 @@ func (systemdProber) probe(ctx context.Context, runtimeName string) (DiscoveryRe
 	if _, err := lookPath("systemctl"); err != nil {
 		return DiscoveryResult{}, false
 	}
-	out, err := runCommand(ctx, "systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain")
-	if err != nil {
-		return DiscoveryResult{}, false
-	}
-	for _, line := range splitLines(out) {
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		unit := fields[0]
-		if isSelf(unit) {
-			continue
-		}
-		if strings.Contains(strings.ToLower(unit), strings.ToLower(runtimeName)) {
-			return DiscoveryResult{
-				Driver:     "systemd",
-				Identifier: unit,
-				Evidence: []string{
+	lowerRuntime := strings.ToLower(runtimeName)
+	seen := map[string]bool{}
+	var candidates []discoveryCandidate
+
+	if out, err := runCommand(ctx, "systemctl", "list-units", "--type=service", "--all", "--no-legend", "--plain"); err == nil {
+		for _, line := range splitLines(out) {
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			unit := fields[0]
+			if isSelf(unit) {
+				continue
+			}
+			lowerUnit := strings.ToLower(unit)
+			if !strings.Contains(lowerUnit, lowerRuntime) {
+				continue
+			}
+			seen[lowerUnit] = true
+			candidates = append(candidates, discoveryCandidate{
+				identifier: unit,
+				exactMatch: lowerUnit == lowerRuntime || lowerUnit == lowerRuntime+".service",
+				active:     len(fields) >= 3 && fields[2] == "active",
+				evidence: []string{
 					fmt.Sprintf("unit %q found", unit),
 					strings.TrimSpace(line),
 				},
-			}, true
+			})
 		}
 	}
-	return DiscoveryResult{}, false
+
+	// P271: list-units only sees loaded units, while SystemdDriver.Validate
+	// uses list-unit-files and so sees disabled/unloaded units too - union
+	// the two here so a stopped-but-installed unit is still discoverable
+	// instead of only the currently-loaded ones.
+	if out, err := runCommand(ctx, "systemctl", "list-unit-files", "--type=service", "--no-legend", "--plain"); err == nil {
+		for _, line := range splitLines(out) {
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			unit := fields[0]
+			if isSelf(unit) {
+				continue
+			}
+			lowerUnit := strings.ToLower(unit)
+			if seen[lowerUnit] || !strings.Contains(lowerUnit, lowerRuntime) {
+				continue
+			}
+			seen[lowerUnit] = true
+			candidates = append(candidates, discoveryCandidate{
+				identifier: unit,
+				exactMatch: lowerUnit == lowerRuntime || lowerUnit == lowerRuntime+".service",
+				active:     false,
+				evidence: []string{
+					fmt.Sprintf("unit file %q found (installed but not currently loaded)", unit),
+					strings.TrimSpace(line),
+				},
+			})
+		}
+	}
+
+	best, ok := selectBestCandidate(candidates)
+	if !ok {
+		return DiscoveryResult{}, false
+	}
+	return DiscoveryResult{Driver: "systemd", Identifier: best.identifier, Evidence: best.evidence}, true
 }
 
 // launchdProber lists loaded launchd jobs and looks for one whose label
@@ -116,6 +199,8 @@ func (launchdProber) probe(ctx context.Context, runtimeName string) (DiscoveryRe
 	if err != nil {
 		return DiscoveryResult{}, false
 	}
+	lowerRuntime := strings.ToLower(runtimeName)
+	var candidates []discoveryCandidate
 	for _, line := range splitLines(out) {
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
@@ -125,18 +210,27 @@ func (launchdProber) probe(ctx context.Context, runtimeName string) (DiscoveryRe
 		if isSelf(label) {
 			continue
 		}
-		if strings.Contains(strings.ToLower(label), strings.ToLower(runtimeName)) {
-			return DiscoveryResult{
-				Driver:     "launchd",
-				Identifier: label,
-				Evidence: []string{
-					fmt.Sprintf("launchd label %q found", label),
-					strings.TrimSpace(line),
-				},
-			}, true
+		lowerLabel := strings.ToLower(label)
+		if !strings.Contains(lowerLabel, lowerRuntime) {
+			continue
 		}
+		// launchctl list's PID column is "-" when the job is loaded but not
+		// currently running.
+		candidates = append(candidates, discoveryCandidate{
+			identifier: label,
+			exactMatch: lowerLabel == lowerRuntime,
+			active:     fields[0] != "-",
+			evidence: []string{
+				fmt.Sprintf("launchd label %q found", label),
+				strings.TrimSpace(line),
+			},
+		})
 	}
-	return DiscoveryResult{}, false
+	best, ok := selectBestCandidate(candidates)
+	if !ok {
+		return DiscoveryResult{}, false
+	}
+	return DiscoveryResult{Driver: "launchd", Identifier: best.identifier, Evidence: best.evidence}, true
 }
 
 // windowsServiceProber lists Windows services and looks for one whose name
@@ -151,23 +245,47 @@ func (windowsServiceProber) probe(ctx context.Context, runtimeName string) (Disc
 	if err != nil {
 		return DiscoveryResult{}, false
 	}
+	lowerRuntime := strings.ToLower(runtimeName)
+	var candidates []discoveryCandidate
+
+	// "sc query" output is a sequence of per-service blocks, each starting
+	// with a SERVICE_NAME line and (a few lines later) a STATE line - walk
+	// the blocks so active state can be scored, not just presence.
+	var curName string
+	var curMatch bool
+	flush := func(running bool) {
+		if curName == "" || !curMatch {
+			curName = ""
+			return
+		}
+		lowerName := strings.ToLower(curName)
+		candidates = append(candidates, discoveryCandidate{
+			identifier: curName,
+			exactMatch: lowerName == lowerRuntime,
+			active:     running,
+			evidence:   []string{fmt.Sprintf("service %q found", curName)},
+		})
+		curName = ""
+	}
 	for _, line := range splitLines(out) {
-		if !strings.HasPrefix(strings.TrimSpace(line), "SERVICE_NAME:") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "SERVICE_NAME:") {
+			flush(false) // previous block never showed a STATE line
+			curName = strings.TrimSpace(strings.TrimPrefix(trimmed, "SERVICE_NAME:"))
+			curMatch = !isSelf(curName) && strings.Contains(strings.ToLower(curName), lowerRuntime)
 			continue
 		}
-		name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "SERVICE_NAME:"))
-		if isSelf(name) {
-			continue
-		}
-		if strings.Contains(strings.ToLower(name), strings.ToLower(runtimeName)) {
-			return DiscoveryResult{
-				Driver:     "windows_service",
-				Identifier: name,
-				Evidence:   []string{fmt.Sprintf("service %q found", name)},
-			}, true
+		if strings.HasPrefix(trimmed, "STATE") && curName != "" {
+			flush(strings.Contains(trimmed, "RUNNING"))
 		}
 	}
-	return DiscoveryResult{}, false
+	flush(false)
+
+	best, ok := selectBestCandidate(candidates)
+	if !ok {
+		return DiscoveryResult{}, false
+	}
+	return DiscoveryResult{Driver: "windows_service", Identifier: best.identifier, Evidence: best.evidence}, true
 }
 
 // dockerProber lists containers (running and stopped) and looks for one
@@ -178,33 +296,50 @@ func (dockerProber) probe(ctx context.Context, runtimeName string) (DiscoveryRes
 	if _, err := lookPath("docker"); err != nil {
 		return DiscoveryResult{}, false
 	}
-	out, err := runCommand(ctx, "docker", "ps", "-a", "--format", "{{.Names}}\t{{.Image}}")
+	out, err := runCommand(ctx, "docker", "ps", "-a", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}")
 	if err != nil {
 		return DiscoveryResult{}, false
 	}
 	lower := strings.ToLower(runtimeName)
+	var candidates []discoveryCandidate
 	for _, line := range splitLines(out) {
-		parts := strings.SplitN(line, "\t", 2)
+		parts := strings.SplitN(line, "\t", 3)
 		if len(parts) == 0 {
 			continue
 		}
 		name := parts[0]
-		image := ""
+		var image, status string
 		if len(parts) > 1 {
 			image = parts[1]
+		}
+		if len(parts) > 2 {
+			status = parts[2]
 		}
 		if isSelf(name) {
 			continue
 		}
-		if strings.Contains(strings.ToLower(name), lower) || strings.Contains(strings.ToLower(image), lower) {
-			evidence := []string{fmt.Sprintf("docker container %q found", name)}
-			if image != "" {
-				evidence = append(evidence, fmt.Sprintf("image %s", image))
-			}
-			return DiscoveryResult{Driver: "docker", Identifier: name, Evidence: evidence}, true
+		lowerName := strings.ToLower(name)
+		if !strings.Contains(lowerName, lower) && !strings.Contains(strings.ToLower(image), lower) {
+			continue
 		}
+		evidence := []string{fmt.Sprintf("docker container %q found", name)}
+		if image != "" {
+			evidence = append(evidence, fmt.Sprintf("image %s", image))
+		}
+		candidates = append(candidates, discoveryCandidate{
+			identifier: name,
+			exactMatch: lowerName == lower,
+			// docker ps Status starts with "Up" for a running container,
+			// "Exited"/"Created" otherwise.
+			active:   strings.HasPrefix(status, "Up"),
+			evidence: evidence,
+		})
 	}
-	return DiscoveryResult{}, false
+	best, ok := selectBestCandidate(candidates)
+	if !ok {
+		return DiscoveryResult{}, false
+	}
+	return DiscoveryResult{Driver: "docker", Identifier: best.identifier, Evidence: best.evidence}, true
 }
 
 // processCandidatePIDFiles are the conventional PID file locations checked

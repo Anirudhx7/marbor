@@ -222,6 +222,19 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
 
+### `activity`
+
+show unified fleet activity feed (drain, agent, runtime, node, warmup)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--limit int` - max events to show (1-1000, default 100)
+- `--kind string` - filter by kind: drain, agent, runtime, node, warmup, predictive, config, or all (default all)
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
 ### `requests`
 
 inspect routing decisions for past requests

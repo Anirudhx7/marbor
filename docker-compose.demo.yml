@@ -163,10 +163,18 @@ services:
       PROXY_URL: http://marbor:11434
       API_KEY: demo-api-key
       REQUEST_COUNT: "20"
+      # PROXY_URL targets the "marbor" compose service by its Docker DNS
+      # name, not literally "localhost" - but it's still the same
+      # self-contained, ephemeral local stack demotraffic's non-localhost
+      # guard (P165) exists to protect against pointing at a real live
+      # instance. Opt in explicitly for this known-safe topology.
+      ALLOW_NON_LOCALHOST: "1"
     restart: "no"
 
   prometheus:
-    image: prom/prometheus:latest
+    # Pinned to a specific release so this demo stack doesn't silently pick
+    # up a breaking upstream change. Bump deliberately.
+    image: prom/prometheus:v2.53.0
     ports:
       - "9091:9090"
     volumes:
@@ -176,7 +184,8 @@ services:
         condition: service_healthy
 
   grafana:
-    image: grafana/grafana:latest
+    # Pinned to a specific release, same rationale as prometheus above.
+    image: grafana/grafana:10.4.2
     ports:
       - "3000:3000"
     volumes:

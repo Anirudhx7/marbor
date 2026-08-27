@@ -10,7 +10,7 @@
 // one node) sees every one of them, distinguished by node name, in the
 // widget stack at once.
 
-import { normalizePullTag } from './api';
+import { normalizePullTag, apiFetch } from './api';
 
 const BASE = '/admin';
 
@@ -208,9 +208,8 @@ export function startPull(node: string, model: string, simulate: boolean = false
     return;
   }
 
-  fetch(`${BASE}/v1/nodes/${encodeURIComponent(node)}/pull`, {
+  apiFetch(`${BASE}/v1/nodes/${encodeURIComponent(node)}/pull`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: tag, verify_load: verifyLoad }),
   })
@@ -346,9 +345,8 @@ export function cancelPull(key: string): void {
     setJob(key, { status: 'cancelled', error: 'Cancelled.' });
     return;
   }
-  fetch(`${BASE}/v1/nodes/${encodeURIComponent(job.node)}/pull?model=${encodeURIComponent(job.model)}`, {
+  apiFetch(`${BASE}/v1/nodes/${encodeURIComponent(job.node)}/pull?model=${encodeURIComponent(job.model)}`, {
     method: 'DELETE',
-    credentials: 'include',
   }).catch(() => {
     /* the SSE stream (or its onerror fallback) surfaces the outcome either way */
   });
@@ -363,9 +361,9 @@ export function cancelPull(key: string): void {
 // just works - no separate "restored" UI state needed.
 export function restoreActivePulls(): void {
   if (DEMO) return;
-  fetch(`${BASE}/pulls`, { credentials: 'include' })
+  apiFetch(`${BASE}/pulls`)
     .then((res) => (res.ok ? res.json() : []))
-    .then((active: Array<{ node: string; model: string; method?: string; status?: string; bytes_total?: number; bytes_completed?: number }>) => {
+    .then((active: Array<{ node: string; model: string; method?: string; status?: string; bytes_total?: number; bytes_completed?: number; verify_load?: boolean }>) => {
       for (const j of active) {
         const key = jobKey(j.node, j.model);
         if (jobs.has(key)) continue; // already tracked (e.g. started in this same tab)
@@ -376,7 +374,11 @@ export function restoreActivePulls(): void {
         // and the first real SSE tick corrects this immediately either way.
         jobs.set(key, {
           key, node: j.node, model: j.model, method: (j.method as 'direct' | 'agent') || '',
-          status: (j.status as PullStatus) || 'downloading', verifyLoad: j.status === 'verifying',
+          // verify_load comes straight from the job's stored server-side
+          // flag now, not inferred from status - a job still 'downloading'
+          // that was started with verify_load:true no longer loses the flag
+          // on a page refresh.
+          status: (j.status as PullStatus) || 'downloading', verifyLoad: !!j.verify_load,
           // A restored job always came from the marbor's own server-side
           // bookkeeping (GET /admin/pulls), never a simulated one.
           simulating: false,

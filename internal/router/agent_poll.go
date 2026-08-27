@@ -17,8 +17,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -525,6 +527,14 @@ func buildAgentURL(host string, port int, scheme string) (string, error) {
 	}
 	if scheme == "" {
 		scheme = "http"
+	}
+	// u.Hostname() strips the brackets from an IPv6 literal (e.g.
+	// "2001:db8::10"), so a bare interpolation of host here would produce
+	// an unparseable "http://2001:db8::10:9200/..." (the ":9200" reads as
+	// another IPv6 segment). Re-wrap in brackets when host is an IPv6
+	// literal before formatting.
+	if ip := net.ParseIP(host); ip != nil && strings.Contains(host, ":") {
+		host = "[" + host + "]"
 	}
 	return fmt.Sprintf("%s://%s:%d/v1/status", scheme, host, port), nil
 }

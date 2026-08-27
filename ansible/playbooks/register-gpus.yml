@@ -82,6 +82,19 @@
         index_var: idx
         label: "{{ gpu_node.host }}"
 
+    - name: Reject node names that aren't safe for unencoded interpolation into a URL path
+      ansible.builtin.assert:
+        that:
+          - resolved_node.name is match('^[A-Za-z0-9_.-]+$')
+        fail_msg: >-
+          gpu_nodes entry resolves to name "{{ resolved_node.name }}", which
+          contains characters unsafe to interpolate directly into the node
+          status GET URL below. Node names must match ^[A-Za-z0-9_.-]+$.
+      loop: "{{ resolved_nodes }}"
+      loop_control:
+        loop_var: resolved_node
+        label: "{{ resolved_node.name }}"
+
     - name: Log in to marbor Admin API (session reused for all nodes)
       ansible.builtin.uri:
         url: "{{ marbor_url }}/admin/login"
@@ -111,6 +124,13 @@
         loop_var: node
         label: "{{ node.name }} ({{ node.host }})"
       register: register_results
+      # POST /admin/nodes returns 201 only when the node didn't already exist
+      # (handleAddNode, admin.go) - 200 means an existing node was upserted,
+      # which this task always does unconditionally regardless of whether any
+      # field actually differs. changed=true only on a genuine new
+      # registration, not on every idempotent re-run against an already-known
+      # fleet.
+      changed_when: status == 201
 
     - name: Wait for each node's runtime endpoint to report healthy
       ansible.builtin.uri:

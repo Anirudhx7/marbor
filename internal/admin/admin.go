@@ -220,6 +220,14 @@ type Server struct {
 	// write would silently discard the first's changes (lost update) -
 	// same nodePatchMu discipline as handlePatchNode above.
 	settingsMu sync.Mutex
+	// scheduleMu serializes handleCreateSchedule/handlePatchSchedule/
+	// handleDeleteSchedule's entire load-validate-store sequence - each
+	// reads the full schedule list, mutates a local copy, and replaces the
+	// whole list via persistSchedules, with no serialization between the
+	// three; two concurrent calls can otherwise each snapshot the same
+	// pre-mutation list and one's write silently discards the other's
+	// (lost update), same class of bug nodePatchMu/settingsMu guard above.
+	scheduleMu sync.Mutex
 }
 
 // enrollmentCode is a short-lived, single-use credential exchanged by a Node
@@ -622,11 +630,16 @@ func toAgentGPUDevices(devices []marboragent.GPUInfo) []agentGPUDevice {
 }
 
 type SystemInfo struct {
-	CPUCores   int           `json:"cpu_cores"`
-	OS         string        `json:"os"`
-	Arch       string        `json:"arch"`
-	RAMTotalMB int64         `json:"ram_total_mb"`
-	RAMFreeMB  int64         `json:"ram_free_mb"`
+	CPUCores   int    `json:"cpu_cores"`
+	OS         string `json:"os"`
+	Arch       string `json:"arch"`
+	RAMTotalMB int64  `json:"ram_total_mb"`
+	RAMFreeMB  int64  `json:"ram_free_mb"`
+	// RAMKnown is false when readSystemMemory couldn't actually read the
+	// host's memory (as opposed to RAMTotalMB/RAMFreeMB being 0 because
+	// they're genuinely unset) - R1: real data or unknown, never a fake 0
+	// presented as a measurement.
+	RAMKnown   bool          `json:"ram_known"`
 	GPUs       []sysGPUEntry `json:"gpus"`
 	ServerTime string        `json:"server_time"`
 	Timezone   string        `json:"timezone"`
@@ -3340,7 +3353,9 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sc.ID = fmt.Sprintf("sched-%d", time.Now().UnixNano())
+	s.scheduleMu.Lock()
 	s.persistSchedules(append(s.router.Schedules(), sc))
+	s.scheduleMu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(sc)
@@ -3361,6 +3376,8 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid JSON body"}`, http.StatusBadRequest)
 		return
 	}
+	s.scheduleMu.Lock()
+	defer s.scheduleMu.Unlock()
 	cur := s.router.Schedules()
 	idx := -1
 	for i, sc := range cur {
@@ -3422,6 +3439,8 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	s.scheduleMu.Lock()
+	defer s.scheduleMu.Unlock()
 	cur := s.router.Schedules()
 	out := make([]router.Schedule, 0, len(cur))
 	found := false
@@ -3460,7 +3479,7 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	_ = s.st.SetNodeDrain(name, true, reason)
 	s.logSystemChange(r, "drain_node", name, reason)
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"node":%q,"draining":true,"reason":%q}`, name, reason)
+	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "draining": true, "reason": reason})
 }
 
 func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
@@ -3472,7 +3491,7 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 	_ = s.st.SetNodeDrain(name, false, "")
 	s.logSystemChange(r, "undrain_node", name, "")
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"node":%q,"draining":false}`, name)
+	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "draining": false})
 }
 
 // handleSetNodePrewarm toggles whether the predictive engine may warm new
@@ -3877,15 +3896,17 @@ func (s *Server) handleDeleteModelConfig(w http.ResponseWriter, r *http.Request)
 // generateAPIKey creates a cryptographically random API key of the form sk-<slug>-<48 hex chars>.
 // name is slugified (lowercased, non-alphanumerics collapsed to a single hyphen) so the token
 // stays a single whitespace-free string regardless of how the key's display name was entered.
-func generateAPIKey(name string) string {
+func generateAPIKey(name string) (string, error) {
 	b := make([]byte, 24)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
 	slug := apiKeyNameSlugRe.ReplaceAllString(strings.ToLower(name), "-")
 	slug = strings.Trim(slug, "-")
 	if slug == "" {
 		slug = "key"
 	}
-	return "sk-" + slug + "-" + hex.EncodeToString(b)
+	return "sk-" + slug + "-" + hex.EncodeToString(b), nil
 }
 
 var apiKeyNameSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -4061,6 +4082,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 	if s.demoMode {
 		if req.Username == "admin" && req.Password == "admin" {
 			if requiredRole != "" && requiredRole != "admin" {
+				s.logLoginAttempt(r, req.Username, false)
 				w.WriteHeader(http.StatusForbidden)
 				w.Write([]byte(`{"error":"not an admin account"}`))
 				return
@@ -4068,6 +4090,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 			if s.loginLimiter != nil {
 				s.loginLimiter.recordSuccess(ip)
 			}
+			s.logLoginAttempt(r, "admin", true)
 			expiry := time.Now().Add(30 * 24 * time.Hour)
 			setSessionCookie(w, r, "demo-session", expiry)
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -4081,6 +4104,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		if s.loginLimiter != nil {
 			s.loginLimiter.recordFailure(ip)
 		}
+		s.logLoginAttempt(r, req.Username, false)
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -4091,6 +4115,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		if s.loginLimiter != nil {
 			s.loginLimiter.recordFailure(ip)
 		}
+		s.logLoginAttempt(r, req.Username, false)
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -4107,6 +4132,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		if s.loginLimiter != nil {
 			s.loginLimiter.recordFailure(ip)
 		}
+		s.logLoginAttempt(r, req.Username, false)
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -4116,6 +4142,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		if s.loginLimiter != nil {
 			s.loginLimiter.recordFailure(ip)
 		}
+		s.logLoginAttempt(r, req.Username, false)
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -4126,6 +4153,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		if s.loginLimiter != nil {
 			s.loginLimiter.recordFailure(ip)
 		}
+		s.logLoginAttempt(r, req.Username, false)
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":"invalid credentials"}`))
 		return
@@ -4134,6 +4162,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 	if s.loginLimiter != nil {
 		s.loginLimiter.recordSuccess(ip)
 	}
+	s.logLoginAttempt(r, user.Username, true)
 
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -4237,7 +4266,10 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	// Invalidate all sessions for this user and issue a fresh one.
 	_ = s.st.DeleteUserSessionsByUserID(user.ID)
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	newToken := hex.EncodeToString(b)
 	expiry := time.Now().Add(30 * 24 * time.Hour)
 	_ = s.st.CreateUserSession(store.UserSession{
@@ -4290,7 +4322,10 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 	}
 	_ = s.st.DeleteUserSessionsByUserID(user.ID)
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	newToken := hex.EncodeToString(b)
 	expiry := time.Now().Add(30 * 24 * time.Hour)
 	_ = s.st.CreateUserSession(store.UserSession{
@@ -4462,7 +4497,12 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 		if keyName == "" {
 			keyName = user.Username + "-key"
 		}
-		newKeyValue = generateAPIKey(keyName)
+		var err error
+		newKeyValue, err = generateAPIKey(keyName)
+		if err != nil {
+			writeServerError(w, r, err)
+			return
+		}
 		kc := config.KeyConfig{
 			Name:         keyName,
 			Key:          newKeyValue,
@@ -4649,17 +4689,20 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request) {
+	var ip string
 	if s.resetPwLimiter != nil {
-		ip := clientIP(r)
+		ip = clientIP(r)
 		if ok, retryAfter := s.resetPwLimiter.allow(ip); !ok {
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())+1))
 			writeJSONError(w, http.StatusTooManyRequests, "too many password resets, try again later")
 			return
 		}
-		s.resetPwLimiter.recordFailure(ip)
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		// Only count reset-limiter failures for validated targets - a
+		// malformed id is a caller/client-side error, not evidence of a
+		// brute-force target-enumeration attempt worth throttling toward.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"invalid user id"}`))
@@ -4667,6 +4710,9 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 	}
 	user, err := s.st.GetUserByID(id)
 	if err != nil {
+		if s.resetPwLimiter != nil {
+			s.resetPwLimiter.recordFailure(ip)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"error":"user not found"}`))
@@ -4688,6 +4734,9 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"failed to reset password"}`))
 		return
+	}
+	if s.resetPwLimiter != nil {
+		s.resetPwLimiter.recordSuccess(ip)
 	}
 	_ = s.st.DeleteUserSessionsByUserID(id)
 	s.logSystemChange(r, "reset_user_password", user.Username, "")
@@ -4849,7 +4898,12 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if k.Key == "" {
-		k.Key = generateAPIKey(k.Name)
+		key, err := generateAPIKey(k.Name)
+		if err != nil {
+			writeServerError(w, r, err)
+			return
+		}
+		k.Key = key
 	}
 	if s.auth != nil {
 		s.auth.AddKey(k)
@@ -5293,6 +5347,30 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// tables on each mutation. Scalar settings migration to the settings table
 	// completes in Phase 2. config.SaveConfig removed (audit findings #2, #10).
 	w.WriteHeader(http.StatusOK)
+}
+
+// logLoginAttempt appends a system-audit entry for a login attempt, success
+// or failure - previously handleLoginForRole never recorded login activity
+// at all, leaving no durable trail of who attempted (or achieved) admin
+// access from where. Uses the attempted username directly (not
+// logSystemChange's ctxKeyUsername lookup, which is unset pre-auth and would
+// otherwise misattribute every failed attempt to "admin").
+func (s *Server) logLoginAttempt(r *http.Request, username string, success bool) {
+	action := "login_failure"
+	if success {
+		action = "login_success"
+	}
+	source := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(source); err == nil {
+		source = host
+	}
+	_ = s.st.AppendSystemAuditLog(store.SystemAuditEntry{
+		Time:     time.Now(),
+		Username: username,
+		Action:   action,
+		Target:   username,
+		SourceIP: source,
+	})
 }
 
 func (s *Server) logSystemChange(r *http.Request, action, target, details string) {
@@ -6099,6 +6177,7 @@ type pullJobSnapshot struct {
 	BytesTotal     int64     `json:"bytes_total,omitempty"`
 	BytesCompleted int64     `json:"bytes_completed,omitempty"`
 	Error          string    `json:"error,omitempty"`
+	VerifyLoad     bool      `json:"verify_load"`
 }
 
 // snapshot returns a copy of j's data safe to JSON-encode without holding
@@ -6110,6 +6189,7 @@ func (j *pullJob) snapshot() pullJobSnapshot {
 		Node: j.Node, Model: j.Model, Method: j.Method, Status: j.Status,
 		StartedAt: j.StartedAt, FinishedAt: j.FinishedAt,
 		BytesTotal: j.BytesTotal, BytesCompleted: j.BytesCompleted, Error: j.Error,
+		VerifyLoad: j.verifyLoad,
 	}
 }
 
@@ -6553,9 +6633,13 @@ func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) e
 		return fmt.Errorf("proxy port is not configured - cannot verify model load")
 	}
 	keyName := fmt.Sprintf("pull-verify-%s-%s-%d", nodeName, model, time.Now().UnixNano())
+	keyValue, err := generateAPIKey(keyName)
+	if err != nil {
+		return fmt.Errorf("generate verification key: %w", err)
+	}
 	k := config.KeyConfig{
 		Name:      keyName,
-		Key:       generateAPIKey(keyName),
+		Key:       keyValue,
 		Models:    []string{model},
 		ExpiresAt: time.Now().Add(pullVerifyKeyTTL).Format(time.RFC3339),
 	}
@@ -6572,7 +6656,7 @@ func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) e
 
 	target := fmt.Sprintf("http://localhost:%d", s.cfg.Proxy.Port)
 	client := &http.Client{Timeout: pullVerifyTimeout}
-	_, err := bench.MeasureChatTTFT(ctx, client, target, model, k.Key)
+	_, err = bench.MeasureChatTTFT(ctx, client, target, model, k.Key)
 	return err
 }
 
@@ -8062,7 +8146,10 @@ func safeStringMap(m map[string]string) map[string]string {
 }
 
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
-	totalMB, freeMB := readSystemMemory()
+	totalMB, freeMB, ramOK := readSystemMemory()
+	if !ramOK {
+		totalMB, freeMB = 0, 0
+	}
 
 	nodes := s.router.Nodes()
 	gpus := make([]sysGPUEntry, len(nodes))
@@ -8130,6 +8217,7 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		Arch:       runtime.GOARCH,
 		RAMTotalMB: totalMB,
 		RAMFreeMB:  freeMB,
+		RAMKnown:   ramOK,
 		GPUs:       gpus,
 		ServerTime: nowTime.Format("2006-01-02 15:04:05"),
 		Timezone:   displayTz,
