@@ -260,6 +260,12 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 							if err := r.pingNode(ctx, targetNode, modelToWarm, keepAlive); err == nil {
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "ok")
 							} else {
+								// Release the reservation now instead of
+								// letting it block other models' headroom
+								// checks for the remainder of
+								// warmReservationTTL (mirrors warmer.go's
+								// pingWarmupModels).
+								r.clearWarmReservation(targetNode.Name, modelToWarm)
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "error")
 							}
 						}(n, P)
@@ -354,6 +360,12 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 							if err := r.pingNode(ctx, targetNode, modelToWarm, keepAlive); err == nil {
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "ok")
 							} else {
+								// Release the reservation now instead of
+								// letting it block other models' headroom
+								// checks for the remainder of
+								// warmReservationTTL (mirrors warmer.go's
+								// pingWarmupModels).
+								r.clearWarmReservation(targetNode.Name, modelToWarm)
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "error")
 							}
 						}(n, model)
