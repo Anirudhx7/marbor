@@ -17,8 +17,9 @@ import { SavingsCard } from '../components/SavingsCard';
 import { useLiveRequests } from '../hooks/useLiveRequests';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
-import { fetchNodes, fetchSummary, fetchSavings, fetchHealth } from '../lib/api';
-import { GPUNode, Savings } from '../types';
+import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
+import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
+import { SetupChecklist } from '../components/SetupChecklist';
 
 interface MetricCardProps {
   title: string;
@@ -177,6 +178,9 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
   );
 }
 
+const STORAGE_DISMISSED = 'marbor-setup-dismissed';
+const STORAGE_COMPLETED = 'marbor-setup-completed';
+
 function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
   const reporting = nodes.filter(n => n.vramTotalMB > 0);
   const usedKnown = nodes.filter(n => n.vramSource !== 'none');
@@ -295,6 +299,22 @@ export function Dashboard() {
   const [savingsLoading, setSavingsLoading] = useState(!demoMode);
   const [proxyPort, setProxyPort] = useState<number>(11434);
   const [version, setVersion] = useState<string>('');
+  const [setupKeys, setSetupKeys] = useState<APIKey[]>([]);
+  const [setupRequests, setSetupRequests] = useState<RequestEntry[]>([]);
+  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_DISMISSED) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isCompleted, setIsCompleted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_COMPLETED) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     if (currentAppPath() !== '/') return;
@@ -357,6 +377,59 @@ export function Dashboard() {
 
   useEffect(() => {
     if (currentAppPath() !== '/') return;
+    if (demoMode) return;
+    if (isDismissed || isCompleted) return;
+    let active = true;
+    const loadSetupExtras = async () => {
+      try {
+        const [keysData, reqsData] = await Promise.all([
+          fetchKeys().catch(() => [] as APIKey[]),
+          fetchRequests().catch(() => [] as RequestEntry[]),
+        ]);
+        if (!active || currentAppPath() !== '/') return;
+        setSetupKeys(keysData || []);
+        setSetupRequests(reqsData || []);
+      } catch {
+        if (!active) return;
+        setSetupKeys([]);
+        setSetupRequests([]);
+      }
+    };
+    loadSetupExtras();
+    const interval = setInterval(loadSetupExtras, 10000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [demoMode, location.pathname, isDismissed, isCompleted]);
+
+  // Mark setup completed once all 5 steps are done — persists forever (conservative)
+  useEffect(() => {
+    if (demoMode) return;
+    if (isCompleted) return;
+    const hasNodeReal = nodes.length > 0;
+    const hasAgentReal = nodes.some((n) => !!n.agentPresent);
+    const hasKeyReal = setupKeys.some((k) => k.status === 'active');
+    const hasModelReal = nodes.some((n) => (n.loadedModels?.length ?? 0) > 0);
+    const hasRequestReal = setupRequests.length > 0 || requests.length > 0;
+    const allDoneReal = hasNodeReal && hasAgentReal && hasKeyReal && hasModelReal && hasRequestReal;
+    if (allDoneReal) {
+      try {
+        localStorage.setItem(STORAGE_COMPLETED, 'true');
+      } catch {}
+      setIsCompleted(true);
+    }
+  }, [nodes, setupKeys, setupRequests, requests, demoMode, isCompleted]);
+
+  const handleDismissSetup = () => {
+    try {
+      localStorage.setItem(STORAGE_DISMISSED, 'true');
+    } catch {}
+    setIsDismissed(true);
+  };
+
+  useEffect(() => {
+    if (currentAppPath() !== '/') return;
     let active = true;
     // Tracked locally (not read from the savings state directly) since this
     // effect's deps don't include savings - reading React state here would
@@ -398,6 +471,19 @@ export function Dashboard() {
   const displayColdStarts = (isLive || demoMode) ? summary.coldStarts : '--';
   const displayQueue = (isLive || demoMode) ? summary.queueDepth : 0;
   const displayWarmHitRatio = (isLive || demoMode) ? summary.warmHitRatio : 0;
+
+  // Setup checklist derived state — 5-step activation (Law 6: no new API)
+  const hasNode = demoMode ? true : nodes.length > 0;
+  const hasAgent = demoMode ? true : nodes.some((n) => !!n.agentPresent);
+  const hasKey = demoMode ? true : setupKeys.some((k) => k.status === 'active');
+  const hasModel = demoMode ? true : nodes.some((n) => (n.loadedModels?.length ?? 0) > 0);
+  const hasRequest = demoMode ? false : setupRequests.length > 0 || requests.length > 0;
+  const warmModelName = demoMode
+    ? mockGPUNodes.find((n) => (n.loadedModels?.length ?? 0) > 0)?.loadedModels?.[0]?.name || 'llama3.1:8b'
+    : nodes.find((n) => (n.loadedModels?.length ?? 0) > 0)?.loadedModels?.[0]?.name;
+  const checklistDoneCount = [hasNode, hasAgent, hasKey, hasModel, hasRequest].filter(Boolean).length;
+  const checklistAllDone = checklistDoneCount === 5;
+  const showChecklist = demoMode ? true : !isDismissed && !isCompleted && !checklistAllDone;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -492,6 +578,19 @@ export function Dashboard() {
           icon={<Server className="w-4 h-4" />}
         />
       </div>
+
+      {/* Setup Checklist — first-run activation (5 steps, inline, dismissible, localStorage only) */}
+      {showChecklist && (
+        <SetupChecklist
+          hasNode={hasNode}
+          hasAgent={hasAgent}
+          hasKey={hasKey}
+          hasModel={hasModel}
+          hasRequest={hasRequest}
+          warmModelName={warmModelName}
+          onDismiss={handleDismissSetup}
+        />
+      )}
 
       {/* GPU Nodes Panel */}
       <div className="glass-panel rounded-xl p-6">
