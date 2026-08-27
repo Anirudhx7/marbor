@@ -251,7 +251,7 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := warmupHTTPClient.Do(req)
+	resp, err := r.warmupHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -918,6 +918,27 @@ func (r *Router) PendingPrewarmBytes(node string) int64 {
 		total += res.bytes
 	}
 	return total
+}
+
+// hasActiveWarmReservation reports whether (node, model) already has a
+// non-expired warm-reservation entry - used by predictive.go's prewarm sites
+// to skip triggering a duplicate fire-and-forget load for a model that's
+// already mid-warmup, since n.LoadedModels only reflects the last /api/ps
+// poll and would otherwise still read "not warm" at the next 5-minute
+// predictive cycle. Read-only: unlike reserveWarmBytes, this never writes a
+// reservation or drops expired entries itself.
+func (r *Router) hasActiveWarmReservation(node, model string) bool {
+	r.evictMu.Lock()
+	defer r.evictMu.Unlock()
+	byModel := r.warmReserved[node]
+	if byModel == nil {
+		return false
+	}
+	res, ok := byModel[model]
+	if !ok {
+		return false
+	}
+	return time.Since(res.at) <= warmReservationTTL
 }
 
 // clearWarmReservation drops any in-flight VRAM reservation for (node, model).
