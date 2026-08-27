@@ -241,7 +241,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   return (
     <div
       id={`node-card-${node.name}`}
-      className={`bg-card border shadow-sm rounded-xl p-5 transition-all duration-500 ease-out ${isHighlighted ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-lg bg-primary/[0.03] scale-[1.01]' : ''} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border hover:border-primary/50'}`}
+      className={`bg-card border shadow-sm rounded-xl p-5 scroll-mt-24 will-change-transform transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${isHighlighted ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background border-primary/50 shadow-xl bg-primary/[0.04] scale-[1.015] -translate-y-0.5' : 'hover:shadow-md'} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border hover:border-primary/30'}`}
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
@@ -253,6 +253,11 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
             <div className="flex items-center gap-2 flex-wrap">
               <StatusDot status={node.health} />
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
+              {isHighlighted && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary text-primary-foreground shadow-sm animate-pulse">
+                  From Models
+                </span>
+              )}
               {node.draining && (
                 <span
                   title={node.drainedReason ? `Drained: ${node.drainedReason}` : undefined}
@@ -1176,7 +1181,7 @@ export function GPUNodes() {
     }
   }, [demoMode, location.pathname]);
 
-  // Highlight nodes passed via ?highlight= from Models page - smooth 200ms ease like sidenav, auto-clear after 3.5s
+  // Highlight nodes passed via ?highlight= from Models page - smooth 200ms ease like sidenav, auto-clear after 2000ms sweet spot
   useEffect(() => {
     const param = searchParams.get('highlight');
     if (!param) {
@@ -1187,9 +1192,19 @@ export function GPUNodes() {
     setHighlightedNodes(set);
     if (set.size > 0) {
       const first = Array.from(set)[0] as string;
-      setTimeout(() => {
-        document.getElementById(`node-card-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 150);
+      // double rAF + 180ms lets layout settle, scroll-mt-24 offsets sticky header, center is smooth for lower sections
+      const t1 = setTimeout(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            document.getElementById(`node-card-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+          });
+        });
+      }, 180);
+      const t2 = setTimeout(() => setHighlightedNodes(new Set()), 2000);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     }
     const t = setTimeout(() => setHighlightedNodes(new Set()), 2000);
     return () => clearTimeout(t);
