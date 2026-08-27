@@ -108,8 +108,20 @@ func (d *LaunchdDriver) Status(ctx context.Context) (Status, error) {
 // Logs runs `log show` for this label and returns the last `lines` entries
 // - launchd/unified logging has no direct "last N lines" flag, so the count
 // contract is enforced in Go after the fact (same approach as WindowsService).
+//
+// The predicate matches on process name (derived from d.Label's last
+// dot-separated component, e.g. "ollama" from "com.example.ollama") in
+// addition to the label-based subsystem: third-party runtime binaries
+// generally don't set an os_log subsystem matching their own launchd label,
+// so a subsystem-only predicate returned empty for the exact target
+// population this exists to surface.
 func (d *LaunchdDriver) Logs(ctx context.Context, lines int) ([]string, error) {
-	out, err := runCommand(ctx, "log", "show", "--predicate", fmt.Sprintf("subsystem == %q", d.Label), "--last", "1h")
+	processName := d.Label
+	if idx := strings.LastIndex(d.Label, "."); idx != -1 && idx+1 < len(d.Label) {
+		processName = d.Label[idx+1:]
+	}
+	predicate := fmt.Sprintf("process == %q OR subsystem == %q", processName, d.Label)
+	out, err := runCommand(ctx, "log", "show", "--predicate", predicate, "--last", "1h")
 	if err != nil {
 		return nil, fmt.Errorf("launchd: log show %s: %s", d.Label, firstNonEmptyLine(out, err))
 	}
