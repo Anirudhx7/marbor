@@ -467,6 +467,9 @@ func runCompletion(ctx *RunCtx) int {
 
 	// Nothing else may write to stdout in the success path - completions
 	// must be pipeable/sourceable (source <(marbor completion bash)).
-	io.WriteString(ctx.Stdout, script)
+	if _, err := io.WriteString(ctx.Stdout, script); err != nil {
+		fmt.Fprintf(ctx.Stderr, "error: writing completion script: %v\n", err)
+		return ExitServerError
+	}
 	return ExitOK
 }
