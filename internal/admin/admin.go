@@ -630,11 +630,11 @@ func toAgentGPUDevices(devices []marboragent.GPUInfo) []agentGPUDevice {
 }
 
 type SystemInfo struct {
-	CPUCores   int           `json:"cpu_cores"`
-	OS         string        `json:"os"`
-	Arch       string        `json:"arch"`
-	RAMTotalMB int64         `json:"ram_total_mb"`
-	RAMFreeMB  int64         `json:"ram_free_mb"`
+	CPUCores   int    `json:"cpu_cores"`
+	OS         string `json:"os"`
+	Arch       string `json:"arch"`
+	RAMTotalMB int64  `json:"ram_total_mb"`
+	RAMFreeMB  int64  `json:"ram_free_mb"`
 	// RAMKnown is false when readSystemMemory couldn't actually read the
 	// host's memory (as opposed to RAMTotalMB/RAMFreeMB being 0 because
 	// they're genuinely unset) - R1: real data or unknown, never a fake 0
