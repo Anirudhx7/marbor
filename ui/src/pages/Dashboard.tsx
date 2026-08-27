@@ -151,25 +151,50 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
         {f.total > 0 && (f.downNodes.length > 0 || f.staleAgents.length > 0 || f.vramPressure.length > 0) && (
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             {shownDown.map(n => (
-              <Badge key={n.id} variant="destructive" size="sm" className="max-w-full">
-                <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
-                <span className="truncate">{n.name} down</span>
-              </Badge>
+              <Link
+                key={n.id}
+                to={`/gpu-nodes?highlight=${encodeURIComponent(n.name)}`}
+                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+                title={`View ${n.name} on GPU Nodes`}
+              >
+                <Badge variant="destructive" size="sm" className="max-w-full cursor-pointer hover:shadow-md transition-shadow">
+                  <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
+                  <span className="truncate">{n.name} down</span>
+                </Badge>
+              </Link>
             ))}
             {extraDown > 0 && (
-              <Badge variant="destructive" size="sm">+{extraDown} more down</Badge>
+              <Link
+                to={`/gpu-nodes?highlight=${encodeURIComponent(f.downNodes.map((n) => n.name).join(','))}`}
+                title={`View all ${f.downNodes.length} down nodes`}
+                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+              >
+                <Badge variant="destructive" size="sm" className="cursor-pointer hover:shadow-md transition-shadow">+{extraDown} more down</Badge>
+              </Link>
             )}
             {f.staleAgents.length > 0 && (
-              <Badge variant="warning" size="sm">
-                <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
-                {f.staleAgents.length} agent{f.staleAgents.length > 1 ? 's' : ''} stale
-              </Badge>
+              <Link
+                to={`/gpu-nodes?highlight=${encodeURIComponent(f.staleAgents.map((n) => n.name).join(','))}`}
+                title={`View ${f.staleAgents.length} stale agent${f.staleAgents.length > 1 ? 's' : ''}`}
+                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+              >
+                <Badge variant="warning" size="sm" className="cursor-pointer hover:shadow-md transition-shadow">
+                  <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
+                  {f.staleAgents.length} agent{f.staleAgents.length > 1 ? 's' : ''} stale
+                </Badge>
+              </Link>
             )}
             {f.vramPressure.length > 0 && (
-              <Badge variant="warning" size="sm">
-                <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
-                {f.vramPressure.length} VRAM pressure
-              </Badge>
+              <Link
+                to={`/gpu-nodes?highlight=${encodeURIComponent(f.vramPressure.map((n) => n.name).join(','))}`}
+                title={`View ${f.vramPressure.length} VRAM pressured node${f.vramPressure.length > 1 ? 's' : ''}`}
+                className="transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] no-underline"
+              >
+                <Badge variant="warning" size="sm" className="cursor-pointer hover:shadow-md transition-shadow">
+                  <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
+                  {f.vramPressure.length} VRAM pressure
+                </Badge>
+              </Link>
             )}
           </div>
         )}
