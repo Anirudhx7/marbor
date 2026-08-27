@@ -7485,7 +7485,7 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 	// Enterprise filters - all optional, combined with AND.
 	var fromPtr, toPtr, beforePtr *time.Time
 	if v := q.Get("from"); v != "" {
-		t, err := time.Parse(time.RFC3339, v)
+		t, err := time.Parse(time.RFC3339Nano, v)
 		if err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid from, want RFC3339")
 			return
@@ -7494,7 +7494,7 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 		fromPtr = &utc
 	}
 	if v := q.Get("to"); v != "" {
-		t, err := time.Parse(time.RFC3339, v)
+		t, err := time.Parse(time.RFC3339Nano, v)
 		if err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid to, want RFC3339")
 			return
@@ -7507,7 +7507,7 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if v := q.Get("before"); v != "" {
-		t, err := time.Parse(time.RFC3339, v)
+		t, err := time.Parse(time.RFC3339Nano, v)
 		if err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid before, want RFC3339")
 			return
@@ -7527,9 +7527,6 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode([]store.SystemAuditEntry{})
 			return
-		}
-		if kind == "all" {
-			kind = ""
 		}
 	}
 	if kind == "all" {

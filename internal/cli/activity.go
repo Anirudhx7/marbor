@@ -8,7 +8,7 @@ import (
 )
 
 func parseRFC3339(s string) (time.Time, error) {
-	return time.Parse(time.RFC3339, s)
+	return time.Parse(time.RFC3339Nano, s)
 }
 
 // activityKind maps a system_audit action to its fleet-operations kind bucket.

@@ -141,14 +141,16 @@ func (r *Router) auditScheduled(s Schedule, status, errMsg string) {
 	if errMsg != "" {
 		details += " error=" + errMsg
 	}
-	_ = st.AppendSystemAuditLog(store.SystemAuditEntry{
+	if err := st.AppendSystemAuditLog(store.SystemAuditEntry{
 		Time:     time.Now().UTC(),
 		Username: "system",
 		Action:   action,
 		Target:   s.Node,
 		Details:  details,
 		SourceIP: "",
-	})
+	}); err != nil {
+		log.Printf("router: auditScheduled %s: %v", s.ID, err)
+	}
 }
 
 // recordScheduleRun stamps the outcome of a schedule dispatch onto the
