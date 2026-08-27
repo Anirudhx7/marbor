@@ -21,8 +21,10 @@ type AdminCreds struct {
 	Salt         string // 32 random bytes as hex
 }
 
-// Store is the persistence interface. A nil Store is valid (all ops are no-ops)
-// so callers never need to nil-check.
+// Store is the persistence interface. NopStore{} is the no-op implementation
+// (all ops are no-ops) so callers never need to nil-check - a nil Store
+// interface value is NOT valid and panics on any method call, same as any
+// nil interface in Go; construct NopStore{} explicitly instead.
 type Store interface {
 	// Request log
 	AppendRequest(r RequestRecord) error
