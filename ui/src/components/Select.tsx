@@ -278,16 +278,16 @@ export function CustomCombobox({
             setSearchTerm('');
             setIsOpen(true);
           }}
-          // On coarse pointers tapping the input field should open the menu
+          // On coarse pointers tapping the input field should toggle the menu
           // without summoning the keyboard - readOnly + inputMode none covers
           // most browsers, but iOS still shows keyboard on focus for readOnly
-          // in some cases, so intercept touch to open menu without focusing
-          // for keyboard.
+          // in some cases, so intercept touch to toggle menu without focusing
+          // for keyboard. Matches CustomSelect (restore DB) tap-to-toggle.
           onTouchEnd={(e) => {
             if (isCoarse) {
               e.preventDefault();
-              setSearchTerm('');
-              setIsOpen(true);
+              if (isOpen) setIsOpen(false);
+              else { setSearchTerm(''); setIsOpen(true); }
             }
           }}
           className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
@@ -455,7 +455,8 @@ export function CustomTagCombobox({
           onTouchEnd={(e) => {
             if (isCoarseTag) {
               e.preventDefault();
-              setIsOpen(true);
+              if (isOpen) setIsOpen(false);
+              else setIsOpen(true);
             }
           }}
           className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
