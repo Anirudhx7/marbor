@@ -164,36 +164,14 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		defer resp.Body.Close()
 		return nil, authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
-	case resp.StatusCode == http.StatusServiceUnavailable && path == "/health":
+	case resp.StatusCode == http.StatusServiceUnavailable:
 		// GET /health returns 503 with a still-decodable body to signal a
 		// degraded (not down) marbor, not a hard failure - let the caller
 		// decode it instead of discarding it as a generic server error.
-		// This "still-decodable body" contract only holds for /health -
-		// every other authed GET shares doRequest, so a 503 from those
-		// (e.g. an HTML/empty body from a proxy in front of marbor) fell
-		// through to this same passthrough and produced a confusing
-		// JSON-parse error on the caller side instead of a clean "server
-		// error (503)" message.
 		return resp, nil
 	case resp.StatusCode >= 500:
 		defer resp.Body.Close()
 		return nil, serverErrorf("server error (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
-	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed ||
-		resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusUnprocessableEntity:
-		// Classifies the same read-path failure class doRequestBody already
-		// separates out (404/422 there; 405/409 added here since a fixed
-		// GET-style CLI request path can hit those too) as a user error
-		// (P163, code review corrected the doc comment: the two functions'
-		// exact status sets aren't identical, doRequestBody has no 405/409
-		// case of its own): a typo'd node name, unknown id, or similar
-		// caller mistake reaches the server fine and gets the correct 4xx
-		// back - that's a user error (exit 1), not a server error (exit 2).
-		// Every read path (NodeControlProbe, NodeModels, HealthCheck,
-		// ExplainRequest, etc.) goes through this function, so without this
-		// branch every one of those wrongly reported "server error" for the
-		// identical failure class.
-		defer resp.Body.Close()
-		return nil, userErrorf("%s", readErrorMessage(resp.Body))
 	case resp.StatusCode >= 400:
 		defer resp.Body.Close()
 		return nil, serverErrorf("unexpected response (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
@@ -695,9 +673,12 @@ func (c *Client) PatchKeyAllowLocalDegradation(name string, allow bool) error {
 
 // ModelNodeInfo mirrors handleModels' nested nodeInfo struct.
 type ModelNodeInfo struct {
-	Name    string `json:"name"`
-	Healthy bool   `json:"healthy"`
-	Digest  string `json:"digest,omitempty"`
+	Name      string `json:"name"`
+	Healthy   bool   `json:"healthy"`
+	Digest    string `json:"digest,omitempty"`
+	Warm      bool   `json:"warm"`
+	VRAMBytes int64  `json:"vram_bytes,omitempty"`
+	Runtime   string `json:"runtime,omitempty"`
 }
 
 // ModelEntry mirrors handleModels' modelEntry struct.
@@ -710,6 +691,8 @@ type ModelEntry struct {
 	TotalNodes     int             `json:"total_nodes"`
 	Family         string          `json:"family,omitempty"`
 	DigestMismatch bool            `json:"digest_mismatch,omitempty"`
+	TotalVRAMBytes int64           `json:"total_vram_bytes,omitempty"`
+	DriftDetails   string          `json:"drift_details,omitempty"`
 }
 
 // ModelsResp mirrors GET /admin/v1/models' wrapped response shape.
@@ -745,11 +728,57 @@ type SystemAuditEntry struct {
 	SourceIP string `json:"source_ip"`
 }
 
+// SystemAuditFilter mirrors the query params for GET /admin/system-audit.
+type SystemAuditFilter struct {
+	From     string
+	To       string
+	Before   string
+	Limit    int
+	Kind     string
+	Action   string
+	User     string
+	Target   string
+	SourceIP string
+}
+
 // SystemAudit calls GET /admin/system-audit?limit=N. N <=0 uses server default.
 func (c *Client) SystemAudit(limit int) ([]SystemAuditEntry, error) {
+	return c.SystemAuditFiltered(SystemAuditFilter{Limit: limit})
+}
+
+// SystemAuditFiltered calls GET /admin/system-audit with enterprise filters.
+func (c *Client) SystemAuditFiltered(f SystemAuditFilter) ([]SystemAuditEntry, error) {
+	params := url.Values{}
+	if f.From != "" {
+		params.Set("from", f.From)
+	}
+	if f.To != "" {
+		params.Set("to", f.To)
+	}
+	if f.Before != "" {
+		params.Set("before", f.Before)
+	}
+	if f.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", f.Limit))
+	}
+	if f.Kind != "" {
+		params.Set("kind", f.Kind)
+	}
+	if f.Action != "" {
+		params.Set("action", f.Action)
+	}
+	if f.User != "" {
+		params.Set("user", f.User)
+	}
+	if f.Target != "" {
+		params.Set("target", f.Target)
+	}
+	if f.SourceIP != "" {
+		params.Set("source_ip", f.SourceIP)
+	}
 	path := "/admin/system-audit"
-	if limit > 0 {
-		path = fmt.Sprintf("/admin/system-audit?limit=%d", limit)
+	if len(params) > 0 {
+		path += "?" + params.Encode()
 	}
 	resp, err := c.doRequest(http.MethodGet, path, true)
 	if err != nil {
