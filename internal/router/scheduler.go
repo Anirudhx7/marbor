@@ -42,6 +42,22 @@ func (r *Router) SetSchedules(s []Schedule) {
 	r.mu.Lock()
 	r.schedules = append([]Schedule(nil), s...)
 	r.mu.Unlock()
+
+	// Prune schedLastFired to only IDs still present in the new set -
+	// otherwise every fired schedule ID accumulates in the map for the
+	// process lifetime, since neither this replace nor RemoveNode ever
+	// touches it.
+	live := make(map[string]struct{}, len(s))
+	for _, sched := range s {
+		live[sched.ID] = struct{}{}
+	}
+	r.schedMu.Lock()
+	for id := range r.schedLastFired {
+		if _, ok := live[id]; !ok {
+			delete(r.schedLastFired, id)
+		}
+	}
+	r.schedMu.Unlock()
 }
 
 // Schedules returns a copy of the current schedule set.
@@ -195,6 +211,11 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		err := r.pingNode(ctx, target, m, keepAlive)
 		if err != nil {
 			status = "error"
+			// Warmup failed - release the reservation now instead of
+			// letting it block other models' headroom checks for the
+			// remainder of warmReservationTTL (mirrors warmer.go's
+			// pingWarmupModels).
+			r.clearWarmReservation(target.Name, m)
 			failures = append(failures, fmt.Sprintf("%s: %v", m, err))
 		}
 		target.Lock()

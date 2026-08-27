@@ -141,6 +141,7 @@ export function SettingsPage() {
   const [reloaded, setReloaded] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
+  const [demoModeConfirmOpen, setDemoModeConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Cloud providers CRUD
@@ -664,7 +665,7 @@ export function SettingsPage() {
             </div>
           </div>
           <button
-            onClick={() => setDemoMode(!demoMode)}
+            onClick={() => demoMode ? setDemoMode(false) : setDemoModeConfirmOpen(true)}
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
               demoMode ? 'bg-amber-500' : 'bg-muted-foreground/30'
             }`}
@@ -1180,7 +1181,14 @@ export function SettingsPage() {
                 max={100}
                 step="1"
                 value={Math.round(settings.cloudSoftBudgetPct * 100)}
-                onChange={(e) => setSettings({ ...settings, cloudSoftBudgetPct: (parseFloat(e.target.value) || 0) / 100 })}
+                onChange={(e) => {
+                  // The max=100 attribute is HTML-advisory only - clamp in
+                  // the handler too, or typing e.g. 150 stores a fraction
+                  // above 1.0, making the soft-warn threshold fire after
+                  // the hard cap would already have blocked traffic.
+                  const pct = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                  setSettings({ ...settings, cloudSoftBudgetPct: pct / 100 });
+                }}
                 placeholder="0 = disabled"
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
@@ -1234,18 +1242,18 @@ export function SettingsPage() {
             ) : (
               <div className="space-y-3">
                 {cloudProviders.map((provider, index) => (
-                  <div key={provider.name} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col items-center gap-0.5 w-5 text-[10px] font-medium text-muted-foreground">
+                  <div key={provider.name} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-border bg-secondary/30 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex flex-col items-center gap-0.5 w-5 text-[10px] font-medium text-muted-foreground shrink-0">
                         <span>{index + 1}</span>
                       </div>
                       <StatusDot status={provider.enabled ? 'online' : 'offline'} size="sm" />
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{provider.name}</p>
-                        <p className="text-xs font-medium text-muted-foreground">{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate" title={provider.name}>{provider.name}</p>
+                        <p className="text-xs font-medium text-muted-foreground truncate" title={`${provider.default_model} - $${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens`}>{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                       <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
                         {provider.provider}
                       </Badge>
@@ -1534,9 +1542,9 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground py-2">No context windows declared</p>
             ) : (
               Object.entries(settings.contextWindows).map(([model, tokens]) => (
-                <div key={model} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{model}</p>
+                <div key={model} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-secondary/30 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate" title={model}>{model}</p>
                     <p className="text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</p>
                   </div>
                   <button
@@ -1560,7 +1568,9 @@ export function SettingsPage() {
             <button
               onClick={() => {
                 const tokens = parseInt(newCtxTokens, 10);
-                if (!newCtxModel.trim() || !tokens) return;
+                // !tokens only rejects 0/NaN - a negative value is truthy
+                // and was passing straight through to the stored setting.
+                if (!newCtxModel.trim() || !Number.isFinite(tokens) || tokens <= 0) return;
                 setSettings({ ...settings, contextWindows: { ...settings.contextWindows, [newCtxModel.trim()]: tokens } });
                 setNewCtxModel('');
                 setNewCtxTokens('');
@@ -1589,10 +1599,10 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground py-2">No local fallback chains declared</p>
             ) : (
               Object.entries(settings.localDegradationChains).map(([model, alts]) => (
-                <div key={model} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{model}</p>
-                    <p className="text-xs text-muted-foreground">{alts.join(' -> ')}</p>
+                <div key={model} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-secondary/30 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate" title={model}>{model}</p>
+                    <p className="text-xs text-muted-foreground truncate" title={alts.join(' -> ')}>{alts.join(' -> ')}</p>
                   </div>
                   <button
                     onClick={() => {
@@ -1962,6 +1972,34 @@ export function SettingsPage() {
             className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
           >
             Reload
+          </button>
+        </div>
+      </div>
+    </Modal>
+
+    <Modal
+      isOpen={demoModeConfirmOpen}
+      onClose={() => setDemoModeConfirmOpen(false)}
+      title="Enable Demo Mode"
+      maxWidth="sm"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Switch this dashboard to mock data? Live fleet data (nodes, requests, savings) will be
+          replaced by fabricated demo values until you turn Demo Mode back off.
+        </p>
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <button
+            onClick={() => setDemoModeConfirmOpen(false)}
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => { setDemoMode(true); setDemoModeConfirmOpen(false); }}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+          >
+            Enable Demo Mode
           </button>
         </div>
       </div>

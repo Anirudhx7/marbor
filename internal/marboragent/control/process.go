@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -47,7 +48,14 @@ func (d *ProcessDriver) Start(ctx context.Context) error {
 		return fmt.Errorf("process: start %q: %w", d.StartCommand[0], err)
 	}
 	if err := writePIDFile(d.PIDFile, proc.Pid); err != nil {
-		return fmt.Errorf("process: launched pid %d but failed to write pid file %q: %w", proc.Pid, d.PIDFile, err)
+		// The process is now running but untracked - no PID file means
+		// Status/Stop/Restart can never find it again. Best-effort kill it
+		// rather than leaving an orphan the operator has no handle on.
+		killErr := proc.Kill()
+		if killErr != nil {
+			return fmt.Errorf("process: launched pid %d but failed to write pid file %q, and failed to kill the now-untracked process: %w (write error: %v)", proc.Pid, d.PIDFile, killErr, err)
+		}
+		return fmt.Errorf("process: launched pid %d but failed to write pid file %q (process killed to avoid leaving it untracked): %w", proc.Pid, d.PIDFile, err)
 	}
 	return nil
 }
@@ -74,12 +82,23 @@ func (d *ProcessDriver) Stop(ctx context.Context) error {
 	// async reap, see the old (now-dead) pid as still alive, and silently
 	// skip spawning a replacement process. SIGKILL is uncatchable, so this
 	// loop is bounded by reap scheduling latency, not process shutdown
-	// time - a short poll is sufficient.
+	// time - a short poll is sufficient in the common case.
+	//
+	// Must return an ERROR (not nil) whenever it gives up without
+	// confirming the process is actually gone (code review, round 2): an
+	// unconditional nil here reopens the exact race this wait exists to
+	// close - Restart's Stop-then-Start would report the runtime "stopped"
+	// and then silently skip Start's spawn because the not-yet-reaped pid
+	// still reads as alive. Surfacing an error instead lets Restart's
+	// `if err != nil { return err }` correctly abort rather than proceed.
 	deadline := time.Now().Add(5 * time.Second)
-	for processAlive(pid) && time.Now().Before(deadline) {
+	for processAlive(pid) {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("process: pid %d still alive %s after kill (not yet reaped by the kernel) - refusing to report stopped", pid, 5*time.Second)
+		}
 		select {
 		case <-ctx.Done():
-			return nil
+			return fmt.Errorf("process: %w waiting for pid %d to be reaped after kill", ctx.Err(), pid)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
@@ -90,7 +109,16 @@ func (d *ProcessDriver) Restart(ctx context.Context) error {
 	if err := d.Stop(ctx); err != nil {
 		return err
 	}
-	return d.Start(ctx)
+	if err := d.Start(ctx); err != nil {
+		// Stop already confirmed (via its reap-wait) that the previous
+		// instance is dead - clear the PID file so it doesn't keep naming a
+		// process that no longer exists, and make clear in the error that
+		// the old instance is gone rather than just "restart failed" (which
+		// would otherwise read as "the old instance may still be running").
+		_ = os.Remove(d.PIDFile)
+		return fmt.Errorf("process: previous instance was stopped successfully, but starting the replacement failed: %w", err)
+	}
+	return nil
 }
 
 func (d *ProcessDriver) Status(ctx context.Context) (Status, error) {
@@ -142,6 +170,32 @@ func readPIDFile(path string) (int, error) {
 	return pid, nil
 }
 
+// writePIDFile writes pid via a temp-file-then-rename in path's directory,
+// rather than a plain truncate-then-write, so a concurrent reader can never
+// observe a corrupt/partial PID mid-write.
 func writePIDFile(path string, pid int) error {
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0o644)
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.WriteString(strconv.Itoa(pid)); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }

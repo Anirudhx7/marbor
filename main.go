@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -45,6 +46,42 @@ func (s *stringSliceFlag) Set(v string) error {
 	return nil
 }
 
+// adminBindHost extracts the host portion of an admin bind address (e.g.
+// "127.0.0.1:8080" -> "127.0.0.1", ":8080" -> ""), falling back to the raw
+// string if it isn't in host:port form.
+func adminBindHost(bindAddress string) string {
+	host, _, err := net.SplitHostPort(bindAddress)
+	if err != nil {
+		return bindAddress
+	}
+	return host
+}
+
+// isLoopbackHost reports whether host is a loopback address/hostname - ""
+// (wildcard bind), "0.0.0.0", and "::" are NOT loopback and return false.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// adminDashboardURL builds a clickable URL for the configured admin bind
+// address, for display purposes only. A wildcard/all-interfaces host isn't a
+// usable URL on its own, so it falls back to "localhost" (the operator is
+// reading this on the same machine); the port is always the configured one.
+func adminDashboardURL(bindAddress string) string {
+	host, port, err := net.SplitHostPort(bindAddress)
+	if err != nil || isLoopbackHost(host) || host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	if port == "" {
+		port = "8080"
+	}
+	return fmt.Sprintf("http://%s:%s", host, port)
+}
+
 // printStartupBanner prints a one-time onboarding summary when the database
 // has no nodes or API keys yet - there is no config.yaml to point at
 // anymore, so the dashboard is the only setup path.
@@ -58,7 +95,7 @@ func printStartupBanner(cfg *config.Config, dbPath string) {
 	fmt.Printf("  Database:            %s\n", dbPath)
 	fmt.Printf("  Point your apps at:  http://localhost:%d\n", cfg.Proxy.Port)
 	fmt.Println()
-	fmt.Println("  Dashboard:           http://localhost:8080")
+	fmt.Printf("  Dashboard:           %s\n", adminDashboardURL(cfg.Admin.BindAddress))
 	fmt.Println("  Dashboard login:     admin / admin (you'll be asked to set a new password on first login)")
 	fmt.Println()
 	fmt.Println("  Add your first GPU node and API key from the dashboard - or run")
@@ -78,6 +115,10 @@ func seedNodesToStore(dbPath string, specs []string) error {
 	}
 	defer st.Close()
 
+	// Parse and validate every spec first, so a malformed later spec never
+	// leaves earlier specs already committed - all-or-nothing rather than
+	// partial seeding on a parse error.
+	records := make([]store.NodeRecord, 0, len(specs))
 	for _, spec := range specs {
 		fields := map[string]string{}
 		for _, part := range strings.Split(spec, ",") {
@@ -100,10 +141,14 @@ func seedNodesToStore(dbPath string, specs []string) error {
 		default:
 			return fmt.Errorf("--seed-node %q: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx)", spec, runtime)
 		}
-		if err := st.UpsertNode(store.NodeRecord{Name: name, URL: url, Runtime: runtime}); err != nil {
-			return fmt.Errorf("seed node %q: %w", name, err)
+		records = append(records, store.NodeRecord{Name: name, URL: url, Runtime: runtime})
+	}
+
+	for _, rec := range records {
+		if err := st.UpsertNode(rec); err != nil {
+			return fmt.Errorf("seed node %q: %w", rec.Name, err)
 		}
-		fmt.Printf("Added node %q (%s, runtime=%s)\n", name, url, runtime)
+		fmt.Printf("Added node %q (%s, runtime=%s)\n", rec.Name, rec.URL, rec.Runtime)
 	}
 	return nil
 }
@@ -411,6 +456,12 @@ func main() {
 	// Apply every persisted setting before anything below reads cfg, since
 	// this is now the only configuration source (no config.yaml).
 	applyPersistedSettings(cfg, st)
+	// Re-validate after the overlay: Validate() above only checked the
+	// built-in defaults - a hand-edited or stale-version DB row must not
+	// flow into a running server unchecked.
+	if err := cfg.Validate(); err != nil {
+		winexit.Fatalf("invalid persisted config: %v", err)
+	}
 
 	// Configure structured logging. CLI flag takes precedence over the
 	// persisted setting.
@@ -474,6 +525,19 @@ func main() {
 		log.Printf("WARNING: API key check. Anyone who can reach :%d has full access to your", cfg.Proxy.Port)
 		log.Printf("WARNING: backend models. Enable auth and add at least one key from the")
 		log.Printf("WARNING: dashboard for any non-loopback or shared deployment.")
+		log.Printf("WARNING: ================================================================")
+	}
+
+	// Loud, unmissable warning when the admin dashboard (session-cookie auth)
+	// is reachable from anything other than localhost with no TLS in front of
+	// it - distinct from config.go's warnIfAdminBindsAllInterfaces, which only
+	// covers the wildcard-bind case and is a single line, not this pattern.
+	if !isLoopbackHost(adminBindHost(cfg.Admin.BindAddress)) {
+		log.Printf("WARNING: ================================================================")
+		log.Printf("WARNING: ADMIN DASHBOARD IS REACHABLE OVER PLAINTEXT (no TLS) on %q.", cfg.Admin.BindAddress)
+		log.Printf("WARNING: Session cookies and all dashboard traffic are unencrypted on the")
+		log.Printf("WARNING: wire. Put a TLS-terminating reverse proxy in front of it, or bind")
+		log.Printf("WARNING: admin.bind_address to 127.0.0.1 if only local access is needed.")
 		log.Printf("WARNING: ================================================================")
 	}
 
@@ -779,6 +843,7 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	go func() {
 		log.Printf("Admin dashboard listening on %s", cfg.Admin.BindAddress)
@@ -823,59 +888,89 @@ func main() {
 		log.Println("Shutting down gracefully...")
 	}
 
-	// Derived from proxySrv's own WriteTimeout (not a bare literal) so a
-	// SIGINT/SIGTERM during an active long-running stream isn't cut off
-	// before the request could have finished on its own.
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), proxySrv.WriteTimeout+5*time.Second)
-	defer shutdownCancel()
+	// The drain below runs in a goroutine so the signal channel can keep
+	// being read while it's in progress - sig is buffered 1, and with
+	// nothing reading it during a slow drain a second SIGINT/SIGTERM was
+	// previously just dropped (or sat unread), leaving SIGKILL as the only
+	// way to expedite an unresponsive shutdown.
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
 
-	if err := proxySrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Proxy shutdown error: %v", err)
-	}
-	if metricsSrv != nil {
-		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Metrics shutdown error: %v", err)
+		// Each server gets its own fresh timeout budget at the point of its own
+		// Shutdown call (P171), rather than sharing one context/budget across
+		// all three sequential calls - a shared context meant a slow drain on
+		// an earlier server (e.g. proxySrv draining an active long stream)
+		// could leave the later calls an already-expired context, aborting
+		// their own in-flight connections instead of draining them. Each
+		// budget is still derived from proxySrv's own WriteTimeout (not a bare
+		// literal) so a SIGINT/SIGTERM during an active long-running stream
+		// isn't cut off before the request could have finished on its own.
+		shutdownTimeout := proxySrv.WriteTimeout + 5*time.Second
+
+		proxyShutdownCtx, proxyShutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := proxySrv.Shutdown(proxyShutdownCtx); err != nil {
+			log.Printf("Proxy shutdown error: %v", err)
 		}
-	}
-	if err := adminHttpSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Admin shutdown error: %v", err)
-	}
-	cancel()
+		proxyShutdownCancel()
 
-	// Wait for the usage-flush goroutine to actually exit before the final
-	// save below, so its own in-flight SaveToStore can't race the final save
-	// or run against the store after it closes (deferred earlier in main).
+		if metricsSrv != nil {
+			metricsShutdownCtx, metricsShutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			if err := metricsSrv.Shutdown(metricsShutdownCtx); err != nil {
+				log.Printf("Metrics shutdown error: %v", err)
+			}
+			metricsShutdownCancel()
+		}
+
+		adminShutdownCtx, adminShutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := adminHttpSrv.Shutdown(adminShutdownCtx); err != nil {
+			log.Printf("Admin shutdown error: %v", err)
+		}
+		adminShutdownCancel()
+		cancel()
+
+		// Wait for the usage-flush goroutine to actually exit before the final
+		// save below, so its own in-flight SaveToStore can't race the final save
+		// or run against the store after it closes (deferred earlier in main).
+		select {
+		case <-usageFlushDone:
+		case <-time.After(2 * time.Second):
+			log.Printf("WARNING: usage-flush goroutine did not exit within 2s of shutdown")
+		}
+
+		// Drain the async request-log queue before the store closes (deferred
+		// above), so the logger goroutine can't write through a closed store.
+		adminSrv.Shutdown()
+
+		// Final flush so the just-served requests are not lost on restart.
+		if err := authMw.SaveToStore(st); err != nil {
+			log.Printf("WARNING: final usage state flush failed: %v", err)
+		}
+		// Tier 3: flush the full warm-state residency snapshot on graceful shutdown so
+		// the router restores its warm set on the next start.
+		r.FlushWarmState()
+		// Same tier for sticky-session affinity, so a graceful restart doesn't
+		// drop in-flight sessions either (.local/audit-fixes-2026-08-03.md #7).
+		r.FlushAffinity()
+
+		if pendingRestorePath != "" {
+			// os.Exit inside performRestore skips every defer below main() -
+			// st.Close() (deferred near store.Open above) never fires on this
+			// path, so close what still needs closing explicitly before calling it.
+			auditLog.Close()
+			performRestore(dbPath, pendingRestorePath, st)
+			// performRestore always calls os.Exit itself; never returns.
+		}
+
+		log.Println("Shutdown complete")
+	}()
+
 	select {
-	case <-usageFlushDone:
-	case <-time.After(2 * time.Second):
-		log.Printf("WARNING: usage-flush goroutine did not exit within 2s of shutdown")
+	case <-shutdownDone:
+	case <-sig:
+		log.Println("WARNING: second interrupt received during shutdown - forcing exit")
+		winexit.Exit(1)
 	}
-
-	// Drain the async request-log queue before the store closes (deferred
-	// above), so the logger goroutine can't write through a closed store.
-	adminSrv.Shutdown()
-
-	// Final flush so the just-served requests are not lost on restart.
-	if err := authMw.SaveToStore(st); err != nil {
-		log.Printf("WARNING: final usage state flush failed: %v", err)
-	}
-	// Tier 3: flush the full warm-state residency snapshot on graceful shutdown so
-	// the router restores its warm set on the next start.
-	r.FlushWarmState()
-	// Same tier for sticky-session affinity, so a graceful restart doesn't
-	// drop in-flight sessions either (.local/audit-fixes-2026-08-03.md #7).
-	r.FlushAffinity()
-
-	if pendingRestorePath != "" {
-		// os.Exit inside performRestore skips every defer below main() -
-		// st.Close() (deferred near store.Open above) never fires on this
-		// path, so close what still needs closing explicitly before calling it.
-		auditLog.Close()
-		performRestore(dbPath, pendingRestorePath, st)
-		// performRestore always calls os.Exit itself; never returns.
-	}
-
-	log.Println("Shutdown complete")
 }
 
 // performRestore swaps dbPath for the contents of backupPath (already

@@ -5,12 +5,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Required for actions/deploy-pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 # Only one deployment at a time; don't cancel in-progress so a queued
 # deploy isn't aborted mid-flight (that's what caused the prior timeouts).
 concurrency:
@@ -20,6 +14,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # This job only checks out code and runs npm ci/build - it never needs
+    # the Pages/OIDC permissions that only `deploy` actually uses.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -78,6 +77,11 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Required for actions/deploy-pages.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

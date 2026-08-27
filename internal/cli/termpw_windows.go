@@ -2,7 +2,12 @@
 
 package cli
 
-import "golang.org/x/sys/windows"
+import (
+	"fmt"
+	"os"
+
+	"golang.org/x/sys/windows"
+)
 
 // disableEcho turns off console input echo for fd (the console handle
 // backing stdin), returning a restore func. golang.org/x/sys/windows is
@@ -19,7 +24,11 @@ func disableEcho(fd uintptr) (restore func(), err error) {
 	if err := windows.SetConsoleMode(h, newMode); err != nil {
 		return nil, err
 	}
-	return func() { windows.SetConsoleMode(h, mode) }, nil
+	return func() {
+		if err := windows.SetConsoleMode(h, mode); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not restore terminal echo: %v (start a new terminal session if input stops echoing)\n", err)
+		}
+	}, nil
 }
 
 // isTerminal reports whether fd is a real console, used to decide whether

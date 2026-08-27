@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, type InputHTMLAttributes, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { X, ChevronDown, ChevronRight } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
@@ -191,13 +191,28 @@ export function Requests() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [explainData, setExplainData] = useState<Record<string, RoutingDecision | 'loading' | 'error'>>({});
 
+  // Guards fetchRequestExplain's promise chain against a resolution after
+  // this component unmounts, since toggleExplain is a click handler with no
+  // effect cleanup of its own to thread a local flag through.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    // Reset to true on every mount - StrictMode's dev-only
+    // mount->cleanup->remount cycle would otherwise leave this permanently
+    // false after the first (discarded) mount's cleanup runs.
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   function toggleExplain(id: string) {
     if (expandedId === id) {
       setExpandedId(null);
       return;
     }
     setExpandedId(id);
-    if (explainData[id]) return;
+    const cached = explainData[id];
+    // A previous 'error' is not a valid cached result - only a real decision
+    // object (or an in-flight 'loading') should short-circuit a refetch.
+    if (cached && cached !== 'error') return;
     setExplainData((prev) => ({ ...prev, [id]: 'loading' }));
     if (isDemoMode) {
       const decision = mockExplainForRequest(id);
@@ -205,8 +220,8 @@ export function Requests() {
       return;
     }
     fetchRequestExplain(id)
-      .then((decision) => setExplainData((prev) => ({ ...prev, [id]: decision })))
-      .catch(() => setExplainData((prev) => ({ ...prev, [id]: 'error' })));
+      .then((decision) => { if (mountedRef.current) setExplainData((prev) => ({ ...prev, [id]: decision })); })
+      .catch(() => { if (mountedRef.current) setExplainData((prev) => ({ ...prev, [id]: 'error' })); });
   }
 
   // Raw text inputs (debounced before becoming active filters).
@@ -580,9 +595,9 @@ export function Requests() {
                         {entry.cloud ? (
                           <span
                             className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                            title={`cloud:${entry.node.replace('cloud:', '')}`}
+                            title={`cloud:${(entry.node || '').replace('cloud:', '')}`}
                           >
-                            cloud:{entry.node.replace('cloud:', '')}
+                            cloud:{(entry.node || '').replace('cloud:', '')}
                           </span>
                         ) : (
                           <span className="block truncate text-foreground" title={entry.node || '-'}>
@@ -676,7 +691,7 @@ export function Requests() {
                   <div className="text-sm text-foreground">
                     {entry.cloud ? (
                       <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        cloud:{entry.node.replace('cloud:', '')}
+                        cloud:{(entry.node || '').replace('cloud:', '')}
                       </span>
                     ) : (
                       entry.node || '-'

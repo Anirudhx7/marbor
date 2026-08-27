@@ -161,6 +161,9 @@ func (systemdManager) Install(cfg Config) error {
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return fmt.Errorf("service: systemd (systemctl) not found on this host")
 	}
+	if strings.ContainsAny(cfg.Token, "\r\n\x00") {
+		return fmt.Errorf("service: token contains a newline/carriage-return/NUL byte, refusing to write it into the systemd EnvironmentFile")
+	}
 
 	// Written before the unit file, 0600, so a rotated token is in place
 	// before systemd ever tries to (re)start the service against it.
@@ -221,6 +224,14 @@ func (systemdManager) Uninstall(purge bool) error {
 		if err := os.Remove(binaryPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("service: removing binary %q: %w", binaryPath, err)
 		}
+	}
+
+	// P284: purge also best-effort removes the agent's TLS cert/key -
+	// otherwise an orphaned private key survives decommissioning, enabling
+	// agent impersonation on a repurposed box.
+	if purge {
+		_ = os.Remove(agentCertPath)
+		_ = os.Remove(agentKeyPath)
 	}
 	return nil
 }

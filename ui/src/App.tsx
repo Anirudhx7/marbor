@@ -3,6 +3,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 
 import { ThemeProvider } from './hooks/useTheme';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
+import { useSidebarCollapsed } from './hooks/useSidebarCollapsed';
 import { DemoBanner } from './components/DemoBanner';
 import { BudgetBanner } from './components/BudgetBanner';
 import { PullProgressWidget } from './components/PullProgressWidget';
@@ -74,9 +75,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, { error: Error | null 
 }
 
 // ---------------------------------------------------------------------------
-// Lazy page imports
+// Lazy page imports - preloaded on idle to make tab switching instant
 // ---------------------------------------------------------------------------
 const Dashboard    = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Activity     = lazy(() => import('./pages/Activity').then(m => ({ default: m.Activity })));
 const GPUNodes     = lazy(() => import('./pages/GPUNodes').then(m => ({ default: m.GPUNodes })));
 const APIKeys      = lazy(() => import('./pages/APIKeys').then(m => ({ default: m.APIKeys })));
 const Routing      = lazy(() => import('./pages/Routing').then(m => ({ default: m.Routing })));
@@ -90,6 +92,25 @@ const Warmup       = lazy(() => import('./pages/Warmup').then(m => ({ default: m
 const Users        = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const SystemAudit  = lazy(() => import('./pages/SystemAudit').then(m => ({ default: m.SystemAudit })));
 const Benchmark    = lazy(() => import('./pages/Benchmark').then(m => ({ default: m.Benchmark })));
+
+// Preload all route chunks after first paint so tab switches are instant, not lazy-on-click
+function preloadRoutes() {
+  void import('./pages/Dashboard');
+  void import('./pages/Activity');
+  void import('./pages/GPUNodes');
+  void import('./pages/APIKeys');
+  void import('./pages/Routing');
+  void import('./pages/Metrics');
+  void import('./pages/Settings');
+  void import('./pages/Analytics');
+  void import('./pages/Models');
+  void import('./pages/ModelAdvisor');
+  void import('./pages/Requests');
+  void import('./pages/Warmup');
+  void import('./pages/Users');
+  void import('./pages/SystemAudit');
+  void import('./pages/Benchmark');
+}
 
 // ---------------------------------------------------------------------------
 // RouterComponent declared at module scope so its identity is stable across
@@ -122,14 +143,27 @@ interface AppShellProps {
 function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
   const location = useLocation();
   const pathname = location.pathname;
+  const { collapsed, toggle } = useSidebarCollapsed();
+
+  // Preload chunks on idle - makes subsequent tab switches instant
+  useEffect(() => {
+    const id = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+      ? (window as unknown as { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(preloadRoutes)
+      : setTimeout(preloadRoutes, 800);
+    return () => {
+      const ric = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback;
+      if (ric && typeof id === 'number') try { ric(id as number); } catch {}
+      else clearTimeout(id as unknown as number);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-      <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} />
-      <main className="md:ml-64 min-h-screen pt-14 md:pt-0">
+      <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} collapsed={collapsed} onToggleCollapsed={toggle} />
+      <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] [contain:layout_style] overflow-x-hidden max-w-full`}>
         <DemoBanner />
         <BudgetBanner />
-        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
+        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto overflow-x-hidden min-w-0">
           {/*
             resetKey=pathname on ErrorBoundary: getDerivedStateFromProps clears
             `error` whenever pathname changes, so a caught error on one page
@@ -147,6 +181,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
             >
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/activity" element={<Activity />} />
                 <Route path="/gpu-nodes" element={<GPUNodes />} />
                 <Route path="/api-keys" element={<APIKeys />} />
                 <Route path="/routing" element={<Routing />} />
@@ -210,7 +245,7 @@ function App() {
   }, [session]);
 
   function handleLogout() {
-    logout();
+    logout().catch(() => {});
     // Demo has no Login screen to fall through to (see DEMO_SESSION above) -
     // reset to the same fake session instead of null so clicking Logout on
     // the public demo doesn't strand the visitor on a real login form.

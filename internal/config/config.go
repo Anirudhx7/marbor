@@ -375,8 +375,10 @@ type RoutingConfig struct {
 	NvidiaPollIntervalMs int `yaml:"nvidia_poll_interval_ms" json:"nvidia_poll_interval_ms"`
 	// QueueMaxDepth is the maximum number of requests that can wait for a local
 	// node to become available. When the cluster is fully saturated, requests
-	// are queued here before falling through to cloud fallback or 503. 0
-	// disables queuing (immediate cloud/503). Default 100.
+	// are queued here before falling through to cloud fallback or 503.
+	// Validate() normalizes an unset/explicit 0 to 100 - there is currently no
+	// way to configure "queuing disabled" through this field (an explicit 0
+	// is indistinguishable from "not set"). Default 100.
 	QueueMaxDepth int `yaml:"queue_max_depth" json:"queue_max_depth"`
 	// QueueTimeoutMs is how long a queued request waits for a node to free up
 	// before giving up and falling through to cloud fallback or 503. Default
@@ -499,12 +501,25 @@ func BoolPtr(b bool) *bool { return &b }
 // runtime log line (not just a config file comment) means an operator on an
 // untrusted network actually sees it in `docker logs`, not just documentation
 // most people don't read.
+// lastAdminBindWarning suppresses a back-to-back duplicate of the exact same
+// warning - Validate() can legitimately run more than once against the same
+// bind address in a single process (main.go validates once against defaults,
+// then again after the persisted-settings overlay), and without this the
+// operator sees the identical WARNING twice on every ordinary boot. A
+// genuinely new/changed bind address (e.g. an operator saving a new value
+// through the settings API, which also calls Validate()) still warns.
+var lastAdminBindWarning string
+
 func warnIfAdminBindsAllInterfaces(bindAddress string) {
 	host, _, err := net.SplitHostPort(bindAddress)
 	if err != nil {
 		host = bindAddress
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" {
+		if bindAddress == lastAdminBindWarning {
+			return
+		}
+		lastAdminBindWarning = bindAddress
 		log.Printf("WARNING: admin dashboard is bound to all interfaces (%s). If this host is reachable from an untrusted network, set admin.bind_address to 127.0.0.1:8080 (or the equivalent host-side binding) or place it behind a firewall/reverse proxy.", bindAddress)
 	}
 }
@@ -547,6 +562,16 @@ func (c *Config) Validate() error {
 	}
 	if c.Routing.MaxRetries == 0 {
 		c.Routing.MaxRetries = 2
+	}
+	// SessionAffinityTTL: router.go silently falls back to a 10m default on
+	// an unparseable/non-positive value, which swallows an operator's typo
+	// with zero diagnostic - reject it here instead so the error surfaces at
+	// startup/settings-save time, not as a silently-ignored setting.
+	if c.Routing.SessionAffinityTTL != "" {
+		d, err := time.ParseDuration(c.Routing.SessionAffinityTTL)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("routing.session_affinity_ttl %q must be a positive duration (e.g. \"10m\")", c.Routing.SessionAffinityTTL)
+		}
 	}
 	if c.Routing.NvidiaPollIntervalMs == 0 {
 		c.Routing.NvidiaPollIntervalMs = 30000
@@ -665,6 +690,16 @@ func (c *Config) Validate() error {
 	// Detect port collisions between proxy, admin, and metrics servers.
 	if c.Metrics.Enabled && c.Metrics.Port == c.Proxy.Port {
 		return fmt.Errorf("metrics port %d conflicts with proxy port", c.Metrics.Port)
+	}
+	if _, adminPortStr, err := net.SplitHostPort(c.Admin.BindAddress); err == nil {
+		if adminPort, convErr := strconv.Atoi(adminPortStr); convErr == nil {
+			if adminPort == c.Proxy.Port {
+				return fmt.Errorf("admin port %d conflicts with proxy port", adminPort)
+			}
+			if c.Metrics.Enabled && adminPort == c.Metrics.Port {
+				return fmt.Errorf("admin port %d conflicts with metrics port", adminPort)
+			}
+		}
 	}
 
 	if c.Docker.Socket == "" {

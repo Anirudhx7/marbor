@@ -36,7 +36,10 @@ export function BudgetBanner() {
     const load = () => {
       fetchSettings()
         .then(s => setHidden(!!s.hide_budget_banner))
-        .catch(() => {});
+        // A failed fetch must not leave a stale localStorage-derived hidden
+        // value in place - fail toward visibility, not suppression, so a
+        // real overspend warning can't be hidden by a transient fetch error.
+        .catch(() => setHidden(false));
     };
     load();
     window.addEventListener('marbor-settings-change', load);
@@ -80,28 +83,28 @@ export function BudgetBanner() {
   };
 
   return (
-    <div className="relative animate-fade-in">
-      <div className="bg-warning/10 border border-warning/30 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+    <div className="relative animate-fade-in min-w-0">
+      <div className="bg-warning/10 border border-warning/30 rounded-lg px-3 sm:px-4 py-3 flex items-center justify-between gap-3 sm:gap-4 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-warning/20 flex items-center justify-center">
             <AlertTriangle className="w-4 h-4 text-warning" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">
               Cloud spend warning
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground leading-snug break-words">
               {scope} at {Math.round(pct * 100)}% of its {period} cap
               ({currency.symbol}{toDisplay(spent).toFixed(2)} / {currency.symbol}{toDisplay(cap).toFixed(2)})
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-warning/80" />
+        <div className="flex items-center gap-2 shrink-0">
+          <TrendingUp className="w-4 h-4 text-warning/80 hidden sm:block" />
           <button
             onClick={handleDismiss}
             aria-label="Dismiss warning"
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
           >
             <X className="w-4 h-4" />
           </button>
