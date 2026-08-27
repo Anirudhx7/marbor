@@ -164,10 +164,16 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		defer resp.Body.Close()
 		return nil, authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
-	case resp.StatusCode == http.StatusServiceUnavailable:
+	case resp.StatusCode == http.StatusServiceUnavailable && path == "/health":
 		// GET /health returns 503 with a still-decodable body to signal a
 		// degraded (not down) marbor, not a hard failure - let the caller
 		// decode it instead of discarding it as a generic server error.
+		// This "still-decodable body" contract only holds for /health -
+		// every other authed GET shares doRequest, so a 503 from those
+		// (e.g. an HTML/empty body from a proxy in front of marbor) fell
+		// through to this same passthrough and produced a confusing
+		// JSON-parse error on the caller side instead of a clean "server
+		// error (503)" message.
 		return resp, nil
 	case resp.StatusCode >= 500:
 		defer resp.Body.Close()
