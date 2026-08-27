@@ -7,6 +7,11 @@ before:
   hooks:
     - npm --prefix ui ci
     - npm --prefix ui run build
+    # release.extra_files globs docs/man/*.1 + MANIFEST.txt below - goreleaser
+    # does not error on a non-matching glob, so a checkout missing generated
+    # docs (see `make docs`) would otherwise ship a release with those assets
+    # silently absent instead of failing the release outright.
+    - sh -c 'test -s docs/man/MANIFEST.txt || (echo "docs/man/MANIFEST.txt missing - run make docs and commit the result" >&2; exit 1)'
 
 builds:
   - id: marbor
@@ -64,12 +69,27 @@ checksum:
 
 dockers:
   - image_templates:
-      - ghcr.io/anirudhx7/marbor:{{ .Version }}
-      - ghcr.io/anirudhx7/marbor:latest
+      - ghcr.io/anirudhx7/marbor:{{ .Version }}-amd64
     dockerfile: Dockerfile.goreleaser
     goarch: amd64
     build_flag_templates:
       - --platform=linux/amd64
+  - image_templates:
+      - ghcr.io/anirudhx7/marbor:{{ .Version }}-arm64
+    dockerfile: Dockerfile.goreleaser
+    goarch: arm64
+    build_flag_templates:
+      - --platform=linux/arm64
+
+docker_manifests:
+  - name_template: ghcr.io/anirudhx7/marbor:{{ .Version }}
+    image_templates:
+      - ghcr.io/anirudhx7/marbor:{{ .Version }}-amd64
+      - ghcr.io/anirudhx7/marbor:{{ .Version }}-arm64
+  - name_template: ghcr.io/anirudhx7/marbor:latest
+    image_templates:
+      - ghcr.io/anirudhx7/marbor:{{ .Version }}-amd64
+      - ghcr.io/anirudhx7/marbor:{{ .Version }}-arm64
 
 changelog:
   sort: asc

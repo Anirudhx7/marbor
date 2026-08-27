@@ -5,7 +5,10 @@
 
 services:
   prometheus:
-    image: prom/prometheus:latest
+    # Pinned to a specific release so this optional add-on doesn't silently
+    # pick up a breaking upstream change on a plain `docker compose pull`.
+    # Bump deliberately.
+    image: prom/prometheus:v2.53.0
     ports:
       - "9091:9090"
     volumes:
@@ -13,7 +16,8 @@ services:
       - prometheus-data:/prometheus
 
   grafana:
-    image: grafana/grafana:latest
+    # Pinned to a specific release, same rationale as prometheus above.
+    image: grafana/grafana:10.4.2
     ports:
       # Loopback-only by default - this ships with factory admin/admin and no
       # GF_SECURITY_ADMIN_PASSWORD set. To expose it intentionally (e.g. for

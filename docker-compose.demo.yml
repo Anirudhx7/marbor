@@ -172,7 +172,9 @@ services:
     restart: "no"
 
   prometheus:
-    image: prom/prometheus:latest
+    # Pinned to a specific release so this demo stack doesn't silently pick
+    # up a breaking upstream change. Bump deliberately.
+    image: prom/prometheus:v2.53.0
     ports:
       - "9091:9090"
     volumes:
@@ -182,7 +184,8 @@ services:
         condition: service_healthy
 
   grafana:
-    image: grafana/grafana:latest
+    # Pinned to a specific release, same rationale as prometheus above.
+    image: grafana/grafana:10.4.2
     ports:
       - "3000:3000"
     volumes:
