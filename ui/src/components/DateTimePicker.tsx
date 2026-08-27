@@ -1012,7 +1012,7 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
   // notch can report a large deltaY and skip several values at once. Convert
   // wheel input into fixed one-step-per-notch increments instead of letting
   // the browser translate raw deltaY into scroll distance.
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = (e: WheelEvent) => {
     e.preventDefault();
     wheelAccumRef.current += e.deltaY;
     const itemHeight = getItemHeight();
@@ -1033,12 +1033,29 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
     wheelResetTimeoutRef.current = setTimeout(() => { wheelAccumRef.current = 0; }, 200);
   };
 
+  // React attaches wheel listeners passively at the root since React 17, so
+  // a synthetic onWheel handler's e.preventDefault() is a silent no-op -
+  // native scrolling of the snap container then combines with the step-
+  // accumulation logic above to commit a value several steps past what the
+  // user intended. Attach natively with { passive: false } instead. The ref
+  // indirection keeps the listener attached once (no options/onChange
+  // dependency churn) while always calling the current closure.
+  const handleWheelRef = useRef(handleWheel);
+  handleWheelRef.current = handleWheel;
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const listener = (e: WheelEvent) => handleWheelRef.current(e);
+    el.addEventListener('wheel', listener, { passive: false });
+    return () => el.removeEventListener('wheel', listener);
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col h-full relative">
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        onWheel={handleWheel}
         aria-label={label}
         className="h-full overflow-y-auto no-scrollbar py-[66px] snap-y snap-mandatory scroll-smooth z-10 relative"
       >
