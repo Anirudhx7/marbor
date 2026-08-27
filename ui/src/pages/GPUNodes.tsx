@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
@@ -531,7 +531,6 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 export function GPUNodes() {
   const { demoMode } = useDemoMode();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [isLive, setIsLive] = useState(!demoMode);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1181,9 +1180,9 @@ export function GPUNodes() {
     }
   }, [demoMode, location.pathname]);
 
-  // Highlight nodes passed via ?highlight= from Models page - custom 900ms ease-out for lower sections, no instant jump
+  // Highlight nodes passed via ?highlight= from Models or Dashboard - location.search so dashboard vs models never leaks
   useEffect(() => {
-    const param = searchParams.get('highlight');
+    const param = new URLSearchParams(location.search).get('highlight');
     if (!param) {
       setHighlightedNodes(new Set());
       return;
@@ -1221,7 +1220,7 @@ export function GPUNodes() {
     }
     const t = setTimeout(() => setHighlightedNodes(new Set()), 2000);
     return () => clearTimeout(t);
-  }, [searchParams]);
+  }, [location.search]);
 
   const filteredNodes = nodes.filter(node =>
     (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
