@@ -488,7 +488,7 @@ export const mockSavings: Savings = {
 
 export const mockModelCatalog: ModelCatalog = {
   total_models: 8,
-  total_nodes: 5,
+  total_nodes: 6,
   healthy_nodes: 4,
   models: [
     {
@@ -565,7 +565,8 @@ export const mockModelCatalog: ModelCatalog = {
       warm_count: 0,
       total_nodes: 4,
       nodes: [
-        { name: 'gpu-node-04', healthy: false, warm: false, runtime: 'ollama' },
+        { name: 'gpu-node-04', healthy: false, warm: false, runtime: 'llamacpp' },
+        { name: 'gpu-node-06', healthy: false, warm: false, runtime: 'ollama' },
       ],
     },
     {
@@ -583,12 +584,13 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'nomic-embed-text',
       size_vram: Math.round(0.6 * 1024 * 1024 * 1024),
       size_disk: Math.round(0.27 * 1024 * 1024 * 1024),
-      warm_count: 1,
+      warm_count: 2,
       total_nodes: 4,
-      total_vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024),
+      total_vram_bytes: Math.round(0.6 * 2 * 1024 * 1024 * 1024),
       family: 'bert',
       nodes: [
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'ollama' },
+        { name: 'gpu-node-05', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'mlx' },
       ],
     },
   ],
