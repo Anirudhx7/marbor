@@ -51,7 +51,10 @@ func newAnthropicOnlyHandler(t *testing.T, cloudURL string) (*Handler, *admin.Se
 
 func TestTranslateOpenAIRequestToAnthropic_ChatWithSystem(t *testing.T) {
 	body := []byte(`{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"system","content":"be terse"},{"role":"user","content":"hi"}],"stream":true,"temperature":0.5}`)
-	out := translateOpenAIRequestToAnthropic(body, true)
+	out, err := translateOpenAIRequestToAnthropic(body, true)
+	if err != nil {
+		t.Fatalf("translateOpenAIRequestToAnthropic: %v", err)
+	}
 
 	var got anthropicRequest
 	if err := json.Unmarshal(out, &got); err != nil {
@@ -76,7 +79,10 @@ func TestTranslateOpenAIRequestToAnthropic_ChatWithSystem(t *testing.T) {
 
 func TestTranslateOpenAIRequestToAnthropic_MaxCompletionTokens(t *testing.T) {
 	body := []byte(`{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":256}`)
-	out := translateOpenAIRequestToAnthropic(body, false)
+	out, err := translateOpenAIRequestToAnthropic(body, false)
+	if err != nil {
+		t.Fatalf("translateOpenAIRequestToAnthropic: %v", err)
+	}
 
 	var got anthropicRequest
 	if err := json.Unmarshal(out, &got); err != nil {
@@ -89,7 +95,10 @@ func TestTranslateOpenAIRequestToAnthropic_MaxCompletionTokens(t *testing.T) {
 
 func TestTranslateOpenAIRequestToAnthropic_PromptOnly(t *testing.T) {
 	body := []byte(`{"model":"claude-3-5-sonnet-20241022","prompt":"hello world","stream":false}`)
-	out := translateOpenAIRequestToAnthropic(body, false)
+	out, err := translateOpenAIRequestToAnthropic(body, false)
+	if err != nil {
+		t.Fatalf("translateOpenAIRequestToAnthropic: %v", err)
+	}
 
 	var got anthropicRequest
 	if err := json.Unmarshal(out, &got); err != nil {
@@ -97,6 +106,20 @@ func TestTranslateOpenAIRequestToAnthropic_PromptOnly(t *testing.T) {
 	}
 	if len(got.Messages) != 1 || got.Messages[0].Role != "user" || got.Messages[0].Content != "hello world" {
 		t.Errorf("Messages = %+v, want single user message from prompt", got.Messages)
+	}
+}
+
+func TestTranslateOpenAIRequestToAnthropic_MultimodalContentErrors(t *testing.T) {
+	// content is an array of typed parts (vision-capable client shape),
+	// which openAIMessage.Content as a plain string can never unmarshal -
+	// this must return a clear local error (P255), not the body unchanged.
+	body := []byte(`{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
+	out, err := translateOpenAIRequestToAnthropic(body, false)
+	if err == nil {
+		t.Fatalf("translateOpenAIRequestToAnthropic(multimodal content) = %s, nil error; want a non-nil error", out)
+	}
+	if out != nil {
+		t.Errorf("translateOpenAIRequestToAnthropic(multimodal content) returned non-nil body %s alongside the error", out)
 	}
 }
 

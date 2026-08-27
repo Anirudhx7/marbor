@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -55,7 +56,10 @@ func (t *anthropicTransport) RoundTrip(req *http.Request) (*http.Response, error
 	}
 
 	wantsStream := clientWantsStream(body)
-	anthropicBody := translateOpenAIRequestToAnthropic(body, wantsStream)
+	anthropicBody, err := translateOpenAIRequestToAnthropic(body, wantsStream)
+	if err != nil {
+		return nil, err
+	}
 
 	req.URL.Path = "/v1/messages"
 	req.Body = io.NopCloser(bytes.NewReader(anthropicBody))
@@ -153,13 +157,19 @@ type anthropicRequest struct {
 }
 
 // translateOpenAIRequestToAnthropic converts an OpenAI-shaped chat/completion
-// request body into Anthropic's /v1/messages schema. Unparseable bodies pass
-// through unchanged (Anthropic will reject with a clear error rather than the
-// marbor silently mangling something it doesn't understand).
-func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) []byte {
+// request body into Anthropic's /v1/messages schema. Returns an error rather
+// than the body unchanged when it can't be understood - previously an
+// unparseable body (most commonly a vision-capable client sending
+// multimodal/array message content, which openAIMessage.Content as a plain
+// string can never unmarshal) passed through unchanged, silently forwarding
+// an OpenAI-shaped body to Anthropic's /v1/messages, which was guaranteed to
+// reject it - the caller can now fail fast/fall through to another cloud
+// provider instead of spending a real round-trip on a request that could
+// never have succeeded.
+func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) ([]byte, error) {
 	var in openAIRequest
 	if err := json.Unmarshal(body, &in); err != nil {
-		return body
+		return nil, fmt.Errorf("proxy: request body is not a valid OpenAI-shaped chat request for Anthropic translation (e.g. multimodal/array message content is not supported): %w", err)
 	}
 
 	out := anthropicRequest{
@@ -199,9 +209,9 @@ func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) []byte {
 
 	b, err := json.Marshal(out)
 	if err != nil {
-		return body
+		return nil, fmt.Errorf("proxy: marshal translated Anthropic request: %w", err)
 	}
-	return b
+	return b, nil
 }
 
 // ------------------------------------------------------------------
