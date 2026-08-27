@@ -138,6 +138,7 @@ export function Benchmark() {
   useEffect(() => {
     if (!selectedNode) { setModels([]); return; }
     setModelsError(null);
+    let active = true;
     const node = nodes.find(n => n.name === selectedNode);
     // Prefer the marbor agent's models.list (runtime-agnostic, on-disk models).
     // Without that capability, fall back to the same /admin/models
@@ -149,21 +150,27 @@ export function Benchmark() {
       setModels((node?.loadedModels || []).map(m => m.name));
     } else if (node?.agentCapabilities?.includes('models.list')) {
       getNodeModels(selectedNode)
-        .then(list => setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name)))
+        .then(list => {
+          if (!active) return;
+          setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name));
+        })
         .catch(() => {
+          if (!active) return;
           setModels((node.loadedModels || []).map(m => m.name));
           setModelsError('marbor agent model list unavailable - showing currently-loaded models only.');
         });
     } else {
       fetchModels()
         .then(catalog => {
+          if (!active) return;
           const names = catalog.models
             .filter(m => m.nodes.some(n => n.name === selectedNode) && isChatCapable(m.family))
             .map(m => m.name);
           setModels(names);
         })
-        .catch(() => setModels((node?.loadedModels || []).map(m => m.name)));
+        .catch(() => { if (active) setModels((node?.loadedModels || []).map(m => m.name)); });
     }
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode, nodes]);
 
