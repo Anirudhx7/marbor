@@ -47,17 +47,22 @@ func Run(args []string, version string) {
 		winexit.Fatalf("marboragent: unknown agent subcommand %q (did you mean \"service %s\"?)", args[0], args[0])
 	}
 
-	if handled, err := runWindowsServiceIfService(func() { runAgent(args, version) }); handled {
+	if handled, err := runWindowsServiceIfService(func(stop <-chan struct{}) { runAgent(args, version, stop) }); handled {
 		if err != nil {
 			winexit.Fatalf("marboragent: windows service execution failed: %v", err)
 		}
 		return
 	}
 
-	runAgent(args, version)
+	runAgent(args, version, nil)
 }
 
-func runAgent(args []string, version string) {
+// runAgent runs the agent's HTTP server and background scheduler in the
+// foreground. stop is non-nil only when running as a Windows service
+// (svc_windows.go's Execute): closing it cancels the scheduler context and
+// gracefully Shuts down the HTTP server (P289) instead of letting the
+// process die mid-flight when the SCM requests a stop.
+func runAgent(args []string, version string, stop <-chan struct{}) {
 
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
@@ -139,16 +144,30 @@ func runAgent(args []string, version string) {
 		IdleTimeout:       120 * time.Second,
 	}
 
+	// P289: when running as a Windows service, stop is closed by Execute on
+	// a Stop/Shutdown SCM request - cancel the scheduler context and give
+	// the HTTP server a bounded window to finish in-flight requests (e.g. a
+	// model pull mid-proxy) instead of the process dying immediately.
+	if stop != nil {
+		go func() {
+			<-stop
+			cancel()
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer shutdownCancel()
+			_ = httpSrv.Shutdown(shutdownCtx)
+		}()
+	}
+
 	if *certFlag != "" && *keyFlag != "" {
 		log.Printf("marbor-agent %s listening on %s over HTTPS (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
-		if err := httpSrv.ListenAndServeTLS(*certFlag, *keyFlag); err != nil {
+		if err := httpSrv.ListenAndServeTLS(*certFlag, *keyFlag); err != nil && err != http.ErrServerClosed {
 			winexit.Fatalf("marboragent: %v", err)
 		}
 		return
 	}
 
 	log.Printf("marbor-agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
-	if err := httpSrv.ListenAndServe(); err != nil {
+	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		winexit.Fatalf("marboragent: %v", err)
 	}
 }
