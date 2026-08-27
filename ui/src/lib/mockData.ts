@@ -745,6 +745,7 @@ export const mockSystemInfo: SystemInfo = {
   arch: 'x86_64',
   ram_total_mb: 65536,
   ram_free_mb: 40960,
+  ram_known: true,
   gpus: [
     {
       name: 'NVIDIA RTX 4090',

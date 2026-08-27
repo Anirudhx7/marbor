@@ -1032,6 +1032,7 @@ export interface SystemInfo {
   arch: string;
   ram_total_mb: number;
   ram_free_mb: number;
+  ram_known?: boolean;
   gpus: Array<{
     name: string;
     url: string;
@@ -1058,6 +1059,7 @@ export async function fetchSystemInfo(): Promise<SystemInfo> {
       arch: 'amd64',
       ram_total_mb: 65536,
       ram_free_mb: 24576,
+      ram_known: true,
       gpus: [],
       server_time: serverTime,
       timezone: tzMatch?.value ?? 'UTC',
