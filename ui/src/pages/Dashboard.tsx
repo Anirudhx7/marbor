@@ -426,14 +426,25 @@ export function Dashboard() {
   }, [nodes, setupKeys, setupRequests, requests, demoMode, isCompleted]);
 
   const handleDismissSetup = () => {
+    // Immediate hide, no confirm — per R10 only destructive fleet actions need confirm.
     // In demo (VITE_FORCE_DEMO) hide for this session only — reload restores 4/5 for screenshots.
-    // In prod persist so reload stays hidden and outage to zero does not resurrect.
+    // In prod persist so reload stays hidden and outage to zero does not resurrect; restore
+    // affordance below lets an accidental dismiss be recovered without clearing storage.
     if (!demoMode) {
       try {
         localStorage.setItem(STORAGE_DISMISSED, 'true');
       } catch {}
     }
     setIsDismissed(true);
+  };
+
+  const handleRestoreSetup = () => {
+    if (!demoMode) {
+      try {
+        localStorage.removeItem(STORAGE_DISMISSED);
+      } catch {}
+    }
+    setIsDismissed(false);
   };
 
   useEffect(() => {
@@ -591,7 +602,7 @@ export function Dashboard() {
       </div>
 
       {/* Setup Checklist — first-run activation (5 steps, inline, dismissible, localStorage only) */}
-      {showChecklist && (
+      {showChecklist ? (
         <SetupChecklist
           hasNode={hasNode}
           hasAgent={hasAgent}
@@ -601,6 +612,26 @@ export function Dashboard() {
           warmModelName={warmModelName}
           onDismiss={handleDismissSetup}
         />
+      ) : (
+        // Dismissed but not completed — show subtle restore so an accidental/hasty X
+        // does not require manual localStorage clear. No confirm on X (R10: only
+        // destructive fleet actions need confirm), immediate hide + one-click restore.
+        // Hidden when naturally 5/5 or when marbor-setup-completed is set.
+        isDismissed &&
+        !isCompleted &&
+        !checklistAllDone && (
+          <div className="bg-card/50 border border-dashed border-border rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">
+              Setup checklist dismissed — {checklistDoneCount}/5 steps complete.
+            </span>
+            <button
+              onClick={handleRestoreSetup}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Show again
+            </button>
+          </div>
+        )
       )}
 
       {/* GPU Nodes Panel */}
