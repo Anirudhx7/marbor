@@ -2,6 +2,11 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInpu
 import { mockCloudProviders, mockSavings } from './mockData';
 
 const BASE = '/admin';
+// The admin login path is derived from BASE like every other endpoint in
+// this file; the user-portal login path is deliberately its own constant -
+// it lives outside /admin entirely, not a BASE-relative path (P357).
+const ADMIN_LOGIN_PATH = `${BASE}/login`;
+const USER_LOGIN_PATH = '/login';
 
 // VITE_FORCE_DEMO is set at build time for the GitHub Pages demo (no backend).
 // Vite inlines it, so `if (DEMO)` branches below are dead-code-eliminated and
@@ -117,7 +122,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     // matters here since Login.tsx branches on this field.
     throw Object.assign(new Error('Invalid credentials'), { status: 401 });
   }
-  const r = await fetch('/admin/login', {
+  const r = await fetch(ADMIN_LOGIN_PATH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -135,7 +140,7 @@ export async function login(username: string, password: string): Promise<LoginRe
 }
 
 export async function userLogin(username: string, password: string): Promise<LoginResponse> {
-  const r = await fetch('/login', {
+  const r = await fetch(USER_LOGIN_PATH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
