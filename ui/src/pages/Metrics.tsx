@@ -23,10 +23,18 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
 
+// RFC 4180 quoting: any field containing a comma, quote, or newline is
+// wrapped in quotes with embedded quotes doubled - otherwise such a value
+// (e.g. a model name) shifts columns in the exported file.
+function csvField(v: unknown): string {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
 function exportToCSV(data: Record<string, unknown>[], filename: string) {
   if (data.length === 0) return;
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(row => Object.values(row).join(','));
+  const headers = Object.keys(data[0]).map(csvField).join(',');
+  const rows = data.map(row => Object.values(row).map(csvField).join(','));
   const csv = [headers, ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
