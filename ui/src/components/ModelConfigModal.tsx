@@ -158,7 +158,12 @@ function fromFormState(form: FormState): { cfg: ModelConfig; error: string | nul
   let logitBias: Record<string, number> | undefined;
   if (form.logit_bias_text.trim()) {
     try {
-      logitBias = JSON.parse(form.logit_bias_text);
+      const parsed: unknown = JSON.parse(form.logit_bias_text);
+      const isRecordOfFiniteNumbers =
+        typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) &&
+        Object.values(parsed as Record<string, unknown>).every((v) => typeof v === 'number' && Number.isFinite(v));
+      if (!isRecordOfFiniteNumbers) throw new Error('wrong shape');
+      logitBias = parsed as Record<string, number>;
     } catch {
       return { cfg: { model: form.model, node: form.node }, error: 'Logit bias must be valid JSON, e.g. {"1234": -5}' };
     }
@@ -271,7 +276,16 @@ function Field({
       <input
         type="number"
         value={value === undefined || value === null ? '' : (value as number)}
-        onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
+        onChange={(e) => {
+          if (e.target.value === '') { onChange(undefined); return; }
+          const n = Number(e.target.value);
+          // An intermediate keystroke state (e.g. "-", "1e") converts to
+          // NaN; only commit a finite number to form state, otherwise treat
+          // it the same as empty - JSON.stringify(NaN) silently serializes
+          // to null on save, turning an incomplete edit into a real
+          // wire-level unset.
+          onChange(Number.isFinite(n) ? n : undefined);
+        }}
         min={def.min}
         max={def.max}
         step={def.step ?? (def.type === 'int' ? 1 : 0.01)}
