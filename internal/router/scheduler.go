@@ -42,6 +42,22 @@ func (r *Router) SetSchedules(s []Schedule) {
 	r.mu.Lock()
 	r.schedules = append([]Schedule(nil), s...)
 	r.mu.Unlock()
+
+	// Prune schedLastFired to only IDs still present in the new set -
+	// otherwise every fired schedule ID accumulates in the map for the
+	// process lifetime, since neither this replace nor RemoveNode ever
+	// touches it.
+	live := make(map[string]struct{}, len(s))
+	for _, sched := range s {
+		live[sched.ID] = struct{}{}
+	}
+	r.schedMu.Lock()
+	for id := range r.schedLastFired {
+		if _, ok := live[id]; !ok {
+			delete(r.schedLastFired, id)
+		}
+	}
+	r.schedMu.Unlock()
 }
 
 // Schedules returns a copy of the current schedule set.
