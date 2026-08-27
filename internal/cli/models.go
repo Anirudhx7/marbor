@@ -27,11 +27,109 @@ func runModels(flags *globalFlags, stdout, stderr io.Writer) int {
 	// it "total" here would silently understate the fleet whenever any node
 	// is unhealthy.
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "NAME\tWARM/HEALTHY NODES\tVRAM\tDISK\tFAMILY\tDIGEST MISMATCH")
+	fmt.Fprintln(tw, "NAME\tWARM/HEALTHY NODES\tVRAM\tTOTAL VRAM\tDISK\tFAMILY\tDRIFT\tDIGEST MISMATCH")
 	for _, m := range models.Models {
-		fmt.Fprintf(tw, "%s\t%d/%d\t%s\t%s\t%s\t%s\n",
-			m.Name, m.WarmCount, m.TotalNodes, fmtMB(m.SizeVRAM/1024/1024), fmtMB(m.SizeDisk/1024/1024),
-			m.Family, yesNo(m.DigestMismatch))
+		totalVRAM := "-"
+		if m.TotalVRAMBytes > 0 {
+			totalVRAM = fmtMB(m.TotalVRAMBytes / 1024 / 1024)
+		} else if m.WarmCount > 0 && m.SizeVRAM > 0 {
+			// Fallback for mixed-version server that hasn't yet populated
+			// total_vram_bytes - derive from per-copy size (R1 fallback, not
+			// estimate: shown only when warm copies exist and a real per-copy
+			// figure is known).
+			totalVRAM = fmtMB(int64(m.WarmCount) * m.SizeVRAM / 1024 / 1024)
+		}
+		drift := m.DriftDetails
+		if drift == "" {
+			drift = "-"
+		}
+		fmt.Fprintf(tw, "%s\t%d/%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			m.Name, m.WarmCount, m.TotalNodes, fmtMB(m.SizeVRAM/1024/1024), totalVRAM, fmtMB(m.SizeDisk/1024/1024),
+			m.Family, drift, yesNo(m.DigestMismatch))
+	}
+	if err := tw.Flush(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitServerError
+	}
+	return ExitOK
+}
+
+// runModelsFleet implements `marbor models fleet [--drifted-only]` - same GET
+// /admin/v1/models fleet aggregation as bare `marbor models`, but with the
+// fleet-first columns and an optional drifted-only filter mirroring the UI's
+// drift toggle. No new Admin API route - one endpoint, same live data (Law 6).
+func runModelsFleet(flags *globalFlags, driftedOnly bool, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	models, err := client.Models()
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	filtered := models.Models
+	if driftedOnly {
+		out := make([]ModelEntry, 0, len(models.Models))
+		for _, m := range models.Models {
+			if m.DigestMismatch {
+				out = append(out, m)
+			}
+		}
+		filtered = out
+		// Preserve the wrapper's metadata but swap the list for filtered.
+		models.Models = filtered
+		models.TotalModels = len(filtered)
+	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, models); handled {
+		return code
+	}
+
+	tw := newTabWriter(stdout)
+	fmt.Fprintln(tw, "NAME\tWARM/HEALTHY\tTOTAL VRAM\tDRIFT\tNODES")
+	for _, m := range filtered {
+		totalVRAM := "-"
+		if m.TotalVRAMBytes > 0 {
+			totalVRAM = fmtMB(m.TotalVRAMBytes / 1024 / 1024)
+		} else if m.WarmCount > 0 && m.SizeVRAM > 0 {
+			totalVRAM = fmtMB(int64(m.WarmCount) * m.SizeVRAM / 1024 / 1024)
+		}
+		drift := m.DriftDetails
+		if drift == "" {
+			drift = "-"
+		}
+		// Nodes column: compact "gpu-01(warm,ollama) gpu-02(cold)" - mirrors
+		// the UI's node chips but in a single shell-friendly column.
+		nodeParts := make([]string, 0, len(m.Nodes))
+		for _, n := range m.Nodes {
+			part := n.Name
+			if n.Warm {
+				part += "(warm"
+			} else {
+				part += "(cold"
+			}
+			if n.Runtime != "" {
+				part += "," + n.Runtime
+			}
+			part += ")"
+			nodeParts = append(nodeParts, part)
+		}
+		nodesStr := "-"
+		if len(nodeParts) > 0 {
+			// Join with comma for single-line shell output; tabwriter already
+			// separates columns by tabs, so commas keep node list as one column.
+			nodesStr = ""
+			for i, p := range nodeParts {
+				if i > 0 {
+					nodesStr += ","
+				}
+				nodesStr += p
+			}
+		}
+		fmt.Fprintf(tw, "%s\t%d/%d\t%s\t%s\t%s\n",
+			m.Name, m.WarmCount, m.TotalNodes, totalVRAM, drift, nodesStr)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)

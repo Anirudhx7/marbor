@@ -19,6 +19,14 @@ unload a model from a node's warm state
 .TP
 .B list <node>
 list models present on a node's local storage (per\-node, not the fleet\-wide aggregate above)
+.TP
+.B fleet
+fleet residency with VRAM totals and drift (same live data as bare models, filterable)
+.RS
+.TP
+.B \-\-drifted-only
+only show models where nodes disagree on digest
+.RE
 .SH FLAGS
 .TP
 .B \-\-server

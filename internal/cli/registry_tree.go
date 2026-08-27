@@ -162,6 +162,17 @@ func buildRoot() *Command {
 						Args:      []ArgSpec{{Name: "node"}},
 						Run:       func(ctx *RunCtx) int { return runModelsList(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
 					},
+					{
+						Name:      "fleet",
+						Short:     "fleet residency with VRAM totals and drift (same live data as bare models, filterable)",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "drifted-only", Kind: FlagBool, Usage: "only show models where nodes disagree on digest"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runModelsFleet(ctx.Flags, ctx.Bool("drifted-only"), ctx.Stdout, ctx.Stderr)
+						},
+					},
 				},
 			},
 			{
