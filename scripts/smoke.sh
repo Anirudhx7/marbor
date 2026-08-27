@@ -27,8 +27,13 @@ if ! command -v sqlite3 &>/dev/null; then
 elif ! command -v go &>/dev/null; then
   echo "go not found on PATH, skipping drift check" >&2
 else
-  check_bin="$(mktemp)"
-  check_db="$(mktemp --suffix=.db)"
+  check_bin="$(mktemp)" || fail "mktemp failed while creating check_bin"
+  # --suffix is GNU-only and BSD/macOS mktemp rejects it outright - append
+  # the .db suffix after the fact instead, so this stays portable to local
+  # macOS/BSD runs (CI's ubuntu-latest was unaffected either way).
+  check_db="$(mktemp)" || fail "mktemp failed while creating check_db"
+  mv "$check_db" "$check_db.db" || fail "failed to add .db suffix to check_db"
+  check_db="$check_db.db"
   go build -o "$check_bin" . || fail "build for marbor.demo.db drift check failed"
   "$check_bin" -db "$check_db" -seed-node "name=_schema_init,url=http://init,runtime=ollama" >/dev/null 2>&1 \
     || fail "seed-node step failed against freshly migrated schema"
@@ -88,7 +93,7 @@ echo "=== [6/6] marbor CLI check: version/status/nodes/models against the live d
 if ! command -v go &>/dev/null; then
   echo "go not found on PATH, skipping marbor CLI check" >&2
 else
-  cli_bin="$(mktemp)"
+  cli_bin="$(mktemp)" || fail "mktemp failed while creating cli_bin"
   go build -o "$cli_bin" . || fail "build for marbor CLI check failed"
 
   "$cli_bin" status --server "http://localhost:8080" >/dev/null \

@@ -30,6 +30,16 @@ function escapeHtml(s) {
 function escapeAttr(s) {
   return escapeHtml(s).replace(/"/g, "&quot;");
 }
+// Allowlist of schemes safe to emit as an href/src on the static docs site -
+// javascript:/data: etc. in a community-authored docs PR must never become a
+// clickable/renderable anchor (P386). A value with no scheme prefix at all
+// (relative path or #fragment) is always safe.
+function isSafeUrl(url) {
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) {
+    return /^https:/i.test(url) || /^mailto:/i.test(url);
+  }
+  return true;
+}
 function inline(s) {
   // code spans first (protect their contents)
   const codes = [];
@@ -40,7 +50,7 @@ function inline(s) {
   s = escapeHtml(s);
   // images ![alt](url)
   s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) =>
-    `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy">`
+    `<img src="${escapeHtml(isSafeUrl(src) ? src : "#")}" alt="${escapeHtml(alt)}" loading="lazy">`
   );
   // links [text](url)
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, t, u) => {
@@ -49,6 +59,7 @@ function inline(s) {
     if (!/^https?:/.test(href) && (/\.md(#|$)/.test(href) || href.startsWith("../") || href.startsWith("./"))) {
       href = href.replace(/\.md(#|$)/, ".html$1");
     }
+    if (!isSafeUrl(href)) href = "#";
     const ext = /^https?:/.test(href) ? ' target="_blank" rel="noopener"' : "";
     return `<a href="${href}"${ext}>${t}</a>`;
   });

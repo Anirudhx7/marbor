@@ -14,6 +14,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # This job only checks out code and runs npm ci/build - it never needs
     # the Pages/OIDC permissions that only `deploy` actually uses.
     permissions:
