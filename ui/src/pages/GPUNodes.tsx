@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
@@ -219,7 +219,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent }: {
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, isHighlighted }: {
   node: GPUNode;
   pinnedModels: string[];
   onRemove: (name: string) => void;
@@ -230,6 +230,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onUnload: (nodeName: string, model: string) => void;
   onConfigureModel: (modelName: string, nodeName: string, runtime: string) => void;
   onManageAgent: (node: GPUNode) => void;
+  isHighlighted?: boolean;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -238,7 +239,10 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   }[node.health];
 
   return (
-    <div className={`bg-card border shadow-sm rounded-xl p-5 transition-colors ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border hover:border-primary/50'}`}>
+    <div
+      id={`node-card-${node.name}`}
+      className={`bg-card border shadow-sm rounded-xl p-5 transition-all duration-500 ease-out ${isHighlighted ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary/50 shadow-lg bg-primary/[0.03] scale-[1.01]' : ''} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border hover:border-primary/50'}`}
+    >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
         <div className="flex items-start gap-3 min-w-0">
@@ -522,9 +526,11 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 export function GPUNodes() {
   const { demoMode } = useDemoMode();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [isLive, setIsLive] = useState(!demoMode);
   const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newNode, setNewNode] = useState({
@@ -1157,6 +1163,25 @@ export function GPUNodes() {
     }
   }, [demoMode, location.pathname]);
 
+  // Highlight nodes passed via ?highlight= from Models page - smooth 200ms ease like sidenav, auto-clear after 3.5s
+  useEffect(() => {
+    const param = searchParams.get('highlight');
+    if (!param) {
+      setHighlightedNodes(new Set());
+      return;
+    }
+    const set = new Set(param.split(',').map((s) => s.trim()).filter(Boolean));
+    setHighlightedNodes(set);
+    if (set.size > 0) {
+      const first = Array.from(set)[0] as string;
+      setTimeout(() => {
+        document.getElementById(`node-card-${first}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    }
+    const t = setTimeout(() => setHighlightedNodes(new Set()), 3500);
+    return () => clearTimeout(t);
+  }, [searchParams]);
+
   const filteredNodes = nodes.filter(node =>
     (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (node.gpuModel || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -1664,7 +1689,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} />
         ))}
       </div>
 
