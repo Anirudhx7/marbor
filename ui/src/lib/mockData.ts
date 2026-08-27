@@ -4,6 +4,10 @@ import type { SystemInfo } from './api';
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
 
+// Dashboard Setup Checklist demo: 4/5 (node, agent, key, model done, request pending) —
+// Dashboard.tsx demo override forces hasRequest=false so /demo/ shows the checklist
+// for screenshots instead of a hidden completed state. No new backend behavior.
+
 // mockRuntimeLogLines is the static sample shown by the "View Logs" panel
 // in demo mode (P58) - plausible, not a real capture, matching how other
 // demo surfaces show static representative data rather than a live call.
