@@ -2431,13 +2431,26 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 
 	entries := make([]SystemAuditEntry, 0, f.Limit)
 	cursor := f.Before // exclusive upper bound; advances each iteration once rows are scanned
+	var cursorID int64
+	haveCursorID := false
 	scanned := 0
 	for len(entries) < f.Limit && scanned < maxSystemAuditScan {
 		where := staticWhere
 		args := staticArgs
 		if cursor != nil {
-			where = append(where[:len(where):len(where)], "ts < ?")
-			args = append(args[:len(args):len(args)], cursor.UTC().Format(time.RFC3339))
+			cursorTs := cursor.UTC().Format(time.RFC3339)
+			if haveCursorID {
+				// ts alone is only second-resolution (time.RFC3339), so rows
+				// sharing the same second need the row id as a tiebreaker -
+				// otherwise "ts < cursor" silently drops same-second rows
+				// that were already scanned but excluded from an earlier
+				// page (they are == cursor, not < cursor).
+				where = append(where[:len(where):len(where)], "(ts < ? OR (ts = ? AND id < ?))")
+				args = append(args[:len(args):len(args)], cursorTs, cursorTs, cursorID)
+			} else {
+				where = append(where[:len(where):len(where)], "ts < ?")
+				args = append(args[:len(args):len(args)], cursorTs)
+			}
 		}
 		// The IN/NOT-IN kind clause is a coarse pre-filter only - it can admit
 		// rows that the Go-side systemAuditKind() then rejects (see comment
@@ -2456,11 +2469,11 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 			break
 		}
 
-		query := `SELECT ts, username, action, target, details, source_ip FROM system_audit_log`
+		query := `SELECT id, ts, username, action, target, details, source_ip FROM system_audit_log`
 		if len(where) > 0 {
 			query += " WHERE " + strings.Join(where, " AND ")
 		}
-		query += " ORDER BY ts DESC LIMIT ?"
+		query += " ORDER BY ts DESC, id DESC LIMIT ?"
 		queryArgs := append(args[:len(args):len(args)], queryLimit)
 
 		rows, err := s.db.Query(query, queryArgs...)
@@ -2469,16 +2482,19 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 		}
 		rowCount := 0
 		var lastTs time.Time
+		var lastID int64
 		for rows.Next() {
 			var tsStr string
+			var rowID int64
 			var e SystemAuditEntry
-			if err := rows.Scan(&tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
+			if err := rows.Scan(&rowID, &tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
 				rows.Close()
 				return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: %w", err)
 			}
 			if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
 				e.Time = t
 				lastTs = t
+				lastID = rowID
 			}
 			rowCount++
 			// Second-pass kind check: the IN/NOT-IN pre-filter above can be
@@ -2506,6 +2522,8 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 			break
 		}
 		cursor = &lastTs
+		cursorID = lastID
+		haveCursorID = true
 	}
 	return entries, nil
 }
