@@ -106,6 +106,16 @@ list models present on a node's local storage (per-node, not the fleet-wide aggr
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+#### `fleet`
+
+fleet residency with VRAM totals and drift (same live data as bare models, filterable)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--drifted-only` - only show models where nodes disagree on digest
+
 ### `runtime`
 
 start/stop/restart/logs/drain/undrain/health on one node

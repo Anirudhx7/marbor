@@ -403,6 +403,9 @@ export interface ModelNode {
   // digest is this node's runtime-reported content digest for the model, when
   // known (currently only Ollama). Absent when unknown.
   digest?: string;
+  warm?: boolean;
+  vram_bytes?: number;
+  runtime?: string;
 }
 
 export interface ModelEntry {
@@ -419,6 +422,8 @@ export interface ModelEntry {
   // digest_mismatch is true when 2+ nodes report different non-empty digests
   // for this model name (e.g. the same tag re-pulled with different content).
   digest_mismatch?: boolean;
+  total_vram_bytes?: number;
+  drift_details?: string;
 }
 
 export interface ModelCatalog {

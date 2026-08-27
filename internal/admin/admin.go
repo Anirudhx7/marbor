@@ -5798,7 +5798,10 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Healthy bool   `json:"healthy"`
 		// Digest is this node's runtime-reported content digest for the model,
 		// when known (currently only Ollama). Empty/omitted otherwise (R1).
-		Digest string `json:"digest,omitempty"`
+		Digest    string `json:"digest,omitempty"`
+		Warm      bool   `json:"warm"`
+		VRAMBytes int64  `json:"vram_bytes,omitempty"`
+		Runtime   string `json:"runtime,omitempty"`
 	}
 	type modelEntry struct {
 		Name     string `json:"name"`
@@ -5822,6 +5825,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		// different content mid-rollout. False when fewer than 2 nodes have
 		// reported a digest at all (never a false positive from partial data).
 		DigestMismatch bool `json:"digest_mismatch,omitempty"`
+		// TotalVRAMBytes is the sum of SizeVRAM across all warm copies of this
+		// model - live, not estimated, 0 when no warm copy reports a size (R1).
+		TotalVRAMBytes int64 `json:"total_vram_bytes,omitempty"`
+		// DriftDetails is a short inline diff of the distinct non-empty digests
+		// for this model, e.g. "a1b2c3 vs c3d4e5" (truncated 6-char hex, "sha256:"
+		// prefix stripped). Empty when fewer than 2 distinct digests (R1 - never
+		// synthesized).
+		DriftDetails string `json:"drift_details,omitempty"`
 	}
 
 	nodes := s.router.Nodes()
@@ -5831,6 +5842,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		url     string
 		name    string
 		healthy bool
+		runtime string
 		warmSet map[string]bool
 	}
 	snapshots := make([]nodeSnapshot, len(nodes))
@@ -5840,6 +5852,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		nodeURL := n.URL
 		nodeName := n.Name
 		nodeHealthy := n.Healthy
+		nodeRuntime := n.Runtime
 		// Track which models are warm (currently in VRAM) for this node.
 		warmSet := make(map[string]bool, len(n.LoadedModels))
 		for _, m := range n.LoadedModels {
@@ -5850,17 +5863,23 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 					SizeVRAM: m.SizeVRAM,
 				}
 			}
+			if m.SizeVRAM > 0 {
+				modelMap[m.Name].TotalVRAMBytes += m.SizeVRAM
+			}
 			modelMap[m.Name].Nodes = append(modelMap[m.Name].Nodes, nodeInfo{
-				Name:    nodeName,
-				Healthy: nodeHealthy,
-				Digest:  m.Digest,
+				Name:      nodeName,
+				Healthy:   nodeHealthy,
+				Digest:    m.Digest,
+				Warm:      true,
+				VRAMBytes: m.SizeVRAM,
+				Runtime:   nodeRuntime,
 			})
 			if nodeHealthy {
 				modelMap[m.Name].WarmCount++
 			}
 		}
 		n.RUnlock()
-		snapshots[i] = nodeSnapshot{url: nodeURL, name: nodeName, healthy: nodeHealthy, warmSet: warmSet}
+		snapshots[i] = nodeSnapshot{url: nodeURL, name: nodeName, healthy: nodeHealthy, runtime: nodeRuntime, warmSet: warmSet}
 	}
 
 	// Also include models that are installed on disk but not currently loaded.
@@ -5909,6 +5928,8 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			modelMap[tm.Name].Nodes = append(modelMap[tm.Name].Nodes, nodeInfo{
 				Name:    res.snap.name,
 				Healthy: res.snap.healthy,
+				Warm:    false,
+				Runtime: res.snap.runtime,
 			})
 			// WarmCount stays 0: model is available but not in VRAM
 		}
@@ -5963,6 +5984,8 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			entry.Nodes = append(entry.Nodes, nodeInfo{
 				Name:    snap.name,
 				Healthy: snap.healthy,
+				Warm:    false,
+				Runtime: snap.runtime,
 			})
 			// WarmCount stays 0: model is downloaded but not in VRAM
 		}
@@ -5990,6 +6013,28 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		v.DigestMismatch = len(seenDigests) > 1
+		if len(seenDigests) > 1 {
+			digests := make([]string, 0, len(seenDigests))
+			for d := range seenDigests {
+				digests = append(digests, d)
+			}
+			sort.Strings(digests)
+			shorts := make([]string, 0, len(digests))
+			for _, d := range digests {
+				s := d
+				if strings.HasPrefix(s, "sha256:") {
+					s = strings.TrimPrefix(s, "sha256:")
+				}
+				if len(s) > 6 {
+					s = s[:6]
+				}
+				if s == "" {
+					s = "-"
+				}
+				shorts = append(shorts, s)
+			}
+			v.DriftDetails = strings.Join(shorts, " vs ")
+		}
 		entries = append(entries, *v)
 	}
 
