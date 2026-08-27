@@ -101,10 +101,22 @@ func launchdPlistContent(cfg Config) string {
 }
 
 // xmlEscape escapes the handful of characters that matter inside a plist
-// <string> element. cfg.BinaryPath/args values are operator-controlled
-// (paths, ports, tokens), not attacker input, but escaping costs nothing and
-// keeps the plist well-formed if a token ever contains e.g. "&".
+// <string> element and strips XML-illegal control characters. cfg.BinaryPath/
+// args/Token values are operator-controlled (paths, ports, tokens), not
+// attacker input, but escaping costs nothing and keeps the plist well-formed
+// if a token ever contains e.g. "&" - and a raw control character (anything
+// below U+0020 except tab/LF/CR, which XML 1.0 forbids outright) would
+// otherwise produce a malformed plist that `launchctl load` rejects.
 func xmlEscape(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return r
+		}
+		if r < 0x20 {
+			return -1
+		}
+		return r
+	}, s)
 	r := strings.NewReplacer(
 		"&", "&amp;",
 		"<", "&lt;",
@@ -175,6 +187,17 @@ func (launchdManager) Uninstall(purge bool) error {
 			return fmt.Errorf("service: removing binary %s: %w", binaryPath, err)
 		}
 	}
+
+	// P284: purge also best-effort removes the agent's TLS cert/key and log
+	// file - otherwise an orphaned private key survives decommissioning,
+	// enabling agent impersonation on a repurposed box. Best-effort: these
+	// are cleanup, not the primary uninstall action, so a failure here
+	// doesn't fail the whole command.
+	if purge {
+		_ = os.Remove(agentCertPath)
+		_ = os.Remove(agentKeyPath)
+		_ = os.Remove(launchdLogPath)
+	}
 	return nil
 }
 
@@ -198,8 +221,21 @@ func (launchdManager) Stop() error {
 }
 
 func (launchdManager) Status() (string, error) {
-	out, err := exec.Command("launchctl", "list", launchdLabel).Output()
+	cmd := exec.Command("launchctl", "list", launchdLabel)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
+		// "launchctl list" for a LaunchDaemon owned by another user (root)
+		// fails with a permission error for a non-root caller even when the
+		// daemon is actually running - conflating that with "not installed"
+		// hides a real, running agent from a non-root operator running
+		// `status`. os.Stat(plist) can't distinguish either (root-owned
+		// files under /Library/LaunchDaemons are still world-readable), so
+		// this checks stderr content first.
+		if strings.Contains(stderr.String(), "Operation not permitted") || strings.Contains(stderr.String(), "Permission denied") {
+			return "unknown (permission denied - re-run as root/sudo for an accurate status)", nil
+		}
 		if _, statErr := os.Stat(launchdPlistPath); os.IsNotExist(statErr) {
 			return "not installed", nil
 		}
