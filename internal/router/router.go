@@ -1281,13 +1281,19 @@ func (r *Router) Start(ctx context.Context) {
 // (never replacing the pointer), so telemetry/health/warm-residency/session-
 // affinity tracked against this node's identity survive the upsert for free
 // - there is no separate "preserve vs. reset" step to get wrong.
-func (r *Router) AddNode(n config.NodeConfig) {
+// AddNode registers n as a new node, or upserts config fields onto an
+// existing node of the same name. Returns true if the node was actually
+// added/upserted, false if it was rejected (invalid URL, or a URL collision
+// with a differently-named existing node) - callers that track discovered
+// URLs (health.go's Docker auto-discovery) need this signal so a rejected
+// node's URL isn't marked as "already handled" forever.
+func (r *Router) AddNode(n config.NodeConfig) bool {
 	// Defense-in-depth: reject invalid or link-local/metadata node URLs even when
 	// they arrive from the store overlay or Docker discovery, which bypass
 	// config.Validate. Prevents an SSRF relay from a persisted/discovered node.
 	if err := config.ValidateNodeURL(n.URL); err != nil {
 		log.Printf("router: rejecting node %q: %v", n.Name, err)
-		return
+		return false
 	}
 	// Reject a node whose URL already resolves to an existing, differently-named
 	// node. config.Validate() only catches duplicate URLs within a single
@@ -1323,7 +1329,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		if config.NormalizeNodeURL(existing.URL) == normURL {
 			r.mu.Unlock()
 			log.Printf("router: WARNING: rejecting node %q (%s): URL already registered as node %q - refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
-			return
+			return false
 		}
 	}
 
@@ -1357,7 +1363,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 		// calling it again here cannot leak a goroutine or race a prior
 		// invocation for this node past its own single pass.
 		go r.pollNode(existingByName)
-		return
+		return true
 	}
 
 	node := &NodeState{
@@ -1382,6 +1388,7 @@ func (r *Router) AddNode(n config.NodeConfig) {
 	r.mu.Unlock()
 	// Start polling immediately
 	go r.pollNode(node)
+	return true
 }
 
 func (r *Router) RemoveNode(name string) {
