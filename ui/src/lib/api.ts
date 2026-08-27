@@ -54,7 +54,7 @@ export function loadSession(): SessionData | null {
   const username = localStorage.getItem('sessionUsername');
   if (!username) return null;
   return {
-    role: localStorage.getItem('sessionRole') ?? 'admin',
+    role: localStorage.getItem('sessionRole') ?? 'user',
     username,
     mustChangePassword: localStorage.getItem('sessionMustChangePassword') === 'true',
   };
