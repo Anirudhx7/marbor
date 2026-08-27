@@ -53,9 +53,39 @@ fi
 if [ -f "$PIDFILE" ]; then
   PID=$(cat "$PIDFILE" 2>/dev/null || true)
   if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-    echo "Stopping background process (PID $PID)..."
-    kill "$PID" 2>/dev/null || true
-    sleep 1
+    # PID-reuse hazard: on a long-lived host, the PID this pidfile named can
+    # have since been recycled by the OS for an unrelated process. Check
+    # /proc/<pid>/cmdline (Linux only - no /proc at all on macOS, where this
+    # check is skipped and the kill proceeds unconditionally, same as before
+    # this fix) before signaling anything. Fail CLOSED, not open: if /proc
+    # exists on this host but this PID's cmdline can't be read (e.g. a
+    # hidepid=2 mount restricting /proc/<pid>/* to its own user + root - the
+    # exact privilege boundary this check exists to respect), that must NOT
+    # be treated the same as "no /proc at all" and default to "confirmed" -
+    # it means identity genuinely can't be verified, so skip the kill.
+    if [ -d /proc ]; then
+      IDENTITY_OK=0
+      if [ -r "/proc/$PID/cmdline" ] && tr '\0' '\n' < "/proc/$PID/cmdline" 2>/dev/null | head -1 | sed 's#.*/##' | grep -q marbor; then
+        IDENTITY_OK=1
+      fi
+    else
+      IDENTITY_OK=1
+    fi
+    if [ "$IDENTITY_OK" = "1" ]; then
+      echo "Stopping background process (PID $PID)..."
+      kill "$PID" 2>/dev/null || true
+      i=0
+      while [ "$i" -lt 10 ] && kill -0 "$PID" 2>/dev/null; do
+        sleep 0.5
+        i=$((i + 1))
+      done
+      if kill -0 "$PID" 2>/dev/null; then
+        echo "  [!] PID $PID did not exit within 5s of SIGTERM - sending SIGKILL"
+        kill -9 "$PID" 2>/dev/null || true
+      fi
+    else
+      echo "  [!] $PIDFILE names PID $PID, but its identity could not be confirmed as marbor (stale pidfile + PID reuse?) - skipping kill to avoid killing an unrelated process."
+    fi
   fi
   rm -f "$PIDFILE"
 fi
@@ -89,18 +119,38 @@ fi
 # fallback for an install that predates this fix and never wrote a marker.
 MAN_DIR="/usr/local/share/man/man1"
 MAN_MANIFEST="$MAN_DIR/.marbor-installed-manifest"
+# is_safe_manpage_name rejects anything but a plain filename (no path
+# separators, no leading dash that could be misread as an rm option, only
+# alnum/dot/dash/underscore) - the manifest is currently only ever written
+# by install.sh's own fixed-name man-page install step, but this validates
+# it as untrusted content anyway rather than assuming that always holds.
+is_safe_manpage_name() {
+  case "$1" in
+    ""|*/*|-*) return 1 ;;
+    *[!A-Za-z0-9._-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
 if [ -f "$MAN_MANIFEST" ]; then
   MAN_PAGES_TO_REMOVE="$(cat "$MAN_MANIFEST" 2>/dev/null || true)"
   if [ -n "$MAN_PAGES_TO_REMOVE" ]; then
     if [ -w "$MAN_DIR" ]; then
       for page in $MAN_PAGES_TO_REMOVE; do
-        rm -f "$MAN_DIR/$page"
+        if is_safe_manpage_name "$page"; then
+          rm -f "$MAN_DIR/$page"
+        else
+          echo "  [!] Skipping suspicious manifest entry: $page"
+        fi
       done
       rm -f "$MAN_MANIFEST"
       echo "Removed man pages listed in $MAN_MANIFEST"
     elif command -v sudo >/dev/null 2>&1; then
       for page in $MAN_PAGES_TO_REMOVE; do
-        sudo rm -f "$MAN_DIR/$page"
+        if is_safe_manpage_name "$page"; then
+          sudo rm -f "$MAN_DIR/$page"
+        else
+          echo "  [!] Skipping suspicious manifest entry: $page"
+        fi
       done
       sudo rm -f "$MAN_MANIFEST"
       echo "Removed man pages listed in $MAN_MANIFEST"
