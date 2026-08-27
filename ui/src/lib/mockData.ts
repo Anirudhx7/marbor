@@ -4,6 +4,10 @@ import type { SystemInfo } from './api';
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
 
+// Dashboard Setup Checklist demo: 4/5 (node, agent, key, model done, request pending) —
+// Dashboard.tsx demo override forces hasRequest=false so /demo/ shows the checklist
+// for screenshots instead of a hidden completed state. No new backend behavior.
+
 // mockRuntimeLogLines is the static sample shown by the "View Logs" panel
 // in demo mode (P58) - plausible, not a real capture, matching how other
 // demo surfaces show static representative data rather than a live call.
@@ -483,8 +487,8 @@ export const mockSavings: Savings = {
 };
 
 export const mockModelCatalog: ModelCatalog = {
-  total_models: 6,
-  total_nodes: 5,
+  total_models: 8,
+  total_nodes: 6,
   healthy_nodes: 4,
   models: [
     {
@@ -492,14 +496,16 @@ export const mockModelCatalog: ModelCatalog = {
       size_vram: Math.round(16.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
       warm_count: 2,
-      total_nodes: 3,
+      total_nodes: 4,
       // Demo parity for P52's digest-mismatch warning: these two nodes
       // deliberately report different digests for the same model name, as if
       // the tag was re-pulled with different content mid-rollout.
       digest_mismatch: true,
+      total_vram_bytes: Math.round(16.2 * 2 * 1024 * 1024 * 1024),
+      drift_details: '3b7e0a vs 9f8a1c',
       nodes: [
-        { name: 'gpu-node-01', healthy: true, digest: 'sha256:9f8a1c2d47e0b6f3a5d9c8e1b2f4a7d6' },
-        { name: 'gpu-node-02', healthy: true, digest: 'sha256:3b7e0a91c4d8f2a6b0e5d7c3f9a1b8e4' },
+        { name: 'gpu-node-01', healthy: true, digest: 'sha256:9f8a1c2d47e0b6f3a5d9c8e1b2f4a7d6', warm: true, vram_bytes: Math.round(16.2 * 1024 * 1024 * 1024), runtime: 'ollama' },
+        { name: 'gpu-node-02', healthy: true, digest: 'sha256:3b7e0a91c4d8f2a6b0e5d7c3f9a1b8e4', warm: true, vram_bytes: Math.round(16.2 * 1024 * 1024 * 1024), runtime: 'ollama' },
       ],
     },
     {
@@ -507,10 +513,11 @@ export const mockModelCatalog: ModelCatalog = {
       size_vram: Math.round(14.8 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.1 * 1024 * 1024 * 1024),
       warm_count: 2,
-      total_nodes: 3,
+      total_nodes: 4,
+      total_vram_bytes: Math.round(14.8 * 2 * 1024 * 1024 * 1024),
       nodes: [
-        { name: 'gpu-node-02', healthy: true },
-        { name: 'gpu-node-03', healthy: true },
+        { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(14.8 * 1024 * 1024 * 1024), runtime: 'ollama' },
+        { name: 'gpu-node-03', healthy: true, warm: true, vram_bytes: Math.round(14.8 * 1024 * 1024 * 1024), runtime: 'vllm' },
       ],
     },
     {
@@ -518,29 +525,37 @@ export const mockModelCatalog: ModelCatalog = {
       size_vram: Math.round(40.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(42.5 * 1024 * 1024 * 1024),
       warm_count: 1,
-      total_nodes: 3,
+      total_nodes: 4,
+      total_vram_bytes: Math.round(40.2 * 1024 * 1024 * 1024),
       nodes: [
-        { name: 'gpu-node-01', healthy: true },
+        { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(40.2 * 1024 * 1024 * 1024), runtime: 'ollama' },
       ],
     },
     {
       name: 'qwen2.5-coder:14b',
       size_vram: Math.round(26.5 * 1024 * 1024 * 1024),
       size_disk: Math.round(9.0 * 1024 * 1024 * 1024),
-      warm_count: 1,
-      total_nodes: 3,
+      warm_count: 2,
+      total_nodes: 4,
+      digest_mismatch: true,
+      total_vram_bytes: Math.round(26.5 * 2 * 1024 * 1024 * 1024),
+      drift_details: 'a1b2c3 vs d4e5f6',
       nodes: [
-        { name: 'gpu-node-02', healthy: true },
+        { name: 'gpu-node-02', healthy: true, digest: 'sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6', warm: true, vram_bytes: Math.round(26.5 * 1024 * 1024 * 1024), runtime: 'ollama' },
+        { name: 'gpu-node-03', healthy: true, digest: 'sha256:d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0', warm: true, vram_bytes: Math.round(26.5 * 1024 * 1024 * 1024), runtime: 'ollama' },
       ],
     },
     {
       name: 'gemma2:9b',
       size_vram: Math.round(14.1 * 1024 * 1024 * 1024),
       size_disk: Math.round(5.4 * 1024 * 1024 * 1024),
-      warm_count: 1,
-      total_nodes: 3,
+      warm_count: 3,
+      total_nodes: 4,
+      total_vram_bytes: Math.round(14.1 * 3 * 1024 * 1024 * 1024),
       nodes: [
-        { name: 'gpu-node-03', healthy: true },
+        { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'ollama' },
+        { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'ollama' },
+        { name: 'gpu-node-03', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'tgi' },
       ],
     },
     {
@@ -548,9 +563,34 @@ export const mockModelCatalog: ModelCatalog = {
       size_vram: Math.round(4.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(7.9 * 1024 * 1024 * 1024),
       warm_count: 0,
-      total_nodes: 3,
+      total_nodes: 4,
       nodes: [
-        { name: 'gpu-node-04', healthy: false },
+        { name: 'gpu-node-04', healthy: false, warm: false, runtime: 'llamacpp' },
+        { name: 'gpu-node-06', healthy: false, warm: false, runtime: 'ollama' },
+      ],
+    },
+    {
+      name: 'deepseek-r1:7b',
+      size_vram: Math.round(9.5 * 1024 * 1024 * 1024),
+      size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
+      warm_count: 1,
+      total_nodes: 4,
+      total_vram_bytes: Math.round(9.5 * 1024 * 1024 * 1024),
+      nodes: [
+        { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(9.5 * 1024 * 1024 * 1024), runtime: 'llamacpp' },
+      ],
+    },
+    {
+      name: 'nomic-embed-text',
+      size_vram: Math.round(0.6 * 1024 * 1024 * 1024),
+      size_disk: Math.round(0.27 * 1024 * 1024 * 1024),
+      warm_count: 2,
+      total_nodes: 4,
+      total_vram_bytes: Math.round(0.6 * 2 * 1024 * 1024 * 1024),
+      family: 'bert',
+      nodes: [
+        { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'ollama' },
+        { name: 'gpu-node-05', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'mlx' },
       ],
     },
   ],
