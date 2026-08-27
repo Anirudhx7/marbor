@@ -31,8 +31,21 @@ export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
         username: data.username,
         mustChangePassword: data.must_change_password,
       });
-    } catch {
-      setError('Invalid username or password');
+    } catch (err) {
+      // Branch on the failure (P176): a bare catch{} previously showed
+      // "Invalid username or password" for every failure mode, including
+      // network errors and server-side bugs, giving an operator no way to
+      // tell a real credentials mistake from marbor being unreachable.
+      if (err instanceof TypeError) {
+        // fetch() itself throws a TypeError for a network-level failure
+        // (DNS, connection refused, CORS) - no HTTP response was ever
+        // received, so there's no status to branch on.
+        setError('Cannot reach server');
+      } else if (err instanceof Error && (err as Error & { status?: number }).status !== 401) {
+        setError(err.message);
+      } else {
+        setError('Invalid username or password');
+      }
       setPassword('');
       setLoading(false);
     }

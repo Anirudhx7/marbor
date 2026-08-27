@@ -244,7 +244,14 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				// normal "skipped" decision, same as any other unmet prediction.
 				key := nodeModelKey{n.Name, P}
 				_, alreadyPlanned := planned[key]
-				if !wasAlreadyWarm && !alreadyPlanned && !r.isWarmupSuppressed(n.Name, P) {
+				// planned only de-dups within this single cycle's loop; a
+				// prewarm goroutine fired by the PREVIOUS cycle can still be
+				// mid-load (n.LoadedModels reflects only the last /api/ps
+				// poll), so also skip if there's already an active warm
+				// reservation for this (node, model) - otherwise a slow load
+				// gets re-triggered every 5-minute cycle, re-running
+				// ensureHeadroom against stale pre-load free VRAM.
+				if !wasAlreadyWarm && !alreadyPlanned && !r.isWarmupSuppressed(n.Name, P) && !r.hasActiveWarmReservation(n.Name, P) {
 					// Check VRAM headroom
 					estSize := r.estimateModelSizeBytes(n.URL, P, true)
 					n.mu.RLock()
@@ -260,6 +267,12 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 							if err := r.pingNode(ctx, targetNode, modelToWarm, keepAlive); err == nil {
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "ok")
 							} else {
+								// Release the reservation now instead of
+								// letting it block other models' headroom
+								// checks for the remainder of
+								// warmReservationTTL (mirrors warmer.go's
+								// pingWarmupModels).
+								r.clearWarmReservation(targetNode.Name, modelToWarm)
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "error")
 							}
 						}(n, P)
@@ -341,7 +354,11 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 				// Same deference to an operator's manual/scheduled unload as
 				// the transition-based prediction above - a time-of-day
 				// pattern must not override an explicit "keep this cold".
-				if !loaded && !r.isWarmupSuppressed(n.Name, model) {
+				// Also skip if there's already an active warm reservation
+				// for this (node, model) from a still-in-flight prewarm -
+				// n.LoadedModels reflects only the last /api/ps poll, so a
+				// slow load would otherwise be re-triggered every cycle.
+				if !loaded && !r.isWarmupSuppressed(n.Name, model) && !r.hasActiveWarmReservation(n.Name, model) {
 					// Check VRAM headroom
 					estSize := r.estimateModelSizeBytes(n.URL, model, true)
 					n.mu.RLock()
@@ -354,6 +371,12 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 							if err := r.pingNode(ctx, targetNode, modelToWarm, keepAlive); err == nil {
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "ok")
 							} else {
+								// Release the reservation now instead of
+								// letting it block other models' headroom
+								// checks for the remainder of
+								// warmReservationTTL (mirrors warmer.go's
+								// pingWarmupModels).
+								r.clearWarmReservation(targetNode.Name, modelToWarm)
 								metrics.WarmupPing(modelToWarm, targetNode.Name, "error")
 							}
 						}(n, model)

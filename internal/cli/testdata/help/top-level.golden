@@ -15,6 +15,7 @@ Commands:
   node      node control driver operations
   key       per-API-key local/cloud routing overrides
   spill     show per-key, per-provider local-vs-cloud request counts
+  activity  show unified fleet activity feed (drain, agent, runtime, node, warmup)
   requests  inspect routing decisions for past requests
 
 Run "marbor <command> --help" for the full list of actions and flags for

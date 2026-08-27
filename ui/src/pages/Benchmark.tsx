@@ -6,7 +6,7 @@
 // (internal/admin/benchmark.go). Not integral to marbor operation; this is a
 // self-service validation/diagnostics tool, not a monitored dashboard
 // surface, so it deliberately has no nav-bar presence.
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Gauge, Zap, Server, X, History, Copy, Check } from 'lucide-react';
 import { fetchNodes, fetchModels, getNodeModels, fetchBenchmarkRuns } from '../lib/api';
 import { subscribe, getSnapshot, start, cancel, reset } from '../lib/benchmarkProgress';
@@ -98,6 +98,21 @@ export function Benchmark() {
 
   const healthyNodes = useMemo(() => nodes.filter(n => n.health !== 'down'), [nodes]);
 
+  // refreshHistory is called from three places (mount, the phase==='done'
+  // effect below, and handleReset) with no shared scope to thread a local
+  // `active` flag through - a single mountedRef covers all of them, unlike
+  // the sibling node-fetch effect above, which only needs its own local flag.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    // Reset to true on every mount, not just declared once at useRef's
+    // initializer - StrictMode's dev-only mount->cleanup->remount cycle
+    // would otherwise leave this permanently false after the first
+    // (discarded) mount's cleanup runs, silently no-opping every future
+    // refreshHistory() state-set for the component's real lifetime.
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     let active = true;
     if (demoMode) {
@@ -122,10 +137,13 @@ export function Benchmark() {
   }, [demoMode]);
 
   function refreshHistory() {
-    if (demoMode) { setHistory(mockBenchmarkRuns); setHistoryError(null); return; }
+    if (demoMode) {
+      if (mountedRef.current) { setHistory(mockBenchmarkRuns); setHistoryError(null); }
+      return;
+    }
     fetchBenchmarkRuns()
-      .then(runs => { setHistory(runs); setHistoryError(null); })
-      .catch(() => setHistoryError('Failed to load benchmark history.'));
+      .then(runs => { if (mountedRef.current) { setHistory(runs); setHistoryError(null); } })
+      .catch(() => { if (mountedRef.current) setHistoryError('Failed to load benchmark history.'); });
   }
 
   // Refresh history the moment a run finishes, so a completed benchmark shows
@@ -138,6 +156,7 @@ export function Benchmark() {
   useEffect(() => {
     if (!selectedNode) { setModels([]); return; }
     setModelsError(null);
+    let active = true;
     const node = nodes.find(n => n.name === selectedNode);
     // Prefer the marbor agent's models.list (runtime-agnostic, on-disk models).
     // Without that capability, fall back to the same /admin/models
@@ -149,21 +168,27 @@ export function Benchmark() {
       setModels((node?.loadedModels || []).map(m => m.name));
     } else if (node?.agentCapabilities?.includes('models.list')) {
       getNodeModels(selectedNode)
-        .then(list => setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name)))
+        .then(list => {
+          if (!active) return;
+          setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name));
+        })
         .catch(() => {
+          if (!active) return;
           setModels((node.loadedModels || []).map(m => m.name));
           setModelsError('marbor agent model list unavailable - showing currently-loaded models only.');
         });
     } else {
       fetchModels()
         .then(catalog => {
+          if (!active) return;
           const names = catalog.models
             .filter(m => m.nodes.some(n => n.name === selectedNode) && isChatCapable(m.family))
             .map(m => m.name);
           setModels(names);
         })
-        .catch(() => setModels((node?.loadedModels || []).map(m => m.name)));
+        .catch(() => { if (active) setModels((node?.loadedModels || []).map(m => m.name)); });
     }
+    return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNode, nodes]);
 

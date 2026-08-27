@@ -336,7 +336,11 @@ export function Dashboard() {
         ]);
         if (!active || currentAppPath() !== '/') return;
         setNodes(nodesData || []);
-        setSummary(summaryData || summary);
+        // Functional form, not a closure over `summary` from the effect's
+        // initial render - the plain closure fell back to the mount-time
+        // all-zero object on any single falsy/empty payload during the 10s
+        // poll, overwriting good data instead of preserving the latest.
+        setSummary(prev => summaryData ?? prev);
         setIsLive(true);
         setError(null);
       } catch (err: any) {
@@ -590,20 +594,20 @@ export function Dashboard() {
       </div>
 
       {/* Live Requests Table */}
-      <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-secondary/30">
-          <div className="flex items-center gap-3">
+      <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden min-w-0">
+        <div className="px-4 sm:px-6 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-secondary/30 min-w-0">
+          <div className="flex items-center gap-3 shrink-0">
             <h3 className="text-sm font-semibold text-foreground">Live Requests</h3>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               <span className="text-[10px] font-medium text-primary uppercase tracking-wider">Live</span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-xs font-medium text-muted-foreground">Auto-refresh: 2s</span>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs min-w-0">
+            <span className="font-medium text-muted-foreground whitespace-nowrap">Auto-refresh: 2s</span>
             <Link
               to="/requests"
-              className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+              className="font-medium text-primary hover:underline flex items-center gap-1 whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0 px-2 sm:px-0 -mx-2 sm:mx-0"
             >
               View All Requests
               <ArrowRight className="w-3 h-3" />

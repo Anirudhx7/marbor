@@ -31,9 +31,17 @@ function useMenuPosition(containerRef: React.RefObject<HTMLDivElement | null>, i
       const r = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - r.bottom;
       const openUp = spaceBelow < 260 && r.top > spaceBelow;
+      // Clamp to viewport on 375px devices - trigger may be 343px wide at
+      // left 16px, but inside a modal with p-4 the right edge at 359px is
+      // within 8px margin (367 max). Clamping guarantees no overflow even
+      // if trigger sits in a non-first grid column or near the right edge.
+      const VIEWPORT_MARGIN = 8;
+      const vw = window.innerWidth;
+      const clampedWidth = Math.min(r.width, vw - VIEWPORT_MARGIN * 2);
+      const clampedLeft = Math.max(VIEWPORT_MARGIN, Math.min(r.left, vw - clampedWidth - VIEWPORT_MARGIN));
       setRect({
-        left: r.left,
-        width: r.width,
+        left: clampedLeft,
+        width: clampedWidth,
         triggerTopFromViewportTop: r.top,
         triggerBottomFromViewportBottom: window.innerHeight - r.bottom,
         openUp,
@@ -42,9 +50,14 @@ function useMenuPosition(containerRef: React.RefObject<HTMLDivElement | null>, i
     update();
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
+    // Mobile keyboard changes visualViewport height without firing window resize on some browsers
+    window.visualViewport?.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('scroll', update);
     return () => {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('scroll', update);
     };
   }, [isOpen, containerRef]);
 
@@ -113,7 +126,7 @@ export function CustomSelect({
   const menuRect = useMenuPosition(containerRef, isOpen);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -123,7 +136,11 @@ export function CustomSelect({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const selectedOption = options.find((o) => o.value === value);
@@ -147,8 +164,8 @@ export function CustomSelect({
       {isOpen && menuRect && createPortal(
         <div
           ref={menuRef}
-          style={menuFixedStyle(menuRect)}
-          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
+          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {options.length === 0 ? (
@@ -164,7 +181,13 @@ export function CustomSelect({
                       onChange(o.value);
                       setIsOpen(false);
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary ${
+                    // Touch devices need touchEnd to avoid 300ms delay / ghost mousedown closing before click fires
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      onChange(o.value);
+                      setIsOpen(false);
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary min-h-[40px] sm:min-h-0 ${
                       isSelected ? 'bg-primary/5 text-primary font-medium' : 'text-foreground hover:bg-secondary/40'
                     }`}
                   >
@@ -205,9 +228,13 @@ export function CustomCombobox({
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRect = useMenuPosition(containerRef, isOpen);
+  // On coarse pointers (phones) the dropdown should open without pulling the
+  // keyboard - keyboard only when the user explicitly taps the text field to
+  // type a filter. Matches CustomSelect behaviour which never pulls keyboard.
+  const isCoarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -217,7 +244,11 @@ export function CustomCombobox({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const filteredOptions = options.filter((opt) =>
@@ -272,10 +303,11 @@ export function CustomCombobox({
               } else {
                 setSearchTerm('');
                 setIsOpen(true);
-                inputRef.current?.focus();
+                if (!isCoarse) inputRef.current?.focus();
               }
             }}
-            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+            aria-label={isOpen ? 'Close options' : 'Open options'}
           >
             <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -285,8 +317,8 @@ export function CustomCombobox({
       {isOpen && menuRect && createPortal(
         <div
           ref={menuRef}
-          style={menuFixedStyle(menuRect)}
-          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
+          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {displayOptions.length === 0 ? (
@@ -302,7 +334,12 @@ export function CustomCombobox({
                       onChange(opt);
                       setIsOpen(false);
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary ${
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      onChange(opt);
+                      setIsOpen(false);
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary min-h-[40px] sm:min-h-0 ${
                       isSelected ? 'bg-primary/5 text-primary font-medium' : 'text-foreground hover:bg-secondary/40'
                     }`}
                   >
@@ -351,9 +388,10 @@ export function CustomTagCombobox({
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRect = useMenuPosition(containerRef, isOpen);
+  const isCoarseTag = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -363,7 +401,11 @@ export function CustomTagCombobox({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true } as AddEventListenerOptions);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const segments = value.split(',');
@@ -376,7 +418,7 @@ export function CustomTagCombobox({
 
   const selectOption = (opt: string) => {
     onChange([...completedNames, opt].join(', ') + ', ');
-    inputRef.current?.focus();
+    if (!isCoarseTag) inputRef.current?.focus();
   };
 
   return (
@@ -416,10 +458,11 @@ export function CustomTagCombobox({
                 setIsOpen(false);
               } else {
                 setIsOpen(true);
-                inputRef.current?.focus();
+                if (!isCoarseTag) inputRef.current?.focus();
               }
             }}
-            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+            aria-label={isOpen ? 'Close options' : 'Open options'}
           >
             <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </button>
@@ -429,8 +472,8 @@ export function CustomTagCombobox({
       {isOpen && menuRect && createPortal(
         <div
           ref={menuRef}
-          style={menuFixedStyle(menuRect)}
-          className="z-50 border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
+          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {filteredOptions.length === 0 ? (
@@ -443,7 +486,11 @@ export function CustomTagCombobox({
                   key={opt}
                   type="button"
                   onClick={() => selectOption(opt)}
-                  className="flex items-center w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-primary/10 hover:text-primary hover:bg-secondary/40"
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    selectOption(opt);
+                  }}
+                  className="flex items-center w-full px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-primary/10 hover:text-primary hover:bg-secondary/40 min-h-[40px] sm:min-h-0"
                 >
                   <span className="truncate">{opt}</span>
                 </button>

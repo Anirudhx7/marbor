@@ -55,25 +55,43 @@ export function useLiveRequests(maxRequests: number = 20) {
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
   const lastIdRef = useRef<string | null>(null);
+  // generationRef guards against a slower, older poll tick resolving after a
+  // faster, newer one and overwriting fresher data - `active` alone only
+  // covers unmount, not overlapping ticks within the same 2s interval.
+  const generationRef = useRef(0);
+  const prevDemoModeRef = useRef(demoMode);
+
+  // Clear once on the demo-mode rising edge so the poll catch branch below
+  // never layers a generated fake row onto real rows still sitting in state
+  // from before demo mode was turned on (P355) - without this, toggling
+  // demo mode on mid-session (or a transient network error while demo mode
+  // is already on) mixes real and fabricated requests in the same list.
+  useEffect(() => {
+    if (demoMode && !prevDemoModeRef.current) {
+      setRequests([]);
+    }
+    prevDemoModeRef.current = demoMode;
+  }, [demoMode]);
 
   const poll = useCallback(async (active: boolean) => {
     if (currentAppPath() !== '/') return;
+    const gen = ++generationRef.current;
     try {
       const data = await fetchLiveRequests();
-      if (!active || currentAppPath() !== '/') return;
+      if (!active || gen !== generationRef.current || currentAppPath() !== '/') return;
       setRequests(Array.isArray(data) ? data : []);
       setIsLive(true);
       if (data.length > 0 && data[0].id !== lastIdRef.current) {
         lastIdRef.current = data[0].id;
         setNewRequestId(data[0].id);
         setTimeout(() => {
-          if (active && currentAppPath() === '/') {
+          if (active && gen === generationRef.current && currentAppPath() === '/') {
             setNewRequestId(null);
           }
         }, 500);
       }
     } catch (e) {
-      if (!active || currentAppPath() !== '/') return;
+      if (!active || gen !== generationRef.current || currentAppPath() !== '/') return;
       setIsLive(false);
       if (demoMode) {
         const newRequest = generateRequest();

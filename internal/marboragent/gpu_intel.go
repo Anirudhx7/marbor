@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type intelCollector struct{}
@@ -75,7 +76,16 @@ func (intelCollector) Collect(ctx context.Context) (GPUBlock, error) {
 	for i, dev := range disc.DeviceList {
 		info := GPUInfo{Index: i, Vendor: "intel", Model: strings.TrimSpace(dev.DeviceName)}
 
-		statsOut, err := exec.CommandContext(ctx, "xpu-smi", "stats", "-d", strconv.Itoa(dev.DeviceID), "-j").Output()
+		// Give each remaining device a fair share of whatever's left of the
+		// caller's overall budget (refresh()'s single 5s ctx), rather than
+		// letting devices earlier in discovery order silently exhaust the
+		// shared deadline and leave every later device with none at all -
+		// bounds degradation on a large multi-GPU node to even partial
+		// readings across devices instead of full readings on the first few
+		// and none on the rest.
+		statsCtx, cancel := perDeviceContext(ctx, len(disc.DeviceList)-i)
+		statsOut, err := exec.CommandContext(statsCtx, "xpu-smi", "stats", "-d", strconv.Itoa(dev.DeviceID), "-j").Output()
+		cancel()
 		if err == nil {
 			applyXPUStats(&info, statsOut)
 		}
@@ -86,6 +96,22 @@ func (intelCollector) Collect(ctx context.Context) (GPUBlock, error) {
 		block.Devices = append(block.Devices, info)
 	}
 	return block, nil
+}
+
+// perDeviceContext derives a sub-context bounded by an equal fraction
+// (remaining / devicesLeft) of parent's remaining deadline. If parent has no
+// deadline (e.g. a test calling Collect directly with context.Background()),
+// it's returned unmodified with a no-op cancel.
+func perDeviceContext(parent context.Context, devicesLeft int) (context.Context, context.CancelFunc) {
+	deadline, ok := parent.Deadline()
+	if !ok || devicesLeft <= 0 {
+		return parent, func() {}
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return context.WithTimeout(parent, 0)
+	}
+	return context.WithTimeout(parent, remaining/time.Duration(devicesLeft))
 }
 
 // xpuField tries every known metrics_type spelling in turn - same reasoning

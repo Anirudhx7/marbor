@@ -1070,7 +1070,14 @@ export function GPUNodes() {
     document.body.removeChild(el);
   };
 
-  const loadPinned = async (nodeList: GPUNode[], active: boolean = true) => {
+  // requestId refs guard against a slower, older poll tick resolving after a
+  // newer one and overwriting fresher state - `active` alone only covers
+  // unmount/navigation, not overlap between two in-flight ticks of the same
+  // 10s/30s interval. Mirrors Settings.tsx's backupListRequestId pattern.
+  const nodesRequestId = useRef(0);
+  const modelFitRequestId = useRef(0);
+
+  const loadPinned = async (nodeList: GPUNode[], active: boolean = true, requestId: number = nodesRequestId.current) => {
     // getPinned() already has its own DEMO branch (returns static mock data),
     // so this must run in demo mode too - otherwise pinnedByNode stays empty
     // forever and every model shows the unload button, pinned or not.
@@ -1082,29 +1089,34 @@ export function GPUNodes() {
         return [n.name, []] as const; // pinned-fetch failure just means no badges for this node
       }
     }));
-    if (active && currentAppPath() === '/gpu-nodes') {
+    // Re-check requestId here too, not just at loadNodes' own call sites -
+    // this Promise.all round trip runs after that check already passed, so
+    // an older tick's loadPinned can still resolve after a newer tick's,
+    // overwriting fresher pin badges with stale ones.
+    if (active && requestId === nodesRequestId.current && currentAppPath() === '/gpu-nodes') {
       setPinnedByNode(Object.fromEntries(entries));
     }
   };
 
   const loadNodes = async (active: boolean = true) => {
+    const requestId = ++nodesRequestId.current;
     if (demoMode) {
-      if (!active || currentAppPath() !== '/gpu-nodes') return;
+      if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
       setNodes(mockGPUNodes);
       setIsLive(false);
       setError(null);
-      await loadPinned(mockGPUNodes, active);
+      await loadPinned(mockGPUNodes, active, requestId);
       return;
     }
     try {
       const data = await fetchNodes();
-      if (!active || currentAppPath() !== '/gpu-nodes') return;
+      if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
       setNodes(data || []);
       setIsLive(true);
       setError(null);
-      await loadPinned(data || [], active);
+      await loadPinned(data || [], active, requestId);
     } catch (e: any) {
-      if (!active || currentAppPath() !== '/gpu-nodes') return;
+      if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
       setIsLive(false);
       setNodes([]);
       setError(e.message || 'Failed to connect to backend');
@@ -1113,18 +1125,19 @@ export function GPUNodes() {
 
   const loadModelFit = async (active: boolean = true) => {
     if (demoMode || !active || currentAppPath() !== '/gpu-nodes') return;
+    const requestId = ++modelFitRequestId.current;
     setModelFitLoading(true);
     try {
       const data = await fetchModelFit();
-      if (!active || currentAppPath() !== '/gpu-nodes') return;
+      if (!active || requestId !== modelFitRequestId.current || currentAppPath() !== '/gpu-nodes') return;
       setModelFit(data);
       setModelFitError(null);
     } catch (e: unknown) {
-      if (!active || currentAppPath() !== '/gpu-nodes') return;
+      if (!active || requestId !== modelFitRequestId.current || currentAppPath() !== '/gpu-nodes') return;
       const msg = e instanceof Error ? e.message : 'Failed to fetch model fit data';
       setModelFitError(msg);
     } finally {
-      if (active && currentAppPath() === '/gpu-nodes') {
+      if (active && requestId === modelFitRequestId.current && currentAppPath() === '/gpu-nodes') {
         setModelFitLoading(false);
       }
     }

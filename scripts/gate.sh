@@ -57,12 +57,25 @@ else
 fi
 
 echo "=== [2/6] Go: vet ==="
+# Docker is required from here on (gorun() runs every remaining Go step
+# inside a container) - checked once, up front, via `docker info` rather
+# than just `command -v docker`, so a Docker Desktop that's installed but
+# not currently running is also caught here instead of producing a
+# confusing "go vet failed" a moment later with no indication why.
+docker info >/dev/null 2>&1 || fail "docker not available - gate.sh requires Docker Desktop running (Go steps run in a container, see ci.yml)"
 gorun go vet ./... || fail "go vet failed"
 
 echo "=== [3/6] Go: gofmt check ==="
+# gofmt's own output/exit is captured separately from the grep filter below -
+# a real gofmt failure (crash, missing binary in the image) must surface as
+# its own gate failure, not get silently swallowed by the blanket `|| true`
+# that used to wrap the whole "gofmt -l . | grep -v ..." pipeline.
+gofmt_out=$(gorun gofmt -l .) || fail "gofmt itself failed to run"
 # Exclude gitignored worktrees/backups (.claude/, .local/) - CI's clean checkout never has
 # them, so scanning them here only surfaces stale local artifacts, not real formatting issues.
-unformatted=$(gorun bash -c "gofmt -l . | grep -v -e '^\.claude/' -e '^\./\.claude/' -e '^\.local/' -e '^\./\.local/'" || true)
+# grep's own "no lines matched" exit (1) is expected and fine to ignore here - it just means
+# zero unformatted files survived the filter, a legitimate empty result, not a tool error.
+unformatted=$(echo "$gofmt_out" | grep -v -e '^\.claude/' -e '^\./\.claude/' -e '^\.local/' -e '^\./\.local/' || true)
 if [ -n "$unformatted" ]; then
   echo "Not gofmt-formatted:"; echo "$unformatted"
   fail "gofmt check failed"
@@ -72,12 +85,9 @@ echo "=== [4/6] Go: test -race ==="
 gorun go test -race -timeout 300s ./... || fail "go test failed"
 
 echo "=== [5/6] Go: govulncheck ==="
-gorun sh -c "go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./..." || fail "govulncheck failed"
+gorun sh -c "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./..." || fail "govulncheck failed"
 
 echo "=== [6/6] Smoke test (mirrors ci.yml's smoke job) ==="
-if ! command -v docker &>/dev/null; then
-  fail "docker not found - gate.sh's smoke step requires Docker Desktop running (see ci.yml smoke job)"
-fi
 bash scripts/smoke.sh || fail "smoke test failed"
 
 echo ""

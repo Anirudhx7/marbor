@@ -20,7 +20,14 @@ func splitLines(raw string) []string {
 // lines" flag of its own, so the line-count contract is honored regardless
 // of how the underlying tool's output is shaped.
 func lastN(lines []string, n int) []string {
-	if n <= 0 || len(lines) <= n {
+	if n <= 0 {
+		// Contradicts "last N lines" for any N<=0 - not reachable today
+		// (handleRuntimeLogs already clamps req.Lines<=0 to a default before
+		// calling any driver's Logs()), guarded here for defense-in-depth
+		// against a future direct caller.
+		return nil
+	}
+	if len(lines) <= n {
 		return lines
 	}
 	return lines[len(lines)-n:]

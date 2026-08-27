@@ -38,9 +38,9 @@ groups:
       # Cost-aware cloud overflow is firing more than 50% of the time - local GPUs are not keeping up.
       - alert: MarborHighCloudFallbackRate
         expr: |
-          rate(marbor_cloud_fallbacks_total[5m])
+          sum(rate(marbor_cloud_fallbacks_total[5m]))
           /
-          (rate(marbor_requests_total[5m]) + 1e-9)
+          (sum(rate(marbor_requests_total[5m])) + 1e-9)
           > 0.5
         for: 10m
         labels:

@@ -155,24 +155,59 @@ func writeNDJSON(w http.ResponseWriter, model, content string, evalCount, prompt
 
 func (m *mockOllamaServer) handleChat(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Model string `json:"model"`
+		Model  string `json:"model"`
+		Stream *bool  `json:"stream"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	model := req.Model
 	if model == "" {
 		model = m.warmModel
 	}
-	writeNDJSON(w, model, "Hello! I'm a demo response from Marbor.", 42, 18)
+	content := "Hello! I'm a demo response from Marbor."
+	if req.Stream != nil && !*req.Stream {
+		// Ollama returns a SINGLE JSON object for stream:false, not
+		// NDJSON - cmd/mocknode already handles this correctly; this
+		// handler previously always emitted NDJSON chunks regardless.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"model":             model,
+			"created_at":        "2026-01-01T00:00:00Z",
+			"message":           map[string]string{"role": "assistant", "content": content},
+			"done":              true,
+			"eval_count":        42,
+			"prompt_eval_count": 18,
+			"total_duration":    500000000,
+		})
+		return
+	}
+	writeNDJSON(w, model, content, 42, 18)
 }
 
 func (m *mockOllamaServer) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Model string `json:"model"`
+		Model  string `json:"model"`
+		Stream *bool  `json:"stream"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	model := req.Model
 	if model == "" {
 		model = m.warmModel
+	}
+	content := "This is a demo response from the Marbor proxy."
+	if req.Stream != nil && !*req.Stream {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"model":             model,
+			"created_at":        "2026-01-01T00:00:00Z",
+			"response":          content,
+			"done":              true,
+			"eval_count":        35,
+			"prompt_eval_count": 12,
+			"total_duration":    400000000,
+		})
+		return
 	}
 
 	flusher, _ := w.(http.Flusher)
@@ -183,7 +218,7 @@ func (m *mockOllamaServer) handleGenerate(w http.ResponseWriter, r *http.Request
 	_ = enc.Encode(map[string]interface{}{
 		"model":      model,
 		"created_at": "2026-01-01T00:00:00Z",
-		"response":   "This is a demo response from the Marbor proxy.",
+		"response":   content,
 		"done":       false,
 	})
 	if flusher != nil {
@@ -408,14 +443,29 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 	}
 
+	// Bind both listeners synchronously and fail fast on error, before the
+	// banner below ever prints - previously both listeners ran in
+	// goroutines with no synchronization to the banner, which asserted both
+	// endpoints were up unconditionally right after starting them, so a
+	// bind failure (e.g. port already in use) only surfaced as a silent
+	// background log line while the banner still claimed success.
+	proxyLn, err := net.Listen("tcp", proxyAddr)
+	if err != nil {
+		log.Fatalf("proxy server: listen %s: %v", proxyAddr, err)
+	}
+	adminLn, err := net.Listen("tcp", adminHttpSrv.Addr)
+	if err != nil {
+		log.Fatalf("admin server: listen %s: %v", adminHttpSrv.Addr, err)
+	}
+
 	go func() {
-		if err := proxySrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := proxySrv.Serve(proxyLn); err != nil && err != http.ErrServerClosed {
 			log.Printf("proxy server: %v", err)
 		}
 	}()
 
 	go func() {
-		if err := adminHttpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := adminHttpSrv.Serve(adminLn); err != nil && err != http.ErrServerClosed {
 			log.Printf("admin server: %v", err)
 		}
 	}()
