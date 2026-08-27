@@ -64,6 +64,11 @@ func main() {
 	maxInflight := flag.Int("max-inflight", 1000, "Cap on concurrent in-flight requests - once hit, new requests wait for a slot instead of spawning unbounded goroutines/sockets, so a step that can't keep up shows up honestly as a sent-RPS shortfall (GENERATOR-SATURATED) instead of exhausting the generator's own resources")
 	flag.Parse()
 
+	if *maxInflight < 1 {
+		fmt.Fprintf(os.Stderr, "error: -max-inflight must be >= 1 (0 hangs forever - the unbuffered channel send blocks before any receiver exists; negative panics at make)\n")
+		os.Exit(1)
+	}
+
 	rates, err := parseRates(*ratesFlag)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

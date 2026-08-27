@@ -259,13 +259,32 @@ func handleGenerate(w http.ResponseWriter, r *http.Request, nodeName string, lat
 
 	if req.KeepAlive != nil && (*req.KeepAlive == "0" || *req.KeepAlive == "0s") {
 		stateMu.Lock()
-		delete(warmModels, req.Model)
+		_, wasWarm := warmModels[req.Model]
+		if wasWarm {
+			delete(warmModels, req.Model)
+		}
 		stateMu.Unlock()
-		log.Printf("[%s] Evicted model %q from VRAM via keep_alive=0s", nodeName, req.Model)
+		if wasWarm {
+			log.Printf("[%s] Evicted model %q from VRAM via keep_alive=0s", nodeName, req.Model)
+		} else {
+			log.Printf("[%s] keep_alive=0s for model %q, which was not warm - no-op", nodeName, req.Model)
+		}
+		// Real Ollama returns the standard generate-then-unload done-chunk
+		// shape here (done_reason "unload"), not a nonstandard
+		// {"status":"success"} object.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"model":             req.Model,
+			"created_at":        time.Now().Format(time.RFC3339Nano),
+			"response":          "",
+			"done":              true,
+			"done_reason":       "unload",
+			"eval_count":        0,
+			"prompt_eval_count": 0,
+			"total_duration":    0,
+			"load_duration":     0,
+			"eval_duration":     0,
 		})
 		return
 	}
@@ -374,13 +393,32 @@ func handleChat(w http.ResponseWriter, r *http.Request, nodeName string, latency
 
 	if req.KeepAlive != nil && (*req.KeepAlive == "0" || *req.KeepAlive == "0s") {
 		stateMu.Lock()
-		delete(warmModels, req.Model)
+		_, wasWarm := warmModels[req.Model]
+		if wasWarm {
+			delete(warmModels, req.Model)
+		}
 		stateMu.Unlock()
-		log.Printf("[%s] Evicted model %q from VRAM via keep_alive=0s", nodeName, req.Model)
+		if wasWarm {
+			log.Printf("[%s] Evicted model %q from VRAM via keep_alive=0s", nodeName, req.Model)
+		} else {
+			log.Printf("[%s] keep_alive=0s for model %q, which was not warm - no-op", nodeName, req.Model)
+		}
+		// Real Ollama returns the standard chat done-chunk shape here
+		// (done_reason "unload"), not a nonstandard {"status":"success"}
+		// object.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"model":             req.Model,
+			"created_at":        time.Now().Format(time.RFC3339Nano),
+			"message":           map[string]string{"role": "assistant", "content": ""},
+			"done":              true,
+			"done_reason":       "unload",
+			"eval_count":        0,
+			"prompt_eval_count": 0,
+			"total_duration":    0,
+			"load_duration":     0,
+			"eval_duration":     0,
 		})
 		return
 	}
@@ -695,6 +733,16 @@ func handleOpenAICompletion(w http.ResponseWriter, r *http.Request, nodeName, mo
 		flusher.Flush()
 		time.Sleep(15 * time.Millisecond)
 	}
+	// Terminal chunk with finish_reason:"stop" (P167), matching the sibling
+	// handleOpenAIChatCompletion above and the real OpenAI streaming
+	// contract - this handler previously jumped straight from the last
+	// per-token chunk (finish_reason:nil) to [DONE] with no stop signal.
+	finalChunk := map[string]interface{}{
+		"id": id, "object": "text_completion", "created": created, "model": req.Model,
+		"choices": []map[string]interface{}{{"index": 0, "text": "", "finish_reason": "stop"}},
+	}
+	fb, _ := json.Marshal(finalChunk)
+	fmt.Fprintf(bw, "data: %s\n\n", fb)
 	fmt.Fprint(bw, "data: [DONE]\n\n")
 	bw.Flush()
 	flusher.Flush()

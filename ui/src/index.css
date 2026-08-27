@@ -156,26 +156,47 @@
   }
 }
 
-/* Thin custom scrollbar */
+/* Prevent any stray horizontal scroll at 375px - long model names, wide tables,
+   and portal-positioned menus must never push the viewport wider. `clip` over
+   `hidden` avoids creating a new scroll container that would trap position:fixed
+   overlays (tooltips, modals) on iOS. */
 html {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--border)) transparent;
+  max-width: 100vw;
+  overflow-x: clip;
+}
+body {
+  max-width: 100vw;
+  overflow-x: clip;
+}
+#root {
+  max-width: 100vw;
+  overflow-x: clip;
 }
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
-
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
-
 ::-webkit-scrollbar-thumb {
   @apply bg-border rounded-full;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-muted-foreground/40;
+}
+
+/* Sidebar nav - no visible scrollbar, icons stay perfectly centered */
+.sidebar-nav {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 @keyframes fade-in {
@@ -338,6 +359,30 @@ input[type="checkbox"]:focus-visible {
     justify-content: center;
   }
 
+  /* Primary action buttons that were px-3/py-1.5 or px-4/py-2 sit at ~34-36px
+     tall on desktop (text-sm + 8px vertical padding). At 375px fingers need
+     40px, so promote them without changing desktop metrics. Covers Save,
+     Pull Model, Create Key, Reload Config, and similar call-to-actions. */
+  button[class~="px-3"][class~="py-1"],
+  button[class~="px-3"][class~="py-1.5"],
+  button[class~="px-3"][class~="py-2"],
+  button[class~="px-4"][class~="py-1.5"],
+  button[class~="px-4"][class~="py-2"],
+  a[class~="px-3"][class~="py-1.5"],
+  a[class~="px-4"][class~="py-2"] {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* CustomSelect / CustomCombobox triggers use px-3 py-2 but are not <button>
+     with those exact classes due to w-full composition - ensure they also
+     meet the 40px floor via their inner button. */
+  button[class*="px-3"][class*="py-2"] {
+    min-height: 40px;
+  }
+
   /* Toggle switches (h-6 w-11): keep visual size, expand hit area */
   button[class~="h-6"][class~="w-11"]::after {
     content: "";
@@ -354,6 +399,25 @@ input[type="checkbox"]:focus-visible {
     content: "";
     position: absolute;
     inset: -10px;
+  }
+
+  /* Long unbreakable strings (model names, digests, request IDs) must wrap or
+     truncate rather than push the card wider than the viewport. This is a
+     safety net - components already use truncate/break-all, but a single
+     missed `min-w-0` on a flex parent can still cause overflow at 375px. */
+  .glass-panel,
+  .bg-card {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* Portal popups (DateTimePicker w-80/w-64) are fixed-width; clamp them to
+     viewport on very narrow devices so they never cause horizontal scroll. */
+  .w-80 {
+    max-width: min(20rem, calc(100vw - 1rem));
+  }
+  .w-64 {
+    max-width: min(16rem, calc(100vw - 1rem));
   }
 }
 

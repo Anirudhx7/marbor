@@ -228,7 +228,11 @@ func genGroupMan(root *cli.Command, cmd *cli.Command) string {
 		b.WriteString(".SH FLAGS\n")
 		for _, f := range ownFlags {
 			b.WriteString(".TP\n")
-			fmt.Fprintf(&b, ".B %s\n%s\n", roffEscape(flagSignature(f)), roffEscape(f.Usage))
+			usage := roffEscape(f.Usage)
+			if f.Required {
+				usage += " (required)"
+			}
+			fmt.Fprintf(&b, ".B %s\n%s\n", roffEscape(flagSignature(f)), usage)
 		}
 		if needsAuth {
 			for _, gf := range globalFlags {

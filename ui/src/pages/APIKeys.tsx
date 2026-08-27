@@ -107,8 +107,17 @@ export function APIKeys() {
     if (modelsChanged) {
       patch.models = editForm.models;
     }
+    // Compare parsed instants, not raw strings - the server's ISO-format
+    // expiry and the date-picker's local-minute-format write-back represent
+    // the same instant with different string forms, so a strict string
+    // compare would flip "changed" on any touch of the picker (even
+    // reselecting the identical time), resending expires_at on an
+    // otherwise-unrelated save.
     const originalExpiresAt = editKey.expiresAt ?? '';
-    if (editForm.expiresAt !== originalExpiresAt) {
+    const expiresAtChanged = editForm.expiresAt === '' || originalExpiresAt === ''
+      ? editForm.expiresAt !== originalExpiresAt
+      : new Date(editForm.expiresAt).getTime() !== new Date(originalExpiresAt).getTime();
+    if (expiresAtChanged) {
       if (editForm.expiresAt && new Date(editForm.expiresAt).getTime() <= Date.now()) {
         setEditError('Expiry date must be in the future');
         return;
