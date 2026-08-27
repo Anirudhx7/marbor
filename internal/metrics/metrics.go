@@ -190,7 +190,7 @@ func CloudFallback(provider string) {
 // a declared local alternate (opt-in chain) instead of falling through to
 // cloud.
 func LocalDegradation(from, to string) {
-	localDegradationTotal.WithLabelValues(from, to).Inc()
+	localDegradationTotal.WithLabelValues(boundModel(from), boundModel(to)).Inc()
 }
 
 // QuotaRejection records a 429 caused by an exhausted per-key quota. period is
