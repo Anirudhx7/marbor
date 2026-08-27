@@ -1541,9 +1541,9 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground py-2">No context windows declared</p>
             ) : (
               Object.entries(settings.contextWindows).map(([model, tokens]) => (
-                <div key={model} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{model}</p>
+                <div key={model} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-secondary/30 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate" title={model}>{model}</p>
                     <p className="text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</p>
                   </div>
                   <button
@@ -1598,10 +1598,10 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground py-2">No local fallback chains declared</p>
             ) : (
               Object.entries(settings.localDegradationChains).map(([model, alts]) => (
-                <div key={model} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-secondary/30">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{model}</p>
-                    <p className="text-xs text-muted-foreground">{alts.join(' -> ')}</p>
+                <div key={model} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-secondary/30 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate" title={model}>{model}</p>
+                    <p className="text-xs text-muted-foreground truncate" title={alts.join(' -> ')}>{alts.join(' -> ')}</p>
                   </div>
                   <button
                     onClick={() => {

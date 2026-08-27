@@ -160,10 +160,10 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
       <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} collapsed={collapsed} onToggleCollapsed={toggle} />
-      <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] [contain:layout_style]`}>
+      <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] [contain:layout_style] overflow-x-hidden max-w-full`}>
         <DemoBanner />
         <BudgetBanner />
-        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
+        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto overflow-x-hidden min-w-0">
           {/*
             resetKey=pathname on ErrorBoundary: getDerivedStateFromProps clears
             `error` whenever pathname changes, so a caught error on one page

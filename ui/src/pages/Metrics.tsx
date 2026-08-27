@@ -228,7 +228,7 @@ export function Metrics() {
       {!loading && !error && analytics && (
         <>
           {/* Summary Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-card border border-border shadow-sm rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-primary/10 rounded-lg">

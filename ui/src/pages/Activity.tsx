@@ -167,59 +167,59 @@ export function Activity() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Events (last {totalFetched})</p>
-              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{filteredEntries.length}</h3>
+          <div className="flex items-start justify-between gap-2 min-w-0">
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">Events (last {totalFetched})</p>
+              <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{filteredEntries.length}</h3>
               {hasActiveFilters && kindFilter !== 'predictive' && (
                 <p className="text-[10px] text-muted-foreground/60 mt-0.5">filtered from {totalFetched}</p>
               )}
             </div>
-            <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg">
-              <ActivityIcon className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg shrink-0">
+              <ActivityIcon className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
         </div>
 
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators</p>
-              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
+          <div className="flex items-start justify-between gap-2 min-w-0">
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators</p>
+              <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
             </div>
-            <div className="p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg">
-              <User className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg shrink-0">
+              <User className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
         </div>
 
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Drain Events</p>
-              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{drainCount}</h3>
+          <div className="flex items-start justify-between gap-2 min-w-0">
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Drain Events</p>
+              <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{drainCount}</h3>
             </div>
-            <div className="p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg">
-              <Server className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg shrink-0">
+              <Server className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
         </div>
 
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-orange-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events</p>
-              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
+          <div className="flex items-start justify-between gap-2 min-w-0">
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events</p>
+              <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
               <p className="text-[10px] text-muted-foreground/60 mt-0.5">{decisions.length} predictive decisions</p>
             </div>
-            <div className="p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg">
-              <Flame className="w-5 h-5" />
+            <div className="p-2 sm:p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg shrink-0">
+              <Flame className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
           </div>
         </div>

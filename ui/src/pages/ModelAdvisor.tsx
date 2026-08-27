@@ -1044,9 +1044,9 @@ export function ModelAdvisor() {
             )}
           </div>
 
-          <div className="bg-secondary/20 border border-border rounded-xl p-3 sm:p-4">
-            <div className="flex flex-wrap gap-x-6 gap-y-3 items-end">
-              <label className="flex flex-col gap-1.5 min-w-[12rem]" title="Overrides the node's declared runtime for browsing only - Pull still respects the node's actual runtime.">
+          <div className="bg-secondary/20 border border-border rounded-xl p-3 sm:p-4 min-w-0 overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-x-6 sm:gap-y-3 items-stretch sm:items-end">
+              <label className="flex flex-col gap-1.5 min-w-0 sm:min-w-[12rem] flex-1 sm:flex-initial" title="Overrides the node's declared runtime for browsing only - Pull still respects the node's actual runtime.">
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold shrink-0">Browse format</span>
                 <CustomSelect
                   value={runtimeOverride ?? '__auto__'}
@@ -1063,7 +1063,7 @@ export function ModelAdvisor() {
                   ]}
                 />
               </label>
-              <label className="flex flex-col gap-1.5 min-w-[10rem]">
+              <label className="flex flex-col gap-1.5 min-w-0 sm:min-w-[10rem] flex-1 sm:flex-initial">
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold shrink-0">Sort</span>
                 <CustomSelect
                   value={sortBy}

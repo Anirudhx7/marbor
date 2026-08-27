@@ -59,17 +59,17 @@ export function DemoBanner() {
   };
 
   return (
-    <div className="relative animate-fade-in">
-      <div className="bg-brand/10 border border-brand/30 rounded-lg px-4 py-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+    <div className="relative animate-fade-in min-w-0">
+      <div className="bg-brand/10 border border-brand/30 rounded-lg px-3 sm:px-4 py-3 flex items-center justify-between gap-3 sm:gap-4 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand/20 flex items-center justify-center">
             <AlertCircle className="w-4 h-4 text-brand" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">
               Demo mode active
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground leading-snug">
               All data shown is mock data, not your cluster.
               {!forcedDemo && ' Disable it in Settings.'}
             </p>
@@ -78,7 +78,7 @@ export function DemoBanner() {
         <button
           onClick={handleDismiss}
           aria-label="Dismiss demo banner"
-          className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
         >
           <X className="w-4 h-4" />
         </button>

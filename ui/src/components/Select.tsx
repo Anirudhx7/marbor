@@ -31,9 +31,17 @@ function useMenuPosition(containerRef: React.RefObject<HTMLDivElement | null>, i
       const r = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - r.bottom;
       const openUp = spaceBelow < 260 && r.top > spaceBelow;
+      // Clamp to viewport on 375px devices - trigger may be 343px wide at
+      // left 16px, but inside a modal with p-4 the right edge at 359px is
+      // within 8px margin (367 max). Clamping guarantees no overflow even
+      // if trigger sits in a non-first grid column or near the right edge.
+      const VIEWPORT_MARGIN = 8;
+      const vw = window.innerWidth;
+      const clampedWidth = Math.min(r.width, vw - VIEWPORT_MARGIN * 2);
+      const clampedLeft = Math.max(VIEWPORT_MARGIN, Math.min(r.left, vw - clampedWidth - VIEWPORT_MARGIN));
       setRect({
-        left: r.left,
-        width: r.width,
+        left: clampedLeft,
+        width: clampedWidth,
         triggerTopFromViewportTop: r.top,
         triggerBottomFromViewportBottom: window.innerHeight - r.bottom,
         openUp,
