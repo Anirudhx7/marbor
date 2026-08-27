@@ -6,6 +6,21 @@
     <meta http-equiv="pragma" content="no-cache" />
     <meta http-equiv="expires" content="0" />
     <base href="./">
+    <script>
+      // Set the theme class before first paint so a dark-preferring user
+      // never sees a light flash on hard load/reload - useTheme.tsx's
+      // useEffect only runs after paint, which is too late to prevent FOUC.
+      // Mirrors useTheme.tsx's own persisted-theme-then-media-query logic.
+      (function () {
+        try {
+          var t = localStorage.getItem('marbor-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.classList.add(t);
+        } catch (e) {}
+      })();
+    </script>
 
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
