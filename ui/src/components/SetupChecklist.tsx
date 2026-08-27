@@ -44,18 +44,18 @@ export function SetupChecklist({
       href: '/gpu-nodes',
     },
     {
-      title: 'Create an API key',
-      done: hasKey,
-      doneText: 'An active API key is ready for inference.',
-      pendingText: 'Create an API key to authenticate requests.',
-      href: '/api-keys',
-    },
-    {
       title: 'Pull a model',
       done: hasModel,
       doneText: warmModelName ? `${warmModelName} is warm on your fleet.` : 'A model is warm on your fleet.',
       pendingText: 'Pull a model to your fleet.',
       href: '/models',
+    },
+    {
+      title: 'Create an API key',
+      done: hasKey,
+      doneText: 'An active API key is ready for inference.',
+      pendingText: 'Create an API key to authenticate requests.',
+      href: '/api-keys',
     },
     {
       title: 'Serve your first request',
