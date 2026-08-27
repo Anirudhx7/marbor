@@ -12,6 +12,7 @@ jobs:
   # Go compiles against the committed internal/admin/web embed, not ui/dist.
   go-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -66,6 +67,7 @@ jobs:
 
   ui-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -90,6 +92,7 @@ jobs:
 
   govulncheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -145,6 +148,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [go-checks, ui-build, govulncheck, smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
