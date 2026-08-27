@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/metrics"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // Schedule is a recurring, time-of-day action against a node. It powers the
@@ -112,15 +113,42 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 		errMsg := fmt.Sprintf("node %q not found", s.Node)
 		log.Printf("schedule %q fired but node %q was not found: action=%s did nothing", s.ID, s.Node, s.Action)
 		r.recordScheduleRun(s.ID, "error", errMsg)
+		r.auditScheduled(s, "error", errMsg)
 		return
 	}
 	if asyncErr != nil {
 		log.Printf("schedule %q fired: action=%s node=%s models=%v - %v", s.ID, s.Action, s.Node, s.Models, asyncErr)
 		r.recordScheduleRun(s.ID, "error", asyncErr.Error())
+		r.auditScheduled(s, "error", asyncErr.Error())
 		return
 	}
 	log.Printf("schedule %q fired: action=%s node=%s models=%v", s.ID, s.Action, s.Node, s.Models)
 	r.recordScheduleRun(s.ID, "ok", "")
+	r.auditScheduled(s, "ok", "")
+}
+
+// auditScheduled writes a system-audit row for a scheduled firing with actor
+// system, so the Activity timeline is complete without a request context.
+// Router has no http.Request here, so it writes directly via the store.
+// Status is ok or error; errMsg is the per-model aggregate when error.
+func (r *Router) auditScheduled(s Schedule, status, errMsg string) {
+	st := r.store
+	if st == nil {
+		return
+	}
+	action := "scheduled_" + s.Action
+	details := fmt.Sprintf("Schedule %s: action=%s node=%s models=%v status=%s", s.ID, s.Action, s.Node, s.Models, status)
+	if errMsg != "" {
+		details += " error=" + errMsg
+	}
+	_ = st.AppendSystemAuditLog(store.SystemAuditEntry{
+		Time:     time.Now().UTC(),
+		Username: "system",
+		Action:   action,
+		Target:   s.Node,
+		Details:  details,
+		SourceIP: "",
+	})
 }
 
 // recordScheduleRun stamps the outcome of a schedule dispatch onto the

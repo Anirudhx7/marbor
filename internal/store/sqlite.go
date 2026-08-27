@@ -2314,6 +2314,11 @@ func systemAuditKind(action string) string {
 		return "node"
 	case "unload_model", "set_node_warmup", "set_pinned_models", "pull_model", "pull_model_load_failed", "pull_model_cancel", "delete_model":
 		return "warmup"
+	case "create_schedule", "patch_schedule", "delete_schedule":
+		return "schedule"
+	}
+	if strings.HasPrefix(action, "scheduled_") {
+		return "schedule"
 	}
 	if strings.HasPrefix(action, "drain_") || strings.HasPrefix(action, "undrain") || action == "set_node_prewarm" {
 		return "drain"
@@ -2335,11 +2340,12 @@ func systemAuditKind(action string) string {
 
 // kindActionMap lists exact actions for each kind for server-side IN filtering.
 var kindActionMap = map[string][]string{
-	"drain":   {"drain_node", "undrain_node", "set_node_prewarm"},
-	"agent":   {"enable_marbor_agent", "disable_marbor_agent", "regenerate_marbor_agent_token", "enroll_marbor_agent"},
-	"runtime": {"runtime_start", "runtime_stop", "runtime_restart", "accept_node_control", "clear_node_control"},
-	"node":    {"add_node", "update_node", "remove_node", "patch_node"},
-	"warmup":  {"unload_model", "set_node_warmup", "set_pinned_models", "pull_model", "pull_model_load_failed", "pull_model_cancel", "delete_model"},
+	"drain":    {"drain_node", "undrain_node", "set_node_prewarm"},
+	"agent":    {"enable_marbor_agent", "disable_marbor_agent", "regenerate_marbor_agent_token", "enroll_marbor_agent"},
+	"runtime":  {"runtime_start", "runtime_stop", "runtime_restart", "accept_node_control", "clear_node_control"},
+	"node":     {"add_node", "update_node", "remove_node", "patch_node"},
+	"warmup":   {"unload_model", "set_node_warmup", "set_pinned_models", "pull_model", "pull_model_load_failed", "pull_model_cancel", "delete_model"},
+	"schedule": {"create_schedule", "patch_schedule", "delete_schedule", "scheduled_warmup", "scheduled_unload", "scheduled_drain", "scheduled_undrain"},
 }
 
 func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]SystemAuditEntry, error) {

@@ -1,4 +1,4 @@
-export type ActivityKind = 'drain' | 'agent' | 'runtime' | 'node' | 'warmup' | 'predictive' | 'config';
+export type ActivityKind = 'drain' | 'agent' | 'runtime' | 'node' | 'warmup' | 'schedule' | 'predictive' | 'config';
 
 // toActivityKind maps a system_audit action string to its fleet-operations
 // kind bucket. Taxonomy locked per P389 tweaks: keep drain vs warmup distinct,
@@ -44,6 +44,15 @@ export function toActivityKind(action: string): ActivityKind {
   ) {
     return 'warmup';
   }
+  // Schedule management and scheduled firings (actor system, distinct from warmup)
+  if (
+    action === 'create_schedule' ||
+    action === 'patch_schedule' ||
+    action === 'delete_schedule' ||
+    action.startsWith('scheduled_')
+  ) {
+    return 'schedule';
+  }
   // Fallback prefix checks for forward compat with future actions
   if (action.startsWith('drain_') || action.startsWith('undrain') || action === 'set_node_prewarm') return 'drain';
   if (action.includes('marbor_agent') || action.includes('_agent')) return 'agent';
@@ -60,6 +69,7 @@ export function getActivityKindLabel(kind: ActivityKind): string {
     runtime: 'Runtime',
     node: 'Node',
     warmup: 'Warmup',
+    schedule: 'Schedule',
     predictive: 'Predictive',
     config: 'Config',
   };
@@ -73,6 +83,7 @@ export function getActivityKindColor(kind: ActivityKind): string {
     runtime: 'bg-violet-500/15 text-violet-700 dark:text-violet-400 border-violet-500/20',
     node: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
     warmup: 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20',
+    schedule: 'bg-teal-500/15 text-teal-700 dark:text-teal-400 border-teal-500/20',
     predictive: 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-400 border-fuchsia-500/20',
     config: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/20',
   };
