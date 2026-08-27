@@ -427,7 +427,19 @@ export function Models() {
       ) : (
         <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
           <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          {catalog && catalog.total_nodes === 0 ? (
+          {!catalog ? (
+            // catalog stays null on a fetch failure while loading is false -
+            // without branching on this first, the check below (falsy for
+            // null) fell straight through to the healthy-sounding
+            // "no models loaded" message, directly beneath the "Failed to
+            // connect to backend" error banner above.
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold text-foreground">Catalog Unavailable</h3>
+              <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal">
+                Could not load the model catalog while disconnected from the backend. Check the error above and retry once connectivity is restored.
+              </p>
+            </div>
+          ) : catalog.total_nodes === 0 ? (
             <div className="space-y-1">
               <h3 className="text-lg font-semibold text-foreground">No GPU Nodes Connected</h3>
               <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal">
