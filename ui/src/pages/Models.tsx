@@ -164,10 +164,10 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
 
       {/* Node chips - read-first, link to GPU Nodes for mutations */}
       <div className="border-t border-border pt-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 gap-2">
           <p className="text-xs font-medium text-muted-foreground">Resident on</p>
-          <Link to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}`} className="text-[11px] text-primary hover:text-primary/80 inline-flex items-center gap-1 font-medium">
-            View nodes <ArrowUpRight className="w-3 h-3" />
+          <Link to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}`} className="text-xs text-primary hover:text-primary/80 inline-flex items-center gap-1 font-medium min-h-[32px] px-2 py-1 rounded-md hover:bg-secondary transition-colors shrink-0">
+            View nodes <ArrowUpRight className="w-3 h-3 shrink-0" />
           </Link>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -205,17 +205,19 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
         {model.nodes.length > 0 && (
           <div className="mt-3 pt-3 border-t border-border">
             <p className="text-xs font-medium text-muted-foreground mb-2">Delete from node <span className="font-normal">(secondary - prefer GPU Nodes for fleet changes)</span></p>
-            <div className="flex gap-2">
-              <CustomSelect
-                value={deleteNode}
-                onChange={setSelectedDeleteNode}
-                options={model.nodes.map((n) => ({ value: n.name, label: n.name }))}
-              />
+            <div className="flex gap-2 items-center">
+              <div className="flex-1 min-w-0">
+                <CustomSelect
+                  value={deleteNode}
+                  onChange={setSelectedDeleteNode}
+                  options={model.nodes.map((n) => ({ value: n.name, label: n.name }))}
+                />
+              </div>
               <button
                 onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
                 disabled={!deleteNode}
                 title={`Delete ${model.name} from ${deleteNode}`}
-                className="px-3 py-1 text-xs font-medium bg-secondary border border-border rounded-md text-destructive hover:bg-destructive/10 hover:border-destructive/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+                className="px-3 py-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-xs font-medium bg-secondary border border-border rounded-md text-destructive hover:bg-destructive/10 hover:border-destructive/50 transition-all duration-200 ease-out disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
