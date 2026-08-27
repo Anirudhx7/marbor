@@ -292,6 +292,17 @@ export function Requests() {
   const hasActiveFilter =
     !!modelFilter || !!keyFilter || !!nodeFilter || statusFilter !== 'all' || cloudFilter !== 'all' || sincePreset !== 'all' || !!sinceInput || !!untilInput;
 
+  const clearAllFilters = () => {
+    setModelInput('');
+    setKeyInput('');
+    setNodeInput('');
+    setCloudFilter('all');
+    setStatusFilter('all');
+    setSincePreset('all');
+    setSinceInput('');
+    setUntilInput('');
+  };
+
   const localCount = filtered.filter((e) => !e.cloud).length;
   const cloudCount = filtered.filter((e) => e.cloud).length;
   const avgLatency =
@@ -414,16 +425,7 @@ export function Requests() {
         {hasActiveFilter && (
           <div className="flex justify-end">
             <button
-              onClick={() => {
-                setModelInput('');
-                setKeyInput('');
-                setNodeInput('');
-                setCloudFilter('all');
-                setStatusFilter('all');
-                setSincePreset('all');
-                setSinceInput('');
-                setUntilInput('');
-              }}
+              onClick={clearAllFilters}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
             >
               Clear all filters
@@ -512,6 +514,14 @@ export function Requests() {
                       {hasActiveFilter
                         ? 'No requests match your filter.'
                         : 'No requests yet. Send a request through the proxy to see it here.'}
+                      {hasActiveFilter && (
+                        <button
+                          onClick={clearAllFilters}
+                          className="block mx-auto text-primary hover:underline text-xs mt-1"
+                        >
+                          Clear filters
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -612,6 +622,14 @@ export function Requests() {
             {hasActiveFilter
               ? 'No requests match your filter.'
               : 'No requests yet. Send a request through the proxy to see it here.'}
+            {hasActiveFilter && (
+              <button
+                onClick={clearAllFilters}
+                className="block mx-auto text-primary hover:underline text-xs mt-1"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
           filtered.map((entry) => (
