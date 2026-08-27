@@ -69,6 +69,18 @@ type keyState struct {
 	allowLocalDegradation bool
 }
 
+// refundLimiter refunds one token to whichever *tokenBucket ks.limiter names
+// at the moment the write lock is held - unlike reading ks.limiter under
+// RLock and calling refund() after releasing it, this can never race
+// PatchKey's swap of ks.limiter to a fresh bucket: PatchKey.RateLimit also
+// takes ks.mu.Lock() to install the new bucket, so the read here and that
+// swap can never interleave.
+func (ks *keyState) refundLimiter() {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+	ks.limiter.refund()
+}
+
 type keyCounter struct {
 	mu          sync.Mutex
 	today       int
@@ -518,10 +530,7 @@ func (m *Middleware) Refund(name string) {
 	if !ok {
 		return
 	}
-	ks.mu.RLock()
-	limiter := ks.limiter
-	ks.mu.RUnlock()
-	limiter.refund()
+	ks.refundLimiter()
 	ks.counter.decrement()
 }
 
