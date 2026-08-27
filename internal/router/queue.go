@@ -98,10 +98,16 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeF
 		atomic.AddInt32(&r.queueDepth, -1)
 		return nil, false, nil
 	}
-	metrics.QueueDepth(float64(depth))
+	// Publish via a fresh load, not the locally-captured `depth` return
+	// value: two concurrent waiters' AddInt32-then-publish pairs can
+	// interleave (e.g. B's increment+publish lands between A's increment
+	// and A's publish), so publishing A's own stale captured value after
+	// B's already-fresher publish would leave the exported gauge showing a
+	// value other than the true current depth.
+	metrics.QueueDepth(float64(atomic.LoadInt32(&r.queueDepth)))
 	defer func() {
-		d := atomic.AddInt32(&r.queueDepth, -1)
-		metrics.QueueDepth(float64(d))
+		atomic.AddInt32(&r.queueDepth, -1)
+		metrics.QueueDepth(float64(atomic.LoadInt32(&r.queueDepth)))
 	}()
 
 	// SLA-driven cloud overflow: an operator-set overflow_sla_ms caps how long
