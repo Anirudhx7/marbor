@@ -489,13 +489,25 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor node control` | show or accept a node's control driver (requires auth) |
 | `marbor node control probe <node>` | show a node's control-driver status (configured + discovered) (requires auth) |
 | `marbor node control accept <node>` | accept a control driver + identifier for a node (requires auth) |
-| `marbor key` | per-API-key local/cloud routing overrides (requires auth) |
+| `marbor key` | per-API-key local/cloud routing overrides (masked list, plaintext-once on create) (requires auth) |
+| `marbor key list` | list keys (masked) (requires auth) |
+| `marbor key create` | create a key (prints plaintext once) (requires auth) |
+| `marbor key revoke <name>` | revoke (delete) a key (requires auth) |
+| `marbor key patch <name>` | update key settings (requires auth) |
 | `marbor key set-local-only <name> <true\|false>` | block (or re-allow) cloud fallback for one API key (requires auth) |
 | `marbor key set-allow-local-degradation <name> <true\|false>` | let (or forbid) one API key receive a local alternate model (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |
 | `marbor requests explain <request-id>` | show why the router picked the node it did for one request (requires auth) |
+| `marbor users` | manage dashboard users (requires auth) |
+| `marbor users list` | list users (requires auth) |
+| `marbor users create` | create a user (password printed once) (requires auth) |
+| `marbor users approve <id>` | approve a pending user (requires auth) |
+| `marbor users suspend <id>` | suspend a user and revoke sessions (requires auth) |
+| `marbor users reset-password <id>` | reset a user's password (printed once) (requires auth) |
+| `marbor users patch <id>` | update a user's email or role (requires auth) |
+| `marbor users delete <id>` | delete a user (requires auth) |
 | `marbor completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
 <!-- END CLI TABLE -->
 

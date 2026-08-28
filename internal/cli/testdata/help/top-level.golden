@@ -13,10 +13,11 @@ Commands:
   models    fleet-wide list, or pull/delete/unload/list on one node
   runtime   start/stop/restart/logs/drain/undrain/health on one node
   node      node control driver operations
-  key       per-API-key local/cloud routing overrides
+  key       per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
   spill     show per-key, per-provider local-vs-cloud request counts
   activity  show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
   requests  inspect routing decisions for past requests
+  users     manage dashboard users
 
 Run "marbor <command> --help" for the full list of actions and flags for
 that command.

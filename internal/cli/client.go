@@ -671,6 +671,266 @@ func (c *Client) PatchKeyAllowLocalDegradation(name string, allow bool) error {
 	return nil
 }
 
+// --- Keys: list/create/revoke/patch (P84) ---
+
+// KeyResp mirrors admin.go's keyResp for LIST and mirrors config.KeyConfig for CREATE.
+type KeyResp struct {
+	ID                    string   `json:"id"`
+	Name                  string   `json:"name"`
+	Key                   string   `json:"key"`
+	Created               string   `json:"created"`
+	RequestsToday         int      `json:"requestsToday"`
+	RequestsThisMonth     int      `json:"requestsThisMonth"`
+	TokensThisMonth       int64    `json:"tokensThisMonth"`
+	EstimatedCostUsd      float64  `json:"estimatedCostUsd"`
+	RateLimit             int      `json:"rateLimit"`
+	DailyLimit            int      `json:"dailyLimit"`
+	MonthlyLimit          int      `json:"monthlyLimit"`
+	DailyUsdCap           float64  `json:"dailyUsdCap,omitempty"`
+	MonthlyUsdCap         float64  `json:"monthlyUsdCap,omitempty"`
+	Status                string   `json:"status"`
+	AllowedModels         []string `json:"allowedModels"`
+	ExpiresAt             string   `json:"expiresAt,omitempty"`
+	LocalOnly             bool     `json:"localOnly,omitempty"`
+	AllowLocalDegradation bool     `json:"allowLocalDegradation,omitempty"`
+}
+
+// ListKeys calls GET /admin/v1/keys (session-authed).
+func (c *Client) ListKeys() ([]KeyResp, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/v1/keys", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []KeyResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse keys response: %v", err)
+	}
+	if out == nil {
+		out = []KeyResp{}
+	}
+	return out, nil
+}
+
+// KeyCreateRequest mirrors config.KeyConfig JSON shape for POST /admin/v1/keys.
+type KeyCreateRequest struct {
+	Name                  string   `json:"name"`
+	Key                   string   `json:"key,omitempty"`
+	RateLimit             int      `json:"rateLimit,omitempty"`
+	DailyLimit            int      `json:"dailyLimit,omitempty"`
+	MonthlyLimit          int      `json:"monthlyLimit,omitempty"`
+	DailyUsdCap           float64  `json:"dailyUsdCap,omitempty"`
+	MonthlyUsdCap         float64  `json:"monthlyUsdCap,omitempty"`
+	Models                []string `json:"models,omitempty"`
+	ExpiresAt             string   `json:"expiresAt,omitempty"`
+	LocalOnly             bool     `json:"localOnly,omitempty"`
+	AllowLocalDegradation bool     `json:"allowLocalDegradation,omitempty"`
+}
+
+// CreateKey calls POST /admin/v1/keys (session-authed).
+func (c *Client) CreateKey(req KeyCreateRequest) (*KeyResp, error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/v1/keys", req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out KeyResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse create key response: %v", err)
+	}
+	return &out, nil
+}
+
+// RevokeKey calls DELETE /admin/v1/keys/{name} (session-authed).
+func (c *Client) RevokeKey(name string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/v1/keys/"+urlPathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// KeyPatch mirrors auth.KeyPatch for PATCH /admin/v1/keys/{name}.
+type KeyPatch struct {
+	RateLimit             *int      `json:"rate_limit,omitempty"`
+	DailyLimit            *int      `json:"daily_limit,omitempty"`
+	MonthlyLimit          *int      `json:"monthly_limit,omitempty"`
+	DailyUsdCap           *float64  `json:"daily_usd_cap,omitempty"`
+	MonthlyUsdCap         *float64  `json:"monthly_usd_cap,omitempty"`
+	Models                *[]string `json:"models,omitempty"`
+	ExpiresAt             *string   `json:"expires_at,omitempty"`
+	LocalOnly             *bool     `json:"local_only,omitempty"`
+	AllowLocalDegradation *bool     `json:"allow_local_degradation,omitempty"`
+}
+
+// PatchKey calls PATCH /admin/v1/keys/{name} (session-authed) with a full patch.
+func (c *Client) PatchKey(name string, patch KeyPatch) error {
+	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/keys/"+urlPathEscape(name), patch)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// --- Users (P84) ---
+
+// UserResp mirrors store.User JSON for GET/POST/PATCH users.
+type UserResp struct {
+	ID                 int64   `json:"id"`
+	Username           string  `json:"username"`
+	Email              string  `json:"email"`
+	Role               string  `json:"role"`
+	Status             string  `json:"status"`
+	APIKeyName         string  `json:"api_key_name"`
+	MustChangePassword bool    `json:"must_change_password"`
+	CreatedAt          string  `json:"created_at"`
+	ApprovedAt         *string `json:"approved_at,omitempty"`
+	ApprovedBy         string  `json:"approved_by,omitempty"`
+}
+
+// ListUsers calls GET /admin/v1/users (session-authed).
+func (c *Client) ListUsers() ([]UserResp, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/v1/users", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []UserResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse users response: %v", err)
+	}
+	if out == nil {
+		out = []UserResp{}
+	}
+	return out, nil
+}
+
+// CreateUserRequest mirrors handleCreateUser JSON.
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email,omitempty"`
+	Role     string `json:"role,omitempty"`
+}
+
+// CreateUserResp mirrors handleCreateUser 201 response: flat User plus initial_password.
+type CreateUserResp struct {
+	UserResp
+	InitialPassword string `json:"initial_password"`
+}
+
+// CreateUser calls POST /admin/v1/users (session-authed).
+func (c *Client) CreateUser(req CreateUserRequest) (*CreateUserResp, error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/v1/users", req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out CreateUserResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse create user response: %v", err)
+	}
+	return &out, nil
+}
+
+// ApproveUserRequest mirrors handleApproveUser JSON.
+type ApproveUserRequest struct {
+	APIKeyName string `json:"api_key_name,omitempty"`
+	CreateKey  *struct {
+		Name         string   `json:"name,omitempty"`
+		RateLimit    int      `json:"rate_limit_per_hour,omitempty"`
+		DailyLimit   int      `json:"daily_limit,omitempty"`
+		MonthlyLimit int      `json:"monthly_limit,omitempty"`
+		Models       []string `json:"models,omitempty"`
+	} `json:"create_key,omitempty"`
+}
+
+// ApproveUserResp mirrors handleApproveUser response.
+type ApproveUserResp struct {
+	User        UserResp `json:"user"`
+	APIKeyValue string   `json:"api_key_value,omitempty"`
+}
+
+// ApproveUser calls POST /admin/v1/users/{id}/approve (session-authed).
+func (c *Client) ApproveUser(id int64, req ApproveUserRequest) (*ApproveUserResp, error) {
+	path := fmt.Sprintf("/admin/v1/users/%d/approve", id)
+	resp, err := c.doRequestBody(http.MethodPost, path, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out ApproveUserResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse approve user response: %v", err)
+	}
+	return &out, nil
+}
+
+// SuspendUser calls POST /admin/v1/users/{id}/suspend (session-authed).
+func (c *Client) SuspendUser(id int64) error {
+	path := fmt.Sprintf("/admin/v1/users/%d/suspend", id)
+	resp, err := c.doRequestBody(http.MethodPost, path, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// ResetUserPassword calls POST /admin/v1/users/{id}/reset-password (session-authed).
+func (c *Client) ResetUserPassword(id int64) (string, error) {
+	path := fmt.Sprintf("/admin/v1/users/%d/reset-password", id)
+	resp, err := c.doRequestBody(http.MethodPost, path, nil)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		InitialPassword string `json:"initial_password"`
+		Password        string `json:"password"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", serverErrorf("could not parse reset password response: %v", err)
+	}
+	if out.InitialPassword != "" {
+		return out.InitialPassword, nil
+	}
+	return out.Password, nil
+}
+
+// PatchUserRequest mirrors handlePatchUser JSON.
+type PatchUserRequest struct {
+	Email *string `json:"email,omitempty"`
+	Role  *string `json:"role,omitempty"`
+}
+
+// PatchUser calls PATCH /admin/v1/users/{id} (session-authed).
+func (c *Client) PatchUser(id int64, req PatchUserRequest) (*UserResp, error) {
+	path := fmt.Sprintf("/admin/v1/users/%d", id)
+	resp, err := c.doRequestBody(http.MethodPatch, path, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out UserResp
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse patch user response: %v", err)
+	}
+	return &out, nil
+}
+
+// DeleteUser calls DELETE /admin/v1/users/{id} (session-authed).
+func (c *Client) DeleteUser(id int64) error {
+	path := fmt.Sprintf("/admin/v1/users/%d", id)
+	resp, err := c.doRequestBody(http.MethodDelete, path, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // ModelNodeInfo mirrors handleModels' nested nodeInfo struct.
 type ModelNodeInfo struct {
 	Name      string `json:"name"`

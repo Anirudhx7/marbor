@@ -84,7 +84,8 @@ type RunCtx struct {
 	Stdout io.Writer
 	Stderr io.Writer
 
-	values map[string]any
+	values  map[string]any
+	visited map[string]bool
 }
 
 // String returns the string flag value for name, or "" if name was not
@@ -114,6 +115,13 @@ func (c *RunCtx) Int(name string) int {
 	return 0
 }
 
+// IsSet reports whether the named flag was explicitly supplied on the
+// command line (via fs.Visit). Used for PATCH semantics where only visited
+// flags should be sent to the server.
+func (c *RunCtx) IsSet(name string) bool {
+	return c.visited[name]
+}
+
 // newRunCtx builds a RunCtx from a parsed FlagSet, pulling out each of cmd's
 // declared FlagSpecs by name and kind. intFlags carries the *int pointers
 // dispatch.go's registerCommandFlags got back from fs.Int for this same
@@ -122,6 +130,8 @@ func (c *RunCtx) Int(name string) int {
 // no swallowed parse error (see registerCommandFlags's doc comment for why).
 func newRunCtx(cmd *Command, fs *flag.FlagSet, intFlags map[string]*int, flags *globalFlags, args []string, stdout, stderr io.Writer) *RunCtx {
 	values := make(map[string]any, len(cmd.Flags))
+	visited := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) { visited[f.Name] = true })
 	for _, f := range cmd.Flags {
 		switch f.Kind {
 		case FlagString:
@@ -138,7 +148,7 @@ func newRunCtx(cmd *Command, fs *flag.FlagSet, intFlags map[string]*int, flags *
 			}
 		}
 	}
-	return &RunCtx{Flags: flags, Args: args, Cmd: cmd, Stdout: stdout, Stderr: stderr, values: values}
+	return &RunCtx{Flags: flags, Args: args, Cmd: cmd, Stdout: stdout, Stderr: stderr, values: values, visited: visited}
 }
 
 // Command is a node in the CLI command tree. Metadata is data, not code, so
