@@ -471,14 +471,14 @@ export function Users() {
                           {u.status === 'pending' && (
                             <button onClick={() => setApproveTarget(u)}
                               title="Approve user"
-                              className="p-1.5 rounded-md text-green-600 hover:bg-green-500/10 transition-colors">
+                              className="p-1.5 rounded-md text-green-600 dark:text-green-400 hover:bg-green-500/10 transition-colors">
                               <Check className="w-4 h-4" />
                             </button>
                           )}
                           {u.status === 'active' && (
                             <button onClick={() => { setActionError(null); setSuspendTarget(u); }}
                               title="Suspend user"
-                              className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
+                              className="p-1.5 rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors">
                               <Ban className="w-4 h-4" />
                             </button>
                           )}
@@ -545,14 +545,14 @@ export function Users() {
                     {u.status === 'pending' && (
                       <button onClick={() => setApproveTarget(u)}
                         title="Approve user"
-                        className="p-1.5 rounded-md text-green-600 hover:bg-green-500/10 transition-colors">
+                        className="p-1.5 rounded-md text-green-600 dark:text-green-400 hover:bg-green-500/10 transition-colors">
                         <Check className="w-4 h-4" />
                       </button>
                     )}
                     {u.status === 'active' && (
                       <button onClick={() => { setActionError(null); setSuspendTarget(u); }}
                         title="Suspend user"
-                        className="p-1.5 rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
+                        className="p-1.5 rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors">
                         <Ban className="w-4 h-4" />
                       </button>
                     )}
