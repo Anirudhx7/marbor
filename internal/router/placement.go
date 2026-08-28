@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Anirudhx7/marbor/internal/marboragent"
 	"github.com/Anirudhx7/marbor/internal/metrics"
 	"github.com/Anirudhx7/marbor/internal/store"
 )
@@ -187,6 +188,67 @@ func (r *Router) isUnderCapacity(n *NodeState) bool {
 		return true
 	}
 	return atomic.LoadInt32(&n.ActiveConns) < int32(effectiveCap)
+}
+
+// isGPUGroupSufficient reports whether n's effective GPU group can satisfy its
+// derived placement requirement (P397). A node with required==0 (no parallelism
+// declared and no gpu_indices) is always sufficient - existing fleet unaffected.
+// When AgentGPUs is unknown (avail 0), fail open (true) rather than failing
+// closed and 503 the fleet on agent outage - same as gpuCountUnknown R1.
+func (r *Router) isGPUGroupSufficient(n *NodeState) bool {
+	req := n.EffectiveRequiredGPUs()
+	if req == 0 {
+		return true
+	}
+	avail := r.effectiveAvailableGPUs(n)
+	if avail == 0 {
+		return true
+	}
+	return avail >= req
+}
+
+func (r *Router) effectiveAvailableGPUs(n *NodeState) int {
+	n.mu.RLock()
+	agentGPUs := append([]marboragent.GPUInfo(nil), n.AgentGPUs...)
+	declared := append([]int(nil), n.DeclaredGPUIndices...)
+	n.mu.RUnlock()
+	if len(declared) == 0 {
+		if len(agentGPUs) > 0 {
+			return len(agentGPUs)
+		}
+		return 0
+	}
+	if len(agentGPUs) == 0 {
+		return len(declared)
+	}
+	scoped, applied := scopeGPUsForPlacement(agentGPUs, declared)
+	if !applied {
+		return len(agentGPUs)
+	}
+	return len(scoped)
+}
+
+// scopeGPUsForPlacement mirrors internal/admin/catalog scopeGPUsToDeclared but
+// lives in router to avoid import cycle - same semantics: declared empty no-op,
+// no match fallback to unscoped.
+func scopeGPUsForPlacement(agentGPUs []marboragent.GPUInfo, declaredIndices []int) (scoped []marboragent.GPUInfo, applied bool) {
+	if len(declaredIndices) == 0 {
+		return agentGPUs, false
+	}
+	want := make(map[int]bool, len(declaredIndices))
+	for _, idx := range declaredIndices {
+		want[idx] = true
+	}
+	out := make([]marboragent.GPUInfo, 0, len(agentGPUs))
+	for _, g := range agentGPUs {
+		if want[g.Index] {
+			out = append(out, g)
+		}
+	}
+	if len(out) == 0 {
+		return agentGPUs, false
+	}
+	return out, true
 }
 
 // sweepAffinity removes expired session-affinity entries. Called periodically
@@ -622,7 +684,7 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 		isHealthy := n.Healthy
 		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) {
+		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) && r.isGPUGroupSufficient(n) {
 			healthy = append(healthy, n)
 		}
 	}
@@ -645,7 +707,7 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	if sessionID != "" {
 		node, hadEntry := r.stickyNode(sessionID)
 		if node != nil {
-			hardValid := (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName)
+			hardValid := (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName) && r.isGPUGroupSufficient(node)
 			if hardValid && r.isUnderCapacity(node) {
 				r.RecordTransition(modelName, time.Now())
 				warm := r.isModelWarm(node, modelName)
@@ -717,7 +779,7 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 		isHealthy := n.Healthy
 		isDraining := n.Draining
 		n.mu.RUnlock()
-		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) {
+		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) && r.isGPUGroupSufficient(n) {
 			healthy = append(healthy, n)
 		}
 	}

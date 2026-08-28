@@ -101,6 +101,11 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA A100 80GB',
     port: 8000,
     runtime: 'vllm',
+    // P397 demo: declared 2-GPU TP=2 deployment (1 deployment x 2 GPUs atomically)
+    gpuIndices: [0, 1],
+    parallelismType: 'tp',
+    parallelismWidth: 2,
+    effectiveRequiredGPUs: 2,
     vramTotalMB: 80 * GB,
     vramUsedMB: Math.round(52.8 * GB),
     vramSource: 'nvidia',
