@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
@@ -219,7 +219,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, isHighlighted }: {
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, isHighlighted, highlightSource }: {
   node: GPUNode;
   pinnedModels: string[];
   onRemove: (name: string) => void;
@@ -231,6 +231,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onConfigureModel: (modelName: string, nodeName: string, runtime: string) => void;
   onManageAgent: (node: GPUNode) => void;
   isHighlighted?: boolean;
+  highlightSource?: string | null;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -255,7 +256,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {isHighlighted && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary text-primary-foreground shadow-sm animate-pulse">
-                  From Models
+                  {highlightSource === 'dashboard' ? 'From Dashboard' : highlightSource === 'models' ? 'From Models' : 'Highlighted'}
                 </span>
               )}
               {node.draining && (
@@ -531,11 +532,11 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 export function GPUNodes() {
   const { demoMode } = useDemoMode();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [isLive, setIsLive] = useState(!demoMode);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
+  const [highlightSource, setHighlightSource] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newNode, setNewNode] = useState({
@@ -1168,15 +1169,19 @@ export function GPUNodes() {
     }
   }, [demoMode, location.pathname]);
 
-  // Highlight nodes passed via ?highlight= from Models page - custom 900ms ease-out for lower sections, no instant jump
+  // Highlight nodes passed via ?highlight=&from= from Models or Dashboard - location.search isolated so dashboard vs models never leaks
   useEffect(() => {
-    const param = searchParams.get('highlight');
+    const qs = new URLSearchParams(location.search);
+    const param = qs.get('highlight');
+    const from = qs.get('from');
     if (!param) {
       setHighlightedNodes(new Set());
+      setHighlightSource(null);
       return;
     }
     const set = new Set(param.split(',').map((s) => s.trim()).filter(Boolean));
     setHighlightedNodes(set);
+    setHighlightSource(from);
     if (set.size > 0) {
       const first = Array.from(set)[0] as string;
       const t1 = setTimeout(() => {
@@ -1200,15 +1205,15 @@ export function GPUNodes() {
         };
         requestAnimationFrame(step);
       }, 220);
-      const t2 = setTimeout(() => setHighlightedNodes(new Set()), 2000);
+      const t2 = setTimeout(() => { setHighlightedNodes(new Set()); setHighlightSource(null); }, 2000);
       return () => {
         clearTimeout(t1);
         clearTimeout(t2);
       };
     }
-    const t = setTimeout(() => setHighlightedNodes(new Set()), 2000);
+    const t = setTimeout(() => { setHighlightedNodes(new Set()); setHighlightSource(null); }, 2000);
     return () => clearTimeout(t);
-  }, [searchParams]);
+  }, [location.search]);
 
   const filteredNodes = nodes.filter(node =>
     (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1717,7 +1722,7 @@ export function GPUNodes() {
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
         ))}
       </div>
 
