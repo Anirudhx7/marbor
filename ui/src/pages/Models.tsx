@@ -86,25 +86,25 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
   };
 
   return (
-    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-all duration-300 ease-out hover:shadow-md hover:scale-[1.01] active:scale-[0.99] ${isWarm ? 'border-border' : 'border-border opacity-80'}`}>
+    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-all duration-300 ease-out hover:shadow-md hover:scale-[1.01] active:scale-[0.99] flex flex-col h-full ${isWarm ? 'border-border' : 'border-border opacity-80'}`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start gap-3 min-w-0">
           <div className="p-2 bg-secondary rounded-lg shrink-0">
             <Package className="w-4 h-4 text-muted-foreground" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h3 className="font-mono font-semibold text-foreground truncate text-sm">
               {model.name}
             </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {formatVRAM(model.size_vram)} per copy
-              {totalVRAM ? ` · ${formatVRAM(totalVRAM)} total warm` : ''}
-              {model.size_disk ? ` · ${formatVRAM(model.size_disk)} on disk` : ''}
-            </p>
-            {model.family && (
-              <p className="text-[11px] text-muted-foreground/70 font-mono mt-0.5">{model.family}</p>
-            )}
+            <div className="min-h-[30px]">
+              <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
+                {formatVRAM(model.size_vram)} per copy
+                {totalVRAM ? ` · ${formatVRAM(totalVRAM)} total warm` : ''}
+                {model.size_disk ? ` · ${formatVRAM(model.size_disk)} on disk` : ''}
+              </p>
+              <p className="text-[11px] text-muted-foreground/70 font-mono mt-0.5 min-h-[14px] leading-tight">{model.family || '\u00A0'}</p>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -136,8 +136,8 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
         </div>
       </div>
 
-      {/* Fleet residency summary */}
-      <div className="flex flex-wrap items-center gap-2 text-xs mb-3">
+      {/* Fleet residency summary - pinned height so single vs multi-chip rows stay aligned */}
+      <div className="flex flex-wrap items-center gap-2 text-xs mb-3 min-h-[44px] content-start">
         <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-md font-medium text-foreground">
           <Layers className="w-3 h-3 text-muted-foreground" />
           {model.warm_count} / {model.total_nodes} nodes warm
@@ -163,7 +163,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
       </div>
 
       {/* Node chips - read-first, link to GPU Nodes for mutations */}
-      <div className="border-t border-border pt-3">
+      <div className="border-t border-border pt-3 flex-1 flex flex-col">
         <div className="flex items-center justify-between mb-2 gap-2">
           <p className="text-xs font-medium text-muted-foreground">Resident on</p>
           <Link to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}&from=models`} className="text-xs text-primary hover:text-primary/80 inline-flex items-center gap-1 font-medium min-h-[32px] px-2 py-1 rounded-md hover:bg-secondary transition-colors shrink-0">
@@ -203,7 +203,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
 
         {/* Delete section - secondary, link-first mutations stay on GPU Nodes */}
         {model.nodes.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-border">
+          <div className="mt-auto pt-3 border-t border-border">
             <p className="text-xs font-medium text-muted-foreground mb-2">Delete from node <span className="font-normal">(secondary - prefer GPU Nodes for fleet changes)</span></p>
             <div className="flex gap-2 items-center">
               <div className="flex-1 min-w-0">
@@ -589,7 +589,7 @@ export function Models() {
 
           {/* Fleet content */}
           {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr animate-fade-in">
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
@@ -754,13 +754,13 @@ export function Models() {
 
           {/* Reuse fleet grid in catalog tab as "currently available models" - not duplicated catalog.go logic */}
           {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
             </div>
           ) : filteredModels.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
               {filteredModels.map((model) => (
                 <ModelFleetCard key={model.name} model={model} demoMode={demoMode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
               ))}
