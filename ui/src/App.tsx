@@ -1,6 +1,7 @@
 import { lazy, Suspense, Component, ReactNode, useState, useEffect } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
+import { TimezoneProvider } from './hooks/useTimezone';
 import { forcedDemo } from './hooks/useDemoMode';
 import { Sidebar } from './components/Sidebar';
 import { useSidebarCollapsed } from './hooks/useSidebarCollapsed';
@@ -248,6 +249,11 @@ function App() {
     // reset to the same fake session instead of null so clicking Logout on
     // the public demo doesn't strand the visitor on a real login form.
     setSession(forcedDemo ? DEMO_SESSION : null);
+    // Per-user timezone is keyed by the authenticated user (see
+    // handleSettings's pref:username:timezone) — a logout/login as a
+    // different user must re-fetch that user's display timezone immediately,
+    // not wait for the 15s poll.
+    window.dispatchEvent(new Event('marbor-timezone-changed'));
   }
 
   function handleLoginSuccess(data: SessionData) {
@@ -260,6 +266,7 @@ function App() {
       window.history.replaceState({}, '', home);
     }
     setSession(data);
+    window.dispatchEvent(new Event('marbor-timezone-changed'));
   }
 
   function handleForceChangeSuccess(updated: SessionData) {
@@ -273,35 +280,29 @@ function App() {
     window.location.pathname.endsWith('/login') &&
     !window.location.pathname.endsWith('/admin/login');
 
-  if (!session) {
+  // Single TimezoneProvider instance — avoids 4 identical wrappers that can
+  // drift when the provider gains props, and mirrors ThemeProvider's single
+  // wrapping rather than per-branch duplication (review finding).
+  const content = (() => {
+    if (!session) {
+      return <Login onSuccess={handleLoginSuccess} mode={isUserPath ? 'user' : 'admin'} />;
+    }
+    if (session.mustChangePassword) {
+      return <ForceChangePassword session={session} onSuccess={handleForceChangeSuccess} />;
+    }
+    if (session.role === 'user') {
+      return <UserPortal session={session} onLogout={handleLogout} />;
+    }
     return (
-      <ThemeProvider>
-        <Login onSuccess={handleLoginSuccess} mode={isUserPath ? 'user' : 'admin'} />
-      </ThemeProvider>
-    );
-  }
-
-  if (session.mustChangePassword) {
-    return (
-      <ThemeProvider>
-        <ForceChangePassword session={session} onSuccess={handleForceChangeSuccess} />
-      </ThemeProvider>
-    );
-  }
-
-  if (session.role === 'user') {
-    return (
-      <ThemeProvider>
-        <UserPortal session={session} onLogout={handleLogout} />
-      </ThemeProvider>
-    );
-  }
-
-  return (
-    <ThemeProvider>
       <RouterComponent {...(forcedDemo ? {} : (basename === '/' ? {} : { basename }))}>
         <AppShell session={session} onLogout={handleLogout} pendingCount={pendingCount} />
       </RouterComponent>
+    );
+  })();
+
+  return (
+    <ThemeProvider>
+      <TimezoneProvider>{content}</TimezoneProvider>
     </ThemeProvider>
   );
 }

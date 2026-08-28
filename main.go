@@ -598,13 +598,23 @@ func main() {
 	// Load persisted predictive transition history so the predictive engine
 	// resumes learned patterns instead of rebuilding from zero.
 	if hist, err := st.PredictiveHistory(); err == nil && len(hist) > 0 {
+		tzName := r.Timezone()
 		entries := make([]router.TransitionEntry, len(hist))
 		for i, h := range hist {
+			hour := h.Timestamp.Hour() // fallback UTC
+			if tzName != "" && tzName != "Local" {
+				if loc, err := time.LoadLocation(tzName); err == nil {
+					hour = h.Timestamp.In(loc).Hour()
+				}
+			} else {
+				// "Local" means server OS zone — In(Local) honors that host's zone.
+				hour = h.Timestamp.In(time.Local).Hour()
+			}
 			entries[i] = router.TransitionEntry{
 				FromModel: h.FromModel,
 				ToModel:   h.ToModel,
 				Timestamp: h.Timestamp,
-				HourOfDay: h.Timestamp.Hour(),
+				HourOfDay: hour,
 			}
 		}
 		r.SeedPredictiveHistory(entries)
