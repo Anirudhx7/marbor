@@ -153,7 +153,7 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
             {shownDown.map(n => (
               <Link
                 key={n.id}
-                to={`/gpu-nodes?highlight=${encodeURIComponent(n.name)}`}
+                to={`/gpu-nodes?highlight=${encodeURIComponent(n.name)}&from=dashboard`}
                 className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
                 title={`View ${n.name} on GPU Nodes`}
               >
@@ -165,7 +165,7 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
             ))}
             {extraDown > 0 && (
               <Link
-                to={`/gpu-nodes?highlight=${encodeURIComponent(f.downNodes.map((n) => n.name).join(','))}`}
+                to={`/gpu-nodes?highlight=${encodeURIComponent(f.downNodes.map((n) => n.name).join(','))}&from=dashboard`}
                 title={`View all ${f.downNodes.length} down nodes`}
                 className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
@@ -174,7 +174,7 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
             )}
             {f.staleAgents.length > 0 && (
               <Link
-                to={`/gpu-nodes?highlight=${encodeURIComponent(f.staleAgents.map((n) => n.name).join(','))}`}
+                to={`/gpu-nodes?highlight=${encodeURIComponent(f.staleAgents.map((n) => n.name).join(','))}&from=dashboard`}
                 title={`View ${f.staleAgents.length} stale agent${f.staleAgents.length > 1 ? 's' : ''}`}
                 className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
@@ -186,7 +186,7 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
             )}
             {f.vramPressure.length > 0 && (
               <Link
-                to={`/gpu-nodes?highlight=${encodeURIComponent(f.vramPressure.map((n) => n.name).join(','))}`}
+                to={`/gpu-nodes?highlight=${encodeURIComponent(f.vramPressure.map((n) => n.name).join(','))}&from=dashboard`}
                 title={`View ${f.vramPressure.length} VRAM pressured node${f.vramPressure.length > 1 ? 's' : ''}`}
                 className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
@@ -692,7 +692,7 @@ export function Dashboard() {
             nodes.map((node) => (
               <Link
                 key={node.id}
-                to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}`}
+                to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=dashboard`}
                 title={`View ${node.name} on GPU Nodes`}
                 className="block bg-secondary/50 rounded-xl p-5 border border-border hover:border-primary/30 hover:shadow-md hover:bg-secondary/70 transition-all duration-200 ease-out cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background will-change-transform"
               >
