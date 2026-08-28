@@ -58,8 +58,9 @@ type Store interface {
 
 	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C;
 	// max_in_flight - P64 per-node in-flight cap override; tls_fingerprint -
-	// P24 TOFU-pinned Marbor agent cert fingerprint)
-	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string) error
+	// P24 TOFU-pinned Marbor agent cert fingerprint; parallelism_type/width -
+	// P397 deployment-aware placement tp|pp|ep|dp)
+	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
@@ -348,6 +349,12 @@ type NodeOverride struct {
 	// this node's agent TLS certificate (P24) - nil means "no pin, plaintext
 	// or not yet TLS-enrolled". See .local/specs/node-agent-tls.md.
 	TLSFingerprint *string `json:"tls_fingerprint,omitempty"`
+	// ParallelismType is the deployment topology type (P397) - "" means
+	// unconstrained (existing fleet), otherwise "tp"|"pp"|"ep"|"dp".
+	// ParallelismWidth is the width for that type - nil means unconstrained.
+	// Validated: for tp, len(gpu_indices) >= width when both declared, else 422.
+	ParallelismType  *string `json:"parallelism_type,omitempty"`
+	ParallelismWidth *int    `json:"parallelism_width,omitempty"`
 }
 
 // MarborAgentRecord is the per-node Marbor Agent configuration: whether the
@@ -720,7 +727,7 @@ func (NopStore) UpsertNode(_ NodeRecord) error                          { return
 func (NopStore) DeleteNode(_ string) error                              { return nil }
 func (NopStore) AllNodes() ([]NodeRecord, error)                        { return nil, nil }
 func (NopStore) UpdateNodeURL(_ string, _ string) error                 { return nil }
-func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int, _ *int, _ *string) error {
+func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int, _ *int, _ *string, _ *string, _ *int) error {
 	return nil
 }
 func (NopStore) NodeOverrides() (map[string]NodeOverride, error)     { return nil, nil }

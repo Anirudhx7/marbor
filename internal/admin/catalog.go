@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -1018,6 +1019,10 @@ func detectSafetensorsQuant(tags []string) string {
 	for _, t := range tags {
 		lt := strings.ToLower(t)
 		switch {
+		case strings.Contains(lt, "nvfp4"):
+			return "NVFP4"
+		case strings.Contains(lt, "fp8"):
+			return "FP8"
 		case strings.Contains(lt, "awq"):
 			return "AWQ"
 		case strings.Contains(lt, "gptq"):
@@ -1144,12 +1149,22 @@ const (
 // GGUF is a self-contained binary format) - fetchHFConfigJSON returns
 // ok=false whenever any required field is absent, and callers must fall back
 // to the existing linear estimate (R1) rather than invent these numbers.
+// Optional MoE/deployment hints (architecture, num_experts, etc.) are nullable
+// and never gate ok - missing -> nil -> estimated fallback, never fabricated.
 type hfConfigJSON struct {
-	NumHiddenLayers       int64 `json:"num_hidden_layers"`
-	NumAttentionHeads     int64 `json:"num_attention_heads"`
-	NumKeyValueHeads      int64 `json:"num_key_value_heads"`
-	HiddenSize            int64 `json:"hidden_size"`
-	MaxPositionEmbeddings int64 `json:"max_position_embeddings"`
+	NumHiddenLayers       int64  `json:"num_hidden_layers"`
+	NumAttentionHeads     int64  `json:"num_attention_heads"`
+	NumKeyValueHeads      int64  `json:"num_key_value_heads"`
+	HiddenSize            int64  `json:"hidden_size"`
+	MaxPositionEmbeddings int64  `json:"max_position_embeddings"`
+	// Optional generic metadata (P397) - nullable, never required for ok.
+	Architecture     *string `json:"model_type"`
+	NumExperts       *int64  `json:"num_experts"`
+	NRoutedExperts   *int64  `json:"n_routed_experts"`
+	NumExpertsPerTok *int64  `json:"num_experts_per_tok"`
+	NSharedExperts   *int64  `json:"n_shared_experts"`
+	// Quantization is read from quantization_config.quant_method when present.
+	Quantization *string `json:"-"`
 }
 
 // fetchHFConfigJSON fetches and parses a Hugging Face repo's config.json.
@@ -1223,9 +1238,60 @@ func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfCon
 		return hfConfigJSON{}, false
 	}
 	defer resp.Body.Close()
-	var cfg hfConfigJSON
-	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+	// Read limited body for dual decode (typed struct + fallback map).
+	body, err := jsonDecodeLimited(resp.Body, 2<<20)
+	if err != nil {
 		return hfConfigJSON{}, false
+	}
+	var cfg hfConfigJSON
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		return hfConfigJSON{}, false
+	}
+	// Fallback map for alternative MoE key names and quantization_config.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err == nil {
+		if cfg.NumExperts == nil {
+			if v := parseInt64Raw(raw["n_routed_experts"]); v != nil {
+				cfg.NumExperts = v
+			} else if v := parseInt64Raw(raw["num_local_experts"]); v != nil {
+				cfg.NumExperts = v
+			}
+		}
+		if cfg.NumExpertsPerTok == nil {
+			if v := parseInt64Raw(raw["moe_topk"]); v != nil {
+				cfg.NumExpertsPerTok = v
+			} else if v := parseInt64Raw(raw["routed_scaling_factor"]); v == nil {
+				// keep nil
+			}
+		}
+		if cfg.NSharedExperts == nil {
+			if v := parseInt64Raw(raw["n_shared_experts"]); v != nil {
+				cfg.NSharedExperts = v
+			} else if v := parseInt64Raw(raw["num_shared_experts"]); v != nil {
+				cfg.NSharedExperts = v
+			}
+		}
+		if cfg.Architecture == nil || *cfg.Architecture == "" {
+			if archsRaw, ok := raw["architectures"]; ok {
+				var archs []string
+				if err := json.Unmarshal(archsRaw, &archs); err == nil && len(archs) > 0 && archs[0] != "" {
+					cfg.Architecture = &archs[0]
+				}
+			}
+		}
+		if cfg.Quantization == nil {
+			if qRaw, ok := raw["quantization_config"]; ok {
+				var qMap map[string]json.RawMessage
+				if err := json.Unmarshal(qRaw, &qMap); err == nil {
+					if mRaw, ok := qMap["quant_method"]; ok {
+						var m string
+						if err := json.Unmarshal(mRaw, &m); err == nil && m != "" {
+							cfg.Quantization = &m
+						}
+					}
+				}
+			}
+		}
 	}
 	if cfg.NumKeyValueHeads == 0 {
 		// Many dense (non-GQA) architectures omit num_key_value_heads
@@ -1263,6 +1329,30 @@ func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfCon
 		return hfConfigJSON{}, false
 	}
 	return cfg, true
+}
+
+func jsonDecodeLimited(r io.Reader, limit int64) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, limit))
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func parseInt64Raw(raw json.RawMessage) *int64 {
+	if len(raw) == 0 {
+		return nil
+	}
+	var v int64
+	if err := json.Unmarshal(raw, &v); err == nil {
+		return &v
+	}
+	var fv float64
+	if err := json.Unmarshal(raw, &fv); err == nil {
+		iv := int64(fv)
+		return &iv
+	}
+	return nil
 }
 
 // kvCacheBytesPerToken computes the real per-token KV-cache footprint from

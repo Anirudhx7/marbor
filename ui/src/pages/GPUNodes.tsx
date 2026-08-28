@@ -313,6 +313,11 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               <p className="text-sm text-muted-foreground">{node.gpuModel || 'Unknown GPU'}</p>
               <RuntimeBadge runtime={node.runtime} />
               <AgentBadge present={node.agentPresent} version={node.agentVersion} />
+              {node.parallelismType && node.parallelismWidth ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                  {node.parallelismType.toUpperCase()}={node.parallelismWidth} {node.effectiveRequiredGPUs ? `(${node.effectiveRequiredGPUs} GPUs)` : ''}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1390,9 +1395,11 @@ export function GPUNodes() {
   const [editRuntime, setEditRuntime] = useState('');
   const [editGPUIndices, setEditGPUIndices] = useState('');
   const [editMaxInFlight, setEditMaxInFlight] = useState('');
+  const [editParallelismType, setEditParallelismType] = useState('');
+  const [editParallelismWidth, setEditParallelismWidth] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | null>(null);
+  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null } | null>(null);
   // P24: TLS fingerprint probe/pin state - probing only ever populates
   // tlsProbedFingerprint for display; pinning happens exclusively via the
   // "Confirm & Pin" click (patchNode), never automatically from a probe
@@ -1424,6 +1431,8 @@ export function GPUNodes() {
     setEditRuntime(node.runtime || 'ollama');
     setEditGPUIndices((node.gpuIndices ?? []).join(', '));
     setEditMaxInFlight(node.maxInFlight && node.maxInFlight > 0 ? String(node.maxInFlight) : '');
+    setEditParallelismType(node.parallelismType ?? '');
+    setEditParallelismWidth(node.parallelismWidth && node.parallelismWidth > 0 ? String(node.parallelismWidth) : '');
     setEditError('');
   };
 
@@ -1456,12 +1465,18 @@ export function GPUNodes() {
     if (editMaxInFlight === (prev.maxInFlight && prev.maxInFlight > 0 ? String(prev.maxInFlight) : '')) {
       setEditMaxInFlight(fresh.maxInFlight && fresh.maxInFlight > 0 ? String(fresh.maxInFlight) : '');
     }
+    if (editParallelismType === (prev.parallelismType ?? '')) {
+      setEditParallelismType(fresh.parallelismType ?? '');
+    }
+    if (editParallelismWidth === (prev.parallelismWidth && prev.parallelismWidth > 0 ? String(prev.parallelismWidth) : '')) {
+      setEditParallelismWidth(fresh.parallelismWidth && fresh.parallelismWidth > 0 ? String(fresh.parallelismWidth) : '');
+    }
     setEditNode(fresh);
-  }, [nodes, editNode, editHost, editPort, editUseHttps, editVRAM, editGPUModel, editRuntime, editGPUIndices, editMaxInFlight]);
+  }, [nodes, editNode, editHost, editPort, editUseHttps, editVRAM, editGPUModel, editRuntime, editGPUIndices, editMaxInFlight, editParallelismType, editParallelismWidth]);
 
-  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } | 'invalid' | null => {
+  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null } | 'invalid' | null => {
     if (!editNode) return null;
-    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number } = {};
+    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null } = {};
     if (editVRAM.trim() !== '') {
       const v = parseFloat(editVRAM);
       if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative number (${editVRAMUnit})`); return 'invalid'; }
@@ -1497,6 +1512,35 @@ export function GPUNodes() {
       if (!host || !port || isNaN(parseInt(port, 10))) { setEditError('Host and port must both be set'); return 'invalid'; }
       patch.url = `${editUseHttps ? 'https' : 'http'}://${host}:${port}`;
     }
+    // Parallelism type/width - structured, must be set together or cleared together.
+    const priorType = editNode.parallelismType ?? '';
+    const priorWidth = editNode.parallelismWidth ?? 0;
+    const newType = editParallelismType.trim();
+    const newWidth = editParallelismWidth.trim() === '' ? 0 : parseInt(editParallelismWidth, 10);
+    if (editParallelismWidth.trim() !== '' && (isNaN(newWidth) || newWidth < 0 || newWidth > 64)) {
+      setEditError('Parallelism width must be between 0 and 64 (0 = unconstrained)');
+      return 'invalid';
+    }
+    if ((newType !== '' && newWidth === 0) || (newType === '' && newWidth !== 0)) {
+      setEditError('Parallelism type and width must be set together or cleared together');
+      return 'invalid';
+    }
+    if (newType !== '' && !['tp','pp','ep','dp'].includes(newType)) {
+      setEditError('Parallelism type must be one of tp, pp, ep, dp');
+      return 'invalid';
+    }
+    // Check mismatch when new indices + width present.
+    let effectiveIndices = newIndices.length > 0 ? newIndices : priorIndices;
+    if (indicesChanged) effectiveIndices = newIndices;
+    // If parallelism changed, validate effective indices len >= width when both present.
+    const effectiveWidth = newWidth !== 0 ? newWidth : (newType === '' ? 0 : priorWidth);
+    // Only validate when we have a width and effective indices len >0
+    if (effectiveWidth > 0 && effectiveIndices.length > 0 && effectiveIndices.length < effectiveWidth) {
+      setEditError(`parallelism_width ${effectiveWidth} requires gpu_indices len >=${effectiveWidth} got ${effectiveIndices.length}`);
+      return 'invalid';
+    }
+    if (newType !== priorType) patch.parallelism_type = newType || null;
+    if (newWidth !== priorWidth) patch.parallelism_width = newWidth || null;
     if (Object.keys(patch).length === 0) return null;
     return patch;
   };
@@ -1505,8 +1549,17 @@ export function GPUNodes() {
   // backend would, so the modal (which holds its own editNode snapshot, not
   // a live reference into `nodes`) can reflect a save without needing to
   // close and reopen.
-  const mergeNodePatch = (n: GPUNode, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }): GPUNode => {
+  const mergeNodePatch = (n: GPUNode, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null }): GPUNode => {
     const scheme = patch.url ? (patch.url.startsWith('https://') ? 'https' as const : 'http' as const) : undefined;
+    const derivedRequired = (() => {
+      const width = patch.parallelism_width !== undefined ? (patch.parallelism_width ?? 0) : (n.parallelismWidth ?? 0);
+      const type = patch.parallelism_type !== undefined ? (patch.parallelism_type ?? '') : (n.parallelismType ?? '');
+      if (width <= 0 && type === '') return n.effectiveRequiredGPUs;
+      const indices = patch.gpu_indices ?? n.gpuIndices ?? [];
+      if (width > 0 && indices.length > width) return indices.length;
+      if (width > 0) return width;
+      return indices.length;
+    })();
     return {
       ...n,
       vramTotalMB: patch.vram_total_mb ?? n.vramTotalMB,
@@ -1517,6 +1570,9 @@ export function GPUNodes() {
       scheme: scheme ?? n.scheme,
       tlsFingerprint: patch.tls_fingerprint !== undefined ? (patch.tls_fingerprint || undefined) : n.tlsFingerprint,
       tlsFingerprintMismatch: patch.tls_fingerprint !== undefined ? false : n.tlsFingerprintMismatch,
+      parallelismType: patch.parallelism_type !== undefined ? (patch.parallelism_type || undefined) : n.parallelismType,
+      parallelismWidth: patch.parallelism_width !== undefined ? (patch.parallelism_width || undefined) : n.parallelismWidth,
+      effectiveRequiredGPUs: derivedRequired,
     };
   };
 
@@ -1525,7 +1581,7 @@ export function GPUNodes() {
   // by applyPatch (Runtime edits, editNode-scoped) and applyAgentTLSPatch
   // (Agent TLS pin/reset, agentNode-scoped) so a future fix to this shared
   // core doesn't have to be applied twice.
-  const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }) => {
+  const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null }) => {
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === nodeName ? mergeNodePatch(n, patch) : n));
       return;
@@ -1540,7 +1596,7 @@ export function GPUNodes() {
   // inside the still-open modal, not a form submit, so closing on success
   // would yank the operator out mid-workflow (they still may want to probe,
   // paste-verify, or reset again).
-  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string }, closeOnSuccess = true) => {
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null }, closeOnSuccess = true) => {
     if (!editNode) return;
     if (demoMode) {
       await sendNodePatch(editNode.name, patch);
@@ -2059,6 +2115,46 @@ export function GPUNodes() {
               A node at or above this many in-flight requests is shed immediately (failover/cloud/503) instead of queued. Leave blank to use Settings &rarr; Routing's global Max In-Flight Per Node.
             </p>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Parallelism Type
+              </label>
+              <CustomSelect
+                value={editParallelismType || ''}
+                onChange={(v) => setEditParallelismType(v)}
+                options={[
+                  { value: '', label: 'None (unconstrained)' },
+                  { value: 'tp', label: 'TP - Tensor Parallel' },
+                  { value: 'pp', label: 'PP - Pipeline Parallel' },
+                  { value: 'ep', label: 'EP - Expert Parallel' },
+                  { value: 'dp', label: 'DP - Data Parallel' },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                Parallelism Width
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="64"
+                value={editParallelismWidth}
+                onChange={(e) => setEditParallelismWidth(e.target.value)}
+                placeholder="e.g., 8"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Declares how this deployment uses its GPU group (1x8 vs 8x1). Type tp with width 8 requires 8 GPUs atomically - scheduler rejects 4-GPU nodes. Derived required = max(len(gpu_indices), width). Leave both blank for unconstrained.
+          </p>
+          {editParallelismType && editParallelismWidth && (
+            <p className="text-xs font-medium text-primary">
+              Derived required GPUs: {Math.max((editGPUIndices.trim() ? editGPUIndices.split(',').filter(s=>s.trim()!=='').length : (editNode?.gpuIndices?.length ?? 0)), parseInt(editParallelismWidth,10) || 0)} (atomic placement)
+            </p>
+          )}
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
           )}

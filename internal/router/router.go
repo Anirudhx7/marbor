@@ -171,6 +171,13 @@ type NodeState struct {
 	// unchanged. Set via PatchNode/NodePatch.GPUIndices, persisted in
 	// store.NodeOverride.GPUIndices.
 	DeclaredGPUIndices []int
+	// ParallelismType is the deployment topology type (P397) - "" means
+	// unconstrained (existing fleet), otherwise "tp"|"pp"|"ep"|"dp".
+	// ParallelismWidth is the width for that type - 0 means unconstrained.
+	// Together they derive EffectiveRequiredGPUs via EffectiveRequiredGPUs().
+	// Guarded by mu like DeclaredGPUIndices.
+	ParallelismType  string
+	ParallelismWidth int
 	autoDetect         bool                    // true if config said runtime: auto; cleared after first detection
 	probe              runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
 	LastErrorAt        time.Time
@@ -1665,6 +1672,11 @@ type NodePatch struct {
 	// http:// URL) and the section 15 sibling-consistency guard both live in
 	// admin.go's handlePatchNode, not here - PatchNode itself only merges.
 	TLSFingerprint *string `json:"tls_fingerprint"`
+	// ParallelismType declares deployment topology type (P397) - nil means no
+	// change, pointer to "" clears. ParallelismWidth declares width - nil
+	// means no change, pointer to 0 clears.
+	ParallelismType  *string `json:"parallelism_type"`
+	ParallelismWidth *int    `json:"parallelism_width"`
 }
 
 // UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
@@ -1715,6 +1727,8 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	declaredGPUIndices := old.DeclaredGPUIndices
 	maxInFlight := old.MaxInFlight
 	tlsFingerprint := old.TLSFingerprint
+	parallelismType := old.ParallelismType
+	parallelismWidth := old.ParallelismWidth
 	old.mu.Unlock()
 
 	newHost := ResultingHost(oldHost, oldURL, newURL)
@@ -1730,6 +1744,8 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 		DeclaredGPUIndices: declaredGPUIndices,
 		MaxInFlight:        maxInFlight,
 		TLSFingerprint:     tlsFingerprint,
+		ParallelismType:    parallelismType,
+		ParallelismWidth:   parallelismWidth,
 		Healthy:            true,
 		FirstSeenAt:        time.Now(),
 		Runtime:            runtime,
@@ -1803,11 +1819,85 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 			if patch.TLSFingerprint != nil {
 				n.TLSFingerprint = *patch.TLSFingerprint
 			}
+			if patch.ParallelismType != nil {
+				n.ParallelismType = *patch.ParallelismType
+			}
+			if patch.ParallelismWidth != nil {
+				n.ParallelismWidth = *patch.ParallelismWidth
+			}
 			n.mu.Unlock()
 			return true
 		}
 	}
 	return false
+}
+
+// EffectiveRequiredGPUs returns the derived placement requirement for n.
+// 0 means unconstrained (existing fleet unaffected). For tp/pp/ep/dp the
+// required count is max(len(DeclaredGPUIndices), ParallelismWidth) when
+// both are declared, otherwise whichever is declared. Validated at API
+// layer: tp with len < width is rejected with 422 before it reaches here.
+func (n *NodeState) EffectiveRequiredGPUs() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return effectiveRequiredGPUsLocked(n)
+}
+
+func effectiveRequiredGPUsLocked(n *NodeState) int {
+	width := n.ParallelismWidth
+	if width <= 0 {
+		return len(n.DeclaredGPUIndices)
+	}
+	if len(n.DeclaredGPUIndices) > width {
+		return len(n.DeclaredGPUIndices)
+	}
+	return width
+}
+
+// ValidateParallelismPatch validates structured parallelism fields for P397.
+// Returns error with message suitable for 400/422 response.
+func ValidateParallelismPatch(parallelismType *string, parallelismWidth *int, resultingGPUIndices []int) error {
+	if parallelismType == nil && parallelismWidth == nil {
+		return nil
+	}
+	// Resolve resulting type/width where nil means "keep existing" - but this
+	// helper only validates the patch's own fields plus the resulting gpu_indices
+	// length, so a nil type with non-nil width etc. is validated as partial.
+	t := ""
+	if parallelismType != nil {
+		t = *parallelismType
+	}
+	w := 0
+	if parallelismWidth != nil {
+		w = *parallelismWidth
+	}
+	if t == "" && w != 0 {
+		return fmt.Errorf("parallelism_type is required when parallelism_width is set")
+	}
+	if t != "" && w == 0 {
+		return fmt.Errorf("parallelism_width is required when parallelism_type is set (got type %q with width 0)", t)
+	}
+	if t == "" && w == 0 {
+		// clearing both -> ok
+		return nil
+	}
+	switch t {
+	case "tp", "pp", "ep", "dp":
+		// valid
+	default:
+		return fmt.Errorf("parallelism_type must be one of tp, pp, ep, dp (got %q)", t)
+	}
+	if w < 0 || w > 64 {
+		return fmt.Errorf("parallelism_width must be between 1 and 64 (got %d)", w)
+	}
+	if t == "tp" && len(resultingGPUIndices) > 0 && len(resultingGPUIndices) < w {
+		return fmt.Errorf("parallelism_width %d requires gpu_indices len >=%d got %d", w, w, len(resultingGPUIndices))
+	}
+	// For pp/ep/dp same check in P1 - composite deferred.
+	if len(resultingGPUIndices) > 0 && len(resultingGPUIndices) < w {
+		return fmt.Errorf("parallelism_width %d requires gpu_indices len >=%d got %d", w, w, len(resultingGPUIndices))
+	}
+	return nil
 }
 
 func (r *Router) Nodes() []*NodeState {

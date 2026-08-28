@@ -87,6 +87,12 @@ export interface GPUNode {
   // generic unreachability, so the dashboard can show its own status
   // instead of "unreachable" (spec section 6).
   tlsFingerprintMismatch?: boolean;
+  // Deployment topology (P397) - type tp|pp|ep|dp, width 1..64, derived
+  // effectiveRequiredGPUs = max(len(gpuIndices), width). Empty/0 means
+  // unconstrained (existing fleet).
+  parallelismType?: string;
+  parallelismWidth?: number;
+  effectiveRequiredGPUs?: number;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;
