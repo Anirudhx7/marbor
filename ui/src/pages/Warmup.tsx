@@ -13,6 +13,8 @@ import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
 import { CustomTimePicker } from '../components/DateTimePicker';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDateTimeInZone, formatTimeInZone, formatInTimezone, wallDateTimeToUtcIso } from '../lib/time';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -59,6 +61,7 @@ function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
   warmupErrors?: Record<string, string>;
   warmupState?: { model: string; state: string; reason: string; since: string }[];
 }) {
+  const tz = useTimezone();
   if (models.length === 0) return null;
 
   function move(index: number, dir: -1 | 1) {
@@ -89,7 +92,7 @@ function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
               )}
               {!error && suppressed && (
                 <span
-                  title={`Suppressed since ${new Date(suppressed.since).toLocaleString()} - ${SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}`}
+                  title={`Suppressed since ${formatDateTimeInZone(suppressed.since, tz)} - ${SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}`}
                   className="text-[10px] text-amber-700 dark:text-amber-400 truncate block"
                 >
                   Suppressed - {SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}, resumes on next warmup
@@ -645,6 +648,7 @@ function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function Warmup() {
+  const tz = useTimezone();
   const { demoMode } = useDemoMode();
   const location = useLocation();
   const [nodes, setNodes] = useState<GPUNode[]>([]);
@@ -712,20 +716,12 @@ export function Warmup() {
       const sys = await fetchSystemInfo().catch(() => null);
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       if (sys && sys.server_time && sys.timezone) {
-        const parts = sys.server_time.split(' ');
-        if (parts.length === 2) {
-          const dParts = parts[0].split('-');
-          const tParts = parts[1].split(':');
-          const date = new Date(
-            parseInt(dParts[0] ?? '0', 10),
-            parseInt(dParts[1] ?? '1', 10) - 1,
-            parseInt(dParts[2] ?? '1', 10),
-            parseInt(tParts[0] ?? '0', 10),
-            parseInt(tParts[1] ?? '0', 10),
-            parseInt(tParts[2] ?? '0', 10)
-          );
-          setServerTime(date);
-        }
+        // server_time is wall "YYYY-MM-DD HH:MM:SS" in sys.timezone — convert to
+        // a true UTC instant via wall->UTC so Intl with that zone re-emits same wall.
+        const wallIso = sys.server_time.replace(' ', 'T');
+        const utcIso = wallDateTimeToUtcIso(wallIso, sys.timezone) ?? new Date(sys.server_time.replace(' ', 'T')).toISOString();
+        const d = new Date(utcIso);
+        if (!isNaN(d.getTime())) setServerTime(d);
         setServerTimezone(sys.timezone);
       }
 
@@ -792,16 +788,30 @@ export function Warmup() {
     return () => clearInterval(timer);
   }, [serverTime, location.pathname]);
 
+  // Formats the serverTime UTC instant as wall time in `serverTimezone`
+  // (configured zone). No browser-local Date getters — Intl with zone.
   const formatServerTime = (d: Date | null) => {
     if (!d) return 'Loading clock...';
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const yyyy = d.getFullYear();
-    const mm = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const min = pad(d.getMinutes());
-    const ss = pad(d.getSeconds());
-    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+    try {
+      return formatInTimezone(d.toISOString(), serverTimezone || tz, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).replace(',', '');
+    } catch {
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const yyyy = d.getFullYear();
+      const mm = pad(d.getMonth() + 1);
+      const dd = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const min = pad(d.getMinutes());
+      const ss = pad(d.getSeconds());
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+    }
   };
 
   async function saveWarmup(name: string, nw: NodeWarmup) {
@@ -1059,7 +1069,7 @@ export function Warmup() {
                       {d.was_already_warm ? 'already warm' : d.warmup_triggered ? 'warmup triggered' : 'skipped'}
                     </Badge>
                     <span className="text-xs text-muted-foreground font-mono">
-                      {new Date(d.timestamp).toLocaleTimeString()}
+                      {formatTimeInZone(d.timestamp, tz)}
                     </span>
                   </div>
                 </div>

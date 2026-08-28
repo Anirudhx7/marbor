@@ -8,6 +8,8 @@ import { fetchAuditLog, fetchNodes, fetchKeys, fetchRequestExplain } from '../li
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { filterMockRequests, mockGPUNodes, mockAPIKeys, mockExplainForRequest } from '../lib/mockData';
 import { formatRelativeTime } from '../lib/time';
+import { useTimezone } from '../hooks/useTimezone';
+import { wallDateTimeToUtcIso } from '../lib/time';
 
 const REASON_LABELS: Record<string, string> = {
   session_affinity: 'Session affinity',
@@ -179,6 +181,7 @@ function sinceIso(preset: SincePreset): string | undefined {
 }
 
 export function Requests() {
+  const tz = useTimezone();
   const { demoMode: isDemoMode } = useDemoMode();
   const location = useLocation();
   const [entries, setEntries] = useState<RequestEntry[]>([]);
@@ -286,19 +289,36 @@ export function Requests() {
   // frozen once and reused on every 3s poll tick - see the poll() call site
   // below, which calls this fresh on every tick instead of closing over a
   // stale memoized object.
-  const buildActiveFilters = () => ({
-    model: modelFilter || undefined,
-    key: keyFilter || undefined,
-    node: nodeFilter || undefined,
-    status: statusFilter === 'all' ? undefined : statusFilter,
-    cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
-    since: sinceInput ? new Date(sinceInput).toISOString() : sinceIso(sincePreset),
-    until: untilInput ? new Date(untilInput).toISOString() : undefined,
-    // No pagination UI on this page yet, so request the server's max page
-    // size (admin.go caps at 1000) rather than silently truncating to the
-    // client default of 50 - "all requests" means all within that cap.
-    limit: 1000,
-  });
+  const buildActiveFilters = () => {
+    // Wall strings "YYYY-MM-DDTHH:MM" are in `tz` wall time (via the picker),
+    // not browser local — convert to UTC via zone-aware helper so the server's
+    // `time.Parse(RFC3339)` query sees the correct instant.
+    let sinceIsoUtc: string | undefined;
+    if (sinceInput) {
+      const conv = wallDateTimeToUtcIso(sinceInput, tz);
+      sinceIsoUtc = conv ?? new Date(sinceInput).toISOString();
+    } else {
+      sinceIsoUtc = sinceIso(sincePreset);
+    }
+    let untilIsoUtc: string | undefined;
+    if (untilInput) {
+      const conv = wallDateTimeToUtcIso(untilInput, tz);
+      untilIsoUtc = conv ?? new Date(untilInput).toISOString();
+    }
+    return {
+      model: modelFilter || undefined,
+      key: keyFilter || undefined,
+      node: nodeFilter || undefined,
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
+      since: sinceIsoUtc,
+      until: untilIsoUtc,
+      // No pagination UI on this page yet, so request the server's max page
+      // size (admin.go caps at 1000) rather than silently truncating to the
+      // client default of 50 - "all requests" means all within that cap.
+      limit: 1000,
+    };
+  };
 
   useEffect(() => {
     if (currentAppPath() !== '/requests') return;
@@ -334,7 +354,7 @@ export function Requests() {
       clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput, location.pathname]);
+  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput, location.pathname, tz]);
 
   const filtered = entries;
   const hasActiveFilter =
