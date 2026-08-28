@@ -280,24 +280,41 @@ export function Models() {
   const warmOnly = searchParams.get('warm') === '1';
   const activeTab = (searchParams.get('view') === 'catalog' ? 'catalog' : 'fleet') as 'fleet' | 'catalog';
   const setSearchQuery = (v: string) => {
-    const next = new URLSearchParams(searchParams);
-    if (v) next.set('q', v); else next.delete('q');
-    setSearchParams(next, { replace: true });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set('q', v); else next.delete('q');
+      return next;
+    }, { replace: true });
   };
   const setDriftedOnly = (v: boolean) => {
-    const next = new URLSearchParams(searchParams);
-    if (v) next.set('drifted', '1'); else next.delete('drifted');
-    setSearchParams(next, { replace: true });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set('drifted', '1'); else next.delete('drifted');
+      return next;
+    }, { replace: true });
   };
   const setWarmOnly = (v: boolean) => {
-    const next = new URLSearchParams(searchParams);
-    if (v) next.set('warm', '1'); else next.delete('warm');
-    setSearchParams(next, { replace: true });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set('warm', '1'); else next.delete('warm');
+      return next;
+    }, { replace: true });
   };
   const setActiveTab = (v: 'fleet' | 'catalog') => {
-    const next = new URLSearchParams(searchParams);
-    if (v === 'catalog') next.set('view', 'catalog'); else next.delete('view');
-    setSearchParams(next, { replace: true });
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v === 'catalog') next.set('view', 'catalog'); else next.delete('view');
+      return next;
+    }, { replace: true });
+  };
+  const clearAllFilters = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('q');
+      next.delete('drifted');
+      next.delete('warm');
+      return next;
+    }, { replace: true });
   };
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!demoMode);
@@ -561,7 +578,7 @@ export function Models() {
               </label>
               <div className={`transition-all duration-200 ease-out ${driftedOnly || warmOnly || searchQuery ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-1 scale-95 pointer-events-none w-0 overflow-hidden'}`}>
                 <button
-                  onClick={() => { setSearchQuery(''); setDriftedOnly(false); setWarmOnly(false); }}
+                  onClick={clearAllFilters}
                   className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-secondary transition-all duration-200 ease-out hover:scale-105 active:scale-95 whitespace-nowrap"
                 >
                   Clear filters
