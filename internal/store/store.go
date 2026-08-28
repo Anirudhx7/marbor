@@ -460,6 +460,7 @@ type AuditEntry struct {
 
 // SystemAuditEntry is one administrative mutation event persisted to SQLite.
 type SystemAuditEntry struct {
+	ID       int64     `json:"id"`
 	Time     time.Time `json:"time"`
 	Username string    `json:"username"`
 	Action   string    `json:"action"`
@@ -476,6 +477,7 @@ type SystemAuditFilter struct {
 	From     *time.Time
 	To       *time.Time
 	Before   *time.Time
+	BeforeID *int64
 	Limit    int
 	Kind     string
 	Action   string

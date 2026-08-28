@@ -134,8 +134,8 @@ This starts:
 
 Enterprise teams deploying LLM-powered applications - coding agents, RAG pipelines, internal copilots - face a compounding cost problem:
 
-- **Cold-start latency tax.** Generic load balancers spray requests across GPU nodes with no awareness of model residency. Each miss triggers a 15–45 second model load from disk to VRAM, destroying time-to-first-token (TTFT) SLAs.
-- **Invisible cloud egress.** Without a local-first routing layer, traffic silently overflows to OpenAI/Anthropic at $0.15–$60/M tokens. Platform teams discover the bill at month-end.
+- **Cold-start latency tax.** Generic load balancers spray requests across GPU nodes with no awareness of model residency. Each miss triggers a 15-45 second model load from disk to VRAM, destroying time-to-first-token (TTFT) SLAs.
+- **Invisible cloud egress.** Without a local-first routing layer, traffic silently overflows to OpenAI/Anthropic at $0.15-$60/M tokens. Platform teams discover the bill at month-end.
 - **No GPU utilization visibility.** Ops teams have Grafana for CPU and memory. They have nothing for per-node VRAM residency, model warm state, or inference cost attribution across API keys.
 
 **Marbor eliminates all three.** It sits between your applications and your GPU fleet, routing every request to the node that already has the model loaded in VRAM. Cloud overflow is explicit, metered, and off by default. Every token is counted, attributed to an API key, and valued against your configured cloud reference rate.
@@ -252,7 +252,7 @@ This is the dashboard screenshot that sells itself: Marbor tracks every token yo
 
 The math uses real parsed token counts from each response (`eval_count` from Ollama, `usage.total_tokens` from cloud), valued at your configured reference rate. When token data is unavailable, the dashboard shows "-" rather than a fabricated number. No fake math.
 
-Platform engineers with a team routing through local GPU hardware typically see $200–$3,000+/month in avoided cloud spend visible in the dashboard within the first week. Full financial model: [SAVINGS-MATH.md](docs/SAVINGS-MATH.md).
+Platform engineers with a team routing through local GPU hardware typically see $200-$3,000+/month in avoided cloud spend visible in the dashboard within the first week. Full financial model: [SAVINGS-MATH.md](docs/SAVINGS-MATH.md).
 
 ---
 

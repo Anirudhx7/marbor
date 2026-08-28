@@ -384,6 +384,7 @@ func (s *sqliteStore) migrate() error {
 			source_ip TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_system_audit_log_ts ON system_audit_log(ts DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_system_audit_log_ts_id ON system_audit_log(ts DESC, id DESC)`,
 
 		`CREATE TABLE IF NOT EXISTS cloud_providers (
 			name               TEXT PRIMARY KEY,
@@ -2374,8 +2375,8 @@ func (s *sqliteStore) QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error)
 		return nil, nil
 	}
 	rows, err := s.db.Query(
-		`SELECT ts, username, action, target, details, source_ip
-		 FROM system_audit_log ORDER BY ts DESC LIMIT ?`,
+		`SELECT id, ts, username, action, target, details, source_ip
+		 FROM system_audit_log ORDER BY ts DESC, id DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
@@ -2387,7 +2388,7 @@ func (s *sqliteStore) QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error)
 	for rows.Next() {
 		var tsStr string
 		var e SystemAuditEntry
-		if err := rows.Scan(&tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
+		if err := rows.Scan(&e.ID, &tsStr, &e.Username, &e.Action, &e.Target, &e.Details, &e.SourceIP); err != nil {
 			return nil, fmt.Errorf("store: QuerySystemAuditLog: %w", err)
 		}
 		if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
@@ -2488,18 +2489,15 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 	}
 	if f.Username != "" {
 		staticWhere = append(staticWhere, "username LIKE ? ESCAPE '\\' COLLATE NOCASE")
-		esc := strings.ReplaceAll(strings.ReplaceAll(f.Username, "%", "\\%"), "_", "\\_")
-		staticArgs = append(staticArgs, "%"+esc+"%")
+		staticArgs = append(staticArgs, "%"+escapeLikeWildcards(f.Username)+"%")
 	}
 	if f.Target != "" {
 		staticWhere = append(staticWhere, "target LIKE ? ESCAPE '\\' COLLATE NOCASE")
-		esc := strings.ReplaceAll(strings.ReplaceAll(f.Target, "%", "\\%"), "_", "\\_")
-		staticArgs = append(staticArgs, "%"+esc+"%")
+		staticArgs = append(staticArgs, "%"+escapeLikeWildcards(f.Target)+"%")
 	}
 	if f.SourceIP != "" {
 		staticWhere = append(staticWhere, "source_ip LIKE ? ESCAPE '\\' COLLATE NOCASE")
-		esc := strings.ReplaceAll(strings.ReplaceAll(f.SourceIP, "%", "\\%"), "_", "\\_")
-		staticArgs = append(staticArgs, "%"+esc+"%")
+		staticArgs = append(staticArgs, "%"+escapeLikeWildcards(f.SourceIP)+"%")
 	}
 	needsKindRecheck := false
 	if f.Kind != "" && f.Kind != "all" {
@@ -2533,7 +2531,10 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 	entries := make([]SystemAuditEntry, 0, f.Limit)
 	cursor := f.Before // exclusive upper bound; advances each iteration once rows are scanned
 	var cursorID int64
-	haveCursorID := false
+	haveCursorID := f.BeforeID != nil
+	if haveCursorID {
+		cursorID = *f.BeforeID
+	}
 	scanned := 0
 	for len(entries) < f.Limit && scanned < maxSystemAuditScan {
 		where := staticWhere
@@ -2592,6 +2593,7 @@ func (s *sqliteStore) QuerySystemAuditLogFiltered(f SystemAuditFilter) ([]System
 				rows.Close()
 				return nil, fmt.Errorf("store: QuerySystemAuditLogFiltered: %w", err)
 			}
+			e.ID = rowID
 			if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
 				e.Time = t
 				lastTs = t

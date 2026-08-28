@@ -4,10 +4,10 @@
 // the others. Behavior of each function is unchanged from its original.
 
 // ---------------------------------------------------------------------------
-// Zone-aware formatting — P393: every wall-clock render must go through these
+// Zone-aware formatting - P393: every wall-clock render must go through these
 // so the operator's configured `settings.timezone` (or "Local") is honoured.
 // "Local" means browser local (no timeZone param); any other value is an IANA
-// name validated by config.Validate() — bad values fall back to browser local
+// name validated by config.Validate() - bad values fall back to browser local
 // rather than throwing a RangeError in the UI.
 // ---------------------------------------------------------------------------
 
@@ -89,7 +89,7 @@ export function formatTimeInZone(isoString: string, tz: string): string {
 }
 
 // Hours label for UTC hour keys: "2026-05-23T14" (UTC) -> "19:30" in Asia/Kolkata.
-// 24h "14:00" wall regardless of locale 12h preference — keeps chart axis stable
+// 24h "14:00" wall regardless of locale 12h preference - keeps chart axis stable
 // even when table cells are 12h.
 export function formatHourLabelInTimezone(hourKey: string, tz: string): string {
   try {
@@ -108,7 +108,7 @@ export function formatHourLabelInTimezone(hourKey: string, tz: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Wall -> UTC conversion — for picker "From/Until" wall strings like
+// Wall -> UTC conversion - for picker "From/Until" wall strings like
 // "2026-08-28T14:30" interpreted in configured zone `tz` (not browser zone).
 // ---------------------------------------------------------------------------
 
@@ -152,7 +152,7 @@ export function wallDateTimeToUtcIso(wall: string, tz: string): string | null {
 }
 
 // Formats a wall string "YYYY-MM-DDTHH:MM" (in `tz`) as a localized wall
-// like "Aug 28, 2026, 02:30 PM" — goes wall->UTC->formatInTimezone so the wall
+// like "Aug 28, 2026, 02:30 PM" - goes wall->UTC->formatInTimezone so the wall
 // numbers survive the browser-zone indirection.
 export function formatWallInZone(wall: string, tz: string): string {
   const iso = wallDateTimeToUtcIso(wall, tz);

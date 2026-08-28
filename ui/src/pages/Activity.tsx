@@ -24,7 +24,7 @@ function toPickerValue(rfc3339: string, tz: string): string {
     const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tzResolved, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).formatToParts(d);
     const m: Record<string,string> = {};
     for (const p of parts) if (p.type !== 'literal') m[p.type]=p.value;
-    // en-CA hour may be "24" at midnight — normalize to "00"
+    // en-CA hour may be "24" at midnight - normalize to "00"
     const hh = m.hour === '24' ? '00' : m.hour;
     return `${m.year}-${m.month}-${m.day}T${hh}:${m.minute}`;
   } catch { return ''; }
@@ -121,13 +121,14 @@ export function Activity() {
     setPreset(val || fromPicker ? 'custom' : 'all');
   };
 
-  const buildFilter = useCallback((before?: string) => {
+  const buildFilter = useCallback((before?: string, beforeId?: number) => {
     const f: any = { limit: PAGE_LIMIT };
     const fromRfc = fromPicker ? fromPickerValue(fromPicker, tz) : '';
     const toRfc = toPicker ? fromPickerValue(toPicker, tz) : '';
     if (fromRfc) f.from = fromRfc;
     if (toRfc) f.to = toRfc;
     if (before) f.before = before;
+    if (beforeId != null) f.before_id = beforeId;
     if (kindFilter !== 'all') f.kind = kindFilter;
     if (actionFilter !== 'all') f.action = actionFilter;
     if (userFilter !== 'all') f.user = userFilter;
@@ -136,15 +137,15 @@ export function Activity() {
     return f;
   }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp, tz]);
 
-  const loadActivity = useCallback(async (opts: { silent?: boolean; append?: boolean; before?: string; active?: boolean } = {}) => {
-    const { silent = false, append = false, before, active = true } = opts;
+  const loadActivity = useCallback(async (opts: { silent?: boolean; append?: boolean; before?: string; beforeId?: number; active?: boolean } = {}) => {
+    const { silent = false, append = false, before, beforeId, active = true } = opts;
     const path = currentAppPath();
     const isActivityPath = path === '/activity' || path.startsWith('/activity') || path === '/system-audit';
     if (!isActivityPath) return;
     if (!silent && active && !append) setLoading(true);
     if (active) setRefreshSpin(true);
     try {
-      const filter = buildFilter(before);
+      const filter = buildFilter(before, beforeId);
       const [audit, preds] = await Promise.all([
         fetchSystemAuditFiltered(filter),
         fetchPredictiveDecisions().catch(() => [] as PredictiveDecision[]),
@@ -250,7 +251,7 @@ export function Activity() {
     const oldest = entries[entries.length - 1];
     if (!oldest) return;
     setLoadingMore(true);
-    loadActivity({ silent: true, append: true, before: oldest.time, active: true });
+    loadActivity({ silent: true, append: true, before: oldest.time, beforeId: (oldest as any).id, active: true });
   };
 
   const clearAllFilters = () => {

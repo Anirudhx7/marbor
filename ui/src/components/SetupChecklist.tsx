@@ -85,7 +85,7 @@ export function SetupChecklist({
           <button
             onClick={onDismiss}
             aria-label="Dismiss setup checklist"
-            title="Dismiss — hides checklist (clear localStorage to restore)"
+            title="Dismiss - hides checklist (clear localStorage to restore)"
             className="min-w-[36px] min-h-[36px] -m-1 p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center"
           >
             <X className="w-4 h-4" />

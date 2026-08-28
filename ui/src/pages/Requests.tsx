@@ -243,7 +243,7 @@ export function Requests() {
   // stale memoized object.
   const buildActiveFilters = () => {
     // Wall strings "YYYY-MM-DDTHH:MM" are in `tz` wall time (via the picker),
-    // not browser local — convert to UTC via zone-aware helper so the server's
+    // not browser local - convert to UTC via zone-aware helper so the server's
     // `time.Parse(RFC3339)` query sees the correct instant.
     let sinceIsoUtc: string | undefined;
     if (sinceInput) {

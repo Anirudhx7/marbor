@@ -319,7 +319,7 @@ func buildRoot() *Command {
 			{
 				Name:      "activity",
 				Short:     "show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)",
-				Long:      "Times are shown in UTC (RFC3339 Z) — the Admin API stores every audit event in UTC. The dashboard renders the same instants in the operator's configured timezone; this CLI shows the raw UTC value.",
+				Long:      "Times are shown in UTC (RFC3339 Z) - the Admin API stores every audit event in UTC. The dashboard renders the same instants in the operator's configured timezone; this CLI shows the raw UTC value.",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Flags: []FlagSpec{

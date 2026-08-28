@@ -8,7 +8,7 @@ import { loadSession } from '../lib/api';
 const TimezoneContext = createContext<string>('Local');
 
 // How often to re-poll the settings endpoint for a live timezone change.
-// Settings.tsx writes via PUT /admin/settings — other pages must notice within
+// Settings.tsx writes via PUT /admin/settings - other pages must notice within
 // this interval without a hard reload (P393 acceptance: Activity re-renders on
 // Settings toggle without reload).
 const POLL_MS = 15_000;
@@ -30,7 +30,7 @@ export function TimezoneProvider({ children }: { children: React.ReactNode }) {
       setTz(prev => (prev === 'UTC' ? prev : 'UTC'));
       return;
     }
-    // Skip the fetch when no session exists (login screen) — avoids a 401
+    // Skip the fetch when no session exists (login screen) - avoids a 401
     // every POLL_MS and keeps the provider inert until an operator is logged
     // in. This mirrors App.tsx's pendingCount poll guard.
     if (!loadSession()) return;

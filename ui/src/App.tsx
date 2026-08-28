@@ -250,7 +250,7 @@ function App() {
     // the public demo doesn't strand the visitor on a real login form.
     setSession(forcedDemo ? DEMO_SESSION : null);
     // Per-user timezone is keyed by the authenticated user (see
-    // handleSettings's pref:username:timezone) — a logout/login as a
+    // handleSettings's pref:username:timezone) - a logout/login as a
     // different user must re-fetch that user's display timezone immediately,
     // not wait for the 15s poll.
     window.dispatchEvent(new Event('marbor-timezone-changed'));
@@ -280,7 +280,7 @@ function App() {
     window.location.pathname.endsWith('/login') &&
     !window.location.pathname.endsWith('/admin/login');
 
-  // Single TimezoneProvider instance — avoids 4 identical wrappers that can
+  // Single TimezoneProvider instance - avoids 4 identical wrappers that can
   // drift when the provider gains props, and mirrors ThemeProvider's single
   // wrapping rather than per-branch duplication (review finding).
   const content = (() => {
