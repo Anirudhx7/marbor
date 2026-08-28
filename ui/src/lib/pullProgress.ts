@@ -213,7 +213,7 @@ export function startPull(node: string, model: string, simulate: boolean = false
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: tag, verify_load: verifyLoad }),
   })
-    .then(async (res) => {
+    .then(async (res: Response) => {
       if (res.status === 409) {
         // The marbor confirms a pull for this key is still running server-side
         // - this is exactly the state a retry-after-a-dropped-stream lands
@@ -231,7 +231,7 @@ export function startPull(node: string, model: string, simulate: boolean = false
       }
       subscribeToProgress(key, node, tag);
     })
-    .catch((err) => {
+    .catch((err: unknown) => {
       setJob(key, { status: 'failed', error: err instanceof Error ? err.message : 'Pull failed to start' });
     });
 }
@@ -362,7 +362,7 @@ export function cancelPull(key: string): void {
 export function restoreActivePulls(): void {
   if (DEMO) return;
   apiFetch(`${BASE}/pulls`)
-    .then((res) => (res.ok ? res.json() : []))
+    .then((res: Response) => (res.ok ? res.json() : []))
     .then((active: Array<{ node: string; model: string; method?: string; status?: string; bytes_total?: number; bytes_completed?: number; verify_load?: boolean }>) => {
       for (const j of active) {
         const key = jobKey(j.node, j.model);
