@@ -964,7 +964,7 @@ export function Warmup() {
                 <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Predictive Warmup Engine is disabled</p>
                 <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
                   Scheduled predictive warmups will not fire while the engine is off. Manual schedules below still run normally.
-                  Enable the engine in the <button onClick={() => setTab('predictions')} className="underline underline-offset-2 hover:text-amber-500 transition-colors">Predictions</button> tab.
+                  Enable the engine in the <button onClick={() => setTab('predictions')} className="underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-400 transition-colors">Predictions</button> tab.
                 </p>
               </div>
             </div>

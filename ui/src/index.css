@@ -42,7 +42,7 @@
     /* Brand amber accent */
     --brand: #664e14;
     --brand-dim: #54400f;
-    --brand-bg: rgba(102,78,20,0.05);
+    --brand-bg: rgba(102,78,20,0.07);
 
     /* Warm Paper Light Theme (matches Dark Theme's warm hue-30 base) */
     --background: 45 23% 92%; /* Low-strain warm paper base */
@@ -67,19 +67,19 @@
     --destructive: 346.8 60% 40%; /* Softer red */
     --destructive-foreground: 45 23% 92%;
 
-    --success: 142.1 45% 31%; /* Softer green - AA on card for 10-12px text */
+    --success: 142.1 45% 30%; /* AA 5.66 on card, 4.60 on tinted 15% bg */
     --success-foreground: 45 23% 92%;
 
-    --warning: 24 80% 37%; /* Softer orange - AA on card for 10-12px text */
+    --warning: 24 80% 34%; /* AA 5.80 on card, 4.67 on tinted 15% bg */
     --warning-foreground: 45 23% 92%;
 
     --info: 221.2 55% 40%; /* Softer blue */
     --info-foreground: 45 23% 92%;
 
-    --border: 45 18% 81%; /* Softer borders to reduce visual segmentation */
-    --input: 45 18% 81%;
+    --border: 45 18% 78%; /* Visible card separation on warm paper (1.37 vs bg, 1.49 vs card) */
+    --input: 45 18% 78%;
     --ring: 45 67% 24%;
-    --grid: rgba(102, 78, 20, 0.015);
+    --grid: rgba(102, 78, 20, 0.018);
   }
 
   .dark {
