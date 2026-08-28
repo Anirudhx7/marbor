@@ -317,6 +317,20 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
                   {node.parallelismType.toUpperCase()}={node.parallelismWidth} {node.effectiveRequiredGPUs ? `(${node.effectiveRequiredGPUs} GPUs)` : ''}
                 </span>
+              ) : node.detectedParallelismType && node.detectedParallelismWidth ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
+                  Detected {node.detectedParallelismType.toUpperCase()}={node.detectedParallelismWidth} {node.detectedEffectiveRequiredGPUs ? `(${node.detectedEffectiveRequiredGPUs} GPUs via ${node.detectedSource})` : `via ${node.detectedSource}`}
+                </span>
+              ) : null}
+              {node.mismatchWarning ? (
+                <span title={node.mismatchWarning} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                  Mismatched: {node.mismatchWarning}
+                </span>
+              ) : null}
+              {node.detectedSource === '' && node.agentPresent && !node.parallelismType ? (
+                <span title="Agent on this host cannot see runtime process - add docker.sock mount or run agent directly on host" className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
+                  Unknown - add docker.sock or run agent on host
+                </span>
               ) : null}
             </div>
           </div>
@@ -2155,6 +2169,55 @@ export function GPUNodes() {
               Derived required GPUs: {Math.max((editGPUIndices.trim() ? editGPUIndices.split(',').filter(s=>s.trim()!=='').length : (editNode?.gpuIndices?.length ?? 0)), parseInt(editParallelismWidth,10) || 0)} (atomic placement)
             </p>
           )}
+          {/* P397b: auto-discovered deployment - Adopt one-click honest unknown */}
+          {editNode && editNode.detectedParallelismType && editNode.detectedParallelismWidth ? (
+            <div className="bg-secondary/30 border border-border/60 rounded-lg p-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-foreground">
+                    Detected: {editNode.detectedParallelismType.toUpperCase()}={editNode.detectedParallelismWidth} [{(editNode.detectedGPUGroup ?? []).join(', ') || 'gpu group unknown'}] via {editNode.detectedSource || 'ps'}{editNode.detectedRuntime ? ` (${editNode.detectedRuntime})` : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Required {editNode.detectedEffectiveRequiredGPUs ?? Math.max((editNode.detectedGPUGroup?.length ?? 0), editNode.detectedParallelismWidth ?? 0)} GPUs (max of group len vs width). Declared {editNode.parallelismType ? `${editNode.parallelismType.toUpperCase()}=${editNode.parallelismWidth}` : 'none'} {editNode.mismatchWarning ? ` - ${editNode.mismatchWarning}` : ''}.
+                  </p>
+                  {editNode.mismatchWarning ? (
+                    <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mt-1">
+                      Mismatched: {editNode.mismatchWarning} - warning only, not blocked. Click Adopt to align.
+                    </p>
+                  ) : null}
+                </div>
+                {(() => {
+                  const detType = editNode.detectedParallelismType ?? '';
+                  const detWidth = editNode.detectedParallelismWidth ?? 0;
+                  const detGroup = (editNode.detectedGPUGroup ?? []).join(', ');
+                  const curType = editParallelismType.trim();
+                  const curWidth = editParallelismWidth.trim() === '' ? 0 : parseInt(editParallelismWidth, 10) || 0;
+                  const curGroup = editGPUIndices.trim();
+                  const differs = detType !== curType || detWidth !== curWidth || detGroup !== curGroup;
+                  if (!differs) return null;
+                  return (
+                    <button
+                      onClick={() => {
+                        setEditParallelismType(detType);
+                        setEditParallelismWidth(String(detWidth));
+                        setEditGPUIndices((editNode.detectedGPUGroup ?? []).join(', '));
+                        setEditError('');
+                      }}
+                      className="shrink-0 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-md text-xs transition-colors shadow-sm"
+                    >
+                      Adopt
+                    </button>
+                  );
+                })()}
+              </div>
+            </div>
+          ) : editNode && editNode.agentPresent && !editNode.parallelismType && !editNode.detectedParallelismType ? (
+            <div className="bg-secondary/30 border border-border/60 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">
+                Unknown - add docker.sock mount or run agent directly on host to auto-detect deployment. Agent on this host cannot see runtime process (pid namespace isolated).
+              </p>
+            </div>
+          ) : null}
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
           )}

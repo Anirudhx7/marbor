@@ -314,6 +314,36 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.RuntimeStatus = ""
 		n.AgentRuntimeID = ""
 	}
+	// P397b: per-runtime deployment auto-discovery (port/ID matched, not Host).
+	// One deployment report per runtime instance means two vLLM on same host
+	// with different TP widths do not fan the wrong 8 GPUs to both nodes.
+	if dep := matchDeployment(t.Deployments, pinnedID, nodePort); dep != nil {
+		n.DetectedRuntime = dep.Runtime
+		if dep.Parallelism != nil {
+			n.DetectedParallelismType = dep.Parallelism.Type
+			n.DetectedParallelismWidth = dep.Parallelism.Width
+		} else {
+			n.DetectedParallelismType = ""
+			n.DetectedParallelismWidth = 0
+		}
+		if len(dep.GPUGroup) > 0 {
+			n.DetectedGPUGroup = append([]int(nil), dep.GPUGroup...)
+		} else {
+			n.DetectedGPUGroup = nil
+		}
+		n.DetectedSource = dep.Source
+		n.DetectedCaps = dep.Caps
+	} else {
+		// No deployment report for this runtime instance - keep honest unknown (R1),
+		// never fabricated. Cleared so a stale TP=8 from a prior poll does not linger
+		// when the runtime moves ports or the ps becomes invisible (pid ns).
+		n.DetectedParallelismType = ""
+		n.DetectedParallelismWidth = 0
+		n.DetectedGPUGroup = nil
+		n.DetectedSource = ""
+		n.DetectedCaps = nil
+		n.DetectedRuntime = ""
+	}
 	if t.Control != nil && t.Control.Discovered != nil {
 		n.AgentControlDiscoveredDriver = t.Control.Discovered.Driver
 		n.AgentControlDiscoveredIdentifier = t.Control.Discovered.Identifier
@@ -359,6 +389,37 @@ func matchRuntime(t marboragent.Telemetry, pinnedID string, nodePort int) (*marb
 		return t.Runtime, pinnedID
 	}
 	return nil, pinnedID
+}
+
+// matchDeployment picks the DeploymentReport for one node row by the same
+// pinnedID/port discipline as matchRuntime (P397b). A host with two vLLM on
+// :8000 TP=8 and :8001 TP=4 must not fan a single host-level report to both
+// nodes blind - each node gets the report keyed by its own port/ID.
+func matchDeployment(deployments []marboragent.DeploymentReport, pinnedID string, nodePort int) *marboragent.DeploymentReport {
+	if pinnedID != "" {
+		for i := range deployments {
+			if deployments[i].RuntimeID == pinnedID {
+				return &deployments[i]
+			}
+		}
+	}
+	if nodePort > 0 {
+		for i := range deployments {
+			if deployments[i].Port == nodePort {
+				return &deployments[i]
+			}
+		}
+	}
+	// Fallback: single deployment on host with single runtime -> attribute to sole node
+	if len(deployments) == 1 && nodePort == 0 {
+		return &deployments[0]
+	}
+	if len(deployments) == 1 {
+		// If only one deployment and one runtime, allow it even if ports mismatch
+		// but only when host has single deployment (common case: single vLLM).
+		return &deployments[0]
+	}
+	return nil
 }
 
 // portOf returns rawURL's port as an int, or 0 if it can't be parsed - used
@@ -491,6 +552,13 @@ func clearAgentTelemetry(n *NodeState) {
 	n.Hostname = ""
 	n.UptimeSeconds = 0
 	n.BootTime = 0
+	// P397b: clear auto-discovered deployment (R1 honest unknown, not stale).
+	n.DetectedParallelismType = ""
+	n.DetectedParallelismWidth = 0
+	n.DetectedGPUGroup = nil
+	n.DetectedSource = ""
+	n.DetectedCaps = nil
+	n.DetectedRuntime = ""
 	// CPUPercent (applyAgentTelemetry's success path, above) is the only
 	// writer of NodeState.CPUPercent anywhere in the codebase - reset it
 	// here too, or a disabled/unreachable agent's last-reported CPU reading
