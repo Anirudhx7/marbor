@@ -53,10 +53,11 @@ type DeploymentReport struct {
 // command line. Keep minimal - only flags actually used in real fleets
 // per deployment_routing_pain_research.md. No new flags without evidence.
 var (
-	vllmTPRE         = regexp.MustCompile(`--tensor-parallel-size[ =]+(\d+)`)
-	sglangTPRE       = regexp.MustCompile(`--tp[ =]+(\d+)|--tensor-parallel-size[ =]+(\d+)`)
-	tgiShardRE       = regexp.MustCompile(`--num-shard[ =]+(\d+)|--sharded[ =]+(true|false)`)
-	llamaGPULayersRE = regexp.MustCompile(`--gpu-layers[ =]+(\d+)`)
+	vllmTPRE            = regexp.MustCompile(`--tensor-parallel-size[ =]+(\d+)`)
+	sglangTPRE          = regexp.MustCompile(`--tp[ =]+(\d+)|--tensor-parallel-size[ =]+(\d+)`)
+	tgiShardRE          = regexp.MustCompile(`--num-shard[ =]+(\d+)|--sharded[ =]+(true|false)`)
+	llamaGPULayersRE    = regexp.MustCompile(`--gpu-layers[ =]+(\d+)`)
+	dockerContainerIDRE = regexp.MustCompile(`^[0-9a-fA-F]{12,64}$`)
 )
 
 // parseParallelismFromArgs extracts parallelism from a single process arg string.
@@ -482,6 +483,9 @@ func collectFromDockerSocket(detected []DetectedRuntime, gpuCount int) []Deploym
 	}
 	var reports []DeploymentReport
 	for _, c := range list {
+		if !dockerContainerIDRE.MatchString(c.Id) {
+			continue
+		}
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
 		r2, _ := http.NewRequestWithContext(ctx2, http.MethodGet, "http://docker/containers/"+c.Id+"/json", nil)
 		rs, err := client.Do(r2)
