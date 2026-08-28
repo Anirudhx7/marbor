@@ -166,7 +166,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
       <div className="border-t border-border pt-3">
         <div className="flex items-center justify-between mb-2 gap-2">
           <p className="text-xs font-medium text-muted-foreground">Resident on</p>
-          <Link to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}`} className="text-xs text-primary hover:text-primary/80 inline-flex items-center gap-1 font-medium min-h-[32px] px-2 py-1 rounded-md hover:bg-secondary transition-colors shrink-0">
+          <Link to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}&from=models`} className="text-xs text-primary hover:text-primary/80 inline-flex items-center gap-1 font-medium min-h-[32px] px-2 py-1 rounded-md hover:bg-secondary transition-colors shrink-0">
             View nodes <ArrowUpRight className="w-3 h-3 shrink-0" />
           </Link>
         </div>
@@ -174,7 +174,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
           {model.nodes.map((node) => (
             <Link
               key={node.name}
-              to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}`}
+              to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
               title={`${node.name} · ${node.runtime || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
               className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary hover:bg-secondary/80 border border-transparent hover:border-border rounded-md text-xs font-medium text-foreground transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
             >
@@ -633,7 +633,7 @@ export function Models() {
                                 {model.nodes.map((node) => (
                                   <Link
                                     key={node.name}
-                                    to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}`}
+                                    to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
                                     title={`${node.name} ${node.runtime || ''} ${node.warm ? 'warm' : 'cold'} ${node.digest || ''}`}
                                     className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary rounded text-xs font-medium hover:bg-secondary/80 transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
                                   >
@@ -654,7 +654,7 @@ export function Models() {
                                   <Settings2 className="w-3.5 h-3.5" />
                                 </button>
                                 <Link
-                                  to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}`}
+                                  to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}&from=models`}
                                   title="Manage on GPU Nodes (mutations live there)"
                                   className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-all duration-200 ease-out hover:scale-110 active:scale-95"
                                 >
