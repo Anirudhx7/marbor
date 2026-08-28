@@ -369,7 +369,7 @@ export function Routing() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-secondary/50 border-b border-border text-muted-foreground">
+              <tr className="bg-secondary/30 border-b border-border text-muted-foreground">
                 <th className="px-6 py-3 text-left font-medium">Priority</th>
                 <th className="px-6 py-3 text-left font-medium">Condition</th>
                 <th className="px-6 py-3 text-left font-medium">Target</th>

@@ -239,7 +239,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
       {/* Models to keep warm - collapsible */}
       <div className="border-t border-border">
         <button onClick={() => setShowModels(p => !p)}
-          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/40 transition-colors">
+          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/30 transition-colors">
           <div className="flex items-center gap-1.5">
             <Flame className="w-3.5 h-3.5" />
             <span>Models to keep warm</span>
@@ -267,7 +267,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
       {/* Pinned models - collapsible */}
       <div className="border-t border-border">
         <button onClick={() => setShowPinned(p => !p)}
-          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/40 transition-colors">
+          className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/30 transition-colors">
           <div className="flex items-center gap-1.5">
             <Pin className="w-3.5 h-3.5" />
             <span>Pinned models</span>
@@ -628,7 +628,7 @@ function PausedSection({ paused, renderRow }: { paused: Schedule[]; renderRow: (
   return (
     <div className="bg-card border border-border rounded-xl">
       <button onClick={() => setOpen(p => !p)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/40 transition-colors">
+        className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-muted-foreground hover:bg-secondary/30 transition-colors">
         <div className="flex items-center gap-1.5">
           <PauseCircle className="w-3.5 h-3.5" />
           <span>Paused</span>
@@ -939,11 +939,11 @@ export function Warmup() {
               <div className="relative flex h-2 w-2">
                 {predictiveEnabled ? (
                   <>
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-md bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-md h-2 w-2 bg-emerald-500"></span>
                   </>
                 ) : (
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  <span className="relative inline-flex rounded-md h-2 w-2 bg-amber-500"></span>
                 )}
               </div>
               <span className="font-medium text-foreground/80">Server Clock:</span>
@@ -1027,13 +1027,13 @@ export function Warmup() {
             <button
               onClick={() => setPredictiveConfirmOpen(true)}
               disabled={togglingPredictive}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-md border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
                 predictiveEnabled ? 'bg-primary' : 'bg-secondary'
               }`}
             >
               <span
                 aria-hidden="true"
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-md bg-white shadow ring-0 transition duration-200 ease-in-out ${
                   predictiveEnabled ? 'translate-x-5' : 'translate-x-0'
                 }`}
               />

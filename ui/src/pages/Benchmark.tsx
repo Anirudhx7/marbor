@@ -308,7 +308,7 @@ export function Benchmark() {
             <span className="text-sm font-medium text-foreground">{phaseLabel[progress.phase] || progress.phase}</span>
           </div>
           {running && (
-            <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-secondary rounded-md overflow-hidden">
               <div className="h-full bg-primary transition-all duration-300" style={{
                 width: `${Math.min(100, ((progress.coldSamplesMs.length + progress.warmSamplesMs.length) / Math.max(1, progress.n * 2)) * 100)}%`,
               }} />

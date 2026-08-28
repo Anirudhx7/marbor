@@ -409,7 +409,7 @@ export function Users() {
             <p className="text-xs text-muted-foreground">Manage dashboard access and API key assignments</p>
           </div>
           {pendingCount > 0 && (
-            <span className="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full whitespace-nowrap">
+            <span className="px-2 py-0.5 text-xs font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-md whitespace-nowrap">
               {pendingCount} pending
             </span>
           )}
@@ -451,7 +451,7 @@ export function Users() {
                   const sb = STATUS_BADGE[u.status] ?? { variant: 'muted' as const, label: u.status };
                   const rb = ROLE_BADGE[u.role] ?? { variant: 'muted' as const, label: u.role };
                   return (
-                    <tr key={u.id} className="hover:bg-secondary/20 transition-colors">
+                    <tr key={u.id} className="hover:bg-secondary/30 transition-colors">
                       <td className="px-4 py-3 font-medium text-foreground">{u.username}</td>
                       <td className="px-4 py-3 text-muted-foreground">{u.email || '-'}</td>
                       <td className="px-4 py-3">

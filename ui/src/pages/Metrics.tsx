@@ -487,7 +487,7 @@ export function Metrics() {
           {/* Advanced monitoring - collapsible */}
           <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
             <button
-              className="w-full flex items-center justify-between p-4 text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors"
+              className="w-full flex items-center justify-between p-4 text-sm font-medium text-foreground hover:bg-secondary/30 transition-colors"
               onClick={() => setAdvancedOpen(v => !v)}
             >
               <span>Advanced monitoring</span>

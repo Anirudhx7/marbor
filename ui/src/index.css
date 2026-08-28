@@ -336,8 +336,10 @@ input[type="checkbox"]:focus-visible {
   outline-offset: 2px;
 }
 
+/* P399 parity tokens - filter-bar is single source via FilterField.tsx */
+
 /* Mobile tap-target floor (375px sweep): icon-only buttons get a usable hit
-   area without changing desktop layout. Unlayered so it wins over utilities. */
+    area without changing desktop layout. Unlayered so it wins over utilities. */
 @media (max-width: 767px) {
   button[class~="p-1"],
   button[class~="p-1.5"],

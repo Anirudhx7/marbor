@@ -783,7 +783,7 @@ export function Dashboard() {
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-secondary/50 border-b border-border text-muted-foreground">
+              <tr className="bg-secondary/30 border-b border-border text-muted-foreground">
                 <th className="px-6 py-3 text-left font-medium">API Key</th>
                 <th className="px-6 py-3 text-left font-medium">Model</th>
                 <th className="px-6 py-3 text-left font-medium">Routed To</th>
@@ -805,7 +805,7 @@ export function Dashboard() {
                 <tr
                   key={req.id}
                   className={`transition-colors duration-200 ${
-                    newRequestId === req.id ? 'bg-primary/5' : 'hover:bg-secondary/50'
+                    newRequestId === req.id ? 'bg-primary/5' : 'hover:bg-secondary/30'
                   }`}
                 >
                   <td className="px-6 py-3">

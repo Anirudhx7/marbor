@@ -146,7 +146,7 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
   const style = runtimeStyles[key] ?? 'bg-secondary text-muted-foreground border border-border';
   const label = runtimeLabels[key] ?? (runtime || 'unknown');
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${style}`}>
       {label}
     </span>
   );
@@ -255,7 +255,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               <StatusDot status={node.health} />
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {isHighlighted && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary text-primary-foreground shadow-sm animate-pulse">
+                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-primary text-primary-foreground shadow-sm animate-pulse">
                   {highlightSource === 'dashboard' ? 'From Dashboard' : highlightSource === 'models' ? 'From Models' : 'Highlighted'}
                 </span>
               )}
@@ -380,7 +380,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
       </div>
 
       {/* Telemetry Observability */}
-      <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/40 border border-border/20 rounded-lg p-3">
+      <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/30 border border-border/20 rounded-lg p-3">
         <div>
           <span className="text-muted-foreground block text-[10px] uppercase font-semibold tracking-wider">Warm Hit</span>
           <span className="font-semibold text-foreground font-mono text-sm block mt-0.5">
@@ -408,7 +408,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
 
       {/* marbor agent Telemetry - only ever real values from the agent poll;
           '--' whenever agentPresent is false, never a fabricated number (R1). */}
-      <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/40 border border-border/20 rounded-lg p-3">
+      <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/30 border border-border/20 rounded-lg p-3">
         <div>
           <span className="text-muted-foreground flex items-center gap-1 text-[10px] uppercase font-semibold tracking-wider">
             <Fan className="w-3 h-3" /> Fan
@@ -2444,7 +2444,7 @@ export function GPUNodes() {
                   "Enabled on port X (scheme)" line, since that was just a
                   read-only restatement of the same two values shown (and
                   editable) right underneath it. */}
-              <div className="space-y-2 p-3 bg-secondary/40 border border-border rounded-lg">
+              <div className="space-y-2 p-3 bg-secondary/30 border border-border rounded-lg">
                 {/* The marbor REJECTS an HTTPS Agent connection with no pinned
                     (or a mismatched) fingerprint - see the TLS Certificate
                     card below - so this pill must not read "Enabled" in
@@ -2510,7 +2510,7 @@ export function GPUNodes() {
                   it can never be confused with, or derived from, the Runtime
                   HTTPS setting in the Edit Node modal (P90 hard invariant).
                   Same bordered-card treatment as Agent Connection above. */}
-              <div className="space-y-2 p-3 bg-secondary/40 border border-border rounded-lg">
+              <div className="space-y-2 p-3 bg-secondary/30 border border-border rounded-lg">
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                   TLS Certificate Fingerprint
                 </label>
@@ -2611,7 +2611,7 @@ export function GPUNodes() {
               </div>
 
               {agentNode?.agentPresent && (
-                <div className="text-xs text-muted-foreground space-y-1 bg-secondary/40 rounded-lg p-3">
+                <div className="text-xs text-muted-foreground space-y-1 bg-secondary/30 rounded-lg p-3">
                   <p><span className="font-medium text-foreground">Agent version:</span> {agentNode.agentVersion || '--'}</p>
                   <p><span className="font-medium text-foreground">Platform:</span> {agentNode.agentPlatform || '--'} / {agentNode.agentArchitecture || '--'}</p>
                   <p><span className="font-medium text-foreground">GPU vendor:</span> {agentNode.agentGpuVendor || '--'}{agentNode.driverVersion ? ` (driver ${agentNode.driverVersion}${agentNode.cudaVersion ? `, CUDA ${agentNode.cudaVersion}` : ''})` : ''}</p>
@@ -2657,7 +2657,7 @@ export function GPUNodes() {
           )}
 
           {(controlStatus || controlError) && (
-            <div className="p-4 bg-secondary/40 border border-border rounded-xl space-y-3">
+            <div className="p-4 bg-secondary/30 border border-border rounded-xl space-y-3">
               <p className="text-sm font-semibold text-foreground">Runtime Control</p>
               <p className="text-xs text-muted-foreground">
                 How the agent starts/stops/restarts the inference runtime process on this node.
@@ -3146,7 +3146,7 @@ export function GPUNodes() {
           {logsBusy && <p className="text-sm text-muted-foreground">Loading...</p>}
           {logsError && <p className="text-sm text-destructive">{logsError}</p>}
           {!logsBusy && !logsError && logsLines && (
-            <pre className="text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto bg-secondary/40 border border-border rounded-lg p-3">
+            <pre className="text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto bg-secondary/30 border border-border rounded-lg p-3">
               {logsLines.length > 0 ? logsLines.join('\n') : 'No log lines returned.'}
             </pre>
           )}
