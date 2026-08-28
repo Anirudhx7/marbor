@@ -205,9 +205,57 @@ if [ "$CHECKSUMS_OK" = false ] || [ ! -s "$CHECKSUMS_TMP" ]; then
   exit 1
 fi
 
-EXPECTED_HASH="$(grep -E "  \*?${BINARY}\$" "$CHECKSUMS_TMP" | awk '{print $1}')"
+# Detect HTML error page masquerading as checksums.txt (rate limit, 404 with
+# 200, CDN error). Goreleaser never emits HTML - this gives a clear message
+# instead of the generic "no entry" error.
+if grep -qi "<html" "$CHECKSUMS_TMP" 2>/dev/null || grep -qi "<!doctype" "$CHECKSUMS_TMP" 2>/dev/null; then
+  echo "Error: checksums.txt download returned HTML instead of checksums (GitHub rate limit or release not found)."
+  echo "  Check https://github.com/$REPO/releases/latest and try again in a minute."
+  rm -f "$TMP" "$CHECKSUMS_TMP"
+  exit 1
+fi
+
+# Normalize line endings and BOM before parsing - be defensive:
+# - CRLF (Windows checkout or proxy) -> LF via tr
+# - UTF-8 BOM (EF BB BF) at start of file -> stripped via tail
+# Both are invisible but would break hash/filename matching.
+if command -v tr >/dev/null 2>&1; then
+  tr -d '\r' < "$CHECKSUMS_TMP" > "${CHECKSUMS_TMP}.clean" 2>/dev/null && mv "${CHECKSUMS_TMP}.clean" "$CHECKSUMS_TMP"
+fi
+# Strip UTF-8 BOM if present - use od+tail for portability (sed hex escapes vary
+# between GNU/BSD/busybox). Only runs if file starts with EF BB BF bytes.
+if command -v od >/dev/null 2>&1 && command -v head >/dev/null 2>&1 && command -v tail >/dev/null 2>&1; then
+  BOM_CHECK="$(head -c 3 "$CHECKSUMS_TMP" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n' 2>/dev/null)"
+  if [ "$BOM_CHECK" = "efbbbf" ]; then
+    tail -c +4 "$CHECKSUMS_TMP" > "${CHECKSUMS_TMP}.clean" 2>/dev/null && mv "${CHECKSUMS_TMP}.clean" "$CHECKSUMS_TMP"
+  fi
+fi
+
+# Exact filename match via awk - handles both "  filename" and " *filename"
+# (binary mode) and any amount of whitespace. Using awk variable avoids regex
+# injection and the previous grep -E fragility with special chars / CRLF / BOM.
+# We use awk's string equality (not regex) so hyphens/dots in BINARY are literal.
+EXPECTED_HASH="$(awk -v bin="$BINARY" '$2 == bin || $2 == "*" bin {print $1; exit}' "$CHECKSUMS_TMP" 2>/dev/null)"
 if [ -z "$EXPECTED_HASH" ]; then
   echo "Error: checksums.txt has no entry for $BINARY - refusing to run an unverified binary"
+  echo "  Downloaded checksums.txt preview (first 500 chars):"
+  head -c 500 "$CHECKSUMS_TMP" 2>/dev/null | tr -d '\r' | head -n 20
+  rm -f "$TMP" "$CHECKSUMS_TMP"
+  exit 1
+fi
+
+# Validate expected hash looks like a SHA256 hex string before comparing - catches
+# a truncated or HTML-corrupted checksums.txt that slipped past the HTML check.
+case "$EXPECTED_HASH" in
+  *[!a-fA-F0-9]*)
+    echo "Error: checksums.txt entry for $BINARY is malformed (hash='$EXPECTED_HASH') - refusing to run this binary."
+    rm -f "$TMP" "$CHECKSUMS_TMP"
+    exit 1
+    ;;
+esac
+# POSIX sh: ${#var} is portable - 64 hex chars for SHA256
+if [ "${#EXPECTED_HASH}" -ne 64 ]; then
+  echo "Error: checksums.txt entry for $BINARY is malformed (hash length ${#EXPECTED_HASH} != 64) - refusing to run this binary."
   rm -f "$TMP" "$CHECKSUMS_TMP"
   exit 1
 fi
@@ -223,7 +271,11 @@ else
 fi
 rm -f "$CHECKSUMS_TMP"
 
-if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+# Normalize case for comparison (both should be lowercase hex, but be safe)
+EXPECTED_HASH_LOWER="$(printf '%s' "$EXPECTED_HASH" | tr 'A-F' 'a-f')"
+ACTUAL_HASH_LOWER="$(printf '%s' "$ACTUAL_HASH" | tr 'A-F' 'a-f')"
+
+if [ "$ACTUAL_HASH_LOWER" != "$EXPECTED_HASH_LOWER" ]; then
   echo "Error: checksum mismatch for $BINARY"
   echo "  expected: $EXPECTED_HASH"
   echo "  actual:   $ACTUAL_HASH"

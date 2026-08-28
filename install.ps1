@@ -154,20 +154,53 @@ try {
 # binary itself, so this also catches a release published mid-download.
 $ChecksumsUrl = "https://github.com/$Repo/releases/latest/download/checksums.txt"
 try {
-    $ChecksumsContent = (Invoke-WebRequest -Uri $ChecksumsUrl -UseBasicParsing).Content
+    $rawChecksums = (Invoke-WebRequest -Uri $ChecksumsUrl -UseBasicParsing).Content
+    # PowerShell 5.1 (Desktop) returns byte[] for .Content, PowerShell 7+ returns
+    # string - normalize to string so the split/match below works on both. This
+    # was the root cause of the "checksums.txt has no entry" false failure on
+    # 5.1 (byte[] -split "`r?`n" produces per-byte strings, never matching).
+    if ($rawChecksums -is [byte[]]) {
+        $ChecksumsContent = [System.Text.Encoding]::UTF8.GetString($rawChecksums)
+    } else {
+        $ChecksumsContent = [string]$rawChecksums
+    }
+    # Strip UTF-8 BOM if present (FEFF) - goreleaser never emits it, but a CDN
+    # or proxy could, and it would otherwise poison the first hash's first field.
+    if ($ChecksumsContent.Length -gt 0 -and $ChecksumsContent[0] -eq [char]0xFEFF) {
+        $ChecksumsContent = $ChecksumsContent.Substring(1)
+    }
+    $ChecksumsContent = $ChecksumsContent.TrimStart([char]0xFEFF)
 } catch {
     Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
     Write-Error "Failed to download checksums.txt for verification: $_"
     exit 1
 }
-$ExpectedLine = ($ChecksumsContent -split "`r?`n") | Where-Object { $_ -match "\s+\*?$([regex]::Escape($BinaryAsset))$" } | Select-Object -First 1
+# Detect HTML error page masquerading as checksums.txt (rate limit, 404 with
+# 200, etc.) - give a clear message instead of the generic "no entry".
+if ($ChecksumsContent -match "<\s*html" -or $ChecksumsContent -match "<!DOCTYPE") {
+    Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
+    Write-Error "checksums.txt download returned HTML instead of checksums (GitHub rate limit or release not found). Check https://github.com/$Repo/releases/latest and try again in a minute."
+    exit 1
+}
+if ([string]::IsNullOrWhiteSpace($ChecksumsContent)) {
+    Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
+    Write-Error "checksums.txt is empty - refusing to run an unverified binary."
+    exit 1
+}
+$ExpectedLine = ($ChecksumsContent -split '\r?\n') | Where-Object { $_ -match "\s+\*?$([regex]::Escape($BinaryAsset))$" } | Select-Object -First 1
 if (-not $ExpectedLine) {
     Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
     Write-Error "checksums.txt has no entry for $BinaryAsset - refusing to run an unverified binary."
+    Write-Error "Downloaded checksums.txt preview (first 500 chars): $($ChecksumsContent.Substring(0, [Math]::Min(500, $ChecksumsContent.Length)))"
     exit 1
 }
-$ExpectedHash = ($ExpectedLine -split '\s+')[0].ToLower()
+$ExpectedHash = ($ExpectedLine.Trim() -split '\s+')[0].ToLower().Trim()
 $ActualHash = (Get-FileHash -Path $BinPath -Algorithm SHA256).Hash.ToLower()
+if ([string]::IsNullOrWhiteSpace($ExpectedHash) -or $ExpectedHash -notmatch '^[a-f0-9]{64}$') {
+    Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
+    Write-Error "checksums.txt entry for $BinaryAsset is malformed (hash='$ExpectedHash') - refusing to run this binary."
+    exit 1
+}
 if ($ActualHash -ne $ExpectedHash) {
     Remove-Item -Force $BinPath -ErrorAction SilentlyContinue
     Write-Error "Checksum mismatch for $BinaryAsset - expected $ExpectedHash, got $ActualHash. Refusing to run this binary."
