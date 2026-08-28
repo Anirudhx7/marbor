@@ -93,6 +93,15 @@ export interface GPUNode {
   parallelismType?: string;
   parallelismWidth?: number;
   effectiveRequiredGPUs?: number;
+  // P397b: auto-discovered deployment (additive, honest unknown when agent
+  // cannot see host pid). Declared above always overrides detected.
+  detectedParallelismType?: string;
+  detectedParallelismWidth?: number;
+  detectedGPUGroup?: number[];
+  detectedSource?: string;
+  detectedRuntime?: string;
+  detectedEffectiveRequiredGPUs?: number;
+  mismatchWarning?: string;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;

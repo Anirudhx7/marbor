@@ -211,21 +211,37 @@ func (r *Router) effectiveAvailableGPUs(n *NodeState) int {
 	n.mu.RLock()
 	agentGPUs := append([]marboragent.GPUInfo(nil), n.AgentGPUs...)
 	declared := append([]int(nil), n.DeclaredGPUIndices...)
+	detected := append([]int(nil), n.DetectedGPUGroup...)
 	n.mu.RUnlock()
-	if len(declared) == 0 {
-		if len(agentGPUs) > 0 {
+	// Declared wins for scoping when present (operator override).
+	if len(declared) > 0 {
+		if len(agentGPUs) == 0 {
+			return len(declared)
+		}
+		scoped, applied := scopeGPUsForPlacement(agentGPUs, declared)
+		if !applied {
 			return len(agentGPUs)
 		}
-		return 0
+		return len(scoped)
 	}
-	if len(agentGPUs) == 0 {
-		return len(declared)
+	// No declared - P397b fallback to detected group for honest per-runtime
+	// scoping when a host runs two runtimes on different GPU subsets via
+	// CUDA_VISIBLE_DEVICES (e.g. 0..3 vs 4..7). If no detected group, fall
+	// back to host inventory count (original behavior, fail-open).
+	if len(detected) > 0 {
+		if len(agentGPUs) == 0 {
+			return len(detected)
+		}
+		scoped, applied := scopeGPUsForPlacement(agentGPUs, detected)
+		if !applied {
+			return len(agentGPUs)
+		}
+		return len(scoped)
 	}
-	scoped, applied := scopeGPUsForPlacement(agentGPUs, declared)
-	if !applied {
+	if len(agentGPUs) > 0 {
 		return len(agentGPUs)
 	}
-	return len(scoped)
+	return 0
 }
 
 // scopeGPUsForPlacement mirrors internal/admin/catalog scopeGPUsToDeclared but

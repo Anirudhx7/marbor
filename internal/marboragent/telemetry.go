@@ -61,6 +61,14 @@ type Telemetry struct {
 	Runtimes []RuntimeInfo `json:"runtimes,omitempty"`
 	Control  *ControlInfo  `json:"control,omitempty"`
 	Health   Health        `json:"health"`
+	// Deployments is the P397b auto-discovered deployment report (one entry
+	// per runtime instance keyed by port/runtime_id). Additive R9 - old Marbor
+	// ignores unknown field, old agent omits it (nil -> unknown, never
+	// fabricated R1). One entry per host is NOT sufficient when a host runs
+	// two vLLM on :8000 and :8001 with different TP widths - hence per-port
+	// keying and port/ID-based fan-out on the server (agent_poll.go:184/343
+	// pattern), not blind Host fan-out.
+	Deployments []DeploymentReport `json:"deployments,omitempty"`
 	// LastUpdated is when this snapshot was actually collected, set by
 	// Scheduler.refresh - NOT the time of the HTTP request that served it,
 	// since /v1/status and /metrics serve a cached background snapshot (see

@@ -246,10 +246,38 @@ func (s *Scheduler) refresh() {
 				Evidence:   disc.Evidence,
 			},
 		}
+
+		// P397b: deployment auto-discovery per runtime instance (additive R9).
+		// CollectDeployments is read-only (ps / docker.sock / env) and never
+		// fabricates - nil means unknown (server shows honest "add docker.sock"
+		// warning, not a fake 0). Per-port keying so :8000 TP=8 does not bleed
+		// into :8001 TP=4 on same host.
+		if deps := CollectDeployments(detected, t.GPU); len(deps) > 0 {
+			// Attach stable RuntimeID where port mapping is known
+			idByPort := make(map[int]string)
+			for _, ri := range t.Runtimes {
+				if ri.Port != 0 {
+					idByPort[ri.Port] = ri.ID
+				}
+			}
+			for i := range deps {
+				if deps[i].RuntimeID == "" && deps[i].Port != 0 {
+					if id, ok := idByPort[deps[i].Port]; ok {
+						deps[i].RuntimeID = id
+					}
+				}
+			}
+			t.Deployments = deps
+		}
 	} else {
 		s.runtimeMu.Lock()
 		s.primaryRuntime, s.primaryURL = "", ""
 		s.runtimeMu.Unlock()
+		// Even with no runtime detected, still try env-based group discovery
+		// for telemetry visibility (shows GPU group without parallelism)
+		if deps := CollectDeployments(detected, t.GPU); len(deps) > 0 {
+			t.Deployments = deps
+		}
 	}
 
 	t.LastUpdated = time.Now().UTC()

@@ -488,25 +488,37 @@ type nodeResp struct {
 	// unreachability, so the UI can show its own status instead of
 	// "unreachable" (which would send an operator debugging network
 	// connectivity when the real cause is a stale pin).
-	TLSFingerprintMismatch bool   `json:"tlsFingerprintMismatch,omitempty"`
+	TLSFingerprintMismatch bool `json:"tlsFingerprintMismatch,omitempty"`
 	// ParallelismType/Width is the deployment topology (P397) - type tp|pp|ep|dp,
 	// width 1..64, derived EffectiveRequiredGPUs = max(len(gpuIndices), width)
 	// - 0/empty means unconstrained (existing fleet).
-	ParallelismType      string `json:"parallelismType,omitempty"`
-	ParallelismWidth     int    `json:"parallelismWidth,omitempty"`
+	ParallelismType       string `json:"parallelismType,omitempty"`
+	ParallelismWidth      int    `json:"parallelismWidth,omitempty"`
 	EffectiveRequiredGPUs int    `json:"effectiveRequiredGPUs,omitempty"`
-	VRAMTotalMB            int64              `json:"vramTotalMB"`
-	VRAMUsedMB             int64              `json:"vramUsedMB"`
-	VRAMSource             string             `json:"vramSource"`
-	PowerDrawW             float64            `json:"powerDrawW"`
-	Temperature            *float64           `json:"temperature"`
-	Runtime                string             `json:"runtime"`
-	Health                 string             `json:"health"`
-	Draining               bool               `json:"draining"`
-	DrainedReason          string             `json:"drainedReason,omitempty"`
-	PrewarmDisabled        bool               `json:"prewarmDisabled"`
-	Uptime                 string             `json:"uptime"`
-	LoadedModels           []router.ModelInfo `json:"loadedModels"`
+	// P397b: auto-discovered deployment (additive, per-port). Declared above
+	// always overrides detected - effectiveRequiredGPUs already prefers
+	// declared when present. Detected fields are honest "what agent saw"
+	// (R1) via ps/docker/env, not fabricated. MismatchWarning is amber
+	// warning when declared 4 vs detected 8 (not a 422 block - Adopt fixes).
+	DetectedParallelismType       string             `json:"detectedParallelismType,omitempty"`
+	DetectedParallelismWidth      int                `json:"detectedParallelismWidth,omitempty"`
+	DetectedGPUGroup              []int              `json:"detectedGPUGroup,omitempty"`
+	DetectedSource                string             `json:"detectedSource,omitempty"`
+	DetectedRuntime               string             `json:"detectedRuntime,omitempty"`
+	DetectedEffectiveRequiredGPUs int                `json:"detectedEffectiveRequiredGPUs,omitempty"`
+	MismatchWarning               string             `json:"mismatchWarning,omitempty"`
+	VRAMTotalMB                   int64              `json:"vramTotalMB"`
+	VRAMUsedMB                    int64              `json:"vramUsedMB"`
+	VRAMSource                    string             `json:"vramSource"`
+	PowerDrawW                    float64            `json:"powerDrawW"`
+	Temperature                   *float64           `json:"temperature"`
+	Runtime                       string             `json:"runtime"`
+	Health                        string             `json:"health"`
+	Draining                      bool               `json:"draining"`
+	DrainedReason                 string             `json:"drainedReason,omitempty"`
+	PrewarmDisabled               bool               `json:"prewarmDisabled"`
+	Uptime                        string             `json:"uptime"`
+	LoadedModels                  []router.ModelInfo `json:"loadedModels"`
 	// WarmupErrors is the last warmup-ping failure per model (model -> error
 	// string) - populated only for models that failed to warm; a model that
 	// warmed successfully or was never attempted has no entry. Lets the UI
@@ -1417,61 +1429,68 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 	}
 
 	return nodeResp{
-		ID:                     id,
-		Name:                   n.Name,
-		Host:                   host,
-		Port:                   port,
-		Scheme:                 scheme,
-		GPUModel:               n.GPUModel,
-		GPUIndices:             n.DeclaredGPUIndices,
-		MaxInFlight:            n.MaxInFlight,
-		TLSFingerprint:         n.TLSFingerprint,
-		TLSFingerprintMismatch: n.AgentTLSMismatch,
-		ParallelismType:        n.ParallelismType,
-		ParallelismWidth:       n.ParallelismWidth,
-		EffectiveRequiredGPUs:  n.EffectiveRequiredGPUs(),
-		VRAMTotalMB:            n.VRAMTotalMB,
-		VRAMUsedMB:             n.VRAMUsedMB,
-		VRAMSource:             n.VRAMSource,
-		PowerDrawW:             n.PowerDrawW,
-		Temperature:            n.Temperature,
-		Runtime:                n.Runtime,
-		Health:                 health,
-		Draining:               n.Draining,
-		DrainedReason:          n.DrainedReason,
-		PrewarmDisabled:        n.PrewarmDisabled,
-		Uptime:                 n.Uptime,
-		LoadedModels:           safeModelInfoSlice(n.LoadedModels),
-		WarmupErrors:           safeStringMap(n.WarmupErrors),
-		UnloadErrors:           safeStringMap(n.UnloadErrors),
-		WarmupState:            warmupState,
-		ActiveConns:            atomic.LoadInt32(&n.ActiveConns),
-		HealthHistory:          hist,
-		PendingPrewarmMB:       s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
-		AgentPresent:           n.AgentPresent,
-		AgentStale:             n.AgentStale,
-		AgentVersion:           n.AgentVersion,
-		FanPercent:             n.FanPercent,
-		CPUPercent:             n.CPUPercent,
-		RAMUsedMB:              n.RAMUsedMB,
-		DiskFreeGB:             n.DiskFreeGB,
-		AgentCapabilities:      n.AgentCapabilities,
-		AgentPlatform:          n.AgentPlatform,
-		AgentArchitecture:      n.AgentArchitecture,
-		AgentGPUVendor:         n.AgentGPUVendor,
-		AgentRuntime:           n.AgentRuntime,
-		AgentNodeID:            n.AgentNodeID,
-		AgentGPUCount:          n.AgentGPUCount,
-		AgentGPUs:              toAgentGPUDevices(n.AgentGPUs),
-		DriverVersion:          n.DriverVersion,
-		CUDAVersion:            n.CUDAVersion,
-		RAMTotalMB:             n.RAMTotalMB,
-		DiskTotalGB:            n.DiskTotalGB,
-		Hostname:               n.Hostname,
-		UptimeSeconds:          n.UptimeSeconds,
-		BootTime:               n.BootTime,
-		RuntimeVersion:         n.RuntimeVersion,
-		RuntimeStatus:          n.RuntimeStatus,
+		ID:                            id,
+		Name:                          n.Name,
+		Host:                          host,
+		Port:                          port,
+		Scheme:                        scheme,
+		GPUModel:                      n.GPUModel,
+		GPUIndices:                    n.DeclaredGPUIndices,
+		MaxInFlight:                   n.MaxInFlight,
+		TLSFingerprint:                n.TLSFingerprint,
+		TLSFingerprintMismatch:        n.AgentTLSMismatch,
+		ParallelismType:               n.ParallelismType,
+		ParallelismWidth:              n.ParallelismWidth,
+		EffectiveRequiredGPUs:         n.EffectiveRequiredGPUs(),
+		DetectedParallelismType:       n.DetectedParallelismType,
+		DetectedParallelismWidth:      n.DetectedParallelismWidth,
+		DetectedGPUGroup:              append([]int(nil), n.DetectedGPUGroup...),
+		DetectedSource:                n.DetectedSource,
+		DetectedRuntime:               n.DetectedRuntime,
+		DetectedEffectiveRequiredGPUs: n.EffectiveDetectedRequiredGPUs(),
+		MismatchWarning:               n.MismatchWarning(),
+		VRAMTotalMB:                   n.VRAMTotalMB,
+		VRAMUsedMB:                    n.VRAMUsedMB,
+		VRAMSource:                    n.VRAMSource,
+		PowerDrawW:                    n.PowerDrawW,
+		Temperature:                   n.Temperature,
+		Runtime:                       n.Runtime,
+		Health:                        health,
+		Draining:                      n.Draining,
+		DrainedReason:                 n.DrainedReason,
+		PrewarmDisabled:               n.PrewarmDisabled,
+		Uptime:                        n.Uptime,
+		LoadedModels:                  safeModelInfoSlice(n.LoadedModels),
+		WarmupErrors:                  safeStringMap(n.WarmupErrors),
+		UnloadErrors:                  safeStringMap(n.UnloadErrors),
+		WarmupState:                   warmupState,
+		ActiveConns:                   atomic.LoadInt32(&n.ActiveConns),
+		HealthHistory:                 hist,
+		PendingPrewarmMB:              s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+		AgentPresent:                  n.AgentPresent,
+		AgentStale:                    n.AgentStale,
+		AgentVersion:                  n.AgentVersion,
+		FanPercent:                    n.FanPercent,
+		CPUPercent:                    n.CPUPercent,
+		RAMUsedMB:                     n.RAMUsedMB,
+		DiskFreeGB:                    n.DiskFreeGB,
+		AgentCapabilities:             n.AgentCapabilities,
+		AgentPlatform:                 n.AgentPlatform,
+		AgentArchitecture:             n.AgentArchitecture,
+		AgentGPUVendor:                n.AgentGPUVendor,
+		AgentRuntime:                  n.AgentRuntime,
+		AgentNodeID:                   n.AgentNodeID,
+		AgentGPUCount:                 n.AgentGPUCount,
+		AgentGPUs:                     toAgentGPUDevices(n.AgentGPUs),
+		DriverVersion:                 n.DriverVersion,
+		CUDAVersion:                   n.CUDAVersion,
+		RAMTotalMB:                    n.RAMTotalMB,
+		DiskTotalGB:                   n.DiskTotalGB,
+		Hostname:                      n.Hostname,
+		UptimeSeconds:                 n.UptimeSeconds,
+		BootTime:                      n.BootTime,
+		RuntimeVersion:                n.RuntimeVersion,
+		RuntimeStatus:                 n.RuntimeStatus,
 	}
 }
 
