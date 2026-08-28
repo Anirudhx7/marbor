@@ -4,7 +4,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
+
+func parseRFC3339(s string) (time.Time, error) {
+	return time.Parse(time.RFC3339Nano, s)
+}
 
 // activityKind maps a system_audit action to its fleet-operations kind bucket.
 // Taxonomy locked per P389 tweaks, mirrors ui/src/lib/activityKind.ts.
@@ -20,6 +25,11 @@ func activityKind(action string) string {
 		return "node"
 	case "unload_model", "set_node_warmup", "set_pinned_models", "pull_model", "pull_model_load_failed", "pull_model_cancel", "delete_model":
 		return "warmup"
+	case "create_schedule", "patch_schedule", "delete_schedule":
+		return "schedule"
+	}
+	if strings.HasPrefix(action, "scheduled_") {
+		return "schedule"
 	}
 	if strings.HasPrefix(action, "drain_") || strings.HasPrefix(action, "undrain") || action == "set_node_prewarm" {
 		return "drain"
@@ -39,7 +49,7 @@ func activityKind(action string) string {
 	return "config"
 }
 
-func runActivity(flags *globalFlags, limit int, kind string, stdout, stderr io.Writer) int {
+func runActivity(flags *globalFlags, limit int, kind, from, to, action, user, target, sourceIP, before string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)
@@ -47,20 +57,48 @@ func runActivity(flags *globalFlags, limit int, kind string, stdout, stderr io.W
 	if limit <= 0 {
 		limit = 100
 	}
-	if limit > 1000 {
-		limit = 1000
+	if limit > 200 {
+		limit = 200
 	}
 	kind = strings.ToLower(strings.TrimSpace(kind))
-	validKinds := map[string]bool{"": true, "all": true, "drain": true, "agent": true, "runtime": true, "node": true, "warmup": true, "predictive": true, "config": true}
+	validKinds := map[string]bool{"": true, "all": true, "drain": true, "agent": true, "runtime": true, "node": true, "warmup": true, "schedule": true, "predictive": true, "config": true}
 	if !validKinds[kind] {
-		fmt.Fprintf(stderr, "error: unknown kind %q (want drain, agent, runtime, node, warmup, predictive, config, or all)\n", kind)
+		fmt.Fprintf(stderr, "error: unknown kind %q (want drain, agent, runtime, node, warmup, schedule, predictive, config, or all)\n", kind)
 		return ExitUserError
 	}
 	if kind == "all" {
 		kind = ""
 	}
+	if from != "" {
+		if _, err := parseRFC3339(from); err != nil {
+			fmt.Fprintf(stderr, "error: invalid --from %q, want RFC3339\n", from)
+			return ExitUserError
+		}
+	}
+	if to != "" {
+		if _, err := parseRFC3339(to); err != nil {
+			fmt.Fprintf(stderr, "error: invalid --to %q, want RFC3339\n", to)
+			return ExitUserError
+		}
+	}
+	if before != "" {
+		if _, err := parseRFC3339(before); err != nil {
+			fmt.Fprintf(stderr, "error: invalid --before %q, want RFC3339\n", before)
+			return ExitUserError
+		}
+	}
 
-	entries, err := client.SystemAudit(limit)
+	entries, err := client.SystemAuditFiltered(SystemAuditFilter{
+		Limit:    limit,
+		Kind:     kind,
+		From:     from,
+		To:       to,
+		Before:   strings.TrimSpace(before),
+		Action:   strings.TrimSpace(action),
+		User:     strings.TrimSpace(user),
+		Target:   strings.TrimSpace(target),
+		SourceIP: strings.TrimSpace(sourceIP),
+	})
 	if err != nil {
 		return reportError(err, stderr)
 	}

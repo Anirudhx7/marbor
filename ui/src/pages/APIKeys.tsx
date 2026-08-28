@@ -7,11 +7,9 @@ import { SearchInput } from '../components/SearchInput';
 import { mockAPIKeys } from '../lib/mockData';
 import { fetchKeys, createKey, revokeKey, patchKey, fetchModels } from '../lib/api';
 import type { APIKey } from '../types';
-import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { useCurrency } from '../hooks/useCurrency';
-import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone, wallDateTimeToUtcIso } from '../lib/time';
+
 
 function maskKey(key: string): string {
   const parts = key.split('-');
@@ -20,6 +18,10 @@ function maskKey(key: string): string {
   }
   return key.slice(0, 12) + '****';
 }
+
+import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
+import { useCurrency } from '../hooks/useCurrency';
+import { CustomDateTimePicker } from '../components/DateTimePicker';
 
 function nowLocalISO(): string {
   const d = new Date();
@@ -108,21 +110,12 @@ export function APIKeys() {
     if (modelsChanged) {
       patch.models = editForm.models;
     }
-    // Compare parsed instants, not raw strings - the server's ISO-format
-    // expiry and the date-picker's local-minute-format write-back represent
-    // the same instant with different string forms, so a strict string
-    // compare would flip "changed" on any touch of the picker (even
-    // reselecting the identical time), resending expires_at on an
-    // otherwise-unrelated save.
     const originalExpiresAt = editKey.expiresAt ?? '';
     const toMs = (v: string) => {
       const iso = wallDateTimeToUtcIso(v, tz);
       return iso ? new Date(iso).getTime() : new Date(v).getTime();
     };
-    const expiresAtChanged = editForm.expiresAt === '' || originalExpiresAt === ''
-      ? editForm.expiresAt !== originalExpiresAt
-      : toMs(editForm.expiresAt) !== toMs(originalExpiresAt);
-    if (expiresAtChanged) {
+    if (editForm.expiresAt !== originalExpiresAt) {
       if (editForm.expiresAt && toMs(editForm.expiresAt) <= Date.now()) {
         setEditError('Expiry date must be in the future');
         return;

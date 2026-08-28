@@ -3,6 +3,7 @@ package store_test
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -967,6 +968,126 @@ func TestPruneSystemAuditLog(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Action != "recent-action" {
 		t.Fatalf("PruneSystemAuditLog(365): got %+v, want only the recent row", got)
+	}
+}
+
+// TestQuerySystemAuditLogFilteredKindPagingReturnsFullPage is a regression
+// test for a pagination-undercount bug: when a kind filter maps to actions
+// that make up a minority of rows, and QuerySystemAuditLogFiltered fetches
+// exactly Limit raw SQL rows before checking kind, most of the raw page can
+// be discarded by the Go-side kind check - returning far fewer than Limit
+// entries even though enough matching rows exist further back. The fix
+// overfetches and loops (bounded by maxSystemAuditScan) until Limit matching
+// entries are found or the table is exhausted.
+func TestQuerySystemAuditLogFilteredKindPagingReturnsFullPage(t *testing.T) {
+	s := openTestDB(t)
+
+	// 20 entries, newest first: every 4th one (i=0,4,8,12,16) is a "drain"
+	// kind action; the rest are "node" kind. A naive single-page SQL LIMIT=5
+	// fetch (ordered by ts DESC) would only capture i=0..4 raw rows, of
+	// which just 2 (i=0, i=4) match kind=drain - undercounting the 5 that
+	// actually exist.
+	base := time.Now()
+	for i := 0; i < 20; i++ {
+		action := "add_node"
+		if i%4 == 0 {
+			action = "drain_node"
+		}
+		e := store.SystemAuditEntry{
+			Username: "admin",
+			Action:   action,
+			Time:     base.Add(-time.Duration(i) * time.Minute),
+		}
+		if err := s.AppendSystemAuditLog(e); err != nil {
+			t.Fatalf("AppendSystemAuditLog(i=%d): %v", i, err)
+		}
+	}
+
+	got, err := s.QuerySystemAuditLogFiltered(store.SystemAuditFilter{Kind: "drain", Limit: 5})
+	if err != nil {
+		t.Fatalf("QuerySystemAuditLogFiltered: %v", err)
+	}
+	if len(got) != 5 {
+		t.Fatalf("QuerySystemAuditLogFiltered(kind=drain, limit=5) returned %d entries, want 5 (all matching drain_node rows)", len(got))
+	}
+	for _, e := range got {
+		if e.Action != "drain_node" {
+			t.Fatalf("QuerySystemAuditLogFiltered(kind=drain) returned non-drain action %q", e.Action)
+		}
+	}
+}
+
+// TestQuerySystemAuditLogFilteredSameSecondTieWithinKindPaging is a
+// regression test for a pagination undercount bug: ts is stored via
+// time.RFC3339 (1-second resolution), so two rows created in the same
+// second have an identical ts. QuerySystemAuditLogFiltered's internal
+// overfetch loop (used when a kind filter is active, see
+// TestQuerySystemAuditLogFilteredKindPagingReturnsFullPage) advanced its
+// cursor with "ts < lastSeenTs" - exclusive on ts alone - so a matching row
+// sharing its ts with the last row of a raw SQL page was silently skipped
+// on the next internal iteration too, since it is "== cursor", not
+// "< cursor". The fix adds the autoincrement id as a tiebreaker so every
+// row is visited exactly once across iterations.
+func TestQuerySystemAuditLogFilteredSameSecondTieWithinKindPaging(t *testing.T) {
+	s := openTestDB(t)
+
+	base := time.Now().Truncate(time.Hour)
+	// Six rows, inserted oldest-ts first. Only id=2 is a "drain" kind
+	// action, and it shares its ts with id=3 (a "node" kind action) -
+	// id=3 ranks just ahead of it (ts DESC, id DESC) as the last row of
+	// the first raw SQL page (queryLimit = fetchLimit*4 = 4 rows), so
+	// id=2 only surfaces on the internal loop's second iteration.
+	entries := []struct {
+		action string
+		offset time.Duration
+	}{
+		{"add_node", 0 * time.Second},   // id=1, ts=base+0s
+		{"drain_node", 1 * time.Second}, // id=2, ts=base+1s (tied with id=3)
+		{"add_node", 1 * time.Second},   // id=3, ts=base+1s (tied with id=2)
+		{"add_node", 2 * time.Second},   // id=4, ts=base+2s
+		{"add_node", 3 * time.Second},   // id=5, ts=base+3s
+		{"add_node", 4 * time.Second},   // id=6, ts=base+4s (newest)
+	}
+	for i, e := range entries {
+		entry := store.SystemAuditEntry{
+			Username: "admin",
+			Action:   e.action,
+			Target:   fmt.Sprintf("row-%d", i+1),
+			Time:     base.Add(e.offset),
+		}
+		if err := s.AppendSystemAuditLog(entry); err != nil {
+			t.Fatalf("AppendSystemAuditLog(row-%d): %v", i+1, err)
+		}
+	}
+
+	got, err := s.QuerySystemAuditLogFiltered(store.SystemAuditFilter{Kind: "drain", Limit: 1})
+	if err != nil {
+		t.Fatalf("QuerySystemAuditLogFiltered: %v", err)
+	}
+	if len(got) != 1 || got[0].Action != "drain_node" {
+		t.Fatalf("QuerySystemAuditLogFiltered(kind=drain, limit=1) = %+v, want the single drain_node row (same-second tie must not be skipped)", got)
+	}
+}
+
+// TestQuerySystemAuditLogFilteredUsernameContains verifies the Username
+// filter matches anywhere in the username (contains), consistent with the
+// Target and SourceIP filters, not just as a prefix.
+func TestQuerySystemAuditLogFilteredUsernameContains(t *testing.T) {
+	s := openTestDB(t)
+
+	for _, u := range []string{"alice-admin", "bob"} {
+		e := store.SystemAuditEntry{Username: u, Action: "add_node", Time: time.Now()}
+		if err := s.AppendSystemAuditLog(e); err != nil {
+			t.Fatalf("AppendSystemAuditLog(%s): %v", u, err)
+		}
+	}
+
+	got, err := s.QuerySystemAuditLogFiltered(store.SystemAuditFilter{Username: "admin", Limit: 10})
+	if err != nil {
+		t.Fatalf("QuerySystemAuditLogFiltered: %v", err)
+	}
+	if len(got) != 1 || got[0].Username != "alice-admin" {
+		t.Fatalf("QuerySystemAuditLogFiltered(username=admin) = %+v, want only alice-admin (substring match)", got)
 	}
 }
 

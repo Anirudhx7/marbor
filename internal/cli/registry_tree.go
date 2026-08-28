@@ -318,16 +318,23 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "activity",
-				Short:     "show unified fleet activity feed (drain, agent, runtime, node, warmup)",
+				Short:     "show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)",
 				Long:      "Times are shown in UTC (RFC3339 Z) — the Admin API stores every audit event in UTC. The dashboard renders the same instants in the operator's configured timezone; this CLI shows the raw UTC value.",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Flags: []FlagSpec{
-					{Name: "limit", Kind: FlagInt, DefInt: 100, Usage: "max events to show (1-1000, default 100)"},
-					{Name: "kind", Kind: FlagString, DefString: "", Usage: "filter by kind: drain, agent, runtime, node, warmup, predictive, config, or all (default all)"},
+					{Name: "limit", Kind: FlagInt, DefInt: 100, Usage: "max events to show (1-200, default 100)"},
+					{Name: "kind", Kind: FlagString, DefString: "", Usage: "filter by kind: drain, agent, runtime, node, warmup, schedule, predictive, config, or all (default all)"},
+					{Name: "from", Kind: FlagString, DefString: "", Usage: "filter from time (RFC3339, e.g. 2026-08-26T00:00:00Z)"},
+					{Name: "to", Kind: FlagString, DefString: "", Usage: "filter to time (RFC3339, e.g. 2026-08-26T23:59:59Z)"},
+					{Name: "before", Kind: FlagString, DefString: "", Usage: "paginate before time (RFC3339, exclusive)"},
+					{Name: "action", Kind: FlagString, DefString: "", Usage: "filter by exact action (e.g. drain_node)"},
+					{Name: "user", Kind: FlagString, DefString: "", Usage: "filter by operator username (prefix match)"},
+					{Name: "target", Kind: FlagString, DefString: "", Usage: "filter by target (substring, e.g. gpu-node-02)"},
+					{Name: "source_ip", Kind: FlagString, DefString: "", Usage: "filter by source IP (substring)"},
 				},
 				Run: func(ctx *RunCtx) int {
-					return runActivity(ctx.Flags, ctx.Int("limit"), ctx.String("kind"), ctx.Stdout, ctx.Stderr)
+					return runActivity(ctx.Flags, ctx.Int("limit"), ctx.String("kind"), ctx.String("from"), ctx.String("to"), ctx.String("action"), ctx.String("user"), ctx.String("target"), ctx.String("source_ip"), ctx.String("before"), ctx.Stdout, ctx.Stderr)
 				},
 			},
 			{

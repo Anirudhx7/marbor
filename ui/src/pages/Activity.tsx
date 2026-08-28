@@ -1,42 +1,52 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
-import { Activity as ActivityIcon, Search, RefreshCw, Eye, Calendar, User, Globe, Filter, AlertCircle, X, Server, Flame, BrainCircuit, Shield, Terminal } from 'lucide-react';
-import { fetchSystemAudit, fetchPredictiveDecisions } from '../lib/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Activity as ActivityIcon, Search, RefreshCw, Eye, Calendar, User, Globe, Filter, AlertCircle, X, Server, Flame, BrainCircuit } from 'lucide-react';
+import { fetchSystemAuditFiltered, fetchPredictiveDecisions } from '../lib/api';
 import type { SystemAuditEntry, PredictiveDecision } from '../types';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
+import { CustomDateTimePicker } from '../components/DateTimePicker';
+import { ClearableInput, FilterField } from '../components/FilterField';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { toActivityKind, getActivityKindLabel, getActivityKindColor, type ActivityKind } from '../lib/activityKind';
 import { useTimezone } from '../hooks/useTimezone';
-import { formatDateTimeInZone, formatInTimezone } from '../lib/time';
+import { formatDateTimeInZone, formatInTimezone, wallDateTimeToUtcIso } from '../lib/time';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
-const AUDIT_LIMIT = 200;
+const PAGE_LIMIT = 100;
 
-// currentAppPath() returns the raw path including any query string under the
-// hash-routed public demo (forcedDemo), unlike BrowserRouter's pathname-only
-// window.location.pathname. The view toggle below adds a ?view=audit query
-// param to this same /activity route, so an exact string match against
-// '/activity' would wrongly bail out of the load/refresh effects whenever
-// that query param is present in demo mode - strip it before comparing.
-function isOnActivityPage(): boolean {
-  const p = currentAppPath();
-  const q = p.indexOf('?');
-  return (q === -1 ? p : p.slice(0, q)) === '/activity';
+function toPickerValue(rfc3339: string, tz: string): string {
+  try {
+    const d = new Date(rfc3339);
+    if (isNaN(d.getTime())) return '';
+    const tzResolved = tz && tz !== 'Local' ? tz : undefined;
+    // en-CA gives YYYY-MM-DD HH:MM wall in tz
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tzResolved, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).formatToParts(d);
+    const m: Record<string,string> = {};
+    for (const p of parts) if (p.type !== 'literal') m[p.type]=p.value;
+    // en-CA hour may be "24" at midnight — normalize to "00"
+    const hh = m.hour === '24' ? '00' : m.hour;
+    return `${m.year}-${m.month}-${m.day}T${hh}:${m.minute}`;
+  } catch { return ''; }
+}
+
+function fromPickerValue(v: string, tz: string): string {
+  if (!v) return '';
+  const iso = wallDateTimeToUtcIso(v, tz);
+  if (iso) return iso;
+  try { const d=new Date(v); return isNaN(d.getTime())?'':d.toISOString(); } catch {return '';}
+}
+
+type DatePreset = 'all' | '1h' | '24h' | '7d' | '30d' | 'custom';
+
+function formatDateTime(isoString: string, tz: string): string {
+  return formatDateTimeInZone(isoString, tz);
 }
 
 function formatUpdatedTime(d: Date, tz: string): string {
   try {
-    return formatInTimezone(d.toISOString(), tz, {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  } catch {
-    // Should never throw (formatInTimezone already swallows), but keep a
-    // non-locale-dependent fallback so this header never renders blank.
-    return d.toISOString().slice(11, 19);
-  }
+    return formatInTimezone(d.toISOString(), tz, { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  } catch { return d.toISOString().slice(11,19); }
 }
 
 function getActionLabel(action: string): string {
@@ -46,87 +56,143 @@ function getActionLabel(action: string): string {
     .join(' ');
 }
 
-/** Returns true for actions that represent an infrastructure-level mutation. */
-function isInfrastructureAction(action: string): boolean {
-  const infraKeywords = ['node', 'routing', 'drain', 'undrain', 'warmup', 'schedule', 'pinned', 'settings', 'key', 'user', 'allowlist'];
-  return infraKeywords.some((kw) => action.includes(kw));
-}
-
-// getAuditActionColor color-codes a raw action verb (add/remove/etc) for the
-// Audit Trail view - distinct from the fleet-kind badges used in Fleet view.
-function getAuditActionColor(action: string) {
-  if (action.startsWith('add') || action.startsWith('create') || action.startsWith('approve') || action.startsWith('undrain')) {
-    return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
-  }
-  if (action.startsWith('remove') || action.startsWith('delete') || action.startsWith('revoke') || action.startsWith('suspend') || action.startsWith('drain')) {
-    return 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/20';
-  }
-  return 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20';
-}
-
-type ActivityView = 'fleet' | 'audit';
-
 export function Activity() {
   const tz = useTimezone();
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const view: ActivityView = searchParams.get('view') === 'audit' ? 'audit' : 'fleet';
 
   const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
   const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<ActivityKind | 'all'>('all');
   const [actionFilter, setActionFilter] = useState('all');
+  const [userFilter, setUserFilter] = useState('all');
+  const [targetInput, setTargetInput] = useState('');
+  const [sourceIpInput, setSourceIpInput] = useState('');
+  const [debouncedTarget, setDebouncedTarget] = useState('');
+  const [debouncedSourceIp, setDebouncedSourceIp] = useState('');
+  const [preset, setPreset] = useState<DatePreset>('all');
+  const [fromPicker, setFromPicker] = useState('');
+  const [toPicker, setToPicker] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<SystemAuditEntry | null>(null);
   const [refreshSpin, setRefreshSpin] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadActivity = useCallback(async (silent = false, active = true) => {
-    if (!isOnActivityPage()) return;
-    if (!silent && active && isOnActivityPage()) setLoading(true);
-    if (active && isOnActivityPage()) setRefreshSpin(true);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedTarget(targetInput), 250);
+    return () => clearTimeout(t);
+  }, [targetInput]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSourceIp(sourceIpInput), 250);
+    return () => clearTimeout(t);
+  }, [sourceIpInput]);
+
+  useEffect(() => {
+    if (preset === 'all') {
+      setFromPicker('');
+      setToPicker('');
+      return;
+    }
+    if (preset === 'custom') return; // pickers are the source of truth here
+    const now = new Date();
+    const presetHours: Record<'1h' | '24h' | '7d' | '30d', number> = { '1h': 1, '24h': 24, '7d': 24 * 7, '30d': 24 * 30 };
+    const from = new Date(now.getTime() - presetHours[preset] * 3600_000);
+    setFromPicker(toPickerValue(from.toISOString(), tz));
+    setToPicker(toPickerValue(now.toISOString(), tz));
+  }, [preset, tz]);
+
+  // A quick-range preset and a hand-picked custom range are mutually
+  // exclusive, same relationship as Requests.tsx's sincePreset/sinceInput:
+  // typing into From or To always wins and switches the Quick range select
+  // into 'custom' (disabling it, same as ClearableInput's own affordance
+  // pattern), and clearing both fields (via their own inline "x") falls back
+  // to 'all' so the select's displayed value matches what's actually being
+  // sent to the server.
+  const handleFromPickerChange = (val: string) => {
+    setFromPicker(val);
+    setPreset(val || toPicker ? 'custom' : 'all');
+  };
+  const handleToPickerChange = (val: string) => {
+    setToPicker(val);
+    setPreset(val || fromPicker ? 'custom' : 'all');
+  };
+
+  const buildFilter = useCallback((before?: string) => {
+    const f: any = { limit: PAGE_LIMIT };
+    const fromRfc = fromPicker ? fromPickerValue(fromPicker, tz) : '';
+    const toRfc = toPicker ? fromPickerValue(toPicker, tz) : '';
+    if (fromRfc) f.from = fromRfc;
+    if (toRfc) f.to = toRfc;
+    if (before) f.before = before;
+    if (kindFilter !== 'all') f.kind = kindFilter;
+    if (actionFilter !== 'all') f.action = actionFilter;
+    if (userFilter !== 'all') f.user = userFilter;
+    if (debouncedTarget.trim()) f.target = debouncedTarget.trim();
+    if (debouncedSourceIp.trim()) f.source_ip = debouncedSourceIp.trim();
+    return f;
+  }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp, tz]);
+
+  const loadActivity = useCallback(async (opts: { silent?: boolean; append?: boolean; before?: string; active?: boolean } = {}) => {
+    const { silent = false, append = false, before, active = true } = opts;
+    const path = currentAppPath();
+    const isActivityPath = path === '/activity' || path.startsWith('/activity') || path === '/system-audit';
+    if (!isActivityPath) return;
+    if (!silent && active && !append) setLoading(true);
+    if (active) setRefreshSpin(true);
     try {
+      const filter = buildFilter(before);
       const [audit, preds] = await Promise.all([
-        fetchSystemAudit(AUDIT_LIMIT),
+        fetchSystemAuditFiltered(filter),
         fetchPredictiveDecisions().catch(() => [] as PredictiveDecision[]),
       ]);
-      if (!active || !isOnActivityPage()) return;
-      setEntries(audit);
+      if (!active) return;
+      const curPath = currentAppPath();
+      if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
+      if (append) {
+        setEntries((prev) => [...prev, ...audit]);
+      } else {
+        setEntries(audit);
+      }
       setDecisions(preds);
+      setHasMore(audit.length === PAGE_LIMIT);
       setError(null);
       setLastRefreshed(new Date());
     } catch (err: any) {
-      if (!active || !isOnActivityPage()) return;
+      if (!active) return;
+      const curPath = currentAppPath();
+      if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
       setError(err.message || 'Failed to load activity feed');
     } finally {
-      if (active && isOnActivityPage()) {
-        if (!silent) setLoading(false);
-        setTimeout(() => {
-          if (active && isOnActivityPage()) {
-            setRefreshSpin(false);
-          }
-        }, 500);
+      if (active) {
+        if (!silent && !append) setLoading(false);
+        setLoadingMore(false);
+        setTimeout(() => setRefreshSpin(false), 500);
       }
     }
-  }, [location.pathname]);
+  }, [buildFilter]);
 
   useEffect(() => {
-    if (!isOnActivityPage()) return;
+    const path = currentAppPath();
+    const isActivityPath = path === '/activity' || path.startsWith('/activity') || path === '/system-audit';
+    if (!isActivityPath) return;
     let active = true;
-    loadActivity(false, active);
+    loadActivity({ silent: false, active });
     intervalRef.current = setInterval(() => {
-      if (active && isOnActivityPage()) {
-        loadActivity(true, active);
+      const cur = currentAppPath();
+      const isCurActivity = cur === '/activity' || cur.startsWith('/activity') || cur === '/system-audit';
+      if (active && isCurActivity) {
+        loadActivity({ silent: true, active });
       }
     }, AUTO_REFRESH_INTERVAL_MS);
     return () => {
       active = false;
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [loadActivity, location.pathname]);
+  }, [loadActivity, location.pathname, location.search]);
 
   useEffect(() => {
     if (!selectedEntry) return;
@@ -137,56 +203,31 @@ export function Activity() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedEntry]);
 
-  function setView(next: ActivityView) {
-    setSelectedEntry(null);
-    setSearchQuery('');
-    setSearchParams(
-      (prev) => {
-        const p = new URLSearchParams(prev);
-        if (next === 'audit') p.set('view', 'audit');
-        else p.delete('view');
-        return p;
-      },
-      { replace: true }
-    );
-  }
+  const kindOptions: (ActivityKind | 'all')[] = ['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'schedule', 'predictive', 'config'];
 
-  const kindOptions: (ActivityKind | 'all')[] = ['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'predictive', 'config'];
-
-  const uniqueActions = useMemo(
-    () => ['all', ...Array.from(new Set(entries.map((e) => e.action))).sort()],
-    [entries]
-  );
+  const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action))).sort()];
+  const uniqueUsers = ['all', ...Array.from(new Set(entries.map((e) => e.username))).sort()];
 
   const filteredEntries = entries.filter((e) => {
-    const q = searchQuery.toLowerCase().trim();
-    if (view === 'audit') {
-      const matchesAction = actionFilter === 'all' || e.action === actionFilter;
-      const matchesSearch =
-        !q ||
-        e.username.toLowerCase().includes(q) ||
-        e.action.toLowerCase().includes(q) ||
-        e.target.toLowerCase().includes(q) ||
-        e.details.toLowerCase().includes(q) ||
-        (e.source_ip || '').toLowerCase().includes(q);
-      return matchesAction && matchesSearch;
-    }
     const kind = toActivityKind(e.action);
-    const matchesKind = kindFilter === 'all' || kind === kindFilter;
+    // Default to hiding the low-signal config bucket when no kind filter is
+    // set - same default the old fleet view had, now unconditional since
+    // there is only one view.
+    if (kindFilter === 'all' && kind === 'config') return false;
     if (kindFilter === 'predictive') return false;
-    const matchesSearch =
-      !q ||
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
       e.username.toLowerCase().includes(q) ||
       e.action.toLowerCase().includes(q) ||
       e.target.toLowerCase().includes(q) ||
       e.details.toLowerCase().includes(q) ||
       (e.source_ip || '').toLowerCase().includes(q) ||
-      kind.toLowerCase().includes(q);
-    return matchesKind && matchesSearch;
+      kind.toLowerCase().includes(q)
+    );
   });
 
   const filteredDecisions = decisions.filter((d) => {
-    if (view === 'audit') return false;
     if (kindFilter !== 'all' && kindFilter !== 'predictive') return false;
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
@@ -197,22 +238,32 @@ export function Activity() {
     );
   });
 
-  const hasActiveFilters =
-    view === 'audit'
-      ? searchQuery.trim() !== '' || actionFilter !== 'all'
-      : searchQuery.trim() !== '' || kindFilter !== 'all';
-
-  function clearFilters() {
-    setSearchQuery('');
-    if (view === 'audit') setActionFilter('all');
-    else setKindFilter('all');
-  }
+  const hasActiveFilters = searchQuery.trim() !== '' || kindFilter !== 'all' || actionFilter !== 'all' || userFilter !== 'all' || debouncedTarget.trim() !== '' || debouncedSourceIp.trim() !== '' || fromPicker !== '' || toPicker !== '' || preset !== 'all';
 
   const totalFetched = entries.length;
   const uniqueOperators = new Set(entries.map((e) => e.username)).size;
   const drainCount = entries.filter((e) => toActivityKind(e.action) === 'drain').length;
   const warmupCount = entries.filter((e) => toActivityKind(e.action) === 'warmup').length;
-  const infrastructureChanges = entries.filter((e) => isInfrastructureAction(e.action)).length;
+
+  const handleLoadMore = () => {
+    if (entries.length === 0 || loadingMore) return;
+    const oldest = entries[entries.length - 1];
+    if (!oldest) return;
+    setLoadingMore(true);
+    loadActivity({ silent: true, append: true, before: oldest.time, active: true });
+  };
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setKindFilter('all');
+    setActionFilter('all');
+    setUserFilter('all');
+    setTargetInput('');
+    setSourceIpInput('');
+    setPreset('all');
+    setFromPicker('');
+    setToPicker('');
+  };
 
   return (
     <div className="space-y-6">
@@ -220,13 +271,11 @@ export function Activity() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            {view === 'audit' ? <Shield className="w-6 h-6 text-primary" /> : <ActivityIcon className="w-6 h-6 text-primary" />}
-            {view === 'audit' ? 'Audit Trail' : 'Activity'}
+            <ActivityIcon className="w-6 h-6 text-primary" />
+            Activity
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {view === 'audit'
-              ? 'Review configuration changes, node updates, and administrative actions.'
-              : 'Unified fleet operations timeline - drain, agent, runtime, node, and warmup events with what, when, and who.'}
+            Fleet operations and administrative audit timeline - what changed, when, who, and from where.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -236,7 +285,7 @@ export function Activity() {
             </span>
           )}
           <button
-            onClick={() => loadActivity()}
+            onClick={() => loadActivity({})}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
           >
@@ -246,219 +295,221 @@ export function Activity() {
         </div>
       </div>
 
-      {/* View toggle - Fleet Activity vs Audit Trail, both read the same
-          system-audit feed, just filtered/labeled differently. */}
-      <div className="inline-flex items-center gap-1 p-1 bg-secondary/60 border border-border/60 rounded-lg">
-        <button
-          onClick={() => setView('fleet')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-            view === 'fleet' ? 'bg-card text-foreground shadow-sm border border-border/60' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <ActivityIcon className="w-3.5 h-3.5" />
-          Fleet Activity
-        </button>
-        <button
-          onClick={() => setView('audit')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
-            view === 'audit' ? 'bg-card text-foreground shadow-sm border border-border/60' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Shield className="w-3.5 h-3.5" />
-          Audit Trail
-        </button>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Events (last {totalFetched})</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{filteredEntries.length}</h3>
+              {hasActiveFilters && kindFilter !== 'predictive' && (
+                <p className="text-[10px] text-muted-foreground/60 mt-0.5">filtered from {totalFetched}</p>
+              )}
+            </div>
+            <div className="p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg">
+              <ActivityIcon className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
+            </div>
+            <div className="p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg">
+              <User className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Drain Events</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{drainCount}</h3>
+            </div>
+            <div className="p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg">
+              <Server className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+          <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-orange-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events</p>
+              <h3 className="text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{decisions.length} predictive decisions</p>
+            </div>
+            <div className="p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg">
+              <Flame className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      {view === 'audit' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
-          <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
-            <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-            <div className="flex items-start justify-between gap-2 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">Actions (last {totalFetched})</p>
-                <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{filteredEntries.length}</h3>
-                {hasActiveFilters && (
-                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">filtered from {totalFetched}</p>
-                )}
-              </div>
-              <div className="p-2 sm:p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg shrink-0">
-                <Terminal className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-            </div>
+      {/* Predictive decisions - distinct section, not interleaved */}
+      <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border/60 bg-secondary/30">
+          <div className="flex items-center gap-2">
+            <BrainCircuit className="w-4 h-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">Predictive Warmup Decisions</h2>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor('predictive')}`}>
+              {filteredDecisions.length} recent
+            </span>
           </div>
-
-          <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
-            <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-            <div className="flex items-start justify-between gap-2 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Operators</p>
-                <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
-              </div>
-              <div className="p-2 sm:p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg shrink-0">
-                <User className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
-            <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-            <div className="flex items-start justify-between gap-2 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Infrastructure Events</p>
-                <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{infrastructureChanges}</h3>
-              </div>
-              <div className="p-2 sm:p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg shrink-0">
-                <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-            </div>
-          </div>
+          <span className="text-[11px] text-muted-foreground hidden sm:block">System-generated, not interleaved with operator timeline</span>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
-          <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
-            <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-            <div className="flex items-start justify-between gap-2 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground truncate">Events (last {totalFetched})</p>
-                <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{filteredEntries.length}</h3>
-                {hasActiveFilters && kindFilter !== 'predictive' && (
-                  <p className="text-[10px] text-muted-foreground/60 mt-0.5">filtered from {totalFetched}</p>
-                )}
-              </div>
-              <div className="p-2 sm:p-2.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-lg shrink-0">
-                <ActivityIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-            </div>
+        {filteredDecisions.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            No predictive decisions recorded yet.
           </div>
-
-          <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
-            <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-            <div className="flex items-start justify-between gap-2 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators</p>
-                <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
-              </div>
-              <div className="p-2 sm:p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg shrink-0">
-                <User className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
-            <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-            <div className="flex items-start justify-between gap-2 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Drain Events</p>
-                <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{drainCount}</h3>
-              </div>
-              <div className="p-2 sm:p-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 rounded-lg shrink-0">
-                <Server className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group min-w-0">
-            <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-orange-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
-            <div className="flex items-start justify-between gap-2 min-w-0">
-              <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events</p>
-                <h3 className="text-2xl sm:text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
-                <p className="text-[10px] text-muted-foreground/60 mt-0.5">{decisions.length} predictive decisions</p>
-              </div>
-              <div className="p-2 sm:p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg shrink-0">
-                <Flame className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Predictive decisions - fleet view only, distinct section, not interleaved */}
-      {view === 'fleet' && (
-        <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border/60 bg-secondary/30">
-            <div className="flex items-center gap-2">
-              <BrainCircuit className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Predictive Warmup Decisions</h2>
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor('predictive')}`}>
-                {filteredDecisions.length} recent
-              </span>
-            </div>
-            <span className="text-[11px] text-muted-foreground hidden sm:block">System-generated, not interleaved with operator timeline</span>
-          </div>
-          {filteredDecisions.length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">
-              No predictive decisions recorded yet.
-            </div>
-          ) : (
-            <div className="divide-y divide-border/40">
-              {filteredDecisions.slice(0, 10).map((d, i) => (
-                <div key={`${d.timestamp}-${d.predicted_model}-${i}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-5 py-3 text-sm">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-medium text-foreground">{d.predicted_model}</span>
-                      <span className="text-muted-foreground text-xs">on {d.node}</span>
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${d.was_already_warm ? 'bg-secondary text-muted-foreground border-border' : d.warmup_triggered ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20'}`}>
-                        {d.was_already_warm ? 'already warm' : d.warmup_triggered ? 'warmup triggered' : 'skipped'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      triggered by {d.trigger_model} - seen {d.transition_count}x at hour {d.hour}
-                    </p>
+        ) : (
+          <div className="divide-y divide-border/40">
+            {filteredDecisions.slice(0, 10).map((d, i) => (
+              <div key={`${d.timestamp}-${d.predicted_model}-${i}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-5 py-3 text-sm">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-medium text-foreground">{d.predicted_model}</span>
+                    <span className="text-muted-foreground text-xs">on {d.node}</span>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border ${d.was_already_warm ? 'bg-secondary text-muted-foreground border-border' : d.warmup_triggered ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20'}`}>
+                      {d.was_already_warm ? 'already warm' : d.warmup_triggered ? 'warmup triggered' : 'skipped'}
+                    </span>
                   </div>
-                  <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTimeInZone(d.timestamp, tz)}</span>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    triggered by {d.trigger_model} - seen {d.transition_count}x at hour {d.hour}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(d.timestamp, tz)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* Filters Bar */}
-      <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between shadow-sm">
-        <div className="relative w-full md:max-w-md">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder={view === 'audit' ? 'Search operators, targets, IPs or action details...' : 'Search operators, targets, kinds or details...'}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all duration-150 placeholder:text-muted-foreground/60"
-          />
-        </div>
-
-        <div className="flex items-center gap-2 w-full md:w-80">
-          <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
-          {view === 'audit' ? (
+      {/* Enterprise Filter Bar */}
+      <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 shadow-sm space-y-4">
+        {/* Row 1: Quick range select + always-visible From/To - mirrors
+            Requests.tsx's Quick range / From / Until layout instead of a
+            pill toggle that only reveals the date pickers behind a "Custom"
+            click (that hid affordance and jumped the layout on click). */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <FilterField label="Quick range">
             <CustomSelect
-              value={actionFilter}
-              onChange={setActionFilter}
-              options={uniqueActions.map((act) => ({
-                value: act,
-                label: act === 'all' ? 'All Action Types' : getActionLabel(act),
-              }))}
+              value={preset}
+              onChange={(val) => setPreset(val as DatePreset)}
+              disabled={preset === 'custom'}
+              placeholder="Clear custom range to use preset"
+              options={[
+                { value: 'all', label: 'All time' },
+                { value: '1h', label: 'Last 1h' },
+                { value: '24h', label: 'Last 24h' },
+                { value: '7d', label: 'Last 7d' },
+                { value: '30d', label: 'Last 30d' },
+              ]}
             />
-          ) : (
+          </FilterField>
+          <FilterField label="From (custom)">
+            <CustomDateTimePicker value={fromPicker} onChange={handleFromPickerChange} placeholder="Any start time" />
+          </FilterField>
+          <FilterField label="To (custom)">
+            <CustomDateTimePicker value={toPicker} onChange={handleToPickerChange} placeholder="Any end time" />
+          </FilterField>
+        </div>
+
+        {/* Row 2: Kind, Action, Operator */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Kind</label>
             <CustomSelect
               value={kindFilter}
               onChange={(v) => setKindFilter(v as ActivityKind | 'all')}
-              options={kindOptions.map((k) => ({
+              options={(['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'schedule', 'predictive', 'config'] as const).map((k) => ({
                 value: k,
                 label: k === 'all' ? 'All Kinds' : getActivityKindLabel(k as ActivityKind),
               }))}
             />
-          )}
-          {hasActiveFilters && (
-            <button
-              onClick={clearFilters}
-              title="Clear all filters"
-              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Action</label>
+            <CustomSelect
+              value={actionFilter}
+              onChange={setActionFilter}
+              options={uniqueActions.map((a) => ({
+                value: a,
+                label: a === 'all' ? 'All Actions' : getActionLabel(a),
+              }))}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Operator</label>
+            <CustomSelect
+              value={userFilter}
+              onChange={setUserFilter}
+              options={uniqueUsers.map((u) => ({
+                value: u,
+                label: u === 'all' ? 'All Operators' : u,
+              }))}
+            />
+          </div>
         </div>
+
+        {/* Row 3: Target, Source IP, Search - ClearableInput brings the same
+            inline "x" affordance Requests.tsx's text filters already have,
+            so undoing one of these doesn't mean hand-clearing the text. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <FilterField label="Target contains">
+            <ClearableInput
+              type="text"
+              placeholder="gpu-node-*, model name..."
+              value={targetInput}
+              onChange={(e) => setTargetInput(e.target.value)}
+              onClear={() => setTargetInput('')}
+              icon={<Search className="w-3.5 h-3.5" />}
+              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+            />
+          </FilterField>
+          <FilterField label="Source IP contains">
+            <ClearableInput
+              type="text"
+              placeholder="192.168.1.5"
+              value={sourceIpInput}
+              onChange={(e) => setSourceIpInput(e.target.value)}
+              onClear={() => setSourceIpInput('')}
+              icon={<Globe className="w-3.5 h-3.5" />}
+              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60 font-mono"
+            />
+          </FilterField>
+          <FilterField label="Search details">
+            <ClearableInput
+              type="text"
+              placeholder="Search details, payload..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onClear={() => setSearchQuery('')}
+              icon={<Search className="w-3.5 h-3.5" />}
+              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+            />
+          </FilterField>
+        </div>
+
+        {hasActiveFilters && (
+          <div className="flex items-center justify-between pt-2 border-t border-border/40">
+            <span className="text-xs text-muted-foreground">Server-filtered to {totalFetched} events, {filteredEntries.length} after local detail search</span>
+            <button
+              onClick={clearAllFilters}
+              className="px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-xs font-medium"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Timeline Table */}
@@ -466,7 +517,7 @@ export function Activity() {
         {loading ? (
           <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
             <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-            {view === 'audit' ? 'Loading system events...' : 'Loading fleet activity...'}
+            Loading fleet activity...
           </div>
         ) : error ? (
           <div className="p-8 text-center text-rose-600 dark:text-rose-400 text-sm flex flex-col items-center justify-center gap-2">
@@ -476,10 +527,10 @@ export function Activity() {
         ) : filteredEntries.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
             <Search className="w-6 h-6 text-muted-foreground/50" />
-            {view === 'audit' ? 'No audit records found matching your filters.' : 'No activity records found matching your filters.'}
+            No activity records found matching your filters.
             {hasActiveFilters && (
               <button
-                onClick={clearFilters}
+                onClick={clearAllFilters}
                 className="text-primary hover:underline text-xs mt-1"
               >
                 Clear filters
@@ -493,11 +544,11 @@ export function Activity() {
               <thead>
                 <tr className="border-b border-border/60 bg-secondary/40 text-muted-foreground font-medium">
                   <th className="px-5 py-3.5">Time</th>
-                  {view === 'fleet' && <th className="px-5 py-3.5">Kind</th>}
+                  <th className="px-5 py-3.5">Kind</th>
                   <th className="px-5 py-3.5">Action</th>
                   <th className="px-5 py-3.5">Target</th>
-                  <th className="px-5 py-3.5">{view === 'audit' ? 'Operator' : 'Who'}</th>
-                  {view === 'audit' && <th className="px-5 py-3.5">Source IP</th>}
+                  <th className="px-5 py-3.5">Who</th>
+                  <th className="px-5 py-3.5">Source IP</th>
                   <th className="px-5 py-3.5">Details</th>
                   <th className="px-5 py-3.5 text-right">View</th>
                 </tr>
@@ -512,17 +563,15 @@ export function Activity() {
                     onClick={() => setSelectedEntry(e)}
                   >
                     <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDateTimeInZone(e.time, tz)}
+                      {formatDateTime(e.time, tz)}
                     </td>
-                    {view === 'fleet' && (
-                      <td className="px-5 py-3.5 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
-                          {getActivityKindLabel(kind)}
-                        </span>
-                      </td>
-                    )}
                     <td className="px-5 py-3.5 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${view === 'audit' ? getAuditActionColor(e.action) : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
+                        {getActivityKindLabel(kind)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                         {getActionLabel(e.action)}
                       </span>
                     </td>
@@ -537,11 +586,9 @@ export function Activity() {
                         {e.username}
                       </div>
                     </td>
-                    {view === 'audit' && (
-                      <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                        {e.source_ip || '-'}
-                      </td>
-                    )}
+                    <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                      {e.source_ip || '-'}
+                    </td>
                     <td className="px-5 py-3.5 text-muted-foreground max-w-[320px] truncate" title={e.details}>
                       {e.details || '-'}
                     </td>
@@ -576,12 +623,10 @@ export function Activity() {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    {view === 'fleet' && (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
-                        {getActivityKindLabel(kind)}
-                      </span>
-                    )}
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${view === 'audit' ? getAuditActionColor(e.action) : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
+                      {getActivityKindLabel(kind)}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                       {getActionLabel(e.action)}
                     </span>
                   </div>
@@ -603,16 +648,14 @@ export function Activity() {
                     <span className="truncate">{e.username}</span>
                   </div>
                   <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDateTimeInZone(e.time, tz)}
+                    {formatDateTime(e.time, tz)}
                   </span>
                 </div>
                 <div className="mt-2 font-mono text-xs text-foreground truncate" title={e.target}>
                   {e.target}
                 </div>
-                {view === 'audit' && (
-                  <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span className="font-mono truncate">{e.source_ip || '-'}</span>
-                  </div>
+                {e.source_ip && (
+                  <div className="mt-1 font-mono text-xs text-muted-foreground">IP: {e.source_ip}</div>
                 )}
                 <div className="mt-1 text-xs text-muted-foreground truncate" title={e.details}>
                   {e.details || '-'}
@@ -622,13 +665,28 @@ export function Activity() {
             })}
           </div>
         )}
+        {/* Pagination */}
+        {!loading && !error && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-secondary/20 text-xs text-muted-foreground">
+            <span>Showing {filteredEntries.length} of {totalFetched} server-filtered events</span>
+            {hasMore && (
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-xs font-medium disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading...' : 'Load more'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Details Inspector Modal */}
       <Modal
         isOpen={selectedEntry !== null}
         onClose={() => setSelectedEntry(null)}
-        title={view === 'audit' ? 'Audit Record Details' : 'Activity Record Details'}
+        title="Activity Record Details"
         maxWidth="lg"
       >
         {selectedEntry && (
@@ -654,19 +712,17 @@ export function Activity() {
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Timestamp</p>
                 <p className="text-sm font-mono text-foreground mt-1 flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-primary" />
-                  {formatDateTimeInZone(selectedEntry.time, tz)}
+                  {formatDateTime(selectedEntry.time, tz)}
                 </p>
               </div>
 
               <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{view === 'audit' ? 'Action' : 'Kind / Action'}</p>
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Kind / Action</p>
                 <p className="mt-1 flex items-center gap-2 flex-wrap">
-                  {view === 'fleet' && (
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${getActivityKindColor(toActivityKind(selectedEntry.action))}`}>
-                      {getActivityKindLabel(toActivityKind(selectedEntry.action))}
-                    </span>
-                  )}
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${view === 'audit' ? getAuditActionColor(selectedEntry.action) : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20'}`}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${getActivityKindColor(toActivityKind(selectedEntry.action))}`}>
+                    {getActivityKindLabel(toActivityKind(selectedEntry.action))}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                     {getActionLabel(selectedEntry.action)}
                   </span>
                 </p>
