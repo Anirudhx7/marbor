@@ -37,7 +37,7 @@ start/stop/restart/logs/drain/undrain/health on one node. See \fBmarbor-runtime\
 node control driver operations. See \fBmarbor-node\fR(1).
 .TP
 .B key
-per\-API-key local/cloud routing overrides. See \fBmarbor-key\fR(1).
+per\-API-key local/cloud routing overrides (masked list, plaintext\-once on create). See \fBmarbor-key\fR(1).
 .TP
 .B spill
 show per\-key, per\-provider local\-vs-cloud request counts
@@ -47,6 +47,9 @@ show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule,
 .TP
 .B requests
 inspect routing decisions for past requests. See \fBmarbor-requests\fR(1).
+.TP
+.B users
+manage dashboard users. See \fBmarbor-users\fR(1).
 .TP
 .B completion <shell>
 generate a shell completion script (bash, zsh, or fish)
@@ -112,4 +115,5 @@ marbor completion fish > ~/.config/fish/completions/marbor.fish
 \fBmarbor-runtime\fR(1),
 \fBmarbor-node\fR(1),
 \fBmarbor-key\fR(1),
-\fBmarbor-requests\fR(1)
+\fBmarbor-requests\fR(1),
+\fBmarbor-users\fR(1)

@@ -1,0 +1,94 @@
+.TH MARBOR\-USERS 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-users \- manage dashboard users
+.SH SYNOPSIS
+.B marbor users
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+manage dashboard users
+.SH COMMANDS
+.TP
+.B list
+list users
+.TP
+.B create
+create a user (password printed once)
+.RS
+.TP
+.B \-\-user string
+username for the new user (required) (required)
+.TP
+.B \-\-email string
+email for the new user
+.TP
+.B \-\-role string
+role: admin or user
+.RE
+.TP
+.B approve <id>
+approve a pending user
+.RS
+.TP
+.B \-\-api-key-name string
+API key name to assign
+.TP
+.B \-\-create-key
+create an API key for the user
+.TP
+.B \-\-key-rate-limit int
+rate limit for the new key (per hour)
+.TP
+.B \-\-key-daily-limit int
+daily limit for the new key
+.TP
+.B \-\-key-monthly-limit int
+monthly limit for the new key
+.TP
+.B \-\-key-models string
+comma\-separated allowed models for the new key
+.RE
+.TP
+.B suspend <id>
+suspend a user and revoke sessions
+.RS
+.TP
+.B \-\-yes
+confirm suspension without prompting
+.RE
+.TP
+.B reset\-password <id>
+reset a user's password (printed once)
+.TP
+.B patch <id>
+update a user's email or role
+.RS
+.TP
+.B \-\-email string
+new email
+.TP
+.B \-\-role string
+new role: admin or user
+.RE
+.TP
+.B delete <id>
+delete a user
+.RS
+.TP
+.B \-\-yes
+confirm deletion without prompting
+.RE
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)

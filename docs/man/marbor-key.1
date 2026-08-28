@@ -1,12 +1,93 @@
 .TH MARBOR\-KEY 1 "2026-08-17" "marbor dev" "Marbor Manual"
 .SH NAME
-marbor\-key \- per\-API-key local/cloud routing overrides
+marbor\-key \- per\-API-key local/cloud routing overrides (masked list, plaintext\-once on create)
 .SH SYNOPSIS
 .B marbor key
 [action] [args] [\fIflags\fR]
 .SH DESCRIPTION
-per\-API-key local/cloud routing overrides
+per\-API-key local/cloud routing overrides (masked list, plaintext\-once on create)
 .SH COMMANDS
+.TP
+.B list
+list keys (masked)
+.TP
+.B create
+create a key (prints plaintext once)
+.RS
+.TP
+.B \-\-name string
+key name (required) (required)
+.TP
+.B \-\-rate-limit int
+max requests per hour (0 = unlimited)
+.TP
+.B \-\-daily-limit int
+max requests per day (0 = unlimited)
+.TP
+.B \-\-monthly-limit int
+max requests per month (0 = unlimited)
+.TP
+.B \-\-daily-usd-cap string
+daily cloud spend cap in USD (0 = unlimited)
+.TP
+.B \-\-monthly-usd-cap string
+monthly cloud spend cap in USD (0 = unlimited)
+.TP
+.B \-\-models string
+comma\-separated allowed models (empty = all)
+.TP
+.B \-\-expires-at string
+expiry date (2006-01-02 or RFC3339)
+.TP
+.B \-\-key string
+explicit secret (default: server\-generated)
+.TP
+.B \-\-local-only string
+block cloud fallback: true or false
+.TP
+.B \-\-allow-local-degradation string
+allow local alternate model: true or false
+.RE
+.TP
+.B revoke <name>
+revoke (delete) a key
+.RS
+.TP
+.B \-\-yes
+confirm revocation without prompting
+.RE
+.TP
+.B patch <name>
+update key settings
+.RS
+.TP
+.B \-\-rate-limit string
+max requests per hour (0 = unlimited)
+.TP
+.B \-\-daily-limit string
+max requests per day (0 = unlimited)
+.TP
+.B \-\-monthly-limit string
+max requests per month (0 = unlimited)
+.TP
+.B \-\-daily-usd-cap string
+daily cloud spend cap in USD
+.TP
+.B \-\-monthly-usd-cap string
+monthly cloud spend cap in USD
+.TP
+.B \-\-models string
+comma\-separated allowed models (empty = clear)
+.TP
+.B \-\-expires-at string
+expiry date (2006-01-02 or RFC3339, empty = clear)
+.TP
+.B \-\-local-only string
+block cloud fallback: true or false
+.TP
+.B \-\-allow-local-degradation string
+allow local alternate model: true or false
+.RE
 .TP
 .B set\-local-only <name> <true|false>
 block (or re\-allow) cloud fallback for one API key
