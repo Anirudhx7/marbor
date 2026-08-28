@@ -20,6 +20,8 @@ import { mockAnalytics } from '../lib/mockData';
 import { fetchAnalytics } from '../lib/api';
 import type { Analytics, HourlyBucket, ModelStat } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatHourLabelInTimezone } from '../lib/time';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
 
@@ -87,10 +89,8 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
   return null;
 };
 
-function formatHour(hour: string): string {
-  const parts = hour.split('T');
-  if (parts.length === 2) return `${parts[1]}:00`;
-  return hour;
+function formatHour(hour: string, tz: string): string {
+  return formatHourLabelInTimezone(hour, tz);
 }
 
 function EmptyChart({ message }: { message: string }) {
@@ -119,6 +119,7 @@ function LoadingSkeleton() {
 }
 
 export function Metrics() {
+  const tz = useTimezone();
   const { demoMode } = useDemoMode();
   const location = useLocation();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -162,7 +163,7 @@ export function Metrics() {
   }, [demoMode, location.pathname]);
 
   const hourlyData = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({
-    hour: formatHour(b.hour),
+    hour: formatHour(b.hour, tz),
     Local: b.local,
     Cloud: b.cloud,
   }));
@@ -179,7 +180,19 @@ export function Metrics() {
   }));
 
   const savingsData = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({
-    hour: formatHour(b.hour),
+    hour: formatHour(b.hour, tz),
+    'Saved ($)': b.saved_usd,
+    'Spent ($)': b.spent_usd,
+  }));
+
+  // Exports must be RFC3339 Z (not wall "14:00") so CSVs are unambiguous.
+  const hourlyExport = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({
+    hour: b.hour + ':00:00Z',
+    Local: b.local,
+    Cloud: b.cloud,
+  }));
+  const savingsExport = (analytics?.hourly ?? []).map((b: HourlyBucket) => ({
+    hour: b.hour + ':00:00Z',
     'Saved ($)': b.saved_usd,
     'Spent ($)': b.spent_usd,
   }));
@@ -289,7 +302,7 @@ export function Metrics() {
               title="Requests Per Hour (Last 24h)"
               onExport={() =>
                 exportToCSV(
-                  hourlyData as unknown as Record<string, unknown>[],
+                  hourlyExport as unknown as Record<string, unknown>[],
                   'requests-hourly.csv'
                 )
               }
@@ -423,7 +436,7 @@ export function Metrics() {
               title="Savings vs Spend per Hour (Last 24h)"
               onExport={() =>
                 exportToCSV(
-                  savingsData as unknown as Record<string, unknown>[],
+                  savingsExport as unknown as Record<string, unknown>[],
                   'savings-per-hour.csv'
                 )
               }

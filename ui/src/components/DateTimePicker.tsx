@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatWallInZone, nowWallInZone, wallDateTimeToUtcIso, formatInTimezone } from '../lib/time';
 
 // Popup panels render fixed-width (w-80/w-64) and must stay inside the
 // viewport on narrow (375px) screens even when their trigger field sits in a
@@ -31,35 +33,35 @@ export function CustomDateTimePicker({
   disabled = false,
   min,
 }: CustomDateTimePickerProps) {
+  const tz = useTimezone();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Parsing state
-  const initialDate = value ? new Date(value) : new Date();
-  const [viewYear, setViewYear] = useState(initialDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(initialDate.getMonth()); // 0-11
-  
-  // Hour & Minute values
-  const [hours, setHours] = useState(value ? new Date(value).getHours() : 0);
-  const [minutes, setMinutes] = useState(value ? new Date(value).getMinutes() : 0);
-  const [selectedDay, setSelectedDay] = useState<number | null>(
-    value ? new Date(value).getDate() : null
-  );
+  function parseWall(v: string): { y:number; m:number; d:number; h:number; mi:number } | null {
+    const mm = v.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+    if (!mm) return null;
+    const y = Number(mm[1]), mo = Number(mm[2]), day = Number(mm[3]), hh = Number(mm[4]), mi = Number(mm[5]);
+    if (!isFinite(y) || !isFinite(mo) || !isFinite(day) || !isFinite(hh) || !isFinite(mi)) return null;
+    return { y, m: mo, d: day, h: hh, mi };
+  }
+  const parsed = parseWall(value);
+  const fallback = nowWallInZone(tz);
+  const [viewYear, setViewYear] = useState(parsed ? parsed.y : fallback.y);
+  const [viewMonth, setViewMonth] = useState(parsed ? parsed.m - 1 : fallback.m - 1);
+  const [hours, setHours] = useState(parsed ? parsed.h : 0);
+  const [minutes, setMinutes] = useState(parsed ? parsed.mi : 0);
+  const [selectedDay, setSelectedDay] = useState<number | null>(parsed ? parsed.d : null);
 
-  // Sync state with incoming value changes
   useEffect(() => {
-    if (value) {
-      const d = new Date(value);
-      setViewYear(d.getFullYear());
-      setViewMonth(d.getMonth());
-      setSelectedDay(d.getDate());
-      setHours(d.getHours());
-      setMinutes(d.getMinutes());
+    const p = parseWall(value);
+    if (p) {
+      setViewYear(p.y); setViewMonth(p.m - 1); setSelectedDay(p.d); setHours(p.h); setMinutes(p.mi);
     } else {
-      setSelectedDay(null);
+      const nw = nowWallInZone(tz);
+      setViewYear(nw.y); setViewMonth(nw.m - 1); setSelectedDay(null);
     }
-  }, [value]);
+  }, [value, tz]);
 
   const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
 
@@ -130,12 +132,14 @@ export function CustomDateTimePicker({
     }
   };
 
-  const minDate = min ? new Date(min) : null;
+  const minWall = min ? parseWall(min) : null;
   const isDayDisabled = (y: number, m: number, day: number) => {
-    if (!minDate) return false;
-    const cell = new Date(y, m, day);
-    const minDay = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
-    return cell < minDay;
+    if (!minWall) return false;
+    if (y < minWall.y) return true;
+    if (y > minWall.y) return false;
+    if (m + 1 < minWall.m) return true;
+    if (m + 1 > minWall.m) return false;
+    return day < minWall.d;
   };
 
   const selectDay = (day: number) => {
@@ -145,13 +149,12 @@ export function CustomDateTimePicker({
   };
 
   const updateValue = (day: number, h: number, m: number) => {
-    const date = new Date(viewYear, viewMonth, day, h, m);
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-    const hh = String(date.getHours()).padStart(2, '0');
-    const min = String(date.getMinutes()).padStart(2, '0');
-    onChange(`${yyyy}-${mm}-${dd}T${hh}:${min}`);
+    const yyyy = String(viewYear).padStart(4, '0');
+    const mm = String(viewMonth + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    const hh = String(h).padStart(2, '0');
+    const mi = String(m).padStart(2, '0');
+    onChange(`${yyyy}-${mm}-${dd}T${hh}:${mi}`);
   };
 
   const handleHourChange = (h: number) => {
@@ -221,23 +224,10 @@ export function CustomDateTimePicker({
     });
   }
 
-  // Format display text
   const formatDisplay = () => {
     if (!value) return '';
-    try {
-      const d = new Date(value);
-      if (isNaN(d.getTime())) return value;
-      return d.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-    } catch {
-      return value;
-    }
+    const disp = formatWallInZone(value, tz);
+    return disp !== value ? disp : (()=>{ try { const d=new Date(value); if(isNaN(d.getTime())) return value; return d.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}); } catch {return value;}})();
   };
 
   return (
@@ -310,11 +300,12 @@ export function CustomDateTimePicker({
               const isSelected =
                 cell.isCurrentMonth && selectedDay === cell.day;
 
+              const nowWall = nowWallInZone(tz);
               const isToday =
                 cell.isCurrentMonth &&
-                new Date().getDate() === cell.day &&
-                new Date().getMonth() === viewMonth &&
-                new Date().getFullYear() === viewYear;
+                nowWall.d === cell.day &&
+                nowWall.m - 1 === viewMonth &&
+                nowWall.y === viewYear;
 
               const cellMonth = viewMonth + cell.monthOffset;
               const isDisabled = isDayDisabled(viewYear, cellMonth, cell.day);
@@ -329,17 +320,15 @@ export function CustomDateTimePicker({
                     if (cell.isCurrentMonth) {
                       selectDay(cell.day);
                     } else {
-                      // Switch month
-                      const targetDate = new Date(viewYear, viewMonth + cell.monthOffset, cell.day, hours, minutes);
-                      setViewYear(targetDate.getFullYear());
-                      setViewMonth(targetDate.getMonth());
-                      setSelectedDay(targetDate.getDate());
-                      const yyyy = targetDate.getFullYear();
-                      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-                      const dd = String(targetDate.getDate()).padStart(2, '0');
-                      const hh = String(targetDate.getHours()).padStart(2, '0');
-                      const min = String(targetDate.getMinutes()).padStart(2, '0');
-                      onChange(`${yyyy}-${mm}-${dd}T${hh}:${min}`);
+                      let y = viewYear; let m = viewMonth + cell.monthOffset;
+                      while (m < 0) { m += 12; y--; } while (m > 11) { m -= 12; y++; }
+                      setViewYear(y); setViewMonth(m); setSelectedDay(cell.day);
+                      const yyyy = String(y).padStart(4, '0');
+                      const mm = String(m + 1).padStart(2, '0');
+                      const dd = String(cell.day).padStart(2, '0');
+                      const hh = String(hours).padStart(2, '0');
+                      const mi = String(minutes).padStart(2, '0');
+                      onChange(`${yyyy}-${mm}-${dd}T${hh}:${mi}`);
                     }
                   }}
                   className={`text-xs py-1.5 rounded-lg text-center font-medium transition-colors ${
@@ -451,29 +440,34 @@ export function CustomDatePicker({
   className = '',
   disabled = false,
 }: CustomDatePickerProps) {
+  const tz = useTimezone();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Parsing state
-  const initialDate = value ? new Date(value + 'T00:00:00') : new Date();
-  const [viewYear, setViewYear] = useState(initialDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(initialDate.getMonth()); // 0-11
-  const [selectedDay, setSelectedDay] = useState<number | null>(
-    value ? new Date(value + 'T00:00:00').getDate() : null
-  );
+  function parseWallDate(v: string): { y: number; m: number; d: number } | null {
+    const mm = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!mm) return null;
+    const y = Number(mm[1]), mo = Number(mm[2]), day = Number(mm[3]);
+    if (!isFinite(y) || !isFinite(mo) || !isFinite(day)) return null;
+    return { y, m: mo, d: day };
+  }
+  const parsedDate = value ? parseWallDate(value) : null;
+  const fallbackDate = nowWallInZone(tz);
+  const [viewYear, setViewYear] = useState(parsedDate ? parsedDate.y : fallbackDate.y);
+  const [viewMonth, setViewMonth] = useState(parsedDate ? parsedDate.m - 1 : fallbackDate.m - 1);
+  const [selectedDay, setSelectedDay] = useState<number | null>(parsedDate ? parsedDate.d : null);
 
-  // Sync state with incoming value changes
   useEffect(() => {
-    if (value) {
-      const d = new Date(value + 'T00:00:00');
-      setViewYear(d.getFullYear());
-      setViewMonth(d.getMonth());
-      setSelectedDay(d.getDate());
+    const p = value ? parseWallDate(value) : null;
+    if (p) {
+      setViewYear(p.y);
+      setViewMonth(p.m - 1);
+      setSelectedDay(p.d);
     } else {
       setSelectedDay(null);
     }
-  }, [value]);
+  }, [value, tz]);
 
   const [coords, setCoords] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
 
@@ -551,10 +545,9 @@ export function CustomDatePicker({
   };
 
   const updateValue = (day: number) => {
-    const date = new Date(viewYear, viewMonth, day);
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
+    const yyyy = String(viewYear).padStart(4, '0');
+    const mm = String(viewMonth + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
     onChange(`${yyyy}-${mm}-${dd}`);
   };
 
@@ -606,17 +599,13 @@ export function CustomDatePicker({
   // Format display text
   const formatDisplay = () => {
     if (!value) return '';
+    const p = parseWallDate(value);
+    if (!p) return value;
+    const iso = wallDateTimeToUtcIso(`${value}T00:00:00`, tz);
+    if (!iso) return value;
     try {
-      const d = new Date(value + 'T00:00:00');
-      if (isNaN(d.getTime())) return value;
-      return d.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    } catch {
-      return value;
-    }
+      return formatInTimezone(iso, tz, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch { return value; }
   };
 
   return (
@@ -689,11 +678,12 @@ export function CustomDatePicker({
               const isSelected =
                 cell.isCurrentMonth && selectedDay === cell.day;
 
+              const nowWall2 = nowWallInZone(tz);
               const isToday =
                 cell.isCurrentMonth &&
-                new Date().getDate() === cell.day &&
-                new Date().getMonth() === viewMonth &&
-                new Date().getFullYear() === viewYear;
+                nowWall2.d === cell.day &&
+                nowWall2.m - 1 === viewMonth &&
+                nowWall2.y === viewYear;
 
               return (
                 <button
@@ -703,14 +693,12 @@ export function CustomDatePicker({
                     if (cell.isCurrentMonth) {
                       selectDay(cell.day);
                     } else {
-                      // Switch month
-                      const targetDate = new Date(viewYear, viewMonth + cell.monthOffset, cell.day);
-                      setViewYear(targetDate.getFullYear());
-                      setViewMonth(targetDate.getMonth());
-                      setSelectedDay(targetDate.getDate());
-                      const yyyy = targetDate.getFullYear();
-                      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-                      const dd = String(targetDate.getDate()).padStart(2, '0');
+                      let y = viewYear; let m = viewMonth + cell.monthOffset;
+                      while (m < 0) { m += 12; y--; } while (m > 11) { m -= 12; y++; }
+                      setViewYear(y); setViewMonth(m); setSelectedDay(cell.day);
+                      const yyyy = String(y).padStart(4, '0');
+                      const mm = String(m + 1).padStart(2, '0');
+                      const dd = String(cell.day).padStart(2, '0');
                       onChange(`${yyyy}-${mm}-${dd}`);
                     }
                   }}

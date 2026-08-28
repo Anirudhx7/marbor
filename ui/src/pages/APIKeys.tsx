@@ -7,6 +7,8 @@ import { SearchInput } from '../components/SearchInput';
 import { mockAPIKeys } from '../lib/mockData';
 import { fetchKeys, createKey, revokeKey, patchKey, fetchModels } from '../lib/api';
 import type { APIKey } from '../types';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDateTimeInZone, wallDateTimeToUtcIso } from '../lib/time';
 
 
 function maskKey(key: string): string {
@@ -28,6 +30,7 @@ function nowLocalISO(): string {
 }
 
 export function APIKeys() {
+  const tz = useTimezone();
   const { demoMode } = useDemoMode();
   const location = useLocation();
   const { currency, toDisplay, toUSD } = useCurrency();
@@ -108,8 +111,12 @@ export function APIKeys() {
       patch.models = editForm.models;
     }
     const originalExpiresAt = editKey.expiresAt ?? '';
+    const toMs = (v: string) => {
+      const iso = wallDateTimeToUtcIso(v, tz);
+      return iso ? new Date(iso).getTime() : new Date(v).getTime();
+    };
     if (editForm.expiresAt !== originalExpiresAt) {
-      if (editForm.expiresAt && new Date(editForm.expiresAt).getTime() <= Date.now()) {
+      if (editForm.expiresAt && toMs(editForm.expiresAt) <= Date.now()) {
         setEditError('Expiry date must be in the future');
         return;
       }
@@ -455,7 +462,7 @@ export function APIKeys() {
                     </code>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="text-sm text-muted-foreground">{key.created}</span>
+                    <span className="text-sm text-muted-foreground">{key.created ? formatDateTimeInZone(key.created, tz) : '-'}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
@@ -555,7 +562,7 @@ export function APIKeys() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Created</p>
-                <p className="text-sm text-foreground">{key.created}</p>
+                <p className="text-sm text-foreground">{key.created ? formatDateTimeInZone(key.created, tz) : '-'}</p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Rate Limit</p>

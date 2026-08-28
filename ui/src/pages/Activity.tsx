@@ -9,53 +9,44 @@ import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { ClearableInput, FilterField } from '../components/FilterField';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { toActivityKind, getActivityKindLabel, getActivityKindColor, type ActivityKind } from '../lib/activityKind';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDateTimeInZone, formatInTimezone, wallDateTimeToUtcIso } from '../lib/time';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 const PAGE_LIMIT = 100;
 
-function toPickerValue(rfc3339: string): string {
+function toPickerValue(rfc3339: string, tz: string): string {
   try {
     const d = new Date(rfc3339);
     if (isNaN(d.getTime())) return '';
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-  } catch {
-    return '';
-  }
+    const tzResolved = tz && tz !== 'Local' ? tz : undefined;
+    // en-CA gives YYYY-MM-DD HH:MM wall in tz
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tzResolved, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).formatToParts(d);
+    const m: Record<string,string> = {};
+    for (const p of parts) if (p.type !== 'literal') m[p.type]=p.value;
+    // en-CA hour may be "24" at midnight — normalize to "00"
+    const hh = m.hour === '24' ? '00' : m.hour;
+    return `${m.year}-${m.month}-${m.day}T${hh}:${m.minute}`;
+  } catch { return ''; }
 }
 
-function fromPickerValue(v: string): string {
+function fromPickerValue(v: string, tz: string): string {
   if (!v) return '';
-  try {
-    const d = new Date(v);
-    if (isNaN(d.getTime())) return '';
-    return d.toISOString();
-  } catch {
-    return '';
-  }
+  const iso = wallDateTimeToUtcIso(v, tz);
+  if (iso) return iso;
+  try { const d=new Date(v); return isNaN(d.getTime())?'':d.toISOString(); } catch {return '';}
 }
 
 type DatePreset = 'all' | '1h' | '24h' | '7d' | '30d' | 'custom';
 
-function formatDateTime(isoString: string): string {
+function formatDateTime(isoString: string, tz: string): string {
+  return formatDateTimeInZone(isoString, tz);
+}
+
+function formatUpdatedTime(d: Date, tz: string): string {
   try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  } catch {
-    return isoString;
-  }
+    return formatInTimezone(d.toISOString(), tz, { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  } catch { return d.toISOString().slice(11,19); }
 }
 
 function getActionLabel(action: string): string {
@@ -66,6 +57,7 @@ function getActionLabel(action: string): string {
 }
 
 export function Activity() {
+  const tz = useTimezone();
   const location = useLocation();
 
   const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
@@ -109,9 +101,9 @@ export function Activity() {
     const now = new Date();
     const presetHours: Record<'1h' | '24h' | '7d' | '30d', number> = { '1h': 1, '24h': 24, '7d': 24 * 7, '30d': 24 * 30 };
     const from = new Date(now.getTime() - presetHours[preset] * 3600_000);
-    setFromPicker(toPickerValue(from.toISOString()));
-    setToPicker(toPickerValue(now.toISOString()));
-  }, [preset]);
+    setFromPicker(toPickerValue(from.toISOString(), tz));
+    setToPicker(toPickerValue(now.toISOString(), tz));
+  }, [preset, tz]);
 
   // A quick-range preset and a hand-picked custom range are mutually
   // exclusive, same relationship as Requests.tsx's sincePreset/sinceInput:
@@ -131,8 +123,8 @@ export function Activity() {
 
   const buildFilter = useCallback((before?: string) => {
     const f: any = { limit: PAGE_LIMIT };
-    const fromRfc = fromPicker ? fromPickerValue(fromPicker) : '';
-    const toRfc = toPicker ? fromPickerValue(toPicker) : '';
+    const fromRfc = fromPicker ? fromPickerValue(fromPicker, tz) : '';
+    const toRfc = toPicker ? fromPickerValue(toPicker, tz) : '';
     if (fromRfc) f.from = fromRfc;
     if (toRfc) f.to = toRfc;
     if (before) f.before = before;
@@ -142,7 +134,7 @@ export function Activity() {
     if (debouncedTarget.trim()) f.target = debouncedTarget.trim();
     if (debouncedSourceIp.trim()) f.source_ip = debouncedSourceIp.trim();
     return f;
-  }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp]);
+  }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp, tz]);
 
   const loadActivity = useCallback(async (opts: { silent?: boolean; append?: boolean; before?: string; active?: boolean } = {}) => {
     const { silent = false, append = false, before, active = true } = opts;
@@ -289,7 +281,7 @@ export function Activity() {
         <div className="flex items-center gap-3">
           {lastRefreshed && (
             <span className="text-[11px] text-muted-foreground/60 hidden sm:block">
-              Updated {lastRefreshed.toLocaleTimeString()}
+              Updated {formatUpdatedTime(lastRefreshed, tz)}
             </span>
           )}
           <button
@@ -394,7 +386,7 @@ export function Activity() {
                     triggered by {d.trigger_model} - seen {d.transition_count}x at hour {d.hour}
                   </p>
                 </div>
-                <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(d.timestamp)}</span>
+                <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(d.timestamp, tz)}</span>
               </div>
             ))}
           </div>
@@ -571,7 +563,7 @@ export function Activity() {
                     onClick={() => setSelectedEntry(e)}
                   >
                     <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDateTime(e.time)}
+                      {formatDateTime(e.time, tz)}
                     </td>
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
@@ -656,7 +648,7 @@ export function Activity() {
                     <span className="truncate">{e.username}</span>
                   </div>
                   <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDateTime(e.time)}
+                    {formatDateTime(e.time, tz)}
                   </span>
                 </div>
                 <div className="mt-2 font-mono text-xs text-foreground truncate" title={e.target}>
@@ -720,7 +712,7 @@ export function Activity() {
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Timestamp</p>
                 <p className="text-sm font-mono text-foreground mt-1 flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-primary" />
-                  {formatDateTime(selectedEntry.time)}
+                  {formatDateTime(selectedEntry.time, tz)}
                 </p>
               </div>
 

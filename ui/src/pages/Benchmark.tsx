@@ -14,6 +14,8 @@ import { mockGPUNodes, mockBenchmarkRuns } from '../lib/mockData';
 import type { GPUNode, BenchmarkRun } from '../types';
 import { CustomSelect } from '../components/Select';
 import { useDemoMode } from '../hooks/useDemoMode';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDateTimeInZone } from '../lib/time';
 import { Modal } from '../components/Modal';
 
 function fmtMs(ms: number): string {
@@ -81,6 +83,7 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
 }
 
 export function Benchmark() {
+  const tz = useTimezone();
   const { demoMode } = useDemoMode();
   const progress = useSyncExternalStore(subscribe, getSnapshot);
 
@@ -320,7 +323,7 @@ export function Benchmark() {
                 <div className="flex items-center gap-3 text-xs text-muted-foreground font-mono shrink-0">
                   <span>{fmtMs(r.cold_p50_ms)} → {fmtMs(r.warm_p50_ms)}</span>
                   <span className="text-primary font-semibold">{r.speedup_x.toFixed(1)}×</span>
-                  <span className="text-muted-foreground/60">{new Date(r.created_at).toLocaleString()}</span>
+                  <span className="text-muted-foreground/60">{formatDateTimeInZone(r.created_at, tz)}</span>
                 </div>
               </div>
             ))}

@@ -14,13 +14,12 @@ import {
 import { fetchAnalytics, analyticsExportUrl, getSpillCounters } from '../lib/api';
 import { mockAnalytics, mockSpillCounters } from '../lib/mockData';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatHourLabelInTimezone } from '../lib/time';
 import type { Analytics, HourlyBucket, ModelStat, SpillCounterRow } from '../types';
 
-function formatHourLabel(hour: string): string {
-  // "2026-05-23T14" -> "14:00"
-  const parts = hour.split('T');
-  if (parts.length === 2) return `${parts[1]}:00`;
-  return hour;
+function formatHourLabel(hour: string, tz: string): string {
+  return formatHourLabelInTimezone(hour, tz);
 }
 
 function StatCard({
@@ -69,6 +68,7 @@ function ExportButton({ type, label }: { type: 'hourly' | 'models'; label: strin
 }
 
 export function Analytics() {
+  const tz = useTimezone();
   const { demoMode } = useDemoMode();
   const location = useLocation();
   const [data, setData] = useState<Analytics | null>(demoMode ? mockAnalytics : null);
@@ -139,7 +139,7 @@ export function Analytics() {
   }, [demoMode, location.pathname]);
 
   const chartData = (data?.hourly ?? []).map((b: HourlyBucket) => ({
-    hour: formatHourLabel(b.hour),
+    hour: formatHourLabel(b.hour, tz),
     Local: b.local,
     Cloud: b.cloud,
     saved: b.saved_usd,
