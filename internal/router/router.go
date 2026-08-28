@@ -1857,28 +1857,28 @@ func (n *NodeState) EffectiveRequiredGPUs() int {
 	return effectiveRequiredGPUsLocked(n)
 }
 
+// deriveRequiredGPUs is the single source of truth for P397 required-GPU
+// derivation: required = max(width, len(indices)), with an explicit indices
+// list winning when it is longer than the declared width. width<=0 means
+// "use indices only".
+func deriveRequiredGPUs(width int, indices []int) int {
+	if width <= 0 {
+		return len(indices)
+	}
+	if len(indices) > width {
+		return len(indices)
+	}
+	return width
+}
+
 func effectiveRequiredGPUsLocked(n *NodeState) int {
 	// Declared wins when present (operator override) - preserve P397 behavior.
-	width := n.ParallelismWidth
-	if width > 0 || len(n.DeclaredGPUIndices) > 0 {
-		if width <= 0 {
-			return len(n.DeclaredGPUIndices)
-		}
-		if len(n.DeclaredGPUIndices) > width {
-			return len(n.DeclaredGPUIndices)
-		}
-		return width
+	if n.ParallelismWidth > 0 || len(n.DeclaredGPUIndices) > 0 {
+		return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
 	}
 	// No declared constraint - fall back to auto-detected deployment (P397b).
 	if n.DetectedParallelismWidth > 0 || len(n.DetectedGPUGroup) > 0 {
-		w := n.DetectedParallelismWidth
-		if w <= 0 {
-			return len(n.DetectedGPUGroup)
-		}
-		if len(n.DetectedGPUGroup) > w {
-			return len(n.DetectedGPUGroup)
-		}
-		return w
+		return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 	}
 	return 0
 }
@@ -1888,28 +1888,14 @@ func effectiveRequiredGPUsLocked(n *NodeState) int {
 func (n *NodeState) EffectiveDeclaredRequiredGPUs() int {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-	w := n.ParallelismWidth
-	if w <= 0 {
-		return len(n.DeclaredGPUIndices)
-	}
-	if len(n.DeclaredGPUIndices) > w {
-		return len(n.DeclaredGPUIndices)
-	}
-	return w
+	return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
 }
 
 // EffectiveDetectedRequiredGPUs is the P397b detected-only derived value.
 func (n *NodeState) EffectiveDetectedRequiredGPUs() int {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-	w := n.DetectedParallelismWidth
-	if w <= 0 {
-		return len(n.DetectedGPUGroup)
-	}
-	if len(n.DetectedGPUGroup) > w {
-		return len(n.DetectedGPUGroup)
-	}
-	return w
+	return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 }
 
 // MismatchWarning returns amber warning when declared and detected disagree
@@ -1934,25 +1920,11 @@ func (n *NodeState) MismatchWarning() string {
 }
 
 func effectiveRequiredGPUsDeclaredLocked(n *NodeState) int {
-	w := n.ParallelismWidth
-	if w <= 0 {
-		return len(n.DeclaredGPUIndices)
-	}
-	if len(n.DeclaredGPUIndices) > w {
-		return len(n.DeclaredGPUIndices)
-	}
-	return w
+	return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
 }
 
 func effectiveDetectedRequiredGPUsLocked(n *NodeState) int {
-	w := n.DetectedParallelismWidth
-	if w <= 0 {
-		return len(n.DetectedGPUGroup)
-	}
-	if len(n.DetectedGPUGroup) > w {
-		return len(n.DetectedGPUGroup)
-	}
-	return w
+	return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 }
 
 // ValidateParallelismPatch validates structured parallelism fields for P397.
